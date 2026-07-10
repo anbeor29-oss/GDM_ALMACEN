@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es-MX">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/gdm-logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Primary Meta Tags -->
+    <title>GDM_FAC — Facturación electrónica CFDI 4.0 México · HCGM</title>
+    <meta
+      name="description"
+      content="ERP de facturación electrónica CFDI 4.0 con timbrado real ante el SAT. Emite facturas, notas de crédito y complementos de pago; importa XMLs; lee la Constancia de Situación Fiscal; envía por correo con PDF+XML. PAC autorizado SW Sapien."
+    />
+    <meta
+      name="keywords"
+      content="facturación electrónica, CFDI 4.0, SAT, México, ERP, timbrado, PAC, SW Sapien, notas de crédito, complemento de pago, Anexo 20, HCGM"
+    />
+    <meta name="author" content="HCGM" />
+    <meta name="theme-color" content="#1e3a8a" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="es_MX" />
+    <meta property="og:site_name" content="GDM_FAC — HCGM" />
+    <meta property="og:title" content="GDM_FAC · Facturación CFDI 4.0 sin complicaciones" />
+    <meta
+      property="og:description"
+      content="Emite, timbra y respalda tus facturas ante el SAT. Notas de crédito, complementos de pago, envío por correo y QR de verificación oficial."
+    />
+    <meta property="og:url" content="https://gdmfac-frontend.onrender.com/" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="GDM_FAC · Facturación CFDI 4.0 México" />
+    <meta
+      name="twitter:description"
+      content="ERP CFDI 4.0 con timbrado real, cancelación en cascada y envío por correo con PDF+XML."
+    />
+
+    <!-- Canonical -->
+    <link rel="canonical" href="https://gdmfac-frontend.onrender.com/" />
+
+    <!-- Structured data (Schema.org SoftwareApplication) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "GDM_FAC",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "description": "ERP de facturación electrónica CFDI 4.0 para México. Timbrado real ante el SAT vía PAC autorizado SW Sapien.",
+      "inLanguage": "es-MX",
+      "offers": [
+        { "@type": "Offer", "name": "Esencial", "price": "399", "priceCurrency": "MXN" },
+        { "@type": "Offer", "name": "Pyme",     "price": "699", "priceCurrency": "MXN" },
+        { "@type": "Offer", "name": "Empresarial", "price": "1399", "priceCurrency": "MXN" },
+        { "@type": "Offer", "name": "Uso libre", "price": "4.99", "priceCurrency": "MXN", "description": "Pay-per-stamp" }
+      ],
+      "provider": {
+        "@type": "Organization",
+        "name": "HCGM",
+        "url": "https://hcgm.com.mx"
+      }
+    }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

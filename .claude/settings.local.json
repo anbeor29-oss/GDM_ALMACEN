@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pandoc \"Te conviene crear.docx\" -t markdown)",
+      "PowerShell(Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{N='Used\\(GB\\)';E={[math]::Round\\($_.Used/1GB,1\\)}}, @{N='Free\\(GB\\)';E={[math]::Round\\($_.Free/1GB,2\\)}} | Format-Table -AutoSize)"
+    ]
+  }
+}

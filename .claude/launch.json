@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "scratchpad-http",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8742", "--bind", "127.0.0.1", "--directory", "C:\\Users\\EQ-7\\AppData\\Local\\Temp\\claude\\D--Obsidian-GDM-FAC\\278262e4-4228-4761-8ff7-b25ea0f69f05\\scratchpad"],
+      "port": 8742
+    }
+  ]
+}
