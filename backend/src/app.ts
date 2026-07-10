@@ -42,6 +42,7 @@ import cfdiImportRoutes     from './modules/cfdi-import/cfdi-import.routes';
 import suppliersRoutes      from './modules/suppliers/suppliers.routes';
 import warehousesRoutes     from './modules/warehouses/warehouses.routes';
 import inventoryRoutes      from './modules/inventory/inventory.routes';
+import inventoryReportsRoutes from './modules/inventory/inventory-reports.routes';
 
 export function createApp(): Express {
   const app = express();
@@ -147,6 +148,9 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/cfdi-import`,     cfdiImportRoutes);
   app.use(`/api/${config.apiVersion}/suppliers`,       suppliersRoutes);
   app.use(`/api/${config.apiVersion}/warehouses`,      warehousesRoutes);
+  // OJO: reports antes que inventoryRoutes para que /inventory/reports/* no
+  // caiga en rutas genéricas del módulo inventory.
+  app.use(`/api/${config.apiVersion}/inventory/reports`, inventoryReportsRoutes);
   app.use(`/api/${config.apiVersion}/inventory`,       inventoryRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);

@@ -159,8 +159,11 @@ export async function listCustomers(
     sortOrder = 'DESC',
   } = options;
 
-  // Build query
-  let whereClause = 'WHERE company_id = $1 AND deleted_at IS NULL';
+  // Build query — solo CLIENTES: los proveedores (party_type=SUPPLIER) viven
+  // en la misma tabla (STI) pero se listan en /suppliers, no aquí. Sin este
+  // filtro, los proveedores creados por compras XML (Fase 2 ALMACEN)
+  // contaminarían el dashboard y el selector de cliente al facturar.
+  let whereClause = `WHERE company_id = $1 AND deleted_at IS NULL AND party_type = 'CUSTOMER'`;
   const params: any[] = [companyId];
   let paramCount = 2;
 

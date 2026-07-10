@@ -286,6 +286,40 @@ class APIClient {
   }
 
   /**
+   * Inventory reports endpoints (§12 + dashboard)
+   */
+  async getInventoryValue() {
+    const r = await this.client.get<APIResponse<any>>('/inventory/reports/value');
+    return r.data;
+  }
+
+  async getInventoryValueHistory(months = 12, warehouseId?: string) {
+    const r = await this.client.get<APIResponse<any>>('/inventory/reports/value-history', {
+      params: { months, warehouseId },
+    });
+    return r.data;
+  }
+
+  async takeInventorySnapshot() {
+    const r = await this.client.post<APIResponse<any>>('/inventory/reports/snapshot');
+    return r.data;
+  }
+
+  async getInventoryRotation(order: 'rotation' | 'no-movement' = 'rotation', limit = 100) {
+    const r = await this.client.get<APIResponse<any>>('/inventory/reports/rotation', {
+      params: { order, limit },
+    });
+    return r.data;
+  }
+
+  async getInventoryCountDue(all = false) {
+    const r = await this.client.get<APIResponse<any>>('/inventory/reports/count-due', {
+      params: { all },
+    });
+    return r.data;
+  }
+
+  /**
    * Envía por correo los archivos seleccionados (PDF y XML de factura, NCs y pagos).
    * El backend usa el `contact_email` de la empresa emisora como remitente si está
    * configurado; si no, cae al MAIL_FROM del env.

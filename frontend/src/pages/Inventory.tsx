@@ -11,7 +11,8 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Boxes, Search, ArrowLeftRight, SlidersHorizontal, History,
-  PackagePlus, PackageMinus, AlertTriangle,
+  PackagePlus, PackageMinus, AlertTriangle, BarChart3, Camera,
+  ClipboardCheck, TrendingUp,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -76,7 +77,7 @@ const money = (n: number) =>
 const num = (n: number) => Number(n ?? 0).toLocaleString('es-MX');
 
 export function InventoryPage() {
-  const [tab, setTab] = useState<'stock' | 'kardex'>('stock');
+  const [tab, setTab] = useState<'stock' | 'kardex' | 'reports'>('stock');
 
   return (
     <div className="space-y-6">
@@ -94,10 +95,14 @@ export function InventoryPage() {
             icon={<Boxes size={16} />} label="Existencias" />
           <TabButton active={tab === 'kardex'} onClick={() => setTab('kardex')}
             icon={<History size={16} />} label="Kardex" />
+          <TabButton active={tab === 'reports'} onClick={() => setTab('reports')}
+            icon={<BarChart3 size={16} />} label="Reportes" />
         </div>
       </div>
 
-      {tab === 'stock' ? <StockTab /> : <KardexTab />}
+      {tab === 'stock' && <StockTab />}
+      {tab === 'kardex' && <KardexTab />}
+      {tab === 'reports' && <ReportsTab />}
     </div>
   );
 }
@@ -355,6 +360,287 @@ function KardexTab() {
         </table>
       </div>
     </>
+  );
+}
+
+/* =============================== REPORTES =============================== */
+
+const COUNT_BADGE: Record<string, string> = {
+  NUNCA_VERIFICADO: 'bg-red-100 text-red-700',
+  CONTEO_URGENTE:   'bg-red-100 text-red-700',
+  CONTEO_SUGERIDO:  'bg-amber-100 text-amber-700',
+  AL_DIA:           'bg-emerald-100 text-emerald-700',
+};
+const COUNT_LABEL: Record<string, string> = {
+  NUNCA_VERIFICADO: 'Nunca verificado',
+  CONTEO_URGENTE:   'Conteo urgente',
+  CONTEO_SUGERIDO:  'Conteo sugerido',
+  AL_DIA:           'Al día',
+};
+
+function ReportsTab() {
+  const qc = useQueryClient();
+  const { user } = useAuthStore();
+  const canWrite = ['ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(user?.role || '');
+  const [rotationOrder, setRotationOrder] = useState<'rotation' | 'no-movement'>('rotation');
+  const [snapMsg, setSnapMsg] = useState('');
+
+  const valueQ = useQuery({
+    queryKey: ['inventory-value'],
+    queryFn: () => api.getInventoryValue(),
+  });
+  const historyQ = useQuery({
+    queryKey: ['inventory-value-history'],
+    queryFn: () => api.getInventoryValueHistory(12),
+  });
+  const rotationQ = useQuery({
+    queryKey: ['inventory-rotation', rotationOrder],
+    queryFn: () => api.getInventoryRotation(rotationOrder, 50),
+  });
+  const countDueQ = useQuery({
+    queryKey: ['inventory-count-due'],
+    queryFn: () => api.getInventoryCountDue(),
+  });
+
+  const inv = valueQ.data?.data;
+  const history: any[] = historyQ.data?.data?.history || [];
+  const rotation: any[] = rotationQ.data?.data?.rotation || [];
+  const countDue = countDueQ.data?.data;
+
+  const handleSnapshot = async () => {
+    setSnapMsg('');
+    try {
+      const r = await api.takeInventorySnapshot();
+      setSnapMsg(`Snapshot de ${r.data.month} guardado: $ ${money(r.data.consolidated.totalValue)}`);
+      qc.invalidateQueries({ queryKey: ['inventory-value-history'] });
+    } catch (e: any) {
+      setSnapMsg(e?.response?.data?.message || 'No se pudo tomar el snapshot');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Valuación actual + snapshot manual */}
+      <div className="bg-white rounded-lg shadow border p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-bold text-gray-900 flex items-center gap-2">
+              <TrendingUp size={18} className="text-emerald-600" /> Valuación del inventario
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Costo promedio ponderado × existencia · se congela mes a mes (cron día 1)
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <p className="text-3xl font-bold text-gray-900">
+              {inv ? money(inv.consolidated.totalValue) : '—'}
+            </p>
+            {canWrite && (
+              <button onClick={handleSnapshot}
+                className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 text-sm">
+                <Camera size={16} /> Congelar mes
+              </button>
+            )}
+          </div>
+        </div>
+        {snapMsg && (
+          <div className="bg-sky-50 border border-sky-200 text-sky-800 px-3 py-2 rounded text-sm mb-3">
+            {snapMsg}
+          </div>
+        )}
+
+        {/* Por almacén */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {(inv?.warehouses || []).map((w: any) => (
+            <div key={w.warehouse_id} className="border border-gray-200 rounded-lg p-3">
+              <p className="text-xs font-mono text-sky-700">{w.code}</p>
+              <p className="text-sm text-gray-600 truncate">{w.name}</p>
+              <p className="font-semibold text-gray-900">{money(w.total_value)}</p>
+              <p className="text-xs text-gray-500">
+                {num(w.total_units)} uds · {w.products_count} productos
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Histórico mensual (tabla compacta) */}
+        {history.length > 0 && (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-gray-500 border-b">
+                  <th className="py-1.5 pr-4">Mes</th>
+                  <th className="py-1.5 pr-4 text-right">Unidades</th>
+                  <th className="py-1.5 pr-4 text-right">Valuación</th>
+                  <th className="py-1.5 text-right">Variación</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {history.map((h, i) => {
+                  const prev = i > 0 ? Number(history[i - 1].total_value) : null;
+                  const delta = prev != null && prev > 0
+                    ? ((Number(h.total_value) - prev) / prev) * 100 : null;
+                  return (
+                    <tr key={h.snapshot_month}>
+                      <td className="py-1.5 pr-4">
+                        {new Date(h.snapshot_month).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}
+                        {h.source === 'MANUAL' && <span className="ml-1 text-xs text-gray-400">(manual)</span>}
+                      </td>
+                      <td className="py-1.5 pr-4 text-right">{num(h.total_units)}</td>
+                      <td className="py-1.5 pr-4 text-right font-medium">{money(h.total_value)}</td>
+                      <td className={`py-1.5 text-right text-xs font-medium ${
+                        delta == null ? 'text-gray-400' : delta >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                      }`}>
+                        {delta == null ? '—' : `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}%`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Exigencias de inventario físico */}
+      <div className="bg-white rounded-lg shadow border p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-bold text-gray-900 flex items-center gap-2">
+              <ClipboardCheck size={18} className="text-amber-600" /> Exigencias de inventario físico
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Última verificación = último ajuste o carga inicial · &gt;60 días sugerido · &gt;90 días urgente
+            </p>
+          </div>
+          {countDue?.summary && (
+            <div className="flex gap-2 text-xs">
+              <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full font-medium">
+                {countDue.summary.urgente + countDue.summary.nunca} urgentes
+              </span>
+              <span className="bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-medium">
+                {countDue.summary.sugerido} sugeridos
+              </span>
+              <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-medium">
+                {countDue.summary.alDia} al día
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-500 border-b">
+                <th className="py-1.5 pr-4">Producto</th>
+                <th className="py-1.5 pr-4">Almacén</th>
+                <th className="py-1.5 pr-4 text-right">Existencia</th>
+                <th className="py-1.5 pr-4 text-right">Valor</th>
+                <th className="py-1.5 pr-4 text-right">Días sin verificar</th>
+                <th className="py-1.5">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {(countDue?.items || []).length === 0 && (
+                <tr><td colSpan={6} className="py-4 text-center text-gray-500 italic">
+                  Todo el inventario está verificado recientemente. 👌 aquí aparecerán los
+                  productos que exijan conteo físico.
+                </td></tr>
+              )}
+              {(countDue?.items || []).map((it: any) => (
+                <tr key={`${it.warehouse_id}-${it.product_id}`}>
+                  <td className="py-1.5 pr-4">
+                    <span className="font-mono text-xs text-gray-500">{it.sku}</span>{' '}
+                    <span className="font-medium">{it.product_name}</span>
+                  </td>
+                  <td className="py-1.5 pr-4">
+                    <span className="font-mono text-xs bg-sky-50 text-sky-700 px-2 py-0.5 rounded">
+                      {it.warehouse_code}
+                    </span>
+                  </td>
+                  <td className="py-1.5 pr-4 text-right">{num(it.quantity)}</td>
+                  <td className="py-1.5 pr-4 text-right">{money(it.stock_value)}</td>
+                  <td className="py-1.5 pr-4 text-right">
+                    {it.days_since_verification >= 99999 ? '∞' : it.days_since_verification}
+                  </td>
+                  <td className="py-1.5">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${COUNT_BADGE[it.count_status]}`}>
+                      {COUNT_LABEL[it.count_status]}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Rotación de productos */}
+      <div className="bg-white rounded-lg shadow border p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-bold text-gray-900 flex items-center gap-2">
+              <ArrowLeftRight size={18} className="text-violet-600" /> Rotación de productos
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Salidas por venta 30/90 días · rotación = ventas 30d ÷ existencia · alimentará las
+              órdenes automáticas (Fase 4)
+            </p>
+          </div>
+          <div className="flex bg-gray-200/70 rounded-lg p-1 text-sm">
+            <button onClick={() => setRotationOrder('rotation')}
+              className={`px-3 py-1 rounded-md font-medium ${rotationOrder === 'rotation' ? 'bg-white shadow-sm' : 'text-gray-600'}`}>
+              Mayor rotación
+            </button>
+            <button onClick={() => setRotationOrder('no-movement')}
+              className={`px-3 py-1 rounded-md font-medium ${rotationOrder === 'no-movement' ? 'bg-white shadow-sm' : 'text-gray-600'}`}>
+              Sin movimiento
+            </button>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-500 border-b">
+                <th className="py-1.5 pr-4">Producto</th>
+                <th className="py-1.5 pr-4 text-right">Existencia</th>
+                <th className="py-1.5 pr-4 text-right">Ventas 30d</th>
+                <th className="py-1.5 pr-4 text-right">Ventas 90d</th>
+                <th className="py-1.5 pr-4 text-right">Rotación 30d</th>
+                <th className="py-1.5 pr-4 text-right">Días de stock</th>
+                <th className="py-1.5 text-right">Sin movimiento</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {rotation.length === 0 && (
+                <tr><td colSpan={7} className="py-4 text-center text-gray-500 italic">
+                  Sin datos de rotación — se calculará con las salidas por venta (Fase 3).
+                </td></tr>
+              )}
+              {rotation.map((r: any) => (
+                <tr key={r.product_id}>
+                  <td className="py-1.5 pr-4">
+                    <span className="font-mono text-xs text-gray-500">{r.sku}</span>{' '}
+                    <span className="font-medium">{r.name}</span>
+                  </td>
+                  <td className="py-1.5 pr-4 text-right">{num(r.total_qty)}</td>
+                  <td className="py-1.5 pr-4 text-right">{num(r.qty_out_30)}</td>
+                  <td className="py-1.5 pr-4 text-right">{num(r.qty_out_90)}</td>
+                  <td className="py-1.5 pr-4 text-right font-medium">
+                    {r.rotation_30d != null ? Number(r.rotation_30d).toFixed(2) : '—'}
+                  </td>
+                  <td className="py-1.5 pr-4 text-right">
+                    {r.days_of_stock != null ? num(r.days_of_stock) : '—'}
+                  </td>
+                  <td className="py-1.5 text-right text-xs text-gray-500">
+                    {r.days_without_movement != null ? `${r.days_without_movement} días` : 'nunca'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   );
 }
 

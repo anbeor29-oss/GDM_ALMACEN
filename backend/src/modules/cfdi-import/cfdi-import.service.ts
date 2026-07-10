@@ -15,6 +15,7 @@ import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import * as productsService from '../products/products.service';
+import { applyMovementTx, getOrCreateDefaultWarehouse } from '../inventory/inventory.service';
 import {
   PreviewResult,
   PreviewedParty,
@@ -341,6 +342,8 @@ export async function commit(
 
     // 2) Products — solo los que el usuario marcó
     const productsCreated: CommitResult['products'] = [];
+    // FASE 2: mapa concepto→producto para generar las entradas de inventario
+    const conceptProducts: Array<{ productId: string; cantidad: number; valorUnitario: number }> = [];
     const presetId = req.productTaxPresetId || 'iva16';
     for (const idx of req.selection.concept_indexes) {
       const c = parsed.conceptos[idx];
@@ -353,6 +356,7 @@ export async function commit(
       );
       if (existing.rows.length > 0) {
         productsCreated.push({ ...existing.rows[0], already_existed: true });
+        conceptProducts.push({ productId: existing.rows[0].id, cantidad: c.cantidad, valorUnitario: c.valorUnitario });
         continue;
       }
       // Crear producto — delegamos al service para que respete validaciones SAT
@@ -370,6 +374,7 @@ export async function commit(
           id: created.id, sku: created.sku, name: created.name,
           already_existed: false,
         });
+        conceptProducts.push({ productId: created.id, cantidad: c.cantidad, valorUnitario: c.valorUnitario });
       } catch (e) {
         logger.warn(`Skip product concept[${idx}] — ${(e as Error).message}`);
       }
@@ -401,6 +406,98 @@ export async function commit(
       party: partyResult,
       products: productsCreated,
     };
+
+    // 4) FASE 2 (ALMACEN §5): compra recibida → entrada de inventario,
+    //    productos del proveedor y pago programado. Solo cuando la party
+    //    es SUPPLIER y hay conceptos con producto resuelto.
+    const isPurchase = partyResult?.kind === 'SUPPLIER' && req.receiveInventory !== false;
+    if (isPurchase && conceptProducts.length > 0 && partyResult) {
+      const importId = importIns.rows[0].id;
+
+      // Guard anti-doble-entrada: el ON CONFLICT de xml_imports permite
+      // re-commitear el mismo archivo — el stock NO debe duplicarse.
+      const alreadyReceived = await transactionQuery(client,
+        `SELECT 1 FROM inventory_movements
+          WHERE reference_type = 'xml_import' AND reference_id = $1 LIMIT 1`,
+        [importId]
+      );
+      if (alreadyReceived.rows.length === 0) {
+        // Almacén destino: el indicado o el default de la empresa
+        let warehouseId = req.warehouseId;
+        if (!warehouseId) {
+          warehouseId = await getOrCreateDefaultWarehouse(client, companyId);
+        }
+
+        const docRef = [parsed.serie, parsed.folio].filter(Boolean).join('-') || parsed.cfdiUUID || 'XML';
+        let totalUnits = 0;
+        for (const cp of conceptProducts) {
+          await applyMovementTx(client, {
+            companyId,
+            productId: cp.productId,
+            movementType: 'PURCHASE_IN',
+            quantity: cp.cantidad,
+            unitCost: cp.valorUnitario,
+            warehouseToId: warehouseId,
+            referenceType: 'xml_import',
+            referenceId: importId,
+            reason: `Compra XML ${docRef} · ${partyResult.business_name}`,
+            userId,
+            userEmail,
+          });
+          totalUnits += cp.cantidad;
+
+          // Catálogo proveedor→producto (§4): último precio y contador
+          await transactionQuery(client,
+            `INSERT INTO supplier_products
+               (supplier_id, product_id, last_price, last_purchase_date, purchases_count)
+             VALUES ($1, $2, $3, $4, 1)
+             ON CONFLICT (supplier_id, product_id)
+             DO UPDATE SET last_price = $3, last_purchase_date = $4,
+                           purchases_count = supplier_products.purchases_count + 1`,
+            [partyResult.id, cp.productId, cp.valorUnitario, parsed.fechaEmision || new Date()]
+          );
+        }
+
+        const whR = await transactionQuery<{ code: string }>(client,
+          `SELECT code FROM warehouses WHERE id = $1`, [warehouseId]
+        );
+        result.inventory = {
+          warehouseId,
+          warehouseCode: whR.rows[0]?.code || '',
+          movements: conceptProducts.length,
+          totalUnits,
+        };
+
+        // Pago programado (línea de crédito del proveedor):
+        // vencimiento = fecha de emisión + días de crédito (credit_days).
+        if (parsed.total && parsed.total > 0) {
+          const payR = await transactionQuery<any>(client,
+            `INSERT INTO supplier_payments_schedule
+               (company_id, supplier_id, xml_import_id, amount, due_date, notes)
+             SELECT $1, $2, $3, $4,
+                    (COALESCE($5::timestamp, NOW()) + make_interval(days => COALESCE(c.credit_days, 0)))::date,
+                    $6
+               FROM customers c WHERE c.id = $2
+             RETURNING id, amount, due_date`,
+            [companyId, partyResult.id, importId, parsed.total,
+             parsed.fechaEmision || null, `Compra XML ${docRef}`]
+          );
+          if (payR.rows[0]) {
+            await transactionQuery(client,
+              `UPDATE customers SET credit_used = COALESCE(credit_used, 0) + $1 WHERE id = $2`,
+              [parsed.total, partyResult.id]
+            );
+            result.payment = {
+              scheduleId: payR.rows[0].id,
+              amount: Number(payR.rows[0].amount),
+              dueDate: payR.rows[0].due_date,
+            };
+          }
+        }
+      } else {
+        logger.warn(`[cfdi-import] Import ${importId} ya tenía entradas de inventario — skip (anti-duplicado)`);
+      }
+    }
 
     // Prefill solo aplica para CLIENTES — a proveedores no les facturamos.
     if (req.prefillInvoice && partyResult?.id && partyResult.kind === 'CUSTOMER') {

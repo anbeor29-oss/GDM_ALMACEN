@@ -86,6 +86,14 @@ export interface CommitRequest {
   /** Si true, devolvemos URL para abrir Nueva Factura pre-rellenada con el customer creado.
    *  Solo aplica si partyKind === 'CUSTOMER' — a un proveedor NO le facturamos. */
   prefillInvoice: boolean;
+  /**
+   * FASE 2 (ALMACEN §5): si la party es SUPPLIER (compra recibida), los
+   * conceptos seleccionados generan ENTRADA de inventario (PURCHASE_IN).
+   *  · receiveInventory: default true para SUPPLIER — false lo desactiva.
+   *  · warehouseId: almacén destino; si falta, se usa el default de la empresa.
+   */
+  receiveInventory?: boolean;
+  warehouseId?: string;
 }
 
 export interface CommitResult {
@@ -98,6 +106,19 @@ export interface CommitResult {
     already_existed: boolean;
   };
   products:   Array<{ id: string; sku: string; name: string; already_existed: boolean }>;
+  /** FASE 2: resultado de la entrada de inventario cuando la party es SUPPLIER. */
+  inventory?: {
+    warehouseId: string;
+    warehouseCode: string;
+    movements: number;
+    totalUnits: number;
+  };
+  /** FASE 2: pago programado al proveedor (conclusión ALMACEN.MD). */
+  payment?: {
+    scheduleId: string;
+    amount: number;
+    dueDate: string;
+  };
   next?: {
     /** Solo cuando partyKind=CUSTOMER y prefillInvoice=true. */
     redirectTo: string;

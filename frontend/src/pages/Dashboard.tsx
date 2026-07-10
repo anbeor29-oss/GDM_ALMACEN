@@ -7,7 +7,10 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { FileText, Wallet, TrendingDown, AlertCircle, Stamp } from 'lucide-react';
+import { FileText, Wallet, TrendingDown, AlertCircle, Stamp, Boxes } from 'lucide-react';
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
+} from 'recharts';
 import api from '@/services/api';
 
 function fmt(n: any) {
@@ -37,8 +40,25 @@ export function DashboardPage() {
     refetchOnWindowFocus: true,
   });
 
+  const { data: invValue } = useQuery({
+    queryKey: ['inventory-value'],
+    queryFn: () => api.getInventoryValue(),
+    refetchOnWindowFocus: true,
+  });
+
+  const { data: invHistory } = useQuery({
+    queryKey: ['inventory-value-history'],
+    queryFn: () => api.getInventoryValueHistory(12),
+  });
+
   const s = summary?.data || {};
   const u = usage?.data;
+  const inv = invValue?.data;
+  const histRows: any[] = invHistory?.data?.history || [];
+  const chartData = histRows.map((h) => ({
+    mes: new Date(h.snapshot_month).toLocaleDateString('es-MX', { month: 'short', year: '2-digit' }),
+    valor: Number(h.total_value),
+  }));
 
   return (
     <div className="space-y-8">
@@ -110,6 +130,68 @@ export function DashboardPage() {
             <span>NC: <b className="text-gray-800">{u.usage.notas_credito}</b></span>
             <span>Pagos: <b className="text-gray-800">{u.usage.pagos}</b></span>
           </div>
+        </div>
+      )}
+
+      {/* Valor del inventario — actual + histórico mensual (snapshots) */}
+      {inv && (
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-fuchsia-50 text-fuchsia-600 ring-1 ring-fuchsia-100 p-2 rounded-lg">
+                <Boxes size={20} />
+              </div>
+              <div>
+                <h3 className="text-gray-900 font-semibold">Valor del inventario</h3>
+                <p className="text-xs text-gray-500">
+                  {inv.consolidated.productsCount} productos con existencia ·{' '}
+                  {Number(inv.consolidated.totalUnits).toLocaleString('es-MX')} unidades
+                </p>
+              </div>
+            </div>
+            <p className="text-3xl font-bold text-gray-900">$ {fmt(inv.consolidated.totalValue)}</p>
+          </div>
+
+          {/* Desglose por almacén */}
+          {inv.warehouses.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              {inv.warehouses.map((w: any) => (
+                <div key={w.warehouse_id} className="border border-gray-200 rounded-lg p-3">
+                  <p className="text-xs font-mono text-sky-700">{w.code}</p>
+                  <p className="text-sm text-gray-600 truncate">{w.name}</p>
+                  <p className="font-semibold text-gray-900">$ {fmt(w.total_value)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Histórico mes a mes */}
+          {chartData.length > 0 ? (
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 5, right: 10, bottom: 0, left: 10 }}>
+                  <defs>
+                    <linearGradient id="invValue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.25} />
+                      <stop offset="100%" stopColor="#3B82F6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false}
+                    tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`} width={55} />
+                  <Tooltip formatter={(v: any) => [`$ ${fmt(v)}`, 'Valuación']} />
+                  <Area type="monotone" dataKey="valor" stroke="#3B82F6" strokeWidth={2}
+                    fill="url(#invValue)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500 italic">
+              El histórico mensual se llena con el snapshot automático del día 1 (o manual desde
+              Inventario → Reportes).
+            </p>
+          )}
         </div>
       )}
 

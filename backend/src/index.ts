@@ -52,6 +52,14 @@ async function bootstrap() {
       logger.warn(`No se pudo registrar billing-cron: ${e.message}`);
     }
 
+    // Cron de snapshot mensual de inventario (solo si ENABLE_INVENTORY_CRON=true)
+    try {
+      const { registerInventoryCron } = await import('./jobs/inventory-cron');
+      registerInventoryCron();
+    } catch (e: any) {
+      logger.warn(`No se pudo registrar inventory-cron: ${e.message}`);
+    }
+
     // Graceful shutdown
     const shutdown = async (signal: string) => {
       logger.info(`Received ${signal}, shutting down gracefully...`);
