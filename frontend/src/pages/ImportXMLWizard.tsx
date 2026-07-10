@@ -8,7 +8,8 @@
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, FileText, CheckCircle2, AlertCircle, Building2, User, Boxes, ArrowRight, X, History } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Upload, FileText, CheckCircle2, AlertCircle, Building2, User, Boxes, ArrowRight, X, History, Warehouse } from 'lucide-react';
 import api from '@/services/api';
 
 type Party = 'emisor' | 'receptor' | 'none';
@@ -58,6 +59,10 @@ export function ImportXMLWizardPage() {
   const [conceptIdxs, setConceptIdxs] = useState<Set<number>>(new Set());
   const [prefill, setPrefill] = useState(true);
   const [committing, setCommitting] = useState(false);
+  // Almacén destino de la entrada de inventario (solo compras / SUPPLIER)
+  const [warehouseId, setWarehouseId] = useState('');
+  const whQ = useQuery({ queryKey: ['warehouses'], queryFn: () => api.getWarehouses() });
+  const warehouses: any[] = whQ.data?.data?.warehouses || [];
 
   const reset = () => {
     setFile(null); setXmlB64(''); setPreview(null);
@@ -123,6 +128,8 @@ export function ImportXMLWizardPage() {
         productTaxPresetId: 'iva16',
         // Solo redirigimos a Nueva Factura cuando creamos CLIENTE (a un proveedor no le facturamos)
         prefillInvoice: prefill && party !== 'none' && partyKind === 'CUSTOMER',
+        // Compra: almacén destino de la entrada (vacío = default de la empresa)
+        warehouseId: partyKind === 'SUPPLIER' && warehouseId ? warehouseId : undefined,
       });
       const data = res.data;
       const msgParts: string[] = [];
@@ -133,6 +140,12 @@ export function ImportXMLWizardPage() {
       if (data.products.length > 0) {
         const nuevos = data.products.filter((p: any) => !p.already_existed).length;
         msgParts.push(`Productos: ${data.products.length} (${nuevos} nuevos)`);
+      }
+      if (data.inventory) {
+        msgParts.push(`Inventario: ${data.inventory.totalUnits} unidades al almacén ${data.inventory.warehouseCode}`);
+      }
+      if (data.payment) {
+        msgParts.push(`Pago programado: $${fmt(data.payment.amount)} vence ${data.payment.dueDate}`);
       }
       alert(`✅ Importación completada\n\n${msgParts.join('\n') || 'Sin cambios al catálogo'}`);
       if (data.next?.redirectTo) navigate(data.next.redirectTo);
@@ -266,6 +279,31 @@ export function ImportXMLWizardPage() {
                     <p className="text-xs mt-1 opacity-80">Me factura. Solo registro, no editable.</p>
                   </button>
                 </div>
+
+                {/* Compra (SUPPLIER) → los conceptos ENTRAN al inventario: elegir almacén */}
+                {partyKind === 'SUPPLIER' && (
+                  <div className="mt-4 bg-amber-50/60 border border-amber-200 rounded-lg p-4">
+                    <p className="text-sm font-medium text-amber-900 mb-2 flex items-center gap-2">
+                      <Warehouse size={16}/> Almacén destino de la mercancía
+                    </p>
+                    <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}
+                      className="input max-w-sm">
+                      <option value="">
+                        {warehouses.find((w) => w.is_default)
+                          ? `Default: ${warehouses.find((w) => w.is_default).code} — ${warehouses.find((w) => w.is_default).name}`
+                          : 'Almacén default de la empresa'}
+                      </option>
+                      {warehouses.filter((w) => w.is_active).map((w) => (
+                        <option key={w.id} value={w.id}>{w.code} — {w.name}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-amber-800/80 mt-2">
+                      Los conceptos seleccionados generan entrada de inventario (kardex) y
+                      actualizan el costo promedio; el pago se programa según los días de
+                      crédito del proveedor.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>

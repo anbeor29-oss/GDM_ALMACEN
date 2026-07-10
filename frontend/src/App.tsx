@@ -119,8 +119,11 @@ export function App() {
             <Route path="admin/prepaid"   element={<SuperAdminRoute><AdminPrepaidPage /></SuperAdminRoute>} />
             <Route path="admin/users"     element={<SuperAdminRoute><AdminUsersPage /></SuperAdminRoute>} />
             <Route path="admin/companies" element={<SuperAdminRoute><AdminCompaniesPage /></SuperAdminRoute>} />
-            <Route path="import-xml"      element={<SuperAdminRoute><ImportXMLWizardPage /></SuperAdminRoute>} />
-            <Route path="suppliers"       element={<SuperAdminRoute><SuppliersPage /></SuperAdminRoute>} />
+            {/* Compras XML y Proveedores: en GDM ALMACÉN son operación diaria de la
+                empresa (alimentan el inventario §5) — accesibles para roles de empresa
+                Y para SUPER_ADMIN (impersonando o directo), por eso sin guard de rol. */}
+            <Route path="import-xml"      element={<ImportXMLWizardPage />} />
+            <Route path="suppliers"       element={<SuppliersPage />} />
 
           </Route>
 

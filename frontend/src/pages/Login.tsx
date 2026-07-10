@@ -47,8 +47,8 @@ export function LoginPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <GdmLogo size={64} className="inline-block mb-3 drop-shadow-lg" />
-          <h1 className="text-3xl font-bold text-gray-900 mb-1">Sistema de Facturación</h1>
-          <p className="text-gray-500 text-sm">GDM High Consulting México · Inicia sesión para continuar</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">GDM ALMACÉN</h1>
+          <p className="text-gray-500 text-sm">Inventarios y Facturación · GDM High Consulting México</p>
         </div>
 
         {/* Form */}
@@ -107,7 +107,7 @@ export function LoginPage() {
 
         {/* Footer */}
         <div className="mt-6 pt-6 border-t border-gray-200 text-center text-sm text-gray-600">
-          <p>© {new Date().getFullYear()} GDM High Consulting México · Sistema de facturación CFDI 4.0</p>
+          <p>© {new Date().getFullYear()} GDM High Consulting México · GDM ALMACÉN — Inventarios y Facturación CFDI 4.0</p>
         </div>
       </div>
     </div>

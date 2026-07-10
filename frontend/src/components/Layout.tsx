@@ -64,7 +64,7 @@ export function Layout() {
             <div className="flex items-center gap-2.5">
               <GdmLogo size={40} className="shadow-md shrink-0" />
               <div className="leading-tight">
-                <h1 className="font-semibold text-sm text-slate-800 tracking-tight">GDM Facturación</h1>
+                <h1 className="font-semibold text-sm text-slate-800 tracking-tight">GDM ALMACÉN</h1>
                 <p className="font-semibold text-xs text-blue-800">High Consulting México</p>
               </div>
             </div>
@@ -92,6 +92,8 @@ export function Layout() {
               <NavItem to="/products"     icon={<Boxes size={20} />}       accent="fuchsia" label="Productos"        open={sidebarOpen} />
               <NavItem to="/inventory"    icon={<ArrowLeftRight size={20} />} accent="fuchsia" label="Inventario"    open={sidebarOpen} />
               <NavItem to="/warehouses"   icon={<Warehouse size={20} />}   accent="sky"     label="Almacenes"        open={sidebarOpen} />
+              <NavItem to="/import-xml"   icon={<FileInput size={20} />}   accent="amber"   label="Compras XML"      open={sidebarOpen} />
+              <NavItem to="/suppliers"    icon={<Truck size={20} />}       accent="rose"    label="Proveedores"      open={sidebarOpen} />
               <NavItem to="/reports"      icon={<BarChart3 size={20} />}   accent="violet"  label="Reportes"         open={sidebarOpen} />
             </>
           )}

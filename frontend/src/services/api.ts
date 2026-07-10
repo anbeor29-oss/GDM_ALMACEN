@@ -255,7 +255,7 @@ class APIClient {
     productId: string;
     warehouseId: string;
     direction?: 'IN' | 'OUT';
-    movementType?: 'SHRINKAGE' | 'THEFT' | 'DAMAGED';
+    movementType?: 'SHRINKAGE' | 'THEFT' | 'DAMAGED' | 'CUSTOMER_RETURN' | 'SUPPLIER_RETURN';
     quantity: number;
     unitCost?: number;
     reason: string;

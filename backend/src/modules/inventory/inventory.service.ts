@@ -285,6 +285,189 @@ export async function transferStock(params: {
   });
 }
 
+/* ─────────────── FASE 3 · Integración ventas ↔ inventario ─────────────── */
+
+export interface StockShortage {
+  productId: string;
+  sku: string;
+  name: string;
+  requested: number;
+  available: number;
+}
+
+/**
+ * Partidas de una factura que SÍ se controlan en inventario:
+ * solo las que tienen product_id Y el producto tiene renglón en
+ * warehouse_stock (los servicios — timbres, honorarios — nunca lo tienen).
+ */
+async function getTrackedInvoiceItems(
+  client: PoolClient,
+  companyId: string,
+  invoiceId: string
+): Promise<Array<{ productId: string; sku: string; name: string; quantity: number }>> {
+  const r = await transactionQuery<any>(
+    client,
+    `SELECT ii.product_id, p.sku, p.name, SUM(ii.quantity) AS quantity
+       FROM invoice_items ii
+       JOIN products p ON p.id = ii.product_id AND p.deleted_at IS NULL
+      WHERE ii.invoice_id = $1
+        AND ii.product_id IS NOT NULL
+        AND p.company_id = $2
+        AND EXISTS (SELECT 1 FROM warehouse_stock ws WHERE ws.product_id = ii.product_id)
+      GROUP BY ii.product_id, p.sku, p.name`,
+    [invoiceId, companyId]
+  );
+  return r.rows.map((row: any) => ({
+    productId: row.product_id,
+    sku: row.sku,
+    name: row.name,
+    quantity: Number(row.quantity),
+  }));
+}
+
+/**
+ * Faltantes de existencia para una factura (contra el almacén default).
+ * Se usa ANTES de timbrar cuando la empresa bloquea venta sin stock (D3),
+ * para no gastar el timbre con el PAC y luego fallar.
+ */
+export async function checkInvoiceStock(
+  client: PoolClient,
+  companyId: string,
+  invoiceId: string
+): Promise<StockShortage[]> {
+  const items = await getTrackedInvoiceItems(client, companyId, invoiceId);
+  if (items.length === 0) return [];
+  const warehouseId = await getOrCreateDefaultWarehouse(client, companyId);
+
+  const shortages: StockShortage[] = [];
+  for (const it of items) {
+    const r = await transactionQuery<{ quantity: number }>(
+      client,
+      `SELECT quantity FROM warehouse_stock WHERE warehouse_id = $1 AND product_id = $2`,
+      [warehouseId, it.productId]
+    );
+    const available = Number(r.rows[0]?.quantity ?? 0);
+    if (available < it.quantity) {
+      shortages.push({ ...it, requested: it.quantity, available });
+    }
+  }
+  return shortages;
+}
+
+/**
+ * Descuenta el stock de una factura TIMBRADA (§9) — se llama DENTRO de la
+ * misma transacción del timbrado (regla de oro #10).
+ *
+ * Modo alerta (default D3): si falta existencia, descuenta lo disponible y
+ * la diferencia queda anotada en el motivo del kardex — el faltante se
+ * regulariza con inventario físico. Nunca se genera stock negativo.
+ */
+export async function discountInvoiceStock(
+  client: PoolClient,
+  params: { companyId: string; invoiceId: string; docRef: string; userId?: string; userEmail?: string }
+): Promise<{ movements: number; warnings: string[] }> {
+  const { companyId, invoiceId, docRef, userId, userEmail } = params;
+
+  // Guard anti-doble-descuento (retimbrado / reintento)
+  const already = await transactionQuery(
+    client,
+    `SELECT 1 FROM inventory_movements
+      WHERE reference_type = 'invoice' AND reference_id = $1 LIMIT 1`,
+    [invoiceId]
+  );
+  if (already.rows.length > 0) return { movements: 0, warnings: [] };
+
+  const items = await getTrackedInvoiceItems(client, companyId, invoiceId);
+  if (items.length === 0) return { movements: 0, warnings: [] };
+
+  const warehouseId = await getOrCreateDefaultWarehouse(client, companyId);
+  const warnings: string[] = [];
+  let movements = 0;
+
+  for (const it of items) {
+    const r = await transactionQuery<{ quantity: number }>(
+      client,
+      `SELECT quantity FROM warehouse_stock
+        WHERE warehouse_id = $1 AND product_id = $2 FOR UPDATE`,
+      [warehouseId, it.productId]
+    );
+    const available = Number(r.rows[0]?.quantity ?? 0);
+    const toDiscount = Math.min(available, it.quantity);
+    const short = it.quantity - toDiscount;
+
+    if (short > 0) {
+      warnings.push(`${it.sku} ${it.name}: pedido ${it.quantity}, disponible ${available} — faltaron ${short}`);
+    }
+    if (toDiscount <= 0) continue;
+
+    await applyMovementTx(client, {
+      companyId,
+      productId: it.productId,
+      movementType: 'SALE_OUT',
+      quantity: toDiscount,
+      warehouseFromId: warehouseId,
+      referenceType: 'invoice',
+      referenceId: invoiceId,
+      reason: short > 0
+        ? `Venta ${docRef} (VENTA SIN EXISTENCIA SUFICIENTE: faltaron ${short})`
+        : `Venta ${docRef}`,
+      userId,
+      userEmail,
+    });
+    movements++;
+  }
+  return { movements, warnings };
+}
+
+/**
+ * Devuelve al inventario lo descontado por una factura (cancelación §9).
+ * Revierte EXACTAMENTE los SALE_OUT registrados (no lo facturado): si en
+ * modo alerta se descontó parcial, se devuelve ese parcial.
+ */
+export async function restoreInvoiceStock(
+  client: PoolClient,
+  params: { companyId: string; invoiceId: string; docRef: string; userId?: string; userEmail?: string }
+): Promise<number> {
+  const { companyId, invoiceId, docRef, userId, userEmail } = params;
+
+  // Guard anti-doble-devolución
+  const already = await transactionQuery(
+    client,
+    `SELECT 1 FROM inventory_movements
+      WHERE reference_type = 'invoice_cancel' AND reference_id = $1 LIMIT 1`,
+    [invoiceId]
+  );
+  if (already.rows.length > 0) return 0;
+
+  const sales = await transactionQuery<any>(
+    client,
+    `SELECT product_id, warehouse_from_id, SUM(quantity) AS quantity
+       FROM inventory_movements
+      WHERE reference_type = 'invoice' AND reference_id = $1
+        AND movement_type = 'SALE_OUT' AND company_id = $2
+      GROUP BY product_id, warehouse_from_id`,
+    [invoiceId, companyId]
+  );
+
+  let movements = 0;
+  for (const s of sales.rows) {
+    await applyMovementTx(client, {
+      companyId,
+      productId: s.product_id,
+      movementType: 'CUSTOMER_RETURN',
+      quantity: Number(s.quantity),
+      warehouseToId: s.warehouse_from_id,
+      referenceType: 'invoice_cancel',
+      referenceId: invoiceId,
+      reason: `Cancelación de factura ${docRef} — devolución al inventario`,
+      userId,
+      userEmail,
+    });
+    movements++;
+  }
+  return movements;
+}
+
 /**
  * Almacén default de la empresa — se crea bajo demanda para empresas nuevas
  * (el bootstrap de la migración solo cubrió las existentes en ese momento).

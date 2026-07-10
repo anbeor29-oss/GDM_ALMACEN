@@ -165,8 +165,8 @@ router.post(
 
     let movementType: MovementType;
     const typed = String(req.body.movementType || '').toUpperCase();
-    if (['SHRINKAGE', 'THEFT', 'DAMAGED'].includes(typed)) {
-      movementType = typed as MovementType;         // bajas tipificadas (§10)
+    if (['SHRINKAGE', 'THEFT', 'DAMAGED', 'CUSTOMER_RETURN', 'SUPPLIER_RETURN'].includes(typed)) {
+      movementType = typed as MovementType;         // movimientos tipificados (§10)
     } else if (direction === 'IN') {
       movementType = 'ADJUSTMENT_IN';
     } else if (direction === 'OUT') {
@@ -175,14 +175,17 @@ router.post(
       throw new ValidationError("direction debe ser 'IN' u 'OUT' (o movementType tipificado)");
     }
 
+    // Devolución de cliente ENTRA; el resto de tipificados y ADJUSTMENT_OUT SALEN
+    const isIn = movementType === 'ADJUSTMENT_IN' || movementType === 'CUSTOMER_RETURN';
+
     const result = await applyMovement({
       companyId: companyId(req),
       productId,
       movementType,
       quantity: Number(quantity),
       unitCost: unitCost != null ? Number(unitCost) : undefined,
-      warehouseFromId: movementType === 'ADJUSTMENT_IN' ? undefined : warehouseId,
-      warehouseToId:   movementType === 'ADJUSTMENT_IN' ? warehouseId : undefined,
+      warehouseFromId: isIn ? undefined : warehouseId,
+      warehouseToId:   isIn ? warehouseId : undefined,
       referenceType: 'manual_adjustment',
       reason: String(reason).trim(),
       userId: req.user?.userId,

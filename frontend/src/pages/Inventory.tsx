@@ -712,7 +712,7 @@ function AdjustModal({ row, onClose, onSaved }: {
     }
   };
 
-  const isOut = typed !== '' || direction === 'OUT';
+  const isOut = typed !== '' ? typed !== 'CUSTOMER_RETURN' : direction === 'OUT';
 
   return (
     <ModalShell title="Ajuste manual de inventario" onClose={onClose}
@@ -742,12 +742,14 @@ function AdjustModal({ row, onClose, onSaved }: {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Baja tipificada (opcional)</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Movimiento tipificado (opcional)</label>
           <select value={typed} onChange={(e) => setTyped(e.target.value)} className="input">
             <option value="">— Ajuste genérico —</option>
-            <option value="SHRINKAGE">Merma</option>
-            <option value="THEFT">Robo o pérdida</option>
-            <option value="DAMAGED">Producto dañado</option>
+            <option value="CUSTOMER_RETURN">Devolución de cliente (+) · p.ej. nota de crédito</option>
+            <option value="SUPPLIER_RETURN">Devolución a proveedor (−)</option>
+            <option value="SHRINKAGE">Merma (−)</option>
+            <option value="THEFT">Robo o pérdida (−)</option>
+            <option value="DAMAGED">Producto dañado (−)</option>
           </select>
         </div>
 
