@@ -5,7 +5,9 @@
 --   PKG_100  → 100 timbres/mes  o hasta agotarse  · $399 MXN/mes
 --   PKG_200  → 200 timbres/mes  o hasta agotarse  · $699 MXN/mes
 --   PKG_500  → 500 timbres/mes  o hasta agotarse  · $1,399 MXN/mes
---   PKG_FLEX → sin cap fijo, pago por timbre       · $2.00 MXN/timbre
+--   PKG_FLEX → sin cap fijo, pago por timbre       · $4.99 MXN/timbre
+--              (precio consolidado aquí para bootstrap en BD virgen; el ajuste
+--               histórico $2.00→$4.99 vivía en 2026-06-20_pkg_flex_price.sql)
 --
 -- Reglas:
 --   · Al timbrar → INSERT en stamp_usage y decremento del pool
@@ -31,7 +33,7 @@ INSERT INTO stamp_packages (code, name, monthly_stamps, monthly_fee_mxn, extra_s
     ('PKG_100', 'Paquete 100 timbres', 100,  399.00, 2.50),
     ('PKG_200', 'Paquete 200 timbres', 200,  699.00, 2.25),
     ('PKG_500', 'Paquete 500 timbres', 500, 1399.00, 2.00),
-    ('PKG_FLEX','Uso libre (pay-per-stamp)', 0, 0.00, 2.00)
+    ('PKG_FLEX','Uso libre (pay-per-stamp)', 0, 0.00, 4.99)
 ON CONFLICT (code) DO UPDATE
    SET name = EXCLUDED.name,
        monthly_stamps = EXCLUDED.monthly_stamps,

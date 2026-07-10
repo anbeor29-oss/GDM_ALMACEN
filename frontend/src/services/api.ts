@@ -198,6 +198,94 @@ class APIClient {
   }
 
   /**
+   * Warehouses endpoints (módulo ALMACEN §7)
+   */
+  async getWarehouses(includeInactive = false) {
+    const r = await this.client.get<APIResponse<any>>('/warehouses', {
+      params: { includeInactive },
+    });
+    return r.data;
+  }
+
+  async createWarehouse(data: { code: string; name: string; address?: string }) {
+    const r = await this.client.post<APIResponse<any>>('/warehouses', data);
+    return r.data;
+  }
+
+  async updateWarehouse(
+    id: string,
+    data: { name?: string; address?: string; isActive?: boolean; isDefault?: boolean }
+  ) {
+    const r = await this.client.put<APIResponse<any>>(`/warehouses/${id}`, data);
+    return r.data;
+  }
+
+  async deleteWarehouse(id: string) {
+    return this.client.delete(`/warehouses/${id}`);
+  }
+
+  /**
+   * Inventory endpoints (módulo ALMACEN §1, §2, §7, §10)
+   */
+  async getInventoryStock(params?: {
+    warehouseId?: string;
+    search?: string;
+    belowMin?: boolean;
+    limit?: number;
+    offset?: number;
+  }) {
+    const r = await this.client.get<APIResponse<any>>('/inventory/stock', { params });
+    return r.data;
+  }
+
+  async getKardex(params?: {
+    productId?: string;
+    warehouseId?: string;
+    type?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const r = await this.client.get<APIResponse<any>>('/inventory/kardex', { params });
+    return r.data;
+  }
+
+  async adjustInventory(data: {
+    productId: string;
+    warehouseId: string;
+    direction?: 'IN' | 'OUT';
+    movementType?: 'SHRINKAGE' | 'THEFT' | 'DAMAGED';
+    quantity: number;
+    unitCost?: number;
+    reason: string;
+  }) {
+    const r = await this.client.post<APIResponse<any>>('/inventory/adjust', data);
+    return r.data;
+  }
+
+  async transferInventory(data: {
+    productId: string;
+    warehouseFromId: string;
+    warehouseToId: string;
+    quantity: number;
+    reason?: string;
+  }) {
+    const r = await this.client.post<APIResponse<any>>('/inventory/transfer', data);
+    return r.data;
+  }
+
+  async setStockLimits(data: {
+    productId: string;
+    warehouseId: string;
+    stockMinimum: number;
+    stockMaximum: number;
+  }) {
+    const r = await this.client.put<APIResponse<any>>('/inventory/stock-limits', data);
+    return r.data;
+  }
+
+  /**
    * Envía por correo los archivos seleccionados (PDF y XML de factura, NCs y pagos).
    * El backend usa el `contact_email` de la empresa emisora como remitente si está
    * configurado; si no, cae al MAIL_FROM del env.

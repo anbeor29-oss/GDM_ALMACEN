@@ -22,6 +22,8 @@ import {
   Truck,
   DollarSign,
   ShoppingCart,
+  Warehouse,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
@@ -88,6 +90,8 @@ export function Layout() {
               <NavItem to="/credit-notes" icon={<FileMinus2 size={20} />}  accent="rose"    label="Notas de Crédito" open={sidebarOpen} />
               <NavItem to="/customers"    icon={<Users size={20} />}       accent="emerald" label="Clientes"         open={sidebarOpen} />
               <NavItem to="/products"     icon={<Boxes size={20} />}       accent="fuchsia" label="Productos"        open={sidebarOpen} />
+              <NavItem to="/inventory"    icon={<ArrowLeftRight size={20} />} accent="fuchsia" label="Inventario"    open={sidebarOpen} />
+              <NavItem to="/warehouses"   icon={<Warehouse size={20} />}   accent="sky"     label="Almacenes"        open={sidebarOpen} />
               <NavItem to="/reports"      icon={<BarChart3 size={20} />}   accent="violet"  label="Reportes"         open={sidebarOpen} />
             </>
           )}

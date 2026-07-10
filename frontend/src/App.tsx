@@ -22,6 +22,8 @@ import { AdminBillingPage }   from '@/pages/AdminBilling';
 import { AdminPrepaidPage }   from '@/pages/AdminPrepaid';
 import { ImportXMLWizardPage } from '@/pages/ImportXMLWizard';
 import { SuppliersPage }      from '@/pages/Suppliers';
+import { WarehousesPage }     from '@/pages/Warehouses';
+import { InventoryPage }      from '@/pages/Inventory';
 import { useAuthStore } from '@/store/auth';
 
 const queryClient = new QueryClient();
@@ -108,6 +110,8 @@ export function App() {
             <Route path="products"     element={<CompanyOnlyRoute><ProductsPage /></CompanyOnlyRoute>} />
             <Route path="reports"      element={<CompanyOnlyRoute><ReportsPage /></CompanyOnlyRoute>} />
             <Route path="credit-notes" element={<CompanyOnlyRoute><CreditNotesPage /></CompanyOnlyRoute>} />
+            <Route path="warehouses"   element={<CompanyOnlyRoute><WarehousesPage /></CompanyOnlyRoute>} />
+            <Route path="inventory"    element={<CompanyOnlyRoute><InventoryPage /></CompanyOnlyRoute>} />
 
             {/* Módulos de plataforma — SOLO SUPER_ADMIN (guard por URL directa) */}
             <Route path="admin/packages"  element={<SuperAdminRoute><AdminPackagesPage /></SuperAdminRoute>} />

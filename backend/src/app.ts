@@ -40,6 +40,8 @@ import adminPrepaidRoutes   from './modules/admin/admin-prepaid.routes';
 import manifestRoutes       from './modules/manifest/manifest.routes';
 import cfdiImportRoutes     from './modules/cfdi-import/cfdi-import.routes';
 import suppliersRoutes      from './modules/suppliers/suppliers.routes';
+import warehousesRoutes     from './modules/warehouses/warehouses.routes';
+import inventoryRoutes      from './modules/inventory/inventory.routes';
 
 export function createApp(): Express {
   const app = express();
@@ -144,6 +146,8 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/manifest`,        manifestRoutes);
   app.use(`/api/${config.apiVersion}/cfdi-import`,     cfdiImportRoutes);
   app.use(`/api/${config.apiVersion}/suppliers`,       suppliersRoutes);
+  app.use(`/api/${config.apiVersion}/warehouses`,      warehousesRoutes);
+  app.use(`/api/${config.apiVersion}/inventory`,       inventoryRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);
 
