@@ -38,14 +38,38 @@ export async function createCustomer(companyId: string, data: {
     throw new ValidationError('Invalid RFC format');
   }
 
-  // Check if customer with this RFC already exists in the company
-  const existing = await query<Customer>(
-    'SELECT id FROM customers WHERE company_id = $1 AND rfc = $2 AND deleted_at IS NULL',
+  // Anti-duplicados (requerimiento ALMACEN): el RFC es la identidad del
+  // tercero. Si existe ACTIVO se rechaza con mensaje claro (indicando si es
+  // cliente o proveedor); si existe SOFT-DELETED se REACTIVA actualizando
+  // datos (el UNIQUE de BD impediría el INSERT de todos modos).
+  const existing = await query<any>(
+    'SELECT id, party_type, business_name, deleted_at FROM customers WHERE company_id = $1 AND UPPER(rfc) = $2',
     [companyId, data.rfc.toUpperCase()]
   );
 
   if (existing.rows.length > 0) {
-    throw new ConflictError('Customer with this RFC already exists in this company');
+    const row = existing.rows[0];
+    if (!row.deleted_at) {
+      const tipo = row.party_type === 'SUPPLIER' ? 'PROVEEDOR' : 'cliente';
+      throw new ConflictError(
+        `El RFC ${data.rfc.toUpperCase()} ya está registrado como ${tipo} ` +
+        `(${row.business_name}). Edítalo en lugar de crearlo de nuevo.`
+      );
+    }
+    // Reactivar el registro borrado con los datos nuevos
+    const revived = await query<Customer>(
+      `UPDATE customers SET
+          deleted_at = NULL, is_active = true,
+          business_name = $1, fiscal_regime = COALESCE($2, fiscal_regime),
+          postal_code = COALESCE($3, postal_code), email = COALESCE($4, email),
+          phone = COALESCE($5, phone), party_type = COALESCE($6, party_type),
+          updated_at = NOW()
+        WHERE id = $7
+        RETURNING *`,
+      [data.businessName, data.fiscalRegime || null, data.postalCode || null,
+       data.email || null, data.phone || null, data.partyType || null, row.id]
+    );
+    return revived.rows[0];
   }
 
   // Validate email if provided

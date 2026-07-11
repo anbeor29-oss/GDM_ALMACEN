@@ -37,6 +37,11 @@ const IN_TYPES: MovementType[] = ['PURCHASE_IN', 'CUSTOMER_RETURN', 'TRANSFER_IN
 /** Tipos que DISMINUYEN existencia (requieren warehouseFromId) */
 const OUT_TYPES: MovementType[] = ['SALE_OUT', 'SUPPLIER_RETURN', 'TRANSFER_OUT', 'ADJUSTMENT_OUT', 'SHRINKAGE', 'THEFT', 'DAMAGED'];
 
+/** Política de costos (requerimiento del usuario — ver migración zz_inventory_costing):
+ *  PROMEDIO = prorratear (ponderado) · ULTIMO = revaluar todo al costo nuevo ·
+ *  CAPAS = respetar precios (existente a X, nuevo a Z, salidas FIFO). */
+export type CostingMethod = 'PROMEDIO' | 'ULTIMO' | 'CAPAS';
+
 export interface MovementInput {
   companyId: string;
   productId: string;
@@ -53,6 +58,9 @@ export interface MovementInput {
   reason?: string;
   userId?: string;
   userEmail?: string;
+  /** Override de la política de costos de la empresa para ESTA operación
+   *  (el selector con el que el sistema pregunta al operador). */
+  costingMethod?: CostingMethod;
 }
 
 export interface MovementResult {
@@ -61,6 +69,110 @@ export interface MovementResult {
   warehouseId: string;
   newQuantity: number;
   avgCost: number;
+  /** Costo unitario efectivo del movimiento (en CAPAS, el de las capas consumidas). */
+  appliedUnitCost: number | null;
+  /** Política con la que se aplicó. */
+  costingMethod: CostingMethod;
+}
+
+/** Política efectiva: override de la operación > configuración de la empresa. */
+async function resolveCostingMethod(
+  client: PoolClient,
+  companyId: string,
+  override?: CostingMethod
+): Promise<CostingMethod> {
+  if (override && ['PROMEDIO', 'ULTIMO', 'CAPAS'].includes(override)) return override;
+  const r = await transactionQuery<{ inventory_costing_method: CostingMethod }>(
+    client,
+    `SELECT inventory_costing_method FROM companies WHERE id = $1`,
+    [companyId]
+  );
+  return r.rows[0]?.inventory_costing_method || 'PROMEDIO';
+}
+
+/**
+ * CAPAS · baseline: si el producto ya tenía existencia ANTES de operar con
+ * capas (o entradas hechas bajo otra política), esa existencia se convierte
+ * en la capa más antigua al costo promedio vigente — "lo existente a precio X".
+ */
+async function ensureLayerBaseline(
+  client: PoolClient,
+  companyId: string,
+  warehouseId: string,
+  productId: string,
+  currentQty: number,
+  currentAvg: number
+): Promise<void> {
+  const r = await transactionQuery<{ total: number }>(
+    client,
+    `SELECT COALESCE(SUM(quantity_remaining), 0) AS total
+       FROM stock_cost_layers
+      WHERE warehouse_id = $1 AND product_id = $2`,
+    [warehouseId, productId]
+  );
+  const layered = Number(r.rows[0].total);
+  const gap = currentQty - layered;
+  if (gap > 0.000001) {
+    await transactionQuery(
+      client,
+      `INSERT INTO stock_cost_layers
+         (company_id, warehouse_id, product_id, quantity_remaining, unit_cost, received_at)
+       VALUES ($1, $2, $3, $4, $5, '1970-01-01')`,
+      [companyId, warehouseId, productId, gap, currentAvg]
+    );
+  }
+}
+
+/** CAPAS · consumir FIFO. Devuelve el costo unitario ponderado de lo consumido. */
+async function consumeLayersFIFO(
+  client: PoolClient,
+  warehouseId: string,
+  productId: string,
+  quantity: number
+): Promise<number> {
+  let remaining = quantity;
+  let costAccum = 0;
+  const layers = await transactionQuery<any>(
+    client,
+    `SELECT id, quantity_remaining, unit_cost
+       FROM stock_cost_layers
+      WHERE warehouse_id = $1 AND product_id = $2 AND quantity_remaining > 0
+      ORDER BY received_at ASC, id ASC
+      FOR UPDATE`,
+    [warehouseId, productId]
+  );
+  for (const layer of layers.rows) {
+    if (remaining <= 0.000001) break;
+    const take = Math.min(Number(layer.quantity_remaining), remaining);
+    await transactionQuery(
+      client,
+      `UPDATE stock_cost_layers SET quantity_remaining = quantity_remaining - $1 WHERE id = $2`,
+      [take, layer.id]
+    );
+    costAccum += take * Number(layer.unit_cost);
+    remaining -= take;
+  }
+  const consumed = quantity - remaining;
+  return consumed > 0 ? costAccum / consumed : 0;
+}
+
+/** CAPAS · costo promedio de las capas restantes (para valuación/vistas). */
+async function remainingLayersAvg(
+  client: PoolClient,
+  warehouseId: string,
+  productId: string,
+  fallback: number
+): Promise<number> {
+  const r = await transactionQuery<{ qty: number; value: number }>(
+    client,
+    `SELECT COALESCE(SUM(quantity_remaining), 0) AS qty,
+            COALESCE(SUM(quantity_remaining * unit_cost), 0) AS value
+       FROM stock_cost_layers
+      WHERE warehouse_id = $1 AND product_id = $2`,
+    [warehouseId, productId]
+  );
+  const qty = Number(r.rows[0].qty);
+  return qty > 0.000001 ? Number(r.rows[0].value) / qty : fallback;
 }
 
 /**
@@ -135,16 +247,40 @@ export async function applyMovementTx(
   const currentQty = Number(stock.quantity);
   const currentAvg = Number(stock.avg_cost);
 
+  // Política de costos efectiva (override de la operación > empresa)
+  const method = await resolveCostingMethod(client, companyId, input.costingMethod);
+
   let newQty: number;
   let newAvg = currentAvg;
+  let appliedUnitCost: number | null = unitCost ?? null;
 
   if (isIn) {
     newQty = currentQty + quantity;
-    // Costo promedio ponderado — solo cuando la entrada trae costo
-    if (unitCost != null && unitCost >= 0) {
-      newAvg = newQty > 0
-        ? (currentQty * currentAvg + quantity * unitCost) / newQty
-        : unitCost;
+    const inCost = unitCost != null && unitCost >= 0 ? unitCost : currentAvg;
+
+    if (method === 'CAPAS') {
+      // Respetar precios: lo existente queda en su capa; lo nuevo entra a su costo
+      await ensureLayerBaseline(client, companyId, warehouseId, productId, currentQty, currentAvg);
+      await transactionQuery(
+        client,
+        `INSERT INTO stock_cost_layers
+           (company_id, warehouse_id, product_id, quantity_remaining, unit_cost)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [companyId, warehouseId, productId, quantity, inCost]
+      );
+      newAvg = await remainingLayersAvg(client, warehouseId, productId, inCost);
+      appliedUnitCost = inCost;
+    } else if (unitCost != null && unitCost >= 0) {
+      if (method === 'ULTIMO') {
+        // Aumentar en forma general: TODO el stock se revalúa al costo nuevo
+        newAvg = unitCost;
+      } else {
+        // PROMEDIO (default): prorratear — costo promedio ponderado
+        newAvg = newQty > 0
+          ? (currentQty * currentAvg + quantity * unitCost) / newQty
+          : unitCost;
+      }
+      appliedUnitCost = unitCost;
     }
   } else {
     if (currentQty < quantity) {
@@ -153,7 +289,16 @@ export async function applyMovementTx(
       );
     }
     newQty = currentQty - quantity;
-    // Las salidas no alteran el costo promedio
+
+    if (method === 'CAPAS') {
+      // La salida consume las capas más antiguas primero (FIFO)
+      await ensureLayerBaseline(client, companyId, warehouseId, productId, currentQty, currentAvg);
+      appliedUnitCost = await consumeLayersFIFO(client, warehouseId, productId, quantity);
+      newAvg = await remainingLayersAvg(client, warehouseId, productId, currentAvg);
+    } else {
+      // PROMEDIO/ULTIMO: las salidas no alteran el costo promedio
+      appliedUnitCost = unitCost ?? currentAvg;
+    }
   }
 
   await transactionQuery(
@@ -171,7 +316,7 @@ export async function applyMovementTx(
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      RETURNING id`,
     [companyId, productId, movementType, quantity,
-     unitCost ?? (isOut ? currentAvg : null),
+     appliedUnitCost,
      warehouseFromId ?? null, warehouseToId ?? null,
      referenceType ?? null, referenceId ?? null,
      transferGroup ?? null, reason ?? null, userId ?? null, userEmail ?? null]
@@ -204,6 +349,8 @@ export async function applyMovementTx(
     warehouseId,
     newQuantity: newQty,
     avgCost: newAvg,
+    appliedUnitCost,
+    costingMethod: method,
   };
 }
 
@@ -252,14 +399,6 @@ export async function transferStock(params: {
       );
     }
 
-    // El costo que viaja es el promedio del origen
-    const srcR = await transactionQuery<{ avg_cost: number }>(
-      client,
-      `SELECT avg_cost FROM warehouse_stock WHERE warehouse_id = $1 AND product_id = $2`,
-      [warehouseFromId, productId]
-    );
-    const travelCost = Number(srcR.rows[0]?.avg_cost ?? 0);
-
     const { randomUUID } = await import('crypto');
     const transferGroup = randomUUID();
 
@@ -271,6 +410,9 @@ export async function transferStock(params: {
       transferGroup,
       referenceType: 'transfer',
     });
+    // El costo que viaja con la mercancía: en CAPAS es el de las capas
+    // consumidas (FIFO); en PROMEDIO/ULTIMO es el promedio del origen.
+    const travelCost = out.appliedUnitCost ?? 0;
     const inMove = await applyMovementTx(client, {
       ...params,
       movementType: 'TRANSFER_IN',

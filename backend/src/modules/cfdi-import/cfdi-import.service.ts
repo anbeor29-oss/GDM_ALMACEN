@@ -443,6 +443,7 @@ export async function commit(
             reason: `Compra XML ${docRef} · ${partyResult.business_name}`,
             userId,
             userEmail,
+            costingMethod: req.costingMethod,
           });
           totalUnits += cp.cantidad;
 

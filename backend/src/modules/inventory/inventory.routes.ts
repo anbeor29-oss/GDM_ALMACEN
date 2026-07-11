@@ -190,6 +190,8 @@ router.post(
       reason: String(reason).trim(),
       userId: req.user?.userId,
       userEmail: req.user?.email,
+      costingMethod: ['PROMEDIO', 'ULTIMO', 'CAPAS'].includes(String(req.body.costingMethod || ''))
+        ? req.body.costingMethod : undefined,
     });
 
     res.json({ success: true, data: result });

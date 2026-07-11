@@ -209,6 +209,26 @@ export async function createProduct(companyId: string, data: {
     throw new ConflictError('Product with this SKU already exists in this company');
   }
 
+  // Anti-duplicados (requerimiento ALMACEN): mismo (clave SAT + nombre
+  // normalizado) = mismo producto aunque el SKU sea distinto — es el criterio
+  // de match que usa la importación de XML de compras. Sin este guard, una
+  // alta manual duplicaría el producto y partiría sus existencias en dos.
+  const nameNorm = (data.name || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  const dupName = await query<{ sku: string }>(
+    `SELECT sku FROM products
+      WHERE company_id = $1 AND clave_sat = $2
+        AND UPPER(REGEXP_REPLACE(TRIM(name), '\\s+', ' ', 'g')) = $3
+        AND deleted_at IS NULL
+      LIMIT 1`,
+    [companyId, data.claveSat, nameNorm]
+  );
+  if (dupName.rows.length > 0) {
+    throw new ConflictError(
+      `Ya existe un producto con la misma clave SAT y nombre (SKU ${dupName.rows[0].sku}). ` +
+      `Usa ese producto o cambia el nombre si realmente es distinto.`
+    );
+  }
+
   // Insert product with SAT references
   const result = await query<Product>(
     `INSERT INTO products

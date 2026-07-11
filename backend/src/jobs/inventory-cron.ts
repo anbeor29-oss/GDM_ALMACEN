@@ -14,6 +14,7 @@
 import cron from 'node-cron';
 import logger from '../middleware/logger';
 import { takeSnapshotAllCompanies } from '../modules/inventory/inventory-reports.service';
+import { runReorderCheckAllCompanies } from '../modules/purchasing/purchasing.service';
 
 export function registerInventoryCron(): void {
   if (process.env.ENABLE_INVENTORY_CRON !== 'true') {
@@ -28,5 +29,17 @@ export function registerInventoryCron(): void {
     );
   });
 
-  logger.info('[inventory-cron] Registrado: snapshot de valuación (día 1 00:30)');
+  // '0 7 * * *' → diario 07:00 (hora servidor): análisis de mínimos y
+  // proyección a 15 días → órdenes de cotización AUTO + alerta email (§2).
+  // Idempotente: productos con orden abierta no se vuelven a proponer.
+  cron.schedule('0 7 * * *', () => {
+    runReorderCheckAllCompanies().catch((e) =>
+      logger.error(`[inventory-cron] análisis de reorden falló: ${e.message}`)
+    );
+  });
+
+  logger.info(
+    '[inventory-cron] Registrado: snapshot de valuación (día 1 00:30) · ' +
+    'análisis de reorden (diario 07:00)'
+  );
 }

@@ -228,6 +228,20 @@ function CreateCreditNoteModal({
   // Subtotal derivado en vivo para mostrar el desglose sin importar el modo
   const subtotalNC = Math.max(0, Math.round((amount - iva) * 100) / 100);
 
+  // ALMACEN §9 — Devolución de mercancía AUTOMÁTICA: partidas de la factura
+  // que regresan físicamente al inventario junto con esta NC.
+  const [returnQty, setReturnQty] = useState<Record<string, string>>({});
+  const invoiceDetail = useQuery({
+    queryKey: ['invoice-items-for-cn', invoiceId],
+    queryFn: () => api.getInvoice(invoiceId),
+    enabled: !!invoiceId,
+  });
+  const invoiceItems: any[] = ((invoiceDetail.data?.data as any)?.items || [])
+    .filter((it: any) => it.product_id);
+  const returnItemsPayload = invoiceItems
+    .map((it: any) => ({ productId: it.product_id, quantity: Number(returnQty[it.product_id] || 0) }))
+    .filter((r) => r.quantity > 0);
+
   const submit = async () => {
     setError('');
     if (!customerId) { setError('Selecciona un cliente'); return; }
@@ -247,13 +261,18 @@ function CreateCreditNoteModal({
           ? { discountPercent: percent }
           : { amount, iva: iva > 0 ? iva : undefined }),
         applyToInvoice: true,
+        // Devolución física: genera CUSTOMER_RETURN automático en el kardex
+        ...(returnItemsPayload.length > 0 ? { returnItems: returnItemsPayload } : {}),
       } as any);
       alert(
         `✅ Nota de Crédito timbrada (MODO SIMULACIÓN)\n\n` +
         `Folio: ${res.data?.serie}-${res.data?.folio}\n` +
         `UUID:  ${res.data?.uuid}\n` +
         `Motivo: ${res.data?.tipo_relacion}\n` +
-        `Aplicada a la factura ${selectedInvoice?.serie}-${selectedInvoice?.folio}`
+        `Aplicada a la factura ${selectedInvoice?.serie}-${selectedInvoice?.folio}` +
+        (res.data?.inventory_returns > 0
+          ? `\nInventario: ${res.data.inventory_returns} producto(s) devueltos al almacén`
+          : '')
       );
       onDone();
     } catch (e: any) {
@@ -427,6 +446,44 @@ function CreateCreditNoteModal({
                     $ {amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
+              </div>
+            )}
+
+            {/* Devolución de mercancía AUTOMÁTICA al inventario (§9 ALMACEN) */}
+            {invoiceId && invoiceItems.length > 0 && (
+              <div className="mt-3 bg-emerald-50/60 border border-emerald-200 rounded-lg p-4">
+                <p className="text-sm font-medium text-emerald-900">
+                  📦 Devolución de mercancía al inventario (opcional)
+                </p>
+                <p className="text-xs text-emerald-800/80 mb-3">
+                  Si el cliente regresa producto físicamente, captura cuánto: la entrada
+                  al almacén se registra automática en el kardex al timbrar la NC
+                  (y se revierte si la NC se cancela).
+                </p>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-emerald-900/70 border-b border-emerald-200">
+                      <th className="py-1 pr-3">Producto</th>
+                      <th className="py-1 pr-3 text-right">Facturado</th>
+                      <th className="py-1 text-right">Devuelve</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoiceItems.map((it: any) => (
+                      <tr key={it.product_id}>
+                        <td className="py-1 pr-3">{it.description}</td>
+                        <td className="py-1 pr-3 text-right">{Number(it.quantity).toLocaleString('es-MX')}</td>
+                        <td className="py-1 text-right">
+                          <input type="number" min="0" max={Number(it.quantity)} step="any"
+                            value={returnQty[it.product_id] ?? ''}
+                            onChange={(e) => setReturnQty({ ...returnQty, [it.product_id]: e.target.value })}
+                            placeholder="0"
+                            className="input w-24 text-right" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

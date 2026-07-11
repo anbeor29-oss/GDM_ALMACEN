@@ -320,6 +320,52 @@ class APIClient {
   }
 
   /**
+   * Purchase orders endpoints (§3 ALMACEN — Fase 4)
+   */
+  async getPurchaseOrders(params?: { status?: string; warehouseId?: string; limit?: number }) {
+    const r = await this.client.get<APIResponse<any>>('/purchase-orders', { params });
+    return r.data;
+  }
+
+  async getPurchaseOrder(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/purchase-orders/${id}`);
+    return r.data;
+  }
+
+  async runReorderCheck() {
+    const r = await this.client.post<APIResponse<any>>('/purchase-orders/reorder-check');
+    return r.data;
+  }
+
+  async createPurchaseOrder(data: {
+    warehouseId: string;
+    supplierId?: string;
+    neededByDate?: string;
+    notes?: string;
+    items: Array<{ productId: string; quantity: number }>;
+  }) {
+    const r = await this.client.post<APIResponse<any>>('/purchase-orders', data);
+    return r.data;
+  }
+
+  async setPurchaseOrderStatus(id: string, status: string) {
+    const r = await this.client.put<APIResponse<any>>(`/purchase-orders/${id}/status`, { status });
+    return r.data;
+  }
+
+  async receivePurchaseOrder(
+    id: string,
+    receipts: Array<{ itemId: string; quantity: number; unitCost?: number }>,
+    costingMethod?: 'PROMEDIO' | 'ULTIMO' | 'CAPAS'
+  ) {
+    const r = await this.client.post<APIResponse<any>>(`/purchase-orders/${id}/receive`, {
+      receipts,
+      costingMethod,
+    });
+    return r.data;
+  }
+
+  /**
    * Envía por correo los archivos seleccionados (PDF y XML de factura, NCs y pagos).
    * El backend usa el `contact_email` de la empresa emisora como remitente si está
    * configurado; si no, cae al MAIL_FROM del env.

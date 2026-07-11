@@ -61,6 +61,8 @@ export function ImportXMLWizardPage() {
   const [committing, setCommitting] = useState(false);
   // Almacén destino de la entrada de inventario (solo compras / SUPPLIER)
   const [warehouseId, setWarehouseId] = useState('');
+  // Política de costos para esta entrada (la "pregunta" al operador)
+  const [costingMethod, setCostingMethod] = useState<'' | 'PROMEDIO' | 'ULTIMO' | 'CAPAS'>('');
   const whQ = useQuery({ queryKey: ['warehouses'], queryFn: () => api.getWarehouses() });
   const warehouses: any[] = whQ.data?.data?.warehouses || [];
 
@@ -130,6 +132,8 @@ export function ImportXMLWizardPage() {
         prefillInvoice: prefill && party !== 'none' && partyKind === 'CUSTOMER',
         // Compra: almacén destino de la entrada (vacío = default de la empresa)
         warehouseId: partyKind === 'SUPPLIER' && warehouseId ? warehouseId : undefined,
+        // Política de costos elegida por el operador (vacío = la de la empresa)
+        costingMethod: partyKind === 'SUPPLIER' && costingMethod ? costingMethod : undefined,
       });
       const data = res.data;
       const msgParts: string[] = [];
@@ -297,10 +301,19 @@ export function ImportXMLWizardPage() {
                         <option key={w.id} value={w.id}>{w.code} — {w.name}</option>
                       ))}
                     </select>
+                    <p className="text-sm font-medium text-amber-900 mb-2 mt-4">
+                      ¿Cómo aplicar el costo si ya hay existencia a otro precio?
+                    </p>
+                    <select value={costingMethod} onChange={(e) => setCostingMethod(e.target.value as any)}
+                      className="input max-w-sm">
+                      <option value="">Según la política de la empresa (default)</option>
+                      <option value="PROMEDIO">Prorratear — costo promedio ponderado</option>
+                      <option value="ULTIMO">Aumentar en general — todo el stock al costo nuevo</option>
+                      <option value="CAPAS">Respetar precios — existente a precio X, nuevo a precio Z (FIFO)</option>
+                    </select>
                     <p className="text-xs text-amber-800/80 mt-2">
-                      Los conceptos seleccionados generan entrada de inventario (kardex) y
-                      actualizan el costo promedio; el pago se programa según los días de
-                      crédito del proveedor.
+                      Los conceptos seleccionados generan entrada de inventario (kardex);
+                      el pago se programa según los días de crédito del proveedor.
                     </p>
                   </div>
                 )}

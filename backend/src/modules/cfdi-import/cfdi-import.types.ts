@@ -94,6 +94,10 @@ export interface CommitRequest {
    */
   receiveInventory?: boolean;
   warehouseId?: string;
+  /** Política de costos para ESTA entrada (pregunta al operador):
+   *  PROMEDIO=prorratear · ULTIMO=revaluar todo · CAPAS=respetar precios.
+   *  Si falta, aplica la configurada en la empresa. */
+  costingMethod?: 'PROMEDIO' | 'ULTIMO' | 'CAPAS';
 }
 
 export interface CommitResult {

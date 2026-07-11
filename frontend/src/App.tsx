@@ -24,6 +24,7 @@ import { ImportXMLWizardPage } from '@/pages/ImportXMLWizard';
 import { SuppliersPage }      from '@/pages/Suppliers';
 import { WarehousesPage }     from '@/pages/Warehouses';
 import { InventoryPage }      from '@/pages/Inventory';
+import { PurchaseOrdersPage } from '@/pages/PurchaseOrders';
 import { useAuthStore } from '@/store/auth';
 
 const queryClient = new QueryClient();
@@ -112,6 +113,7 @@ export function App() {
             <Route path="credit-notes" element={<CompanyOnlyRoute><CreditNotesPage /></CompanyOnlyRoute>} />
             <Route path="warehouses"   element={<CompanyOnlyRoute><WarehousesPage /></CompanyOnlyRoute>} />
             <Route path="inventory"    element={<CompanyOnlyRoute><InventoryPage /></CompanyOnlyRoute>} />
+            <Route path="purchase-orders" element={<CompanyOnlyRoute><PurchaseOrdersPage /></CompanyOnlyRoute>} />
 
             {/* Módulos de plataforma — SOLO SUPER_ADMIN (guard por URL directa) */}
             <Route path="admin/packages"  element={<SuperAdminRoute><AdminPackagesPage /></SuperAdminRoute>} />
