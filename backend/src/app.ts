@@ -44,6 +44,7 @@ import warehousesRoutes     from './modules/warehouses/warehouses.routes';
 import inventoryRoutes      from './modules/inventory/inventory.routes';
 import inventoryReportsRoutes from './modules/inventory/inventory-reports.routes';
 import purchasingRoutes     from './modules/purchasing/purchasing.routes';
+import posRoutes            from './modules/pos/pos.routes';
 
 export function createApp(): Express {
   const app = express();
@@ -154,6 +155,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/inventory/reports`, inventoryReportsRoutes);
   app.use(`/api/${config.apiVersion}/inventory`,       inventoryRoutes);
   app.use(`/api/${config.apiVersion}/purchase-orders`, purchasingRoutes);
+  app.use(`/api/${config.apiVersion}/pos`,             posRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);
 

@@ -366,6 +366,33 @@ class APIClient {
   }
 
   /**
+   * POS endpoints (Fase 5 ALMACEN)
+   */
+  async createPosSale(data: {
+    warehouseId?: string;
+    paymentForm?: string;
+    items: Array<{ productId: string; quantity: number; unitPrice?: number }>;
+  }) {
+    const r = await this.client.post<APIResponse<any>>('/pos/sales', data);
+    return r.data;
+  }
+
+  async getPosSales(date?: string) {
+    const r = await this.client.get<APIResponse<any>>('/pos/sales', { params: { date } });
+    return r.data;
+  }
+
+  async cancelPosSale(id: string) {
+    const r = await this.client.post<APIResponse<any>>(`/pos/sales/${id}/cancel`);
+    return r.data;
+  }
+
+  async closePosDay(date?: string) {
+    const r = await this.client.post<APIResponse<any>>('/pos/close-day', { date });
+    return r.data;
+  }
+
+  /**
    * Envía por correo los archivos seleccionados (PDF y XML de factura, NCs y pagos).
    * El backend usa el `contact_email` de la empresa emisora como remitente si está
    * configurado; si no, cae al MAIL_FROM del env.
@@ -384,9 +411,9 @@ class APIClient {
   /**
    * Products endpoints
    */
-  async getProducts(page: number = 1, limit: number = 10) {
+  async getProducts(page: number = 1, limit: number = 10, search?: string) {
     const response = await this.client.get<APIResponse<any>>('/products', {
-      params: { page, limit },
+      params: { page, limit, search },
     });
     return response.data;
   }

@@ -25,6 +25,7 @@ import {
   Warehouse,
   ArrowLeftRight,
   ClipboardList,
+  Store,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
@@ -87,6 +88,7 @@ export function Layout() {
           {user?.role !== 'SUPER_ADMIN' && (
             <>
               <NavItem to="/dashboard"    icon={<LayoutGrid size={20} />}  accent="sky"     label="Dashboard"        open={sidebarOpen} />
+              <NavItem to="/pos"          icon={<Store size={20} />}       accent="amber"   label="Punto de venta"   open={sidebarOpen} />
               <NavItem to="/invoices"     icon={<FileText size={20} />}    accent="amber"   label="Facturas"         open={sidebarOpen} />
               <NavItem to="/credit-notes" icon={<FileMinus2 size={20} />}  accent="rose"    label="Notas de Crédito" open={sidebarOpen} />
               <NavItem to="/customers"    icon={<Users size={20} />}       accent="emerald" label="Clientes"         open={sidebarOpen} />

@@ -38,8 +38,19 @@ export function registerInventoryCron(): void {
     );
   });
 
+  // '55 23 * * *' → diario 23:55: cierre POS — factura global al público en
+  // general con las ventas OPEN del día (conclusión de ALMACEN.MD).
+  // Idempotente: las ventas quedan IN_GLOBAL y no se re-facturan.
+  cron.schedule('55 23 * * *', () => {
+    import('../modules/pos/pos.service')
+      .then((m) => m.closeDayAllCompanies())
+      .catch((e) =>
+        logger.error(`[inventory-cron] cierre POS global falló: ${e.message}`)
+      );
+  });
+
   logger.info(
     '[inventory-cron] Registrado: snapshot de valuación (día 1 00:30) · ' +
-    'análisis de reorden (diario 07:00)'
+    'análisis de reorden (diario 07:00) · factura global POS (diario 23:55)'
   );
 }
