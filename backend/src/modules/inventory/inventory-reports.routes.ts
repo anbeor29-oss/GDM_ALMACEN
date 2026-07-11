@@ -13,6 +13,7 @@ import { query } from '../../config/database';
 import {
   takeSnapshot, getCurrentValue, getValueHistory,
 } from './inventory-reports.service';
+import { listReports, toExcel, toPdf } from './inventory-export.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -114,6 +115,43 @@ router.get(
     }
 
     res.json({ success: true, data: { items: r.rows, summary } });
+  })
+);
+
+/** GET /inventory/reports/catalog — reportes disponibles para exportar (§12) */
+router.get(
+  '/catalog',
+  asyncHandler(async (_req: Request, res: Response) => {
+    res.json({ success: true, data: { reports: listReports() } });
+  })
+);
+
+/** GET /inventory/reports/export?report=&format=xlsx|pdf&from=&to= — descarga */
+router.get(
+  '/export',
+  asyncHandler(async (req: Request, res: Response) => {
+    const reportKey = String(req.query.report || '');
+    const format = String(req.query.format || 'xlsx').toLowerCase();
+    const params = {
+      from: req.query.from ? String(req.query.from) : undefined,
+      to: req.query.to ? String(req.query.to) : undefined,
+      warehouseId: req.query.warehouseId ? String(req.query.warehouseId) : undefined,
+    };
+    const stamp = new Date().toISOString().slice(0, 10);
+
+    if (format === 'pdf') {
+      const buf = await toPdf(reportKey, companyId(req), params);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${reportKey}-${stamp}.pdf"`);
+      return res.send(buf);
+    }
+    if (format === 'xlsx') {
+      const buf = await toExcel(reportKey, companyId(req), params);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${reportKey}-${stamp}.xlsx"`);
+      return res.send(buf);
+    }
+    throw new ValidationError("format debe ser 'xlsx' o 'pdf'");
   })
 );
 

@@ -319,6 +319,40 @@ class APIClient {
     return r.data;
   }
 
+  /** Catálogo de reportes exportables (§12). */
+  async getReportCatalog() {
+    const r = await this.client.get<APIResponse<any>>('/inventory/reports/catalog');
+    return r.data;
+  }
+
+  /**
+   * Descarga un reporte de inventario en Excel o PDF. Usa axios (blob) para
+   * que viaje el header de autenticación, y dispara la descarga en el navegador.
+   */
+  async downloadInventoryReport(
+    report: string,
+    format: 'xlsx' | 'pdf',
+    params?: { from?: string; to?: string; warehouseId?: string }
+  ) {
+    const r = await this.client.get('/inventory/reports/export', {
+      params: { report, format, ...params },
+      responseType: 'blob',
+    });
+    const blob = new Blob([r.data], {
+      type: format === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${report}-${new Date().toISOString().slice(0, 10)}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
   /**
    * Purchase orders endpoints (§3 ALMACEN — Fase 4)
    */

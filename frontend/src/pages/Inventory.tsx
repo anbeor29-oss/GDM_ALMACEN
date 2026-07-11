@@ -12,7 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Boxes, Search, ArrowLeftRight, SlidersHorizontal, History,
   PackagePlus, PackageMinus, AlertTriangle, BarChart3, Camera,
-  ClipboardCheck, TrendingUp,
+  ClipboardCheck, TrendingUp, FileSpreadsheet, FileText, Download,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -378,6 +378,74 @@ const COUNT_LABEL: Record<string, string> = {
   AL_DIA:           'Al día',
 };
 
+function ExportCatalog() {
+  const [period, setPeriod] = useState({ from: '', to: '' });
+  const [downloading, setDownloading] = useState('');
+  const [error, setError] = useState('');
+
+  const q = useQuery({ queryKey: ['report-catalog'], queryFn: () => api.getReportCatalog() });
+  const reports: Array<{ key: string; title: string; needsPeriod: boolean }> =
+    q.data?.data?.reports || [];
+
+  const download = async (key: string, format: 'xlsx' | 'pdf', needsPeriod: boolean) => {
+    setDownloading(`${key}-${format}`); setError('');
+    try {
+      await api.downloadInventoryReport(key, format,
+        needsPeriod ? { from: period.from || undefined, to: period.to || undefined } : undefined);
+    } catch (e: any) {
+      setError('No se pudo generar el reporte. Intenta de nuevo.');
+    } finally { setDownloading(''); }
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow border p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="font-bold text-gray-900 flex items-center gap-2">
+            <Download size={18} className="text-sky-600" /> Reportes exportables
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Los 9 reportes de inventario en Excel (sumable) o PDF (para imprimir/enviar)
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-xs text-gray-500">Periodo (kardex):</span>
+          <input type="date" value={period.from} onChange={(e) => setPeriod({ ...period, from: e.target.value })}
+            className="input w-auto py-1" />
+          <span className="text-gray-400">→</span>
+          <input type="date" value={period.to} onChange={(e) => setPeriod({ ...period, to: e.target.value })}
+            className="input w-auto py-1" />
+        </div>
+      </div>
+
+      {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded text-sm mb-3">{error}</div>}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {reports.map((r) => (
+          <div key={r.key} className="border border-gray-200 rounded-lg p-3 flex items-center justify-between hover:border-sky-300">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-800 truncate">{r.title}</p>
+              {r.needsPeriod && <p className="text-xs text-amber-600">usa el periodo</p>}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button title="Excel" onClick={() => download(r.key, 'xlsx', r.needsPeriod)}
+                disabled={!!downloading}
+                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded disabled:opacity-40">
+                <FileSpreadsheet size={17} />
+              </button>
+              <button title="PDF" onClick={() => download(r.key, 'pdf', r.needsPeriod)}
+                disabled={!!downloading}
+                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded disabled:opacity-40">
+                <FileText size={17} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ReportsTab() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
@@ -420,6 +488,9 @@ function ReportsTab() {
 
   return (
     <div className="space-y-6">
+      {/* Exportación de reportes formales (§12) */}
+      <ExportCatalog />
+
       {/* Valuación actual + snapshot manual */}
       <div className="bg-white rounded-lg shadow border p-6">
         <div className="flex items-center justify-between mb-4">
