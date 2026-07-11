@@ -26,6 +26,8 @@ import {
   ArrowLeftRight,
   ClipboardList,
   Store,
+  ClipboardCheck,
+  Landmark,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
@@ -95,9 +97,11 @@ export function Layout() {
               <NavItem to="/products"     icon={<Boxes size={20} />}       accent="fuchsia" label="Productos"        open={sidebarOpen} />
               <NavItem to="/inventory"    icon={<ArrowLeftRight size={20} />} accent="fuchsia" label="Inventario"    open={sidebarOpen} />
               <NavItem to="/warehouses"   icon={<Warehouse size={20} />}   accent="sky"     label="Almacenes"        open={sidebarOpen} />
+              <NavItem to="/physical-counts" icon={<ClipboardCheck size={20} />} accent="amber" label="Inventario físico" open={sidebarOpen} />
               <NavItem to="/purchase-orders" icon={<ClipboardList size={20} />} accent="emerald" label="Órdenes de compra" open={sidebarOpen} />
               <NavItem to="/import-xml"   icon={<FileInput size={20} />}   accent="amber"   label="Compras XML"      open={sidebarOpen} />
               <NavItem to="/suppliers"    icon={<Truck size={20} />}       accent="rose"    label="Proveedores"      open={sidebarOpen} />
+              <NavItem to="/treasury"     icon={<Landmark size={20} />}    accent="emerald" label="Tesorería"        open={sidebarOpen} />
               <NavItem to="/reports"      icon={<BarChart3 size={20} />}   accent="violet"  label="Reportes"         open={sidebarOpen} />
             </>
           )}

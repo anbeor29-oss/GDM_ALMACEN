@@ -26,6 +26,8 @@ import { WarehousesPage }     from '@/pages/Warehouses';
 import { InventoryPage }      from '@/pages/Inventory';
 import { PurchaseOrdersPage } from '@/pages/PurchaseOrders';
 import { PointOfSalePage }    from '@/pages/PointOfSale';
+import { TreasuryPage }       from '@/pages/Treasury';
+import { PhysicalCountPage }  from '@/pages/PhysicalCount';
 import { useAuthStore } from '@/store/auth';
 
 const queryClient = new QueryClient();
@@ -116,6 +118,8 @@ export function App() {
             <Route path="inventory"    element={<CompanyOnlyRoute><InventoryPage /></CompanyOnlyRoute>} />
             <Route path="purchase-orders" element={<CompanyOnlyRoute><PurchaseOrdersPage /></CompanyOnlyRoute>} />
             <Route path="pos"          element={<CompanyOnlyRoute><PointOfSalePage /></CompanyOnlyRoute>} />
+            <Route path="treasury"     element={<CompanyOnlyRoute><TreasuryPage /></CompanyOnlyRoute>} />
+            <Route path="physical-counts" element={<CompanyOnlyRoute><PhysicalCountPage /></CompanyOnlyRoute>} />
 
             {/* Módulos de plataforma — SOLO SUPER_ADMIN (guard por URL directa) */}
             <Route path="admin/packages"  element={<SuperAdminRoute><AdminPackagesPage /></SuperAdminRoute>} />

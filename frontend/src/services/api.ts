@@ -825,6 +825,70 @@ class APIClient {
     return r.data;
   }
 
+  /* ───────────── Proveedores ───────────── */
+  async updateSupplierCredit(id: string, data: {
+    creditDays?: number;
+    creditLine?: number;
+    paymentConditions?: string;
+    supplierRating?: number;
+    deliveryDaysAvg?: number;
+  }) {
+    const r = await this.client.put<APIResponse<any>>(`/suppliers/${id}/credit`, data);
+    return r.data;
+  }
+
+  /* ───────────── Tesorería (Fase 6 ALMACEN) ───────────── */
+  async getTreasuryPayments(params?: { status?: string; supplierId?: string; from?: string; to?: string }) {
+    const r = await this.client.get<APIResponse<any>>('/treasury/payments', { params });
+    return r.data;
+  }
+  async getTreasurySummary() {
+    const r = await this.client.get<APIResponse<any>>('/treasury/summary');
+    return r.data;
+  }
+  async createTreasuryPayment(data: { supplierId: string; amount: number; dueDate: string; notes?: string }) {
+    const r = await this.client.post<APIResponse<any>>('/treasury/payments', data);
+    return r.data;
+  }
+  async payTreasuryPayment(id: string, data?: { paidAt?: string; notes?: string }) {
+    const r = await this.client.post<APIResponse<any>>(`/treasury/payments/${id}/pay`, data || {});
+    return r.data;
+  }
+  async rescheduleTreasuryPayment(id: string, dueDate: string) {
+    const r = await this.client.put<APIResponse<any>>(`/treasury/payments/${id}/reschedule`, { dueDate });
+    return r.data;
+  }
+  async cancelTreasuryPayment(id: string, motivo?: string) {
+    const r = await this.client.post<APIResponse<any>>(`/treasury/payments/${id}/cancel`, { motivo });
+    return r.data;
+  }
+
+  /* ───────────── Inventario físico (Fase 6 ALMACEN §11) ───────────── */
+  async getPhysicalCounts() {
+    const r = await this.client.get<APIResponse<any>>('/physical-counts');
+    return r.data;
+  }
+  async getPhysicalCount(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/physical-counts/${id}`);
+    return r.data;
+  }
+  async openPhysicalCount(data: { warehouseId: string; category?: string; notes?: string }) {
+    const r = await this.client.post<APIResponse<any>>('/physical-counts', data);
+    return r.data;
+  }
+  async capturePhysicalCount(id: string, items: Array<{ itemId: string; countedQty: number }>) {
+    const r = await this.client.put<APIResponse<any>>(`/physical-counts/${id}/capture`, { items });
+    return r.data;
+  }
+  async closePhysicalCount(id: string) {
+    const r = await this.client.post<APIResponse<any>>(`/physical-counts/${id}/close`);
+    return r.data;
+  }
+  async cancelPhysicalCount(id: string) {
+    const r = await this.client.post<APIResponse<any>>(`/physical-counts/${id}/cancel`);
+    return r.data;
+  }
+
   /* ───────────── Proveedores (read-only) ───────────── */
   async listSuppliers(params: { search?: string; limit?: number } = {}) {
     const r = await this.client.get('/suppliers', { params });
