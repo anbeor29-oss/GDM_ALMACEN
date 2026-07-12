@@ -32,6 +32,13 @@ export async function createCustomer(companyId: string, data: {
   creditDays?: number;
   /** CUSTOMER (default) = al que YO facturo; SUPPLIER = el que ME factura. */
   partyType?: 'CUSTOMER' | 'SUPPLIER';
+  // Datos bancarios (depósito al proveedor — compra express)
+  bankCode?: string;
+  bankName?: string;
+  bankAccount?: string;
+  bankClabe?: string;
+  bankAccountHolder?: string;
+  creditLine?: number;
 }): Promise<Customer> {
   // Validate RFC
   if (!isValidRFC(data.rfc)) {
@@ -93,8 +100,10 @@ export async function createCustomer(companyId: string, data: {
     `INSERT INTO customers
      (company_id, rfc, business_name, fiscal_regime, default_cfdi_use,
       postal_code, state, municipality, city, neighborhood, street, ext_number, address,
-      email, phone, contact_person, credit_limit, credit_days, party_type, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, true)
+      email, phone, contact_person, credit_limit, credit_days, party_type,
+      bank_code, bank_name, bank_account, bank_clabe, bank_account_holder, credit_line, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+             $20, $21, $22, $23, $24, $25, true)
      RETURNING *`,
     [
       companyId,
@@ -116,6 +125,12 @@ export async function createCustomer(companyId: string, data: {
       data.creditLimit || 0,
       data.creditDays || 0,
       data.partyType === 'SUPPLIER' ? 'SUPPLIER' : 'CUSTOMER',
+      data.bankCode || null,
+      data.bankName || null,
+      data.bankAccount || null,
+      data.bankClabe || null,
+      data.bankAccountHolder || null,
+      data.creditLine || 0,
     ]
   );
 
@@ -319,10 +334,13 @@ export async function updateCustomer(
     fields.push(`is_active = $${paramCount++}`);
     values.push(data.is_active);
   }
-  // Campos del domicilio fiscal del receptor (CFDI 4.0)
+  // Campos del domicilio fiscal + datos bancarios (depósito) + línea de crédito.
+  // credit_used queda FUERA a propósito: lo maneja el sistema (tesorería).
   for (const f of [
     'default_cfdi_use','postal_code','state','municipality','city',
     'neighborhood','street','ext_number','address',
+    'bank_code','bank_name','bank_account','bank_clabe','bank_account_holder',
+    'credit_line',
   ]) {
     if ((data as any)[f] !== undefined) {
       fields.push(`${f} = $${paramCount++}`);

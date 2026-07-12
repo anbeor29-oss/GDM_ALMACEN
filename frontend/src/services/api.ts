@@ -942,6 +942,22 @@ class APIClient {
     const r = await this.client.get('/suppliers', { params });
     return r.data;
   }
+  async getSupplier(id: string) {
+    const r = await this.client.get(`/suppliers/${id}`);
+    return r.data;
+  }
+  async getSupplierBanks() {
+    const r = await this.client.get('/suppliers/banks');
+    return r.data;
+  }
+  async createSupplier(data: any) {
+    const r = await this.client.post('/suppliers', data);
+    return r.data;
+  }
+  async updateSupplier(id: string, data: any) {
+    const r = await this.client.put(`/suppliers/${id}`, data);
+    return r.data;
+  }
 
   async adminListCompanies(params: { search?: string } = {}) {
     const r = await this.client.get('/admin/companies', { params });

@@ -13,9 +13,74 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken, authorize } from '../../middleware/authentication';
 import { asyncHandler, ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
+import * as customersService from '../customers/customers.service';
+import { BANKS_MX, bankNameByCode } from './banks-mx';
 
 const router = Router();
 router.use(authenticateToken);
+
+/** GET /suppliers/banks — catálogo de bancos de México (CNBV/ABM). */
+router.get(
+  '/banks',
+  asyncHandler(async (_req: Request, res: Response) => {
+    res.json({ success: true, data: { banks: BANKS_MX } });
+  })
+);
+
+/**
+ * POST /suppliers — alta de proveedor (mismos datos que un cliente + banco).
+ *  Anti-duplicado por RFC ya vive en customers.service (rechaza o reactiva).
+ */
+router.post(
+  '/',
+  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const b = req.body || {};
+    const created = await customersService.createCustomer(companyId(req), {
+      ...b,
+      partyType: 'SUPPLIER',
+      bankName: b.bankName || bankNameByCode(b.bankCode) || undefined,
+    });
+    res.status(201).json({ success: true, data: created });
+  })
+);
+
+/** PUT /suppliers/:id — edición completa (fiscales, domicilio, contacto, banco, crédito). */
+router.put(
+  '/:id',
+  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    // Verifica que sea un SUPPLIER de esta empresa
+    const own = await query(
+      `SELECT id FROM customers
+        WHERE id = $1 AND company_id = $2 AND party_type = 'SUPPLIER' AND deleted_at IS NULL`,
+      [req.params.id, companyId(req)]
+    );
+    if (own.rows.length === 0) throw new NotFoundError('Proveedor no encontrado');
+
+    const b = req.body || {};
+    // Mapear camelCase del formulario a snake_case que espera updateCustomer
+    const patch: any = {};
+    const map: Record<string, string> = {
+      rfc: 'rfc', businessName: 'business_name', fiscalRegime: 'fiscal_regime',
+      defaultCfdiUse: 'default_cfdi_use', postalCode: 'postal_code', state: 'state',
+      municipality: 'municipality', city: 'city', neighborhood: 'neighborhood',
+      street: 'street', extNumber: 'ext_number', address: 'address',
+      email: 'email', phone: 'phone', contactPerson: 'contact_person',
+      creditLimit: 'credit_limit', creditDays: 'credit_days', creditLine: 'credit_line',
+      bankCode: 'bank_code', bankAccount: 'bank_account', bankClabe: 'bank_clabe',
+      bankAccountHolder: 'bank_account_holder',
+    };
+    for (const [camel, snake] of Object.entries(map)) {
+      if (b[camel] !== undefined) patch[snake] = b[camel];
+    }
+    // Nombre del banco derivado de la clave si viene
+    if (b.bankCode !== undefined) patch.bank_name = bankNameByCode(b.bankCode);
+
+    const updated = await customersService.updateCustomer(companyId(req), req.params.id, patch);
+    res.json({ success: true, data: updated });
+  })
+);
 
 function companyId(req: Request): string {
   if (!req.user?.companyId) throw new ValidationError('Company ID is required');
@@ -44,6 +109,8 @@ router.get(
               -- Condiciones de crédito (§4)
               credit_days, credit_line, credit_used, payment_conditions,
               delivery_days_avg, supplier_rating,
+              -- Datos bancarios (depósito)
+              bank_code, bank_name, bank_clabe,
               -- Métricas útiles
               (SELECT COUNT(*)::int FROM xml_imports xi
                  WHERE xi.company_id = customers.company_id
