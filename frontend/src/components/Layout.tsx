@@ -28,6 +28,7 @@ import {
   Store,
   ClipboardCheck,
   Landmark,
+  UsersRound,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
@@ -103,6 +104,9 @@ export function Layout() {
               <NavItem to="/suppliers"    icon={<Truck size={20} />}       accent="rose"    label="Proveedores"      open={sidebarOpen} />
               <NavItem to="/treasury"     icon={<Landmark size={20} />}    accent="emerald" label="Tesorería"        open={sidebarOpen} />
               <NavItem to="/reports"      icon={<BarChart3 size={20} />}   accent="violet"  label="Reportes"         open={sidebarOpen} />
+              {user?.role === 'ADMIN' && (
+                <NavItem to="/team"       icon={<UsersRound size={20} />}  accent="sky"     label="Equipo y permisos" open={sidebarOpen} />
+              )}
             </>
           )}
 

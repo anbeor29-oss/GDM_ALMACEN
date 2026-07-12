@@ -47,6 +47,7 @@ import purchasingRoutes     from './modules/purchasing/purchasing.routes';
 import posRoutes            from './modules/pos/pos.routes';
 import treasuryRoutes       from './modules/treasury/treasury.routes';
 import physicalCountRoutes  from './modules/physical-count/physical-count.routes';
+import teamRoutes           from './modules/team/team.routes';
 
 export function createApp(): Express {
   const app = express();
@@ -160,6 +161,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/pos`,             posRoutes);
   app.use(`/api/${config.apiVersion}/treasury`,        treasuryRoutes);
   app.use(`/api/${config.apiVersion}/physical-counts`, physicalCountRoutes);
+  app.use(`/api/${config.apiVersion}/team`,            teamRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);
 

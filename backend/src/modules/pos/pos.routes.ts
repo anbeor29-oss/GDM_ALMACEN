@@ -6,7 +6,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { authenticateToken, authorize } from '../../middleware/authentication';
+import { authenticateToken, authorize, requireCapability } from '../../middleware/authentication';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import { createSale, cancelSale, closeDay, todayMx } from './pos.service';
@@ -22,6 +22,7 @@ function companyId(req: Request): string {
 /** POST /pos/sales — cobrar una venta (descuenta inventario al momento) */
 router.post(
   '/sales',
+  requireCapability('pos:sell'),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await createSale(companyId(req), req.body, {
       userId: req.user?.userId,
@@ -68,7 +69,7 @@ router.get(
 /** POST /pos/sales/:id/cancel — cancelar (devuelve el stock descontado) */
 router.post(
   '/sales/:id/cancel',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('pos:sell'),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await cancelSale(companyId(req), req.params.id, {
       userId: req.user?.userId,

@@ -240,6 +240,40 @@ export const authorize = (...allowedRoles: string[]) => {
   };
 };
 
+/**
+ * Capability-based authorization (§8 ALMACEN) — capa fina sobre roles.
+ *
+ *  Pasa si el usuario tiene la capacidad EFECTIVA:
+ *   · SUPER_ADMIN / ADMIN / MANAGER → siempre (conservan su acceso operativo).
+ *   · USER → sólo si tiene la capacidad en su base o se la otorgó su ADMIN.
+ *
+ *  Es NO-rompiente respecto de `authorize('ADMIN','MANAGER','SUPER_ADMIN')`:
+ *  esos tres roles siguen pasando exactamente igual; el cambio es que ahora
+ *  un USER puede ser elevado a una capacidad concreta.
+ */
+export const requireCapability = (capability: string) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+    try {
+      const { userHasCapability } = await import('../modules/auth/capabilities');
+      const ok = await userHasCapability(req.user.userId, req.user.role, capability);
+      if (!ok) {
+        logger.warn(`Capability denied: ${req.user.email} carece de '${capability}'`);
+        return res.status(403).json({
+          success: false,
+          message: `No tienes la capacidad requerida (${capability}). Pide a tu administrador que te la otorgue.`,
+        });
+      }
+      return next();
+    } catch (e) {
+      logger.error('requireCapability error', { error: e instanceof Error ? e.message : 'unknown' });
+      return res.status(500).json({ success: false, message: 'Error verificando permisos' });
+    }
+  };
+};
+
 export default {
   verifyToken,
   generateToken,
@@ -249,4 +283,5 @@ export default {
   authenticateToken,
   optionalAuthentication,
   authorize,
+  requireCapability,
 };

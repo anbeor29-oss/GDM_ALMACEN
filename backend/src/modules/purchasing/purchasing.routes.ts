@@ -8,7 +8,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { authenticateToken, authorize } from '../../middleware/authentication';
+import { authenticateToken, requireCapability } from '../../middleware/authentication';
 import { asyncHandler, ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import { query, transaction, transactionQuery } from '../../config/database';
 import {
@@ -98,7 +98,7 @@ router.get(
 /** POST /purchase-orders/reorder-check — ejecutar el análisis ahora (§2) */
 router.post(
   '/reorder-check',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('purchasing:capture'),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await runReorderCheck(companyId(req), {
       userId: req.user?.userId,
@@ -111,7 +111,7 @@ router.post(
 /** POST /purchase-orders — orden manual (§3: "solicitados manualmente") */
 router.post(
   '/',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('purchasing:capture'),
   asyncHandler(async (req: Request, res: Response) => {
     const { warehouseId, supplierId, items, notes, neededByDate } = req.body || {};
     if (!warehouseId) throw new ValidationError('warehouseId es obligatorio');
@@ -180,7 +180,7 @@ router.post(
 /** PUT /purchase-orders/:id/status — transición del ciclo (aprobar, comprar, cancelar) */
 router.put(
   '/:id/status',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('purchasing:approve'),
   asyncHandler(async (req: Request, res: Response) => {
     const newStatus = String(req.body?.status || '').toUpperCase() as OrderStatus;
     if (!newStatus) throw new ValidationError('status es obligatorio');
@@ -195,7 +195,7 @@ router.put(
 /** POST /purchase-orders/:id/receive — recepción parcial o total (§14) */
 router.post(
   '/:id/receive',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('purchasing:capture'),
   asyncHandler(async (req: Request, res: Response) => {
     const receipts = req.body?.receipts;
     const costingMethod = req.body?.costingMethod;

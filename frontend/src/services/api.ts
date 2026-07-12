@@ -897,6 +897,20 @@ class APIClient {
     return r.data;
   }
 
+  /* ───────────── Equipo / capacidades (Fase 8 ALMACEN §8) ───────────── */
+  async getTeamCapabilities() {
+    const r = await this.client.get<APIResponse<any>>('/team/capabilities');
+    return r.data;
+  }
+  async getTeamUsers() {
+    const r = await this.client.get<APIResponse<any>>('/team/users');
+    return r.data;
+  }
+  async setUserCapabilities(userId: string, capabilities: string[]) {
+    const r = await this.client.put<APIResponse<any>>(`/team/users/${userId}/capabilities`, { capabilities });
+    return r.data;
+  }
+
   /* ───────────── Inventario físico (Fase 6 ALMACEN §11) ───────────── */
   async getPhysicalCounts() {
     const r = await this.client.get<APIResponse<any>>('/physical-counts');

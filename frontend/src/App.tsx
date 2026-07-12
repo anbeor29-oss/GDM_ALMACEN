@@ -28,6 +28,7 @@ import { PurchaseOrdersPage } from '@/pages/PurchaseOrders';
 import { PointOfSalePage }    from '@/pages/PointOfSale';
 import { TreasuryPage }       from '@/pages/Treasury';
 import { PhysicalCountPage }  from '@/pages/PhysicalCount';
+import { TeamPage }           from '@/pages/Team';
 import { useAuthStore } from '@/store/auth';
 
 const queryClient = new QueryClient();
@@ -120,6 +121,7 @@ export function App() {
             <Route path="pos"          element={<CompanyOnlyRoute><PointOfSalePage /></CompanyOnlyRoute>} />
             <Route path="treasury"     element={<CompanyOnlyRoute><TreasuryPage /></CompanyOnlyRoute>} />
             <Route path="physical-counts" element={<CompanyOnlyRoute><PhysicalCountPage /></CompanyOnlyRoute>} />
+            <Route path="team"         element={<CompanyOnlyRoute><TeamPage /></CompanyOnlyRoute>} />
 
             {/* Módulos de plataforma — SOLO SUPER_ADMIN (guard por URL directa) */}
             <Route path="admin/packages"  element={<SuperAdminRoute><AdminPackagesPage /></SuperAdminRoute>} />

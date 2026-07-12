@@ -111,9 +111,13 @@ export async function getCurrentUser(req: Request, res: Response) {
     throw new ValidationError('User not authenticated');
   }
 
+  // Capacidades efectivas (§8) — el frontend las usa para mostrar/ocultar acciones
+  const { getEffectiveCapabilities } = await import('./capabilities');
+  const capabilities = await getEffectiveCapabilities(req.user.userId, req.user.role);
+
   res.status(200).json({
     success: true,
-    data: req.user,
+    data: { ...req.user, capabilities },
   });
 }
 

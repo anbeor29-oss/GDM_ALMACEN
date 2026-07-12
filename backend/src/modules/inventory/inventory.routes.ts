@@ -7,7 +7,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { authenticateToken, authorize } from '../../middleware/authentication';
+import { authenticateToken, requireCapability } from '../../middleware/authentication';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import { applyMovement, transferStock, MovementType } from './inventory.service';
@@ -157,7 +157,7 @@ router.get(
  */
 router.post(
   '/adjust',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('inventory:adjust'),
   asyncHandler(async (req: Request, res: Response) => {
     const { productId, warehouseId, direction, quantity, unitCost, reason } = req.body || {};
     if (!productId || !warehouseId) throw new ValidationError('productId y warehouseId son obligatorios');
@@ -204,7 +204,7 @@ router.post(
  */
 router.post(
   '/transfer',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('warehouse:transfer'),
   asyncHandler(async (req: Request, res: Response) => {
     const { productId, warehouseFromId, warehouseToId, quantity, reason } = req.body || {};
     if (!productId || !warehouseFromId || !warehouseToId) {
@@ -232,7 +232,7 @@ router.post(
  */
 router.put(
   '/stock-limits',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('inventory:adjust'),
   asyncHandler(async (req: Request, res: Response) => {
     const { productId, warehouseId } = req.body || {};
     const stockMinimum = Number(req.body?.stockMinimum ?? 0);

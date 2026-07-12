@@ -6,7 +6,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { authenticateToken, authorize } from '../../middleware/authentication';
+import { authenticateToken, requireCapability } from '../../middleware/authentication';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as service from './physical-count.service';
 
@@ -42,7 +42,7 @@ router.get(
 /** POST /physical-counts — abrir conteo (congela existencia del sistema) */
 router.post(
   '/',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('physical:count'),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await service.openCount(companyId(req), req.body, actor(req));
     res.status(201).json({ success: true, data: result });
@@ -61,7 +61,7 @@ router.put(
 /** POST /physical-counts/:id/close — cerrar y aplicar ajustes (autorización) */
 router.post(
   '/:id/close',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('physical:authorize'),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await service.closeCount(companyId(req), req.params.id, actor(req));
     res.json({ success: true, data: result });
@@ -71,7 +71,7 @@ router.post(
 /** POST /physical-counts/:id/cancel — cancelar conteo abierto */
 router.post(
   '/:id/cancel',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('physical:authorize'),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await service.cancelCount(companyId(req), req.params.id);
     res.json({ success: true, data: result });

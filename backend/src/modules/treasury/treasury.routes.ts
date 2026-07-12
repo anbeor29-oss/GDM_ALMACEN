@@ -6,7 +6,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { authenticateToken, authorize } from '../../middleware/authentication';
+import { authenticateToken, requireCapability } from '../../middleware/authentication';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as service from './treasury.service';
 
@@ -44,7 +44,7 @@ router.get(
 /** POST /treasury/payments — alta manual */
 router.post(
   '/payments',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('treasury:pay'),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await service.createManual(companyId(req), req.body);
     res.status(201).json({ success: true, data: result });
@@ -54,7 +54,7 @@ router.post(
 /** POST /treasury/payments/:id/pay — marcar pagado (libera crédito) */
 router.post(
   '/payments/:id/pay',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('treasury:pay'),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await service.markPaid(companyId(req), req.params.id, {
       paidAt: req.body?.paidAt,
@@ -67,7 +67,7 @@ router.post(
 /** PUT /treasury/payments/:id/reschedule — cambiar fecha de vencimiento */
 router.put(
   '/payments/:id/reschedule',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('treasury:pay'),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await service.reschedule(companyId(req), req.params.id, req.body?.dueDate);
     res.json({ success: true, data: result });
@@ -77,7 +77,7 @@ router.put(
 /** POST /treasury/payments/:id/cancel — cancelar pago (libera crédito) */
 router.post(
   '/payments/:id/cancel',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('treasury:pay'),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await service.cancelPayment(companyId(req), req.params.id, req.body?.motivo);
     res.json({ success: true, data: result });
