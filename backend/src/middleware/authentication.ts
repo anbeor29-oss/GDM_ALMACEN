@@ -18,6 +18,8 @@ declare global {
         email: string;
         role: string;
         companyId?: string;
+        /** Grupo de trabajo: define qué módulos ve/toca (ADMIN_ALL = todos). */
+        workGroup?: string;
         /** Si presente, indica que el SUPER_ADMIN está suplantando a este usuario. */
         impersonatedBy?: { userId: string; email: string };
       };
@@ -31,6 +33,7 @@ interface TokenPayload {
   email: string;
   role: string;
   companyId?: string;
+  workGroup?: string;
   /** Trazabilidad de impersonación — el JWT del usuario suplantado lleva quién lo está suplantando. */
   impersonatedBy?: { userId: string; email: string };
   iat?: number;
@@ -137,25 +140,28 @@ export const authenticateToken = async (
       email: payload.email,
       role: payload.role,
       companyId: payload.companyId,
+      workGroup: payload.workGroup,
       impersonatedBy: payload.impersonatedBy,
     };
     req.token = token;
 
-    // Si el token es viejo (no incluye companyId) o cambió la empresa del usuario,
-    // recuperamos el company_id actual desde BD para que el request no falle.
-    if (!req.user.companyId) {
+    // Si el token es viejo (sin companyId o sin workGroup) recuperamos ambos
+    // desde BD para que el request no falle ni pierda el grupo de trabajo.
+    if (!req.user.companyId || !req.user.workGroup) {
       try {
         const { query } = await import('../config/database');
-        const r = await query<{ company_id: string | null }>(
-          'SELECT company_id FROM users WHERE id = $1 AND deleted_at IS NULL',
+        const r = await query<{ company_id: string | null; work_group: string | null }>(
+          'SELECT company_id, work_group FROM users WHERE id = $1 AND deleted_at IS NULL',
           [payload.userId]
         );
-        if (r.rows[0]?.company_id) {
+        if (r.rows[0]?.company_id && !req.user.companyId) {
           req.user.companyId = r.rows[0].company_id;
-          logger.debug(`Recovered companyId from DB for ${payload.email}`);
+        }
+        if (r.rows[0]?.work_group && !req.user.workGroup) {
+          req.user.workGroup = r.rows[0].work_group;
         }
       } catch (e) {
-        logger.warn('Could not recover companyId from DB', {
+        logger.warn('Could not recover companyId/workGroup from DB', {
           error: e instanceof Error ? e.message : 'unknown',
         });
       }

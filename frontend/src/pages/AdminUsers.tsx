@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { UserPlus, KeyRound, UserX, UserCheck, X, Shield, UserCog } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { WORK_GROUP_LABELS, WorkGroup } from '@/utils/permissions';
 
 const ROLES = [
   { value: 'SUPER_ADMIN', label: 'Super Admin (plataforma)' },
@@ -207,7 +208,7 @@ function IconBtn({ color, title, onClick, children }: any) {
 }
 
 function CreateUserModal({ companies, onClose, onDone }: any) {
-  const [form, setForm] = useState({ email:'', firstName:'', lastName:'', role:'USER', companyId:'' });
+  const [form, setForm] = useState({ email:'', firstName:'', lastName:'', role:'USER', companyId:'', workGroup:'ADMIN_ALL' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -265,8 +266,18 @@ function CreateUserModal({ companies, onClose, onDone }: any) {
                 {companies.map((c: any) => <option key={c.id} value={c.id}>{c.rfc} · {c.business_name}</option>)}
               </select></label>
           )}
+          {(form.role === 'USER' || form.role === 'MANAGER') && (
+            <label className="block"><span className="text-sm font-medium block mb-1">Grupo de trabajo <span className="text-gray-400 font-normal">(define qué pantallas ve)</span></span>
+              <select className="input w-full" value={form.workGroup}
+                onChange={(e)=>setForm({...form,workGroup:e.target.value})}>
+                {(Object.keys(WORK_GROUP_LABELS) as WorkGroup[]).map(g => (
+                  <option key={g} value={g}>{WORK_GROUP_LABELS[g]}</option>
+                ))}
+              </select></label>
+          )}
           <p className="text-xs text-gray-500">
             Se generará una contraseña temporal. El usuario debe cambiarla en el primer login.
+            {' '}ADMIN y SUPER_ADMIN ven todos los módulos.
           </p>
         </div>
         <div className="flex gap-3 p-5 border-t">

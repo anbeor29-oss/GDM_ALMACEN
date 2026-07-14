@@ -28,6 +28,12 @@ router.use(authenticateToken);
 router.use(requireSuperAdmin);
 
 const VALID_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'USER'] as const;
+const VALID_WORK_GROUPS: string[] = ['ADMIN_ALL', 'VENTAS', 'INVENTARIOS', 'COMPRAS', 'TESORERIA'];
+// ADMIN y SUPER_ADMIN siempre ven todo; el grupo solo aplica a MANAGER/USER.
+const resolveWorkGroup = (role: string, wg: unknown): string =>
+  (role === 'SUPER_ADMIN' || role === 'ADMIN')
+    ? 'ADMIN_ALL'
+    : (VALID_WORK_GROUPS.includes(wg as string) ? (wg as string) : 'ADMIN_ALL');
 type Role = typeof VALID_ROLES[number];
 
 /** Genera password temporal legible: ej. "Lima-9248" — fácil de transmitir al usuario. */
@@ -64,7 +70,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const r = await query<any>(
     `SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.is_active,
             u.password_change_required, u.last_login, u.disabled_at,
-            u.company_id, c.business_name AS company_name, c.rfc AS company_rfc,
+            u.company_id, u.work_group, c.business_name AS company_name, c.rfc AS company_rfc,
             u.created_at, u.created_by_user_id
        FROM users u
        LEFT JOIN companies c ON c.id = u.company_id
@@ -85,7 +91,7 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   const r = await query<any>(
     `SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.is_active,
             u.password_change_required, u.last_login, u.disabled_at, u.created_at,
-            u.company_id, c.business_name AS company_name, c.rfc AS company_rfc
+            u.company_id, u.work_group, c.business_name AS company_name, c.rfc AS company_rfc
        FROM users u LEFT JOIN companies c ON c.id = u.company_id
       WHERE u.id = $1`,
     [req.params.id]
@@ -96,7 +102,7 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 
 /* ────────────────────────  CREATE  ──────────────────────── */
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
-  const { email, firstName, lastName, role, companyId } = req.body as any;
+  const { email, firstName, lastName, role, companyId, workGroup } = req.body as any;
   if (!email || !validEmail(email)) throw new ValidationError('Email inválido');
   if (!firstName || !lastName)      throw new ValidationError('firstName y lastName son requeridos');
   if (!VALID_ROLES.includes(role))  throw new ValidationError(`role inválido. Válidos: ${VALID_ROLES.join(', ')}`);
@@ -115,11 +121,12 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 
   const r = await query<any>(
     `INSERT INTO users (email, first_name, last_name, password_hash, role,
-                        company_id, is_active, password_change_required, created_by_user_id)
-     VALUES ($1, $2, $3, $4, $5, $6, true, true, $7)
-     RETURNING id, email, role, company_id, password_change_required, created_at`,
+                        company_id, work_group, is_active, password_change_required, created_by_user_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, true, true, $8)
+     RETURNING id, email, role, company_id, work_group, password_change_required, created_at`,
     [email.toLowerCase(), firstName, lastName, hash, role,
      role === 'SUPER_ADMIN' ? null : companyId,
+     resolveWorkGroup(role, workGroup),
      req.user!.userId]
   );
   const user = r.rows[0];
@@ -136,7 +143,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 
 /* ────────────────────────  UPDATE  ──────────────────────── */
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
-  const { firstName, lastName, role, companyId } = req.body as any;
+  const { firstName, lastName, role, companyId, workGroup } = req.body as any;
   const fields: string[] = [];
   const params: any[] = [];
   const push = (f: string, v: any) => { params.push(v); fields.push(`${f} = $${params.length}`); };
@@ -148,12 +155,16 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
     push('role', role);
   }
   if (companyId !== undefined) push('company_id', companyId || null);
+  if (workGroup !== undefined) {
+    if (!VALID_WORK_GROUPS.includes(workGroup)) throw new ValidationError('workGroup inválido');
+    push('work_group', workGroup);
+  }
 
   if (fields.length === 0) throw new ValidationError('Nada que actualizar');
   params.push(req.params.id);
   const r = await query<any>(
     `UPDATE users SET ${fields.join(', ')}, updated_at = NOW()
-      WHERE id = $${params.length} RETURNING id, email, role, company_id`,
+      WHERE id = $${params.length} RETURNING id, email, role, company_id, work_group`,
     params
   );
   if (r.rows.length === 0) throw new NotFoundError('Usuario no encontrado');

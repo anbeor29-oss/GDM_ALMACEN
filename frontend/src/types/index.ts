@@ -8,6 +8,8 @@ export interface User {
   email: string;
   role: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'USER' | 'VIEW_ONLY';
   companyId?: string;
+  /** Grupo de trabajo: define qué pantallas ve (ADMIN_ALL = todas). */
+  workGroup?: string;
   /** True si el backend requiere que el usuario cambie su contraseña antes de operar. */
   passwordChangeRequired?: boolean;
   /** Si está presente, el usuario actual está siendo suplantado por este super-admin. */

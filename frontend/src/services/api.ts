@@ -820,7 +820,7 @@ class APIClient {
     const r = await this.client.get('/admin/users', { params });
     return r.data;
   }
-  async adminCreateUser(data: { email: string; firstName: string; lastName: string; role: string; companyId?: string }) {
+  async adminCreateUser(data: { email: string; firstName: string; lastName: string; role: string; companyId?: string; workGroup?: string }) {
     const r = await this.client.post('/admin/users', data);
     return r.data;
   }
