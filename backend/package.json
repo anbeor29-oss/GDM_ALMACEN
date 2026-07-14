@@ -20,6 +20,7 @@
     "seed:demo": "ts-node -r dotenv/config scripts/seed-demo.ts",
     "seed:customers": "ts-node -r dotenv/config scripts/seed-customers.ts",
     "seed:products": "ts-node -r dotenv/config scripts/seed-products.ts",
+    "seed:examples": "ts-node -r dotenv/config scripts/seed-examples.ts",
     "seed:invoices": "ts-node -r dotenv/config scripts/seed-invoices.ts",
     "seed:cfdi": "ts-node -r dotenv/config scripts/seed-cfdi.ts",
     "create:admin": "ts-node -r dotenv/config scripts/create-admin.ts",

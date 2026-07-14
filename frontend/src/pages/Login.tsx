@@ -6,7 +6,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
-import { GdmLogo } from '@/components/GdmLogo';
 import api from '@/services/api';
 
 /** Sitio corporativo al que regresa el botón junto a "Ingresar". */
@@ -46,7 +45,7 @@ export function LoginPage() {
       <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <GdmLogo size={64} className="inline-block mb-3 drop-shadow-lg" />
+          <img src="/logo-almacen.png" alt="GDM Almacén — HCGM" className="mx-auto mb-4 w-48 rounded-lg shadow-md" />
           <h1 className="text-3xl font-bold text-gray-900 mb-1">GDM ALMACÉN</h1>
           <p className="text-gray-500 text-sm">Inventarios y Facturación · GDM High Consulting México</p>
         </div>
