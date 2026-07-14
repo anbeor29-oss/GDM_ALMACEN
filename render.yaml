@@ -1,131 +1,128 @@
 # ============================================================================
-# render.yaml — Blueprint de infraestructura para Render.com
+# render.yaml — Blueprint de **GDM ALMACÉN** (sistema de inventarios)
 #
-# Levanta 3 servicios como un solo grupo:
-#   1) PostgreSQL 15                 → base de datos
-#   2) Backend Node/Express          → API REST
-#   3) Frontend React/Vite estático  → UI
+# Despliegue independiente en el repo anbeor29-oss/GDM_ALMACEN (rama main).
+# Recursos propios; NO comparte NADA con producción de facturas (gdmfac-*).
 #
-# Uso desde Render:
-#   Dashboard → New → Blueprint → conecta el repo → Apply
-#   Render lee este archivo y crea los 3 recursos automáticamente.
+#   1) PostgreSQL 15  → gdm-almacen-postgres  (plan de PAGO: ver nota abajo)
+#   2) Backend Node   → gdm-almacen-backend
+#   3) Frontend Vite  → gdm-almacen-frontend
 #
-# Variables sensibles (SW_SAPIEN_TOKEN, JWT_SECRET, etc.) NO van aquí:
-# se marcan `sync: false` y se rellenan a mano desde el dashboard tras el
-# primer deploy. Así nunca terminan en git.
+# Uso: Render → New → Blueprint → repo GDM_ALMACEN → Branch: main → Apply.
+# En el primer arranque corre migraciones y luego bootstrap:env (crea empresa +
+# admin ADMIN_ALL). Secretos (SW_SAPIEN_TOKEN, BOOTSTRAP_ADMIN_PASSWORD) van
+# sync:false (Render los pide en el Apply); nunca se guardan en git.
 # ============================================================================
 
 databases:
-  - name: gdmfac-postgres
-    plan: free            # 90 días de retención; upgrade a Basic ($7/mes) para prod
-    databaseName: cfdi_erp
-    user: cfdi_app
+    # Plan de PAGO: Render solo permite 1 Postgres FREE por cuenta y ese lo usa
+    # la producción de facturas. basic-256mb es el paquete de pago más barato
+    # (~$6 USD/mes). Con `free` el Apply falla ("one active free tier database").
+  - name: gdm-almacen-postgres
+    plan: basic-256mb
+    databaseName: gdm_almacen
+    user: gdm_almacen
     postgresMajorVersion: 15
-    ipAllowList: []       # Solo conexiones desde los servicios de Render
+    ipAllowList: []
 
 services:
   # ─── Backend Node/Express ──────────────────────────────────────────
   - type: web
-    name: gdmfac-backend
+    name: gdm-almacen-backend
     runtime: node
-    plan: starter         # $7/mes — Render descontinuó "free" para web services vía Blueprint
-    region: oregon        # más cercano a MX que virginia; ~110 ms latencia
+    plan: starter
+    region: oregon
     branch: main
     rootDir: backend
-    # --include=dev fuerza a instalar devDependencies (typescript, @types/*)
-    # incluso con NODE_ENV=production — necesario para compilar TS a JS.
     buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm run start:prod
+    # migraciones (aborta si fallan) → bootstrap idempotente NO fatal → server.
+    startCommand: "npm run migrate:up && (npm run bootstrap:env || true) && node dist/index.js"
     healthCheckPath: /health
-    autoDeploy: true      # cada push a main dispara deploy
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
-      # Render inyecta $PORT automáticamente en runtime — el código lo prefiere
-      # sobre APP_PORT. No hay que hardcodearlo aquí.
       - key: API_VERSION
         value: v1
       - key: LOG_LEVEL
         value: info
-
-      # ─── Conexión BD: Render inyecta automáticamente ──────────────
       - key: DATABASE_URL
         fromDatabase:
-          name: gdmfac-postgres
+          name: gdm-almacen-postgres
           property: connectionString
       - key: DB_SSL
-        value: "true"      # Render fuerza SSL en su Postgres
-
-      # ─── Redis: opcional, la app arranca sin él ──────────────────
+        value: "true"
       - key: REDIS_HOST
-        value: ""          # dejar vacío = modo degradado sin caché
-
-      # ─── Secretos (rellenar EN EL DASHBOARD tras deploy) ──────────
+        value: ""
       - key: JWT_SECRET
-        generateValue: true          # Render genera uno seguro
+        generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: ENCRYPTION_KEY
         generateValue: true
       - key: CSD_MASTER_KEY
         generateValue: true
-
       - key: JWT_EXPIRATION
         value: 1h
       - key: JWT_REFRESH_EXPIRATION
         value: 7d
-
-      # ─── PAC SW Sapien: pegar token del panel a mano ──────────────
       - key: PAC_PROVIDER
         value: SW_SAPIEN
       - key: SW_SAPIEN_ENV
         value: sandbox
       - key: SW_SAPIEN_TOKEN
-        sync: false        # SECRETO: se llena a mano desde Environment tab
-
-      # ─── CORS: URL completa del frontend (con https://) ───────────
-      # No se puede usar `fromService` porque Render inyecta solo el host sin
-      # protocolo (`gdmfac-frontend.onrender.com`) y el middleware CORS del
-      # backend compara con el header Origin que SÍ incluye protocolo.
+        sync: false
       - key: CORS_ORIGIN
-        value: "https://gdmfac-frontend.onrender.com"
+        value: "https://gdm-almacen-frontend.onrender.com"
       - key: CORS_CREDENTIALS
         value: "true"
-
-      # ─── Rate limit ───────────────────────────────────────────────
       - key: RATE_LIMIT_WINDOW_MS
         value: "900000"
       - key: RATE_LIMIT_MAX_REQUESTS
         value: "100"
-
-      # ─── Feature flags ────────────────────────────────────────────
       - key: FEATURE_PAC_INTEGRATION
         value: "true"
       - key: MOCK_PAC
         value: "false"
+      # ─── Bootstrap del primer arranque (empresa + admin) ────────────
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        value: "admin@gdmalmacen.mx"
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      - key: BOOTSTRAP_ADMIN_FIRST_NAME
+        value: "Admin"
+      - key: BOOTSTRAP_ADMIN_LAST_NAME
+        value: "General"
+      - key: BOOTSTRAP_COMPANY_RFC
+        value: "EKU9003173C9"
+      - key: BOOTSTRAP_COMPANY_NAME
+        value: "GDM ALMACEN DEMO"
+      - key: BOOTSTRAP_COMPANY_REGIME
+        value: "601"
+      - key: BOOTSTRAP_COMPANY_CP
+        value: "20000"
+      - key: BOOTSTRAP_COMPANY_STATE
+        value: "01"
 
   # ─── Frontend React/Vite estático ──────────────────────────────────
-  # Los sitios estáticos SÍ tienen tier gratuito ilimitado — no lleva `plan`.
   - type: web
-    name: gdmfac-frontend
+    name: gdm-almacen-frontend
     runtime: static
     branch: main
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     autoDeploy: true
-    # SPA: cualquier ruta → index.html (React Router)
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
     envVars:
-      # Vite inyecta las VITE_* en build time
       - key: VITE_API_BASE
         fromService:
-          name: gdmfac-backend
+          name: gdm-almacen-backend
           type: web
-          envVarKey: RENDER_EXTERNAL_URL   # https://gdmfac-backend.onrender.com
+          envVarKey: RENDER_EXTERNAL_URL
     headers:
       - path: /*
         name: X-Frame-Options

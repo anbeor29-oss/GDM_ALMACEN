@@ -11,67 +11,13 @@
  */
 import { Link } from 'react-router-dom';
 import {
-  Zap, Star, Rocket, Coins, Check,
   FileText, ScanText, FileUp, FileMinus2, Users, Boxes, BarChart3,
   ShieldCheck, LogIn, Wallet, Mail, Ban, QrCode,
   ClipboardCheck, Building2, FileSignature, Send,
   ChevronDown,
 } from 'lucide-react';
 import { useState } from 'react';
-import { GdmLogo } from '@/components/GdmLogo';
 
-const PLANS = [
-  {
-    code: 'PKG_100', name: 'Esencial',
-    price: '$399', stamps: 100, extra: '$2.50',
-    color: 'emerald', highlight: false,
-    icon: <Zap size={28} className="text-emerald-600" />,
-    bullets: [
-      '100 timbres CFDI 4.0 al mes',
-      'Reportes de cobranza, ventas y fiscal',
-      'Notas de crédito y complementos de pago',
-      'Multi-usuario (Admin + operativos)',
-    ],
-  },
-  {
-    code: 'PKG_200', name: 'Pyme',
-    price: '$699', stamps: 200, extra: '$2.25',
-    color: 'indigo', highlight: true,
-    icon: <Star size={28} className="text-indigo-600" />,
-    bullets: [
-      '200 timbres CFDI 4.0 al mes',
-      'Todo lo del plan Esencial',
-      'Importación de XMLs recibidos',
-      'Gestión de proveedores',
-      'Reporte de cobranza detallado',
-    ],
-  },
-  {
-    code: 'PKG_500', name: 'Empresarial',
-    price: '$1,399', stamps: 500, extra: '$2.00',
-    color: 'violet', highlight: false,
-    icon: <Rocket size={28} className="text-violet-600" />,
-    bullets: [
-      '500 timbres CFDI 4.0 al mes',
-      'Todo lo del plan Pyme',
-      'Prioridad en soporte',
-      'Backup mensual SAT en ZIP',
-      'Multi-empresa (multi-tenant)',
-    ],
-  },
-  {
-    code: 'PKG_FLEX', name: 'Uso libre',
-    price: 'Sin renta', stamps: null, extra: '$4.99',
-    color: 'slate', highlight: false,
-    icon: <Coins size={28} className="text-slate-600" />,
-    bullets: [
-      'Sin renta mensual',
-      'Timbre a $4.99 MXN + IVA',
-      'Ideal para bajo volumen (< 30/mes)',
-      'Sin compromiso de permanencia',
-    ],
-  },
-];
 
 const MODULES = [
   { icon: <ScanText size={22}/>,     title: 'Lector CIF',       desc: 'Sube el PDF de la Constancia de Situación Fiscal SAT y el sistema autollena RFC, razón social, régimen y CP.' },
@@ -177,15 +123,14 @@ export function PublicHomePage() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <GdmLogo size={40} className="shadow-md rounded-full shrink-0" />
+            <img src="/logo-almacen.png" alt="GDM Almacén" className="h-10 w-10 rounded-lg object-cover shadow-md shrink-0" />
             <div>
-              <p className="font-bold text-slate-800 tracking-tight leading-tight">GDM Facturación</p>
-              <p className="text-xs text-slate-500 leading-tight">CFDI 4.0 México · High Consulting</p>
+              <p className="font-bold text-slate-800 tracking-tight leading-tight">GDM Almacén</p>
+              <p className="text-xs text-slate-500 leading-tight">Inventarios · HCGM Advisors</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
             <nav className="hidden md:flex items-center gap-5 text-sm text-slate-600 font-medium">
-              <a href="#planes" className="hover:text-indigo-600 transition-colors">Planes</a>
               <a href="#faq" className="hover:text-indigo-600 transition-colors">FAQ</a>
               <a href="#contacto" className="hover:text-indigo-600 transition-colors">Contacto</a>
             </nav>
@@ -202,12 +147,12 @@ export function PublicHomePage() {
       {/* Hero */}
       <section className="max-w-6xl mx-auto px-6 py-12 md:py-20 text-center">
         <h1 className="text-4xl md:text-6xl font-bold text-slate-900 tracking-tight leading-tight">
-          Facturación <span className="bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent">CFDI 4.0</span><br/>
+          Control de <span className="bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent">almacén e inventarios</span><br/>
           sin complicaciones
         </h1>
         <p className="text-lg text-slate-600 mt-6 max-w-2xl mx-auto">
-          Emite, timbra y respalda tus facturas ante el SAT. Importa XMLs recibidos,
-          lee la Constancia de Situación Fiscal y genera PDFs listos para descarga en segundos.
+          Alimenta tu inventario con los XML de tus compras, controla existencias en varios
+          almacenes con kardex, órdenes de compra y punto de venta, y factura con timbrado real ante el SAT.
         </p>
         <div className="mt-8 flex items-center justify-center gap-3">
           <Link
@@ -216,12 +161,6 @@ export function PublicHomePage() {
           >
             <LogIn size={18} /> Entrar al sistema
           </Link>
-          <a
-            href="#planes"
-            className="inline-flex items-center gap-2 border-2 border-slate-300 hover:border-indigo-400 text-slate-700 px-8 py-3.5 rounded-lg font-semibold text-base transition-colors"
-          >
-            Ver planes
-          </a>
         </div>
       </section>
 
@@ -264,63 +203,6 @@ export function PublicHomePage() {
         </div>
       </section>
 
-      {/* Planes */}
-      <section id="planes" className="max-w-6xl mx-auto px-6 py-12">
-        <h2 className="text-3xl font-bold text-slate-900 text-center mb-2">Planes de timbrado</h2>
-        <p className="text-slate-600 text-center mb-10">Elige el plan que se adapta al volumen de tu operación</p>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {PLANS.map((p) => (
-            <div
-              key={p.code}
-              className={`bg-white rounded-xl border-2 p-5 flex flex-col relative overflow-hidden ${
-                p.highlight
-                  ? 'border-indigo-400 shadow-xl'
-                  : 'border-slate-200 shadow-sm hover:shadow-md transition-shadow'
-              }`}
-            >
-              {p.highlight && (
-                <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-bl-lg">
-                  Recomendado
-                </div>
-              )}
-              <div className={`w-14 h-14 bg-${p.color}-50 rounded-xl flex items-center justify-center mb-3`}>
-                {p.icon}
-              </div>
-              <h3 className={`text-xl font-bold text-${p.color}-700`}>{p.name}</h3>
-              <p className="text-xs text-slate-500 font-mono mb-3">{p.code}</p>
-              <div className="mb-1">
-                <span className="text-3xl font-bold text-slate-900">{p.price}</span>
-                {' '}
-                <span className="text-sm text-slate-500">
-                  MXN {p.stamps !== null ? '/ mes' : 'pay-per-stamp'}
-                </span>
-              </div>
-              <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-4">Precios más IVA</p>
-
-              {p.stamps !== null && (
-                <div className={`bg-${p.color}-50 rounded-lg px-3 py-2 mb-4 flex items-center justify-between`}>
-                  <span className="text-xs text-slate-600">Timbres/mes</span>
-                  <span className={`font-bold text-${p.color}-700`}>{p.stamps}</span>
-                </div>
-              )}
-
-              <ul className="space-y-1.5 flex-1 text-sm text-slate-700">
-                {p.bullets.map((b) => (
-                  <li key={b} className="flex items-start gap-2">
-                    <Check size={16} className={`text-${p.color}-600 shrink-0 mt-0.5`} />
-                    <span>{b}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-4 pt-4 border-t border-slate-100 text-[11px] text-slate-500">
-                Timbre extra: <b>{p.extra} MXN</b> <span className="text-slate-400">(+ IVA)</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* FAQ */}
       <section id="faq" className="max-w-4xl mx-auto px-6 py-14">
         <h2 className="text-3xl font-bold text-slate-900 text-center mb-2">Preguntas frecuentes</h2>
@@ -337,7 +219,7 @@ export function PublicHomePage() {
         <div className="max-w-4xl mx-auto px-6 py-14">
           <h2 className="text-3xl font-bold text-slate-900 text-center mb-2">¿Necesitas más información?</h2>
           <p className="text-slate-600 text-center mb-8">
-            Escríbenos y te ayudamos a elegir el plan ideal para tu operación.
+            Escríbenos y con gusto te ayudamos a poner tu inventario en marcha.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <a
@@ -363,14 +245,14 @@ export function PublicHomePage() {
               <p className="text-sm text-indigo-700 font-medium">hcgm.com.mx</p>
             </a>
             <a
-              href="#planes"
+              href="#faq"
               className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-shadow text-center"
             >
               <div className="w-11 h-11 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 mx-auto mb-3">
                 <ClipboardCheck size={22}/>
               </div>
-              <h3 className="font-bold text-slate-900 mb-1">Ver planes</h3>
-              <p className="text-sm text-indigo-700 font-medium">Comparativa completa</p>
+              <h3 className="font-bold text-slate-900 mb-1">Preguntas frecuentes</h3>
+              <p className="text-sm text-indigo-700 font-medium">Todo lo que debes saber</p>
             </a>
           </div>
         </div>
@@ -381,8 +263,8 @@ export function PublicHomePage() {
         <div className="max-w-6xl mx-auto px-6 py-16 text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">¿Listo para empezar?</h2>
           <p className="text-indigo-100 text-lg mb-8 max-w-xl mx-auto">
-            Ingresa al sistema para comenzar a emitir tus facturas. Si aún no tienes cuenta,
-            contáctanos para elegir el plan que mejor te acomode.
+            Ingresa al sistema para controlar tu inventario y facturar. Si aún no tienes cuenta,
+            contáctanos y con gusto te damos acceso.
           </p>
           <Link
             to="/login"
