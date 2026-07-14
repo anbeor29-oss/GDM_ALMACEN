@@ -87,7 +87,25 @@ async function bootstrap(db) {
     console.log(`[bootstrap] Admin creado: ${adminEmail} (rol ADMIN).`);
   }
 
-  console.log('[bootstrap] OK. Entra con BOOTSTRAP_ADMIN_EMAIL y su contraseña.');
+  // 3) SUPER_ADMIN de plataforma (crea usuarios y gestiona empresas).
+  //    company_id = NULL (no pertenece a una empresa). Misma contraseña.
+  const superEmail = env('BOOTSTRAP_SUPERADMIN_EMAIL', 'superadmin@gdmalmacen.mx').toLowerCase();
+  const superR = await db.query('SELECT id FROM users WHERE email = $1', [superEmail]);
+  if (superR.rows.length > 0) {
+    console.log(`[bootstrap] SUPER_ADMIN ${superEmail} ya existe -> no se recrea.`);
+  } else {
+    const salt = await bcryptjs.genSalt(10);
+    const passwordHash = await bcryptjs.hash(adminPassword, salt);
+    await db.query(
+      `INSERT INTO users
+         (email, password_hash, first_name, last_name, phone, role, company_id, is_active, failed_login_attempts)
+       VALUES ($1,$2,'Super','Admin',NULL,'SUPER_ADMIN',NULL, true, 0)`,
+      [superEmail, passwordHash]
+    );
+    console.log(`[bootstrap] SUPER_ADMIN creado: ${superEmail}.`);
+  }
+
+  console.log('[bootstrap] OK. Admin de empresa + SUPER_ADMIN listos (misma contraseña).');
 }
 
 (async () => {
