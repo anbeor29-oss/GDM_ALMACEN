@@ -10,7 +10,8 @@ export type ModuleKey =
   | 'products' | 'inventory' | 'warehouses' | 'physical_counts'
   | 'import_xml' | 'purchase_orders'
   | 'treasury' | 'suppliers'
-  | 'reports';
+  | 'reports'
+  | 'carta_porte';
 
 /** Módulos por grupo. `dashboard` es común a todos. */
 export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
@@ -18,8 +19,9 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
     'pos', 'invoices', 'credit_notes', 'customers',
     'products', 'inventory', 'warehouses', 'physical_counts',
     'import_xml', 'purchase_orders', 'treasury', 'suppliers', 'reports',
+    'carta_porte',
   ],
-  VENTAS:      ['pos', 'invoices', 'customers', 'credit_notes'],
+  VENTAS:      ['pos', 'invoices', 'customers', 'credit_notes', 'carta_porte'],
   INVENTARIOS: ['products', 'inventory', 'warehouses', 'physical_counts'],
   COMPRAS:     ['import_xml', 'purchase_orders'],
   TESORERIA:   ['treasury', 'suppliers'],

@@ -29,6 +29,7 @@ import {
   ClipboardCheck,
   Landmark,
   UsersRound,
+  Route as RouteIcon,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
@@ -96,6 +97,7 @@ export function Layout() {
               <NavItem to="/dashboard"    icon={<LayoutGrid size={20} />}  accent="sky"     label="Dashboard"        open={sidebarOpen} />
               {can('pos')             && <NavItem to="/pos"          icon={<Store size={20} />}       accent="amber"   label="Punto de venta"   open={sidebarOpen} />}
               {can('invoices')        && <NavItem to="/invoices"     icon={<FileText size={20} />}    accent="amber"   label="Facturas"         open={sidebarOpen} />}
+              {can('carta_porte')     && <NavItem to="/carta-porte"  icon={<RouteIcon size={20} />}   accent="sky"     label="Carta Porte"      open={sidebarOpen} />}
               {can('credit_notes')    && <NavItem to="/credit-notes" icon={<FileMinus2 size={20} />}  accent="rose"    label="Notas de Crédito" open={sidebarOpen} />}
               {can('customers')       && <NavItem to="/customers"    icon={<Users size={20} />}       accent="emerald" label="Clientes"         open={sidebarOpen} />}
               {can('products')        && <NavItem to="/products"     icon={<Boxes size={20} />}       accent="fuchsia" label="Productos"        open={sidebarOpen} />}

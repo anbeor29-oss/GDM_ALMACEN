@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Download, FileDown, CheckCircle, Eye, Stamp, X, Ban, Loader2, Wallet, Coins, History,
-  Mail, Send, FileText, FileMinus2, Pencil,
+  Mail, Send, FileText, FileMinus2, Pencil, Ship,
 } from 'lucide-react';
 import api from '@/services/api';
 import { Invoice } from '@/types';
@@ -250,6 +250,12 @@ export function InvoicesPage() {
                           <IconBtn color="sky" title="Editar factura (solo DRAFT)"
                             onClick={() => navigate(`/invoices/${invoice.id}/edit`)}>
                             <Pencil size={18} />
+                          </IconBtn>
+                        )}
+                        {canEdit && (
+                          <IconBtn color="sky" title="Complemento Carta Porte"
+                            onClick={() => navigate(`/invoices/${invoice.id}/carta-porte`)}>
+                            <Ship size={18} />
                           </IconBtn>
                         )}
                         {canStamp && (

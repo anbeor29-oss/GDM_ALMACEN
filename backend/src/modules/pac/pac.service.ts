@@ -147,7 +147,14 @@ export async function stampInvoice(companyId: string, invoiceId: string): Promis
   const credentials = getCredentials(companyId);
   let result: StampResult;
 
-  if (typeof provider.stampFromJson === 'function') {
+  // Si la factura trae Complemento Carta Porte, forzamos la ruta XML: el
+  // formato JSON de SW no expone (todavía) el complemento cartaporte31, así
+  // que ensamblamos el CFDI completo con CP incluido en generateCFDIXML.
+  const hasCP = (await query<{ id: number }>(
+    'SELECT id FROM carta_porte WHERE invoice_id = $1 LIMIT 1', [invoiceId],
+  )).rowCount ?? 0;
+
+  if (typeof provider.stampFromJson === 'function' && !hasCP) {
     const payload = await buildCFDIJson(companyId, invoiceId);
 
     // SW sandbox SOLO acepta RFC EKU9003173C9 (su CSD de prueba).

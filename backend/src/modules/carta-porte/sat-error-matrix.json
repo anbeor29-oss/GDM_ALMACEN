@@ -1,0 +1,850 @@
+[
+  {
+    "num": "1",
+    "elemento": "CFDI",
+    "atributo": "Version",
+    "caso": "El valor registrado debe ser “4.0”.",
+    "codigo": "CP101",
+    "error": "El valor registrado en este atributo es diferente a \"4.0\""
+  },
+  {
+    "num": "2",
+    "elemento": "CFDI",
+    "atributo": "Subtotal",
+    "caso": "Cuando el atributo “Comprobante:TipoDeComprobante” contenga el valor “T”, que corresponde a la descripción de “Traslado”, el valor de este atributo debe ser igual a cero.",
+    "codigo": "CP102",
+    "error": "El valor del atributo \"Comprobante:TipoDeComprobante\" es diferente de \"T\" o \"I\", o el valor registrado en el atributo \"Comprobante:Subtotal\" es diferente de cero."
+  },
+  {
+    "num": "3",
+    "elemento": "CFDI",
+    "atributo": "Moneda",
+    "caso": "Cuando el atributo “Comprobante:TipoDeComprobante” contenga el valor “T”, que corresponde a la descripción de “Traslado”, el valor de este atributo debe ser igual a “XXX”.",
+    "codigo": "CP103",
+    "error": "El valor del atributo \"Comprobante:TipoDeComprobante\" es diferente de \"T\" o el valor registrado en el atributo \"Comprobante:Moneda\" es diferente de \"XXX\"."
+  },
+  {
+    "num": "4",
+    "elemento": "CFDI",
+    "atributo": "Moneda",
+    "caso": "Si el atributo “Comprobante:TipoDeComprobante” contiene el valor “I” que corresponde a la descripción de “Ingreso”, el valor de este atributo debe ser diferente de “XXX”.",
+    "codigo": "CP104",
+    "error": "El valor del atributo \"Comprobante:TipoDeComprobante\" es diferente de \"I\" o el valor registrado en el atributo \"Comprobante:Moneda\" es igual a \"XXX\"."
+  },
+  {
+    "num": "5",
+    "elemento": "CFDI",
+    "atributo": "Total",
+    "caso": "Cuando el atributo “Comprobante:TipoDeComprobante” contenga el valor “T”, que corresponde a la descripción de “Traslado”, el valor de este atributo debe ser igual a cero.",
+    "codigo": "CP105",
+    "error": "El valor del atributo \"Comprobante:TipoDeComprobante\" es diferente de \"T\" o \"I\", o el valor registrado en el atributo \"Comprobante:Total\" es diferente de cero."
+  },
+  {
+    "num": "6",
+    "elemento": "CFDI",
+    "atributo": "ObjetoImp",
+    "caso": "El atributo debe contener un valor del  catálogo catCFDI:c_ObjetoImp donde  la clave corresponda con:\n\n• El valor “01”, No objeto de impuesto.\n• El valor “02”, Sí objeto de impuesto.\n• El valor “03”,  Sí objeto de impuesto y no obligado al desglose.\n• El valor \"04\", Sí objeto del impuesto y no causa impuesto.\n• El valor \"05\", Sí objeto del impuesto, IVA crédito PODEBI.\n\nCuando el valor sea \"02\", se deben desglosar los impuestos a nivel Concepto.",
+    "codigo": "CP106",
+    "error": "El valor del atributo \"Conceptos:Concepto:ObjetoImp\" no contiene un valor del catálogo catCFDI:c_ObjetoImp, o no contiene un valor."
+  },
+  {
+    "num": "7",
+    "elemento": "CFDI",
+    "atributo": "Receptor:Rfc",
+    "caso": "Cuando el atributo “Comprobante:TipoDeComprobante” contenga el valor “T”, que corresponde a la descripción de “Traslado”, el valor de este atributo debe ser igual al registrado en el atributo “Comprobante:Emisor:Rfc”.",
+    "codigo": "CP107",
+    "error": "El valor del atributo \"Comprobante:TipoDeComprobante\" es diferente de \"T\" y el valor registrado en el atributo \"Comprobante:Receptor:Rfc\" es diferente al  registrado en \"Comprobante:Emisor:Rfc\"."
+  },
+  {
+    "num": "8",
+    "elemento": "CFDI",
+    "atributo": "Receptor:Rfc",
+    "caso": "Cuando el atributo “Comprobante:TipoDeComprobante” contenga el valor “I”, que corresponde a la descripción de “Ingreso”, y no se utilice el RFC genérico, se podrá capturar el RFC del cliente, siempre y cuando éste se encuentre en la lista de RFC inscritos no cancelados del SAT (l_RFC).",
+    "codigo": "CP108",
+    "error": "El valor del atributo \"Comprobante:TipoDeComprobante\" es diferente de \"I\", o el valor del atributo \"Comprobante:Receptor:Rfc\" no corresponde con el RFC genérico, o no se encuentra en la lista de RFC inscritos no cancelados del SAT (l_RFC)."
+  },
+  {
+    "num": "9",
+    "elemento": "CFDI",
+    "atributo": "Concepto:ClaveProdServ",
+    "caso": "Cuando el atributo “Comprobante:TipoDeComprobante” contenga el valor “I”, que corresponde a la descripción de “Ingreso”, se debe registrar alguna de las siguientes claves de servicio:\n\n78101500, 78101501, 78101502, 78101503, 78101600, 78101601, 78101602, 78101603, 78101604, 78101700, 78101701, 78101702, 78101703, 78101704, 78101705, 78101706, 78101800, 78101801, 78101802, 78101803, 78101804,  78101806, 78101807, 78101900, 78101901, 78101902, 78101903, 78101904, 78101905, 78102200, 78102201, 78102203, 78102204, 78102205, 78121603, 78141500, 78141501, 84121806, 92121800, 92121801 o 92121802.",
+    "codigo": "CP109",
+    "error": "El valor del atributo \"Comprobante:TipoDeComprobante\", es diferente de \"I\" o el valor registrado en el atributo \"Conceptos:Concepto:ClaveProdServ\" es diferente de alguna de las claves de servicio requeridas."
+  },
+  {
+    "num": "10",
+    "elemento": "CFDI",
+    "atributo": "Concepto:ClaveProdServ",
+    "caso": "Cuando el atributo “Comprobante:TipoDeComprobante” contenga el valor “I”, que corresponde a la descripción de “Ingreso” y se registre alguna de las siguientes claves de productos relacionadas con el transporte de carga intermodal: \n\n78101900, 78101901, 78101902, 78101903 o 78101904.\n\nEn el complemento Carta Porte debe existir más de uno de los siguientes nodos:\n• \"Mercancias:Autotransporte\",\n• “Mercancias:TransporteMaritimo\",\n• \"Mercancias:TransporteAereo\",\n• \"Mercancias:TransporteFerroviario\".",
+    "codigo": "CP110",
+    "error": "El valor del atributo \"Comprobante:TipoDeComprobante\", es diferente de \"I\", o el valor registrado en el atributo \"Conceptos:Concepto:ClaveProdServ\", es diferente de alguna de las claves relacionadas con el transporte intermodal o existe un solo nodo de transporte."
+  },
+  {
+    "num": "11",
+    "elemento": "CFDI",
+    "atributo": "Receptor:UsoCFDI",
+    "caso": "Cuando el atributo \"Comprobante:TipoDeComprobante\" contenga el valor \"T\", que corresponde a la descripción de \"Traslado\", el valor de este atributo debe ser igual a “S01” con descripción “Sin efectos fiscales.” para  CFDI 4.0 y posteriores.",
+    "codigo": "CP111",
+    "error": "El valor registrado en el atributo \"Receptor:UsoCFDI\", es  distinto de \"S01\" - \"Sin efectos fiscales\"."
+  },
+  {
+    "num": "Errores para el complemento Carta Porte versión 3.1",
+    "elemento": "",
+    "atributo": "",
+    "caso": "",
+    "codigo": "",
+    "error": ""
+  },
+  {
+    "num": "12",
+    "elemento": "CartaPorte",
+    "atributo": "CartaPorte",
+    "caso": "El nodo \"CartaPorte\" se debe registrar como un nodo hijo del nodo Complemento en el CFDI y solo debe existir uno.",
+    "codigo": "CP112",
+    "error": "El nodo  \"CartaPorte\" no se registró como nodo hijo del nodo complemento del CFDI o existe más de uno."
+  },
+  {
+    "num": "13",
+    "elemento": "CartaPorte",
+    "atributo": "CartaPorte",
+    "caso": "Este complemento puede coexistir con los siguientes complementos: Timbre Fiscal Digital, Comercio Exterior, Persona Física Integrante de Coordinado, Impuestos locales, Leyendas Fiscales y aquellos complementos Concepto en los que se defina su relación con este complemento.",
+    "codigo": "CP113",
+    "error": "El complemento registrado de manera adicional, no corresponde con los complementos con los cuales puede coexistir."
+  },
+  {
+    "num": "14",
+    "elemento": "CartaPorte",
+    "atributo": "CartaPorte",
+    "caso": "Cuando el atributo “Comprobante:TipoDeComprobante” sea distinto de \"I\" o \"T\", este complemento no debe existir.",
+    "codigo": "CP114",
+    "error": "El valor registrado en el atributo \"Comprobante:TipoDeComprobante\" es diferente de \"I\" o \"T\"."
+  },
+  {
+    "num": "15",
+    "elemento": "CartaPorte",
+    "atributo": "Version",
+    "caso": "El valor registrado en este atributo debe ser igual a \"3.1\".",
+    "codigo": "CP115",
+    "error": "El valor registrado en este atributo es diferente a \"3.1\""
+  },
+  {
+    "num": "16",
+    "elemento": "CartaPorte",
+    "atributo": "RegimenesAduaneros",
+    "caso": "Cuando el atributo “TranspInternac” contenga el valor “Sí”, este nodo  debe existir, en caso contrario se debe omitir.",
+    "codigo": "CP116",
+    "error": "El nodo \"CartaPorte:RegimenesAduaneros\" no debe existir cuando el atributo \"CartaPorte:TranspInternac\" tiene un valor distinto de \"SÍ\""
+  },
+  {
+    "num": "17",
+    "elemento": "CartaPorte",
+    "atributo": "RegimenesAduaneros:RegimenAduaneroCCP:RegimenAduanero",
+    "caso": "Cuando el atributo “EntradaSalidaMerc” contenga un valor, este atributo debe existir y contener un valor del catálogo catCartaPorte:c_RegimenAduanero.",
+    "codigo": "CP117",
+    "error": "El atributo \"RegimenesAduaneros:RegimenAduaneroCCP:RegimenAduanero\" contiene un valor del catálogo catCartaPorte:c_RegimenAduanero y el atributo \"EntradaSalidaMerc\" esta vacío."
+  },
+  {
+    "num": "18",
+    "elemento": "CartaPorte",
+    "atributo": "RegimenesAduaneros:RegimenAduaneroCCP:RegimenAduanero",
+    "caso": "Cuando el atributo \"CartaPorte:EntradaSalidaMerc\" contenga el valor \"Entrada\", este atributo debe contener un valor del catálogo catCartaPorte:c_RegimenAduanero donde la columna ImpoExpo contenga el valor \"Entrada\" o \"Salida,Entrada\".",
+    "codigo": "CP118",
+    "error": "El valor registrado no coincide con alguno de los valores del catálogo catCartaPorte:c_RegimenAduanero para una importación."
+  },
+  {
+    "num": "19",
+    "elemento": "CartaPorte",
+    "atributo": "EntradaSalidaMerc",
+    "caso": "Cuando el atributo “CartaPorte:TranspInternac” contenga el valor “Sí”, se debe capturar información en este atributo.",
+    "codigo": "CP119",
+    "error": "El valor registrado en el atributo \"CartaPorte:TranspInternac\" es igual a \"Sí\" y no se registra el atributo \"CartaPorte:EntradaSalidaMerc\" con información."
+  },
+  {
+    "num": "20",
+    "elemento": "CartaPorte",
+    "atributo": "EntradaSalidaMerc",
+    "caso": "Si el atributo “CartaPorte:TranspInternac” contiene el valor “No”, este atributo no debe existir.",
+    "codigo": "CP120",
+    "error": "El valor registrado en el atributo “CartaPorte:TranspInternac” es igual a \"No\" y se registra el atributo \"CartaPorte:EntradaSalidaMerc\" con información."
+  },
+  {
+    "num": "21",
+    "elemento": "CartaPorte",
+    "atributo": "PaisOrigenDestino",
+    "caso": "Cuando el atributo “CartaPorte:TranspInternac” contenga el valor “Sí”, este atributo debe contener un valor del catálogo catCFDI:c_Pais, que corresponda al país de origen o destino de las mercancías que se están trasladando en los distintos medios de transporte.",
+    "codigo": "CP121",
+    "error": "El valor registrado en el atributo \"CartaPorte:TranspInternac\" es igual a \"Sí\" y el valor registrado en el atributo \"CartaPorte:PaisOrigenDestino\" no corresponde con alguna de las claves del catálogo catCFDI:c_Pais o no contiene valor alguno."
+  },
+  {
+    "num": "22",
+    "elemento": "CartaPorte",
+    "atributo": "PaisOrigenDestino",
+    "caso": "Si el atributo “CartaPorte:TranspInternac” contiene el valor “No”, este atributo no debe existir.",
+    "codigo": "CP122",
+    "error": "El valor registrado en el atributo “CartaPorte:TranspInternac” es igual a \"No\" y se registró información en  el atributo \"CartaPorte:PaisOrigenDestino\"."
+  },
+  {
+    "num": "23",
+    "elemento": "CartaPorte",
+    "atributo": "ViaEntradaSalida",
+    "caso": "Cuando en el atributo “CartaPorte:TranspInternac” se registre el valor “Sí”, este atributo debe contener una clave del catálogo catCartaPorte:c_CveTransporte, que corresponda al medio de transporte en el que se están trasladando los bienes y/o mercancías.",
+    "codigo": "CP123",
+    "error": "El valor registrado en el atributo “CartaPorte:TranspInternac” es igual a \"Sí\" y el valor registrado en el atributo \"CartaPorte:ViaEntradaSalida\" no corresponde con alguna de las claves del catálogo catCartaPorte:c_CveTransporte o no se registró valor alguno."
+  },
+  {
+    "num": "24",
+    "elemento": "CartaPorte",
+    "atributo": "ViaEntradaSalida",
+    "caso": "Si el atributo “CartaPorte:TranspInternac” contiene el valor “No”, este atributo no debe existir.",
+    "codigo": "CP124",
+    "error": "El valor registrado en el atributo “CartaPorte:TranspInternac” es igual a \"No\" y se registra el atributo \"CartaPorte:ViaEntradaSalida\" con información."
+  },
+  {
+    "num": "25",
+    "elemento": "CartaPorte",
+    "atributo": "TotalDistRec",
+    "caso": "El atributo \"CartaPorte:TotalDistRec\" debe contener un valor siempre que existan los nodos “Mercancias:Autotransporte” o “Mercancias:TransporteFerroviario”, en caso contrario este atributo no debe existir.",
+    "codigo": "CP125",
+    "error": "No se registró valor alguno en el atributo \"CartaPorte:TotalDistRec\" o se registró un nodo diferente a \"Autotransporte\" o \"TransporteFerroviario\"."
+  },
+  {
+    "num": "26",
+    "elemento": "CartaPorte",
+    "atributo": "TotalDistRec",
+    "caso": "El valor registrado en el atributo \"CartaPorte:TotalDistRec\" deberá corresponder con la suma de los atributos \"Ubicaciones:Ubicacion:DistanciaRecorrida\", siempre que exista el atributo “Ubicaciones:Ubicacion:TipoUbicacion” con valor “Destino”.",
+    "codigo": "CP126",
+    "error": "El valor registrado no coincide con la suma de los atributos \"Ubicaciones:Ubicación:DistanciaRecorrida\"."
+  },
+  {
+    "num": "27",
+    "elemento": "CartaPorte",
+    "atributo": "UbicacionPoloOrigen\nUbicacionPoloDestino",
+    "caso": "Cuando  se registre el el valor “Sí”  en el atributo \"CartaPorte:RegistroISTMO\", los atributos UbicacionPoloOrigen y UbicacionPoloDestino deben existir y contener un valor.\n\nCuando el atributo \"CartaPorte:RegistroISTMO\" no contenga un valor , los atributos \"UbicacionPoloOrigen\" y \"UbicacionPoloDestino\" no deben existir.",
+    "codigo": "CP127",
+    "error": "Los atributos UbicacionPoloOrigen y UbicacionPoloDestino no deben existir cuando no se registre un valor en el atributo  \"CartaPorte:RegistroISTMO\"."
+  },
+  {
+    "num": "28",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicaciones:Ubicacion",
+    "caso": "Cuando se registre el nodo “Mercancias:TransporteFerroviario”, debe existir al menos un nodo “Ubicaciones:Ubicacion”, donde el atributo “Ubicaciones:Ubicacion:TipoUbicacion” contenga el valor “Origen”.",
+    "codigo": "CP128",
+    "error": "No existe el nodo \"Ubicaciones:Ubicacion\" con el atributo \"Ubicaciones:Ubicacion:TipoUbicacion\" que contenga el valor \"Origen\"."
+  },
+  {
+    "num": "29",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicaciones:Ubicacion",
+    "caso": "Cuando se registre el nodo “Mercancias:TransporteFerroviario”, deben existir al menos 5 nodos “Ubicaciones:Ubicacion”, donde el atributo “Ubicaciones:Ubicacion:TipoUbicacion” contenga el valor “Destino”.",
+    "codigo": "CP129",
+    "error": "No se registraron los 5 nodos \"Ubicaciones:Ubicacion\" donde el atributo \"Ubicaciones:Ubicacion:TipoUbicacion\" contenga el valor \"Destino\"."
+  },
+  {
+    "num": "30",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicaciones:Ubicacion",
+    "caso": "Cuando exista alguno de los nodos “Mercancias:Autotransporte”, “Mercancias:TransporteMaritimo” o “Mercancias:TransporteAereo”, deben existir al menos 2 nodos “Ubicaciones:Ubicacion”, donde existan los atributos “Ubicaciones:Ubicacion:TipoUbicacion” uno  con el valor “Origen” y otro con el valor “Destino”.",
+    "codigo": "CP130",
+    "error": "El número de nodos de \"Ubicaciones:Ubicacion\" es menor a \"2\", o no existe al menos un atributo “Ubicaciones:Ubicacion:TipoUbicacion” con el valor \"Origen\" y \"Destino\", respectivamente."
+  },
+  {
+    "num": "31",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:IDUbicacion",
+    "caso": "Cuando exista el nodo “Mercancias:Mercancia:CantidadTransporta”, se debe registrar este atributo, en caso contrario se puede omitir.",
+    "codigo": "CP131",
+    "error": "No existe el atributo \"Ubicacion:IDUbicacion\" o está vacío, y  se registró el nodo “Mercancias:Mercancia:CantidadTransporta”."
+  },
+  {
+    "num": "32",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:RFCRemitenteDestinatario",
+    "caso": "Cuando el valor registrado en este atributo no sea un RFC genérico, el RFC debe encontrarse en la lista del RFC inscritos no cancelados del SAT (l_RFC).",
+    "codigo": "CP132",
+    "error": "El valor registrado en el  atributo \"Ubicaciones:Ubicacion:RFCRemitenteDestinatario\" es incorrecto o no se encuentra en la lista de RFC inscritos no cancelados del SAT (l_RFC)."
+  },
+  {
+    "num": "33",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:NumRegIdTrib",
+    "caso": "Cuando el valor registrado en el atributo “Ubicaciones:Ubicacion:RFCRemitenteDestinatario” sea el RFC genérico extranjero (XEXX010101000), este atributo debe contener un valor, en caso contrario se debe omitir.",
+    "codigo": "CP133",
+    "error": "No se registró el atributo \"Ubicacion:RFCRemitenteDestinatario\" o no contiene un valor."
+  },
+  {
+    "num": "34",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:ResidenciaFiscal",
+    "caso": "Este atributo debe existir siempre que el atributo “Ubicaciones:Ubicacion:NumRegIdTrib” contenga un valor, en caso contrario se debe omitir.\nLa clave registrada en este atributo debe encontrarse en el catálogo catCFDI:c_Pais y debe ser distinta a “MEX”.",
+    "codigo": "CP134",
+    "error": "No existe información en el atributo \"Ubicacion:NumRegIdTrib\", la clave registrada en el atributo \"Ubicacion:ResidenciaFiscal\" no existe en el catálogo catCFDI:c_Pais o el valor registrado es igual a \"MEX\"."
+  },
+  {
+    "num": "35",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:NumEstacion",
+    "caso": "Cuando exista el nodo “Mercancias:Autotransporte”, este atributo se debe omitir.",
+    "codigo": "CP135",
+    "error": "No debe existir información en el atributo \"Ubicacion:NumEstacion\", siempre que se registre el nodo “Mercancias:Autotransporte”."
+  },
+  {
+    "num": "36",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:NumEstacion",
+    "caso": "Este atributo debe contener un valor de la columna “Clave identificación” del catálogo catCartaPorte:c_Estaciones donde la columna “Clave transporte” corresponda con:\n\n• El valor “02”, cuando exista el nodo “Mercancias:TransporteMaritimo”.\n• El valor “03”, cuando exista el nodo “Mercancias:TransporteAereo”.\n• El valor “04”, cuando exista el nodo “Mercancias:TransporteFerroviario”.",
+    "codigo": "CP136",
+    "error": "El valor registrado en el atributo \"Ubicacion:NumEstacion\" contiene un valor no permitido o el valor registrado no corresponde con alguna de las claves \"02\",\"03\" o \"04\"."
+  },
+  {
+    "num": "37",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:NombreEstacion",
+    "caso": "Cuando el atributo “Ubicaciones:Ubicacion:NumEstacion” contenga un valor, este atributo debe existir y la descripción debe corresponder con el catálogo catCartaPorte:c_Estaciones, en caso contrario se debe omitir.",
+    "codigo": "CP137",
+    "error": "El atributo \"Ubicacion:NombreEstacion\" no contiene un valor o no corresponde con una clave del catálogo catCartaPorte:_Estaciones."
+  },
+  {
+    "num": "38",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:NombreEstacion",
+    "caso": "Cuando el atributo “Ubicacion:NumEstacion”, sea la referida a una extranjera, se debe registrar el nombre de dicha estación y no la descripción contenida en el catálogo.",
+    "codigo": "CP138",
+    "error": "La descripción \"Extranjera\" no es un valor válido para el nombre de la estación."
+  },
+  {
+    "num": "39",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:NavegacionTrafico",
+    "caso": "Cuando exista el nodo “Mercancias:TransporteMaritimo”, este atributo debe contener un valor, en caso contrario se debe omitir.",
+    "codigo": "CP139",
+    "error": "No se registró información en el atributo \"Ubicacion:NavegacionTrafico\" o se registró información en dicho atributo y no existe el nodo \"Mercancias:TransporteMaritimo\"."
+  },
+  {
+    "num": "40",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:TipoEstacion",
+    "caso": "Cuando la clave registrada en el atributo “Ubicaciones:Ubicacion:NumEstacion”, corresponda a una estación extranjera, este atributo no debe existir; en caso contrario y siempre que exista alguno de los siguientes nodos “Mercancias:TransporteFerroviario”,  “Mercancias:TransporteMaritimo” o “Mercancias:TransporteAereo”, se debe registrar una clave del catálogo catCartaPorte:c_TipoEstacion.",
+    "codigo": "CP140",
+    "error": "No se registró una clave en el atributo “Ubicacion:TipoEstacion” o no corresponde con el catálogo catCartaPorte:c_TipoEstacion, o se registró el nodo \"Mercancias:Autotransporte\" y este atributo “Ubicacion:TipoEstacion” no debe existir, o el valor registrado en el atributo “Ubicacion:NumEstacion”, corresponde a una estación extranjera."
+  },
+  {
+    "num": "41",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:DistanciaRecorrida",
+    "caso": "Este atributo debe existir cuando se registre alguno de los siguientes nodos “Mercancias:Autotransporte” o “Mercancias:TransporteFerroviario”, y el atributo “Ubicaciones:Ubicación:TipoUbicacion” contenga el valor “Destino”; en caso contrario se debe omitir.",
+    "codigo": "CP141",
+    "error": "No existe el atributo \"Ubicacion:DistanciaRecorrida\" o no contiene un valor, o se registró dicho atributo cuando existe el nodo “Mercancias:Autotransporte” o “Mercancias:TransporteFerroviario” cuando el atributo “Ubicación:TipoUbicacion” contiene el valor \"Origen\"."
+  },
+  {
+    "num": "42",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:Domicilio",
+    "caso": "Cuando exista el nodo “Mercancias:TransporteFerroviario” y en el atributo “Ubicaciones:Ubicacion:TipoEstacion”, se registre el valor “02” con descripción “Intermedia”, este nodo no debe existir; en caso contrario se debe registrar la información correspondiente en dicho nodo.",
+    "codigo": "CP142",
+    "error": "El nodo \"Ubicacion:Domicilio\" no debe existir cuando el valor registrado en el atributo “Ubicacion:TipoEstacion” sea igual a \"02\" y exista el nodo \"Mercancias:TransporteFerroviario\"."
+  },
+  {
+    "num": "43",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:Domicilio:Colonia",
+    "caso": "Cuando la clave del país sea distinta a \"MEX\", se debe registrar texto libre, en caso contrario en el atributo se debe registrar un valor en el atributo “Ubicaciones:Ubicacion:Domicilio:Colonia”, debe contener una clave del catálogo catCFDI:c_Colonia, donde la columna “c_CodigoPostal”, debe ser igual a la clave registrada en el atributo “Ubicaciones:Ubicacion:Domicilio:CodigoPostal”.",
+    "codigo": "CP143",
+    "error": "El atributo \"Ubicaciones:Ubicación:Domicilio:Colonia\" no contiene una clave del catálogo de catCFDI:c_Colonia cuando la clave del país es \"MEX\" o la clave registrada no corresponde con el valor del atributo \"Ubicaciones:Ubicacion:Domicilio:CodigoPostal\", o este está vacío."
+  },
+  {
+    "num": "44",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:Domicilio:Localidad",
+    "caso": "Cuando el valor registrado en el atributo “Ubicaciones:Ubicacion:Domicilio:Pais” sea \"MEX\", este atributo debe contener un valor del catálogo catCFDI:c_Localidad, donde la columna c_Estado, coincida con el valor registrado en el atributo “Ubicaciones:Ubicacion:Domicilio:Estado”, en caso contrario puede registrar texto libre.",
+    "codigo": "CP144",
+    "error": "El atributo \"Ubicaciones:Ubicación:Domicilio:Localidad\" no contiene una clave del catálogo de catCFDI:c_Localidad cuando la clave del país es \"MEX\" o la clave registrada no corresponde con el valor del atributo \"Ubicaciones:Ubicacion:Domicilio:Estado\", o este está vacío."
+  },
+  {
+    "num": "45",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:Domicilio:Municipio",
+    "caso": "Cuando la clave del país sea distinta a \"MEX\", se debe registrar texto libre; en caso contrario se debe registrar un valor en el atributo “Ubicaciones:Ubicacion:Domicilio:Municipio” debe contener una clave del catálogo catCFDI:c_Municipio, donde la columna “c_Estado”, debe ser igual a la clave registrada en el atributo “Ubicaciones:Ubicacion:Domicilio:Estado”.",
+    "codigo": "CP145",
+    "error": "El atributo \"Ubicaciones:Ubicación:Domicilio:Municipio\" no contiene una clave del catálogo de catCFDI:c_Municipio cuando la clave del país es \"MEX\" o la clave registrada no corresponde con el atributo \"Ubicaciones:Ubicacion:Domicilio:Estado\", o este está vacío."
+  },
+  {
+    "num": "46",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:Domicilio:Estado",
+    "caso": "Cuando el valor registrado en el atributo “Ubicaciones:Ubicacion:Domicilio:Pais” sea \"MEX”, “USA” o “CAN\", este atributo debe contener un valor del catálogo catCFDI:c_Estado, donde la columna “c_Pais”, coincida con el valor registrado en el atributo “Ubicaciones:Ubicacion:Domicilio:Pais”, en caso contrario se debe registrar texto libre.",
+    "codigo": "CP146",
+    "error": "El atributo \"Ubicaciones:Ubicación:Domicilio:Estado\" no contiene una clave del catálogo de cat:CFDI:c_Estado cuando la clave del país es \"MEX\", \"USA\" o \"CAN\".  o la clave registrada no corresponde con el valor del atributo \"Ubicaciones:Ubicacion:Domicilio:Pais\", o este está vacío."
+  },
+  {
+    "num": "47",
+    "elemento": "CartaPorte",
+    "atributo": "Ubicacion:Domicilio:CodigoPostal",
+    "caso": "Cuando el valor registrado en el atributo “Ubicaciones:Ubicacion:Domicilio:Pais” sea \"MEX”, este atributo debe contener un valor del catálogo catCFDI:c_CodigoPostal, donde:\n\n•\tLa clave de la columna “c_Estado”, debe coincidir con el valor registrado en el atributo “Ubicaciones:Ubicacion:Domicilio:Estado”, \n•\tCuando se registre un valor en el atributo Ubicaciones:Ubicacion:Domicilio:Municipio”, este valor debe corresponder a la clave de la columna de clave “c_Municipio”.\n•\tCuando se registre un valor en el atributo \"Ubicaciones:Ubicacion:Domicilio:Localidad”, este valor debe corresponder a la clave de la columna de clave “c_Localidad”. \n\nEn caso contrario se debe registrar texto libre.",
+    "codigo": "CP147",
+    "error": "El atributo \"Ubicaciones:Ubicacion:Domicilio:CodigoPostal\" no contiene una clave del catálogo de catCFDI:c_CodigoPostal cuando la clave del país es \"MEX\" o la clave registrada no corresponde con el valor del atributo \"Ubicaciones:Ubicacion:Domicilio:Estado\", \"Ubicaciones:Ubicacion:Domicilio:Municipio\" y \"Ubicaciones:Ubicacion:Domicilio:Localidad\"; o este está vacío."
+  },
+  {
+    "num": "48",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancias",
+    "caso": "Se debe validar que al menos se registre un nodo “Mercancias:Mercancia” y alguno de los siguientes nodos:\n\n• \"Mercancias:Autotransporte\",\n• “Mercancias:TransporteMaritimo\",\n• \"Mercancias:TransporteAereo\",\n• \"Mercancias:TransporteFerroviario\".",
+    "codigo": "CP148",
+    "error": "No se registró el nodo \"Mercancias:Mercancia\" o no existe alguno de los siguientes nodos: \"Mercancias:Autotransporte\", \"Mercancias:TransporteMaritimo\", \"Mercancias:TransporteAereo\" o \"Mercancias:TransporteFerroviario\"; o dicho nodos están vacíos."
+  },
+  {
+    "num": "49",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancias:PesoBrutoTotal",
+    "caso": "El valor registrado en este atributo debe ser igual a la suma de los atributos “Mercancias:Mercancia:PesoEnKg” siempre que existan alguno de los siguientes nodos:\n\n• \"Mercancias:Autotransporte\",\n• \"Mercancias:TransporteAereo\",\n• \"Mercancias:TransporteFerroviario\".",
+    "codigo": "CP149",
+    "error": "El atributo \"Mercancias:PesoBrutoTotal\" no existe o el valor de este atributo no corresponde a la suma de los atributos \"Mercancias:Mercancia:PesoEnKg\"."
+  },
+  {
+    "num": "50",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancias:PesoBrutoTotal",
+    "caso": "Para el caso del nodo “Mercancias:TransporteMaritimo”, el valor de este atributo debe ser igual a la suma de los atributos “Mercancias:Mercancia:DetalleMercancia:PesoBruto”, por cada nodo “Mercancias:Mercancia” registrado.",
+    "codigo": "CP150",
+    "error": "El atributo \"Mercancias:PesoBrutoTotal\" no existe o el valor de este atributo no corresponde a la suma de los atributos \"DetalleMercancia:PesoBruto\" por cada nodo “Mercancias:Mercancia” registrado."
+  },
+  {
+    "num": "51",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancias:PesoNetoTotal",
+    "caso": "Cuando exista el nodo “Mercancias:TransporteMaritimo”, el valor de este atributo debe ser igual a la suma de los valores registrados en los atributos “Mercancia:DetalleMercancia:PesoNeto”.",
+    "codigo": "CP151",
+    "error": "El atributo \"Mercancias:PesoNetoTotal\" no existe o el valor de este atributo no corresponde a la suma de los atributos \"DetalleMercancia:PesoNeto\" por cada nodo “Mercancias:Mercancia” registrado."
+  },
+  {
+    "num": "52",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancias:PesoNetoTotal",
+    "caso": "Cuando exista el nodo “Mercancias:TransporteFerroviario”, el valor de este atributo debe ser igual a la suma de los valores registrados en los atributos “TransporteFerroviario:Carro:ToneladasNetasCarro”.",
+    "codigo": "CP152",
+    "error": "El atributo \"Mercancias:PesoNetoTotal\" no existe o el valor de este atributo no corresponde a la suma de los atributos \"Carro:ToneladasNetasCarro\" cuando existe el nodo \"Mercancias:TransporteFerroviario\"."
+  },
+  {
+    "num": "53",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancias:LogisticaInversaRecoleccionDevolucion",
+    "caso": "Cuando exista el nodo \"Mercancias:Autotransporte\" el  campo Mercancias:LogisticaInversaRecoleccionDevolucion puede existir, en cualquier otro caso se debe omitir.",
+    "codigo": "CP153",
+    "error": "No existe la seccion Autotransporte, el atributo Mercancias:LogisticaInversaRecoleccionDevolucion no debe contener un valor."
+  },
+  {
+    "num": "54",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancias:NumTotalMercancias",
+    "caso": "El valor de este atributo debe ser igual al número de elementos “Mercancias:Mercancia”, que se registren en el complemento.",
+    "codigo": "CP154",
+    "error": "El valor registrado no coincide con el número de elementos \"Mercancias:Mercancia\" que se registraron en el complemento."
+  },
+  {
+    "num": "55",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:MaterialPeligroso",
+    "caso": "Cuando el valor registrado en el atributo “Mercancias:Mercancia:BienesTransp” del catálogo catCartaPorte:c_ClaveProdServCP, contenga en la columna “Material peligroso” los valores “0,1” o “1”, este atributo debe existir, en caso contrario se debe omitir.",
+    "codigo": "CP155",
+    "error": "El valor registrado en el atributo \"Mercancia:MaterialPeligroso\" no es válido o el valor registrado en el atributo “Mercancias:Mercancia:BienesTransp”  contiene el valor \"0\" (cero) en la columna \"Material peligroso\" del catálogo catCartaPorte:c_ClaveProdServCP."
+  },
+  {
+    "num": "56",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:CveMaterialPeligroso",
+    "caso": "Cuando el valor registrado en el atributo “Mercancias:Mercancia:MaterialPeligroso” es “Sí”, este atributo debe contener una clave del catCartaPorte:c_MaterialPeligroso; en caso contrario no debe existir.",
+    "codigo": "CP156",
+    "error": "El valor registrado en el atributo \"Mercancia:CveMaterialPeligroso\" es diferente a las establecidas en el catálogo catCartaPorte:c_MaterialPeligroso o no existe dicho atributo."
+  },
+  {
+    "num": "57",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:Embalaje",
+    "caso": "Este atributo debe existir siempre que el atributo “Mercancias:Mercancia:CveMaterialPeligroso”, contenga un valor, en caso contrario este atributo debe omitirse.",
+    "codigo": "CP157",
+    "error": "El atributo \"Mercancia:Embalaje\" no existe o el valor registrado no coincide con una clave del catálogo catCartaPorte:c_TipoEmbalaje o no existe el atributo \"Mercancias:Mercancia:CveMaterialPeligroso\" para que dicho atributo sea registrado."
+  },
+  {
+    "num": "58",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:SectorCOFEPRIS",
+    "caso": "Este atributo puede contener un valor del catálogo catCartaPorte:c_SectorCOFEPRIS",
+    "codigo": "CP158",
+    "error": "El valor registrado en el atributo \"Mercancia:SectorCOFEPRIS\" no coincide con una clave del catálogo catCartaPorte:c_SectorCOFEPRIS."
+  },
+  {
+    "num": "59",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:SectorCOFEPRIS",
+    "caso": "Cuando el atributo \"Mercancias:Mercancia:SectorCOFEPRIS\" contenga el valor “01” del catálogo catCartaPorte:c_SectorCOFEPRIS con descripción “Medicamentos”, los atributos “Mercancias:Mercancia:DenominacionGenericaProd”, “Mercancias:Mercancia:DenominacionDistintivaProd”, “Mercancias:Mercancia:Fabricante”, “Mercancias:Mercancia:FechaCaducidad”, “Mercancias:Mercancia:LoteMedicamento”, “Mercancias:Mercancia:FormaFarmaceutica”, “Mercancias:Mercancia:CondicionesEspTransp” y “Mercancias:Mercancia:RegistroSanitarioFolioAutorizacion” deben existir y contener un valor, en caso contrario se deben omitir.",
+    "codigo": "CP159",
+    "error": "Los atributos “Mercancias:Mercancia:DenominacionGenericaProd”, “Mercancias:Mercancia:DenominacionDistintivaProd”, “Mercancias:Mercancia:Fabricante”, “Mercancias:Mercancia:FechaCaducidad”, “Mercancias:Mercancia:LoteMedicamento”, “Mercancias:Mercancia:FormaFarmaceutica”, “Mercancias:Mercancia:CondicionesEspTransp” y “Mercancias:Mercancia:RegistroSanitarioFolioAutorizacion”  deben contener un valor cuando el atributo \"Mercancias:Mercancia:SectorCOFEPRIS\" contiene el valor \"01\"- \"Medicamentos\"."
+  },
+  {
+    "num": "60",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:SectorCOFEPRIS",
+    "caso": "Cuando el atributo \"Mercancias:Mercancia:SectorCOFEPRIS\" contenga el valor “02” del catálogo catCartaPorte:c_SectorCOFEPRIS con descripción “Precursores y químicos de uso dual”, los atributos “Mercancias:Mercancia:NombreIngredienteActivo”, “Mercancias:Mercancia:NomQuimico”, “Mercancias:Mercancia:Fabricante”, “Mercancias:Mercancia:FechaCaducidad”, “Mercancias:Mercancia:LoteMedicamento”, “Mercancias:Mercancia:FormaFarmaceutica” y “Mercancias:Mercancia:CondicionesEspTransp” deben existir y contener un valor, en caso contrario se deben omitir.",
+    "codigo": "CP160",
+    "error": "Los atributos \"Mercancias:Mercancia:NombreIngredienteActivo”, “Mercancias:Mercancia:NomQuimico”, “Mercancias:Mercancia:Fabricante”, “Mercancias:Mercancia:FechaCaducidad”, “Mercancias:Mercancia:LoteMedicamento”, “Mercancias:Mercancia:FormaFarmaceutica” y “Mercancias:Mercancia:CondicionesEspTransp”deben de contener un valor cuando el atributo \"Mercancias:Mercancia:SectorCOFEPRIS\" contiene el valor \"02\" con descripción \"Precursores y químicos de uso dual."
+  },
+  {
+    "num": "61",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:SectorCOFEPRIS",
+    "caso": "Cuando  el atributo \"Mercancias:Mercancia:SectorCOFEPRIS\" contenga el valor “03” del catálogo catCartaPorte:c_SectorCOFEPRIS con descripción “Psicotrópicos y estupefacientes”, los atributos “Mercancias:Mercancia:DenominacionGenericaProd”, “Mercancias:Mercancia:DenominacionDistintivaProd”, “Mercancias:Mercancia:Fabricante”, “Mercancias:Mercancia:FechaCaducidad”, “Mercancias:Mercancia:LoteMedicamento”, “Mercancias:Mercancia:FormaFarmaceutica”, “Mercancias:Mercancia:CondicionesEspTransp” y “Mercancias:Mercancia:RegistroSanitarioFolioAutorizacion” deben existir y contener un valor, en caso contrario se deben omitir.",
+    "codigo": "CP161",
+    "error": "Los atributos “Mercancias:Mercancia:DenominacionGenericaProd”, “Mercancias:Mercancia:DenominacionDistintivaProd”, “Mercancias:Mercancia:Fabricante”, “Mercancias:Mercancia:FechaCaducidad”, “Mercancias:Mercancia:LoteMedicamento”, “Mercancias:Mercancia:FormaFarmaceutica”, “Mercancias:Mercancia:CondicionesEspTransp” y “Mercancias:Mercancia:RegistroSanitarioFolioAutorizacion” deben contener un valor cuando el atributo \"Mercancias:Mercancia:SectorCOFEPRIS\" contenga el valor \"03\"- \"Psicotrópicos y estupefacientes\"."
+  },
+  {
+    "num": "62",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:SectorCOFEPRIS",
+    "caso": "Cuando el atributo \"Mercancias:Mercancia:SectorCOFEPRIS\" contenga el valor “04” del catálogo catCartaPorte:c_SectorCOFEPRIS con descripción “Sustancias tóxicas”, los atributos “Mercancias:Mercancia:NomQuimico” y “Mercancias:Mercancia:NumCAS” deben existir y contener un valor, en caso contrario se deben omitir",
+    "codigo": "CP162",
+    "error": "Los atributos  “Mercancias:Mercancia:NomQuimico” y “Mercancias:Mercancia:NumCAS” deben contener un valor cuando el atributo \"Mercancias:Mercancias:SectorCOFEPRIS\" contenga el valor \"04\"- \"Sustancias tóxicas”."
+  },
+  {
+    "num": "63",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:SectorCOFEPRIS",
+    "caso": "Cuando el atributo \"Mercancias:Mercancia:SectorCOFEPRIS\" contenga el valor “05” del catálogo catCartaPorte:c_SectorCOFEPRIS con descripción “Plaguicidas y fertilizantes”, los atributos “Mercancias:Mercancia:NombreIngredienteActivo”, “Mercancias:Mercancia:NumRegSanPlagCOFEPRIS”, “Mercancias:Mercancia:DatosFabricante”, “Mercancias:Mercancia:DatosFormulador”, “Mercancias:Mercancia:DatosMaquilador” y “Mercancias:Mercancia:UsoAutorizado” deben existir y contener un valor, en caso contrario se deben omitir.",
+    "codigo": "CP163",
+    "error": "Los atributos “Mercancias:Mercancia:NombreIngredienteActivo”, “Mercancias:Mercancia:NumRegSanPlagCOFEPRIS”, “Mercancias:Mercancia:DatosFabricante”, “Mercancias:Mercancia:DatosFormulador”, “Mercancias:Mercancia:DatosMaquilador” y “Mercancias:Mercancia:UsoAutorizado” deben contener un valor cuando el atributo \"Mercancias:Mercancia:SectorCOFEPRIS\" contenga el valor \"05\" - \"Plaguicidas y fertilizantes”."
+  },
+  {
+    "num": "64",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:PermisoImportacion",
+    "caso": "Cuando en el atributo “CartaPorte:TranspInternac” se registre “Sí”,  el atributo “CartaPorte:EntradaSalidaMerc” contenga el valor “Entrada” y el atributo SectorCOFEPRIS contenga el valor “01”, “02” o “03” este atributo debe existir, en caso contrario se debe omitir.",
+    "codigo": "CP164",
+    "error": "El atributo \"Mercancia:PermisoImportacion\" no debe existir cuando el atributo \"Mercancias:Mercancia:SectorCOFEPRIS\" contenga un valor diferente de “01”, “02” o “03\" , el atributo “CartaPorte:TranspInternac” contenga el valor “No\" o el atributo “CartaPorte:EntradaSalidaMerc” contenga el valor “Salida\"."
+  },
+  {
+    "num": "65",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:FolioImpoVUCEM",
+    "caso": "Cuando en el atributo “CartaPorte:TranspInternac” se registre “Sí”, el atributo “CartaPorte:EntradaSalidaMerc” contenga el valor “Entrada” y el atributo SectorCOFEPRIS contenga el valor “01”, “02”, “04” o “05” este atributo debe existir, en caso contrario se debe omitir.",
+    "codigo": "CP165",
+    "error": "El atributo \"Mercancia:FolioImpoVUCEM\" no debe existir cuando el atributo \"Mercancias:Mercancia:SectorCOFEPRIS\" contenga un  valor diferente de “01”, “02”, “04”  o “05”, el atributo  “CartaPorte:TranspInternac” contenga el valor “No” y el atributo “CartaPorte:EntradaSalidaMerc” contiene el valor “Salida”."
+  },
+  {
+    "num": "66",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:RazonSocialEmpImp",
+    "caso": "Cuando en el atributo “CartaPorte:TranspInternac” se registre “Sí”, el atributo “CartaPorte:EntradaSalidaMerc” contenga el valor “Entrada”, y el atributo SectorCOFEPRIS contenga el valor “04” este atributo debe existir,en caso contrario se debe omitir.",
+    "codigo": "CP166",
+    "error": "El atributo \"Mercancia:RazonSocialEmpImp\" no debe existir cuando \"Mercancias:Mercancia:SectorCOFEPRIS\" contenga un valor diferente de “04”,  el atributo  “CartaPorte:TranspInternac” contenga el valor “No” o el atributo “CartaPorte:EntradaSalidaMerc” contiene el valor “Salida”."
+  },
+  {
+    "num": "67",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:ValorMercancia",
+    "caso": "Cuando exista el nodo “Mercancias:TransporteAereo”  el atributo \"Mercancias:Mercancia:ValorMercancia\" debe contener un valor, en caso contrario se puede omitir.",
+    "codigo": "CP167",
+    "error": "El atributo \"Mercancia:ValorMercancia\" no existe o está vacío."
+  },
+  {
+    "num": "68",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:Moneda",
+    "caso": "Cuando el atributo \"Mercancias:Mercancia:ValorMercancia\" contenga un valor, el atributo \"Mercancias:Mercancia:Moneda\" debe existir.",
+    "codigo": "CP168",
+    "error": "El atributo \"Mercancia:Moneda\" no existe o está vacío, o no existe el atributo “Mercancia:ValorMercancia\"."
+  },
+  {
+    "num": "69",
+    "elemento": "CartaPorte",
+    "atributo": "RegimenesAduaneros:RegimenAduaneroCCP:RegimenAduanero",
+    "caso": "Cuando el atributo \"CartaPorte:EntradaSalidaMerc\" contenga el valor \"Salida\", este atributo debe contener un valor del catálogo catCartaPorte:c_RegimenAduanero donde la columna ImpoExpo contenga el valor \"Salida\" o \"Salida,Entrada\".",
+    "codigo": "CP169",
+    "error": "El valor registrado no coincide con alguno de los valores del catálogo cat:CartaPorte:c_RegimenAduanero para una exportación."
+  },
+  {
+    "num": "70",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:TipoMateria",
+    "caso": "Cuando en el atributo “CartaPorte:TranspInternac” se registre “Sí”,este atributo debe existir y contener un valor del catálogo catCartaPorte:c_TipoMateria, en caso contrario se debe omitir.",
+    "codigo": "CP170",
+    "error": "El atributo \"Mercancia:TipoMateria\" no contiene un valor del catálogo catCartaPorte:c_TipoMateria o está vacío y el atributo “CartaPorte:TranspInternac” contiene el valor \"Sí\"."
+  },
+  {
+    "num": "71",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:DescripcionMateria",
+    "caso": "Cuando el valor registrado en el atributo \"Mercancias:Mercancia:TipoMateria\", contenga el valor “05” con descripción “Otra”, este atributo debe existir, en caso contrario se debe omitir.",
+    "codigo": "CP171",
+    "error": "El atributo Mercancia:DescripcionMateria no debe existir cuando el valor registrado en el atributo \"Mercancias:Mercancia:TipoMateria\" es diferente de \"05\"."
+  },
+  {
+    "num": "72",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:DocumentacionAduanera",
+    "caso": "Cuando en el atributo “CartaPorte:TranspInternac” se registre el valor “Sí” y el atributo “EntradaSalidaMerc” contenga el valor “Entrada” este nodo debe existir.\nCuando en el atributo “CartaPorte:TranspInternac” se registre el valor “Sí” y el atributo “EntradaSalidaMerc” contenga el valor “Salida” este nodo puede existir.\nEn cualquier otro caso no debe existir.",
+    "codigo": "CP172",
+    "error": "El nodo \"Mercancia:DocumentacionAduanera\" no debe existir cuando se registre el valor \"No\" en el atributo \"CartaPorte:TranspInternac\"."
+  },
+  {
+    "num": "73",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:DocumentacionAduanera:TipoDocumento",
+    "caso": "Cuando el atributo “EntradaSalidaMerc” contenga el valor “Salida”, el atributo “TipoDocumento” debe contener una clave distinta de “01” del catálogo “catCartaPorte:c_DocumentoAduanero”.",
+    "codigo": "CP173",
+    "error": "El atributo \"DocumentacionAduanera:TipoDocumento\" no debe contener el valor \"01\" - Pedimento cuando se registre el valor \"Salida\" en el atributo \"CartaPorte:EntradaSalidaMerc\"."
+  },
+  {
+    "num": "74",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:DocumentacionAduanera:NumPedimento",
+    "caso": "Cuando el atributo \"CartaPorte:EntradaSalidaMerc\" contenga el valor \"Entrada\" y el atributo \"Mercancia:DocumentacionAduanera:TipoDocumento\" contenga el valor \"01\" con descripción \"Pedimento\" del catálogo catCartaPorte:c_DocumentoAduanero, este atributo debe existir, en caso contrario se debe omitir.\n\nEl valor registrado debe cumplir con lo siguiente:\n\n•\tEl valor de las posiciones uno y dos deben ser menor o igual que los últimos dos dígitos del año de la fecha actual. \n•\tLas posiciones cinco y seis deben corresponder con una clave del catálogo de aduanas (catCFDI:c_Aduanas). \n•\tLas posiciones nueve a la doce deben corresponder con un número de patente del catálogo de patentes aduanales (catCFDI:c_PatenteAduanal). \nEl valor de los últimos seis dígitos debe estar entre el valor mínimo 1 y el valor máximo de números consecutivos de la columna cantidad del catálogo catCFDI:c_NumPedimentoAduana que correspondan a los usados por la aduana en ese año.",
+    "codigo": "CP174",
+    "error": "El atributo \"DocumentacionAduanera:NumPedimento\" no existe, está vacío o no cuenta con la estructura definida."
+  },
+  {
+    "num": "75",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:DocumentacionAduanera:IdentDocAduanero",
+    "caso": "Cuando el atributo “Mercancia:DocumentacionAduanera:TipoDocumento” contenga un valor distinto a “01” del catálogo catCartaPorte:c_DocumentoAduanero con descripción “Pedimento”, este atributo debe existir, en caso contrario se debe omitir.",
+    "codigo": "CP175",
+    "error": "El atributo \"DocumentacionAduanera:IdentDocAduanero\" no debe existir cuando el atributo \"Mercancia:DocumentacionAduanera:TipoDocumento\" es \"01\"-Pedimento"
+  },
+  {
+    "num": "76",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:DocumentacionAduanera:RFCImpo",
+    "caso": "Cuando el atributo “DocumentacionAduanera:NumPedimento” contenga un valor, este atributo debe existir y contener un RFC que se encuentre en la lista de RFC inscritos no cancelados del SAT (l_RFC) o un RFC genérico, en caso contrario se debe omitir.",
+    "codigo": "CP176",
+    "error": "El valor registrado en el atributo \"RFCImpo\" no se encuentra en la lista de RFC inscritos no cancelados del SAT (l_RFC), está vacío o es diferente a XAXX010101000 o XEXX010101000."
+  },
+  {
+    "num": "77",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:GuiasIdentificacion",
+    "caso": "Cuando el atributo “Comprobante:TipoDeComprobante” contenga el valor “T”, que corresponde a la descripción de “Traslado y a nivel “Concepto” en el atributo “Comprobante:ClaveProdServ”, se registren las claves “31181701” o “24112700” con descripción “Empaques” y “Estibas” respectivamente, este nodo debe existir, en caso contrario se puede omitir.",
+    "codigo": "CP177",
+    "error": "No existe el nodo \"Mercancia:GuiasIdentificacion\" o se registró este nodo cuando el tipo de comprobante es diferente de \"T\" o el valor registrado en el atributo \"Comprobante:ClaveProdServ\" es distinto de \"31181701\" y de \"24112700\"."
+  },
+  {
+    "num": "78",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:CantidadTransporta:IDOrigen",
+    "caso": "El valor registrado en este atributo debe ser igual a alguno de los valores registrados en los atributos “Ubicaciones:Ubicacion:IDUbicacion”, siempre que el atributo “Ubicaciones:Ubicacion:TipoUbicacion”, contenga el valor  “Origen”.",
+    "codigo": "CP178",
+    "error": "El atributo \"CantidadTransporta:IDOrigen\" no existe, está vacío o no coincide con un valor registrado en el atributo “Ubicacion:IDUbicacion”."
+  },
+  {
+    "num": "79",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:CantidadTransporta:IDDestino",
+    "caso": "El valor registrado en este atributo debe ser igual a alguno de los valores registrados en los atributos “Ubicaciones:Ubicacion:IDUbicacion”, siempre que el atributo “Ubicaciones:Ubicacion:TipoUbicacion”, contenga el valor “Destino”.",
+    "codigo": "CP179",
+    "error": "El atributo \"CantidadTransporta:IDDestino\" no existe, está vacío o no coincide con un valor registrado en el atributo “Ubicacion:IDUbicacion”."
+  },
+  {
+    "num": "80",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:CantidadTransporta:CvesTransporte",
+    "caso": "El valor de este atributo debe contener una clave del catálogo catCartaPorte:c_CveTransporte, siempre que se registre más de uno de los siguientes nodos:\n\"Mercancias:Autotransporte\",\n“Mercancias:TransporteMaritimo\",\n\"Mercancias:TransporteAereo\",\n\"Mercancias:TransporteFerroviario\".\nEn caso contrario no debe existir.",
+    "codigo": "CP180",
+    "error": "El atributo \"CantidadTransporta:CvesTransporte\" no existe, es diferente de alguna de las claves del catálogo catCartaPorte:c_CveTransporte, o no existe más de un nodo \"Mercancias:Autotransporte\",\n“Mercancias:TransporteMaritimo\",\n\"Mercancias:TransporteAereo\",\n\"Mercancias:TransporteFerroviario\"."
+  },
+  {
+    "num": "81",
+    "elemento": "CartaPorte",
+    "atributo": "Mercancia:DetalleMercancia",
+    "caso": "Cuando exista un nodo “Mercancias:TransporteMaritimo”; este nodo debe existir, en caso contrario debe omitirse.",
+    "codigo": "CP181",
+    "error": "No existe el nodo \"Mercancia:DetalleMercancia\", se registró sin información o no existe el nodo \"Mercancias:TransporteMaritimo\"."
+  },
+  {
+    "num": "82",
+    "elemento": "CartaPorte",
+    "atributo": "Autotransporte:Seguros:AseguraMedAmbiente",
+    "caso": "Cuando en el atributo “Mercancias:Mercancia:MaterialPeligroso” se registre “Sí”, este atributo debe contener un valor, en caso contrario se debe omitir.",
+    "codigo": "CP182",
+    "error": "No existe el atributo \"Seguros:AseguraMedAmbiente\", se registró sin información o el valor del atributo \"Mercancia:MaterialPeligroso” es \"No\"."
+  },
+  {
+    "num": "83",
+    "elemento": "CartaPorte",
+    "atributo": "Autotransporte:Seguros:PolizaMedAmbiente",
+    "caso": "Cuando se registre un valor en el atributo “Mercancias:Autotransporte:Seguros:AseguraMedAmbiente”; este atributo debe existir, en caso contrario se debe omitir.",
+    "codigo": "CP183",
+    "error": "No existe el atributo \"Seguros:PolizaMedAmbiente\", se registró sin información o no existe el atributo \"Seguros:AseguraMedAmbiente”."
+  },
+  {
+    "num": "84",
+    "elemento": "CartaPorte",
+    "atributo": "Autotransporte:Remolques",
+    "caso": "Cuando el valor registrado en el atributo “Mercancias:Autotransporte:IdentificacionVehicular:ConfigVehicular” del catálogo catCartaPorte:c_ConfigAutotransporte, contenga en la columna “Remolque” el valor “1”, este nodo debe existir, si contiene el valor “0,1” el nodo puede existir, en caso de contener el valor “0” este nodo se debe omitir.",
+    "codigo": "CP184",
+    "error": "No existe el nodo \"Autotransporte:Remolques\", se registró sin información o el valor registrado en el atributo \"IdentificacionVehicular:ConfigVehicular\" contiene un valor diferente de \"0,1\" o \"1\" en la columna \"Remolque\" del catálogo c_ConfigAutotransporte."
+  },
+  {
+    "num": "85",
+    "elemento": "CartaPorte",
+    "atributo": "TransporteMaritimo:PermisoTempNavegacion",
+    "caso": "Cuando en el atributo \"TransporteMaritimo:NacionalidadEmbarc\" contenga un valor diferente de \"MEX\" este atributo debe existir y contener un valor, en caso contrario se debe omitir.",
+    "codigo": "CP185",
+    "error": "El atributo \"TransporteMaritimo:PermisoTempNavegacion\" no debe existir cuando el valor registrado en el atributo \"TransporteMaritimo:NacionalidadEmbarc es \"MEX\"."
+  },
+  {
+    "num": "86",
+    "elemento": "CartaPorte",
+    "atributo": "TransporteMaritimo:Contenedor:TipoContenedor",
+    "caso": "Cuando el valor registrado en el atributo \"TransporteMaritimo:Contenedor:TipoContenedor\" sea “CM011” con descripción “Ferri” del catálogo catCartaPorte:c_ContenedorMaritimo:\n\n•\tLos atributos “TransporteMaritimo:Contenedor:MatriculaContenedor” y “TransporteMaritimo:Contenedor:NumPrecinto” no deben existir, en caso contrario estos atributos deben contener un valor.\n•\tLos atributos \"TransporteMaritimo:Contenedor:IdCCPRelacionado\", \"TransporteMaritimo:Contenedor:PlacaVMCCP\"  y \"TransporteMaritimo:Contenedor:FechaCertificacionCCP\" deben existir y contener un valor, en caso contrario se deben omitir.",
+    "codigo": "CP186",
+    "error": "El valor registrado en el atributo \"TransporteMaritimo:Contenedor:TipoContenedor\" es diferente de \"CM011\",  “TransporteMaritimo:Contenedor:NumPrecinto” y “TransporteMaritimo:Contenedor:MatriculaContenedor” deben contener un valor y \"TransporteMaritimo:Contenedor:IdCCPRelacionado\", \"TransporteMaritimo:Contenedor:PlacaVMCCP\"   y \"TransporteMaritimo:Contenedor:FechaCertificacionCCP\" no deben existir."
+  },
+  {
+    "num": "87",
+    "elemento": "CartaPorte",
+    "atributo": "TransporteMaritimo:Contenedor:RemolquesCCP",
+    "caso": "Cuando la clave del atributo “TransporteMaritimo:Contenedor:TipoContenedor” sea “CM011” con la descripción “Ferri” del catálogo catCartaPorte:c_ContenedorMaritimo, este nodo puede existir, en otro caso se debe omitir.",
+    "codigo": "CP187",
+    "error": "El atributo \"TransporteMaritimo:Contenedor:TipoContenedor” contiene un valor distinto de \"CM011\" y el atributo \"TransporteMaritimo:Contenedor:RemolquesCCP\" no debe existir."
+  },
+  {
+    "num": "88",
+    "elemento": "CartaPorte",
+    "atributo": "TransporteAereo:RFCEmbarcador",
+    "caso": "El valor registrado en este atributo debe encontrarse en la lista del RFC inscritos no cancelados del SAT (l_RFC).",
+    "codigo": "CP188",
+    "error": "El valor registrado en el atributo \"TransporteAereo:RFCEmbarcador\" no se encuentra en la lista de RFC inscritos no cancelados del SAT (l_RFC), está vacío o ya se registró el atributo \"TransporteAereo:NumRegIdTribEmbarc\"."
+  },
+  {
+    "num": "89",
+    "elemento": "CartaPorte",
+    "atributo": "TransporteAereo:NumRegIdTribEmbarc",
+    "caso": "Cuando el atributo “Mercancias:TransporteAereo:RFCEmbarcador” no contenga un valor, este atributo debe existir.",
+    "codigo": "CP189",
+    "error": "No existe información en el atributo \"TransporteAereo:NumRegIdTribEmbarc\" o ya se registró el atributo \"TransporteAereo:RFCEmbarcador\"."
+  },
+  {
+    "num": "90",
+    "elemento": "CartaPorte",
+    "atributo": "TransporteAereo:ResidenciaFiscalEmbarc",
+    "caso": "Cuando el atributo “Mercancias:TransporteAereo:NumRegIdTribEmbarc” contenga un valor, la clave registrada en este atributo debe ser distinta a “MEX” y encontrarse en el catálogo catCFDI:c_Pais.",
+    "codigo": "CP190",
+    "error": "No existe el atributo \"TransporteAereo:ResidenciaFiscalEmbarc\", está vacío, no corresponde con alguna de las claves del catálogo catCFDI:c_Pais o la clave registrada es igual a \"MEX\", o no existe el atributo \"NumregIdTribEmbarc\"."
+  },
+  {
+    "num": "91",
+    "elemento": "CartaPorte",
+    "atributo": "TransporteFerroviario:Carro:ToneladasNetasCarro",
+    "caso": "Cuando exista el nodo “Mercancias:TransporteFerroviario:Carro:Contenedor”, el valor de este atributo debe ser igual a la suma de los valores registrados en kilogramos convertidos en toneladas de los atributos “Mercancias:TransporteFerroviario:Carro:Contenedor:PesoNetoMercancia” \nEn caso de no existir el nodo “Carro:Contenedor”, este atributo debe tener un valor.",
+    "codigo": "CP191",
+    "error": "No existe el atributo \"Carro:ToneladasNetasCarro\", está vacío, o la suma no corresponde con los valores registrados en el atributo “Contenedor:PesoNetoMercancia”."
+  },
+  {
+    "num": "92",
+    "elemento": "CartaPorte",
+    "atributo": "TransporteFerroviario:Carro:Contenedor",
+    "caso": "Cuando el valor registrado en el atributo “Mercancias:TransporteFerroviario:TipoDeServicio” del catálogo catCartaPorte:c_TipoDeServicio, contenga en la columna “Contenedor” el valor “1”, este nodo debe existir, en caso contrario se debe omitir.",
+    "codigo": "CP192",
+    "error": "No existe el nodo \"Carro:Contenedor\", se registró sin información, o el valor registrado en el atributo \"Mercancias:TransporteFerroviario:TipoDeServicio\"  contiene un valor diferente de  \"1\" en la columna \"Contenedor\" del catálogo catCartaPorte:c_TipoDeServicio."
+  },
+  {
+    "num": "93",
+    "elemento": "CartaPorte",
+    "atributo": "FiguraTransporte",
+    "caso": "Cuando exista el nodo “Mercancias:Autotransporte”, este elemento debe existir.",
+    "codigo": "CP193",
+    "error": "No existe el nodo \"CartaPorte:FiguraTransporte\" o se registró sin información."
+  },
+  {
+    "num": "94",
+    "elemento": "CartaPorte",
+    "atributo": "FiguraTransporte:TiposFigura",
+    "caso": "Cuando exista el nodo “Mercancias:Autotransporte”, este nodo debe existir al menos una vez donde el atributo “CartaPorte:FiguraTransporte:TiposFigura:TipoFigura” debe contener la clave “01” del catálogo catCartaPorte:c_FiguraTransporte, que corresponde a “Operador”.",
+    "codigo": "CP194",
+    "error": "No existe el nodo \"FiguraTransporte:TiposFigura\" o se registró sin información."
+  },
+  {
+    "num": "95",
+    "elemento": "CartaPorte",
+    "atributo": "TiposFigura:RFCFigura",
+    "caso": "El valor registrado en este atributo debe encontrarse en la lista del RFC inscritos no cancelados del SAT (l_RFC), en caso contrario se debe omitir este atributo y registrar la información correspondiente en el atributo \"CartaPorte:FiguraTransporte:TiposFigura:NumRegIdTribFigura\".",
+    "codigo": "CP195",
+    "error": "El valor registrado en el atributo \"TiposFigura:RFCFigura\" no se encuentra en la lista de RFC inscritos no cancelados del SAT (l_RFC), está vacío o ya se registró el atributo \"TiposFigura:NumRegIdTribFigura\"."
+  },
+  {
+    "num": "96",
+    "elemento": "CartaPorte",
+    "atributo": "TiposFigura:NumLicencia",
+    "caso": "Cuando el valor registrado en el atributo “CartaPorte:FiguraTransporte:TiposFigura:TipoFigura” sea igual a “01”, este atributo debe existir, en caso contrario se debe omitir.",
+    "codigo": "CP196",
+    "error": "No existe el atributo \"TiposFigura:NumLicencia\", no cumple con el patrón, o el valor registrado en el atributo \"TiposFigura:TIpoFigura\" es diferente de \"01\"."
+  },
+  {
+    "num": "97",
+    "elemento": "CartaPorte",
+    "atributo": "TiposFigura:NumRegIdTribFigura",
+    "caso": "Cuando el atributo “CartaPorte:FiguraTransporte:TiposFigura:RFCFigura” no contenga un valor, este atributo debe existir.",
+    "codigo": "CP197",
+    "error": "No existe información en el atributo \"TiposFigura:NumRegIdTribFigura\" o ya se registró el atributo \"TiposFigura:RFCFigura\"."
+  },
+  {
+    "num": "98",
+    "elemento": "CartaPorte",
+    "atributo": "TiposFigura:ResidenciaFiscalFigura",
+    "caso": "Este atributo debe existir siempre que el atributo “CartaPorte:FiguraTransporte:TiposFigura:NumRegIdTribFigura” contenga un valor, en caso contrario se debe omitir.\nLa clave registrada en este atributo debe encontrarse en el catálogo catCFDI:c_Pais y ser distinta a “MEX”.",
+    "codigo": "CP198",
+    "error": "No existe el atributo \"TiposFigura:ResidenciaFiscalFigura\", está vacío, no corresponde con alguna de las claves del catálogo catCFDI:c_Pais o la clave registrada es igual a \"MEX\" o no existe el atributo \"NumRegIdTribFigura\"."
+  },
+  {
+    "num": "99",
+    "elemento": "CartaPorte",
+    "atributo": "TiposFigura:PartesTransporte",
+    "caso": "Cuando en el atributo “CartaPorte:FiguraTransporte:TiposFigura:TipoFigura” se registre el valor “02” o “03”, este nodo debe existir, en caso contrario se debe omitir.",
+    "codigo": "CP199",
+    "error": "No existe el nodo \"TiposFigura:PartesTransporte\", se registró sin información o el valor registrado en el atributo \"TiposFigura:TipoFigura\" tiene un valor diferente de \"02\" o \"03\"."
+  },
+  {
+    "num": "100",
+    "elemento": "CartaPorte",
+    "atributo": "TiposFigura:Domicilio:Colonia",
+    "caso": "Cuando la clave del país sea distinta a \"MEX\", se debe registrar texto libre, en caso contrario se debe registrar un valor en el atributo “CartaPorte:FiguraTransporte:TiposFigura:Domicilio:Colonia” debe contener una clave del catálogo catCFDI:c_Colonia, donde la columna “c_CodigoPostal”, debe ser igual a la clave registrada en el atributo “CartaPorte:FiguraTransporte:TiposFigura:Domicilio:CodigoPostal”.",
+    "codigo": "CP200",
+    "error": "El atributo \"TiposFigura:Domicilio:Colonia\" no contiene una clave del catálogo de catCFDI:c_Colonia cuando la clave del país es \"MEX\" o la clave registrada no corresponde con el valor del atributo \"Domicilio:CodigoPostal\", o este está vacío."
+  },
+  {
+    "num": "101",
+    "elemento": "CartaPorte",
+    "atributo": "TiposFigura:Domicilio:Localidad",
+    "caso": "Cuando el valor registrado en el atributo “CartaPorte:FiguraTransporte:TiposFigura:Domicilio:Pais” sea \"MEX\", este atributo debe contener un valor del catálogo catCFDI:c_Localidad, donde la columna c_Estado, coincida con el valor registrado en el atributo “CartaPorte:FiguraTransporte:TiposFigura:Domicilio:Estado”, en caso contrario puede registrar texto libre.",
+    "codigo": "CP201",
+    "error": "El atributo \"TiposFigura:Domicilio:Localidad\" no contiene una clave del catálogo de c_Localidad cuando la clave del país es \"MEX\" o la clave registrada no corresponde con el valor del atributo \"Domicilio:Estado\", o este está vacío."
+  },
+  {
+    "num": "102",
+    "elemento": "CartaPorte",
+    "atributo": "TiposFigura:Domicilio:Municipio",
+    "caso": "Cuando la clave del país sea distinta a \"MEX\", se debe registrar texto libre; en caso contrario se debe registrar un valor en el atributo “CartaPorte:FiguraTransporte:TiposFigura:Domicilio:Municipio” debe contener una clave del catálogo catCFDI:c_Municipio, donde la columna “c_Estado”, debe ser igual a la clave registrada en el atributo “CartaPorte:FiguraTransporte:TiposFigura:Domicilio:Estado”.",
+    "codigo": "CP202",
+    "error": "El atributo \"TiposFigura:Domicilio:Municipio\" no contiene una clave del catálogo de c_Municipio cuando la clave del país es \"MEX\" o la clave registrada no corresponde con el valor del atributo \"Domicilio:Estado\", o este está vacío."
+  },
+  {
+    "num": "103",
+    "elemento": "CartaPorte",
+    "atributo": "TiposFigura:Domicilio:Estado",
+    "caso": "Cuando el valor registrado en el atributo “CartaPorte:FiguraTransporte:TiposFigura:Domicilio:Pais” sea \"MEX”, “USA” o “CAN\", este atributo debe contener un valor del catálogo catCFDI:c_Estado, donde la columna “c_Pais”, coincida con el valor registrado en el atributo “CartaPorte:FiguraTransporte:TiposFigura:Domicilio:Pais”, en caso contrario se debe registrar texto libre.",
+    "codigo": "CP203",
+    "error": "El atributo \"TiposFigura:Domicilio:Estado\" no contiene una clave del catálogo de c_Estado cuando la clave del país es \"MEX\", \"USA\" o \"CAN\".  o la clave registrada no corresponde con valor del atributo \"Domicilio:Pais\", o este está vacío."
+  },
+  {
+    "num": "104",
+    "elemento": "CartaPorte",
+    "atributo": "TiposFigura:Domicilio:CodigoPostal",
+    "caso": "Cuando el valor registrado en el atributo “CartaPorte:FiguraTransporte:TiposFigura:Domicilio:Pais” sea \"MEX”, este atributo debe contener un valor del catálogo catCFDI:c_CodigoPostal, donde:\n•\tLa clave de la columna “c_Estado”, debe coincidir con el valor registrado en el atributo “Ubicaciones:Ubicacion:Domicilio:Estado”, \n•\tCuando se registre un valor en el atributo Ubicaciones:Ubicacion:Domicilio:Municipio”, este valor debe corresponder a la clave de la columna de clave “c_Municipio”.\n•\tCuando se registre un valor en el atributo Ubicaciones:Ubicacion:Domicilio:Localidad”, este valor debe corresponder a la clave de la columna de clave “c_Localidad”.\nEn caso contrario se debe registrar texto libre.",
+    "codigo": "CP204",
+    "error": "El atributo \"TiposFigura:Domicilio:CodigoPostal\" no contiene una clave del catálogo de c_CodigoPostal cuando la clave del país es \"MEX\" o la clave registrada no corresponde con el valor del atributo \"Domicilio:Estado\", \"Domicilio:Municipio\" y \"Domicilio:Localidad\"; o este está vacío."
+  },
+  {
+    "num": "105",
+    "elemento": "Carta Porte",
+    "atributo": "No clasificado",
+    "caso": "Otro error en el documento",
+    "codigo": "CP999",
+    "error": "Error no clasificado"
+  }
+]

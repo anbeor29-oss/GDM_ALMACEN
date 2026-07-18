@@ -161,9 +161,7 @@ export class MockPACProvider implements IPACProvider {
       noCertificadoSat: string;
     }
   ): string {
-    const timbreXml = `
-  <cfdi:Complemento>
-    <tfd:TimbreFiscalDigital
+    const tfd = `    <tfd:TimbreFiscalDigital
       xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital"
       Version="1.1"
       UUID="${timbre.uuid}"
@@ -171,11 +169,18 @@ export class MockPACProvider implements IPACProvider {
       RfcProvCertif="MOCK010101AAA"
       SelloCFD="${timbre.selloCfd}"
       NoCertificadoSAT="${timbre.noCertificadoSat}"
-      SelloSAT="${timbre.selloSat}"/>
-  </cfdi:Complemento>`;
+      SelloSAT="${timbre.selloSat}"/>`;
 
-    // Insertar antes del cierre de Comprobante
-    return xml.replace('</cfdi:Comprobante>', `${timbreXml}\n</cfdi:Comprobante>`);
+    // Un CFDI válido debe tener EXACTAMENTE UN <cfdi:Complemento>: si ya hay
+    // (p.ej. cartaporte31), se inserta el TFD dentro. Si no existe, se crea
+    // uno nuevo antes del cierre de Comprobante.
+    if (xml.includes('<cfdi:Complemento>')) {
+      return xml.replace('</cfdi:Complemento>', `${tfd}\n  </cfdi:Complemento>`);
+    }
+    return xml.replace(
+      '</cfdi:Comprobante>',
+      `  <cfdi:Complemento>\n${tfd}\n  </cfdi:Complemento>\n</cfdi:Comprobante>`,
+    );
   }
 
   private generateQRData(uuid: string, rfcReceptor: string, xml: string): string {

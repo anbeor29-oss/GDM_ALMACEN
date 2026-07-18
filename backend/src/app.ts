@@ -48,6 +48,8 @@ import posRoutes            from './modules/pos/pos.routes';
 import treasuryRoutes       from './modules/treasury/treasury.routes';
 import physicalCountRoutes  from './modules/physical-count/physical-count.routes';
 import teamRoutes           from './modules/team/team.routes';
+import cartaPorteRoutes     from './modules/carta-porte/carta-porte.routes';
+import cartaPorteCatalogsRoutes from './modules/carta-porte/carta-porte-catalogs.routes';
 
 export function createApp(): Express {
   const app = express();
@@ -162,6 +164,9 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/treasury`,        treasuryRoutes);
   app.use(`/api/${config.apiVersion}/physical-counts`, physicalCountRoutes);
   app.use(`/api/${config.apiVersion}/team`,            teamRoutes);
+  // Carta Porte 3.1 — sub-recurso de invoices, montado bajo /api/v1
+  app.use(`/api/${config.apiVersion}/carta-porte`,     cartaPorteCatalogsRoutes);
+  app.use(`/api/${config.apiVersion}`,                 cartaPorteRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);
 

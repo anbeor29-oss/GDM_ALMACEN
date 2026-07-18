@@ -10,6 +10,8 @@ import * as companiesService from '../companies/companies.service';
 import { query } from '../../config/database';
 import { NotFoundError, ValidationError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
+import { getByInvoiceId as getCartaPorte } from '../carta-porte/carta-porte.service';
+import { buildCartaPorteXml, CARTA_PORTE_NAMESPACE, CARTA_PORTE_XSD } from '../carta-porte/build-carta-porte-xml';
 
 interface CFDIData {
   companyId: string;
@@ -44,12 +46,22 @@ export async function generateCFDIXML(data: CFDIData): Promise<string> {
   // Construye el nodo cfdi:Impuestos agregado a partir de las líneas
   const impuestosNode = generateImpuestosNode(invoice.items);
 
+  // Complemento Carta Porte 3.1 — si la factura tiene una CP asociada,
+  // se inyecta antes de cerrar Comprobante y se extiende el schemaLocation.
+  const cp = await getCartaPorte(data.invoiceId);
+  const cpXml = cp ? buildCartaPorteXml(cp as any) : '';
+  const cpXmlnsAttr = cp ? `\n  xmlns:cartaporte31="${CARTA_PORTE_NAMESPACE}"` : '';
+  const cpSchemaLoc = cp ? ` ${CARTA_PORTE_NAMESPACE} ${CARTA_PORTE_XSD}` : '';
+  const complementoNode = cp
+    ? `\n  <cfdi:Complemento>\n${cpXml.split('\n').map(l => '    ' + l).join('\n')}\n  </cfdi:Complemento>\n`
+    : '';
+
   // 6. Construir XML CFDI 4.0
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <cfdi:Comprobante
   xmlns:cfdi="http://www.sat.gob.mx/cfd/4"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"${cpXmlnsAttr}
+  xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd${cpSchemaLoc}"
   Version="4.0"
   Id="UUID-${cfdiUUID}"
   Fecha="${dateIssued}T${timeIssued}"
@@ -88,7 +100,7 @@ ${generateConceptos(invoice.items)}
   </cfdi:Conceptos>
 
 ${impuestosNode}
-
+${complementoNode}
 </cfdi:Comprobante>`;
 
   // 7. Guardar XML en BD

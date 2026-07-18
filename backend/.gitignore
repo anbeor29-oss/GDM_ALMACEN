@@ -54,3 +54,4 @@ tmp/
 *.crt
 private/
 
+src/database/seeds/2026-07-18_carta_porte_catalogs.sql

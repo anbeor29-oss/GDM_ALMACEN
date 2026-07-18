@@ -36,7 +36,7 @@ services:
     rootDir: backend
     buildCommand: npm ci --include=dev && npm run build
     # migraciones (aborta si fallan) → bootstrap idempotente NO fatal → server.
-    startCommand: "npm run migrate:up && (npm run bootstrap:env || true) && node dist/index.js"
+    startCommand: "npm run migrate:up && npm run cp:seed && (npm run bootstrap:env || true) && node dist/index.js"
     healthCheckPath: /health
     autoDeploy: true
     envVars:

@@ -581,3 +581,56 @@ git add … ; git commit -m "feat/fix: …" ; git push   # Render deploya solo
 8. [ ] Fechas fiscales SIEMPRE con timeZone explícita
 9. [ ] Scripts npm para toda operación repetible + endpoint de diagnóstico
 10. [ ] Documentar al cerrar cada ronda: BITACORA (qué/por qué) + BUGS (síntoma/causa/fix)
+
+---
+
+## 2026-07-13 — Punto de Venta, grupos de trabajo y entorno GDM_ALMACEN
+
+### Contexto
+Se pidió: (1) Punto de Venta con mayoreo configurable, (2) grupos de trabajo que
+restrinjan módulos por usuario, y (3) levantar un **segundo entorno en Render
+(`GDM_ALMACEN`)** ya funcionando, con su admin y datos de ejemplo, sin tocar la
+producción `gdmfac`.
+
+### Qué se hizo
+
+**POS + mayoreo + grupos (commit `0e9bd24`)**
+- Migración `2026-07-11_pos_and_groups.sql` (idempotente): `users.work_group`
+  (ADMIN_ALL/VENTAS/ALMACEN/COMPRAS/TESORERIA, default ADMIN_ALL),
+  `products.wholesale_price`, `companies.pos_mayoreo_min_qty` (default 4) y
+  `next_pos_folio`, tablas `pos_sales` / `pos_sale_items`.
+- Backend POS (`modules/pos`): catálogo, venta contado (EFECTIVO con cambio /
+  TARJETA), mayoreo automático cuando `qty >= min_qty`, descuento de stock en
+  transacción, folio consecutivo.
+- Permisos: middleware `requireModule` + mapa `GROUP_MODULES`; el JWT lleva
+  `workGroup` y se recupera de BD si falta. Frontend filtra menú y rutas por
+  grupo (`canAccess`) y placeholders (`ComingSoon`) para módulos aún no hechos.
+- Productos: `wholesale_price` y `stock` ahora se capturan/editan en la UI
+  (columnas Mayoreo/Stock en la tabla). Se arregló un bug latente en
+  `updateProduct`: normaliza camelCase→snake_case, así que precio, claves SAT,
+  impuestos, mayoreo y existencias **sí** persisten al editar.
+
+**Entorno GDM_ALMACEN**
+- Bootstrap de despliegue en **JS plano** (no ts-node — en Render no hay devDeps
+  en runtime): `scripts/example-data.js` (fuente única de datos), `seed-examples.js`
+  (CLI) y `bootstrap-env.js` (idempotente: crea empresa + admin ADMIN_ALL +
+  ejemplos según variables `BOOTSTRAP_*`; no-op si faltan; nunca tumba el boot).
+- Blueprint propio en la **rama `almacen`** (`render.yaml` con
+  `gdm-almacen-postgres/-backend/-frontend`), independiente de `gdmfac`. El
+  `startCommand` corre `migrate:up` → `bootstrap:env` → `node dist/index.js`.
+
+### Decisiones / gotchas
+- **ts-node no está en runtime de Render** (BITÁCORA 07-02). Todo script que deba
+  correr en el arranque o en Render Shell debe ser JS plano con deps de runtime
+  (`pg`, `bcryptjs`). Por eso el seed pasó de `.ts` a `.js`.
+- `work_group` NO se fija al crear usuario → toma el default de BD `ADMIN_ALL`.
+- Secretos del Blueprint (`BOOTSTRAP_ADMIN_PASSWORD`, `SW_SAPIEN_TOKEN`) van con
+  `sync: false` (se piden al hacer Apply); nunca en git.
+- Render permite 1 Postgres free por cuenta: si `gdmfac` ya lo usa, el de
+  `gdm-almacen` debe ser de pago o liberar el otro. El backend web ya cuesta
+  ~$7/mes (sin tier free vía Blueprint).
+
+### Consecuencia
+POS operativo con mayoreo; permisos por grupo demostrables; `GDM_ALMACEN`
+desplegable en 1 clic (Apply del Blueprint) y auto-inicializado con admin
+ADMIN_ALL + ejemplos.

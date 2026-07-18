@@ -29,6 +29,8 @@ import { PointOfSalePage }    from '@/pages/PointOfSale';
 import { TreasuryPage }       from '@/pages/Treasury';
 import { PhysicalCountPage }  from '@/pages/PhysicalCount';
 import { TeamPage }           from '@/pages/Team';
+import { CartaPortePage }     from '@/pages/CartaPorte';
+import { CartaPorteFormPage } from '@/pages/CartaPorteForm';
 import { useAuthStore } from '@/store/auth';
 
 const queryClient = new QueryClient();
@@ -109,6 +111,8 @@ export function App() {
             {/* Operación diaria — ADMIN / MANAGER / USER (SUPER_ADMIN redirigido) */}
             <Route path="dashboard"    element={<CompanyOnlyRoute><DashboardPage /></CompanyOnlyRoute>} />
             <Route path="invoices"     element={<CompanyOnlyRoute><InvoicesPage /></CompanyOnlyRoute>} />
+            <Route path="carta-porte"  element={<CompanyOnlyRoute><CartaPortePage /></CompanyOnlyRoute>} />
+            <Route path="invoices/:invoiceId/carta-porte" element={<CompanyOnlyRoute><CartaPorteFormPage /></CompanyOnlyRoute>} />
             <Route path="invoices/new"       element={<CompanyOnlyRoute><NewInvoicePage /></CompanyOnlyRoute>} />
             <Route path="invoices/:id/edit"  element={<CompanyOnlyRoute><NewInvoicePage /></CompanyOnlyRoute>} />
             <Route path="customers"    element={<CompanyOnlyRoute><CustomersPage /></CompanyOnlyRoute>} />

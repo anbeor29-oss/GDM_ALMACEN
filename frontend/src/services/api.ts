@@ -1082,6 +1082,31 @@ class APIClient {
     return r.data;
   }
 
+  /* ─── Carta Porte 3.1 ─── */
+  async searchCartaPorteCatalog(name: string, q: string, limit = 50) {
+    const res = await this.client.get<{ items: Array<{ clave: string; descripcion: string; [k: string]: any }> }>(
+      `/carta-porte/catalogs/${name}`,
+      { params: { q, limit } },
+    );
+    return res.data;
+  }
+  async listCartaPorte() {
+    const res = await this.client.get<{ items: any[] }>(`/carta-porte/list`);
+    return res.data;
+  }
+  async getCartaPorte(invoiceId: string) {
+    const res = await this.client.get<{ cartaPorte: any }>(`/invoices/${invoiceId}/carta-porte`);
+    return res.data.cartaPorte;
+  }
+  async saveCartaPorte(invoiceId: string, data: any) {
+    const res = await this.client.put<{ id: number }>(`/invoices/${invoiceId}/carta-porte`, data);
+    return res.data;
+  }
+  async deleteCartaPorte(invoiceId: string) {
+    const res = await this.client.delete<{ removed: number }>(`/invoices/${invoiceId}/carta-porte`);
+    return res.data;
+  }
+
   /**
    * Utility methods
    */

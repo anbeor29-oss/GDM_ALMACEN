@@ -59,6 +59,43 @@ Sistema de facturación electrónica CFDI 4.0 para México. Backend Node/Express
 
 ---
 
+## 🧭 Entorno GDM_ALMACEN (segundo despliegue)
+
+`GDM_ALMACEN` es un **entorno independiente** del mismo código, pensado para
+demostrar/operar el flujo completo (POS + inventarios + grupos de trabajo) sin
+tocar la producción `gdmfac`. Vive en su **propia base de datos** y sus propios
+servicios de Render.
+
+| Recurso | Nombre en Render |
+|---------|------------------|
+| Base de datos | `gdm-almacen-postgres` |
+| Backend API | `gdm-almacen-backend` |
+| Frontend | `gdm-almacen-frontend` |
+
+**Se despliega desde la rama `almacen`** (que trae su propio `render.yaml`):
+
+1. En Render: **New → Blueprint → conecta el repo → Branch: `almacen` → Apply**.
+2. Render pedirá 2 secretos (`sync: false`): pega la **contraseña del admin**
+   (`BOOTSTRAP_ADMIN_PASSWORD`) y tu **token SW** (`SW_SAPIEN_TOKEN`).
+3. En el primer arranque, el `startCommand` corre migraciones y luego
+   `bootstrap:env`, que crea empresa + **admin ADMIN_ALL** + datos de ejemplo.
+4. Entra a `https://gdm-almacen-frontend.onrender.com` con
+   `BOOTSTRAP_ADMIN_EMAIL` y la contraseña que pegaste.
+
+El admin nace con **grupo de trabajo `ADMIN_ALL`** (ve todos los módulos). Desde
+ahí puedes crear usuarios VENTAS / ALMACEN / COMPRAS / TESORERIA con acceso
+restringido a sus módulos.
+
+> 💡 Costo: el backend web de Render no tiene tier gratuito vía Blueprint
+> (~$7 USD/mes, plan `starter`). Render permite **1 Postgres free por cuenta**;
+> si el free ya lo usa `gdmfac`, cambia `gdm-almacen-postgres` a `basic-256mb`
+> (~$6 USD/mes) en el `render.yaml` de la rama `almacen`, o libera el otro.
+
+> 🔄 Para actualizar este entorno con cambios de `main`, haz
+> `git checkout almacen && git merge main` y push (conservando su `render.yaml`).
+
+---
+
 ## 📦 Módulos y estado
 
 ### 🔷 Operación diaria (todos los roles)
