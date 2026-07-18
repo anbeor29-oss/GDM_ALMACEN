@@ -52,9 +52,39 @@ async function main() {
 
   console.log('[cp-seed] descomprimiendo seed…');
   const sql = zlib.gunzipSync(fs.readFileSync(SEED_GZ)).toString('utf8');
-  console.log(`[cp-seed] aplicando ${(sql.length / 1024 / 1024).toFixed(2)} MB de INSERTs…`);
+  console.log(`[cp-seed] aplicando ${(sql.length / 1024 / 1024).toFixed(2)} MB en lotes…`);
+
+  // Instancias pequeñas de Postgres (basic-256mb) revientan si se manda todo
+  // en una sola query. Trocamos por sentencia (fin en ';' al final de línea)
+  // y aplicamos en lotes de N con una transacción por lote.
+  //
+  // El propio SQL abre BEGIN/COMMIT global — se ignoran cuando aplicamos por
+  // lotes (cada lote lleva su propia transacción). Los INSERTs son idempotentes
+  // gracias a ON CONFLICT DO UPDATE, así que reintentar es seguro.
+  const statements = sql
+    .split(/;\s*\n/)
+    .map(s => s.trim())
+    .filter(s => s && !/^--/.test(s) && !/^(BEGIN|COMMIT)$/i.test(s));
+
+  const BATCH = 500;
   const t0 = Date.now();
-  await client.query(sql);
+  let done = 0;
+  for (let i = 0; i < statements.length; i += BATCH) {
+    const chunk = statements.slice(i, i + BATCH).join(';\n') + ';';
+    try {
+      await client.query('BEGIN');
+      await client.query(chunk);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw new Error(`lote ${i}-${i + BATCH}: ${e.message}`);
+    }
+    done += Math.min(BATCH, statements.length - i);
+    if (done % 5000 === 0 || done === statements.length) {
+      const secs = ((Date.now() - t0) / 1000).toFixed(1);
+      console.log(`[cp-seed] ${done}/${statements.length} sentencias · ${secs}s`);
+    }
+  }
   console.log(`[cp-seed] OK — ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   await client.end();
 }
