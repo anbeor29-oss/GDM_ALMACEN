@@ -36,7 +36,12 @@ services:
     rootDir: backend
     buildCommand: npm ci --include=dev && npm run build
     # migraciones (aborta si fallan) → bootstrap idempotente NO fatal → server.
-    startCommand: "npm run migrate:up && npm run cp:seed && (npm run bootstrap:env || true) && node dist/index.js"
+    # cp:seed queda fuera del startCommand hasta que se cargue el seed
+    # manual (~40 MB): la basic-256mb no aguanta la carga inicial estando
+    # el proceso presionado por el propio boot del server. La UI de Carta
+    # Porte funciona sin catálogos; los pickers salen vacíos hasta que se
+    # cargue manualmente el .sql.gz por psql desde el shell de Render.
+    startCommand: "npm run migrate:up && (npm run bootstrap:env || true) && node dist/index.js"
     healthCheckPath: /health
     autoDeploy: true
     envVars:
