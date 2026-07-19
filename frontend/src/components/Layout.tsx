@@ -29,9 +29,6 @@ import {
   ClipboardCheck,
   Landmark,
   UsersRound,
-  Route as RouteIcon,
-  MapPin as MapPinIcon,
-  Shield as ShieldIcon,
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
