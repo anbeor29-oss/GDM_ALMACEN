@@ -21,9 +21,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Route as RouteIcon, Plus, Trash2, Save, ArrowLeft, MapPin, Package2, Truck, UserCog, Ship, Plane, Train, Search } from 'lucide-react';
+import { Route as RouteIcon, Plus, Trash2, Save, ArrowLeft, MapPin, Package2, Truck, UserCog, Ship, Plane, Train, Search, BookMarked } from 'lucide-react';
 import api from '@/services/api';
 import { CatalogPicker, type CatalogItem } from '@/components/CatalogPicker';
+import { LugarPicker } from '@/components/LugarPicker';
 
 type Medio = 'auto' | 'maritimo' | 'aereo' | 'ferroviario';
 
@@ -38,6 +39,8 @@ interface UbicacionRow {
   numExterior: string;
   estado: string;
   codigoPostal: string;
+  guardarEnCatalogo?: boolean;   // ← el usuario marca para guardar como plantilla
+  aliasCatalogo?: string;         // ← alias opcional; si vacío se autogenera
 }
 interface MercanciaRow {
   bienesTransp: string;
@@ -59,10 +62,25 @@ interface FiguraRow {
   nombreFigura: string;
 }
 
-function blankUbicacion(tipo: 'Origen' | 'Destino'): UbicacionRow {
+/**
+ * Auto-generación de IDUbicacion del SAT: `OR` + 6 dígitos para Origen,
+ * `DE` + 6 dígitos para Destino, únicos dentro de la misma Carta Porte.
+ * Cuenta cuántas ubicaciones del mismo tipo ya existen y usa el siguiente.
+ */
+function nextIdUbicacion(tipo: 'Origen' | 'Destino', existentes: UbicacionRow[]): string {
+  const prefijo = tipo === 'Origen' ? 'OR' : 'DE';
+  const usadas = existentes
+    .filter(u => u.tipoUbicacion === tipo)
+    .map(u => Number(String(u.idUbicacion || '').replace(prefijo, '')))
+    .filter(n => Number.isFinite(n));
+  const next = (usadas.length ? Math.max(...usadas) : 0) + 1;
+  return prefijo + String(next).padStart(6, '0');
+}
+
+function blankUbicacion(tipo: 'Origen' | 'Destino', existentes: UbicacionRow[] = []): UbicacionRow {
   return {
     tipoUbicacion: tipo,
-    idUbicacion: tipo === 'Origen' ? 'OR000001' : 'DE000001',
+    idUbicacion: nextIdUbicacion(tipo, existentes),
     rfcRemitenteDestinatario: '',
     nombreRemitenteDestinatario: '',
     fechaHoraSalidaLlegada: '',
@@ -71,6 +89,26 @@ function blankUbicacion(tipo: 'Origen' | 'Destino'): UbicacionRow {
     numExterior: '',
     estado: '',
     codigoPostal: '',
+    guardarEnCatalogo: false,
+    aliasCatalogo: '',
+  };
+}
+
+/** Aplica un lugar del catálogo a la ubicación, respetando su tipo. */
+function ubicacionDesdeLugar(l: any, tipo: 'Origen' | 'Destino', existentes: UbicacionRow[]): UbicacionRow {
+  return {
+    tipoUbicacion: tipo,
+    idUbicacion: nextIdUbicacion(tipo, existentes),
+    rfcRemitenteDestinatario: l.rfc || '',
+    nombreRemitenteDestinatario: l.nombre || '',
+    fechaHoraSalidaLlegada: '',
+    distanciaRecorrida: tipo === 'Destino' ? '' : undefined,
+    calle: l.calle || '',
+    numExterior: l.num_exterior || '',
+    estado: l.estado || '',
+    codigoPostal: l.codigo_postal || '',
+    guardarEnCatalogo: false,     // ya está en el catálogo
+    aliasCatalogo: l.alias,
   };
 }
 const blankMercancia = (): MercanciaRow => ({
@@ -92,7 +130,12 @@ export function CartaPorteFormPage() {
   const [paisOrigenDestino, setPaisOrigenDestino] = useState('');
 
   // ─── Ubicaciones / mercancías / figuras ────────────────────────────
-  const [ubicaciones, setUbicaciones] = useState<UbicacionRow[]>([blankUbicacion('Origen'), blankUbicacion('Destino')]);
+  const [ubicaciones, setUbicaciones] = useState<UbicacionRow[]>(() => {
+    const or = blankUbicacion('Origen', []);
+    return [or, blankUbicacion('Destino', [or])];
+  });
+  // Picker de lugares frecuentes: {ubicIndex, tipo} para saber a qué fila se aplica
+  const [lugarPicker, setLugarPicker] = useState<{ index: number; tipo: 'Origen' | 'Destino' } | null>(null);
   const [mercancias, setMercancias] = useState<MercanciaRow[]>([blankMercancia()]);
   const [figuras, setFiguras] = useState<FiguraRow[]>([blankFigura()]);
 
@@ -218,7 +261,32 @@ export function CartaPorteFormPage() {
           remolques: remolques.map(r => ({ subTipoRem: r.subTipoRem, placa: r.placa.toUpperCase() })),
         };
       }
-      return api.saveCartaPorte(invoiceId, payload);
+      const result = await api.saveCartaPorte(invoiceId, payload);
+
+      // Persistir ubicaciones marcadas como "guardar en catálogo".
+      // Se hace después del save principal para que un error aquí NO deje
+      // la CP a medio guardar. Cada upsert es idempotente por alias.
+      for (const u of ubicaciones) {
+        if (!u.guardarEnCatalogo) continue;
+        const alias = u.aliasCatalogo?.trim() ||
+          `${u.tipoUbicacion} ${u.nombreRemitenteDestinatario || u.rfcRemitenteDestinatario} ${u.codigoPostal}`.slice(0, 60);
+        try {
+          await api.createCPLugar({
+            alias,
+            tipoDefault: u.tipoUbicacion,
+            rfc: u.rfcRemitenteDestinatario,
+            nombre: u.nombreRemitenteDestinatario,
+            calle: u.calle,
+            numExterior: u.numExterior,
+            estado: u.estado,
+            codigoPostal: u.codigoPostal,
+          });
+        } catch (e) {
+          // No bloqueamos el flujo por un fallo de plantilla — se logea.
+          console.warn(`No se pudo guardar plantilla "${alias}":`, e);
+        }
+      }
+      return result;
     },
     onSuccess: () => navigate('/carta-porte'),
   });
@@ -290,10 +358,38 @@ export function CartaPorteFormPage() {
 
       {/* 2. Ubicaciones */}
       <Section title="2. Ubicaciones" icon={<MapPin size={16} />}
-               action={<button onClick={() => setUbicaciones([...ubicaciones, blankUbicacion('Destino')])} className="btn-add"><Plus size={14} /> Destino</button>}>
+               action={<button onClick={() => setUbicaciones([...ubicaciones, blankUbicacion('Destino', ubicaciones)])} className="btn-add"><Plus size={14} /> Destino</button>}>
         <div className="space-y-3">
           {ubicaciones.map((u, i) => (
             <div key={i} className="border border-slate-200 rounded p-3 relative">
+              {/* Barra de plantillas: cargar de catálogo o marcar para guardar */}
+              <div className="flex items-center gap-2 mb-3 pb-3 border-b border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setLugarPicker({ index: i, tipo: u.tipoUbicacion })}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded border border-emerald-200"
+                >
+                  <BookMarked size={12} /> Cargar plantilla
+                </button>
+                <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 ml-auto">
+                  <input
+                    type="checkbox"
+                    checked={!!u.guardarEnCatalogo}
+                    onChange={e => updateUbi(i, { guardarEnCatalogo: e.target.checked })}
+                    className="rounded"
+                  />
+                  Guardar en Lugares frecuentes
+                </label>
+                {u.guardarEnCatalogo && (
+                  <input
+                    value={u.aliasCatalogo || ''}
+                    onChange={e => updateUbi(i, { aliasCatalogo: e.target.value })}
+                    placeholder="alias (auto si vacío)"
+                    className="text-xs px-2 py-1 border border-slate-300 rounded"
+                    style={{ maxWidth: 200 }}
+                  />
+                )}
+              </div>
               <div className="grid grid-cols-6 gap-3">
                 <Field label="Tipo">
                   <select value={u.tipoUbicacion} onChange={e => updateUbi(i, { tipoUbicacion: e.target.value as any })} className="input">
@@ -489,6 +585,25 @@ export function CartaPorteFormPage() {
       </Section>
 
       {picker && <CatalogPicker {...picker} open={true} onClose={() => setPicker(null)} />}
+      {lugarPicker && (
+        <LugarPicker
+          open={true}
+          tipo={lugarPicker.tipo}
+          onClose={() => setLugarPicker(null)}
+          onSelect={(l) => {
+            // Reemplaza la ubicación en el índice con los datos del lugar.
+            const otras = ubicaciones.filter((_, j) => j !== lugarPicker.index);
+            const nueva = ubicacionDesdeLugar(l, lugarPicker.tipo, otras);
+            setUbicaciones(ubicaciones.map((u, j) => j === lugarPicker.index ? {
+              ...nueva,
+              // Conservamos fecha y distancia si el usuario ya las escribió
+              fechaHoraSalidaLlegada: u.fechaHoraSalidaLlegada || '',
+              distanciaRecorrida: u.distanciaRecorrida ?? nueva.distanciaRecorrida,
+            } : u));
+            setLugarPicker(null);
+          }}
+        />
+      )}
     </div>
   );
 

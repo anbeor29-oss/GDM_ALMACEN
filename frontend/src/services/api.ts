@@ -1090,6 +1090,24 @@ class APIClient {
     );
     return res.data;
   }
+  /* ─── Carta Porte: Lugares frecuentes ─── */
+  async listCPLugares(q?: string, tipo?: string) {
+    const res = await this.client.get<{ items: any[] }>('/carta-porte/lugares', { params: { q, tipo } });
+    return res.data.items || [];
+  }
+  async createCPLugar(data: any) {
+    const res = await this.client.post<any>('/carta-porte/lugares', data);
+    return res.data;
+  }
+  async updateCPLugar(id: string, data: any) {
+    const res = await this.client.patch<any>(`/carta-porte/lugares/${id}`, data);
+    return res.data;
+  }
+  async deleteCPLugar(id: string) {
+    const res = await this.client.delete<{ removed: number }>(`/carta-porte/lugares/${id}`);
+    return res.data;
+  }
+
   async listCartaPorte() {
     const res = await this.client.get<{ items: any[] }>(`/carta-porte/list`);
     return res.data;
