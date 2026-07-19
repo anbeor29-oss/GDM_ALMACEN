@@ -104,17 +104,17 @@ export function Layout() {
               {can('carta_porte')     && (
                 <NavGroup
                   to="/carta-porte"
-                  icon={<RouteIcon size={20} />}
+                  icon={<span className="text-xl leading-none">🚚</span>}
                   label="Carta Porte"
                   accent="sky"
                   open={sidebarOpen}
                   pathPrefix="/carta-porte"
                   children={[
-                    { to: '/carta-porte/lugares',      icon: <MapPinIcon size={16} />, label: 'Lugares frecuentes' },
-                    { to: '/carta-porte/vehiculos',    icon: <Truck size={16} />,      label: 'Vehículos' },
-                    { to: '/carta-porte/aseguradoras', icon: <ShieldIcon size={16} />, label: 'Aseguradoras' },
-                    { to: '/carta-porte/operadores',   icon: <UsersRound size={16} />, label: 'Operadores' },
-                    { to: '/carta-porte/importar-xml', icon: <FileInput size={16} />,  label: 'Importar XML CP' },
+                    { to: '/carta-porte/lugares',      icon: <span className="text-base leading-none">📍</span>, label: 'Lugares frecuentes' },
+                    { to: '/carta-porte/vehiculos',    icon: <span className="text-base leading-none">🚚</span>, label: 'Vehículos' },
+                    { to: '/carta-porte/aseguradoras', icon: <span className="text-base leading-none">🛡️</span>, label: 'Aseguradoras' },
+                    { to: '/carta-porte/operadores',   icon: <span className="text-base leading-none">👤</span>, label: 'Operadores' },
+                    { to: '/carta-porte/importar-xml', icon: <span className="text-base leading-none">💼</span>, label: 'Importar XML CP' },
                   ]}
                 />
               )}
