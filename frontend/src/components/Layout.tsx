@@ -3,7 +3,7 @@
  * Sidebar + top bar + outlet de la página activa
  */
 
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { GdmLogo } from './GdmLogo';
 import {
   FileText,
@@ -32,6 +32,8 @@ import {
   Route as RouteIcon,
   MapPin as MapPinIcon,
   Shield as ShieldIcon,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
@@ -99,12 +101,23 @@ export function Layout() {
               <NavItem to="/dashboard"    icon={<LayoutGrid size={20} />}  accent="sky"     label="Dashboard"        open={sidebarOpen} />
               {can('pos')             && <NavItem to="/pos"          icon={<Store size={20} />}       accent="amber"   label="Punto de venta"   open={sidebarOpen} />}
               {can('invoices')        && <NavItem to="/invoices"     icon={<FileText size={20} />}    accent="amber"   label="Facturas"         open={sidebarOpen} />}
-              {can('carta_porte')     && <NavItem to="/carta-porte"  icon={<RouteIcon size={20} />}   accent="sky"     label="Carta Porte"      open={sidebarOpen} />}
-              {can('carta_porte')     && <NavItem to="/carta-porte/lugares" icon={<MapPinIcon size={20} />} accent="emerald" label="Lugares frecuentes" open={sidebarOpen} />}
-              {can('carta_porte')     && <NavItem to="/carta-porte/vehiculos" icon={<Truck size={20} />} accent="amber" label="Vehículos" open={sidebarOpen} />}
-              {can('carta_porte')     && <NavItem to="/carta-porte/aseguradoras" icon={<ShieldIcon size={20} />} accent="sky" label="Aseguradoras" open={sidebarOpen} />}
-              {can('carta_porte')     && <NavItem to="/carta-porte/operadores" icon={<UsersRound size={20} />} accent="fuchsia" label="Operadores" open={sidebarOpen} />}
-              {can('carta_porte')     && <NavItem to="/carta-porte/importar-xml" icon={<FileInput size={20} />} accent="violet" label="Importar XML CP" open={sidebarOpen} />}
+              {can('carta_porte')     && (
+                <NavGroup
+                  to="/carta-porte"
+                  icon={<RouteIcon size={20} />}
+                  label="Carta Porte"
+                  accent="sky"
+                  open={sidebarOpen}
+                  pathPrefix="/carta-porte"
+                  children={[
+                    { to: '/carta-porte/lugares',      icon: <MapPinIcon size={16} />, label: 'Lugares frecuentes' },
+                    { to: '/carta-porte/vehiculos',    icon: <Truck size={16} />,      label: 'Vehículos' },
+                    { to: '/carta-porte/aseguradoras', icon: <ShieldIcon size={16} />, label: 'Aseguradoras' },
+                    { to: '/carta-porte/operadores',   icon: <UsersRound size={16} />, label: 'Operadores' },
+                    { to: '/carta-porte/importar-xml', icon: <FileInput size={16} />,  label: 'Importar XML CP' },
+                  ]}
+                />
+              )}
               {can('credit_notes')    && <NavItem to="/credit-notes" icon={<FileMinus2 size={20} />}  accent="rose"    label="Notas de Crédito" open={sidebarOpen} />}
               {can('customers')       && <NavItem to="/customers"    icon={<Users size={20} />}       accent="emerald" label="Clientes"         open={sidebarOpen} />}
               {can('products')        && <NavItem to="/products"     icon={<Boxes size={20} />}       accent="fuchsia" label="Productos"        open={sidebarOpen} />}
@@ -222,6 +235,76 @@ const ACCENT_MAP: Record<AccentColor, { activeBg: string; activeText: string; ic
   fuchsia: { activeBg: 'bg-fuchsia-50', activeText: 'text-fuchsia-700', iconActive: 'text-fuchsia-600', iconIdle: 'text-slate-400 group-hover:text-fuchsia-600', bar: 'bg-fuchsia-500' },
   violet:  { activeBg: 'bg-violet-50',  activeText: 'text-violet-700',  iconActive: 'text-violet-600',  iconIdle: 'text-slate-400 group-hover:text-violet-600',  bar: 'bg-violet-500' },
 };
+
+interface NavChild { to: string; icon: React.ReactNode; label: string; }
+
+/**
+ * NavGroup — item de sidebar con submenú expandible. El header actúa como link
+ * al `to` del padre y a la vez toggle del submenú. Se autoexpande si la ruta
+ * activa cae bajo `pathPrefix`. Con sidebar colapsado (w-20), los hijos se
+ * ocultan (solo el icono del padre visible).
+ */
+function NavGroup({
+  to, icon, label, open, accent, pathPrefix, children,
+}: {
+  to: string; icon: React.ReactNode; label: string; open: boolean;
+  accent: AccentColor; pathPrefix: string; children: NavChild[];
+}) {
+  const c = ACCENT_MAP[accent];
+  const location = useLocation();
+  const isUnderGroup = location.pathname === to || location.pathname.startsWith(pathPrefix + '/');
+  const [expanded, setExpanded] = useState<boolean>(isUnderGroup);
+  const parentActive = location.pathname === to;
+
+  return (
+    <div>
+      <div className={`flex items-center rounded-lg transition-all group relative ${
+        parentActive ? `${c.activeBg} ${c.activeText} font-medium` : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+      }`}>
+        {parentActive && (
+          <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 ${c.bar} rounded-r`} />
+        )}
+        <NavLink
+          to={to}
+          title={!open ? label : undefined}
+          className="flex-1 flex items-center gap-3 px-3 py-2.5"
+        >
+          <span className={parentActive ? c.iconActive : c.iconIdle}>{icon}</span>
+          {open && <span className="text-sm">{label}</span>}
+        </NavLink>
+        {open && (
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="p-2 text-slate-400 hover:text-slate-700"
+            title={expanded ? 'Colapsar' : 'Expandir'}
+          >
+            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+        )}
+      </div>
+      {open && expanded && (
+        <div className="ml-6 mt-0.5 space-y-0.5 border-l border-slate-200 pl-3">
+          {children.map(ch => (
+            <NavLink
+              key={ch.to}
+              to={ch.to}
+              className={({ isActive }) =>
+                `flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors ${
+                  isActive
+                    ? `${c.activeBg} ${c.activeText} font-medium`
+                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`
+              }
+            >
+              <span className="text-slate-400">{ch.icon}</span>
+              <span>{ch.label}</span>
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function NavItem({
   to,
