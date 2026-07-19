@@ -104,6 +104,7 @@ export function Layout() {
               {can('carta_porte')     && <NavItem to="/carta-porte/vehiculos" icon={<Truck size={20} />} accent="amber" label="Vehículos" open={sidebarOpen} />}
               {can('carta_porte')     && <NavItem to="/carta-porte/aseguradoras" icon={<ShieldIcon size={20} />} accent="sky" label="Aseguradoras" open={sidebarOpen} />}
               {can('carta_porte')     && <NavItem to="/carta-porte/operadores" icon={<UsersRound size={20} />} accent="fuchsia" label="Operadores" open={sidebarOpen} />}
+              {can('carta_porte')     && <NavItem to="/carta-porte/importar-xml" icon={<FileInput size={20} />} accent="violet" label="Importar XML CP" open={sidebarOpen} />}
               {can('credit_notes')    && <NavItem to="/credit-notes" icon={<FileMinus2 size={20} />}  accent="rose"    label="Notas de Crédito" open={sidebarOpen} />}
               {can('customers')       && <NavItem to="/customers"    icon={<Users size={20} />}       accent="emerald" label="Clientes"         open={sidebarOpen} />}
               {can('products')        && <NavItem to="/products"     icon={<Boxes size={20} />}       accent="fuchsia" label="Productos"        open={sidebarOpen} />}

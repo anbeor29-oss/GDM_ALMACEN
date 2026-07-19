@@ -1108,6 +1108,16 @@ class APIClient {
     return res.data;
   }
 
+  /* ─── CP: Importador XML ─── */
+  async cpImportPreview(xml: string) {
+    const r = await this.client.post<any>('/carta-porte/importar-xml/preview', { xml });
+    return r.data;
+  }
+  async cpImportApply(payload: any) {
+    const r = await this.client.post<any>('/carta-porte/importar-xml/apply', payload);
+    return r.data;
+  }
+
   /* ─── CP: Vehículos ─── */
   async listCPVehiculos(q?: string) {
     const r = await this.client.get<{ items: any[] }>('/carta-porte/vehiculos', { params: { q } });
