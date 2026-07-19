@@ -910,6 +910,18 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>(`/team/users/${userId}/capabilities`, { capabilities });
     return r.data;
   }
+  async createTeamUser(data: { email: string; password: string; firstName: string; lastName?: string; role: string; workGroup: string; }) {
+    const r = await this.client.post<APIResponse<any>>('/team/users', data);
+    return r.data;
+  }
+  async updateTeamUser(userId: string, data: any) {
+    const r = await this.client.patch<APIResponse<any>>(`/team/users/${userId}`, data);
+    return r.data;
+  }
+  async deleteTeamUser(userId: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/team/users/${userId}`);
+    return r.data;
+  }
 
   /* ───────────── Inventario físico (Fase 6 ALMACEN §11) ───────────── */
   async getPhysicalCounts() {

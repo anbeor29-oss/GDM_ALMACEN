@@ -17,16 +17,19 @@ export type ModuleKey =
   | 'products' | 'inventory' | 'warehouses' | 'physical_counts'
   | 'import_xml' | 'purchase_orders'
   | 'treasury' | 'suppliers'
-  | 'reports';
+  | 'reports'
+  | 'carta_porte';
 
-/** Módulos por grupo. `dashboard` es común a todos (no se lista aquí). */
+/** Módulos por grupo. `dashboard` es común a todos (no se lista aquí).
+ *  Carta Porte va con VENTAS porque el complemento acompaña a la factura. */
 export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   ADMIN_ALL: [
     'pos', 'invoices', 'credit_notes', 'customers',
     'products', 'inventory', 'warehouses', 'physical_counts',
     'import_xml', 'purchase_orders', 'treasury', 'suppliers', 'reports',
+    'carta_porte',
   ],
-  VENTAS:      ['pos', 'invoices', 'customers', 'credit_notes'],
+  VENTAS:      ['pos', 'invoices', 'customers', 'credit_notes', 'carta_porte'],
   INVENTARIOS: ['products', 'inventory', 'warehouses', 'physical_counts'],
   COMPRAS:     ['import_xml', 'purchase_orders'],
   TESORERIA:   ['treasury', 'suppliers'],
