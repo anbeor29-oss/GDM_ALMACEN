@@ -51,6 +51,7 @@ import teamRoutes           from './modules/team/team.routes';
 import cartaPorteRoutes     from './modules/carta-porte/carta-porte.routes';
 import cartaPorteCatalogsRoutes from './modules/carta-porte/carta-porte-catalogs.routes';
 import cartaPorteLugaresRoutes from './modules/carta-porte/lugares.routes';
+import cartaPorteCatalogosEmpresaRoutes from './modules/carta-porte/catalogos-empresa.routes';
 
 export function createApp(): Express {
   const app = express();
@@ -167,6 +168,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/team`,            teamRoutes);
   // Carta Porte 3.1 — sub-recurso de invoices, montado bajo /api/v1
   app.use(`/api/${config.apiVersion}/carta-porte/lugares`, cartaPorteLugaresRoutes);
+  app.use(`/api/${config.apiVersion}/carta-porte`,     cartaPorteCatalogosEmpresaRoutes);
   app.use(`/api/${config.apiVersion}/carta-porte`,     cartaPorteCatalogsRoutes);
   app.use(`/api/${config.apiVersion}`,                 cartaPorteRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);

@@ -1108,6 +1108,33 @@ class APIClient {
     return res.data;
   }
 
+  /* ─── CP: Vehículos ─── */
+  async listCPVehiculos(q?: string) {
+    const r = await this.client.get<{ items: any[] }>('/carta-porte/vehiculos', { params: { q } });
+    return r.data.items || [];
+  }
+  async createCPVehiculo(data: any) { return (await this.client.post<any>('/carta-porte/vehiculos', data)).data; }
+  async updateCPVehiculo(id: string, data: any) { return (await this.client.patch<any>(`/carta-porte/vehiculos/${id}`, data)).data; }
+  async deleteCPVehiculo(id: string) { return (await this.client.delete<any>(`/carta-porte/vehiculos/${id}`)).data; }
+
+  /* ─── CP: Aseguradoras ─── */
+  async listCPAseguradoras(q?: string, tipo?: string) {
+    const r = await this.client.get<{ items: any[] }>('/carta-porte/aseguradoras', { params: { q, tipo } });
+    return r.data.items || [];
+  }
+  async createCPAseguradora(data: any) { return (await this.client.post<any>('/carta-porte/aseguradoras', data)).data; }
+  async updateCPAseguradora(id: string, data: any) { return (await this.client.patch<any>(`/carta-porte/aseguradoras/${id}`, data)).data; }
+  async deleteCPAseguradora(id: string) { return (await this.client.delete<any>(`/carta-porte/aseguradoras/${id}`)).data; }
+
+  /* ─── CP: Operadores ─── */
+  async listCPOperadores(q?: string, tipo?: string) {
+    const r = await this.client.get<{ items: any[] }>('/carta-porte/operadores', { params: { q, tipo } });
+    return r.data.items || [];
+  }
+  async createCPOperador(data: any) { return (await this.client.post<any>('/carta-porte/operadores', data)).data; }
+  async updateCPOperador(id: string, data: any) { return (await this.client.patch<any>(`/carta-porte/operadores/${id}`, data)).data; }
+  async deleteCPOperador(id: string) { return (await this.client.delete<any>(`/carta-porte/operadores/${id}`)).data; }
+
   async listCartaPorte() {
     const res = await this.client.get<{ items: any[] }>(`/carta-porte/list`);
     return res.data;

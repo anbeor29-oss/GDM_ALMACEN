@@ -31,6 +31,7 @@ import {
   UsersRound,
   Route as RouteIcon,
   MapPin as MapPinIcon,
+  Shield as ShieldIcon,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
@@ -100,6 +101,9 @@ export function Layout() {
               {can('invoices')        && <NavItem to="/invoices"     icon={<FileText size={20} />}    accent="amber"   label="Facturas"         open={sidebarOpen} />}
               {can('carta_porte')     && <NavItem to="/carta-porte"  icon={<RouteIcon size={20} />}   accent="sky"     label="Carta Porte"      open={sidebarOpen} />}
               {can('carta_porte')     && <NavItem to="/carta-porte/lugares" icon={<MapPinIcon size={20} />} accent="emerald" label="Lugares frecuentes" open={sidebarOpen} />}
+              {can('carta_porte')     && <NavItem to="/carta-porte/vehiculos" icon={<Truck size={20} />} accent="amber" label="Vehículos" open={sidebarOpen} />}
+              {can('carta_porte')     && <NavItem to="/carta-porte/aseguradoras" icon={<ShieldIcon size={20} />} accent="sky" label="Aseguradoras" open={sidebarOpen} />}
+              {can('carta_porte')     && <NavItem to="/carta-porte/operadores" icon={<UsersRound size={20} />} accent="fuchsia" label="Operadores" open={sidebarOpen} />}
               {can('credit_notes')    && <NavItem to="/credit-notes" icon={<FileMinus2 size={20} />}  accent="rose"    label="Notas de Crédito" open={sidebarOpen} />}
               {can('customers')       && <NavItem to="/customers"    icon={<Users size={20} />}       accent="emerald" label="Clientes"         open={sidebarOpen} />}
               {can('products')        && <NavItem to="/products"     icon={<Boxes size={20} />}       accent="fuchsia" label="Productos"        open={sidebarOpen} />}
