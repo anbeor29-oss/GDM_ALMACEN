@@ -1102,6 +1102,12 @@ class APIClient {
     );
     return res.data;
   }
+  /* ─── Carta Porte: Resolver CP → colonias ─── */
+  async resolveCP(cp: string) {
+    const res = await this.client.get<{ codigoPostal: string; colonias: Array<{ clave: string; descripcion: string; codigo_postal: string }> }>(`/carta-porte/cp/${cp}`);
+    return res.data;
+  }
+
   /* ─── Carta Porte: Lugares frecuentes ─── */
   async listCPLugares(q?: string, tipo?: string) {
     const res = await this.client.get<{ items: any[] }>('/carta-porte/lugares', { params: { q, tipo } });

@@ -5,9 +5,9 @@
  * edición, borrado suave (activo=false). Ancho 1200px como el resto de CP.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MapPin, Plus, Pencil, Trash2, Search, X, Save } from 'lucide-react';
+import { MapPin, Plus, Pencil, Trash2, Search, X, Save, Loader2 } from 'lucide-react';
 import api from '@/services/api';
 
 interface Lugar {
@@ -230,7 +230,11 @@ export function CartaPorteLugaresPage() {
 
               <div className="border-t border-slate-200 pt-4">
                 <h4 className="text-sm font-medium text-slate-700 mb-3">Domicilio</h4>
-                <div className="grid grid-cols-4 gap-3">
+
+                {/* CP arriba — dispara autocompletado de colonias */}
+                <CPAutofillBlock form={modal.form} setForm={(f) => setModal({ ...modal, form: f })} />
+
+                <div className="grid grid-cols-4 gap-3 mt-3">
                   <Field label="Calle" span={2}>
                     <input value={modal.form.calle} onChange={e => setModal({ ...modal, form: { ...modal.form, calle: e.target.value } })} maxLength={200} className="input" />
                   </Field>
@@ -240,23 +244,11 @@ export function CartaPorteLugaresPage() {
                   <Field label="No. interior">
                     <input value={modal.form.numInterior} onChange={e => setModal({ ...modal, form: { ...modal.form, numInterior: e.target.value } })} maxLength={60} className="input" />
                   </Field>
-                  <Field label="Colonia">
-                    <input value={modal.form.colonia} onChange={e => setModal({ ...modal, form: { ...modal.form, colonia: e.target.value } })} className="input" />
-                  </Field>
-                  <Field label="Municipio">
-                    <input value={modal.form.municipio} onChange={e => setModal({ ...modal, form: { ...modal.form, municipio: e.target.value } })} className="input" />
-                  </Field>
                   <Field label="Localidad">
                     <input value={modal.form.localidad} onChange={e => setModal({ ...modal, form: { ...modal.form, localidad: e.target.value } })} className="input" />
                   </Field>
-                  <Field label="Estado (3 letras)" required>
-                    <input value={modal.form.estado} onChange={e => setModal({ ...modal, form: { ...modal.form, estado: e.target.value.toUpperCase() } })} maxLength={3} className="input font-mono" placeholder="JAL" />
-                  </Field>
                   <Field label="País (3 letras)">
                     <input value={modal.form.pais} onChange={e => setModal({ ...modal, form: { ...modal.form, pais: e.target.value.toUpperCase() } })} maxLength={3} className="input font-mono" />
-                  </Field>
-                  <Field label="Código postal" required>
-                    <input value={modal.form.codigoPostal} onChange={e => setModal({ ...modal, form: { ...modal.form, codigoPostal: e.target.value } })} maxLength={5} className="input font-mono" />
                   </Field>
                   <Field label="Referencia" span={4}>
                     <input value={modal.form.referencia} onChange={e => setModal({ ...modal, form: { ...modal.form, referencia: e.target.value } })} maxLength={500} className="input" placeholder="Entre calles, entrada, etc." />
@@ -292,5 +284,87 @@ function Field({ label, children, required, span = 1 }: { label: string; childre
       </span>
       {children}
     </label>
+  );
+}
+
+/**
+ * CPAutofillBlock — 3 campos primeros: CP + Colonia (dropdown) + Municipio +
+ * Estado. Al capturar 5 dígitos en CP, consulta el catálogo SAT y precarga
+ * las colonias disponibles. El usuario elige una, o teclea manualmente si
+ * el CP no está en el catálogo.
+ */
+function CPAutofillBlock({ form, setForm }: { form: any; setForm: (f: any) => void }) {
+  const [loading, setLoading] = useState(false);
+  const [colonias, setColonias] = useState<Array<{ clave: string; descripcion: string }>>([]);
+  const [error, setError] = useState<string>('');
+
+  useEffect(() => {
+    const cp = String(form.codigoPostal || '').trim();
+    if (!/^\d{5}$/.test(cp)) { setColonias([]); setError(''); return; }
+    let cancelled = false;
+    setLoading(true); setError('');
+    api.resolveCP(cp).then(r => {
+      if (cancelled) return;
+      setColonias(r.colonias || []);
+      if (!r.colonias || r.colonias.length === 0) setError('CP no encontrado en el catálogo SAT — captura manual');
+    }).catch(e => {
+      if (!cancelled) setError(e?.response?.data?.error || 'Error al buscar CP');
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [form.codigoPostal]);
+
+  return (
+    <div className="grid grid-cols-4 gap-3 p-3 bg-slate-50 rounded border border-slate-200">
+      <label className="block">
+        <span className="block text-xs text-slate-500 mb-1">
+          Código postal <span className="text-red-500">*</span>
+          {loading && <Loader2 size={12} className="inline animate-spin ml-2" />}
+        </span>
+        <input
+          value={form.codigoPostal}
+          onChange={e => setForm({ ...form, codigoPostal: e.target.value.replace(/\D/g, '').slice(0, 5) })}
+          maxLength={5}
+          className="input font-mono"
+          placeholder="20126"
+        />
+      </label>
+      <label className="block col-span-2">
+        <span className="block text-xs text-slate-500 mb-1">Colonia (SAT)</span>
+        {colonias.length > 0 ? (
+          <select
+            value={form.colonia}
+            onChange={e => setForm({ ...form, colonia: e.target.value })}
+            className="input"
+          >
+            <option value="">— elige colonia —</option>
+            {colonias.map((c) => (
+              <option key={c.clave} value={c.clave}>{c.clave} · {c.descripcion}</option>
+            ))}
+          </select>
+        ) : (
+          <input value={form.colonia} onChange={e => setForm({ ...form, colonia: e.target.value })} className="input" placeholder={loading ? 'Buscando…' : 'Manual'} />
+        )}
+      </label>
+      <label className="block">
+        <span className="block text-xs text-slate-500 mb-1">Estado <span className="text-red-500">*</span></span>
+        <input
+          value={form.estado}
+          onChange={e => setForm({ ...form, estado: e.target.value.toUpperCase().slice(0, 3) })}
+          maxLength={3}
+          className="input font-mono"
+          placeholder="AGU"
+        />
+      </label>
+      <label className="block col-span-2">
+        <span className="block text-xs text-slate-500 mb-1">Municipio</span>
+        <input value={form.municipio} onChange={e => setForm({ ...form, municipio: e.target.value })} className="input" placeholder="Aguascalientes" />
+      </label>
+      {error && (
+        <p className="col-span-4 text-xs text-amber-600">⚠ {error}</p>
+      )}
+      {colonias.length > 0 && !error && (
+        <p className="col-span-4 text-xs text-emerald-700">✓ {colonias.length} colonia(s) disponibles para este CP</p>
+      )}
+    </div>
   );
 }
