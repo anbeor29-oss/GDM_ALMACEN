@@ -36,6 +36,8 @@ import { CartaPorteVehiculosPage } from '@/pages/CartaPorteVehiculos';
 import { CartaPorteAseguradorasPage } from '@/pages/CartaPorteAseguradoras';
 import { CartaPorteOperadoresPage } from '@/pages/CartaPorteOperadores';
 import { CartaPorteImportarXmlPage } from '@/pages/CartaPorteImportarXml';
+import { ContractPage } from '@/pages/Contract';
+import { TerminosPage, PrivacidadPage } from '@/pages/LegalDoc';
 import { useAuthStore } from '@/store/auth';
 
 const queryClient = new QueryClient();
@@ -104,6 +106,8 @@ export function App() {
         <Routes>
           {/* Rutas públicas */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/terminos"   element={<TerminosPage />} />
+          <Route path="/privacidad" element={<PrivacidadPage />} />
 
           {/* Layout privado — bajo "/" — pero la ruta index es el landing público */}
           <Route
@@ -136,6 +140,7 @@ export function App() {
             <Route path="treasury"     element={<CompanyOnlyRoute><TreasuryPage /></CompanyOnlyRoute>} />
             <Route path="physical-counts" element={<CompanyOnlyRoute><PhysicalCountPage /></CompanyOnlyRoute>} />
             <Route path="team"         element={<CompanyOnlyRoute><TeamPage /></CompanyOnlyRoute>} />
+            <Route path="contract"     element={<CompanyOnlyRoute><ContractPage /></CompanyOnlyRoute>} />
 
             {/* Módulos de plataforma — SOLO SUPER_ADMIN (guard por URL directa) */}
             <Route path="admin/packages"  element={<SuperAdminRoute><AdminPackagesPage /></SuperAdminRoute>} />

@@ -85,7 +85,7 @@ interface CertInfo {
  * El RFC viaja en el subject como x500UniqueIdentifier (a veces con CURP:
  * "RFC / CURP"). El serial del SAT viene hex-encodeado por pares ASCII.
  */
-function parseCertificate(cerDer: Buffer): CertInfo {
+export function parseCertificate(cerDer: Buffer): CertInfo {
   let x509: crypto.X509Certificate;
   try {
     x509 = new crypto.X509Certificate(cerDer);
@@ -129,7 +129,7 @@ function parseCertificate(cerDer: Buffer): CertInfo {
  * Abre la .key del SAT (PKCS#8 DER cifrado) con su contraseña.
  * Node soporta EncryptedPrivateKeyInfo DER nativo con passphrase.
  */
-function openPrivateKey(keyDer: Buffer, password: string): crypto.KeyObject {
+export function openPrivateKey(keyDer: Buffer, password: string): crypto.KeyObject {
   try {
     return crypto.createPrivateKey({
       key: keyDer,

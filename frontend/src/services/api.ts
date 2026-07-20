@@ -1106,6 +1106,20 @@ class APIClient {
     );
     return res.data;
   }
+  /* ─── Contrato de servicio con e.firma ─── */
+  async getContract() {
+    const r = await this.client.get('/contract');
+    return r.data;
+  }
+  async signContract(body: { cerB64: string; keyB64: string; password: string }) {
+    const r = await this.client.post('/contract/sign', body);
+    return r.data;
+  }
+  async verifyContract() {
+    const r = await this.client.get('/contract/verify');
+    return r.data;
+  }
+
   /* ─── Carta Porte: Resolver CP → colonias ─── */
   async resolveCP(cp: string) {
     const res = await this.client.get<{ codigoPostal: string; colonias: Array<{ clave: string; descripcion: string; codigo_postal: string }> }>(`/carta-porte/cp/${cp}`);

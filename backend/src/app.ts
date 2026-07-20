@@ -48,6 +48,8 @@ import posRoutes            from './modules/pos/pos.routes';
 import treasuryRoutes       from './modules/treasury/treasury.routes';
 import physicalCountRoutes  from './modules/physical-count/physical-count.routes';
 import teamRoutes           from './modules/team/team.routes';
+import contractsRoutes, { publicLegalRouter } from './modules/contracts/contracts.routes';
+import activityLog from './middleware/activity-log';
 import cartaPorteRoutes     from './modules/carta-porte/carta-porte.routes';
 import cartaPorteCatalogsRoutes from './modules/carta-porte/carta-porte-catalogs.routes';
 import cartaPorteLugaresRoutes from './modules/carta-porte/lugares.routes';
@@ -123,6 +125,15 @@ export function createApp(): Express {
   // import paymentRoutes from './modules/payments/payments.routes';
   // import reportRoutes from './modules/reports/reports.routes';
 
+  // Documentos legales públicos (sin auth) — deben ir ANTES de mailerRoutes,
+  // que se monta en /api/v1 con auth y bloquearía cualquier ruta subsecuente.
+  app.use(`/api/${config.apiVersion}/legal`, publicLegalRouter);
+
+  // Bitácora de actividad (cláusula SEXTA del contrato). Va ANTES de las rutas
+  // aunque necesite req.user: registra dentro de res.on('finish'), que corre
+  // cuando el authenticateToken de cada router ya pobló req.user.
+  app.use(`/api/${config.apiVersion}`, activityLog);
+
   app.use(`/api/${config.apiVersion}/auth`, authRoutes);
   // Uploads de CSD + logo (montar ANTES de companiesRoutes para que /:id/csd
   // y /:id/logo se matcheen antes de /:id genérico).
@@ -167,6 +178,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/treasury`,        treasuryRoutes);
   app.use(`/api/${config.apiVersion}/physical-counts`, physicalCountRoutes);
   app.use(`/api/${config.apiVersion}/team`,            teamRoutes);
+  app.use(`/api/${config.apiVersion}/contract`,        contractsRoutes);
   // Carta Porte 3.1 — sub-recurso de invoices, montado bajo /api/v1
   app.use(`/api/${config.apiVersion}/carta-porte/lugares`, cartaPorteLugaresRoutes);
   app.use(`/api/${config.apiVersion}/carta-porte`,     cartaPorteCatalogosEmpresaRoutes);
