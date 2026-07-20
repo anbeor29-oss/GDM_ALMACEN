@@ -840,6 +840,10 @@ class APIClient {
     const r = await this.client.post(`/admin/users/${id}/enable`, {});
     return r.data;
   }
+  async adminEnterCompany(companyId: string) {
+    const r = await this.client.post<{ data: { token: string; user: any; company: any } }>(`/admin/companies/${companyId}/enter`, {});
+    return r.data;
+  }
   async adminImpersonate(id: string) {
     const r = await this.client.post(`/admin/users/${id}/impersonate`, {});
     return r.data;

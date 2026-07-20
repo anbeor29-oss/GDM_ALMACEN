@@ -8,13 +8,15 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload,
-  AlertTriangle, Loader2, Pencil, Save,
+  AlertTriangle, Loader2, Pencil, Save, LogIn,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 
 export function AdminCompaniesPage() {
-  const { user } = useAuthStore();
+  const { user, login: storeLogin } = useAuthStore();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [csdTarget, setCsdTarget] = useState<any>(null);
@@ -36,6 +38,23 @@ export function AdminCompaniesPage() {
   const delCsd = useMutation({
     mutationFn: (id: string) => api.adminDeleteCSD(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-companies'] }),
+  });
+
+  const enterCompany = useMutation({
+    mutationFn: (companyId: string) => api.adminEnterCompany(companyId),
+    onSuccess: (res) => {
+      const newUser = {
+        userId: res.data.user.id,
+        email:  res.data.user.email,
+        role:   res.data.user.role,
+        companyId: res.data.user.companyId,
+        impersonatedBy: res.data.user.impersonatedBy,
+      };
+      storeLogin(newUser as any, res.data.token,
+        useAuthStore.getState().refreshToken || '');
+      navigate('/dashboard');
+    },
+    onError: (e: any) => alert(e?.response?.data?.message || e.message || 'No se pudo entrar a la empresa'),
   });
 
   return (
@@ -90,6 +109,9 @@ export function AdminCompaniesPage() {
                 <td className="px-4 py-2 text-center text-sm">{c.users_active}</td>
                 <td className="px-4 py-2">
                   <div className="flex items-center justify-center gap-1">
+                    <button title="Entrar a esta empresa como su ADMIN (impersonación)" onClick={() => enterCompany.mutate(c.id)}
+                      disabled={enterCompany.isPending}
+                      className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded"><LogIn size={16}/></button>
                     <button title="Editar datos generales y domicilio" onClick={() => setEditTarget(c)}
                       className="p-1.5 text-sky-600 hover:bg-sky-50 rounded"><Pencil size={16}/></button>
                     <button title="Cargar CSD" onClick={() => setCsdTarget(c)}

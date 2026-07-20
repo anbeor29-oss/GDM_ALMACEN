@@ -22,6 +22,8 @@ import { authenticateToken } from '../../middleware/authentication';
 import { asyncHandler, ValidationError, NotFoundError, ConflictError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import { requireSuperAdmin, audit } from './admin.middleware';
+import { generateToken } from '../../middleware/authentication';
+import logger from '../../middleware/logger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -226,6 +228,61 @@ router.delete('/:id/csd', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 /* ────────────────────────  USAGE  ──────────────────────── */
+/**
+ * POST /admin/companies/:id/enter — el SUPER_ADMIN entra como el primer ADMIN
+ * activo de la empresa (impersonación directa por empresa, en un click).
+ *
+ * Emite un JWT con el rol y company_id del ADMIN target, con impersonatedBy
+ * apuntando al SUPER_ADMIN. Auditado como COMPANY_ENTERED.
+ * Si la empresa no tiene ADMIN activo, error 404 con instrucción de crearlo.
+ */
+router.post('/:id/enter', asyncHandler(async (req: Request, res: Response) => {
+  const companyId = req.params.id;
+  const compR = await query<{ id: string; business_name: string; rfc: string }>(
+    `SELECT id, business_name, rfc FROM companies WHERE id = $1`, [companyId],
+  );
+  if (!compR.rowCount) throw new NotFoundError('Empresa no encontrada');
+  const admin = await query<{ id: string; email: string; role: string; is_active: boolean }>(
+    `SELECT id, email, role, is_active FROM users
+      WHERE company_id = $1 AND role = 'ADMIN' AND is_active = true AND deleted_at IS NULL
+      ORDER BY created_at ASC LIMIT 1`,
+    [companyId],
+  );
+  if (!admin.rowCount) {
+    throw new NotFoundError('Esta empresa no tiene ADMIN activo. Crea uno primero desde /admin/users antes de entrar.');
+  }
+  const target = admin.rows[0];
+  const impersonationToken = generateToken({
+    userId: target.id,
+    email: target.email,
+    role: target.role,
+    companyId,
+    impersonatedBy: { userId: req.user!.userId, email: req.user!.email },
+  });
+  await audit(req, {
+    action: 'COMPANY_ENTERED',
+    targetKind: 'company', targetId: companyId,
+    payload: {
+      company_rfc: compR.rows[0].rfc,
+      company_name: compR.rows[0].business_name,
+      as_user: target.email,
+    },
+  });
+  logger.info(`[ENTER-COMPANY] ${req.user!.email} → ${compR.rows[0].business_name} (${target.email})`);
+  res.json({
+    success: true,
+    data: {
+      token: impersonationToken,
+      user: {
+        id: target.id, email: target.email, role: target.role,
+        companyId,
+        impersonatedBy: { userId: req.user!.userId, email: req.user!.email },
+      },
+      company: { id: companyId, name: compR.rows[0].business_name, rfc: compR.rows[0].rfc },
+    },
+  });
+}));
+
 router.get('/:id/usage', asyncHandler(async (req: Request, res: Response) => {
   const r = await query<any>(
     `SELECT c.id, c.rfc, c.business_name, c.billing_plan,
