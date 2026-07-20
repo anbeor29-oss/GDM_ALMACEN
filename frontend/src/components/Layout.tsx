@@ -6,29 +6,16 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { GdmLogo } from './GdmLogo';
 import {
-  FileText,
-  Users,
-  Boxes,
-  LayoutGrid,
-  BarChart3,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
   Building2,
-  FileMinus2,
   ShieldCheck,
   Wallet,
   FileInput,
   Truck,
   DollarSign,
   ShoppingCart,
-  Warehouse,
-  ArrowLeftRight,
-  ClipboardList,
-  Store,
-  ClipboardCheck,
-  Landmark,
-  UsersRound,
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
@@ -95,9 +82,9 @@ export function Layout() {
               pertenecen a cada empresa usuaria y aparecen cuando impersona. */}
           {user?.role !== 'SUPER_ADMIN' && (
             <>
-              <NavItem to="/dashboard"    icon={<LayoutGrid size={20} />}  accent="sky"     label="Dashboard"        open={sidebarOpen} />
-              {can('pos')             && <NavItem to="/pos"          icon={<Store size={20} />}       accent="amber"   label="Punto de venta"   open={sidebarOpen} />}
-              {can('invoices')        && <NavItem to="/invoices"     icon={<FileText size={20} />}    accent="amber"   label="Facturas"         open={sidebarOpen} />}
+              <NavItem to="/dashboard"    icon={<span className="text-xl leading-none">🏠</span>}  accent="sky"     label="Dashboard"        open={sidebarOpen} />
+              {can('pos')             && <NavItem to="/pos"          icon={<span className="text-xl leading-none">🛒</span>}       accent="amber"   label="Punto de venta"   open={sidebarOpen} />}
+              {can('invoices')        && <NavItem to="/invoices"     icon={<span className="text-xl leading-none">📄</span>}    accent="amber"   label="Facturas"         open={sidebarOpen} />}
               {can('carta_porte')     && (
                 <NavGroup
                   to="/carta-porte"
@@ -115,19 +102,19 @@ export function Layout() {
                   ]}
                 />
               )}
-              {can('credit_notes')    && <NavItem to="/credit-notes" icon={<FileMinus2 size={20} />}  accent="rose"    label="Notas de Crédito" open={sidebarOpen} />}
-              {can('customers')       && <NavItem to="/customers"    icon={<Users size={20} />}       accent="emerald" label="Clientes"         open={sidebarOpen} />}
-              {can('products')        && <NavItem to="/products"     icon={<Boxes size={20} />}       accent="fuchsia" label="Productos"        open={sidebarOpen} />}
-              {can('inventory')       && <NavItem to="/inventory"    icon={<ArrowLeftRight size={20} />} accent="fuchsia" label="Inventario"    open={sidebarOpen} />}
-              {can('warehouses')      && <NavItem to="/warehouses"   icon={<Warehouse size={20} />}   accent="sky"     label="Almacenes"        open={sidebarOpen} />}
-              {can('physical_counts') && <NavItem to="/physical-counts" icon={<ClipboardCheck size={20} />} accent="amber" label="Inventario físico" open={sidebarOpen} />}
-              {can('purchase_orders') && <NavItem to="/purchase-orders" icon={<ClipboardList size={20} />} accent="emerald" label="Órdenes de compra" open={sidebarOpen} />}
-              {can('import_xml')      && <NavItem to="/import-xml"   icon={<FileInput size={20} />}   accent="amber"   label="Compras XML"      open={sidebarOpen} />}
-              {can('suppliers')       && <NavItem to="/suppliers"    icon={<Truck size={20} />}       accent="rose"    label="Proveedores"      open={sidebarOpen} />}
-              {can('treasury')        && <NavItem to="/treasury"     icon={<Landmark size={20} />}    accent="emerald" label="Tesorería"        open={sidebarOpen} />}
-              {can('reports')         && <NavItem to="/reports"      icon={<BarChart3 size={20} />}   accent="violet"  label="Reportes"         open={sidebarOpen} />}
+              {can('credit_notes')    && <NavItem to="/credit-notes" icon={<span className="text-xl leading-none">📉</span>}  accent="rose"    label="Notas de Crédito" open={sidebarOpen} />}
+              {can('customers')       && <NavItem to="/customers"    icon={<span className="text-xl leading-none">👥</span>}       accent="emerald" label="Clientes"         open={sidebarOpen} />}
+              {can('products')        && <NavItem to="/products"     icon={<span className="text-xl leading-none">📦</span>}       accent="fuchsia" label="Productos"        open={sidebarOpen} />}
+              {can('inventory')       && <NavItem to="/inventory"    icon={<span className="text-xl leading-none">📊</span>} accent="fuchsia" label="Inventario"    open={sidebarOpen} />}
+              {can('warehouses')      && <NavItem to="/warehouses"   icon={<span className="text-xl leading-none">🏭</span>}   accent="sky"     label="Almacenes"        open={sidebarOpen} />}
+              {can('physical_counts') && <NavItem to="/physical-counts" icon={<span className="text-xl leading-none">📋</span>} accent="amber" label="Inventario físico" open={sidebarOpen} />}
+              {can('purchase_orders') && <NavItem to="/purchase-orders" icon={<span className="text-xl leading-none">📝</span>} accent="emerald" label="Órdenes de compra" open={sidebarOpen} />}
+              {can('import_xml')      && <NavItem to="/import-xml"   icon={<span className="text-xl leading-none">📥</span>}   accent="amber"   label="Compras XML"      open={sidebarOpen} />}
+              {can('suppliers')       && <NavItem to="/suppliers"    icon={<span className="text-xl leading-none">🚛</span>}       accent="rose"    label="Proveedores"      open={sidebarOpen} />}
+              {can('treasury')        && <NavItem to="/treasury"     icon={<span className="text-xl leading-none">💰</span>}    accent="emerald" label="Tesorería"        open={sidebarOpen} />}
+              {can('reports')         && <NavItem to="/reports"      icon={<span className="text-xl leading-none">📈</span>}   accent="violet"  label="Reportes"         open={sidebarOpen} />}
               {user?.role === 'ADMIN' && (
-                <NavItem to="/team"       icon={<UsersRound size={20} />}  accent="sky"     label="Equipo y permisos" open={sidebarOpen} />
+                <NavItem to="/team"       icon={<span className="text-xl leading-none">🔐</span>}  accent="sky"     label="Equipo y permisos" open={sidebarOpen} />
               )}
             </>
           )}
