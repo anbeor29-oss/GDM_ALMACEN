@@ -135,3 +135,4 @@ scripts/logs/
 .vscode/launch.json
 .vscode/extensions.json
 
+dist-hcgm-*.zip
