@@ -331,16 +331,28 @@ function CPAutofillBlock({ form, setForm }: { form: any; setForm: (f: any) => vo
       <label className="block col-span-2">
         <span className="block text-xs text-slate-500 mb-1">Colonia (SAT)</span>
         {colonias.length > 0 ? (
-          <select
-            value={form.colonia}
-            onChange={e => setForm({ ...form, colonia: e.target.value })}
-            className="input"
-          >
-            <option value="">— elige colonia —</option>
-            {colonias.map((c) => (
-              <option key={c.clave} value={c.clave}>{c.clave} · {c.descripcion}</option>
-            ))}
-          </select>
+          <div className="space-y-1">
+            <select
+              value={colonias.some(c => c.clave === form.colonia) ? form.colonia : (form.colonia ? '__OTRA__' : '')}
+              onChange={e => setForm({ ...form, colonia: e.target.value === '__OTRA__' ? ' ' : e.target.value })}
+              className="input"
+            >
+              <option value="">— elige colonia —</option>
+              {colonias.map((c) => (
+                <option key={c.clave} value={c.clave}>{c.clave} · {c.descripcion}</option>
+              ))}
+              <option value="__OTRA__">✎ Otra no especificada en el catálogo…</option>
+            </select>
+            {form.colonia && !colonias.some(c => c.clave === form.colonia) && (
+              <input
+                value={form.colonia === ' ' ? '' : form.colonia}
+                onChange={e => setForm({ ...form, colonia: e.target.value })}
+                className="input text-sm"
+                placeholder="Anota la colonia (texto libre)"
+                autoFocus
+              />
+            )}
+          </div>
         ) : (
           <input value={form.colonia} onChange={e => setForm({ ...form, colonia: e.target.value })} className="input" placeholder={loading ? 'Buscando…' : 'Manual'} />
         )}

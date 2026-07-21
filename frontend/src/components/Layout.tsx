@@ -12,7 +12,6 @@ import {
   Building2,
   ShieldCheck,
   Wallet,
-  FileInput,
   Truck,
   DollarSign,
   ShoppingCart,
@@ -98,7 +97,6 @@ export function Layout() {
                     { to: '/carta-porte/vehiculos',    icon: <span className="text-base leading-none">🚚</span>, label: 'Vehículos' },
                     { to: '/carta-porte/aseguradoras', icon: <span className="text-base leading-none">🛡️</span>, label: 'Aseguradoras' },
                     { to: '/carta-porte/operadores',   icon: <span className="text-base leading-none">👤</span>, label: 'Operadores' },
-                    { to: '/carta-porte/importar-xml', icon: <span className="text-base leading-none">💼</span>, label: 'Importar XML CP' },
                   ]}
                 />
               )}
@@ -109,7 +107,6 @@ export function Layout() {
               {can('warehouses')      && <NavItem to="/warehouses"   icon={<span className="text-xl leading-none">🏭</span>}   accent="sky"     label="Almacenes"        open={sidebarOpen} />}
               {can('physical_counts') && <NavItem to="/physical-counts" icon={<span className="text-xl leading-none">📋</span>} accent="amber" label="Inventario físico" open={sidebarOpen} />}
               {can('purchase_orders') && <NavItem to="/purchase-orders" icon={<span className="text-xl leading-none">📝</span>} accent="emerald" label="Órdenes de compra" open={sidebarOpen} />}
-              {can('import_xml')      && <NavItem to="/import-xml"   icon={<span className="text-xl leading-none">📥</span>}   accent="amber"   label="Compras XML"      open={sidebarOpen} />}
               {can('import_xml')      && <NavItem to="/xml-super-import" icon={<span className="text-xl leading-none">🧠</span>} accent="violet"  label="Super Lector XML" open={sidebarOpen} />}
               {can('suppliers')       && <NavItem to="/suppliers"    icon={<span className="text-xl leading-none">🚛</span>}       accent="rose"    label="Proveedores"      open={sidebarOpen} />}
               {can('treasury')        && <NavItem to="/treasury"     icon={<span className="text-xl leading-none">💰</span>}    accent="emerald" label="Tesorería"        open={sidebarOpen} />}
@@ -133,7 +130,7 @@ export function Layout() {
               <NavItem to="/admin/packages"  icon={<Wallet size={20} />}     accent="violet"  label="Paquetes fiscales" open={sidebarOpen} />
               <NavItem to="/admin/billing"   icon={<DollarSign size={20} />} accent="emerald" label="Facturación y consumo" open={sidebarOpen} />
               <NavItem to="/admin/prepaid"   icon={<ShoppingCart size={20} />} accent="fuchsia" label="Compras prepago" open={sidebarOpen} />
-              <NavItem to="/import-xml"      icon={<FileInput size={20} />}  accent="amber"   label="Importar XML"      open={sidebarOpen} />
+              <NavItem to="/xml-super-import" icon={<span className="text-xl leading-none">🧠</span>} accent="violet"  label="Super Lector XML" open={sidebarOpen} />
               <NavItem to="/suppliers"       icon={<Truck size={20} />}      accent="rose"    label="Proveedores"       open={sidebarOpen} />
             </>
           )}

@@ -11,6 +11,7 @@
  * NO valida contra XSD (eso lo hace el bloque 9). Aquí solo LEE.
  */
 import * as xml2js from 'xml2js';
+import { pool } from '../../config/database';
 
 /* ─── Estructura del resultado ─── */
 
@@ -27,6 +28,8 @@ export interface LugarPreview {
   codigoPostal: string;
   calle?: string;
   numExterior?: string;
+  numInterior?: string;
+  referencia?: string;
 }
 export interface VehiculoPreview {
   alias: string;
@@ -132,7 +135,7 @@ export async function previewFromXml(xmlContent: string): Promise<ImportPreview>
       transpInternac: attr(cp, 'TranspInternac'),
       totalDistRec:   num(attr(cp, 'TotalDistRec')),
     },
-    lugares:      extractLugares(cp),
+    lugares:      await enrichLugares(extractLugares(cp)),
     vehiculo:     extractVehiculo(cp),
     aseguradoras: extractAseguradoras(cp),
     operadores:   extractOperadores(cp),
@@ -163,8 +166,51 @@ function extractLugares(cp: any): LugarPreview[] {
       codigoPostal: cp5,
       calle:        attr(dom, 'Calle'),
       numExterior:  attr(dom, 'NumeroExterior'),
+      numInterior:  attr(dom, 'NumeroInterior'),
+      referencia:   attr(dom, 'Referencia'),
     };
   });
+}
+
+/**
+ * Enriquece las claves SAT (Colonia="2954", Municipio="012") con su
+ * descripción legible ("Cd. Guadalupe", "Guadalupe") consultando los
+ * catálogos ya cargados. Si la clave no existe en el catálogo se deja tal
+ * cual (fallback = valor original).
+ */
+async function enrichLugares(lugares: LugarPreview[]): Promise<LugarPreview[]> {
+  if (!lugares.length) return lugares;
+  const out: LugarPreview[] = [];
+  for (const l of lugares) {
+    let colonia = l.colonia;
+    let municipio = l.municipio;
+    // Colonia: clave numérica + CP → sat_cp_colonia.descripcion
+    if (colonia && /^\d+$/.test(colonia) && l.codigoPostal) {
+      try {
+        const r = await pool.query(
+          `SELECT descripcion FROM sat_cp_colonia
+            WHERE codigo_postal = $1 AND clave = LPAD($2, 4, '0')
+            LIMIT 1`,
+          [l.codigoPostal, colonia],
+        );
+        if (r.rows[0]?.descripcion) colonia = r.rows[0].descripcion;
+      } catch { /* fallback: dejar clave */ }
+    }
+    // Municipio: clave numérica + estado → sat_cp_municipio.descripcion
+    if (municipio && /^\d+$/.test(municipio) && l.estado) {
+      try {
+        const r = await pool.query(
+          `SELECT descripcion FROM sat_cp_municipio
+            WHERE estado = $1 AND clave = LPAD($2, 4, '0')
+            LIMIT 1`,
+          [l.estado, municipio],
+        );
+        if (r.rows[0]?.descripcion) municipio = r.rows[0].descripcion;
+      } catch { /* fallback */ }
+    }
+    out.push({ ...l, colonia, municipio });
+  }
+  return out;
 }
 
 function extractVehiculo(cp: any): VehiculoPreview | undefined {
