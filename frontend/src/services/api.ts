@@ -1136,6 +1136,26 @@ class APIClient {
     return res.data;
   }
 
+  /* ─── Mercancías transportadas ─── */
+  async listMercanciasCatalog(params?: { search?: string; clienteRfc?: string }) {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.clienteRfc) q.set('clienteRfc', params.clienteRfc);
+    const r = await this.client.get<{ items: any[] }>(`/carta-porte/mercancias?${q}`);
+    return r.data;
+  }
+  async listMercanciasBitacora(params?: { invoiceId?: string; from?: string; to?: string }) {
+    const q = new URLSearchParams();
+    if (params?.invoiceId) q.set('invoiceId', params.invoiceId);
+    if (params?.from) q.set('from', params.from);
+    if (params?.to) q.set('to', params.to);
+    const r = await this.client.get<{ items: any[] }>(`/carta-porte/mercancias/bitacora?${q}`);
+    return r.data;
+  }
+  async deleteMercanciaCatalog(id: string) {
+    await this.client.delete(`/carta-porte/mercancias/${id}`);
+  }
+
   /* ─── Carta Porte: Lugares frecuentes ─── */
   async listCPLugares(q?: string, tipo?: string) {
     const res = await this.client.get<{ items: any[] }>('/carta-porte/lugares', { params: { q, tipo } });

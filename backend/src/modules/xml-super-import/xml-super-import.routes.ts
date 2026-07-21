@@ -17,6 +17,7 @@ import * as lugaresSvc from '../carta-porte/lugares.service';
 import * as vehiculosSvc from '../carta-porte/vehiculos.service';
 import * as aseguradorasSvc from '../carta-porte/aseguradoras.service';
 import * as operadoresSvc from '../carta-porte/operadores.service';
+import * as mercanciasSvc from '../carta-porte/mercancias.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -123,9 +124,46 @@ router.post('/apply', asyncHandler(async (req: Request, res: Response) => {
   }
 
   // ─── Complemento Carta Porte — puente al importador existente ────────
-  if (b.saveCartaPorte && det.hasCartaPorte) {
+  const savePartyMerc = b.saveMercancias === true;
+  if ((b.saveCartaPorte || savePartyMerc) && det.hasCartaPorte) {
     try {
       const cp = await cpPreviewFromXml(xml);
+
+      // Mercancías transportadas → catálogo + bitácora (SEPARADAS de products)
+      if (savePartyMerc) {
+        const remitente = (cp.lugares || []).find(l => l.tipoDefault === 'Origen');
+        const destinatario = (cp.lugares || []).find(l => l.tipoDefault === 'Destino');
+        for (const m of cp.mercancias || []) {
+          try {
+            const r = await mercanciasSvc.saveMercancia(cid, {
+              claveSat: m.claveSat,
+              descripcion: m.descripcion,
+              cantidad: m.cantidad,
+              claveUnidad: m.claveUnidad,
+              unidadTexto: m.unidadTexto,
+              pesoKg: m.pesoKg,
+              valorMercancia: m.valorMercancia,
+              moneda: m.moneda,
+              uuidCfdi: det.uuid,
+              idCcp: cp.cartaPorte?.idCCP,
+              remitenteRfc: remitente?.rfc,
+              remitenteNombre: remitente?.nombre,
+              destinatarioRfc: destinatario?.rfc,
+              destinatarioNombre: destinatario?.nombre,
+              fechaViaje: det.fechaEmision,
+            });
+            if (r.catalogInserted) created.push({ kind: 'mercancía', id: r.catalogId, label: `${m.claveSat} · ${m.descripcion.slice(0, 40)}` });
+            else skipped.push({ kind: 'mercancía', reason: 'ya en catálogo (contador +1)', label: m.descripcion.slice(0, 40) });
+            if (!r.movimientoSkipped) created.push({ kind: 'mercancía-bitácora', id: r.movimientoId || undefined, label: `viaje ${m.cantidad} ${m.claveUnidad || ''}` });
+          } catch (e: any) {
+            errors.push(`Mercancía "${m.descripcion.slice(0, 40)}": ${e.message}`);
+          }
+        }
+      }
+
+      if (!b.saveCartaPorte) {
+        // solo mercancías, skip lugares/vehiculos/aseguradoras/operadores
+      } else {
       // Aseguradoras primero (el vehículo las referencia)
       const aseguradorasIds: Record<string, string> = {};
       for (const a of cp.aseguradoras || []) {
@@ -173,6 +211,7 @@ router.post('/apply', asyncHandler(async (req: Request, res: Response) => {
           else errors.push(`Operador "${o.alias}": ${e.message}`);
         }
       }
+      } // else (b.saveCartaPorte)
     } catch (e: any) {
       errors.push(`Carta Porte: ${e.message}`);
     }

@@ -44,6 +44,7 @@ export function SuperXMLImportPage() {
     receptorAs: '' as '' | 'CUSTOMER' | 'SUPPLIER',
     saveConceptsAsViajes: true,
     saveCartaPorte: true,
+    saveMercancias: true,
     saveNomina: false,
   });
 
@@ -74,6 +75,7 @@ export function SuperXMLImportPage() {
       receptorAs: decisions.receptorAs || null,
       saveConceptsAsViajes: decisions.saveConceptsAsViajes,
       saveCartaPorte: decisions.saveCartaPorte,
+      saveMercancias: decisions.saveMercancias,
       saveNomina: decisions.saveNomina,
     }),
     onSuccess: (data) => setApplied(data),
@@ -226,6 +228,36 @@ export function SuperXMLImportPage() {
                 <span>Extraer y guardar <b>lugares, vehículo, aseguradoras y operadores</b> (dedup automático)</span>
               </label>
               <p className="text-xs text-slate-500 mt-1">Se ejecutan las reglas 4-8: lugares por alias, operadores por RFC, vehículos por placa, aseguradoras por póliza.</p>
+            </Card>
+          )}
+
+          {/* Mercancías transportadas — plantilla + bitácora para inspecciones SAT */}
+          {detection.hasCartaPorte && detection.mercancias && detection.mercancias.length > 0 && (
+            <Card icon={<span className="text-base">📦</span>} title={`Mercancías transportadas (${detection.mercancias.length})`} color="rose">
+              <label className="inline-flex items-center gap-2 text-sm mb-2">
+                <input
+                  type="checkbox"
+                  checked={decisions.saveMercancias}
+                  onChange={(e) => setDecisions({ ...decisions, saveMercancias: e.target.checked })}
+                />
+                <span>Guardar en <b>catálogo de mercancías</b> (plantilla) + <b>bitácora</b> por viaje</span>
+              </label>
+              <p className="text-xs text-slate-500 mb-3">
+                Separadas de <i>Productos</i> — no son inventario propio. Necesarias para inspecciones SAT (faltar datos = multa).
+              </p>
+              <div className="space-y-1.5">
+                {detection.mercancias.map((m: any, i: number) => (
+                  <div key={i} className="flex items-start justify-between gap-3 p-2 bg-white rounded border border-rose-100 text-xs">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-slate-800 truncate">{m.descripcion}</div>
+                      <div className="text-slate-500 font-mono">SAT {m.claveSat} · {m.cantidad} {m.claveUnidad || ''} · {m.pesoKg || 0} kg</div>
+                    </div>
+                    <div className="text-right whitespace-nowrap text-slate-700">
+                      ${Number(m.valorMercancia || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })} {m.moneda}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card>
           )}
 

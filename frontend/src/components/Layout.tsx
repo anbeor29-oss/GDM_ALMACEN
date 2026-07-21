@@ -97,6 +97,7 @@ export function Layout() {
                     { to: '/carta-porte/vehiculos',    icon: <span className="text-base leading-none">🚚</span>, label: 'Vehículos' },
                     { to: '/carta-porte/aseguradoras', icon: <span className="text-base leading-none">🛡️</span>, label: 'Aseguradoras' },
                     { to: '/carta-porte/operadores',   icon: <span className="text-base leading-none">👤</span>, label: 'Operadores' },
+                    { to: '/carta-porte/mercancias',   icon: <span className="text-base leading-none">📦</span>, label: 'Mercancías' },
                   ]}
                 />
               )}

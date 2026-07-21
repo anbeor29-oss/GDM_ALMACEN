@@ -74,6 +74,17 @@ export interface ImportPreview {
   vehiculo?:    VehiculoPreview;
   aseguradoras: AseguradoraPreview[];
   operadores:   OperadorPreview[];
+  mercancias:   MercanciaPreview[];
+}
+export interface MercanciaPreview {
+  claveSat: string;         // BienesTransp (8 dígitos SAT)
+  descripcion: string;
+  cantidad: number;
+  claveUnidad?: string;     // XRO/XBX/KGM/…
+  unidadTexto?: string;     // "KILOGRAMO"
+  pesoKg?: number;
+  valorMercancia?: number;
+  moneda?: string;
 }
 
 /* ─── Helpers ─── */
@@ -137,6 +148,7 @@ export async function previewFromXml(xmlContent: string): Promise<ImportPreview>
     },
     lugares:      await enrichLugares(extractLugares(cp)),
     vehiculo:     extractVehiculo(cp),
+    mercancias:   extractMercancias(cp),
     aseguradoras: extractAseguradoras(cp),
     operadores:   extractOperadores(cp),
   };
@@ -211,6 +223,22 @@ async function enrichLugares(lugares: LugarPreview[]): Promise<LugarPreview[]> {
     out.push({ ...l, colonia, municipio });
   }
   return out;
+}
+
+function extractMercancias(cp: any): MercanciaPreview[] {
+  const merc = get(cp, 'cartaporte31:Mercancias', 'Mercancias');
+  if (!merc) return [];
+  const items = toArr(get(merc, 'cartaporte31:Mercancia', 'Mercancia'));
+  return items.map((m: any) => ({
+    claveSat:       String(attr(m, 'BienesTransp') || '').trim(),
+    descripcion:    String(attr(m, 'Descripcion') || '').trim(),
+    cantidad:       num(attr(m, 'Cantidad')) ?? 0,
+    claveUnidad:    attr(m, 'ClaveUnidad'),
+    unidadTexto:    attr(m, 'Unidad'),
+    pesoKg:         num(attr(m, 'PesoEnKg')),
+    valorMercancia: num(attr(m, 'ValorMercancia')),
+    moneda:         attr(m, 'Moneda') || 'MXN',
+  })).filter(m => m.claveSat && m.descripcion);
 }
 
 function extractVehiculo(cp: any): VehiculoPreview | undefined {

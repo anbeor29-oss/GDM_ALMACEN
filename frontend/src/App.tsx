@@ -35,6 +35,7 @@ import { CartaPorteLugaresPage } from '@/pages/CartaPorteLugares';
 import { CartaPorteVehiculosPage } from '@/pages/CartaPorteVehiculos';
 import { CartaPorteAseguradorasPage } from '@/pages/CartaPorteAseguradoras';
 import { CartaPorteOperadoresPage } from '@/pages/CartaPorteOperadores';
+import { CartaPorteMercanciasPage } from '@/pages/CartaPorteMercancias';
 import { CartaPorteImportarXmlPage } from '@/pages/CartaPorteImportarXml';
 import { ContractPage } from '@/pages/Contract';
 import { TerminosPage, PrivacidadPage } from '@/pages/LegalDoc';
@@ -127,6 +128,7 @@ export function App() {
             <Route path="carta-porte/vehiculos" element={<CompanyOnlyRoute><CartaPorteVehiculosPage /></CompanyOnlyRoute>} />
             <Route path="carta-porte/aseguradoras" element={<CompanyOnlyRoute><CartaPorteAseguradorasPage /></CompanyOnlyRoute>} />
             <Route path="carta-porte/operadores" element={<CompanyOnlyRoute><CartaPorteOperadoresPage /></CompanyOnlyRoute>} />
+            <Route path="carta-porte/mercancias" element={<CompanyOnlyRoute><CartaPorteMercanciasPage /></CompanyOnlyRoute>} />
             <Route path="carta-porte/importar-xml" element={<CompanyOnlyRoute><CartaPorteImportarXmlPage /></CompanyOnlyRoute>} />
             <Route path="xml-super-import"       element={<CompanyOnlyRoute><SuperXMLImportPage /></CompanyOnlyRoute>} />
             <Route path="invoices/new"       element={<CompanyOnlyRoute><NewInvoicePage /></CompanyOnlyRoute>} />

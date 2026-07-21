@@ -54,6 +54,15 @@ export interface DetectionResult {
     impuestos?: { iva?: number; retIva?: number; retIsr?: number };
   }>;
   cartaPorte?: any;  // el nodo cartaporte31:CartaPorte completo (para pasarlo al importador CP existente)
+  mercancias?: Array<{
+    claveSat: string;
+    descripcion: string;
+    cantidad: number;
+    claveUnidad?: string;
+    pesoKg?: number;
+    valorMercancia?: number;
+    moneda?: string;
+  }>;
   nomina?: {
     tipoNomina?: string;
     fechaPago?: string;
@@ -87,6 +96,20 @@ function num(v: any): number | undefined {
   if (v === undefined || v === null || v === '') return undefined;
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
+}
+
+function extractMercanciasFromCP(cp: any) {
+  const merc = get(cp, 'cartaporte31:Mercancias', 'Mercancias');
+  if (!merc) return [];
+  return toArr(get(merc, 'cartaporte31:Mercancia', 'Mercancia')).map((m: any) => ({
+    claveSat:       String(attr(m, 'BienesTransp') || '').trim(),
+    descripcion:    String(attr(m, 'Descripcion') || '').trim(),
+    cantidad:       num(attr(m, 'Cantidad')) ?? 0,
+    claveUnidad:    attr(m, 'ClaveUnidad'),
+    pesoKg:         num(attr(m, 'PesoEnKg')),
+    valorMercancia: num(attr(m, 'ValorMercancia')),
+    moneda:         attr(m, 'Moneda') || 'MXN',
+  })).filter(m => m.claveSat && m.descripcion);
 }
 
 /**
@@ -186,6 +209,7 @@ export async function detect(xmlContent: string): Promise<DetectionResult> {
     hasPagos: !!pagosNode,
     conceptos,
     cartaPorte: cartaPorteNode,
+    mercancias: cartaPorteNode ? extractMercanciasFromCP(cartaPorteNode) : undefined,
     nomina,
     xmlBlob: xmlContent,
     xmlSha256: crypto.createHash('sha256').update(xmlContent).digest('hex'),

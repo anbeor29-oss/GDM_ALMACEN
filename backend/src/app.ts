@@ -55,6 +55,7 @@ import cartaPorteCatalogsRoutes from './modules/carta-porte/carta-porte-catalogs
 import cartaPorteLugaresRoutes from './modules/carta-porte/lugares.routes';
 import cartaPorteCatalogosEmpresaRoutes from './modules/carta-porte/catalogos-empresa.routes';
 import cartaPorteImportarXmlRoutes from './modules/carta-porte/importar-xml.routes';
+import cartaPorteMercanciasRoutes from './modules/carta-porte/mercancias.routes';
 import xmlSuperImportRoutes from './modules/xml-super-import/xml-super-import.routes';
 
 export function createApp(): Express {
@@ -184,6 +185,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/carta-porte/lugares`, cartaPorteLugaresRoutes);
   app.use(`/api/${config.apiVersion}/carta-porte`,     cartaPorteCatalogosEmpresaRoutes);
   app.use(`/api/${config.apiVersion}/carta-porte/importar-xml`, cartaPorteImportarXmlRoutes);
+  app.use(`/api/${config.apiVersion}/carta-porte/mercancias`, cartaPorteMercanciasRoutes);
   app.use(`/api/${config.apiVersion}/xml-super-import`, xmlSuperImportRoutes);
   app.use(`/api/${config.apiVersion}/carta-porte`,     cartaPorteCatalogsRoutes);
   app.use(`/api/${config.apiVersion}`,                 cartaPorteRoutes);
