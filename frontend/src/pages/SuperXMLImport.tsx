@@ -38,6 +38,10 @@ export function SuperXMLImportPage() {
   const [err, setErr] = useState<string>('');
   const [dragOver, setDragOver] = useState(false);
 
+  // Modo lote: hasta 5 XMLs procesados en serie
+  const [batchQueue, setBatchQueue] = useState<Array<{ file: File; status: 'pending' | 'processing' | 'done' | 'error'; summary?: any; error?: string }>>([]);
+  const [batchRunning, setBatchRunning] = useState(false);
+
   // Decisiones del usuario en la fase de preview
   const [decisions, setDecisions] = useState({
     emisorAs: '' as '' | 'CUSTOMER' | 'SUPPLIER',
@@ -95,6 +99,51 @@ export function SuperXMLImportPage() {
     detectMut.mutate(text);
   };
 
+  /** Modo lote: cola de hasta 5 archivos con defaults sensatos (dedup + guardar
+   *  emisor como proveedor / receptor como cliente / mercancías + CP + viajes).
+   *  Se procesan en serie: cada apply usa dedup contra la BD ya poblada por
+   *  los anteriores, así evitas duplicar catálogos entre archivos del mismo
+   *  lote. */
+  const handleFiles = (files: FileList | File[]) => {
+    const arr = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.xml')).slice(0, 5);
+    if (arr.length === 0) { setErr('Los archivos deben ser .xml'); return; }
+    if (arr.length === 1) { handleFile(arr[0]); return; }
+    setBatchQueue(arr.map(f => ({ file: f, status: 'pending' })));
+    setDetection(null); setDups(null); setApplied(null); setErr(''); setXml(''); setFileName('');
+  };
+
+  const runBatch = async () => {
+    setBatchRunning(true);
+    const q = [...batchQueue];
+    for (let i = 0; i < q.length; i++) {
+      q[i] = { ...q[i], status: 'processing' };
+      setBatchQueue([...q]);
+      try {
+        const xmlText = await q[i].file.text();
+        const det = await api.xmlSuperDetect(xmlText);
+        const result = await api.xmlSuperApply({
+          xml: xmlText,
+          // Defaults del lote: si emisor/receptor no existen, se guardan con
+          // el rol típico (emisor=proveedor, receptor=cliente). El dedup del
+          // backend maneja los duplicados automáticamente.
+          emisorAs:   det.duplicates?.emisor?.exists   ? null : 'SUPPLIER',
+          receptorAs: det.duplicates?.receptor?.exists ? null : 'CUSTOMER',
+          saveConceptsAsViajes: true,
+          saveCartaPorte: det.detection?.hasCartaPorte,
+          saveMercancias: det.detection?.hasCartaPorte,
+          saveNomina: det.detection?.type === 'CFDI_NOMINA',
+        });
+        q[i] = { ...q[i], status: 'done', summary: result.summary };
+      } catch (e: any) {
+        q[i] = { ...q[i], status: 'error', error: e?.response?.data?.message || e?.message || 'Error' };
+      }
+      setBatchQueue([...q]);
+    }
+    setBatchRunning(false);
+  };
+
+  const removeBatchItem = (idx: number) => setBatchQueue(batchQueue.filter((_, j) => j !== idx));
+
   const restart = () => {
     setXml(''); setFileName(''); setDetection(null); setDups(null); setApplied(null); setErr('');
     detectMut.reset(); applyMut.reset();
@@ -121,22 +170,69 @@ export function SuperXMLImportPage() {
         </div>
       )}
 
-      {/* Paso 1: subir */}
-      {!detection && !applied && (
+      {/* Paso 1: subir (drop-zone) */}
+      {!detection && !applied && batchQueue.length === 0 && (
         <div
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
-          onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+          onDrop={e => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); }}
           className={`border-2 border-dashed rounded-lg p-16 text-center transition-colors ${dragOver ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300 bg-white'}`}
         >
           <Upload size={48} className="mx-auto mb-4 text-slate-400" />
-          <h3 className="text-lg font-semibold text-slate-700 mb-2">Arrastra el XML aquí</h3>
+          <h3 className="text-lg font-semibold text-slate-700 mb-2">Arrastra 1 XML o hasta 5 para procesar en lote</h3>
           <p className="text-sm text-slate-500 mb-4">O</p>
           <label className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium cursor-pointer">
-            <FileUp size={16} /> Elegir archivo
-            <input type="file" accept=".xml,text/xml,application/xml" className="hidden" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
+            <FileUp size={16} /> Elegir archivo(s)
+            <input type="file" multiple accept=".xml,text/xml,application/xml" className="hidden" onChange={e => e.target.files?.length && handleFiles(e.target.files)} />
           </label>
-          <p className="text-xs text-slate-400 mt-4">Acepta cualquier CFDI 4.0 timbrado por cualquier PAC. Detecta el tipo automáticamente.</p>
+          <p className="text-xs text-slate-400 mt-4">
+            <b>1 archivo</b>: preview con checkboxes (control fino). <b>2–5 archivos</b>: modo lote, dedup automática entre archivos y contra la BD.
+          </p>
+        </div>
+      )}
+
+      {/* Panel de lote (2-5 archivos) */}
+      {batchQueue.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+            <h3 className="font-semibold text-slate-700">Lote de {batchQueue.length} XMLs</h3>
+            {!batchRunning && batchQueue.every(q => q.status === 'pending') && (
+              <button onClick={() => setBatchQueue([])} className="text-xs text-slate-500 hover:text-slate-700">Cancelar lote</button>
+            )}
+          </div>
+          <ul className="divide-y divide-slate-100">
+            {batchQueue.map((q, i) => (
+              <li key={i} className="px-4 py-3 flex items-center gap-3 text-sm">
+                <span className="text-slate-400 font-mono w-6">{i + 1}.</span>
+                <span className="flex-1 truncate">{q.file.name}</span>
+                {q.status === 'pending'    && <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">pendiente</span>}
+                {q.status === 'processing' && <span className="text-xs px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 animate-pulse">procesando…</span>}
+                {q.status === 'done'       && <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">✓ {q.summary?.creados ?? 0} creados · {q.summary?.omitidos ?? 0} dedup</span>}
+                {q.status === 'error'      && <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700 truncate max-w-[240px]" title={q.error}>error: {q.error?.slice(0, 40)}</span>}
+                {q.status === 'pending' && !batchRunning && (
+                  <button onClick={() => removeBatchItem(i)} className="text-slate-400 hover:text-red-500"><X size={14} /></button>
+                )}
+              </li>
+            ))}
+          </ul>
+          <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex justify-end gap-2">
+            {batchQueue.every(q => q.status === 'done' || q.status === 'error') && !batchRunning ? (
+              <button onClick={() => { setBatchQueue([]); }} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg">
+                Terminar
+              </button>
+            ) : (
+              <button
+                onClick={runBatch}
+                disabled={batchRunning}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg"
+              >
+                <Check size={14} /> {batchRunning ? 'Procesando…' : `Procesar lote de ${batchQueue.length}`}
+              </button>
+            )}
+          </div>
+          <p className="px-4 py-2 text-[11px] text-slate-500 bg-white border-t border-slate-100">
+            Se procesan en serie con defaults sensatos: emisor→proveedor, receptor→cliente (si no existen), guarda mercancías + Carta Porte + viajes. El dedup del backend evita duplicar entre archivos.
+          </p>
         </div>
       )}
 

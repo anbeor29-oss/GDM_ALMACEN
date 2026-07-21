@@ -431,7 +431,9 @@ function ProductModal({
         name: (p.name || '').toUpperCase(),
         description: (p.description || '').toUpperCase(),
         claveSat: p.clave_sat || '',
-        claveSatLabel: p.clave_sat || '',
+        claveSatLabel: p.clave_sat_description
+          ? `${p.clave_sat} — ${p.clave_sat_description}`
+          : (p.clave_sat || ''),
         unitCode: p.unit_code || '',
         unitCodeLabel: p.unit_name || p.unit_code || '',
         basePrice: Number(p.base_price) || 0,

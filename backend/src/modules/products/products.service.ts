@@ -275,8 +275,24 @@ export async function createProduct(companyId: string, data: {
  * Get product by ID
  */
 export async function getProductById(companyId: string, productId: string): Promise<Product> {
-  const result = await query<Product>(
-    'SELECT * FROM products WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL',
+  // JOIN con catálogos SAT para incluir la descripción legible de la clave
+  // ProdServ (Anexo 20 general o CP 3.1) y la clave de unidad. Si el clave
+  // no está en ninguno de los dos catálogos, los campos vienen null y el
+  // frontend muestra solo la clave.
+  const result = await query<Product & { clave_sat_description?: string | null; unit_name?: string | null }>(
+    `SELECT p.*,
+            COALESCE(sc.description, cp.descripcion)         AS clave_sat_description,
+            COALESCE(su.description, cu.nombre, cu.descripcion) AS unit_name
+       FROM products p
+       LEFT JOIN sat_catalogs sc
+              ON sc.catalog_name = 'c_ClaveProdServ' AND sc.catalog_key = p.clave_sat
+       LEFT JOIN sat_cp_clave_prod_serv cp
+              ON cp.clave = p.clave_sat
+       LEFT JOIN sat_catalogs su
+              ON su.catalog_name = 'c_ClaveUnidad' AND su.catalog_key = p.unit_code
+       LEFT JOIN sat_cp_clave_unidad_peso cu
+              ON cu.clave = p.unit_code
+      WHERE p.id = $1 AND p.company_id = $2 AND p.deleted_at IS NULL`,
     [productId, companyId]
   );
 
