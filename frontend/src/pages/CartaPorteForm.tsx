@@ -698,8 +698,8 @@ export function CartaPorteFormPage() {
           fetchFn={(q) => api.listCPOperadores(q || undefined)}
           renderItem={(o) => (
             <div>
-              <p className="text-sm font-medium">{o.nombre_figura || o.alias}</p>
-              <p className="text-xs text-slate-500 font-mono">RFC {o.rfc_figura} · Lic {o.num_licencia || '—'}</p>
+              <p className="text-sm font-medium">{o.nombre || o.alias}</p>
+              <p className="text-xs text-slate-500 font-mono">RFC {o.rfc || '—'} · Lic {o.num_licencia || '—'}</p>
               <p className="text-[10px] text-slate-400">Tipo {o.tipo_figura}</p>
             </div>
           )}
@@ -708,9 +708,9 @@ export function CartaPorteFormPage() {
             const idx = figPicker;
             setFiguras(figuras.map((x, j) => j === idx ? {
               tipoFigura: o.tipo_figura || '01',
-              rfcFigura: o.rfc_figura || '',
+              rfcFigura: o.rfc || '',
               numLicencia: o.num_licencia || '',
-              nombreFigura: o.nombre_figura || '',
+              nombreFigura: o.nombre || '',
             } : x));
             setFigPicker(null);
           }}

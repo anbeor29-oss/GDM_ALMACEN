@@ -229,23 +229,29 @@ export function CartaPorteLugaresPage() {
               </div>
 
               <div className="border-t border-slate-200 pt-4">
-                <h4 className="text-sm font-medium text-slate-700 mb-3">Domicilio</h4>
+                <div className="flex items-baseline justify-between mb-2">
+                  <h4 className="text-sm font-medium text-slate-700">Domicilio</h4>
+                  <p className="text-[11px] text-emerald-700">
+                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-200 mr-1 align-middle"></span>
+                    Verde = falta capturar (el XML no lo trajo)
+                  </p>
+                </div>
 
                 {/* CP arriba — dispara autocompletado de colonias */}
                 <CPAutofillBlock form={modal.form} setForm={(f) => setModal({ ...modal, form: f })} />
 
                 <div className="grid grid-cols-4 gap-3 mt-3">
                   <Field label="Calle" span={2}>
-                    <input value={modal.form.calle} onChange={e => setModal({ ...modal, form: { ...modal.form, calle: e.target.value } })} maxLength={200} className="input" />
+                    <input value={modal.form.calle} onChange={e => setModal({ ...modal, form: { ...modal.form, calle: e.target.value } })} maxLength={200} className={`input ${needsFill(modal.form.calle)}`} />
                   </Field>
                   <Field label="No. exterior">
-                    <input value={modal.form.numExterior} onChange={e => setModal({ ...modal, form: { ...modal.form, numExterior: e.target.value } })} maxLength={60} className="input" />
+                    <input value={modal.form.numExterior} onChange={e => setModal({ ...modal, form: { ...modal.form, numExterior: e.target.value } })} maxLength={60} className={`input ${needsFill(modal.form.numExterior)}`} />
                   </Field>
                   <Field label="No. interior">
                     <input value={modal.form.numInterior} onChange={e => setModal({ ...modal, form: { ...modal.form, numInterior: e.target.value } })} maxLength={60} className="input" />
                   </Field>
                   <Field label="Localidad">
-                    <input value={modal.form.localidad} onChange={e => setModal({ ...modal, form: { ...modal.form, localidad: e.target.value } })} className="input" />
+                    <input value={modal.form.localidad} onChange={e => setModal({ ...modal, form: { ...modal.form, localidad: e.target.value } })} className={`input ${needsFill(modal.form.localidad)}`} />
                   </Field>
                   <Field label="País (3 letras)">
                     <input value={modal.form.pais} onChange={e => setModal({ ...modal, form: { ...modal.form, pais: e.target.value.toUpperCase() } })} maxLength={3} className="input font-mono" />
@@ -273,6 +279,12 @@ export function CartaPorteLugaresPage() {
       )}
     </div>
   );
+}
+
+/** Regresa clase Tailwind para tintar de verde suave los campos vacíos que
+ * necesitan captura manual (el XML no los trajo). */
+function needsFill(v: string | undefined | null): string {
+  return v && String(v).trim() ? '' : 'bg-emerald-50 border-emerald-300';
 }
 
 function Field({ label, children, required, span = 1 }: { label: string; children: React.ReactNode; required?: boolean; span?: number }) {
@@ -369,7 +381,7 @@ function CPAutofillBlock({ form, setForm }: { form: any; setForm: (f: any) => vo
       </label>
       <label className="block col-span-2">
         <span className="block text-xs text-slate-500 mb-1">Municipio</span>
-        <input value={form.municipio} onChange={e => setForm({ ...form, municipio: e.target.value })} className="input" placeholder="Aguascalientes" />
+        <input value={form.municipio} onChange={e => setForm({ ...form, municipio: e.target.value })} className={`input ${form.municipio ? '' : 'bg-emerald-50 border-emerald-300'}`} placeholder="Aguascalientes" />
       </label>
       {error && (
         <p className="col-span-4 text-xs text-amber-600">⚠ {error}</p>
