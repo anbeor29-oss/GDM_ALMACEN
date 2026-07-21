@@ -110,6 +110,7 @@ export function Layout() {
               {can('physical_counts') && <NavItem to="/physical-counts" icon={<span className="text-xl leading-none">📋</span>} accent="amber" label="Inventario físico" open={sidebarOpen} />}
               {can('purchase_orders') && <NavItem to="/purchase-orders" icon={<span className="text-xl leading-none">📝</span>} accent="emerald" label="Órdenes de compra" open={sidebarOpen} />}
               {can('import_xml')      && <NavItem to="/import-xml"   icon={<span className="text-xl leading-none">📥</span>}   accent="amber"   label="Compras XML"      open={sidebarOpen} />}
+              {can('import_xml')      && <NavItem to="/xml-super-import" icon={<span className="text-xl leading-none">🧠</span>} accent="violet"  label="Super Lector XML" open={sidebarOpen} />}
               {can('suppliers')       && <NavItem to="/suppliers"    icon={<span className="text-xl leading-none">🚛</span>}       accent="rose"    label="Proveedores"      open={sidebarOpen} />}
               {can('treasury')        && <NavItem to="/treasury"     icon={<span className="text-xl leading-none">💰</span>}    accent="emerald" label="Tesorería"        open={sidebarOpen} />}
               {can('reports')         && <NavItem to="/reports"      icon={<span className="text-xl leading-none">📈</span>}   accent="violet"  label="Reportes"         open={sidebarOpen} />}

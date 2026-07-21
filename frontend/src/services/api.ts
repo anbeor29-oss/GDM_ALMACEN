@@ -1106,6 +1106,16 @@ class APIClient {
     );
     return res.data;
   }
+  /* ─── Super lector XML (CFDI + CP + Nómina + Pagos + NC) ─── */
+  async xmlSuperDetect(xml: string) {
+    const r = await this.client.post<{ detection: any; duplicates: Record<string, { exists: boolean; id?: string }> }>('/xml-super-import/detect', { xml });
+    return r.data;
+  }
+  async xmlSuperApply(payload: any) {
+    const r = await this.client.post<any>('/xml-super-import/apply', payload);
+    return r.data;
+  }
+
   /* ─── Contrato de servicio con e.firma ─── */
   async getContract() {
     const r = await this.client.get('/contract');

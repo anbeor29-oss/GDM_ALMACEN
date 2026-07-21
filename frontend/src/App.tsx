@@ -38,6 +38,7 @@ import { CartaPorteOperadoresPage } from '@/pages/CartaPorteOperadores';
 import { CartaPorteImportarXmlPage } from '@/pages/CartaPorteImportarXml';
 import { ContractPage } from '@/pages/Contract';
 import { TerminosPage, PrivacidadPage } from '@/pages/LegalDoc';
+import { SuperXMLImportPage } from '@/pages/SuperXMLImport';
 import { useAuthStore } from '@/store/auth';
 
 const queryClient = new QueryClient();
@@ -127,6 +128,7 @@ export function App() {
             <Route path="carta-porte/aseguradoras" element={<CompanyOnlyRoute><CartaPorteAseguradorasPage /></CompanyOnlyRoute>} />
             <Route path="carta-porte/operadores" element={<CompanyOnlyRoute><CartaPorteOperadoresPage /></CompanyOnlyRoute>} />
             <Route path="carta-porte/importar-xml" element={<CompanyOnlyRoute><CartaPorteImportarXmlPage /></CompanyOnlyRoute>} />
+            <Route path="xml-super-import"       element={<CompanyOnlyRoute><SuperXMLImportPage /></CompanyOnlyRoute>} />
             <Route path="invoices/new"       element={<CompanyOnlyRoute><NewInvoicePage /></CompanyOnlyRoute>} />
             <Route path="invoices/:id/edit"  element={<CompanyOnlyRoute><NewInvoicePage /></CompanyOnlyRoute>} />
             <Route path="customers"    element={<CompanyOnlyRoute><CustomersPage /></CompanyOnlyRoute>} />
