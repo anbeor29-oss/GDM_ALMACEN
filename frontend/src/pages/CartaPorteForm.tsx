@@ -136,6 +136,9 @@ export function CartaPorteFormPage() {
   });
   // Picker de lugares frecuentes: {ubicIndex, tipo} para saber a qué fila se aplica
   const [lugarPicker, setLugarPicker] = useState<{ index: number; tipo: 'Origen' | 'Destino' } | null>(null);
+  const [mercPicker, setMercPicker] = useState<number | null>(null);
+  const [autoPickerOpen, setAutoPickerOpen] = useState(false);
+  const [figPicker, setFigPicker] = useState<number | null>(null);
   const [mercancias, setMercancias] = useState<MercanciaRow[]>([blankMercancia()]);
   const [figuras, setFiguras] = useState<FiguraRow[]>([blankFigura()]);
 
@@ -437,6 +440,15 @@ export function CartaPorteFormPage() {
       {/* 3. Mercancías */}
       <Section title="3. Mercancías" icon={<Package2 size={16} />}
                action={<button onClick={() => setMercancias([...mercancias, blankMercancia()])} className="btn-add"><Plus size={14} /> Mercancía</button>}>
+        <div className="mb-3">
+          <button
+            type="button"
+            onClick={() => setMercPicker(mercancias.length - 1)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-rose-50 text-rose-700 rounded border border-rose-200 hover:bg-rose-100"
+          >
+            <BookMarked size={12} /> Cargar plantilla de mercancía (última fila)
+          </button>
+        </div>
         <div className="space-y-3">
           {mercancias.map((m, i) => (
             <div key={i} className="border border-slate-200 rounded p-3 relative">
@@ -494,6 +506,15 @@ export function CartaPorteFormPage() {
       <Section title={`4. Medio de transporte · ${medioLabel(medio)}`} icon={medioIcon(medio)}>
         {medio === 'auto' ? (
           <div className="space-y-3">
+            <div>
+              <button
+                type="button"
+                onClick={() => setAutoPickerOpen(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-amber-50 text-amber-800 rounded border border-amber-200 hover:bg-amber-100"
+              >
+                <BookMarked size={12} /> Cargar plantilla de vehículo
+              </button>
+            </div>
             <div className="grid grid-cols-4 gap-3">
               <Field label="Tipo de permiso SCT">
                 <PickerButton value={auto.permSct} placeholder="Buscar…"
@@ -561,6 +582,15 @@ export function CartaPorteFormPage() {
         <div className="space-y-3">
           {figuras.map((f, i) => (
             <div key={i} className="border border-slate-200 rounded p-3 relative">
+              <div className="mb-2">
+                <button
+                  type="button"
+                  onClick={() => setFigPicker(i)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-sky-50 text-sky-700 rounded border border-sky-200 hover:bg-sky-100"
+                >
+                  <BookMarked size={12} /> Cargar plantilla de operador/figura
+                </button>
+              </div>
               <div className="grid grid-cols-6 gap-3">
                 <Field label="Tipo figura">
                   <PickerButton value={f.tipoFigura} placeholder="01=Operador"
@@ -604,6 +634,88 @@ export function CartaPorteFormPage() {
           }}
         />
       )}
+      {mercPicker !== null && (
+        <TemplatePicker
+          title="Mercancías guardadas"
+          color="rose"
+          fetchFn={(q) => api.listMercanciasCatalog({ search: q || undefined }).then(r => r.items)}
+          renderItem={(m) => (
+            <div>
+              <p className="text-sm font-medium">{m.descripcion}</p>
+              <p className="text-xs text-slate-500 font-mono">SAT {m.clave_sat} · {m.clave_unidad || '—'} · {m.peso_unitario_kg ? `${Number(m.peso_unitario_kg).toFixed(2)} kg/u` : ''}</p>
+              {m.cliente_nombre && <p className="text-[10px] text-slate-400">Cliente típico: {m.cliente_nombre}</p>}
+              <p className="text-[10px] text-slate-400">{m.veces_transportada} viajes</p>
+            </div>
+          )}
+          onClose={() => setMercPicker(null)}
+          onSelect={(m) => {
+            const idx = mercPicker;
+            setMercancias(mercancias.map((x, j) => j === idx ? {
+              ...x,
+              bienesTransp: m.clave_sat,
+              descripcion: m.descripcion,
+              claveUnidad: m.clave_unidad || x.claveUnidad,
+              pesoEnKg: m.peso_unitario_kg ? String(m.peso_unitario_kg) : x.pesoEnKg,
+              valorMercancia: m.valor_unitario ? String(m.valor_unitario) : x.valorMercancia,
+              moneda: m.moneda || x.moneda,
+            } : x));
+            setMercPicker(null);
+          }}
+        />
+      )}
+      {autoPickerOpen && (
+        <TemplatePicker
+          title="Vehículos guardados"
+          color="amber"
+          fetchFn={(q) => api.listCPVehiculos(q || undefined)}
+          renderItem={(v) => (
+            <div>
+              <p className="text-sm font-medium">{v.alias}</p>
+              <p className="text-xs text-slate-500 font-mono">Placa {v.placa_vm} · {v.config_vehicular} · {v.anio_modelo_vm}</p>
+              <p className="text-[10px] text-slate-400">Peso bruto {v.peso_bruto_vehicular} t · Permiso {v.perm_sct}</p>
+            </div>
+          )}
+          onClose={() => setAutoPickerOpen(false)}
+          onSelect={(v) => {
+            setAuto({
+              permSct: v.perm_sct || '',
+              numPermisoSct: v.num_permiso_sct || '',
+              configVehicular: v.config_vehicular || '',
+              pesoBrutoVehicular: v.peso_bruto_vehicular ? String(v.peso_bruto_vehicular) : '',
+              placaVm: v.placa_vm || '',
+              anioModeloVm: v.anio_modelo_vm ? String(v.anio_modelo_vm) : String(new Date().getFullYear()),
+              aseguraRespCivil: v.asegura_resp_civil_nombre || auto.aseguraRespCivil,
+              polizaRespCivil: v.poliza_resp_civil || auto.polizaRespCivil,
+            });
+            setAutoPickerOpen(false);
+          }}
+        />
+      )}
+      {figPicker !== null && (
+        <TemplatePicker
+          title="Operadores / Figuras de transporte"
+          color="sky"
+          fetchFn={(q) => api.listCPOperadores(q || undefined)}
+          renderItem={(o) => (
+            <div>
+              <p className="text-sm font-medium">{o.nombre_figura || o.alias}</p>
+              <p className="text-xs text-slate-500 font-mono">RFC {o.rfc_figura} · Lic {o.num_licencia || '—'}</p>
+              <p className="text-[10px] text-slate-400">Tipo {o.tipo_figura}</p>
+            </div>
+          )}
+          onClose={() => setFigPicker(null)}
+          onSelect={(o) => {
+            const idx = figPicker;
+            setFiguras(figuras.map((x, j) => j === idx ? {
+              tipoFigura: o.tipo_figura || '01',
+              rfcFigura: o.rfc_figura || '',
+              numLicencia: o.num_licencia || '',
+              nombreFigura: o.nombre_figura || '',
+            } : x));
+            setFigPicker(null);
+          }}
+        />
+      )}
     </div>
   );
 
@@ -613,6 +725,78 @@ export function CartaPorteFormPage() {
   function updateMer(i: number, patch: Partial<MercanciaRow>) {
     setMercancias(mercancias.map((m, j) => j === i ? { ...m, ...patch } : m));
   }
+}
+
+/* ─── Template picker genérico para mercancías / vehículos / operadores ── */
+
+function TemplatePicker<T extends { id: string }>({
+  title, color, fetchFn, renderItem, onClose, onSelect,
+}: {
+  title: string;
+  color: 'rose' | 'amber' | 'sky';
+  fetchFn: (q: string) => Promise<T[]>;
+  renderItem: (item: T) => React.ReactNode;
+  onClose: () => void;
+  onSelect: (item: T) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [items, setItems] = useState<T[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      setLoading(true);
+      try { setItems(await fetchFn(q)); } finally { setLoading(false); }
+    }, 200);
+    return () => clearTimeout(t);
+  }, [q]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const ringColor = color === 'rose' ? 'focus:ring-rose-500' : color === 'amber' ? 'focus:ring-amber-500' : 'focus:ring-sky-500';
+  const hoverBg   = color === 'rose' ? 'hover:bg-rose-50' : color === 'amber' ? 'hover:bg-amber-50' : 'hover:bg-sky-50';
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-16" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-[720px] max-w-[92vw] max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+          <h3 className="font-semibold text-slate-800">{title}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+        </div>
+        <div className="px-4 py-3 border-b border-slate-200">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
+            <input
+              autoFocus
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Buscar…"
+              className={`w-full pl-9 pr-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 ${ringColor}`}
+            />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <p className="p-4 text-center text-sm text-slate-400">Buscando…</p>
+          ) : items.length === 0 ? (
+            <p className="p-4 text-center text-sm text-slate-400">
+              {q ? 'Sin resultados' : 'Aún no hay plantillas guardadas. Impórtalas con el Super Lector XML.'}
+            </p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {items.map(it => (
+                <li key={it.id}>
+                  <button onClick={() => onSelect(it)} className={`w-full text-left px-4 py-3 ${hoverBg}`}>
+                    {renderItem(it)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ─── UI helpers ───────────────────────────────────────────────────── */
