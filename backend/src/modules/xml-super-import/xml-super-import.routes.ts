@@ -102,17 +102,22 @@ router.post('/apply', asyncHandler(async (req: Request, res: Response) => {
         // Los impuestos van a taxRate; si el concepto trae retención, lo
         // marcamos como isDeductible para señalar retención.
         const iva = c.impuestos?.iva ?? 0;
-        const taxRate = c.importe > 0 ? (iva / c.importe) : 0.16; // default 16%
+        const retIva = c.impuestos?.retIva ?? 0;
+        const taxRate = c.importe > 0 ? (iva / c.importe) : 0.16;
+        // Si hay retención de IVA (transporte de carga art. 1o.-A LIVA) usamos
+        // el preset auto_carga para que la factura calcule -4% automático.
+        const usesAutoCarga = retIva > 0 || String(c.claveSat).startsWith('78101');
         const p = await productsService.createProduct(cid, {
           name: c.descripcion.slice(0, 200),
           description: c.descripcion,
           claveSat: c.claveSat,
           unitCode: c.claveUnidad,
           basePrice: c.valorUnitario,
-          taxType: '002', // IVA
+          taxType: '002',
           taxRate: Number(taxRate.toFixed(4)),
-          isDeductible: (c.impuestos?.retIva ?? 0) > 0,
-        });
+          isDeductible: retIva > 0,
+          taxPresetId: usesAutoCarga ? 'auto_carga' : undefined,
+        } as any);
         created.push({ kind: 'producto', id: p.id, label: c.descripcion.slice(0, 60) });
       } catch (e: any) {
         if (String(e?.message || '').toLowerCase().includes('duplicat') || String(e?.message || '').toLowerCase().includes('ya existe')) {
