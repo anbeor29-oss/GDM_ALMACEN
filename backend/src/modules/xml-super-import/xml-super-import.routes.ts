@@ -18,6 +18,7 @@ import * as vehiculosSvc from '../carta-porte/vehiculos.service';
 import * as aseguradorasSvc from '../carta-porte/aseguradoras.service';
 import * as operadoresSvc from '../carta-porte/operadores.service';
 import * as mercanciasSvc from '../carta-porte/mercancias.service';
+import { pool } from '../../config/database';
 
 const router = Router();
 router.use(authenticateToken);
@@ -237,6 +238,234 @@ router.post('/apply', asyncHandler(async (req: Request, res: Response) => {
     created,
     skipped,
     errors,
+  });
+}));
+
+/**
+ * POST /xml-super-import/check-existing
+ *
+ * Recibe conjuntos de claves naturales y responde cuáles YA existen en la BD
+ * de la empresa. Se usa en el modo lote para marcar checkmarks de "ya existe"
+ * en el preview consolidado.
+ *
+ * Body: {
+ *   parties?:      ["RFC1", "RFC2"],           // customers.rfc
+ *   lugares?:      ["ALIAS1", "ALIAS2"],       // cp_lugares.alias
+ *   vehiculos?:    ["PLACA1", "PLACA2"],       // cp_vehiculos.placa_vm
+ *   operadores?:   ["RFC1", "RFC2"],           // cp_operadores.rfc
+ *   aseguradoras?: ["POLIZA1", "POLIZA2"],     // cp_aseguradoras.num_poliza
+ *   mercancias?:   [{ claveSat, descNorm, clienteRfc }],
+ *   productos?:    [{ claveSat, name }],       // products.clave_sat + name
+ * }
+ * Respuesta: { parties: {"RFC1":true,...}, ... } — solo las que SÍ existen.
+ */
+router.post('/check-existing', asyncHandler(async (req: Request, res: Response) => {
+  const cid = companyId(req);
+  const b = req.body || {};
+  const out: any = {};
+
+  if (Array.isArray(b.parties) && b.parties.length) {
+    const rfcs = b.parties.map((s: string) => String(s || '').toUpperCase()).filter(Boolean);
+    const r = await pool.query(
+      `SELECT rfc FROM customers WHERE company_id = $1 AND deleted_at IS NULL AND rfc = ANY($2)`,
+      [cid, rfcs],
+    );
+    out.parties = Object.fromEntries(r.rows.map((row: any) => [row.rfc, true]));
+  }
+  if (Array.isArray(b.lugares) && b.lugares.length) {
+    const r = await pool.query(
+      `SELECT alias FROM cp_lugares WHERE company_id = $1 AND alias = ANY($2)`,
+      [cid, b.lugares],
+    );
+    out.lugares = Object.fromEntries(r.rows.map((row: any) => [row.alias, true]));
+  }
+  if (Array.isArray(b.vehiculos) && b.vehiculos.length) {
+    const placas = b.vehiculos.map((s: string) => String(s || '').toUpperCase()).filter(Boolean);
+    const r = await pool.query(
+      `SELECT placa_vm FROM cp_vehiculos WHERE company_id = $1 AND placa_vm = ANY($2)`,
+      [cid, placas],
+    );
+    out.vehiculos = Object.fromEntries(r.rows.map((row: any) => [row.placa_vm, true]));
+  }
+  if (Array.isArray(b.operadores) && b.operadores.length) {
+    const rfcs = b.operadores.map((s: string) => String(s || '').toUpperCase()).filter(Boolean);
+    const r = await pool.query(
+      `SELECT rfc FROM cp_operadores WHERE company_id = $1 AND rfc = ANY($2)`,
+      [cid, rfcs],
+    );
+    out.operadores = Object.fromEntries(r.rows.map((row: any) => [row.rfc, true]));
+  }
+  if (Array.isArray(b.aseguradoras) && b.aseguradoras.length) {
+    const r = await pool.query(
+      `SELECT num_poliza FROM cp_aseguradoras WHERE company_id = $1 AND num_poliza = ANY($2)`,
+      [cid, b.aseguradoras],
+    );
+    out.aseguradoras = Object.fromEntries(r.rows.map((row: any) => [row.num_poliza, true]));
+  }
+  if (Array.isArray(b.mercancias) && b.mercancias.length) {
+    // Clave compuesta: claveSat|descNorm|clienteRfc
+    const claves = b.mercancias.map((m: any) => `${m.claveSat}|${String(m.descNorm || m.descripcion || '').toUpperCase().trim().replace(/\s+/g, ' ')}|${m.clienteRfc || ''}`);
+    const r = await pool.query(
+      `SELECT clave_sat, descripcion_norm, COALESCE(cliente_rfc,'') AS cliente_rfc
+         FROM cp_mercancias_catalog
+        WHERE company_id = $1
+          AND clave_sat || '|' || descripcion_norm || '|' || COALESCE(cliente_rfc,'') = ANY($2)`,
+      [cid, claves],
+    );
+    out.mercancias = Object.fromEntries(r.rows.map((row: any) => [`${row.clave_sat}|${row.descripcion_norm}|${row.cliente_rfc}`, true]));
+  }
+  if (Array.isArray(b.productos) && b.productos.length) {
+    const claves = b.productos.map((p: any) => p.claveSat).filter(Boolean);
+    const names = b.productos.map((p: any) => String(p.name || '').toUpperCase().slice(0, 200)).filter(Boolean);
+    const r = await pool.query(
+      `SELECT clave_sat, UPPER(name) AS name FROM products
+        WHERE company_id = $1 AND deleted_at IS NULL
+          AND clave_sat = ANY($2) AND UPPER(name) = ANY($3)`,
+      [cid, claves, names],
+    );
+    out.productos = Object.fromEntries(r.rows.map((row: any) => [`${row.clave_sat}|${row.name}`, true]));
+  }
+
+  res.json(out);
+}));
+
+/**
+ * POST /xml-super-import/apply-selected
+ *
+ * Modo lote: recibe listas explícitas de entidades ya elegidas por el usuario
+ * (con checkbox en el preview consolidado del lote). Cada lista trae los
+ * campos ya extraídos del XML; el backend solo crea/deja pasar por dedup.
+ *
+ * Body:
+ * {
+ *   parties?:      [{ rfc, nombre, as: 'CUSTOMER'|'SUPPLIER' }],
+ *   productos?:    [{ descripcion, claveSat, claveUnidad, valorUnitario, ivaTasa, retIva }],
+ *   mercancias?:   [{ claveSat, descripcion, cantidad, claveUnidad, pesoKg, valorMercancia, moneda,
+ *                     uuidCfdi, idCcp, remitenteRfc, remitenteNombre, destinatarioRfc, destinatarioNombre, fechaViaje }],
+ *   lugares?:      [{ alias, tipoDefault, rfc, nombre, calle, numExterior, numInterior, colonia,
+ *                     localidad, referencia, municipio, estado, pais, codigoPostal }],
+ *   vehiculos?:    [{ alias, permSct, numPermisoSct, configVehicular, pesoBrutoVehicular, placaVm, anioModeloVm }],
+ *   aseguradoras?: [{ alias, tipo, nombreAseguradora, numPoliza, primaSeguro }],
+ *   operadores?:   [{ alias, tipoFigura, rfc, numLicencia, nombre }],
+ * }
+ */
+router.post('/apply-selected', asyncHandler(async (req: Request, res: Response) => {
+  const cid = companyId(req);
+  const b = req.body || {};
+  const created: Array<{ kind: string; id?: string; label?: string }> = [];
+  const skipped: Array<{ kind: string; reason: string; label?: string }> = [];
+  const errors: string[] = [];
+
+  // 1) Parties (clientes/proveedores)
+  for (const p of (b.parties || []) as any[]) {
+    if (!p?.rfc || !p?.as) continue;
+    try {
+      const c = await customersService.createCustomer(cid, {
+        rfc: String(p.rfc).toUpperCase(),
+        businessName: p.nombre || p.rfc,
+        partyType: p.as === 'SUPPLIER' ? 'SUPPLIER' : 'CUSTOMER',
+      });
+      created.push({ kind: p.as === 'SUPPLIER' ? 'proveedor' : 'cliente', id: c.id, label: `${p.rfc} · ${p.nombre || ''}` });
+    } catch (e: any) {
+      if (String(e?.message || '').includes('ya')) skipped.push({ kind: p.as === 'SUPPLIER' ? 'proveedor' : 'cliente', reason: 'dedup', label: p.rfc });
+      else errors.push(`${p.as} ${p.rfc}: ${e.message}`);
+    }
+  }
+
+  // 2) Productos (viajes/servicios facturados)
+  for (const c of (b.productos || []) as any[]) {
+    if (!c?.descripcion || !c?.claveSat) continue;
+    try {
+      const iva = Number(c.ivaTasa ?? 0.16);
+      const p = await productsService.createProduct(cid, {
+        name: String(c.descripcion).slice(0, 200),
+        description: c.descripcion,
+        claveSat: c.claveSat,
+        unitCode: c.claveUnidad,
+        basePrice: Number(c.valorUnitario || 0),
+        taxType: '002',
+        taxRate: iva,
+        isDeductible: Number(c.retIva || 0) > 0,
+      });
+      created.push({ kind: 'producto', id: p.id, label: c.descripcion.slice(0, 60) });
+    } catch (e: any) {
+      const m = String(e?.message || '').toLowerCase();
+      if (m.includes('duplicat') || m.includes('ya existe')) skipped.push({ kind: 'producto', reason: 'dedup', label: c.descripcion.slice(0, 60) });
+      else errors.push(`Producto "${c.descripcion.slice(0, 40)}": ${e.message}`);
+    }
+  }
+
+  // 3) Mercancías → catálogo + bitácora
+  for (const m of (b.mercancias || []) as any[]) {
+    if (!m?.claveSat || !m?.descripcion) continue;
+    try {
+      const r = await mercanciasSvc.saveMercancia(cid, m);
+      if (r.catalogInserted) created.push({ kind: 'mercancía', id: r.catalogId, label: `${m.claveSat} · ${m.descripcion.slice(0, 40)}` });
+      else skipped.push({ kind: 'mercancía', reason: 'ya en catálogo (contador +1)', label: m.descripcion.slice(0, 40) });
+      if (!r.movimientoSkipped) created.push({ kind: 'mercancía-bitácora', id: r.movimientoId || undefined, label: `viaje ${m.cantidad} ${m.claveUnidad || ''}` });
+    } catch (e: any) {
+      errors.push(`Mercancía "${m.descripcion.slice(0, 40)}": ${e.message}`);
+    }
+  }
+
+  // 4) Lugares
+  for (const l of (b.lugares || []) as any[]) {
+    if (!l?.alias || !l?.rfc) continue;
+    try {
+      const row = await lugaresSvc.create(cid, l);
+      created.push({ kind: 'lugar', id: row.id, label: `${l.tipoDefault || ''} · ${l.alias}` });
+    } catch (e: any) {
+      if (String(e?.message || '').includes('ya')) skipped.push({ kind: 'lugar', reason: 'dedup (alias)', label: l.alias });
+      else errors.push(`Lugar "${l.alias}": ${e.message}`);
+    }
+  }
+
+  // 5) Aseguradoras (antes que vehículos por si se referencian)
+  const aseguradorasIds: Record<string, string> = {};
+  for (const a of (b.aseguradoras || []) as any[]) {
+    if (!a?.alias) continue;
+    try {
+      const row = await aseguradorasSvc.create(cid, a);
+      aseguradorasIds[a.tipo] = row.id;
+      created.push({ kind: 'aseguradora', id: row.id, label: a.alias });
+    } catch (e: any) {
+      if (String(e?.message || '').includes('ya')) skipped.push({ kind: 'aseguradora', reason: 'dedup', label: a.alias });
+      else errors.push(`Aseguradora "${a.alias}": ${e.message}`);
+    }
+  }
+
+  // 6) Vehículos
+  for (const v of (b.vehiculos || []) as any[]) {
+    if (!v?.alias) continue;
+    try {
+      const row = await vehiculosSvc.create(cid, {
+        ...v,
+        aseguradoraRespCivilId: aseguradorasIds['RespCivil'],
+        aseguradoraMedAmbId: aseguradorasIds['MedAmbiente'],
+        aseguradoraCargaId: aseguradorasIds['Carga'],
+      });
+      created.push({ kind: 'vehiculo', id: row.id, label: v.alias });
+    } catch (e: any) {
+      if (String(e?.message || '').includes('ya')) skipped.push({ kind: 'vehiculo', reason: 'dedup (placa)', label: v.alias });
+      else errors.push(`Vehículo "${v.alias}": ${e.message}`);
+    }
+  }
+
+  // 7) Operadores
+  for (const o of (b.operadores || []) as any[]) {
+    if (!o?.alias || !o?.rfc) continue;
+    try {
+      const row = await operadoresSvc.create(cid, o);
+      created.push({ kind: 'operador', id: row.id, label: o.alias });
+    } catch (e: any) {
+      if (String(e?.message || '').includes('ya')) skipped.push({ kind: 'operador', reason: 'dedup', label: o.alias });
+      else errors.push(`Operador "${o.alias}": ${e.message}`);
+    }
+  }
+
+  res.status(201).json({
+    summary: { creados: created.length, omitidos: skipped.length, errores: errors.length },
+    created, skipped, errors,
   });
 }));
 

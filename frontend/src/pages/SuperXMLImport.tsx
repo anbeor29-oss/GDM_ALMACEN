@@ -41,6 +41,10 @@ export function SuperXMLImportPage() {
   // Modo lote: hasta 5 XMLs procesados en serie
   const [batchQueue, setBatchQueue] = useState<Array<{ file: File; status: 'pending' | 'processing' | 'done' | 'error'; summary?: any; error?: string }>>([]);
   const [batchRunning, setBatchRunning] = useState(false);
+  const [batchPreview, setBatchPreview] = useState<any | null>(null); // { parties, productos, mercancias, lugares, vehiculos, aseguradoras, operadores }
+  const [batchSel, setBatchSel] = useState<any>({}); // { parties: Set<key>, ... }
+  const [batchApplied, setBatchApplied] = useState<any | null>(null);
+  const [batchApplying, setBatchApplying] = useState(false);
 
   // Decisiones del usuario en la fase de preview
   const [decisions, setDecisions] = useState({
@@ -112,34 +116,162 @@ export function SuperXMLImportPage() {
     setDetection(null); setDups(null); setApplied(null); setErr(''); setXml(''); setFileName('');
   };
 
+  /** Analiza los 2-5 XMLs, extrae todas las entidades, dedup ENTRE archivos
+   *  por clave natural y consulta al backend cuáles ya existen. NO importa. */
   const runBatch = async () => {
     setBatchRunning(true);
     const q = [...batchQueue];
+    // Acumuladores dedup por clave natural (Map key → payload)
+    const parties      = new Map<string, any>();  // key: RFC
+    const productos    = new Map<string, any>();  // key: claveSat|UPPER(name)
+    const mercancias   = new Map<string, any>();  // key: claveSat|descNorm|clienteRfc
+    const lugares      = new Map<string, any>();  // key: alias
+    const vehiculos    = new Map<string, any>();  // key: placa
+    const aseguradoras = new Map<string, any>();  // key: numPoliza
+    const operadores   = new Map<string, any>();  // key: RFC
+
+    const norm = (s: string) => String(s || '').toUpperCase().trim().replace(/\s+/g, ' ');
+
     for (let i = 0; i < q.length; i++) {
       q[i] = { ...q[i], status: 'processing' };
       setBatchQueue([...q]);
       try {
         const xmlText = await q[i].file.text();
-        const det = await api.xmlSuperDetect(xmlText);
-        const result = await api.xmlSuperApply({
-          xml: xmlText,
-          // Defaults del lote: si emisor/receptor no existen, se guardan con
-          // el rol típico (emisor=proveedor, receptor=cliente). El dedup del
-          // backend maneja los duplicados automáticamente.
-          emisorAs:   det.duplicates?.emisor?.exists   ? null : 'SUPPLIER',
-          receptorAs: det.duplicates?.receptor?.exists ? null : 'CUSTOMER',
-          saveConceptsAsViajes: true,
-          saveCartaPorte: det.detection?.hasCartaPorte,
-          saveMercancias: det.detection?.hasCartaPorte,
-          saveNomina: det.detection?.type === 'CFDI_NOMINA',
-        });
-        q[i] = { ...q[i], status: 'done', summary: result.summary };
+        const res = await api.xmlSuperDetect(xmlText);
+        const d = res.detection;
+        // parties
+        if (d.emisor?.rfc && !parties.has(d.emisor.rfc)) {
+          parties.set(d.emisor.rfc, { rfc: d.emisor.rfc, nombre: d.emisor.nombre, role: 'emisor', suggestedAs: 'SUPPLIER', sourceXmls: [q[i].file.name] });
+        } else if (d.emisor?.rfc) { parties.get(d.emisor.rfc).sourceXmls.push(q[i].file.name); }
+        if (d.receptor?.rfc && !parties.has(d.receptor.rfc)) {
+          parties.set(d.receptor.rfc, { rfc: d.receptor.rfc, nombre: d.receptor.nombre, role: 'receptor', suggestedAs: 'CUSTOMER', sourceXmls: [q[i].file.name] });
+        } else if (d.receptor?.rfc) { parties.get(d.receptor.rfc).sourceXmls.push(q[i].file.name); }
+        // productos (conceptos)
+        for (const c of d.conceptos || []) {
+          const k = `${c.claveSat}|${norm(c.descripcion).slice(0, 200)}`;
+          if (!productos.has(k)) {
+            const imp = c.impuestos || {};
+            const ivaTasa = c.importe > 0 && imp.iva ? imp.iva / c.importe : 0.16;
+            productos.set(k, { descripcion: c.descripcion, claveSat: c.claveSat, claveUnidad: c.claveUnidad, valorUnitario: c.valorUnitario, ivaTasa, retIva: imp.retIva || 0, sourceXmls: [q[i].file.name] });
+          } else { productos.get(k).sourceXmls.push(q[i].file.name); }
+        }
+        // Si hay CP, hago un preview específico
+        if (d.hasCartaPorte) {
+          for (const m of d.mercancias || []) {
+            // Usar remitente/destinatario del XML — el detect no los trae aún, lo obtendremos del apply
+            const k = `${m.claveSat}|${norm(m.descripcion)}|`;
+            if (!mercancias.has(k)) {
+              mercancias.set(k, { ...m, uuidCfdi: d.uuid, sourceXmls: [q[i].file.name] });
+            } else { mercancias.get(k).sourceXmls.push(q[i].file.name); }
+          }
+          // Lugares, vehículo, aseguradoras y operadores requieren el importar-xml completo.
+          // Como el detect no los expone, hago una llamada dedicada:
+          try {
+            const preview = await api.cpImportPreview(xmlText);
+            for (const l of preview.lugares || []) {
+              if (!lugares.has(l.alias)) lugares.set(l.alias, { ...l, sourceXmls: [q[i].file.name] });
+              else lugares.get(l.alias).sourceXmls.push(q[i].file.name);
+            }
+            if (preview.vehiculo) {
+              const k = preview.vehiculo.placaVm;
+              if (k && !vehiculos.has(k)) {
+                const alias = `${preview.vehiculo.configVehicular}-${k}`;
+                vehiculos.set(k, { ...preview.vehiculo, alias, sourceXmls: [q[i].file.name] });
+              } else if (k) { vehiculos.get(k).sourceXmls.push(q[i].file.name); }
+            }
+            for (const a of preview.aseguradoras || []) {
+              if (!aseguradoras.has(a.numPoliza)) aseguradoras.set(a.numPoliza, { ...a, sourceXmls: [q[i].file.name] });
+              else aseguradoras.get(a.numPoliza).sourceXmls.push(q[i].file.name);
+            }
+            for (const o of preview.operadores || []) {
+              if (!operadores.has(o.rfc)) operadores.set(o.rfc, { ...o, sourceXmls: [q[i].file.name] });
+              else operadores.get(o.rfc).sourceXmls.push(q[i].file.name);
+            }
+          } catch { /* si falla el CP preview, seguimos con lo demás */ }
+        }
+        q[i] = { ...q[i], status: 'done', summary: { creados: 0, omitidos: 0, errores: 0 } };
       } catch (e: any) {
         q[i] = { ...q[i], status: 'error', error: e?.response?.data?.message || e?.message || 'Error' };
       }
       setBatchQueue([...q]);
     }
+
+    // Consulta al backend qué ya existe (para pintar los checkmarks)
+    const partiesArr      = Array.from(parties.values());
+    const productosArr    = Array.from(productos.values());
+    const mercanciasArr   = Array.from(mercancias.values());
+    const lugaresArr      = Array.from(lugares.values());
+    const vehiculosArr    = Array.from(vehiculos.values());
+    const aseguradorasArr = Array.from(aseguradoras.values());
+    const operadoresArr   = Array.from(operadores.values());
+
+    let existing: any = {};
+    try {
+      existing = await api.xmlSuperCheckExisting({
+        parties:      partiesArr.map(p => p.rfc),
+        productos:    productosArr.map(p => ({ claveSat: p.claveSat, name: p.descripcion })),
+        mercancias:   mercanciasArr.map(m => ({ claveSat: m.claveSat, descNorm: norm(m.descripcion), clienteRfc: '' })),
+        lugares:      lugaresArr.map(l => l.alias),
+        vehiculos:    vehiculosArr.map(v => v.placaVm),
+        aseguradoras: aseguradorasArr.map(a => a.numPoliza),
+        operadores:   operadoresArr.map(o => o.rfc),
+      });
+    } catch { /* si falla, todo se marca como nuevo */ }
+
+    // Marcado + selección inicial: NO seleccionar los que ya existen
+    const mark = (arr: any[], key: (x: any) => string, existMap: any) =>
+      arr.map(x => ({ ...x, _key: key(x), existsInDb: !!existMap?.[key(x)] }));
+
+    const preview = {
+      parties:      mark(partiesArr,      p => p.rfc, existing.parties),
+      productos:    mark(productosArr,    p => `${p.claveSat}|${norm(p.descripcion).slice(0, 200)}`, existing.productos),
+      mercancias:   mark(mercanciasArr,   m => `${m.claveSat}|${norm(m.descripcion)}|`, existing.mercancias),
+      lugares:      mark(lugaresArr,      l => l.alias, existing.lugares),
+      vehiculos:    mark(vehiculosArr,    v => v.placaVm, existing.vehiculos),
+      aseguradoras: mark(aseguradorasArr, a => a.numPoliza, existing.aseguradoras),
+      operadores:   mark(operadoresArr,   o => o.rfc, existing.operadores),
+    };
+
+    // Selección inicial: solo los que NO existen (para que el usuario no re-suba)
+    const initSel: any = {};
+    for (const k of Object.keys(preview)) {
+      initSel[k] = new Set(preview[k as keyof typeof preview].filter((x: any) => !x.existsInDb).map((x: any) => x._key));
+    }
+    setBatchPreview(preview);
+    setBatchSel(initSel);
     setBatchRunning(false);
+  };
+
+  const toggleSel = (kind: string, key: string) => {
+    const cur = new Set(batchSel[kind] as Set<string>);
+    if (cur.has(key)) cur.delete(key); else cur.add(key);
+    setBatchSel({ ...batchSel, [kind]: cur });
+  };
+
+  const applyBatchSelected = async () => {
+    if (!batchPreview) return;
+    setBatchApplying(true);
+    try {
+      const pick = (kind: string, transform: (x: any) => any = (x) => x) =>
+        (batchPreview[kind] as any[])
+          .filter(x => (batchSel[kind] as Set<string>).has(x._key))
+          .map(transform);
+      const payload = {
+        parties:      pick('parties',      p => ({ rfc: p.rfc, nombre: p.nombre, as: p.suggestedAs })),
+        productos:    pick('productos'),
+        mercancias:   pick('mercancias'),
+        lugares:      pick('lugares'),
+        vehiculos:    pick('vehiculos'),
+        aseguradoras: pick('aseguradoras'),
+        operadores:   pick('operadores'),
+      };
+      const res = await api.xmlSuperApplySelected(payload);
+      setBatchApplied(res);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || 'Error al importar');
+    } finally {
+      setBatchApplying(false);
+    }
   };
 
   const removeBatchItem = (idx: number) => setBatchQueue(batchQueue.filter((_, j) => j !== idx));
@@ -192,12 +324,12 @@ export function SuperXMLImportPage() {
       )}
 
       {/* Panel de lote (2-5 archivos) */}
-      {batchQueue.length > 0 && (
+      {batchQueue.length > 0 && !batchApplied && (
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
             <h3 className="font-semibold text-slate-700">Lote de {batchQueue.length} XMLs</h3>
             {!batchRunning && batchQueue.every(q => q.status === 'pending') && (
-              <button onClick={() => setBatchQueue([])} className="text-xs text-slate-500 hover:text-slate-700">Cancelar lote</button>
+              <button onClick={() => { setBatchQueue([]); setBatchPreview(null); }} className="text-xs text-slate-500 hover:text-slate-700">Cancelar lote</button>
             )}
           </div>
           <ul className="divide-y divide-slate-100">
@@ -206,8 +338,8 @@ export function SuperXMLImportPage() {
                 <span className="text-slate-400 font-mono w-6">{i + 1}.</span>
                 <span className="flex-1 truncate">{q.file.name}</span>
                 {q.status === 'pending'    && <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">pendiente</span>}
-                {q.status === 'processing' && <span className="text-xs px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 animate-pulse">procesando…</span>}
-                {q.status === 'done'       && <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">✓ {q.summary?.creados ?? 0} creados · {q.summary?.omitidos ?? 0} dedup</span>}
+                {q.status === 'processing' && <span className="text-xs px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 animate-pulse">analizando…</span>}
+                {q.status === 'done'       && <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">✓ analizado</span>}
                 {q.status === 'error'      && <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700 truncate max-w-[240px]" title={q.error}>error: {q.error?.slice(0, 40)}</span>}
                 {q.status === 'pending' && !batchRunning && (
                   <button onClick={() => removeBatchItem(i)} className="text-slate-400 hover:text-red-500"><X size={14} /></button>
@@ -215,24 +347,88 @@ export function SuperXMLImportPage() {
               </li>
             ))}
           </ul>
-          <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex justify-end gap-2">
-            {batchQueue.every(q => q.status === 'done' || q.status === 'error') && !batchRunning ? (
-              <button onClick={() => { setBatchQueue([]); }} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg">
-                Terminar
+          {!batchPreview && (
+            <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex justify-end">
+              <button onClick={runBatch} disabled={batchRunning} className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg">
+                <Check size={14} /> {batchRunning ? 'Analizando…' : `Analizar los ${batchQueue.length} XMLs`}
               </button>
-            ) : (
-              <button
-                onClick={runBatch}
-                disabled={batchRunning}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg"
-              >
-                <Check size={14} /> {batchRunning ? 'Procesando…' : `Procesar lote de ${batchQueue.length}`}
-              </button>
-            )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Preview consolidado con checkboxes por entidad */}
+      {batchPreview && !batchApplied && (
+        <div className="mt-4 space-y-4">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-sm text-indigo-900">
+            <b>Preview consolidado</b> — los ítems marcados en verde <span className="text-emerald-700">✓ ya existen</span> en tu BD y NO se re-importan por default. Marca/desmarca los checkboxes para elegir qué subir.
           </div>
-          <p className="px-4 py-2 text-[11px] text-slate-500 bg-white border-t border-slate-100">
-            Se procesan en serie con defaults sensatos: emisor→proveedor, receptor→cliente (si no existen), guarda mercancías + Carta Porte + viajes. El dedup del backend evita duplicar entre archivos.
-          </p>
+          <BatchSection title="👥 Emisores / Receptores → clientes/proveedores" items={batchPreview.parties} sel={batchSel.parties} onToggle={(k) => toggleSel('parties', k)} renderItem={(p: any) => (
+            <>
+              <div className="text-sm"><b>{p.nombre || '—'}</b> <span className="text-xs font-mono text-slate-500">{p.rfc}</span></div>
+              <div className="text-[11px] text-slate-500">Sugerido: {p.suggestedAs === 'SUPPLIER' ? 'Proveedor' : 'Cliente'} · {p.sourceXmls.length} XML(s)</div>
+            </>
+          )} />
+          <BatchSection title="📄 Productos (viajes/servicios facturados)" items={batchPreview.productos} sel={batchSel.productos} onToggle={(k) => toggleSel('productos', k)} renderItem={(p: any) => (
+            <>
+              <div className="text-sm truncate max-w-[500px]">{p.descripcion}</div>
+              <div className="text-[11px] text-slate-500 font-mono">SAT {p.claveSat} · {p.claveUnidad} · ${Number(p.valorUnitario).toFixed(2)}</div>
+            </>
+          )} />
+          <BatchSection title="📦 Mercancías transportadas" items={batchPreview.mercancias} sel={batchSel.mercancias} onToggle={(k) => toggleSel('mercancias', k)} renderItem={(m: any) => (
+            <>
+              <div className="text-sm truncate max-w-[500px]">{m.descripcion}</div>
+              <div className="text-[11px] text-slate-500 font-mono">SAT {m.claveSat} · {m.cantidad} {m.claveUnidad} · {m.pesoKg || 0} kg</div>
+            </>
+          )} />
+          <BatchSection title="📍 Lugares (Origen / Destino)" items={batchPreview.lugares} sel={batchSel.lugares} onToggle={(k) => toggleSel('lugares', k)} renderItem={(l: any) => (
+            <>
+              <div className="text-sm"><b>{l.alias}</b> · <span className="text-xs">{l.tipoDefault}</span></div>
+              <div className="text-[11px] text-slate-500">{l.nombre} · {l.estado} · CP {l.codigoPostal}</div>
+            </>
+          )} />
+          <BatchSection title="🚚 Vehículos" items={batchPreview.vehiculos} sel={batchSel.vehiculos} onToggle={(k) => toggleSel('vehiculos', k)} renderItem={(v: any) => (
+            <>
+              <div className="text-sm"><b>Placa {v.placaVm}</b> · {v.configVehicular} · {v.anioModeloVm}</div>
+              <div className="text-[11px] text-slate-500">Peso {v.pesoBrutoVehicular}t · Permiso {v.permSct}</div>
+            </>
+          )} />
+          <BatchSection title="🛡️ Aseguradoras" items={batchPreview.aseguradoras} sel={batchSel.aseguradoras} onToggle={(k) => toggleSel('aseguradoras', k)} renderItem={(a: any) => (
+            <>
+              <div className="text-sm"><b>{a.nombreAseguradora}</b></div>
+              <div className="text-[11px] text-slate-500">{a.tipo} · Póliza {a.numPoliza}</div>
+            </>
+          )} />
+          <BatchSection title="👤 Operadores / Figuras" items={batchPreview.operadores} sel={batchSel.operadores} onToggle={(k) => toggleSel('operadores', k)} renderItem={(o: any) => (
+            <>
+              <div className="text-sm"><b>{o.nombre}</b> · <span className="text-xs font-mono">{o.rfc}</span></div>
+              <div className="text-[11px] text-slate-500">Tipo {o.tipoFigura} · Lic {o.numLicencia || '—'}</div>
+            </>
+          )} />
+          <div className="flex justify-end gap-3">
+            <button onClick={() => { setBatchQueue([]); setBatchPreview(null); setBatchSel({}); }} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancelar</button>
+            <button onClick={applyBatchSelected} disabled={batchApplying} className="inline-flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg font-medium">
+              <Check size={16} /> {batchApplying ? 'Importando…' : 'Importar lo seleccionado'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Resultado del lote */}
+      {batchApplied && (
+        <div className="mt-4 bg-white border border-slate-200 rounded-lg p-6">
+          <h3 className="font-semibold text-emerald-700 mb-3">✓ Importación completada</h3>
+          <div className="grid grid-cols-3 gap-3 text-sm mb-4">
+            <div className="p-3 bg-emerald-50 rounded border border-emerald-200"><div className="text-xs text-emerald-600">CREADOS</div><div className="text-2xl font-bold text-emerald-700">{batchApplied.summary.creados}</div></div>
+            <div className="p-3 bg-slate-50 rounded border border-slate-200"><div className="text-xs text-slate-500">OMITIDOS (dedup)</div><div className="text-2xl font-bold text-slate-700">{batchApplied.summary.omitidos}</div></div>
+            <div className="p-3 bg-red-50 rounded border border-red-200"><div className="text-xs text-red-600">ERRORES</div><div className="text-2xl font-bold text-red-700">{batchApplied.summary.errores}</div></div>
+          </div>
+          {(batchApplied.errors || []).map((e: string, i: number) => <p key={i} className="text-xs text-red-600">⚠ {e}</p>)}
+          <div className="mt-4 flex justify-end">
+            <button onClick={() => { setBatchQueue([]); setBatchPreview(null); setBatchSel({}); setBatchApplied(null); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">
+              Nuevo lote
+            </button>
+          </div>
         </div>
       )}
 
@@ -452,6 +648,64 @@ function Info({ label, value, mono }: { label: string; value: string; mono?: boo
     <div>
       <span className="block text-slate-500 uppercase tracking-wider text-[10px] font-medium">{label}</span>
       <span className={`block ${mono ? 'font-mono' : ''} text-slate-800 truncate`} title={value}>{value}</span>
+    </div>
+  );
+}
+
+/** Sección colapsable del preview de lote — muestra items con checkbox y
+ *  marca los que ya existen en la BD. Ítems que ya existen se pre-desmarcan. */
+function BatchSection({ title, items, sel, onToggle, renderItem }: {
+  title: string;
+  items: any[];
+  sel: Set<string> | undefined;
+  onToggle: (key: string) => void;
+  renderItem: (item: any) => React.ReactNode;
+}) {
+  if (!items || items.length === 0) return null;
+  const selSet = sel || new Set<string>();
+  const nuevos = items.filter(i => !i.existsInDb).length;
+  const existentes = items.filter(i => i.existsInDb).length;
+  const allSelected = items.filter(i => !i.existsInDb).every(i => selSet.has(i._key));
+  return (
+    <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <header className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-3">
+        <h3 className="text-sm font-semibold text-slate-700 flex-1">
+          {title} <span className="text-xs font-normal text-slate-500">— {nuevos} nuevo(s){existentes > 0 ? `, ${existentes} ya existen` : ''}</span>
+        </h3>
+        {nuevos > 0 && (
+          <button
+            onClick={() => {
+              const newSet = new Set(selSet);
+              if (allSelected) items.filter(i => !i.existsInDb).forEach(i => newSet.delete(i._key));
+              else items.filter(i => !i.existsInDb).forEach(i => newSet.add(i._key));
+              // toggle uno a uno para que suba al parent — hack simple
+              items.filter(i => !i.existsInDb).forEach(i => {
+                if (allSelected && selSet.has(i._key)) onToggle(i._key);
+                else if (!allSelected && !selSet.has(i._key)) onToggle(i._key);
+              });
+            }}
+            className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-100"
+          >
+            {allSelected ? 'Deseleccionar nuevos' : 'Seleccionar todos los nuevos'}
+          </button>
+        )}
+      </header>
+      <ul className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
+        {items.map((it) => (
+          <li key={it._key} className={`px-4 py-2.5 flex items-start gap-3 text-sm ${it.existsInDb ? 'bg-emerald-50/40' : ''}`}>
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={selSet.has(it._key)}
+              onChange={() => onToggle(it._key)}
+              disabled={it.existsInDb}
+              title={it.existsInDb ? 'Ya existe en tu BD' : 'Marca para importar'}
+            />
+            <div className="flex-1 min-w-0">{renderItem(it)}</div>
+            {it.existsInDb && <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 shrink-0">✓ ya existe</span>}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

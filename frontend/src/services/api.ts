@@ -1115,6 +1115,14 @@ class APIClient {
     const r = await this.client.post<any>('/xml-super-import/apply', payload);
     return r.data;
   }
+  async xmlSuperCheckExisting(payload: any) {
+    const r = await this.client.post<any>('/xml-super-import/check-existing', payload);
+    return r.data;
+  }
+  async xmlSuperApplySelected(payload: any) {
+    const r = await this.client.post<any>('/xml-super-import/apply-selected', payload);
+    return r.data;
+  }
 
   /* ─── Contrato de servicio con e.firma ─── */
   async getContract() {
