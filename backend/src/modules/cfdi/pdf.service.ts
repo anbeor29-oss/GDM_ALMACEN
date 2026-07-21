@@ -28,6 +28,7 @@ import PDFDocument from 'pdfkit';
 import * as invoicesService from '../invoices/invoices.service';
 import * as companiesService from '../companies/companies.service';
 import * as customersService from '../customers/customers.service';
+import * as cartaPorteService from '../carta-porte/carta-porte.service';
 import { query } from '../../config/database';
 import { NotFoundError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
@@ -225,10 +226,16 @@ export async function generateInvoicePDF(data: PDFGenerationData): Promise<Buffe
   const chunks: Buffer[] = [];
   doc.on('data', (b: Buffer) => chunks.push(b));
 
+  // Complemento Carta Porte 3.1 — cargar si la factura lo tiene
+  const cp = await cartaPorteService.getByInvoiceId(data.invoiceId).catch(() => null);
+
   generateHeader(doc, company, invoice, cat.regE, logoBuf);
   generateReceptor(doc, customer, invoice, cat.regR, cat.uso);
   generateItems(doc, invoice.items);
   generateTotals(doc, invoice);
+  if (cp) {
+    generateCartaPorteSection(doc, cp);
+  }
   generateStampedSection(doc, invoice, qrPng);
   generateFooter(doc, invoice);
   drawPageNumbers(doc);
@@ -605,6 +612,144 @@ function generateTotals(doc: PDFDoc, invoice: any) {
 
   (doc as any)._nextY = y + 14;
   doc.fillColor('#000000');
+}
+
+/**
+ * generateCartaPorteSection — bloque impreso del Complemento Carta Porte 3.1.
+ * Se muestra entre Totales y Timbre. Renderiza:
+ *   · Encabezado con IdCCP, versión, transporte internacional, distancia total
+ *   · Ubicaciones (Origen/Destino) con RFC, nombre, domicilio, CP y fechas
+ *   · Mercancías (clave SAT, descripción, cantidad, unidad, peso, valor)
+ *   · Autotransporte (permiso, config, placa, año, peso bruto, aseguradora)
+ *   · Figura(s) de transporte (tipo, RFC, licencia, nombre)
+ *
+ * Diseñado para caber en el flujo del PDF; si el contenido excede la página,
+ * PDFKit auto-pagina.
+ */
+function generateCartaPorteSection(doc: PDFDoc, cp: any) {
+  let y = (doc as any)._nextY || 500;
+  const W = PAGE_RIGHT - PAGE_LEFT;
+
+  // Título de sección
+  doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).strokeColor('#0f766e').lineWidth(1.2).stroke();
+  y += 6;
+  doc.font('Helvetica-Bold').fontSize(11).fillColor('#0f766e')
+    .text('COMPLEMENTO CARTA PORTE 3.1', PAGE_LEFT, y);
+  y += 15;
+
+  // Encabezado en 4 columnas
+  doc.font('Helvetica').fontSize(8).fillColor('#475569');
+  const col = (label: string, val: string, x: number) => {
+    doc.fillColor('#64748b').text(label, x, y);
+    doc.fillColor('#0f172a').font('Helvetica-Bold').text(val || '—', x, y + 9);
+    doc.font('Helvetica').fillColor('#475569');
+  };
+  col('IdCCP',              String(cp.id_ccp || ''),                    PAGE_LEFT);
+  col('Versión',            String(cp.version || '3.1'),                PAGE_LEFT + 145);
+  col('Transp. internac.',  cp.transp_internac === 'Sí' ? 'Sí' : 'No',  PAGE_LEFT + 265);
+  col('Distancia total',    `${cp.total_dist_rec || 0} km`,             PAGE_LEFT + 385);
+  y += 24;
+
+  // ─── Ubicaciones ─────────────────────────────────────────────
+  if (cp.ubicaciones?.length) {
+    doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+    y += 4;
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#0f172a').text('Ubicaciones', PAGE_LEFT, y);
+    y += 12;
+    for (const u of cp.ubicaciones) {
+      const tag = u.tipo_ubicacion === 'Origen' ? 'ORIGEN' : 'DESTINO';
+      const tagColor = u.tipo_ubicacion === 'Origen' ? '#0284c7' : '#059669';
+      doc.roundedRect(PAGE_LEFT, y - 1, 46, 12, 2).fill(tagColor);
+      doc.font('Helvetica-Bold').fontSize(7).fillColor('#ffffff').text(tag, PAGE_LEFT + 5, y + 1.5);
+      doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(8.5)
+        .text(u.nombre_remitente_destinatario || u.rfc_remitente_destinatario || '', PAGE_LEFT + 52, y, { width: W - 60 });
+      y += 11;
+      const dom = [u.calle, u.num_exterior, u.colonia, u.municipio, u.estado, u.pais, `CP ${u.codigo_postal || ''}`]
+        .filter(Boolean).join(', ');
+      doc.font('Helvetica').fontSize(7.5).fillColor('#475569')
+        .text(`RFC: ${u.rfc_remitente_destinatario || '—'}  ·  ${dom}`, PAGE_LEFT + 52, y, { width: W - 60 });
+      y += 10;
+      const fecha = u.fecha_hora_salida_llegada ? new Date(u.fecha_hora_salida_llegada).toLocaleString('es-MX') : '—';
+      const extra = u.tipo_ubicacion === 'Destino' && u.distancia_recorrida ? ` · Distancia: ${u.distancia_recorrida} km` : '';
+      doc.fillColor('#64748b').fontSize(7).text(`${u.tipo_ubicacion === 'Origen' ? 'Salida' : 'Llegada'}: ${fecha}${extra}`, PAGE_LEFT + 52, y);
+      y += 12;
+    }
+  }
+
+  // ─── Mercancías ──────────────────────────────────────────────
+  if (cp.mercancias?.length) {
+    doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+    y += 4;
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#0f172a')
+      .text(`Mercancías (${cp.mercancias.length}) — peso bruto total ${cp.peso_bruto_total || 0} ${cp.unidad_peso || 'KGM'}`, PAGE_LEFT, y);
+    y += 12;
+    // Encabezados tabla
+    doc.font('Helvetica-Bold').fontSize(7).fillColor('#64748b');
+    doc.text('CLAVE SAT', PAGE_LEFT, y);
+    doc.text('DESCRIPCIÓN', PAGE_LEFT + 60, y, { width: 240 });
+    doc.text('CANT',   PAGE_LEFT + 310, y, { width: 40, align: 'right' });
+    doc.text('UNIDAD', PAGE_LEFT + 350, y, { width: 40, align: 'center' });
+    doc.text('PESO',   PAGE_LEFT + 395, y, { width: 55, align: 'right' });
+    doc.text('VALOR',  PAGE_LEFT + 455, y, { width: 60, align: 'right' });
+    y += 10;
+    doc.font('Helvetica').fontSize(7.5).fillColor('#0f172a');
+    for (const m of cp.mercancias) {
+      const rowH = Math.max(10, doc.heightOfString(m.descripcion || '', { width: 240 }) + 2);
+      doc.text(String(m.bienes_transp || ''), PAGE_LEFT, y, { width: 60 });
+      doc.text(String(m.descripcion || ''),   PAGE_LEFT + 60, y, { width: 240 });
+      doc.text(fmtQty(m.cantidad),            PAGE_LEFT + 310, y, { width: 40, align: 'right' });
+      doc.text(String(m.clave_unidad || ''),  PAGE_LEFT + 350, y, { width: 40, align: 'center' });
+      doc.text(`${Number(m.peso_en_kg || 0).toFixed(2)} kg`, PAGE_LEFT + 395, y, { width: 55, align: 'right' });
+      doc.text(m.valor_mercancia ? `$${fmtMoney(m.valor_mercancia)}` : '—', PAGE_LEFT + 455, y, { width: 60, align: 'right' });
+      y += rowH;
+    }
+    y += 4;
+  }
+
+  // ─── Autotransporte ──────────────────────────────────────────
+  const a = cp.autotransporte;
+  if (a) {
+    doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+    y += 4;
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#0f172a').text('Autotransporte', PAGE_LEFT, y);
+    y += 12;
+    // Grid 4 cols
+    col('Permiso SCT',      `${a.perm_sct || ''} ${a.num_permiso_sct || ''}`.trim(), PAGE_LEFT);
+    col('Configuración',    String(a.config_vehicular || ''),                        PAGE_LEFT + 145);
+    col('Placa',            String(a.placa_vm || ''),                                PAGE_LEFT + 265);
+    col('Año',              String(a.anio_modelo_vm || ''),                          PAGE_LEFT + 335);
+    col('Peso bruto (t)',   String(a.peso_bruto_vehicular || ''),                    PAGE_LEFT + 405);
+    y += 24;
+    if (a.asegura_resp_civil || a.poliza_resp_civil) {
+      col('Aseguradora R.C.', String(a.asegura_resp_civil || ''),  PAGE_LEFT);
+      col('Póliza R.C.',      String(a.poliza_resp_civil || ''),   PAGE_LEFT + 265);
+      y += 24;
+    }
+    if (a.remolques?.length) {
+      doc.font('Helvetica-Bold').fontSize(7).fillColor('#64748b').text(`Remolques: ${a.remolques.map((r: any) => `${r.sub_tipo_rem || ''} ${r.placa || ''}`).join(' | ')}`, PAGE_LEFT, y);
+      y += 12;
+    }
+  }
+
+  // ─── Figuras de transporte ───────────────────────────────────
+  if (cp.figuras?.length) {
+    doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+    y += 4;
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#0f172a').text('Figuras de transporte', PAGE_LEFT, y);
+    y += 12;
+    for (const f of cp.figuras) {
+      const tipo = f.tipo_figura === '01' ? 'Operador' : f.tipo_figura === '02' ? 'Propietario' : f.tipo_figura === '03' ? 'Arrendador' : f.tipo_figura === '04' ? 'Notificado' : `Tipo ${f.tipo_figura}`;
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a')
+        .text(`${tipo}: ${f.nombre_figura || ''}`, PAGE_LEFT, y);
+      y += 10;
+      doc.font('Helvetica').fontSize(7.5).fillColor('#475569')
+        .text(`RFC: ${f.rfc_figura || '—'}  ·  Licencia: ${f.num_licencia || '—'}`, PAGE_LEFT, y);
+      y += 12;
+    }
+  }
+
+  doc.fillColor('#000000');
+  (doc as any)._nextY = y + 8;
 }
 
 function generateStampedSection(doc: PDFDoc, invoice: any, qrPng: Buffer | null) {
