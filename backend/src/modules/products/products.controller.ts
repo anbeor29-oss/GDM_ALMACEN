@@ -222,7 +222,24 @@ export async function updateProduct(req: Request, res: Response) {
   }
 
   const { id } = req.params;
-  const updateData = req.body;
+  // Normalize camelCase → snake_case para que el service reconozca los campos.
+  // (Bug histórico: basePrice llegaba pero el service esperaba base_price.)
+  const b = req.body || {};
+  const updateData: any = { ...b };
+  if (b.basePrice !== undefined)        updateData.base_price = b.basePrice;
+  if (b.claveSat !== undefined)         updateData.clave_sat = b.claveSat;
+  if (b.unitCode !== undefined)         updateData.unit_code = b.unitCode;
+  if (b.taxType !== undefined)          updateData.tax_type = b.taxType;
+  if (b.taxRate !== undefined)          updateData.tax_rate = b.taxRate;
+  if (b.taxPresetId !== undefined)      updateData.tax_preset_id = b.taxPresetId;
+  if (b.isExempt !== undefined)         updateData.is_exempt = b.isExempt;
+  if (b.appliesIEPS !== undefined)      updateData.applies_ieps = b.appliesIEPS;
+  if (b.isDeductible !== undefined)     updateData.is_deductible = b.isDeductible;
+  if (b.stockQuantity !== undefined)    updateData.stock_quantity = b.stockQuantity;
+  if (b.stockMinimum !== undefined)     updateData.stock_minimum = b.stockMinimum;
+  if (b.stockMaximum !== undefined)     updateData.stock_maximum = b.stockMaximum;
+  if (b.lastCost !== undefined)         updateData.last_cost = b.lastCost;
+  if (b.noIdentificacion !== undefined) updateData.no_identificacion = b.noIdentificacion;
 
   const product = await productsService.updateProduct(req.user.companyId, id, updateData);
 
