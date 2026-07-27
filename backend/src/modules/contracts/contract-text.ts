@@ -15,7 +15,7 @@
  */
 
 /** Súbela SIEMPRE que cambie el texto. Formato: AAAA-MM-DD.N */
-export const CONTRACT_VERSION = '2026-07-20.1';
+export const CONTRACT_VERSION = '2026-07-27.1';
 
 export interface ContractParty {
   rfc: string;
@@ -308,6 +308,55 @@ Fiscal de la Federación.
 
 La firma se realiza sobre el texto íntegro de este documento. Cualquier
 alteración posterior invalida la firma.
+
+════════════════════════════════════════════════════════════════════════
+
+MANIFIESTO PARA EL SERVICIO DE TIMBRADO DE DOCUMENTOS
+Versión: 2
+
+AUTORIZACIÓN Y MANIFESTACIÓN DE CONOCIMIENTO A PRODIGIA PROCESOS DIGITALES
+ADMINISTRATIVOS, S.A. DE C.V.
+
+El Contribuyente ${client.businessName.toUpperCase()}, con clave de RFC
+${client.rfc.toUpperCase()}, otorga la presente autorización a favor de
+PRODIGIA PROCESOS DIGITALES ADMINISTRATIVOS, SA DE CV, proveedor de
+Certificación de Comprobantes Fiscales Digitales a través de Internet (CFDI)
+autorizado por el SAT en su resolución número 600-04-03-2013-09763 de fecha
+19 de Febrero de 2013, para que le preste el servicio de Certificación de
+CFDI de conformidad a las siguientes:
+
+CLÁUSULAS
+
+PRIMERA. El servicio de Certificación de CFDI que proveerá PRODIGIA PROCESOS
+DIGITALES ADMINISTRATIVOS, SA DE CV de acuerdo a lo dispuesta en el primer
+párrafo de la regla 2.7.2.5, consiste en:
+
+I. Validen el cumplimiento de los requisitos establecidos en el artículo 29-A
+de este Código, los establecidos en los complementos de los comprobantes
+fiscales digitales por Internet, así como las especificaciones en materia de
+informática y demás documentos que determine el Servicio de Administración
+Tributaria mediante reglas de carácter general.
+
+II. Asignen el folio del comprobante fiscal digital por Internet.
+
+III. Incorporen el sello digital del Servicio de Administración Tributaria.
+
+SEGUNDA. El servicio de Certificación de CFDI es prestado directamente por
+PRODIGIA PROCESOS DIGITALES ADMINISTRATIVOS, SA DE CV.
+
+TERCERA. De acuerdo a lo dispuesto en el segundo párrafo de la regla 2.7.2.7
+de la Resolución Miscelánea Fiscal vigente y en la regla 2.7.2.5 en el inciso
+II, el contribuyente manifiesta su conocimiento y presta su autorización para
+que PRODIGIA PROCESOS DIGITALES ADMINISTRATIVOS, SA DE CV entregue al SAT
+copia de los comprobantes que le haya certificado.
+
+CUARTA. Esta autorización es válida únicamente para el contribuyente
+especificado en este documento.
+
+De conformidad con lo anterior se firma este documento el día ${fecha}
+
+Nombre del contribuyente: ${client.businessName.toUpperCase()}
+RFC del contribuyente: ${client.rfc.toUpperCase()}
 `;
 }
 
