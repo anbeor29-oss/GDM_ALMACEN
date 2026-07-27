@@ -135,3 +135,6 @@ scripts/logs/
 .vscode/launch.json
 .vscode/extensions.json
 
+
+# Artefactos de deploy manual a hosting México (ZIPs generados)
+dist-uploads/
