@@ -13,6 +13,7 @@
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
+const { icons } = require('./manual-icons');
 
 const OUT = path.resolve(__dirname, '..', '..', 'frontend', 'public', 'manual-usuario.pdf');
 const LOGO = path.resolve(__dirname, '..', '..', 'frontend', 'public', 'gdm-logo.png');
@@ -153,47 +154,77 @@ function box(kind, title, text) {
   doc.y = y0 + h + 10;
 }
 
-/** Tabla simple: cols = [{label, w, align}], rows = [[...]] */
+/**
+ * Tabla. `cols = [{label, w, align}]`, `rows = [[...]]`.
+ *
+ * Una celda puede ser texto o `{ icon: 'home', color: '#hex' }` para dibujar
+ * un icono vectorial centrado (ver manual-icons.js). Los emoji no sirven
+ * porque PDFKit no puede incrustar fuentes de color.
+ */
 function table(cols, rows) {
   const totalW = cols.reduce((a, c) => a + c.w, 0);
   needSpace(46 + rows.length * 20);
 
-  let y = doc.y;
-  doc.rect(M, y, totalW, 20).fill(NAVY);
-  let x = M;
-  doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff');
-  cols.forEach(c => {
-    doc.text(c.label, x + 6, y + 6, { width: c.w - 12, align: c.align || 'left', lineBreak: false });
-    x += c.w;
-  });
-  y += 20;
+  const drawHeader = (yy) => {
+    doc.rect(M, yy, totalW, 20).fill(NAVY);
+    let xh = M;
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff');
+    cols.forEach(c => {
+      doc.text(c.label, xh + 6, yy + 6, { width: c.w - 12, align: c.align || 'left', lineBreak: false });
+      xh += c.w;
+    });
+    return yy + 20;
+  };
+
+  let y = drawHeader(doc.y);
 
   rows.forEach((r, i) => {
     doc.font('Helvetica').fontSize(8.5);
-    let maxH = 16;
+    // Altura: los iconos ocupan 18pt fijos, el texto lo que necesite
+    let maxH = 20;
     cols.forEach((c, j) => {
-      const hh = doc.heightOfString(String(r[j] ?? ''), { width: c.w - 12 });
+      const cell = r[j];
+      if (cell && typeof cell === 'object' && cell.icon) return;
+      const hh = doc.heightOfString(String(cell ?? ''), { width: c.w - 12 });
       if (hh + 8 > maxH) maxH = hh + 8;
     });
+
     if (y + maxH > doc.page.height - 80) {
-      doc.addPage(); y = doc.y;
-      // repetir encabezado
-      doc.rect(M, y, totalW, 20).fill(NAVY);
-      let xh = M;
-      doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff');
-      cols.forEach(c => { doc.text(c.label, xh + 6, y + 6, { width: c.w - 12, align: c.align || 'left', lineBreak: false }); xh += c.w; });
-      y += 20;
+      doc.addPage();
+      y = drawHeader(doc.y);
     }
+
     if (i % 2 === 0) doc.rect(M, y, totalW, maxH).fill(BG_SOFT);
+
     let xr = M;
-    doc.font('Helvetica').fontSize(8.5).fillColor(NAVY_DARK);
     cols.forEach((c, j) => {
-      doc.text(String(r[j] ?? ''), xr + 6, y + 4, { width: c.w - 12, align: c.align || 'left' });
+      const cell = r[j];
+      if (cell && typeof cell === 'object' && cell.icon) {
+        const fn = icons[cell.icon];
+        if (fn) {
+          const size = 16;
+          fn(doc, xr + (c.w - size) / 2, y + (maxH - size) / 2, size, cell.color || NAVY);
+        }
+      } else {
+        doc.font('Helvetica').fontSize(8.5).fillColor(NAVY_DARK)
+           .text(String(cell ?? ''), xr + 6, y + 5, { width: c.w - 12, align: c.align || 'left' });
+      }
       xr += c.w;
     });
     y += maxH;
   });
   doc.y = y + 12;
+}
+
+/** Icono suelto en el flujo, con etiqueta a la derecha. */
+function iconLine(name, color, text) {
+  needSpace(30);
+  const y0 = doc.y;
+  const fn = icons[name];
+  if (fn) fn(doc, M + 4, y0, 15, color);
+  doc.font('Helvetica').fontSize(10).fillColor(GRAY)
+     .text(text, M + 26, y0 + 1, { width: W - 26, lineGap: 1.4 });
+  doc.moveDown(0.35);
 }
 
 function pageNo() { return doc.bufferedPageRange().count; }
@@ -274,15 +305,15 @@ p('Todo el sistema se navega desde la barra de la izquierda. Cada módulo tiene 
 table(
   [ { label: 'Icono', w: 46, align: 'center' }, { label: 'Módulo', w: 130 }, { label: 'Para qué sirve', w: W - 176 } ],
   [
-    ['[casa]',    'Dashboard',        'Resumen del mes: facturas emitidas, timbres disponibles y cobranza pendiente.'],
-    ['[recibo]',  'Facturas',         'Emitir, timbrar, cancelar y enviar por correo tus CFDI.'],
-    ['[camión]',  'Carta Porte',      'Complemento de traslado. Se despliega en cinco catálogos (ver capítulo 3).'],
-    ['[gráfica]', 'Notas de Crédito', 'Devoluciones, descuentos y bonificaciones sobre facturas ya timbradas.'],
-    ['[caja]',    'Productos',        'Catálogo de lo que vendes, con su clave SAT y su régimen de impuestos.'],
-    ['[personas]','Clientes',         'Receptores de tus facturas. Se pueden dar de alta leyendo su Constancia Fiscal.'],
-    ['[bandeja]', 'Lector de XML',    'Importa uno o varios XML y llena tus catálogos automáticamente.'],
-    ['[barras]',  'Reportes',         'Ventas por periodo, cobranza y exportación a Excel o PDF.'],
-    ['[pergamino]','Contrato',        'Contrato de servicio y manifiesto ante el PAC, firmables con e.firma.'],
+    [{ icon: 'home',     color: '#0284c7' }, 'Dashboard',        'Resumen del mes: facturas emitidas, timbres disponibles y cobranza pendiente.'],
+    [{ icon: 'receipt',  color: '#d97706' }, 'Facturas',         'Emitir, timbrar, cancelar y enviar por correo tus CFDI.'],
+    [{ icon: 'truck',    color: '#d97706' }, 'Carta Porte',      'Complemento de traslado. Se despliega en cinco catálogos (ver capítulo 3).'],
+    [{ icon: 'fileDown', color: '#e11d48' }, 'Notas de Crédito', 'Devoluciones, descuentos y bonificaciones sobre facturas ya timbradas.'],
+    [{ icon: 'box',      color: '#c026d3' }, 'Productos',        'Catálogo de lo que vendes, con su clave SAT y su régimen de impuestos.'],
+    [{ icon: 'users',    color: '#059669' }, 'Clientes',         'Receptores de tus facturas. Se pueden dar de alta leyendo su Constancia Fiscal.'],
+    [{ icon: 'inbox',    color: '#7c3aed' }, 'Lector de XML',    'Importa uno o varios XML y llena tus catálogos automáticamente.'],
+    [{ icon: 'chart',    color: '#7c3aed' }, 'Reportes',         'Ventas por periodo, cobranza y exportación a Excel o PDF.'],
+    [{ icon: 'contract', color: '#0284c7' }, 'Contrato',         'Contrato de servicio y manifiesto ante el PAC, firmables con e.firma.'],
   ]
 );
 
@@ -319,19 +350,19 @@ h2('Los botones de cada factura');
 p('Al final de cada renglón encontrarás una fila de iconos. Los que aparecen dependen del estado de la factura:');
 
 table(
-  [ { label: 'Icono', w: 70, align: 'center' }, { label: 'Acción', w: 130 }, { label: 'Cuándo aparece', w: W - 200 } ],
+  [ { label: 'Icono', w: 50, align: 'center' }, { label: 'Acción', w: 132 }, { label: 'Cuándo aparece', w: W - 182 } ],
   [
-    ['PDF',      'Descargar PDF',        'Siempre. Es la representación impresa del CFDI.'],
-    ['XML',      'Descargar XML',        'Siempre. Es el archivo fiscal que vale ante el SAT.'],
-    ['ojo',      'Vista previa',         'Siempre. Abre el PDF sin descargarlo.'],
-    ['barco',    'Carta Porte',          'Solo en borradores. En facturas timbradas queda deshabilitado.'],
-    ['lápiz',    'Editar',               'Solo en borradores.'],
-    ['sello',    'Timbrar',              'Solo en borradores con CSD cargado.'],
-    ['cartera',  'Complemento de pago',  'En facturas PPD con saldo pendiente.'],
-    ['monedas',  'Ver saldo',            'En facturas con abonos o notas de crédito aplicadas.'],
-    ['sobre',    'Enviar por correo',    'Solo en facturas timbradas. Adjunta PDF y XML.'],
-    ['reloj',    'Historial de timbres', 'Solo en timbradas. Muestra factura, notas y pagos.'],
-    ['prohibido','Cancelar',             'En timbradas dentro del plazo que permite el SAT.'],
+    [{ icon: 'fileDown', color: '#dc2626' }, 'Descargar PDF',        'Siempre. Es la representación impresa del CFDI.'],
+    [{ icon: 'download', color: '#16a34a' }, 'Descargar XML',        'Siempre. Es el archivo fiscal que vale ante el SAT.'],
+    [{ icon: 'eye',      color: '#2563eb' }, 'Vista previa',         'Siempre. Abre el PDF sin descargarlo.'],
+    [{ icon: 'ship',     color: '#d97706' }, 'Carta Porte',          'Solo en borradores. En facturas timbradas queda deshabilitado.'],
+    [{ icon: 'pencil',   color: '#0284c7' }, 'Editar',               'Solo en borradores.'],
+    [{ icon: 'stamp',    color: '#7c3aed' }, 'Timbrar',              'Solo en borradores con CSD cargado.'],
+    [{ icon: 'wallet',   color: '#16a34a' }, 'Complemento de pago',  'En facturas PPD con saldo pendiente.'],
+    [{ icon: 'coins',    color: '#d97706' }, 'Ver saldo',            'En facturas con abonos o notas de crédito aplicadas.'],
+    [{ icon: 'mail',     color: '#4f46e5' }, 'Enviar por correo',    'Solo en facturas timbradas. Adjunta PDF y XML.'],
+    [{ icon: 'history',  color: '#4f46e5' }, 'Historial de timbres', 'Solo en timbradas. Muestra factura, notas y pagos.'],
+    [{ icon: 'ban',      color: '#ea580c' }, 'Cancelar',             'En timbradas dentro del plazo que permite el SAT.'],
   ]
 );
 
@@ -361,13 +392,13 @@ h2('Los cinco catálogos');
 p('Para no capturar los mismos datos en cada viaje, el sistema guarda cinco catálogos. Al desplegar Carta Porte en el menú lateral encontrarás:');
 
 table(
-  [ { label: 'Catálogo', w: 140 }, { label: 'Qué guarda', w: W - 140 } ],
+  [ { label: 'Icono', w: 46, align: 'center' }, { label: 'Catálogo', w: 132 }, { label: 'Qué guarda', w: W - 178 } ],
   [
-    ['Lugares frecuentes', 'Direcciones de origen y destino con las que trabajas seguido: RFC, nombre, calle, colonia, municipio, estado y código postal.'],
-    ['Vehículos',          'Placa, configuración vehicular, permiso SCT, año y peso bruto de cada unidad de tu flota.'],
-    ['Aseguradoras',       'Nombre de la aseguradora y número de póliza de responsabilidad civil, ambiental o de carga.'],
-    ['Operadores',         'Nombre, RFC y número de licencia de tus choferes y demás figuras de transporte.'],
-    ['Mercancías',         'Las mercancías que has transportado, con su clave SAT, unidad y peso. Ver capítulo 5.'],
+    [{ icon: 'pin',    color: '#059669' }, 'Lugares frecuentes', 'Direcciones de origen y destino con las que trabajas seguido: RFC, nombre, calle, colonia, municipio, estado y código postal.'],
+    [{ icon: 'truck',  color: '#d97706' }, 'Vehículos',          'Placa, configuración vehicular, permiso SCT, año y peso bruto de cada unidad de tu flota.'],
+    [{ icon: 'shield', color: '#0284c7' }, 'Aseguradoras',       'Nombre de la aseguradora y número de póliza de responsabilidad civil, ambiental o de carga.'],
+    [{ icon: 'driver', color: '#7c3aed' }, 'Operadores',         'Nombre, RFC y número de licencia de tus choferes y demás figuras de transporte.'],
+    [{ icon: 'box',    color: '#e11d48' }, 'Mercancías',         'Las mercancías que has transportado, con su clave SAT, unidad y peso. Ver capítulo 5.'],
   ]
 );
 
@@ -412,13 +443,13 @@ h2('Cómo funcionan');
 p('El botón abre una ventana con buscador. Escribes parte del nombre, la placa o el RFC, eliges el registro y todos los campos de ese bloque se llenan de golpe. Después puedes ajustar lo que necesites: la plantilla es un punto de partida, no una camisa de fuerza.');
 
 table(
-  [ { label: 'Bloque', w: 118 }, { label: 'Botón', w: 118 }, { label: 'Qué llena al elegir', w: W - 236 } ],
+  [ { label: '', w: 34, align: 'center' }, { label: 'Bloque', w: 106 }, { label: 'Botón', w: 116 }, { label: 'Qué llena al elegir', w: W - 256 } ],
   [
-    ['Ubicaciones',   'Cargar plantilla',              'RFC, nombre, calle, número, colonia, municipio, localidad, estado, país y código postal.'],
-    ['Mercancías',    'Plantilla de mercancía',        'Clave SAT, descripción, unidad, peso unitario y valor unitario.'],
-    ['Autotransporte','Plantilla de vehículo',         'Permiso SCT, número de permiso, configuración, placa, año, peso bruto y aseguradora.'],
-    ['Aseguradora',   'Plantilla de aseguradora',      'Nombre de la aseguradora y número de póliza de responsabilidad civil.'],
-    ['Figuras',       'Plantilla de operador',         'Tipo de figura, RFC, número de licencia y nombre completo.'],
+    [{ icon: 'pin',    color: '#059669' }, 'Ubicaciones',    'Cargar plantilla',         'RFC, nombre, calle, número, colonia, municipio, localidad, estado, país y código postal.'],
+    [{ icon: 'box',    color: '#e11d48' }, 'Mercancías',     'Plantilla de mercancía',   'Clave SAT, descripción, unidad, peso unitario y valor unitario.'],
+    [{ icon: 'truck',  color: '#d97706' }, 'Autotransporte', 'Plantilla de vehículo',    'Permiso SCT, número de permiso, configuración, placa, año, peso bruto y aseguradora.'],
+    [{ icon: 'shield', color: '#0284c7' }, 'Aseguradora',    'Plantilla de aseguradora', 'Nombre de la aseguradora y número de póliza de responsabilidad civil.'],
+    [{ icon: 'driver', color: '#7c3aed' }, 'Figuras',        'Plantilla de operador',    'Tipo de figura, RFC, número de licencia y nombre completo.'],
   ]
 );
 
