@@ -5,6 +5,7 @@
 
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { GdmLogo } from './GdmLogo';
+import { Emoji3D } from './Emoji3D';
 import {
   LogOut,
   PanelLeftClose,
@@ -12,12 +13,6 @@ import {
   Building2,
   ChevronDown,
   ChevronRight,
-  ShieldCheck,
-  Wallet,
-  FileInput,
-  Truck,
-  DollarSign,
-  ShoppingCart,
 } from 'lucide-react';
 import { canAccess, type ModuleKey } from '@/utils/permissions';
 import { useState, useCallback } from 'react';
@@ -99,16 +94,7 @@ export function Layout() {
             const show = (m: ModuleKey) => canAccess(g, m);
             // Cada entrada se muestra solo si el grupo de trabajo la permite.
             // El dashboard es común a todos.
-            const emoji3D = (e: string) => (
-              <span
-                className="text-xl leading-none"
-                style={{
-                  filter: 'drop-shadow(0 1.5px 1px rgba(0,0,0,0.15)) drop-shadow(0 0 1px rgba(0,0,0,0.1))',
-                  display: 'inline-block',
-                  transform: 'translateZ(0)',
-                }}
-              >{e}</span>
-            );
+            const emoji3D = (e: string) => <Emoji3D e={e} />;
             return (
               <>
                 {/* Orden solicitado (V2): 1 Dashboard, 2 Facturas, 3 Carta Porte,
@@ -156,13 +142,13 @@ export function Layout() {
                   {sidebarOpen ? 'Plataforma' : '•'}
                 </p>
               </div>
-              <NavItem to="/admin/companies" icon={<Building2 size={20} />}  accent="sky"     label="Empresas"          open={sidebarOpen} />
-              <NavItem to="/admin/users"     icon={<ShieldCheck size={20} />} accent="emerald" label="Usuarios"          open={sidebarOpen} />
-              <NavItem to="/admin/packages"  icon={<Wallet size={20} />}     accent="violet"  label="Paquetes fiscales" open={sidebarOpen} />
-              <NavItem to="/admin/billing"   icon={<DollarSign size={20} />} accent="emerald" label="Facturación y consumo" open={sidebarOpen} />
-              <NavItem to="/admin/prepaid"   icon={<ShoppingCart size={20} />} accent="fuchsia" label="Compras prepago" open={sidebarOpen} />
-              <NavItem to="/import-xml"      icon={<FileInput size={20} />}  accent="amber"   label="Importar XML"      open={sidebarOpen} />
-              <NavItem to="/suppliers"       icon={<Truck size={20} />}      accent="rose"    label="Proveedores"       open={sidebarOpen} />
+              <NavItem to="/admin/companies" icon={<Emoji3D e="🏢" />} accent="sky"     label="Empresas"              open={sidebarOpen} />
+              <NavItem to="/admin/users"     icon={<Emoji3D e="🛡️" />} accent="emerald" label="Usuarios"              open={sidebarOpen} />
+              <NavItem to="/admin/packages"  icon={<Emoji3D e="💳" />} accent="violet"  label="Paquetes fiscales"     open={sidebarOpen} />
+              <NavItem to="/admin/billing"   icon={<Emoji3D e="💰" />} accent="emerald" label="Facturación y consumo" open={sidebarOpen} />
+              <NavItem to="/admin/prepaid"   icon={<Emoji3D e="🛒" />} accent="fuchsia" label="Compras prepago"       open={sidebarOpen} />
+              <NavItem to="/import-xml"      icon={<Emoji3D e="📥" />} accent="amber"   label="Importar XML"          open={sidebarOpen} />
+              <NavItem to="/suppliers"       icon={<Emoji3D e="🚚" />} accent="rose"    label="Proveedores"           open={sidebarOpen} />
             </>
           )}
         </nav>

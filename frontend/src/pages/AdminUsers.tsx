@@ -7,7 +7,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, KeyRound, UserX, UserCheck, X, Shield, UserCog } from 'lucide-react';
+import { X } from 'lucide-react';
+import { Emoji3D } from '@/components/Emoji3D';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { WORK_GROUP_LABELS, WorkGroup } from '@/utils/permissions';
@@ -86,13 +87,13 @@ export function AdminUsersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-            <Shield className="text-indigo-600" size={36}/> Usuarios
+            <Emoji3D e="🛡️" size="xl" /> Usuarios
           </h1>
           <p className="text-gray-600 mt-1">Administra los usuarios que pueden facturar en la plataforma.</p>
         </div>
         <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg shadow">
-          <UserPlus size={18}/> Nuevo usuario
+          <Emoji3D e="➕" size="base" /> Nuevo usuario
         </button>
       </div>
 
@@ -141,7 +142,7 @@ export function AdminUsersPage() {
                   <div className="flex items-center justify-center gap-1">
                     <IconBtn title="Resetear password" color="amber"
                       onClick={() => { if (confirm(`Generar nueva contraseña temporal para ${u.email}?`)) reset.mutate(u.id); }}>
-                      <KeyRound size={16}/>
+                      <Emoji3D e="🔑" size="base" />
                     </IconBtn>
                     {/* Solo se puede suplantar a usuarios distintos del propio super-admin
                         y nunca a otro SUPER_ADMIN (el backend también lo bloquea). */}
@@ -152,17 +153,17 @@ export function AdminUsersPage() {
                             impersonate.mutate(u.id);
                           }
                         }}>
-                        <UserCog size={16}/>
+                        <Emoji3D e="🎭" size="base" />
                       </IconBtn>
                     )}
                     {u.is_active ? (
                       <IconBtn title="Deshabilitar" color="red"
                         onClick={() => { if (confirm(`Deshabilitar ${u.email}?`)) disable.mutate(u.id); }}>
-                        <UserX size={16}/>
+                        <Emoji3D e="🚫" size="base" />
                       </IconBtn>
                     ) : (
                       <IconBtn title="Re-activar" color="green" onClick={() => enable.mutate(u.id)}>
-                        <UserCheck size={16}/>
+                        <Emoji3D e="✅" size="base" />
                       </IconBtn>
                     )}
                   </div>
@@ -234,7 +235,7 @@ function CreateUserModal({ companies, onClose, onDone }: any) {
         <div className="flex items-center justify-between p-5 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-              <UserPlus className="text-indigo-700" size={20}/>
+              <Emoji3D e="➕" size="lg" />
             </div>
             <h2 className="font-bold text-gray-900">Nuevo usuario</h2>
           </div>
