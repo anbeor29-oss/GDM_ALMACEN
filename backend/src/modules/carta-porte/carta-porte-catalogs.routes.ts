@@ -22,6 +22,21 @@ import errorMatrix from './sat-error-matrix.json';
 const router = Router();
 router.use(authenticateToken);
 
+/**
+ * Comparación sin acentos ni mayúsculas.
+ *
+ * Medio catálogo del SAT trae acentos — Lázaro Cárdenas, Ciudad Juárez,
+ * Mérida — y nadie los teclea al buscar. Con ILIKE, "lazaro" no encontraba
+ * "Lázaro Cárdenas".
+ *
+ * Se usa translate() y no la extensión unaccent porque CREATE EXTENSION puede
+ * no estar permitido en el Postgres administrado de Render; translate() es
+ * SQL estándar y funciona en cualquier instancia.
+ */
+const ACENTOS = 'áéíóúÁÉÍÓÚàèìòùÀÈÌÒÙäëïöüÄËÏÖÜâêîôûÂÊÎÔÛñÑçÇ';
+const LLANOS  = 'aeiouAEIOUaeiouAEIOUaeiouAEIOUaeiouAEIOUnNcC';
+const sinAcentos = (expr: string) => `translate(lower(${expr}), '${ACENTOS}', '${LLANOS}')`;
+
 // nombre-slug del catálogo → tabla + columnas visibles adicionales
 const CATALOGS: Record<string, { table: string; extra?: string[]; label?: string }> = {
   'clave-prod-serv':      { table: 'sat_cp_clave_prod_serv',       extra: ['material_peligroso'] },
@@ -73,7 +88,10 @@ router.get(
 
     if (q) {
       params.push(q + '%', '%' + q + '%');
-      where.push(`(clave ILIKE $${params.length - 1} OR descripcion ILIKE $${params.length})`);
+      where.push(
+        `(clave ILIKE $${params.length - 1} OR ` +
+        `${sinAcentos('descripcion')} LIKE ${sinAcentos('$' + params.length)})`,
+      );
     }
     // Los estados solo tienen sentido dentro de un país: sin este filtro el
     // combo de un domicilio en Texas ofrecería los 32 estados mexicanos.
@@ -104,6 +122,89 @@ router.get(
         WHERE activo
         ORDER BY nombre_mx`,
     );
+    res.json({ items: r.rows });
+  }),
+);
+
+/**
+ * GET /carta-porte/puntos-entrada-salida?medio=01&q=
+ *
+ * Por dónde entra o sale la mercancía del país, según cómo viaje:
+ *
+ *   01 Autotransporte → cruce carretero (catálogo propio)
+ *   04 Ferroviario    → el mismo cruce carretero; el tren cruza por Nuevo
+ *                       Laredo o Piedras Negras igual que el camión
+ *   02 Marítimo       → puerto     (sat_cp_estaciones, 123)
+ *   03 Aéreo          → aeropuerto (sat_cp_estaciones, 2 346)
+ *
+ * Devuelve siempre { clave, descripcion } para que el combo del formulario
+ * no tenga que saber de dónde salió cada lista.
+ */
+router.get(
+  '/puntos-entrada-salida',
+  asyncHandler(async (req: Request, res: Response) => {
+    const medio = String(req.query.medio || '01');
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(Number(req.query.limit) || 300, 500);
+
+    if (medio === '01' || medio === '04') {
+      const params: string[] = [];
+      let sql = `SELECT clave, nombre_mx || ' – ' || nombre_us AS descripcion,
+                        estado_mx AS "estadoMx", estado_us AS "estadoUs"
+                   FROM cp_cruce_fronterizo WHERE activo`;
+      if (q) {
+        params.push('%' + q + '%');
+        sql += ` AND (${sinAcentos('nombre_mx')} LIKE ${sinAcentos('$1')}
+                   OR ${sinAcentos('nombre_us')} LIKE ${sinAcentos('$1')})`;
+      }
+      sql += ` ORDER BY nombre_mx LIMIT ${limit}`;
+      const r = await pool.query(sql, params);
+      res.json({ tipo: 'cruce', items: r.rows });
+      return;
+    }
+
+    if (medio !== '02' && medio !== '03') {
+      throw new ValidationError(`Medio de transporte desconocido: ${medio}`);
+    }
+
+    const params: string[] = [medio];
+    let sql = `SELECT clave, descripcion FROM sat_cp_estaciones WHERE clave_transporte = $1`;
+    if (q) {
+      params.push(q + '%', '%' + q + '%');
+      sql += ` AND (clave ILIKE $2 OR ${sinAcentos('descripcion')} LIKE ${sinAcentos('$3')})`;
+    }
+    sql += ` ORDER BY descripcion LIMIT ${limit}`;
+    const r = await pool.query(sql, params);
+    res.json({ tipo: medio === '02' ? 'puerto' : 'aeropuerto', items: r.rows });
+  }),
+);
+
+/**
+ * GET /carta-porte/estaciones?medio=02&q= — estaciones para el nodo Ubicación.
+ *
+ * Distinto de /puntos-entrada-salida: esto llena NumEstacion y NombreEstacion
+ * de CADA ubicación (el puerto de origen y el de destino son diferentes),
+ * mientras que el punto de entrada/salida es uno solo para toda la operación.
+ * Solo aplica a marítimo, aéreo y ferroviario — un camión no sale de una
+ * estación.
+ */
+router.get(
+  '/estaciones',
+  asyncHandler(async (req: Request, res: Response) => {
+    const medio = String(req.query.medio || '');
+    if (!['02', '03', '04'].includes(medio)) {
+      throw new ValidationError('Las estaciones solo aplican a marítimo, aéreo y ferroviario');
+    }
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const params: string[] = [medio];
+    let sql = `SELECT clave, descripcion FROM sat_cp_estaciones WHERE clave_transporte = $1`;
+    if (q) {
+      params.push(q + '%', '%' + q + '%');
+      sql += ` AND (clave ILIKE $2 OR ${sinAcentos('descripcion')} LIKE ${sinAcentos('$3')})`;
+    }
+    sql += ` ORDER BY descripcion LIMIT ${limit}`;
+    const r = await pool.query(sql, params);
     res.json({ items: r.rows });
   }),
 );

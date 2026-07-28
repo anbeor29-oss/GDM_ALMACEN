@@ -14,6 +14,30 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
+import { getExchangeRate } from '../exchange-rates/exchange-rate.service';
+
+/**
+ * Tipo de cambio del día en que entró el dinero.
+ *
+ * Se busca por la fecha del pago y no por la de hoy: un pago se puede
+ * registrar días después de recibido, y lo que vale es el tipo de cambio del
+ * día en que el banco lo acreditó.
+ */
+async function resolverTipoCambioPago(
+  moneda: string,
+  fechaPago: string,
+): Promise<{ valor: number; fecha: string | null }> {
+  if (moneda === 'MXN') return { valor: 1, fecha: null };
+  const dia = String(fechaPago).slice(0, 10);
+  try {
+    const tc = await getExchangeRate(moneda, dia);
+    return { valor: tc.valor, fecha: tc.fecha };
+  } catch (e: any) {
+    // Igual que en facturas: un servicio externo caído no detiene el cobro.
+    logger.warn(`[payments] sin tipo de cambio ${moneda} al ${dia}: ${e.message}. Se guarda 1.`);
+    return { valor: 1, fecha: null };
+  }
+}
 
 export interface PaymentInput {
   invoiceId: string;
@@ -165,19 +189,31 @@ export async function createPayment(companyId: string, data: PaymentInput) {
   </cfdi:Complemento>
 </cfdi:Comprobante>`;
 
+    // Tipo de cambio del DÍA DEL PAGO, no el de la factura.
+    //
+    // Se facturaron 1 000 USD a 17.50 y cobran 15 días después a 18.00:
+    // llegan los mismos 1 000 USD pero 500 pesos más. Esa diferencia es
+    // utilidad cambiaria y solo se puede calcular si aquí queda guardado el
+    // tipo de cambio de hoy en lugar de reusar el de la factura.
+    const tcPago = await resolverTipoCambioPago(moneda, fechaISO);
+    const montoMxn = Math.round(Number(data.paymentAmount) * tcPago.valor * 100) / 100;
+
     const insR = await transactionQuery<any>(
       client,
       `INSERT INTO payments
          (company_id, invoice_id, customer_id, folio, serie,
           payment_amount, payment_date, payment_form, payment_method,
-          currency, document_status, uuid, pac_timestamp, notes, xml_content)
-       VALUES ($1,$2,$3,$4,'P',$5,$6,$7,$8,$9,'STAMPED',$10, NOW(), $11, $12)
+          currency, document_status, uuid, pac_timestamp, notes, xml_content,
+          exchange_rate, exchange_rate_date, payment_amount_mxn)
+       VALUES ($1,$2,$3,$4,'P',$5,$6,$7,$8,$9,'STAMPED',$10, NOW(), $11, $12,
+               $13,$14,$15)
        RETURNING *`,
       [
         companyId, invoice.id, invoice.customer_id, folio,
         data.paymentAmount, fechaISO, data.paymentForm,
         data.paymentMethod || 'PUE',
         moneda, fakeUUID, data.notes || null, xml,
+        tcPago.valor, tcPago.fecha, montoMxn,
       ]
     );
     const payment = insR.rows[0];

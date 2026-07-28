@@ -156,6 +156,24 @@ export function NewInvoicePage() {
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
 
+  // Moneda y su tipo de cambio. Se consulta al servicio central en cuanto se
+  // elige moneda extranjera, para que el usuario vea contra qué va a facturar
+  // ANTES de timbrar y no se entere después.
+  const [currency, setCurrency] = useState('MXN');
+  const [tc, setTc] = useState<{ valor: number; fecha: string; fuente: string; vigente: boolean } | null>(null);
+  const [tcCargando, setTcCargando] = useState(false);
+
+  useEffect(() => {
+    if (currency === 'MXN') { setTc(null); return; }
+    let vigente = true;
+    setTcCargando(true);
+    api.getExchangeRate(currency)
+      .then(r => { if (vigente) setTc(r); })
+      .catch(() => { if (vigente) setTc(null); })
+      .finally(() => { if (vigente) setTcCargando(false); });
+    return () => { vigente = false; };
+  }, [currency]);
+
   // Catálogos / datos
   const { data: company } = useQuery({
     queryKey: ['company', user?.companyId],
@@ -302,6 +320,10 @@ export function NewInvoicePage() {
         paymentForm,
         paymentMethod,
         cfdiUse,
+        currency,
+        // No se manda exchangeRate: lo resuelve el servicio central al guardar,
+        // así el valor guardado es el mismo que consultó el backend y no el que
+        // el navegador tenía en pantalla hace diez minutos.
         notes,
         items: lines
           .filter((l) => l.productId && l.cantidad > 0)
@@ -437,6 +459,33 @@ export function NewInvoicePage() {
             <option value="PUE">PUE — Una sola exhibición</option>
             <option value="PPD">PPD — Parcialidades o diferido</option>
           </select>
+        </label>
+        <label className="block">
+          <span className="text-xs uppercase tracking-wide text-gray-500">Moneda</span>
+          <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="input mt-1">
+            <option value="MXN">MXN — Peso mexicano</option>
+            <option value="USD">USD — Dólar americano</option>
+            <option value="EUR">EUR — Euro</option>
+            <option value="GBP">GBP — Libra esterlina</option>
+          </select>
+          {currency !== 'MXN' && (
+            <span className="mt-1 block text-[11px]">
+              {tcCargando ? (
+                <span className="text-gray-400">Consultando tipo de cambio…</span>
+              ) : tc ? (
+                <span className={tc.vigente ? 'text-emerald-700' : 'text-amber-700'}>
+                  T.C. <b>{tc.valor}</b>{' '}
+                  {tc.vigente
+                    ? `(${tc.fuente === 'MANUAL' ? 'captura manual' : 'DOF'} de hoy)`
+                    : `del ${tc.fecha} — no hay uno más reciente`}
+                </span>
+              ) : (
+                <span className="text-red-600">
+                  Sin tipo de cambio para {currency}. Captúralo en Tipos de cambio antes de timbrar.
+                </span>
+              )}
+            </span>
+          )}
         </label>
         <label className="block">
           <span className="text-xs uppercase tracking-wide text-gray-500">Notas</span>

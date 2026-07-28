@@ -126,6 +126,20 @@ export function Layout() {
                 {show('customers')    && <NavItem to="/customers"    icon={emoji3D('👥')} accent="emerald" label="Clientes"         open={sidebarOpen} />}
                 {show('invoices')     && <NavItem to="/xml-super-import" icon={emoji3D('📥')} accent="violet"  label="Lector de XML"    open={sidebarOpen} />}
                 {show('reports')      && <NavItem to="/reports"      icon={emoji3D('📊')} accent="violet"  label="Reportes"         open={sidebarOpen} />}
+                {show('invoices')     && (
+                  <NavGroup
+                    to="/tipos-de-cambio"
+                    icon={emoji3D('💱')}
+                    label="Monedas"
+                    accent="emerald"
+                    open={sidebarOpen}
+                    pathPrefix="/tipos-de-cambio"
+                    children={[
+                      { to: '/tipos-de-cambio',      icon: emoji3D('🪙'), label: 'Tipos de cambio' },
+                      { to: '/diferencia-cambiaria', icon: emoji3D('⚖️'), label: 'Diferencia cambiaria' },
+                    ]}
+                  />
+                )}
                 {user?.role === 'ADMIN' && <NavItem to="/contract"   icon={emoji3D('📜')} accent="sky"     label="Contrato"         open={sidebarOpen} />}
                 {/* "Datos de la empresa" ya vive en el modal del emisor
                     (top bar → botón DATOS DE MI EMPRESA), incluye el

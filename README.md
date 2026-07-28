@@ -54,9 +54,51 @@ Catálogos propios: `sat_cp_pais` (ISO 3166-1 alfa-3), `sat_cp_estado`
 (México + EUA + Canadá, con PK por país) y `cp_cruce_fronterizo` (8 cruces
 México–EUA, ayuda de captura que no viaja al SAT).
 
+**Punto de entrada/salida** — el combo se adapta al medio elegido:
+
+| Medio | Qué ofrece |
+|---|---|
+| Autotransporte y Ferroviario | los 8 cruces carreteros México–EUA |
+| Marítimo | 123 puertos del catálogo SAT |
+| Aéreo | 2 346 aeropuertos del catálogo SAT |
+
+Fuera del autotransporte, cada Ubicación captura además su propia estación
+(`TipoEstacion`, `NumEstacion`, `NombreEstacion`) — el puerto de origen no es
+el mismo que el de destino. La búsqueda ignora acentos: "lazaro" encuentra
+Lázaro Cárdenas.
+
 **Pendiente**: el expediente multimodal por tramos (§13 del documento de
 diseño) — hoy cada tramo de un traslado encadenado se captura como una carta
 porte independiente.
+
+### Tipos de cambio y diferencia cambiaria
+
+Servicio central para facturar en **MXN, USD, EUR y GBP**. Es el único
+componente que sale a internet; el resto del ERP lee de la base.
+
+**Qué valor se usa.** El del DOF: el FIX que Banxico determinó el día hábil
+anterior, que es lo que pide el Art. 20 del CFF. Se guardan las dos fechas —
+la de determinación y la de vigencia — para poder rehacer el cálculo en una
+auditoría.
+
+**Lo facturado contra lo pagado.** El tipo de cambio se congela dos veces: al
+emitir y al cobrar. Se facturan 1 000 USD a 17.50 (17 500 pesos) y quince días
+después cobran a 18.00 (18 000 pesos): llegaron los mismos dólares pero 500
+pesos más. Esa diferencia queda registrada por separado, con su detalle por
+pago y su reporte por periodo exportable a CSV. En pagos parciales se compara
+solo la porción cobrada.
+
+**Nunca detiene una factura.** Si Banxico no responde se usa el último valor
+vigente, se marca como arrastrado y queda la advertencia en la bitácora; se
+reintenta una vez a los 30 minutos. La captura manual está siempre disponible.
+
+Pantallas: **Monedas → Tipos de cambio** (cuadro del día, captura manual,
+histórico y bitácora) y **Monedas → Diferencia cambiaria** (utilidad, pérdida,
+efecto neto y detalle por pago).
+
+Configuración: `BANXICO_TOKEN` en el entorno activa el cron de lunes a viernes
+a las 12:05 hora de México. Las series SIE viven en `exchange_rate_sources`,
+editables sin deploy.
 
 ### Super Lector XML (`/xml-super-import`)
 Reemplaza el importador CFDI clásico. Un solo lector que detecta y procesa:

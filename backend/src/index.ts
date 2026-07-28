@@ -52,6 +52,14 @@ async function bootstrap() {
       logger.warn(`No se pudo registrar billing-cron: ${e.message}`);
     }
 
+    // Tipos de cambio: se salta solo si no hay BANXICO_TOKEN.
+    try {
+      const { registerExchangeRateCron } = await import('./jobs/exchange-rate-cron');
+      registerExchangeRateCron();
+    } catch (e: any) {
+      logger.warn(`No se pudo registrar exchange-rate-cron: ${e.message}`);
+    }
+
     // Graceful shutdown
     const shutdown = async (signal: string) => {
       logger.info(`Received ${signal}, shutting down gracefully...`);

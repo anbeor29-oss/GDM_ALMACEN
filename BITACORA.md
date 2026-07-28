@@ -5,6 +5,117 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-07-27 (noche) — Puntos de entrada/salida por modalidad y servicio de tipos de cambio
+
+### 1. El punto por donde cruza la mercancía depende del medio
+
+El campo se llamó `cruce_fronterizo` porque nació pensando solo en camiones.
+Pero un barco sale por un puerto y un avión por un aeropuerto:
+
+| Medio | Punto | De dónde sale |
+|---|---|---|
+| 01 Autotransporte | Cruce carretero | `cp_cruce_fronterizo` (8, catálogo propio) |
+| 04 Ferroviario | El mismo cruce carretero | el tren cruza por Nuevo Laredo igual que el camión |
+| 02 Marítimo | Puerto | `sat_cp_estaciones` — 123 |
+| 03 Aéreo | Aeropuerto | `sat_cp_estaciones` — 2 346 |
+
+Los puertos y aeropuertos ya estaban sembrados desde el seed del SAT; solo
+faltaba consultarlos con el filtro correcto. `cruce_fronterizo` pasó de
+VARCHAR(10) a 16 porque las claves ferroviarias llegan a 12 caracteres.
+
+También se expusieron `TipoEstacion`, `NumEstacion` y `NombreEstacion` en cada
+Ubicación cuando el medio no es autotransporte: eso es lo que realmente viaja
+en el XML, y el puerto de origen no es el mismo que el de destino, por eso va
+por ubicación y no en el encabezado. Con 2 346 aeropuertos un desplegable es
+inservible, así que se usa buscador con typeahead.
+
+### Bug de búsqueda: los acentos
+
+Buscar "lazaro" no encontraba **Lázaro Cárdenas**, ni "juarez" a Ciudad Juárez.
+Medio catálogo del SAT trae acentos y nadie los teclea. Se resolvió con
+`translate()` en lugar de la extensión `unaccent`, porque `CREATE EXTENSION`
+puede no estar permitido en el Postgres administrado de Render y `translate()`
+es SQL estándar. Aplica a los tres buscadores de catálogo.
+
+---
+
+### 2. Servicio central de tipos de cambio
+
+Base: `TIPOS_CAMBIO_BANXICO.MD` (HCGM Advisors v1.0). Monedas: MXN, USD, EUR, GBP.
+
+**Qué valor se guarda.** El del DOF, que es lo que el Art. 20 del CFF pide:
+el FIX que Banxico determinó el día hábil ANTERIOR. Banxico publica la serie
+por fecha de determinación; el servicio la desplaza al siguiente día hábil,
+que es cuando ese valor rige. Se guardan las dos fechas para que una auditoría
+pueda rehacer el cálculo sin adivinar cuál se usó.
+
+**Lo facturado contra lo pagado.** Éste era el hueco real: `payments` tenía
+`currency` pero no `exchange_rate`, así que no había con qué comparar. Ahora
+el tipo de cambio se congela en dos momentos distintos:
+
+```
+invoices.exchange_rate  → el del día que se timbró (nunca se recalcula)
+payments.exchange_rate  → el del día que entró el dinero
+```
+
+Se facturan 1 000 USD a 17.50 → 17 500 pesos. Cobran 15 días después a 18.00
+→ entran 18 000. Llegaron los mismos dólares pero 500 pesos más: eso es
+utilidad cambiaria y queda registrado aparte. En pagos parciales se compara
+solo la porción cobrada — lo que no se ha cobrado todavía no se ha valuado.
+La cuenta vive en la vista `v_diferencia_cambiaria` para que el reporte, la
+pantalla de factura y cualquier consulta futura den el mismo número.
+
+**Por qué nunca bloquea la facturación.** Si Banxico no responde, el servicio
+devuelve el último tipo de cambio vigente, lo marca `vigente: false` y deja la
+advertencia en la bitácora. Reintenta una sola vez a los 30 minutos. Detener
+una emisión porque un servicio externo está caído sería peor que emitirla con
+un valor que el usuario puede corregir antes de timbrar. La captura manual es
+camino de primera clase, no parche.
+
+**Series de Banxico configurables.** Viven en `exchange_rate_sources`, no en
+el código: si Banxico renumera una serie se corrige con un UPDATE y no con un
+deploy. Se sembró USD con `SF43718` (FIX, alta confianza); EUR y GBP quedaron
+con serie tentativa y su nota dice que hay que verificarla contra el catálogo
+SIE antes de confiar en el automático.
+
+### Bug de zona horaria
+
+El servicio calculaba "hoy" con `toISOString()`, que da UTC. En México son las
+21:20 del 27 pero en UTC ya es 28, así que **toda factura emitida después de
+las 6 de la tarde buscaba el tipo de cambio del día siguiente** — que no
+existe todavía. Se detectó porque un valor capturado para hoy salía marcado
+como no vigente. Corregido con `Intl.DateTimeFormat` en `America/Mexico_City`:
+el CFDI es un documento fiscal mexicano y su fecha es la local.
+
+### Qué se agregó
+
+- Migraciones `2026-07-27b` (puntos de entrada/salida) y `2026-07-27c`
+  (tipos de cambio): `exchange_rates`, `exchange_rate_sources`,
+  `exchange_rate_log`, columnas de TC en `invoices` y `payments`, vista
+  `v_diferencia_cambiaria`.
+- `ExchangeRateService` + cron lunes a viernes 12:05 (hora de México).
+- API `/exchange-rates` y `/fx-difference`.
+- Pantallas **Tipos de cambio** (cuadro, captura manual, histórico, bitácora)
+  y **Diferencia cambiaria** (detalle, totales por moneda, exportación CSV).
+- Selector de moneda en Nueva Factura con el TC del día a la vista.
+- PDF: renglón de equivalente en MXN con el TC y su fecha.
+
+### Verificado
+
+Escenario completo del documento: 1 000 USD facturados el 13 a 17.50 y
+cobrados el 28 a 18.00 → +500 de utilidad. Pago parcial de 400 USD a 17.20 →
+−120 de pérdida. Neto de la factura 380, que cuadra a mano. Casos límite
+probados contra la API viva: moneda no soportada, TC negativo, consulta de
+fecha sin dato exacto (devuelve el anterior marcado como no vigente).
+
+### Pendiente
+
+- Confirmar las series SIE de EUR y GBP contra el catálogo de Banxico.
+- `BANXICO_TOKEN` se configura en Render; mientras no exista, el cron se
+  registra pero no corre y todo funciona con captura manual.
+
+---
+
 ## 2026-07-27 — Carta Porte internacional y multimodal (CP 3.1)
 
 ### Contexto

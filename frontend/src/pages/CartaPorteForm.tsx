@@ -24,7 +24,7 @@
  * (Matriz de Errores) se validan en el Bloque 7 antes del timbrado.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Route as RouteIcon, Plus, Trash2, Save, ArrowLeft, MapPin, Package2, Truck, UserCog, Ship, Plane, Train, Search, BookMarked } from 'lucide-react';
@@ -40,6 +40,20 @@ const CLAVE_MEDIO: Record<Medio, string> = {
 };
 const MEDIO_DESDE_CLAVE: Record<string, Medio> = {
   '01': 'auto', '02': 'maritimo', '03': 'aereo', '04': 'ferroviario',
+};
+
+/** Cómo se llama el punto por donde la mercancía cruza, según el medio. */
+const PUNTO_LABEL: Record<string, string> = {
+  cruce: 'Cruce fronterizo',
+  puerto: 'Puerto de entrada/salida',
+  aeropuerto: 'Aeropuerto de entrada/salida',
+};
+
+/** El nodo Ubicación lleva estación solo fuera del autotransporte. */
+const USA_ESTACION = (m: Medio) => m !== 'auto';
+
+const ESTACION_LABEL: Record<Medio, string> = {
+  auto: '', maritimo: 'Puerto', aereo: 'Aeropuerto', ferroviario: 'Estación ferroviaria',
 };
 
 interface UbicacionRow {
@@ -59,6 +73,11 @@ interface UbicacionRow {
   estado: string;
   pais: string;
   codigoPostal: string;
+  // Estación: solo marítimo, aéreo y ferroviario. El puerto de origen y el de
+  // destino son distintos, por eso va aquí y no en el encabezado.
+  tipoEstacion?: string;
+  numEstacion?: string;
+  nombreEstacion?: string;
   guardarEnCatalogo?: boolean;   // ← el usuario marca para guardar como plantilla
   aliasCatalogo?: string;         // ← alias opcional; si vacío se autogenera
 }
@@ -158,6 +177,9 @@ function blankUbicacion(tipo: 'Origen' | 'Destino', existentes: UbicacionRow[] =
     estado: '',
     pais: 'MEX',
     codigoPostal: '',
+    tipoEstacion: '',
+    numEstacion: '',
+    nombreEstacion: '',
     guardarEnCatalogo: false,
     aliasCatalogo: '',
   };
@@ -205,7 +227,10 @@ export function CartaPorteFormPage() {
   const [paisOrigenDestino, setPaisOrigenDestino] = useState('');
   const [regimenes, setRegimenes] = useState<string[]>([]);
   const [cruceFronterizo, setCruceFronterizo] = useState('');
-  const [cruces, setCruces] = useState<any[]>([]);
+  // Nombre legible del punto elegido. Solo para mostrar: al SAT viaja la clave.
+  const [puntoNombre, setPuntoNombre] = useState('');
+  // Punto de entrada/salida: cruce carretero, puerto o aeropuerto según el medio.
+  const [puntos, setPuntos] = useState<{ tipo: string; items: any[] }>({ tipo: 'cruce', items: [] });
 
   // ─── Ubicaciones / mercancías / figuras ────────────────────────────
   const [ubicaciones, setUbicaciones] = useState<UbicacionRow[]>(() => {
@@ -276,6 +301,9 @@ export function CartaPorteFormPage() {
         estado: u.estado,
         pais: u.pais || 'MEX',
         codigoPostal: u.codigo_postal,
+        tipoEstacion: u.tipo_estacion || '',
+        numEstacion: u.num_estacion || '',
+        nombreEstacion: u.nombre_estacion || '',
       })));
     }
     if (existing.mercancias?.length) {
@@ -371,13 +399,42 @@ export function CartaPorteFormPage() {
     }
   }, [existing]);
 
-  // Los cruces fronterizos solo hacen falta en operación internacional.
+  // El punto de entrada/salida cambia con el medio: el barco sale por un
+  // puerto, el avión por un aeropuerto, y el tren cruza por donde el camión.
+  // Se recarga al cambiar de modalidad y se limpia la selección anterior,
+  // que ya no pertenece al catálogo vigente.
   useEffect(() => {
-    if (transpInternac !== 'Si' || cruces.length) return;
-    api.getCPCrucesFronterizos()
-      .then((r: any) => setCruces(r.items || []))
-      .catch(() => { /* la captura manual sigue disponible */ });
-  }, [transpInternac, cruces.length]);
+    if (transpInternac !== 'Si') return;
+    let vigente = true;
+    api.getCPPuntosEntradaSalida(CLAVE_MEDIO[medio])
+      .then((r: any) => { if (vigente) setPuntos({ tipo: r.tipo, items: r.items || [] }); })
+      .catch(() => { if (vigente) setPuntos({ tipo: 'cruce', items: [] }); });
+    return () => { vigente = false; };
+  }, [transpInternac, medio]);
+
+  // Al cambiar de medio la selección anterior deja de pertenecer al catálogo
+  // vigente: un puerto no es un cruce carretero.
+  const medioPrevio = useRef(medio);
+  useEffect(() => {
+    if (medioPrevio.current === medio) return;
+    medioPrevio.current = medio;
+    setCruceFronterizo('');
+    setPuntoNombre('');
+  }, [medio]);
+
+  // Al abrir una CP guardada solo tenemos la clave; se resuelve el nombre para
+  // que el campo no muestre un código suelto.
+  useEffect(() => {
+    if (!cruceFronterizo || puntoNombre || medio === 'auto' || medio === 'ferroviario') return;
+    let vigente = true;
+    api.searchCPEstaciones(CLAVE_MEDIO[medio], cruceFronterizo, 1)
+      .then((r: any) => {
+        const hit = (r.items || []).find((x: any) => x.clave === cruceFronterizo);
+        if (vigente && hit) setPuntoNombre(hit.descripcion);
+      })
+      .catch(() => { /* se queda mostrando la clave */ });
+    return () => { vigente = false; };
+  }, [cruceFronterizo, puntoNombre, medio]);
 
   // ─── Guardar ───────────────────────────────────────────────────────
   const save = useMutation({
@@ -402,6 +459,11 @@ export function CartaPorteFormPage() {
           estado: u.estado,
           pais: u.pais || 'MEX',
           codigoPostal: u.codigoPostal,
+          // La estación solo tiene sentido fuera del autotransporte; si el
+          // usuario cambió de medio después de capturarla, no se envía.
+          tipoEstacion:   USA_ESTACION(medio) ? u.tipoEstacion   || undefined : undefined,
+          numEstacion:    USA_ESTACION(medio) ? u.numEstacion    || undefined : undefined,
+          nombreEstacion: USA_ESTACION(medio) ? u.nombreEstacion || undefined : undefined,
         })),
         mercancias: mercancias.map(m => ({
           bienesTransp: m.bienesTransp,
@@ -613,14 +675,28 @@ export function CartaPorteFormPage() {
                 </div>
                 <p className="mt-1 text-[11px] text-slate-500">Se toma del medio de transporte.</p>
               </Field>
-              <Field label="Cruce fronterizo">
-                <select value={cruceFronterizo} onChange={e => setCruceFronterizo(e.target.value)} className="input">
-                  <option value="">Sin especificar</option>
-                  {cruces.map((c: any) => (
-                    <option key={c.clave} value={c.clave}>{c.nombreMx} – {c.nombreUs}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-[11px] text-slate-500">Ayuda de captura, no viaja al SAT.</p>
+              <Field label={PUNTO_LABEL[puntos.tipo] ?? 'Punto de entrada/salida'}>
+                {puntos.tipo === 'cruce' ? (
+                  <select value={cruceFronterizo} onChange={e => setCruceFronterizo(e.target.value)} className="input">
+                    <option value="">Sin especificar</option>
+                    {puntos.items.map((p: any) => (
+                      <option key={p.clave} value={p.clave}>{p.descripcion}</option>
+                    ))}
+                  </select>
+                ) : (
+                  // Con 2 346 aeropuertos un desplegable es inservible: se busca.
+                  <EstacionPicker
+                    medio={CLAVE_MEDIO[medio]}
+                    clave={cruceFronterizo}
+                    nombre={puntoNombre}
+                    onSelect={(clave, nombre) => { setCruceFronterizo(clave); setPuntoNombre(nombre); }}
+                  />
+                )}
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {puntos.tipo === 'cruce'
+                    ? 'Ayuda de captura, no viaja al SAT.'
+                    : `Catálogo SAT de ${puntos.tipo === 'puerto' ? 'puertos' : 'aeropuertos'}.`}
+                </p>
               </Field>
             </div>
 
@@ -760,6 +836,24 @@ export function CartaPorteFormPage() {
                 <Field label="Referencia" span={4}>
                   <input value={u.referencia} onChange={e => updateUbi(i, { referencia: e.target.value })} maxLength={500} className="input" placeholder="Entre calles, entrada, etc." />
                 </Field>
+                {/* Estación: el barco zarpa de un puerto y el avión de un
+                    aeropuerto, cada ubicación del suyo. Un camión no. */}
+                {USA_ESTACION(medio) && (
+                  <>
+                    <Field label="Tipo de estación">
+                      <PickerButton value={u.tipoEstacion || ''} placeholder="Buscar…"
+                        onClick={() => openPicker('tipo-estacion', 'Tipo de estación', it => updateUbi(i, { tipoEstacion: it.clave }), ['clave_transporte'])} />
+                    </Field>
+                    <Field label={ESTACION_LABEL[medio]} span={3}>
+                      <EstacionPicker
+                        medio={CLAVE_MEDIO[medio]}
+                        clave={u.numEstacion || ''}
+                        nombre={u.nombreEstacion || ''}
+                        onSelect={(clave, nombre) => updateUbi(i, { numEstacion: clave, nombreEstacion: nombre })}
+                      />
+                    </Field>
+                  </>
+                )}
                 {u.tipoUbicacion === 'Destino' && (
                   <Field label="Distancia (km)">
                     <input type="number" step="0.001" value={u.distanciaRecorrida ?? ''} onChange={e => updateUbi(i, { distanciaRecorrida: e.target.value })} className="input" />
@@ -1678,6 +1772,80 @@ function CPGeoBlock({ ubi, onChange }: {
         </div>
       </Field>
     </>
+  );
+}
+
+/**
+ * Buscador de estación para una ubicación. Va con typeahead y no con un
+ * `<select>` porque el catálogo del SAT trae 2 346 aeropuertos y 2 811
+ * estaciones ferroviarias: desplegarlos todos es inservible.
+ *
+ * Guarda las dos cosas que pide el SAT — NumEstacion y NombreEstacion — de un
+ * solo golpe, para que no puedan quedar desparejados.
+ */
+function EstacionPicker({ medio, clave, nombre, onSelect }: {
+  medio: string;
+  clave: string;
+  nombre: string;
+  onSelect: (clave: string, nombre: string) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [items, setItems] = useState<Array<{ clave: string; descripcion: string }>>([]);
+  const [abierto, setAbierto] = useState(false);
+  const [buscando, setBuscando] = useState(false);
+
+  useEffect(() => {
+    if (!abierto) return;
+    let vigente = true;
+    setBuscando(true);
+    const t = setTimeout(() => {
+      api.searchCPEstaciones(medio, q, 30)
+        .then(r => { if (vigente) setItems(r.items || []); })
+        .catch(() => { if (vigente) setItems([]); })
+        .finally(() => { if (vigente) setBuscando(false); });
+    }, 250);
+    return () => { vigente = false; clearTimeout(t); };
+  }, [q, medio, abierto]);
+
+  if (!abierto) {
+    return (
+      <button type="button" onClick={() => setAbierto(true)}
+              className="w-full px-3 py-2 text-left border border-slate-300 rounded text-sm hover:bg-slate-50">
+        {clave
+          ? <span>{nombre} <span className="ml-1 text-[11px] font-mono text-red-600">{clave}</span></span>
+          : <span className="text-slate-400">Buscar…</span>}
+      </button>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <input
+        autoFocus
+        value={q}
+        onChange={e => setQ(e.target.value)}
+        onBlur={() => setTimeout(() => setAbierto(false), 150)}
+        placeholder="Escribe para buscar…"
+        className="input"
+      />
+      <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-slate-200 rounded shadow-lg">
+        {buscando && <div className="px-3 py-2 text-xs text-slate-400">Buscando…</div>}
+        {!buscando && !items.length && (
+          <div className="px-3 py-2 text-xs text-slate-400">Sin coincidencias</div>
+        )}
+        {items.map(it => (
+          <button
+            key={it.clave}
+            type="button"
+            onMouseDown={() => { onSelect(it.clave, it.descripcion); setAbierto(false); setQ(''); }}
+            className="block w-full text-left px-3 py-1.5 text-sm hover:bg-sky-50"
+          >
+            {it.descripcion}
+            <span className="ml-2 text-[11px] font-mono text-slate-400">{it.clave}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

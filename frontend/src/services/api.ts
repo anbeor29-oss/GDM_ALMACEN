@@ -1106,6 +1106,58 @@ class APIClient {
     return r.data;
   }
 
+  /* ─── Tipos de cambio (Banxico) ─── */
+  async getExchangeRate(moneda: string, fecha?: string) {
+    const r = await this.client.get<{
+      moneda: string; valor: number; fecha: string;
+      fechaDeterminacion?: string; fuente: string; vigente: boolean;
+    }>(`/exchange-rates/${moneda}`, { params: fecha ? { fecha } : {} });
+    return r.data;
+  }
+  async getExchangeRates(fecha?: string) {
+    const r = await this.client.get<{ items: any[] }>('/exchange-rates', {
+      params: fecha ? { fecha } : {},
+    });
+    return r.data;
+  }
+  async getExchangeRateHistory(moneda: string, limit = 60) {
+    const r = await this.client.get<{ items: any[] }>(`/exchange-rates/${moneda}/history`, {
+      params: { limit },
+    });
+    return r.data;
+  }
+  async getExchangeRateLog(limit = 50) {
+    const r = await this.client.get<{ items: any[] }>('/exchange-rates/log', { params: { limit } });
+    return r.data;
+  }
+  /** Fuerza la consulta a Banxico. Sin `moneda` actualiza USD, EUR y GBP. */
+  async updateExchangeRates(moneda?: string) {
+    const r = await this.client.post<{ actualizadas: any[]; fallidas: any[] }>(
+      '/exchange-rates/update', moneda ? { moneda } : {},
+    );
+    return r.data;
+  }
+  /** Captura manual: la red de seguridad cuando Banxico no responde. */
+  async setExchangeRateManual(moneda: string, fecha: string, valor: number) {
+    const r = await this.client.post('/exchange-rates/manual', { moneda, fecha, valor });
+    return r.data;
+  }
+
+  /* ─── Diferencia cambiaria ─── */
+  async getFxDifference(params: { desde?: string; hasta?: string; moneda?: string } = {}) {
+    const r = await this.client.get<{
+      periodo: any; detalle: any[]; porMoneda: any[];
+      global: { diferencia: number; utilidad: number; perdida: number };
+    }>('/fx-difference', { params });
+    return r.data;
+  }
+  async getFxDifferenceByInvoice(invoiceId: string) {
+    const r = await this.client.get<{ items: any[]; diferenciaAcumulada: number }>(
+      `/fx-difference/por-factura/${invoiceId}`,
+    );
+    return r.data;
+  }
+
   /* ─── Carta Porte 3.1 ─── */
   async searchCartaPorteCatalog(name: string, q: string, limit = 50, extra: Record<string, string> = {}) {
     const res = await this.client.get<{ items: Array<{ clave: string; descripcion: string; [k: string]: any }> }>(
@@ -1119,6 +1171,24 @@ class APIClient {
     const r = await this.client.get<{ items: Array<{
       clave: string; nombreMx: string; estadoMx: string; nombreUs: string; estadoUs: string;
     }> }>('/carta-porte/cruces-fronterizos');
+    return r.data;
+  }
+  /**
+   * Por dónde entra o sale la mercancía, según el medio: cruce carretero
+   * (01 y 04), puerto (02) o aeropuerto (03).
+   */
+  async getCPPuntosEntradaSalida(medio: string, q = '') {
+    const r = await this.client.get<{
+      tipo: 'cruce' | 'puerto' | 'aeropuerto';
+      items: Array<{ clave: string; descripcion: string }>;
+    }>('/carta-porte/puntos-entrada-salida', { params: { medio, q } });
+    return r.data;
+  }
+  /** Estaciones para NumEstacion/NombreEstacion de una ubicación (02, 03, 04). */
+  async searchCPEstaciones(medio: string, q = '', limit = 50) {
+    const r = await this.client.get<{ items: Array<{ clave: string; descripcion: string }> }>(
+      '/carta-porte/estaciones', { params: { medio, q, limit } },
+    );
     return r.data;
   }
   /* ─── Super lector XML (CFDI + CP + Nómina + Pagos + NC) ─── */

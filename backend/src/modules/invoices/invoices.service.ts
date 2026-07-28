@@ -10,6 +10,41 @@ import { Invoice } from '../../types';
 import * as customersService from '../customers/customers.service';
 import * as productsService from '../products/products.service';
 import * as companiesService from '../companies/companies.service';
+import { getExchangeRate } from '../exchange-rates/exchange-rate.service';
+
+const redondea = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+
+/**
+ * Tipo de cambio a congelar en la factura.
+ *
+ * Si el usuario lo capturó a mano, manda el suyo: puede tener un contrato con
+ * un tipo pactado. Si no, se pide al servicio central.
+ *
+ * Que el servicio falle NO detiene la factura — cae a 1 y deja el aviso en el
+ * log. Bloquear una emisión porque Banxico está caído sería peor que emitirla
+ * con un tipo de cambio que el usuario puede corregir antes de timbrar.
+ */
+async function resolverTipoCambio(
+  moneda: string,
+  capturado?: number,
+): Promise<{ valor: number; fecha: string | null }> {
+  if (moneda === 'MXN') return { valor: 1, fecha: null };
+  if (capturado && Number(capturado) > 0) {
+    return { valor: Number(capturado), fecha: null };
+  }
+  try {
+    const tc = await getExchangeRate(moneda);
+    if (!tc.vigente) {
+      logger.warn(
+        `[invoices] ${moneda} sin tipo de cambio del día; se usa el del ${tc.fecha} (${tc.valor})`,
+      );
+    }
+    return { valor: tc.valor, fecha: tc.fecha };
+  } catch (e: any) {
+    logger.warn(`[invoices] sin tipo de cambio para ${moneda}: ${e.message}. Se guarda 1.`);
+    return { valor: 1, fecha: null };
+  }
+}
 
 interface InvoiceLineItem {
   productId: string;
@@ -154,17 +189,26 @@ export async function createInvoice(
     // 5. Get and increment folio atomically
     const nextFolio = await companiesService.getAndIncrementInvoiceFolio(companyId);
 
+    // Tipo de cambio: si el usuario no lo mandó, lo resuelve el servicio
+    // central. Se congela aquí junto con el equivalente en pesos — recalcularlo
+    // después daría un número distinto cada día y perderíamos el rastro de lo
+    // que realmente se facturó.
+    const moneda = data.currency || 'MXN';
+    const tc = await resolverTipoCambio(moneda, data.exchangeRate);
+
     // 6. Create invoice
     const invoiceResult = await transactionQuery(
       client,
       `INSERT INTO invoices
        (company_id, customer_id, folio, serie, cfdi_type, date_issued,
-        currency, exchange_rate, subtotal, tax_transferred, tax_retained,
+        currency, exchange_rate, exchange_rate_date, total_mxn, subtotal_mxn,
+        subtotal, tax_transferred, tax_retained,
         tax_retained_iva, tax_retained_isr, tax_ieps, total,
         discount, payment_form, payment_method, cfdi_use,
         payment_terms, notes, status, is_active)
        VALUES ($1, $2, $3, $4, $5, NOW(),
-               $6, $7, $8, $9, $10,
+               $6, $7, $21, $22, $23,
+               $8, $9, $10,
                $11, $12, $13, $14,
                $15, $16, $17, $18, $19, $20, 'DRAFT', true)
        RETURNING *`,
@@ -174,8 +218,8 @@ export async function createInvoice(
         nextFolio,
         company.default_invoice_series,
         data.cfdiType,
-        data.currency || 'MXN',
-        data.exchangeRate || 1,
+        moneda,
+        tc.valor,
         subtotal,
         totalTax,
         totRetenido,
@@ -189,6 +233,9 @@ export async function createInvoice(
         data.cfdiUse,
         data.paymentTerms,
         data.notes,
+        tc.fecha,                       // $21 exchange_rate_date
+        redondea(total * tc.valor),     // $22 total_mxn
+        redondea(subtotal * tc.valor),  // $23 subtotal_mxn
       ]
     );
 
@@ -478,6 +525,14 @@ export async function updateInvoice(
     const total = r2(subtotal + totIvaTraslado + totIeps - totRetenido - discount);
     const totalTax = r2(totIvaTraslado);
 
+    // El tipo de cambio se vuelve a resolver porque el usuario pudo haber
+    // cambiado la moneda al editar el borrador.
+    const monedaUpd = data.currency || existing.currency || 'MXN';
+    const tcUpd = await resolverTipoCambio(
+      monedaUpd,
+      data.exchangeRate ?? (monedaUpd === existing.currency ? Number(existing.exchange_rate) : undefined),
+    );
+
     // Reemplazar la cabecera (sin tocar folio/serie/date_issued/status)
     await transactionQuery(
       client,
@@ -486,6 +541,9 @@ export async function updateInvoice(
          cfdi_type = $2,
          currency = $3,
          exchange_rate = $4,
+         exchange_rate_date = $20,
+         total_mxn = $21,
+         subtotal_mxn = $22,
          subtotal = $5,
          tax_transferred = $6,
          tax_retained = $7,
@@ -504,8 +562,8 @@ export async function updateInvoice(
       [
         targetCustomerId,
         data.cfdiType || existing.cfdi_type || 'I',
-        data.currency || existing.currency || 'MXN',
-        data.exchangeRate ?? (Number(existing.exchange_rate) || 1),
+        monedaUpd,
+        tcUpd.valor,
         subtotal,
         totalTax,
         totRetenido,
@@ -521,6 +579,9 @@ export async function updateInvoice(
         data.notes ?? existing.notes,
         invoiceId,
         companyId,
+        tcUpd.fecha,                        // $20 exchange_rate_date
+        redondea(total * tcUpd.valor),      // $21 total_mxn
+        redondea(subtotal * tcUpd.valor),   // $22 subtotal_mxn
       ]
     );
 

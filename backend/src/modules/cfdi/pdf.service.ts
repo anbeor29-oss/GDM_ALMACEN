@@ -685,6 +685,19 @@ function generateTotals(doc: PDFDoc, invoice: any) {
   }
   line('TOTAL', `$ ${fmtMoney(invoice.total)} ${invoice.currency || 'MXN'}`, false, true);
 
+  // Equivalente en pesos. Quien recibe una factura en dólares necesita ver
+  // contra qué tipo de cambio se emitió: si paga tres semanas después, el
+  // valor en pesos será otro y la diferencia hay que poder explicarla.
+  const monedaTot = invoice.currency || 'MXN';
+  const tcTot = Number(invoice.exchange_rate) || 1;
+  if (monedaTot !== 'MXN' && tcTot > 0) {
+    const enPesos = Number(invoice.total_mxn) || Number(invoice.total) * tcTot;
+    const fechaTc = invoice.exchange_rate_date
+      ? ` del ${String(invoice.exchange_rate_date).slice(0, 10)}`
+      : '';
+    line(`Equivalente MXN (T.C. ${tcTot}${fechaTc})`, `$ ${fmtMoney(enPesos)}`);
+  }
+
   // Importe con letra debajo del total, ocupando todo el ancho.
   // Usamos la moneda de la factura: MXN→"PESOS", USD→"DÓLARES", EUR→"EUROS"...
   const moneda = invoice.currency || 'MXN';
