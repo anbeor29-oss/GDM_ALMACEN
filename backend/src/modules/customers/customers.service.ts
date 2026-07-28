@@ -32,20 +32,51 @@ export async function createCustomer(companyId: string, data: {
   creditDays?: number;
   /** CUSTOMER (default) = al que YO facturo; SUPPLIER = el que ME factura. */
   partyType?: 'CUSTOMER' | 'SUPPLIER';
+  // Datos bancarios (depósito al proveedor — compra express)
+  bankCode?: string;
+  bankName?: string;
+  bankAccount?: string;
+  bankClabe?: string;
+  bankAccountHolder?: string;
+  creditLine?: number;
 }): Promise<Customer> {
   // Validate RFC
   if (!isValidRFC(data.rfc)) {
     throw new ValidationError('Invalid RFC format');
   }
 
-  // Check if customer with this RFC already exists in the company
-  const existing = await query<Customer>(
-    'SELECT id FROM customers WHERE company_id = $1 AND rfc = $2 AND deleted_at IS NULL',
+  // Anti-duplicados (requerimiento ALMACEN): el RFC es la identidad del
+  // tercero. Si existe ACTIVO se rechaza con mensaje claro (indicando si es
+  // cliente o proveedor); si existe SOFT-DELETED se REACTIVA actualizando
+  // datos (el UNIQUE de BD impediría el INSERT de todos modos).
+  const existing = await query<any>(
+    'SELECT id, party_type, business_name, deleted_at FROM customers WHERE company_id = $1 AND UPPER(rfc) = $2',
     [companyId, data.rfc.toUpperCase()]
   );
 
   if (existing.rows.length > 0) {
-    throw new ConflictError('Customer with this RFC already exists in this company');
+    const row = existing.rows[0];
+    if (!row.deleted_at) {
+      const tipo = row.party_type === 'SUPPLIER' ? 'PROVEEDOR' : 'cliente';
+      throw new ConflictError(
+        `El RFC ${data.rfc.toUpperCase()} ya está registrado como ${tipo} ` +
+        `(${row.business_name}). Edítalo en lugar de crearlo de nuevo.`
+      );
+    }
+    // Reactivar el registro borrado con los datos nuevos
+    const revived = await query<Customer>(
+      `UPDATE customers SET
+          deleted_at = NULL, is_active = true,
+          business_name = $1, fiscal_regime = COALESCE($2, fiscal_regime),
+          postal_code = COALESCE($3, postal_code), email = COALESCE($4, email),
+          phone = COALESCE($5, phone), party_type = COALESCE($6, party_type),
+          updated_at = NOW()
+        WHERE id = $7
+        RETURNING *`,
+      [data.businessName, data.fiscalRegime || null, data.postalCode || null,
+       data.email || null, data.phone || null, data.partyType || null, row.id]
+    );
+    return revived.rows[0];
   }
 
   // Validate email if provided
@@ -69,8 +100,10 @@ export async function createCustomer(companyId: string, data: {
     `INSERT INTO customers
      (company_id, rfc, business_name, fiscal_regime, default_cfdi_use,
       postal_code, state, municipality, city, neighborhood, street, ext_number, address,
-      email, phone, contact_person, credit_limit, credit_days, party_type, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, true)
+      email, phone, contact_person, credit_limit, credit_days, party_type,
+      bank_code, bank_name, bank_account, bank_clabe, bank_account_holder, credit_line, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+             $20, $21, $22, $23, $24, $25, true)
      RETURNING *`,
     [
       companyId,
@@ -92,6 +125,12 @@ export async function createCustomer(companyId: string, data: {
       data.creditLimit || 0,
       data.creditDays || 0,
       data.partyType === 'SUPPLIER' ? 'SUPPLIER' : 'CUSTOMER',
+      data.bankCode || null,
+      data.bankName || null,
+      data.bankAccount || null,
+      data.bankClabe || null,
+      data.bankAccountHolder || null,
+      data.creditLine || 0,
     ]
   );
 
@@ -159,8 +198,11 @@ export async function listCustomers(
     sortOrder = 'DESC',
   } = options;
 
-  // Build query
-  let whereClause = 'WHERE company_id = $1 AND deleted_at IS NULL';
+  // Build query — solo CLIENTES: los proveedores (party_type=SUPPLIER) viven
+  // en la misma tabla (STI) pero se listan en /suppliers, no aquí. Sin este
+  // filtro, los proveedores creados por compras XML (Fase 2 ALMACEN)
+  // contaminarían el dashboard y el selector de cliente al facturar.
+  let whereClause = `WHERE company_id = $1 AND deleted_at IS NULL AND party_type = 'CUSTOMER'`;
   const params: any[] = [companyId];
   let paramCount = 2;
 
@@ -292,10 +334,13 @@ export async function updateCustomer(
     fields.push(`is_active = $${paramCount++}`);
     values.push(data.is_active);
   }
-  // Campos del domicilio fiscal del receptor (CFDI 4.0)
+  // Campos del domicilio fiscal + datos bancarios (depósito) + línea de crédito.
+  // credit_used queda FUERA a propósito: lo maneja el sistema (tesorería).
   for (const f of [
     'default_cfdi_use','postal_code','state','municipality','city',
     'neighborhood','street','ext_number','address',
+    'bank_code','bank_name','bank_account','bank_clabe','bank_account_holder',
+    'credit_line',
   ]) {
     if ((data as any)[f] !== undefined) {
       fields.push(`${f} = $${paramCount++}`);

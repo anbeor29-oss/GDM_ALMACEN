@@ -24,6 +24,11 @@ import * as invoicesService from '../invoices/invoices.service';
 import * as cfdiService from '../cfdi/cfdi.service';
 import { buildCFDIJson } from '../cfdi/build-cfdi-json.service';
 import * as billingService from '../billing/billing.service';
+import {
+  checkInvoiceStock,
+  discountInvoiceStock,
+  restoreInvoiceStock,
+} from '../inventory/inventory.service';
 
 /**
  * REGISTRY de proveedores PAC disponibles.
@@ -209,6 +214,29 @@ export async function stampInvoice(companyId: string, invoiceId: string): Promis
   // extras se cobran al cierre del mes.
   await billingService.assertCanStamp(companyId);
 
+  // Existencias: se revisa ANTES de llamar al PAC, porque un timbre gastado no
+  // se recupera. Solo bloquea si la empresa lo pidió expresamente
+  // (inventory_block_no_stock); el default es dejar pasar y anotar el faltante,
+  // porque hay giros que facturan sobre pedido y no tienen stock al emitir.
+  const blockR = await query<{ inventory_block_no_stock: boolean }>(
+    `SELECT inventory_block_no_stock FROM companies WHERE id = $1`,
+    [companyId],
+  );
+  if (blockR.rows[0]?.inventory_block_no_stock) {
+    const shortages = await transaction((client) =>
+      checkInvoiceStock(client, companyId, invoiceId),
+    );
+    if (shortages.length > 0) {
+      const detail = shortages
+        .map((s) => `${s.sku} ${s.name}: pedido ${s.requested}, disponible ${s.available}`)
+        .join(' · ');
+      throw new ValidationError(
+        `Existencia insuficiente para timbrar (la empresa bloquea venta sin stock): ${detail}. ` +
+        `Recibe mercancía o ajusta el inventario antes de facturar.`,
+      );
+    }
+  }
+
   // ── Reclamo atómico ──────────────────────────────────────────────────────
   // A partir de aquí llamamos al PAC, que consume un timbre. Solo UNA petición
   // puede pasar: la carrera la resuelve Postgres, no un if.
@@ -316,6 +344,27 @@ export async function stampInvoice(companyId: string, invoiceId: string): Promis
       invoiceId,
       stampUuid: result.uuid,
     });
+
+    // La salida de inventario va en la MISMA transacción que el timbrado: si
+    // algo falla aquí, se revierte también el UPDATE que marcó STAMPED. Nunca
+    // debe quedar un CFDI timbrado sin su movimiento de stock, porque el
+    // kardex dejaría de cuadrar y ya no hay forma de saber qué salió.
+    //
+    // En modo alerta se descuenta lo disponible y el faltante queda anotado:
+    // el negocio prefiere un kardex con la anomalía visible que un timbrado
+    // detenido.
+    const inv = await discountInvoiceStock(client, {
+      companyId,
+      invoiceId,
+      docRef: `${invoice.serie || ''}-${invoice.folio}`,
+      userEmail: 'stamp@system',
+    });
+    if (inv.warnings.length > 0) {
+      logger.warn(
+        `[inventario] Factura ${invoice.serie}-${invoice.folio} timbrada con faltantes: ` +
+        inv.warnings.join(' | '),
+      );
+    }
   });
 
   // Alertas de prepago (low/zero) — fire-and-forget FUERA de la TX: el
@@ -426,11 +475,26 @@ export async function cancelInvoice(
   const skipPac =
     forceLocal || (invoice.pac_id === 'MOCK' && provider.name !== 'MOCK');
   if (skipPac) {
-    await query(
-      `UPDATE invoices SET status = 'CANCELLED', updated_at = NOW()
-        WHERE id = $1 AND company_id = $2`,
-      [invoiceId, companyId]
-    );
+    // Marcar cancelada y devolver el inventario en una sola transacción: si
+    // la devolución falla, la factura no debe quedar cancelada, porque la
+    // mercancía seguiría descontada y nadie notaría el hueco.
+    await transaction(async (client) => {
+      await transactionQuery(
+        client,
+        `UPDATE invoices SET status = 'CANCELLED', updated_at = NOW()
+          WHERE id = $1 AND company_id = $2`,
+        [invoiceId, companyId],
+      );
+      const restored = await restoreInvoiceStock(client, {
+        companyId,
+        invoiceId,
+        docRef: `${invoice.serie || ''}-${invoice.folio}`,
+        userEmail: 'cancel@system',
+      });
+      if (restored > 0) {
+        logger.info(`[inventario] Cancelación devolvió ${restored} producto(s) al stock`);
+      }
+    });
     logger.info(
       `Factura ${invoice.serie}-${invoice.folio} cancelada localmente ` +
       `(${forceLocal ? 'force=true' : 'pac_id=MOCK'}). PAC no invocado.`
@@ -454,10 +518,24 @@ export async function cancelInvoice(
   // Solo actualizamos la BD si aún no está cancelada. En modo resend
   // ya está CANCELLED y solo queríamos notificar al PAC.
   if (!isResendToPAC) {
-    await query(
-      `UPDATE invoices SET status = 'CANCELLED', updated_at = NOW() WHERE id = $1 AND company_id = $2`,
-      [invoiceId, companyId]
-    );
+    await transaction(async (client) => {
+      await transactionQuery(
+        client,
+        `UPDATE invoices SET status = 'CANCELLED', updated_at = NOW() WHERE id = $1 AND company_id = $2`,
+        [invoiceId, companyId],
+      );
+      // restoreInvoiceStock trae su propio guard contra doble devolución, así
+      // que un reintento de cancelación no infla el inventario.
+      const restored = await restoreInvoiceStock(client, {
+        companyId,
+        invoiceId,
+        docRef: `${invoice.serie || ''}-${invoice.folio}`,
+        userEmail: 'cancel@system',
+      });
+      if (restored > 0) {
+        logger.info(`[inventario] Cancelación devolvió ${restored} producto(s) al stock`);
+      }
+    });
   }
 
   logger.info(
