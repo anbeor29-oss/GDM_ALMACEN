@@ -4,17 +4,16 @@
  *   · Edición inline de rol, grupo de trabajo, nombre y estado activo
  *   · Capacidades finas para USER (plantillas de un clic)
  *
- * Grupos de trabajo (define qué módulos ve el usuario en el sidebar):
- *   · ADMIN_ALL   — todo
- *   · VENTAS      — POS, Facturas, Clientes, NC, **Carta Porte**
- *   · INVENTARIOS — Productos, Inventario, Almacenes, Físico
- *   · COMPRAS     — Compras XML, Órdenes de compra
- *   · TESORERIA   — Tesorería, Proveedores
+ * El reparto de módulos por grupo vive en @/utils/permissions (espejo del
+ * backend). Aquí NO se redefine: duplicarlo fue justo lo que hizo que esta
+ * pantalla ofreciera "INVENTARIOS" mientras el resto del sistema hablaba de
+ * "ALMACEN", y el alta reventaba contra el CHECK de la base.
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Users, ShieldCheck, Lock, Check, Plus, Pencil, Trash2, X, Save } from 'lucide-react';
 import api from '@/services/api';
+import { WORK_GROUP_LABELS, WORK_GROUP_DETAIL, WorkGroup } from '@/utils/permissions';
 
 const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
   ADMIN:   { label: 'Administrador', cls: 'bg-indigo-100 text-indigo-700' },
@@ -22,21 +21,16 @@ const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
   USER:    { label: 'Operativo',     cls: 'bg-gray-100 text-gray-700' },
 };
 
-const GROUP_BADGE: Record<string, { label: string; cls: string }> = {
-  ADMIN_ALL:   { label: 'Acceso total',    cls: 'bg-emerald-100 text-emerald-700' },
-  VENTAS:      { label: 'Ventas + CP',     cls: 'bg-amber-100 text-amber-700' },
-  INVENTARIOS: { label: 'Inventarios',     cls: 'bg-fuchsia-100 text-fuchsia-700' },
-  COMPRAS:     { label: 'Compras',         cls: 'bg-orange-100 text-orange-700' },
-  TESORERIA:   { label: 'Tesorería',       cls: 'bg-rose-100 text-rose-700' },
+/** Solo el color del badge; la etiqueta y el detalle salen de permissions.ts. */
+const GROUP_BADGE: Record<string, string> = {
+  ADMIN_ALL: 'bg-emerald-100 text-emerald-700',
+  VENTAS:    'bg-amber-100 text-amber-700',
+  ALMACEN:   'bg-fuchsia-100 text-fuchsia-700',
+  COMPRAS:   'bg-orange-100 text-orange-700',
+  TESORERIA: 'bg-rose-100 text-rose-700',
 };
 
-const GROUP_DESCR: Record<string, string> = {
-  ADMIN_ALL:   'Todos los módulos',
-  VENTAS:      'Punto de venta, facturas, clientes, notas de crédito, Carta Porte',
-  INVENTARIOS: 'Productos, inventario, almacenes, inventario físico',
-  COMPRAS:     'Compras XML, órdenes de compra',
-  TESORERIA:   'Tesorería, proveedores',
-};
+const GROUP_KEYS = Object.keys(WORK_GROUP_LABELS) as WorkGroup[];
 
 export function TeamPage() {
   const qc = useQueryClient();
@@ -65,7 +59,7 @@ export function TeamPage() {
           </h1>
           <p className="text-gray-600 mt-1">
             Da de alta a tu personal y asígnales <b>grupo de trabajo</b> — Ventas ve facturas y Carta Porte,
-            Inventarios ve almacenes, Tesorería ve pagos, etc.
+            Almacén ve existencias, Tesorería ve pagos, etc.
           </p>
         </div>
         <button
@@ -98,8 +92,8 @@ export function TeamPage() {
             )}
             {users.map((u) => {
               const roleBadge = ROLE_BADGE[u.role] || { label: u.role, cls: 'bg-gray-100 text-gray-600' };
-              const wg = u.work_group || 'ADMIN_ALL';
-              const wgBadge = GROUP_BADGE[wg] || { label: wg, cls: 'bg-gray-100 text-gray-600' };
+              const wg = (u.work_group || 'ADMIN_ALL') as WorkGroup;
+              const wgCls = GROUP_BADGE[wg] || 'bg-gray-100 text-gray-600';
               return (
                 <tr key={u.id} className={`hover:bg-gray-50 ${!u.is_active ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-2">
@@ -111,8 +105,10 @@ export function TeamPage() {
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roleBadge.cls}`}>{roleBadge.label}</span>
                   </td>
                   <td className="px-4 py-2">
-                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${wgBadge.cls}`}>{wgBadge.label}</span>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{GROUP_DESCR[wg]}</p>
+                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${wgCls}`}>
+                      {WORK_GROUP_LABELS[wg] || wg}
+                    </span>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{WORK_GROUP_DETAIL[wg]}</p>
                   </td>
                   <td className="px-4 py-2">
                     {u.editable ? (
@@ -249,13 +245,13 @@ function UserModal({ user, onClose, onSaved }: { user: any | null; onClose: () =
             </F>
             <F label="Grupo de trabajo" required>
               <select value={form.workGroup} onChange={e => setForm({ ...form, workGroup: e.target.value })} className="input">
-                <option value="ADMIN_ALL">Acceso total — ve todo</option>
-                <option value="VENTAS">Ventas — facturas + Carta Porte</option>
-                <option value="INVENTARIOS">Inventarios — almacenes y stock</option>
-                <option value="COMPRAS">Compras — OC y compras XML</option>
-                <option value="TESORERIA">Tesorería — pagos y proveedores</option>
+                {GROUP_KEYS.map(g => (
+                  <option key={g} value={g}>{WORK_GROUP_LABELS[g]}</option>
+                ))}
               </select>
-              <p className="text-[10px] text-slate-500 mt-1">{GROUP_DESCR[form.workGroup]}</p>
+              <p className="text-[10px] text-slate-500 mt-1">
+                {WORK_GROUP_DETAIL[form.workGroup as WorkGroup]}
+              </p>
             </F>
             {isEdit && (
               <F label="Estado" span={2}>

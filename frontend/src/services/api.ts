@@ -998,6 +998,22 @@ class APIClient {
     const r = await this.client.put(`/admin/companies/${id}`, data);
     return r.data;
   }
+  /**
+   * Lee el .cer (y opcionalmente comprueba el .key) SIN guardar nada.
+   * Devuelve No. de certificado, vigencia, RFC y razón social para autollenar
+   * el formulario: teclear 20 dígitos a mano es la forma más cara de romper
+   * un timbrado.
+   */
+  async adminInspectCSD(id: string, data: { cerBase64: string; keyBase64?: string; keyPassword?: string }) {
+    const r = await this.client.post<APIResponse<{
+      no_certificado: string; rfc: string | null; razon_social: string | null;
+      valid_from: string; valid_to: string;
+      rfc_matches: boolean; company_rfc: string;
+      expired: boolean; not_yet_valid: boolean;
+      key_matches: boolean | null; key_error: string | null;
+    }>>(`/admin/companies/${id}/csd/inspect`, data);
+    return r.data;
+  }
   async adminUploadCSD(id: string, data: { noCertificado: string; cerBase64: string;
                                             keyBase64: string; keyPassword: string;
                                             validFrom?: string; validTo?: string }) {

@@ -7,6 +7,10 @@
  * cambian los módulos de un grupo, cambiar en AMBOS lados.
  *
  * ADMIN_ALL ve todo. SUPER_ADMIN no usa grupos (opera la plataforma).
+ *
+ * El vocabulario de grupos vive en un lugar más: el CHECK de users.work_group
+ * (migración 2026-07-28c_unificar_work_groups.sql). Agregar un grupo aquí sin
+ * agregarlo allá hace fallar el alta de usuarios con ese grupo.
  */
 
 import { Request, Response, NextFunction } from 'express';
@@ -14,40 +18,50 @@ import { Request, Response, NextFunction } from 'express';
 export type WorkGroup = 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA';
 
 /**
- * Claves de módulo protegibles.
+ * Claves de módulo protegibles — una por bloque del menú.
  *
- * GDM_FAC es SOLO facturación: aquí únicamente van módulos que existen y
- * funcionan. Punto de Venta, inventarios, compras, tesorería y proveedores
- * pertenecen al producto ALMACEN (repo GDM_ALMACEN) y no se ofrecen aquí.
- *
- * 'pos' sigue declarado como clave porque el módulo backend (modules/pos)
- * todavía existe y usa requireModule('pos'), pero NO se concede a ningún
- * grupo: sus endpoints responden 403 y la UI ya no lo expone. Al migrarlo a
- * ALMACEN se puede borrar el módulo y esta clave.
+ * Nota histórica: cuando esto era SOLO facturación, inventarios/compras/
+ * tesorería/POS pertenecían al producto ALMACÉN y no se declaraban aquí. En
+ * GDM Nexo los dos productos son uno, así que el mapa cubre el ERP completo:
+ * un módulo que exista en el menú y NO aparezca en esta lista no lo puede
+ * ocultar ningún grupo.
  */
 export type ModuleKey =
-  | 'pos' | 'invoices' | 'credit_notes' | 'customers' | 'reports'
-  | 'products';
+  | 'invoices' | 'carta_porte' | 'credit_notes' | 'customers' | 'products'
+  | 'xml_reader' | 'inventory' | 'purchasing' | 'suppliers' | 'pos'
+  | 'treasury' | 'reports' | 'exchange_rates';
+
+const ALL_MODULES: ModuleKey[] = [
+  'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
+  'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos',
+  'treasury', 'reports', 'exchange_rates',
+];
 
 /**
  * Módulos permitidos por grupo (dashboard es común, no se lista).
- * Los grupos ALMACEN/COMPRAS/TESORERIA se conservan para no romper a usuarios
- * que ya los tengan asignados en BD; en facturación solo alcanzan lo que existe.
+ *
+ * Criterio: cada grupo alcanza lo que necesita para trabajar, no lo que "le
+ * podría servir". Los cruces son deliberados:
+ *   · VENTAS ve exchange_rates porque cotiza y factura en dólares.
+ *   · COMPRAS ve inventory (para decidir qué reponer) y products.
+ *   · TESORERIA ve suppliers porque les programa pagos.
+ * Lo que cada quien puede HACER dentro de esas pantallas lo decide el sistema
+ * de capacidades (requireCapability), no este mapa.
  */
 export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
-  ADMIN_ALL: [
-    'invoices', 'credit_notes', 'customers', 'reports',
-    'products',
+  ADMIN_ALL: ALL_MODULES,
+  VENTAS: [
+    'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
+    'xml_reader', 'pos', 'reports', 'exchange_rates',
   ],
-  VENTAS:    ['invoices', 'credit_notes', 'customers', 'reports'],
-  ALMACEN:   ['products'],
-  COMPRAS:   [],
-  TESORERIA: [],
+  ALMACEN:   ['products', 'inventory', 'reports'],
+  COMPRAS:   ['purchasing', 'suppliers', 'products', 'inventory', 'xml_reader', 'reports'],
+  TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'reports'],
 };
 
 export function groupCanAccess(group: WorkGroup | undefined, mod: ModuleKey): boolean {
   const g = group || 'ADMIN_ALL';
-  return (GROUP_MODULES[g] || []).includes(mod);
+  return (GROUP_MODULES[g] || GROUP_MODULES.ADMIN_ALL).includes(mod);
 }
 
 /**

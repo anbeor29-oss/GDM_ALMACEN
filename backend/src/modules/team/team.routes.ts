@@ -217,4 +217,218 @@ router.post('/:id/reset-password', asyncHandler(async (req: Request, res: Respon
   });
 }));
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * /team/users — pantalla "Equipo y permisos"
+ *
+ * La fusión de los dos productos dejó viva la versión de ALMACÉN de este
+ * router (solo /team, /team/:id/...) mientras el frontend ya hablaba con
+ * /team/users*. Resultado: la pantalla de Equipo cargaba vacía y el alta
+ * respondía 404. Se restauran aquí, sobre las mismas tres reglas de
+ * aislamiento del encabezado.
+ *
+ * Qué se puede tocar y qué no:
+ *   · role  → USER o MANAGER. Un ADMIN NO puede crear ni ascender a otro
+ *     ADMIN: eso es alta de plataforma y la hace el SUPER_ADMIN.
+ *   · work_group → cualquiera del vocabulario; decide qué pantallas ve.
+ *   · capabilities → solo para USER (ADMIN/MANAGER ya tienen todas).
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** Vocabulario único de grupos — espejo del CHECK de users.work_group
+ *  (migración 2026-07-28c) y de middleware/permissions.ts. */
+const WORK_GROUPS = ['ADMIN_ALL', 'VENTAS', 'ALMACEN', 'COMPRAS', 'TESORERIA'];
+
+/** Roles que un ADMIN de empresa puede asignar dentro de su propia empresa. */
+const ASSIGNABLE_ROLES = ['USER', 'MANAGER'];
+
+function normalizeWorkGroup(raw: unknown): string {
+  const wg = String(raw || 'ADMIN_ALL').toUpperCase().trim();
+  if (!WORK_GROUPS.includes(wg)) {
+    throw new ValidationError(
+      `Grupo de trabajo inválido: "${wg}". Válidos: ${WORK_GROUPS.join(', ')}`
+    );
+  }
+  return wg;
+}
+
+/** GET /team/capabilities — catálogo + plantillas para el modal. */
+router.get('/capabilities', asyncHandler(async (_req: Request, res: Response) => {
+  const { CAPABILITIES, CAPABILITY_TEMPLATES } = await import('../auth/capabilities');
+  res.status(200).json({
+    success: true,
+    data: {
+      capabilities: Object.entries(CAPABILITIES).map(([key, label]) => ({ key, label })),
+      templates: Object.entries(CAPABILITY_TEMPLATES).map(([key, t]) => ({
+        key, label: t.label, caps: t.caps,
+      })),
+    },
+  });
+}));
+
+/** GET /team/users — personal de mi empresa con su grupo y capacidades. */
+router.get('/users', asyncHandler(async (req: Request, res: Response) => {
+  const r = await query<any>(
+    `SELECT id, email, first_name, last_name, role, work_group, is_active,
+            password_change_required, last_login, created_at
+       FROM users
+      WHERE company_id = $1
+        AND role IN ('ADMIN', 'MANAGER', 'USER')
+      ORDER BY role, first_name`,
+    [req.user!.companyId]
+  );
+
+  const { getEffectiveCapabilities } = await import('../auth/capabilities');
+  const users = await Promise.all(
+    r.rows.map(async (u) => ({
+      ...u,
+      // 'editable' = tiene sentido darle capacidades finas. ADMIN y MANAGER
+      // las tienen todas por rol, así que el modal no aplica.
+      editable: u.role === 'USER',
+      capabilities: u.role === 'USER'
+        ? await getEffectiveCapabilities(u.id, u.role)
+        : [],
+    }))
+  );
+
+  res.status(200).json({ success: true, data: { users } });
+}));
+
+/** POST /team/users — alta con rol, grupo y contraseña elegida por el ADMIN. */
+router.post('/users', asyncHandler(async (req: Request, res: Response) => {
+  const { email, password, firstName, lastName, role } = req.body as any;
+  if (!email || !validEmail(email)) throw new ValidationError('Email inválido');
+  if (!firstName) throw new ValidationError('El nombre es requerido');
+
+  const workGroup = normalizeWorkGroup(req.body?.workGroup);
+  const finalRole = String(role || 'USER').toUpperCase();
+  if (!ASSIGNABLE_ROLES.includes(finalRole)) {
+    throw new ValidationError(
+      'Solo puedes dar de alta usuarios Operativos o Gerentes. ' +
+      'Los administradores los crea la plataforma.'
+    );
+  }
+
+  const dup = await query('SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1', [email]);
+  if (dup.rowCount! > 0) throw new ConflictError('Ya existe un usuario con ese email');
+
+  // El ADMIN puede dictar la contraseña temporal; si la deja en blanco se
+  // genera una legible. En ambos casos se exige cambiarla al primer login.
+  const tempPass = password && String(password).length >= 8
+    ? String(password)
+    : generateTemporaryPassword();
+  const hash = await bcrypt.hash(tempPass, 10);
+
+  const r = await query<any>(
+    `INSERT INTO users (email, first_name, last_name, password_hash, role, work_group,
+                        company_id, is_active, password_change_required, created_by_user_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, true, true, $8)
+     RETURNING id, email, first_name, last_name, role, work_group, is_active, created_at`,
+    [email.toLowerCase(), firstName, lastName || '', hash, finalRole, workGroup,
+     req.user!.companyId, req.user!.userId]
+  );
+  const user = r.rows[0];
+  await audit(req, {
+    action: 'TEAM_USER_CREATED', targetKind: 'user', targetId: user.id,
+    payload: { email: user.email, role: finalRole, workGroup },
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Usuario creado. Comparte la contraseña temporal; se le pedirá cambiarla al entrar.',
+    data: { ...user, temporary_password: tempPass },
+  });
+}));
+
+/** Carga un usuario editable de MI empresa (USER o MANAGER) o 404. */
+async function findEditableUser(req: Request, id: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new ValidationError('id inválido');
+  const r = await query<any>(
+    `SELECT id, email, role, is_active FROM users
+      WHERE id = $1 AND company_id = $2 AND role IN ('USER', 'MANAGER') LIMIT 1`,
+    [id, req.user!.companyId]
+  );
+  if (r.rowCount === 0) {
+    throw new NotFoundError(
+      'Usuario no encontrado en tu empresa (o es un administrador, que solo edita la plataforma)'
+    );
+  }
+  return r.rows[0];
+}
+
+/** PATCH /team/users/:id — nombre, rol, grupo de trabajo y estado. */
+router.patch('/users/:id', asyncHandler(async (req: Request, res: Response) => {
+  const u = await findEditableUser(req, req.params.id);
+  const { firstName, lastName, role, workGroup, isActive } = req.body as any;
+
+  const sets: string[] = [];
+  const vals: any[] = [];
+  const push = (col: string, val: any) => { vals.push(val); sets.push(`${col} = $${vals.length}`); };
+
+  if (firstName !== undefined) push('first_name', firstName);
+  if (lastName  !== undefined) push('last_name', lastName);
+  if (isActive  !== undefined) push('is_active', !!isActive);
+  if (workGroup !== undefined) push('work_group', normalizeWorkGroup(workGroup));
+  if (role !== undefined) {
+    const nr = String(role).toUpperCase();
+    if (!ASSIGNABLE_ROLES.includes(nr)) {
+      throw new ValidationError('Solo puedes asignar rol Operativo o Gerente');
+    }
+    push('role', nr);
+  }
+  if (sets.length === 0) throw new ValidationError('Nada que actualizar');
+
+  vals.push(u.id);
+  const r = await query<any>(
+    `UPDATE users SET ${sets.join(', ')} WHERE id = $${vals.length}
+     RETURNING id, email, first_name, last_name, role, work_group, is_active`,
+    vals
+  );
+  await audit(req, {
+    action: 'TEAM_USER_UPDATED', targetKind: 'user', targetId: u.id,
+    payload: { email: u.email, changes: Object.keys(req.body || {}) },
+  });
+  res.status(200).json({ success: true, data: r.rows[0] });
+}));
+
+/**
+ * DELETE /team/users/:id — baja SUAVE.
+ *
+ * No se borra la fila: el usuario firma facturas, movimientos de inventario y
+ * bitácora, y un DELETE dejaría esos registros sin autor. Se desactiva, que es
+ * lo que el negocio realmente quiere decir con "eliminar a alguien del equipo".
+ */
+router.delete('/users/:id', asyncHandler(async (req: Request, res: Response) => {
+  const u = await findEditableUser(req, req.params.id);
+  await query('UPDATE users SET is_active = false WHERE id = $1', [u.id]);
+  await audit(req, { action: 'TEAM_USER_DISABLED', targetKind: 'user', targetId: u.id,
+    payload: { email: u.email } });
+  res.status(200).json({ success: true, message: 'Usuario desactivado' });
+}));
+
+/** PUT /team/users/:id/capabilities — reemplaza el set otorgado (solo USER). */
+router.put('/users/:id/capabilities', asyncHandler(async (req: Request, res: Response) => {
+  const u = await findEditableUser(req, req.params.id);
+  if (u.role !== 'USER') {
+    throw new ValidationError('Los gerentes ya tienen todas las capacidades operativas');
+  }
+  const { isValidCapability } = await import('../auth/capabilities');
+  const caps: string[] = Array.isArray(req.body?.capabilities) ? req.body.capabilities : [];
+  const invalid = caps.filter((c) => !isValidCapability(c));
+  if (invalid.length) throw new ValidationError(`Capacidades desconocidas: ${invalid.join(', ')}`);
+
+  // Reemplazo completo: el modal manda el set final, no un delta.
+  await query('DELETE FROM user_capabilities WHERE user_id = $1', [u.id]);
+  for (const c of caps) {
+    await query(
+      `INSERT INTO user_capabilities (user_id, capability, granted_by)
+       VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [u.id, c, req.user!.userId]
+    );
+  }
+  await audit(req, {
+    action: 'TEAM_CAPABILITIES_SET', targetKind: 'user', targetId: u.id,
+    payload: { email: u.email, capabilities: caps },
+  });
+  res.status(200).json({ success: true, data: { capabilities: caps } });
+}));
+
 export default router;

@@ -150,48 +150,45 @@ export function App() {
           >
             {/* Operación diaria — gateada por grupo de trabajo (SUPER_ADMIN redirigido) */}
             <Route path="dashboard"    element={<CompanyOnlyRoute><DashboardPage /></CompanyOnlyRoute>} />
-            {/* Facturación. Punto de Venta NO vive aquí: es del producto ALMACEN
-                (repo GDM_ALMACEN), igual que inventarios, compras y tesorería. */}
+            {/* Facturación */}
             <Route path="invoices"     element={<ModuleRoute module="invoices"><InvoicesPage /></ModuleRoute>} />
             <Route path="invoices/new"       element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
             <Route path="invoices/:id/edit"  element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
             <Route path="credit-notes" element={<ModuleRoute module="credit_notes"><CreditNotesPage /></ModuleRoute>} />
             <Route path="customers"    element={<ModuleRoute module="customers"><CustomersPage /></ModuleRoute>} />
             <Route path="reports"      element={<ModuleRoute module="reports"><ReportsPage /></ModuleRoute>} />
-            {/* Catálogos. Inventarios, compras, tesorería y proveedores NO viven
-                aquí: son del producto ALMACEN (repo GDM_ALMACEN). GDM_FAC es solo
-                facturación. SuppliersPage sigue existiendo, pero SOLO para el
-                SUPER_ADMIN de la plataforma (ruta /suppliers, más abajo). */}
             <Route path="products" element={<ModuleRoute module="products"><ProductsPage /></ModuleRoute>} />
             {/* Equipo: el ADMIN de la empresa gestiona a sus USER. */}
             <Route path="team" element={<CompanyOnlyRoute><CompanyAdminRoute><TeamPage /></CompanyAdminRoute></CompanyOnlyRoute>} />
             {/* Contrato: lo lee cualquier usuario de empresa; firmarlo exige ADMIN
                 (el guard real está en el backend). */}
             <Route path="contract" element={<CompanyOnlyRoute><ContractPage /></CompanyOnlyRoute>} />
-            {/* Carta Porte 3.1 + Super Lector XML — módulos V2 */}
-            <Route path="carta-porte"                     element={<CompanyOnlyRoute><CartaPortePage /></CompanyOnlyRoute>} />
-            <Route path="invoices/:invoiceId/carta-porte" element={<CompanyOnlyRoute><CartaPorteFormPage /></CompanyOnlyRoute>} />
-            <Route path="carta-porte/lugares"             element={<CompanyOnlyRoute><CartaPorteLugaresPage /></CompanyOnlyRoute>} />
-            <Route path="carta-porte/vehiculos"           element={<CompanyOnlyRoute><CartaPorteVehiculosPage /></CompanyOnlyRoute>} />
-            <Route path="carta-porte/aseguradoras"        element={<CompanyOnlyRoute><CartaPorteAseguradorasPage /></CompanyOnlyRoute>} />
-            <Route path="carta-porte/operadores"          element={<CompanyOnlyRoute><CartaPorteOperadoresPage /></CompanyOnlyRoute>} />
-            <Route path="carta-porte/importar-xml"        element={<CompanyOnlyRoute><CartaPorteImportarXmlPage /></CompanyOnlyRoute>} />
-            <Route path="carta-porte/mercancias"          element={<CompanyOnlyRoute><CartaPorteMercanciasPage /></CompanyOnlyRoute>} />
-            <Route path="xml-super-import"                element={<CompanyOnlyRoute><SuperXMLImportPage /></CompanyOnlyRoute>} />
-            <Route path="tipos-de-cambio"                 element={<CompanyOnlyRoute><TiposDeCambioPage /></CompanyOnlyRoute>} />
-            <Route path="diferencia-cambiaria"            element={<CompanyOnlyRoute><DiferenciaCambiariaPage /></CompanyOnlyRoute>} />
+            {/* Carta Porte 3.1 + Super Lector XML — módulos V2.
+                Cada pantalla va con el módulo al que pertenece: esconderla del
+                menú y dejarla abierta por URL no sirve de nada. */}
+            <Route path="carta-porte"                     element={<ModuleRoute module="carta_porte"><CartaPortePage /></ModuleRoute>} />
+            <Route path="invoices/:invoiceId/carta-porte" element={<ModuleRoute module="carta_porte"><CartaPorteFormPage /></ModuleRoute>} />
+            <Route path="carta-porte/lugares"             element={<ModuleRoute module="carta_porte"><CartaPorteLugaresPage /></ModuleRoute>} />
+            <Route path="carta-porte/vehiculos"           element={<ModuleRoute module="carta_porte"><CartaPorteVehiculosPage /></ModuleRoute>} />
+            <Route path="carta-porte/aseguradoras"        element={<ModuleRoute module="carta_porte"><CartaPorteAseguradorasPage /></ModuleRoute>} />
+            <Route path="carta-porte/operadores"          element={<ModuleRoute module="carta_porte"><CartaPorteOperadoresPage /></ModuleRoute>} />
+            <Route path="carta-porte/importar-xml"        element={<ModuleRoute module="carta_porte"><CartaPorteImportarXmlPage /></ModuleRoute>} />
+            <Route path="carta-porte/mercancias"          element={<ModuleRoute module="carta_porte"><CartaPorteMercanciasPage /></ModuleRoute>} />
+            <Route path="xml-super-import"                element={<ModuleRoute module="xml_reader"><SuperXMLImportPage /></ModuleRoute>} />
+            <Route path="tipos-de-cambio"                 element={<ModuleRoute module="exchange_rates"><TiposDeCambioPage /></ModuleRoute>} />
+            <Route path="diferencia-cambiaria"            element={<ModuleRoute module="exchange_rates"><DiferenciaCambiariaPage /></ModuleRoute>} />
             {/* Inventarios, compras y tesorería — fusión ERP */}
-            <Route path="warehouses"                      element={<CompanyOnlyRoute><WarehousesPage /></CompanyOnlyRoute>} />
-            <Route path="inventory"                       element={<CompanyOnlyRoute><InventoryPage /></CompanyOnlyRoute>} />
-            <Route path="purchase-orders"                 element={<CompanyOnlyRoute><PurchaseOrdersPage /></CompanyOnlyRoute>} />
+            <Route path="warehouses"                      element={<ModuleRoute module="inventory"><WarehousesPage /></ModuleRoute>} />
+            <Route path="inventory"                       element={<ModuleRoute module="inventory"><InventoryPage /></ModuleRoute>} />
+            <Route path="physical-counts"                 element={<ModuleRoute module="inventory"><PhysicalCountPage /></ModuleRoute>} />
+            <Route path="purchase-orders"                 element={<ModuleRoute module="purchasing"><PurchaseOrdersPage /></ModuleRoute>} />
+            <Route path="compras/xml"                     element={<ModuleRoute module="purchasing"><ComprasXMLPage /></ModuleRoute>} />
             {/* Proveedores es catálogo DE LA EMPRESA, no de plataforma: las
                 órdenes de compra y tesorería lo referencian. Estaba bajo
                 SuperAdminRoute y por eso rebotaba al dashboard. */}
-            <Route path="suppliers"                       element={<CompanyOnlyRoute><SuppliersPage /></CompanyOnlyRoute>} />
-            <Route path="compras/xml"                     element={<CompanyOnlyRoute><ComprasXMLPage /></CompanyOnlyRoute>} />
-            <Route path="pos"                             element={<CompanyOnlyRoute><PointOfSalePage /></CompanyOnlyRoute>} />
-            <Route path="treasury"                        element={<CompanyOnlyRoute><TreasuryPage /></CompanyOnlyRoute>} />
-            <Route path="physical-counts"                 element={<CompanyOnlyRoute><PhysicalCountPage /></CompanyOnlyRoute>} />
+            <Route path="suppliers"                       element={<ModuleRoute module="suppliers"><SuppliersPage /></ModuleRoute>} />
+            <Route path="pos"                             element={<ModuleRoute module="pos"><PointOfSalePage /></ModuleRoute>} />
+            <Route path="treasury"                        element={<ModuleRoute module="treasury"><TreasuryPage /></ModuleRoute>} />
             <Route path="company"                         element={<CompanyOnlyRoute><CompanyProfilePage /></CompanyOnlyRoute>} />
 
             {/* Módulos de plataforma — SOLO SUPER_ADMIN (guard por URL directa) */}

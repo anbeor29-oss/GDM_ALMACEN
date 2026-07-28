@@ -104,7 +104,7 @@ export function Layout() {
                     esta versión (V2 se enfoca en facturación + CP). */}
                 <NavItem to="/dashboard"    icon={emoji3D('🏠')} accent="sky"     label="Dashboard"        open={sidebarOpen} />
                 {show('invoices')     && <NavItem to="/invoices"     icon={emoji3D('🧾')} accent="amber"   label="Facturas"         open={sidebarOpen} />}
-                {show('invoices') && (
+                {show('carta_porte') && (
                   <NavGroup
                     to="/carta-porte"
                     icon={emoji3D('🚚')}
@@ -124,9 +124,9 @@ export function Layout() {
                 {show('credit_notes') && <NavItem to="/credit-notes" icon={emoji3D('📉')} accent="rose"    label="Notas de Crédito" open={sidebarOpen} />}
                 {show('products')     && <NavItem to="/products"     icon={emoji3D('📦')} accent="fuchsia" label="Productos"        open={sidebarOpen} />}
                 {show('customers')    && <NavItem to="/customers"    icon={emoji3D('👥')} accent="emerald" label="Clientes"         open={sidebarOpen} />}
-                {show('invoices')     && <NavItem to="/xml-super-import" icon={emoji3D('📥')} accent="violet"  label="Lector de XML"    open={sidebarOpen} />}
+                {show('xml_reader')   && <NavItem to="/xml-super-import" icon={emoji3D('📥')} accent="violet"  label="Lector de XML"    open={sidebarOpen} />}
                 {/* Inventarios, compras y tesorería — fusión ERP */}
-                {show('invoices') && (
+                {show('inventory') && (
                   <NavGroup
                     to="/inventory"
                     icon={emoji3D('🏭')}
@@ -141,25 +141,32 @@ export function Layout() {
                     ]}
                   />
                 )}
-                {show('invoices') && (
-                  <NavGroup
-                    to="/purchase-orders"
-                    icon={emoji3D('🛒')}
-                    label="Compras"
-                    accent="emerald"
-                    open={sidebarOpen}
-                    pathPrefix="/purchase-orders"
-                    children={[
-                      { to: '/purchase-orders', icon: emoji3D('📝'), label: 'Órdenes de compra' },
-                      { to: '/compras/xml',     icon: emoji3D('📥'), label: 'Recibir XML' },
-                      { to: '/suppliers',       icon: emoji3D('🚚'), label: 'Proveedores' },
-                    ]}
-                  />
-                )}
-                {show('invoices')     && <NavItem to="/pos"          icon={emoji3D('🧮')} accent="rose"    label="Punto de Venta"   open={sidebarOpen} />}
-                {show('invoices')     && <NavItem to="/treasury"     icon={emoji3D('🏦')} accent="sky"     label="Tesorería"        open={sidebarOpen} />}
+                {/* Compras y Proveedores comparten menú pero no grupo: tesorería
+                    ve proveedores sin ver órdenes de compra, así que las hijas
+                    se filtran una por una y el grupo aparece solo si queda alguna. */}
+                {(() => {
+                  const hijas = [
+                    show('purchasing') && { to: '/purchase-orders', icon: emoji3D('📝'), label: 'Órdenes de compra' },
+                    show('purchasing') && { to: '/compras/xml',     icon: emoji3D('📥'), label: 'Recibir XML' },
+                    show('suppliers')  && { to: '/suppliers',       icon: emoji3D('🚚'), label: 'Proveedores' },
+                  ].filter(Boolean) as Array<{ to: string; icon: JSX.Element; label: string }>;
+                  if (hijas.length === 0) return null;
+                  return (
+                    <NavGroup
+                      to={hijas[0].to}
+                      icon={emoji3D('🛒')}
+                      label="Compras"
+                      accent="emerald"
+                      open={sidebarOpen}
+                      pathPrefix="/purchase-orders"
+                      children={hijas}
+                    />
+                  );
+                })()}
+                {show('pos')          && <NavItem to="/pos"          icon={emoji3D('🧮')} accent="rose"    label="Punto de Venta"   open={sidebarOpen} />}
+                {show('treasury')     && <NavItem to="/treasury"     icon={emoji3D('🏦')} accent="sky"     label="Tesorería"        open={sidebarOpen} />}
                 {show('reports')      && <NavItem to="/reports"      icon={emoji3D('📊')} accent="violet"  label="Reportes"         open={sidebarOpen} />}
-                {show('invoices')     && (
+                {show('exchange_rates') && (
                   <NavGroup
                     to="/tipos-de-cambio"
                     icon={emoji3D('💱')}

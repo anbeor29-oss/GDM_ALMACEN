@@ -11,7 +11,7 @@ import { X } from 'lucide-react';
 import { Emoji3D } from '@/components/Emoji3D';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
-import { WORK_GROUP_LABELS, WorkGroup } from '@/utils/permissions';
+import { WORK_GROUP_LABELS, WORK_GROUP_DETAIL, WorkGroup } from '@/utils/permissions';
 
 const ROLES = [
   { value: 'SUPER_ADMIN', label: 'Super Admin (plataforma)' },
@@ -274,7 +274,10 @@ function CreateUserModal({ companies, onClose, onDone }: any) {
                 {(Object.keys(WORK_GROUP_LABELS) as WorkGroup[]).map(g => (
                   <option key={g} value={g}>{WORK_GROUP_LABELS[g]}</option>
                 ))}
-              </select></label>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                {WORK_GROUP_DETAIL[form.workGroup as WorkGroup]}
+              </p></label>
           )}
           <p className="text-xs text-gray-500">
             Se generará una contraseña temporal. El usuario debe cambiarla en el primer login.

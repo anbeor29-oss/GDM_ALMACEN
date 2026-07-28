@@ -713,17 +713,76 @@ function CreateCompanyModal({ onClose, onDone }: any) {
   );
 }
 
+/** Renglón de la ficha del certificado. `bad` lo pinta en rojo con su motivo. */
+function CertRow({ label, value, mono, bad, note }: {
+  label: string; value: string; mono?: boolean; bad?: boolean; note?: string;
+}) {
+  return (
+    <div className="px-3 py-2 flex items-start justify-between gap-3">
+      <span className="text-gray-500 shrink-0">{label}</span>
+      <span className="text-right">
+        <span className={`${mono ? 'font-mono' : ''} ${bad ? 'text-red-600 font-semibold' : 'text-gray-800'}`}>
+          {value}
+        </span>
+        {note && <span className="block text-[11px] text-red-600 mt-0.5">{note}</span>}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Modal de carga de CSD con LECTURA AUTOMÁTICA del certificado.
+ *
+ * Al elegir el .cer se llama a /csd/inspect y se llenan solos el No. de
+ * certificado y la vigencia. Motivo: son 20 dígitos y dos fechas que estaban
+ * a mano; un dígito mal no se nota hasta que el SAT rechaza el timbrado.
+ *
+ * Aclaración que conviene tener escrita porque se pregunta seguido: la
+ * vigencia NO viene en el .key. El .key es solo la llave privada cifrada, sin
+ * metadatos. Número, vigencia, RFC y razón social viven todos en el .cer; el
+ * .key sirve para comprobar que hace juego con el .cer y que la contraseña es
+ * la correcta ANTES de guardar.
+ */
 function CSDUploadModal({ company, onClose, onDone }: any) {
   const [form, setForm] = useState({ noCertificado:'', keyPassword:'', validFrom:'', validTo:'' });
   const [cerFile, setCerFile] = useState<File|null>(null);
   const [keyFile, setKeyFile] = useState<File|null>(null);
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  const [cert, setCert] = useState<any|null>(null);      // resultado de /inspect
+  const [reading, setReading] = useState(false);
 
   async function fileToB64(f: File): Promise<string> {
     const buf = new Uint8Array(await f.arrayBuffer());
     let s = ''; for (let i=0;i<buf.length;i++) s += String.fromCharCode(buf[i]);
     return btoa(s);
   }
+
+  /** Lee el .cer (y valida el .key si ya hay archivo + password). */
+  async function inspect(cer: File|null, key: File|null, pwd: string) {
+    if (!cer) { setCert(null); return; }
+    setReading(true); setError('');
+    try {
+      const r = await api.adminInspectCSD(company.id, {
+        cerBase64: await fileToB64(cer),
+        keyBase64: key && pwd ? await fileToB64(key) : undefined,
+        keyPassword: key && pwd ? pwd : undefined,
+      });
+      const d: any = r.data;
+      setCert(d);
+      setForm(f => ({
+        ...f,
+        noCertificado: d.no_certificado || f.noCertificado,
+        validFrom: (d.valid_from || '').slice(0, 10),
+        validTo:   (d.valid_to   || '').slice(0, 10),
+      }));
+    } catch (e: any) {
+      setCert(null);
+      setError(e.response?.data?.message || e.message);
+    } finally { setReading(false); }
+  }
+
+  const onCer = (f: File|null) => { setCerFile(f); inspect(f, keyFile, form.keyPassword); };
+  const onKey = (f: File|null) => { setKeyFile(f); inspect(cerFile, f, form.keyPassword); };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError('');
@@ -745,8 +804,8 @@ function CSDUploadModal({ company, onClose, onDone }: any) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <form onSubmit={submit} className="bg-white rounded-lg shadow-2xl w-full max-w-lg">
-        <div className="flex items-center justify-between p-5 border-b">
+      <form onSubmit={submit} className="bg-white rounded-lg shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white">
           <div>
             <h2 className="font-bold">Cargar CSD</h2>
             <p className="text-xs text-gray-500">{company.rfc} · {company.business_name}</p>
@@ -755,24 +814,77 @@ function CSDUploadModal({ company, onClose, onDone }: any) {
         </div>
         <div className="p-5 space-y-3">
           {error && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">{error}</div>}
-          <label className="block"><span className="text-sm font-medium block mb-1">No. Certificado (20 dígitos) *</span>
-            <input required className="input w-full font-mono" maxLength={20} pattern="\d{20}"
-              value={form.noCertificado} onChange={(e)=>setForm({...form,noCertificado:e.target.value})}/></label>
           <label className="block"><span className="text-sm font-medium block mb-1">Archivo .cer (público) *</span>
-            <input required type="file" accept=".cer" onChange={(e)=>setCerFile(e.target.files?.[0]||null)}/></label>
+            <input required type="file" accept=".cer" onChange={(e)=>onCer(e.target.files?.[0]||null)}/>
+            <span className="text-[11px] text-gray-500 block mt-1">
+              Al elegirlo se leen solos el número de certificado y la vigencia.
+            </span></label>
           <label className="block"><span className="text-sm font-medium block mb-1">Archivo .key (privado) *</span>
-            <input required type="file" accept=".key" onChange={(e)=>setKeyFile(e.target.files?.[0]||null)}/></label>
+            <input required type="file" accept=".key" onChange={(e)=>onKey(e.target.files?.[0]||null)}/></label>
           <label className="block"><span className="text-sm font-medium block mb-1">Password del .key *</span>
             <input required type="password" className="input w-full"
-              value={form.keyPassword} onChange={(e)=>setForm({...form,keyPassword:e.target.value})}/></label>
+              value={form.keyPassword}
+              onChange={(e)=>setForm({...form,keyPassword:e.target.value})}
+              onBlur={()=>inspect(cerFile, keyFile, form.keyPassword)}/>
+            <span className="text-[11px] text-gray-500 block mt-1">
+              Al salir del campo se comprueba que la .key corresponda al .cer.
+            </span></label>
+
+          {reading && (
+            <div className="text-sm text-gray-500 border rounded px-3 py-2">Leyendo certificado…</div>
+          )}
+
+          {/* Lo que dice el certificado — el operador confirma leyendo, no tecleando */}
+          {cert && (
+            <div className="border rounded-lg divide-y text-sm">
+              <div className="px-3 py-2 bg-slate-50 font-medium text-slate-700">
+                Datos leídos del .cer
+              </div>
+              <CertRow label="Titular" value={cert.razon_social || '—'} />
+              <CertRow
+                label="RFC"
+                value={cert.rfc || '—'}
+                bad={!cert.rfc_matches}
+                note={!cert.rfc_matches
+                  ? `No coincide con la empresa (${cert.company_rfc}). El SAT rechazará el timbrado.`
+                  : undefined}
+              />
+              <CertRow label="No. Certificado" value={cert.no_certificado} mono />
+              <CertRow
+                label="Vigencia"
+                value={`${(cert.valid_from||'').slice(0,10)} → ${(cert.valid_to||'').slice(0,10)}`}
+                bad={cert.expired || cert.not_yet_valid}
+                note={cert.expired ? 'El certificado ya venció.'
+                     : cert.not_yet_valid ? 'El certificado aún no entra en vigor.'
+                     : undefined}
+              />
+              {cert.key_matches !== null && (
+                <CertRow
+                  label="Llave privada"
+                  value={cert.key_matches ? 'Corresponde al .cer' : 'NO corresponde'}
+                  bad={!cert.key_matches}
+                  note={cert.key_error || undefined}
+                />
+              )}
+            </div>
+          )}
+
+          <label className="block"><span className="text-sm font-medium block mb-1">No. Certificado (20 dígitos) *</span>
+            <input required className="input w-full font-mono bg-slate-50" maxLength={20} pattern="\d{20}"
+              value={form.noCertificado} onChange={(e)=>setForm({...form,noCertificado:e.target.value})}/></label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block"><span className="text-sm block mb-1">Vigente desde</span>
-              <input type="date" className="input w-full" value={form.validFrom}
+              <input type="date" className="input w-full bg-slate-50" value={form.validFrom}
                 onChange={(e)=>setForm({...form,validFrom:e.target.value})}/></label>
             <label className="block"><span className="text-sm block mb-1">Vigente hasta</span>
-              <input type="date" className="input w-full" value={form.validTo}
+              <input type="date" className="input w-full bg-slate-50" value={form.validTo}
                 onChange={(e)=>setForm({...form,validTo:e.target.value})}/></label>
           </div>
+          <p className="text-[11px] text-gray-500">
+            Estos tres campos se llenan solos al leer el .cer. Se dejan editables por si
+            alguna vez hay que corregirlos a mano.
+          </p>
+
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded">
             El .key y su password se cifran con pgcrypto antes de almacenarse. Nunca se devuelven por API.
           </p>
