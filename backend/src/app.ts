@@ -52,6 +52,13 @@ import cartaPorteImportarXmlRoutes from './modules/carta-porte/importar-xml.rout
 import cartaPorteMercanciasRoutes from './modules/carta-porte/mercancias.routes';
 import exchangeRateRoutes    from './modules/exchange-rates/exchange-rate.routes';
 import fxDifferenceRoutes    from './modules/exchange-rates/fx-difference.routes';
+// ─── Portados desde GDM Almacén (fusión ERP, fase 0) ──────────────
+import warehousesRoutes      from './modules/warehouses/warehouses.routes';
+import inventoryRoutes       from './modules/inventory/inventory.routes';
+import inventoryReportsRoutes from './modules/inventory/inventory-reports.routes';
+import purchasingRoutes      from './modules/purchasing/purchasing.routes';
+import treasuryRoutes        from './modules/treasury/treasury.routes';
+import physicalCountRoutes   from './modules/physical-count/physical-count.routes';
 import xmlSuperImportRoutes from './modules/xml-super-import/xml-super-import.routes';
 
 export function createApp(): Express {
@@ -181,6 +188,15 @@ export function createApp(): Express {
   // ─── Tipos de cambio (Banxico) ─────────────────────────────────────
   app.use(`/api/${config.apiVersion}/exchange-rates`,  exchangeRateRoutes);
   app.use(`/api/${config.apiVersion}/fx-difference`,   fxDifferenceRoutes);
+  // ─── Inventarios, compras y tesorería (fusión ERP) ─────────────────
+  app.use(`/api/${config.apiVersion}/warehouses`,      warehousesRoutes);
+  // reports ANTES que inventoryRoutes: si no, /inventory/reports/* cae en
+  // una ruta genérica del módulo inventory y nunca llega al reporte.
+  app.use(`/api/${config.apiVersion}/inventory/reports`, inventoryReportsRoutes);
+  app.use(`/api/${config.apiVersion}/inventory`,       inventoryRoutes);
+  app.use(`/api/${config.apiVersion}/purchase-orders`, purchasingRoutes);
+  app.use(`/api/${config.apiVersion}/treasury`,        treasuryRoutes);
+  app.use(`/api/${config.apiVersion}/physical-counts`, physicalCountRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);
 

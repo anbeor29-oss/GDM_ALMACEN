@@ -247,6 +247,40 @@ export const authorize = (...allowedRoles: string[]) => {
   };
 };
 
+/**
+ * requireCapability — permiso fino por usuario, más allá del rol.
+ *
+ * Viene de GDM Almacén: alguien de VENTAS puede necesitar recibir mercancía
+ * sin ser ADMIN, y un ADMIN puede querer negarle el punto de venta a alguien
+ * de su equipo. El rol solo no alcanza para eso.
+ *
+ * La capacidad se resuelve contra la base en cada petición y no desde el JWT,
+ * para que revocar un permiso surta efecto de inmediato y no cuando expire el
+ * token del usuario.
+ */
+export const requireCapability = (capability: string) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+    try {
+      const { userHasCapability } = await import('../modules/auth/capabilities');
+      const ok = await userHasCapability(req.user.userId, req.user.role, capability);
+      if (!ok) {
+        logger.warn(`Capability denied: ${req.user.email} carece de '${capability}'`);
+        return res.status(403).json({
+          success: false,
+          message: `No tienes la capacidad requerida (${capability}). Pide a tu administrador que te la otorgue.`,
+        });
+      }
+      return next();
+    } catch (e) {
+      logger.error('requireCapability error', { error: e instanceof Error ? e.message : 'unknown' });
+      return res.status(500).json({ success: false, message: 'Error verificando permisos' });
+    }
+  };
+};
+
 export default {
   verifyToken,
   generateToken,
@@ -256,4 +290,5 @@ export default {
   authenticateToken,
   optionalAuthentication,
   authorize,
+  requireCapability,
 };

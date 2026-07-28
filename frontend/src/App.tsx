@@ -35,6 +35,13 @@ import { CartaPorteImportarXmlPage }  from '@/pages/CartaPorteImportarXml';
 import { CartaPorteMercanciasPage }   from '@/pages/CartaPorteMercancias';
 import { TiposDeCambioPage }          from '@/pages/TiposDeCambio';
 import { DiferenciaCambiariaPage }    from '@/pages/DiferenciaCambiaria';
+// ─── Portadas desde GDM Almacén (fusión ERP, fase 0) ───────────────
+import { WarehousesPage }             from '@/pages/Warehouses';
+import { InventoryPage }              from '@/pages/Inventory';
+import { PurchaseOrdersPage }         from '@/pages/PurchaseOrders';
+import { PointOfSalePage }            from '@/pages/PointOfSale';
+import { TreasuryPage }               from '@/pages/Treasury';
+import { PhysicalCountPage }          from '@/pages/PhysicalCount';
 import { SuperXMLImportPage }         from '@/pages/SuperXMLImport';
 import { CompanyProfilePage }         from '@/pages/CompanyProfile';
 import { useAuthStore } from '@/store/auth';
@@ -172,6 +179,13 @@ export function App() {
             <Route path="xml-super-import"                element={<CompanyOnlyRoute><SuperXMLImportPage /></CompanyOnlyRoute>} />
             <Route path="tipos-de-cambio"                 element={<CompanyOnlyRoute><TiposDeCambioPage /></CompanyOnlyRoute>} />
             <Route path="diferencia-cambiaria"            element={<CompanyOnlyRoute><DiferenciaCambiariaPage /></CompanyOnlyRoute>} />
+            {/* Inventarios, compras y tesorería — fusión ERP */}
+            <Route path="warehouses"                      element={<CompanyOnlyRoute><WarehousesPage /></CompanyOnlyRoute>} />
+            <Route path="inventory"                       element={<CompanyOnlyRoute><InventoryPage /></CompanyOnlyRoute>} />
+            <Route path="purchase-orders"                 element={<CompanyOnlyRoute><PurchaseOrdersPage /></CompanyOnlyRoute>} />
+            <Route path="pos"                             element={<CompanyOnlyRoute><PointOfSalePage /></CompanyOnlyRoute>} />
+            <Route path="treasury"                        element={<CompanyOnlyRoute><TreasuryPage /></CompanyOnlyRoute>} />
+            <Route path="physical-counts"                 element={<CompanyOnlyRoute><PhysicalCountPage /></CompanyOnlyRoute>} />
             <Route path="company"                         element={<CompanyOnlyRoute><CompanyProfilePage /></CompanyOnlyRoute>} />
 
             {/* Módulos de plataforma — SOLO SUPER_ADMIN (guard por URL directa) */}
