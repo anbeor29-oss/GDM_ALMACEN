@@ -47,7 +47,7 @@ export function LoginPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <GdmLogo size={64} className="inline-block mb-3 drop-shadow-lg" />
-          <h1 className="text-3xl font-bold text-gray-900 mb-1">Sistema de Facturación</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">GDM Nexo</h1>
           <p className="text-gray-500 text-sm">GDM High Consulting México · Inicia sesión para continuar</p>
         </div>
 
