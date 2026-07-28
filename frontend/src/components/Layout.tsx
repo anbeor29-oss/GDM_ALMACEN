@@ -151,6 +151,7 @@ export function Layout() {
                     pathPrefix="/purchase-orders"
                     children={[
                       { to: '/purchase-orders', icon: emoji3D('📝'), label: 'Órdenes de compra' },
+                      { to: '/compras/xml',     icon: emoji3D('📥'), label: 'Recibir XML' },
                       { to: '/suppliers',       icon: emoji3D('🚚'), label: 'Proveedores' },
                     ]}
                   />
@@ -194,7 +195,8 @@ export function Layout() {
               <NavItem to="/admin/billing"   icon={<Emoji3D e="💰" />} accent="emerald" label="Facturación y consumo" open={sidebarOpen} />
               <NavItem to="/admin/prepaid"   icon={<Emoji3D e="🛒" />} accent="fuchsia" label="Compras prepago"       open={sidebarOpen} />
               <NavItem to="/import-xml"      icon={<Emoji3D e="📥" />} accent="amber"   label="Importar XML"          open={sidebarOpen} />
-              <NavItem to="/suppliers"       icon={<Emoji3D e="🚚" />} accent="rose"    label="Proveedores"           open={sidebarOpen} />
+              {/* Proveedores ya vive en el grupo Compras, que sí ve el ADMIN
+                  de la empresa. Aquí duplicaba la entrada. */}
             </>
           )}
         </nav>

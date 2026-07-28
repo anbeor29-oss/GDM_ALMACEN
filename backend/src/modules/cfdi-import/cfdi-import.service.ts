@@ -343,7 +343,13 @@ export async function commit(
     // 2) Products — solo los que el usuario marcó
     const productsCreated: CommitResult['products'] = [];
     // FASE 2: mapa concepto→producto para generar las entradas de inventario
-    const conceptProducts: Array<{ productId: string; cantidad: number; valorUnitario: number }> = [];
+    // `cantidad` es lo que ENTRA al kardex (lo contado); `cantidadFacturada`
+    // es lo que dice el XML. Se guardan las dos para poder avisar del faltante.
+    const conceptProducts: Array<{
+      productId: string; cantidad: number; cantidadFacturada: number; valorUnitario: number;
+    }> = [];
+    // Lo que el almacenista contó, por índice de concepto.
+    const recibidas = req.receivedQuantities || {};
     const presetId = req.productTaxPresetId || 'iva16';
     for (const idx of req.selection.concept_indexes) {
       const c = parsed.conceptos[idx];
@@ -356,7 +362,12 @@ export async function commit(
       );
       if (existing.rows.length > 0) {
         productsCreated.push({ ...existing.rows[0], already_existed: true });
-        conceptProducts.push({ productId: existing.rows[0].id, cantidad: c.cantidad, valorUnitario: c.valorUnitario });
+        conceptProducts.push({
+          productId: existing.rows[0].id,
+          cantidad: recibidas[idx] != null ? Number(recibidas[idx]) : c.cantidad,
+          cantidadFacturada: c.cantidad,
+          valorUnitario: c.valorUnitario,
+        });
         continue;
       }
       // Crear producto — delegamos al service para que respete validaciones SAT
@@ -374,7 +385,12 @@ export async function commit(
           id: created.id, sku: created.sku, name: created.name,
           already_existed: false,
         });
-        conceptProducts.push({ productId: created.id, cantidad: c.cantidad, valorUnitario: c.valorUnitario });
+        conceptProducts.push({
+          productId: created.id,
+          cantidad: recibidas[idx] != null ? Number(recibidas[idx]) : c.cantidad,
+          cantidadFacturada: c.cantidad,
+          valorUnitario: c.valorUnitario,
+        });
       } catch (e) {
         logger.warn(`Skip product concept[${idx}] — ${(e as Error).message}`);
       }
@@ -431,6 +447,17 @@ export async function commit(
         const docRef = [parsed.serie, parsed.folio].filter(Boolean).join('-') || parsed.cfdiUUID || 'XML';
         let totalUnits = 0;
         for (const cp of conceptProducts) {
+          // Un renglón facturado pero NO recibido no genera movimiento: meter
+          // un PURCHASE_IN de cero ensucia el kardex sin aportar nada.
+          if (cp.cantidad <= 0) continue;
+
+          const faltante = cp.cantidadFacturada - cp.cantidad;
+          const nota = faltante > 0
+            ? ` · recibido ${cp.cantidad} de ${cp.cantidadFacturada} facturados`
+            : faltante < 0
+              ? ` · recibido ${cp.cantidad}, facturados ${cp.cantidadFacturada}`
+              : '';
+
           await applyMovementTx(client, {
             companyId,
             productId: cp.productId,
@@ -440,7 +467,9 @@ export async function commit(
             warehouseToId: warehouseId,
             referenceType: 'xml_import',
             referenceId: importId,
-            reason: `Compra XML ${docRef} · ${partyResult.business_name}`,
+            // La diferencia queda escrita en el kardex: dentro de un mes nadie
+            // va a recordar por qué entraron 8 si la factura decía 10.
+            reason: `Compra XML ${docRef} · ${partyResult.business_name}${nota}`,
             userId,
             userEmail,
             costingMethod: req.costingMethod,

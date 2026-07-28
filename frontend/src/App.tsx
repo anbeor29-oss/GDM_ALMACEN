@@ -37,6 +37,7 @@ import { TiposDeCambioPage }          from '@/pages/TiposDeCambio';
 import { DiferenciaCambiariaPage }    from '@/pages/DiferenciaCambiaria';
 // ─── Portadas desde GDM Almacén (fusión ERP, fase 0) ───────────────
 import { WarehousesPage }             from '@/pages/Warehouses';
+import { ComprasXMLPage }             from '@/pages/ComprasXML';
 import { InventoryPage }              from '@/pages/Inventory';
 import { PurchaseOrdersPage }         from '@/pages/PurchaseOrders';
 import { PointOfSalePage }            from '@/pages/PointOfSale';
@@ -183,6 +184,11 @@ export function App() {
             <Route path="warehouses"                      element={<CompanyOnlyRoute><WarehousesPage /></CompanyOnlyRoute>} />
             <Route path="inventory"                       element={<CompanyOnlyRoute><InventoryPage /></CompanyOnlyRoute>} />
             <Route path="purchase-orders"                 element={<CompanyOnlyRoute><PurchaseOrdersPage /></CompanyOnlyRoute>} />
+            {/* Proveedores es catálogo DE LA EMPRESA, no de plataforma: las
+                órdenes de compra y tesorería lo referencian. Estaba bajo
+                SuperAdminRoute y por eso rebotaba al dashboard. */}
+            <Route path="suppliers"                       element={<CompanyOnlyRoute><SuppliersPage /></CompanyOnlyRoute>} />
+            <Route path="compras/xml"                     element={<CompanyOnlyRoute><ComprasXMLPage /></CompanyOnlyRoute>} />
             <Route path="pos"                             element={<CompanyOnlyRoute><PointOfSalePage /></CompanyOnlyRoute>} />
             <Route path="treasury"                        element={<CompanyOnlyRoute><TreasuryPage /></CompanyOnlyRoute>} />
             <Route path="physical-counts"                 element={<CompanyOnlyRoute><PhysicalCountPage /></CompanyOnlyRoute>} />
@@ -195,7 +201,6 @@ export function App() {
             <Route path="admin/users"     element={<SuperAdminRoute><AdminUsersPage /></SuperAdminRoute>} />
             <Route path="admin/companies" element={<SuperAdminRoute><AdminCompaniesPage /></SuperAdminRoute>} />
             <Route path="import-xml"      element={<SuperAdminRoute><ImportXMLWizardPage /></SuperAdminRoute>} />
-            <Route path="suppliers"       element={<SuperAdminRoute><SuppliersPage /></SuperAdminRoute>} />
 
           </Route>
 

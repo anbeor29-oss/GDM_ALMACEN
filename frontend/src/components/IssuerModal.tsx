@@ -658,13 +658,19 @@ function SMTPConfig({ companyId }: { companyId: string }) {
         buzón central de la plataforma. Se guarda cifrada tu contraseña — nadie más puede leerla.
       </p>
 
-      {/* Presets rápidos de los SMTP más comunes en México */}
+      {/* Presets rápidos de los SMTP más comunes en México.
+          Hotmail, Outlook.com y Live comparten el mismo servidor de Microsoft
+          (smtp-mail.outlook.com), distinto del de Office 365 empresarial. */}
       <div className="flex flex-wrap gap-2 text-xs">
         <span className="text-slate-500 self-center">Preset:</span>
         <button type="button" onClick={() => preset('smtp.hostinger.com', 465, true)} className="px-2 py-1 border rounded hover:bg-slate-50">Hostinger (465 SSL)</button>
         <button type="button" onClick={() => preset('smtp.gmail.com', 587, false)} className="px-2 py-1 border rounded hover:bg-slate-50">Gmail (587 TLS)</button>
+        <button type="button" onClick={() => preset('smtp-mail.outlook.com', 587, false)} className="px-2 py-1 border rounded hover:bg-slate-50">Hotmail / Outlook / Live</button>
         <button type="button" onClick={() => preset('smtp.office365.com', 587, false)} className="px-2 py-1 border rounded hover:bg-slate-50">Office365</button>
         <button type="button" onClick={() => preset('smtp.zoho.com', 587, false)} className="px-2 py-1 border rounded hover:bg-slate-50">Zoho</button>
+        <button type="button" onClick={() => preset('127.0.0.1', 1025, false)} className="px-2 py-1 border rounded hover:bg-slate-50">Proton (Bridge)</button>
+        <button type="button" onClick={() => preset('smtp.mail.yahoo.com', 465, true)} className="px-2 py-1 border rounded hover:bg-slate-50">Yahoo</button>
+        <button type="button" onClick={() => preset('mail.tudominio.com', 465, true)} className="px-2 py-1 border rounded hover:bg-slate-50">cPanel genérico</button>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -699,9 +705,11 @@ function SMTPConfig({ companyId }: { companyId: string }) {
         </label>
       </div>
 
-      <p className="text-[11px] text-slate-500 italic">
-        💡 <b>Gmail requiere App Password</b> (no la contraseña normal): activa 2FA y genera una en myaccount.google.com/apppasswords.
-      </p>
+      <div className="text-[11px] text-slate-500 space-y-1">
+        <p>💡 <b>Gmail</b> y <b>Yahoo</b> no aceptan tu contraseña normal: activa la verificación en dos pasos y genera una <b>contraseña de aplicación</b> (Gmail: myaccount.google.com/apppasswords).</p>
+        <p>💡 <b>Hotmail, Outlook.com y Live</b> comparten servidor (<code>smtp-mail.outlook.com</code>), que es distinto del de Office 365 empresarial. Si tu cuenta trae 2FA, también necesita contraseña de aplicación.</p>
+        <p className="text-amber-700">⚠️ <b>Proton no tiene SMTP público.</b> Solo sale correo a través de Proton Mail Bridge, que es una aplicación de paga que corre en tu equipo y escucha en 127.0.0.1. Eso significa que <b>no funciona desde un servidor en la nube</b>: sirve si el sistema corre en tu máquina, no en Render. Si tu correo es Proton, lo práctico es dejar el buzón central de la plataforma o usar otro proveedor para el envío.</p>
+      </div>
 
       <div className="flex gap-2 justify-end pt-2">
         <button type="button" onClick={testIt} disabled={testing || !form.mail_host || !form.mail_user} className="px-4 py-2 text-sm border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50">

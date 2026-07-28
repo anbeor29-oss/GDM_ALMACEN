@@ -98,6 +98,22 @@ export interface CommitRequest {
    *  PROMEDIO=prorratear · ULTIMO=revaluar todo · CAPAS=respetar precios.
    *  Si falta, aplica la configurada en la empresa. */
   costingMethod?: 'PROMEDIO' | 'ULTIMO' | 'CAPAS';
+  /**
+   * Cuánto se recibió DE VERDAD, por índice de concepto del XML.
+   *
+   * La factura del proveedor dice lo que despachó; el almacén cuenta lo que
+   * bajó del camión. Cuando no coinciden —faltante, producto dañado, entrega
+   * parcial— entra al kardex lo CONTADO, porque el inventario debe reflejar
+   * el anaquel y no el papel.
+   *
+   * La cuenta por pagar se registra por el total facturado de todas formas:
+   * al proveedor se le debe lo que facturó, y el faltante se aclara con él
+   * por nota de crédito o reposición. Mezclar ambas cosas escondería el
+   * problema.
+   *
+   * Si un índice no viene, se recibe la cantidad del XML.
+   */
+  receivedQuantities?: Record<number, number>;
 }
 
 export interface CommitResult {
