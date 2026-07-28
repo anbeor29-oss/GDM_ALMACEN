@@ -5,6 +5,33 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-07-27 (mañana) — Iconos vectoriales en el manual de usuario
+
+### Contexto
+El manual mostraba `[casa]`, `[recibo]`, `[camión]` — texto entre corchetes en
+lugar de iconos.
+
+### Causa
+PDFKit no puede incrustar **Segoe UI Emoji**: es una fuente COLR/CPAL, con los
+glifos a color, y fontkit falla al decodificarla
+(`TypeError: glyph._decode is not a function`). Se comprobó antes de buscar
+alternativa, no se supuso.
+
+### Solución
+Dibujarlos con primitivas de PDFKit. Nuevo `scripts/manual-icons.js` con 22
+iconos line-art de trazo 1.5, equivalentes a los que el usuario ve en pantalla
+y con el mismo color de acento, para que los reconozca por forma y color.
+`table()` acepta ahora celdas `{ icon, color }` además de texto.
+
+Se aplicó a las cuatro tablas de referencia: 9 módulos del menú, 11 botones de
+acción de facturas, 5 catálogos de Carta Porte y 5 botones de plantilla.
+
+### Consecuencia
+El PDF creció 3 KB (155 → 158 KB) porque son trazos vectoriales, no imágenes,
+y escalan sin pixelarse. Commit `8ca5352`.
+
+---
+
 ## 2026-07-27 (noche) — Puntos de entrada/salida por modalidad y servicio de tipos de cambio
 
 ### 1. El punto por donde cruza la mercancía depende del medio

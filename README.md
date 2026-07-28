@@ -4,13 +4,14 @@ Sistema de **facturación electrónica CFDI 4.0** para México **con Complemento
 Backend Node/Express + TypeScript, frontend React + Vite, PostgreSQL 16. Integrado con
 **SW Sapien** como PAC para timbrado real.
 
-**Estado**:
-- 🟢 **V1 (`origin/main`)** — FACTURANDO EN PRODUCCIÓN REAL con **GRUPO HCGM** (desde 2026-07-17) en `hcgm.com.mx/erp` · SW Sapien production.
-- 🟡 **V2 (`v2-carta-porte`)** — En pruebas locales (dev en Windows), incorpora Complemento Carta Porte 3.1 + Super Lector XML + Mercancías. Pendiente de deploy a Render como nuevo par de servicios (V1 sigue intacta durante la validación).
+**Estado** (al 2026-07-27):
+- 🟢 **Producción** — FACTURANDO REAL con **GRUPO HCGM** desde 2026-07-17 · SW Sapien production.
+- 🟢 **V2 desplegada en sitio** — se decidió actualizar los servicios existentes de Render en lugar de levantar un par nuevo. Todo vive en `origin/main`; la rama `v2-carta-porte` quedó absorbida.
+- 🟡 **`hcgm.com.mx/erp`** — el hosting de México se actualiza subiendo el .zip del build; verificar que sirva la versión vigente después de cada release.
 
 ---
 
-## 🆕 Novedades de V2 (rama `v2-carta-porte`, 2026-07-22)
+## 🆕 Novedades de V2
 
 Todo lo de V1 sigue igual (facturación, NC, clientes, productos, reportes, contrato, importador CFDI, admin). Se **agregan** los siguientes módulos y arreglos:
 
@@ -100,6 +101,32 @@ Configuración: `BANXICO_TOKEN` en el entorno activa el cron de lunes a viernes
 a las 12:05 hora de México. Las series SIE viven en `exchange_rate_sources`,
 editables sin deploy.
 
+> **Pendiente de verificar**: la serie de USD es `SF43718` (FIX, alta
+> confianza). Las de EUR y GBP quedaron tentativas — conviene confirmarlas
+> contra el catálogo SIE de Banxico antes de confiar en el automático. Se
+> corrigen con un UPDATE a `exchange_rate_sources`, sin tocar código.
+
+### Tablas nuevas en la base
+
+| Tabla | Para qué |
+|---|---|
+| `cp_regimenes_aduaneros` | régimen aduanero como colección, no un solo valor |
+| `cp_mercancia_doc_aduanera` | pedimento o permiso, colgado de la mercancía |
+| `cp_ferroviario` + `_derechos_paso` + `_carros` + `_contenedores` | modalidad 04 |
+| `cp_maritimo` + `_contenedores` | modalidad 02 |
+| `cp_aereo` | modalidad 03 |
+| `cp_cruce_fronterizo` | 8 cruces México–EUA (catálogo propio, ayuda de captura) |
+| `sat_cp_pais` | 66 países en ISO 3166-1 alfa-3 |
+| `sat_cp_estado` | 97 estados con PK (clave, país): MEX + USA + CAN |
+| `exchange_rates` | histórico diario de tipos de cambio |
+| `exchange_rate_sources` | series de Banxico, editables sin deploy |
+| `exchange_rate_log` | bitácora de cada intento de actualización |
+| `v_diferencia_cambiaria` | vista: facturado vs cobrado, con su efecto |
+
+Columnas agregadas: `carta_porte.medio_transporte`, `invoices.total_mxn` /
+`subtotal_mxn` / `exchange_rate_date`, `payments.exchange_rate` /
+`exchange_rate_date` / `payment_amount_mxn`.
+
 ### Super Lector XML (`/xml-super-import`)
 Reemplaza el importador CFDI clásico. Un solo lector que detecta y procesa:
 - CFDI 4.0 puro
@@ -110,14 +137,49 @@ Reemplaza el importador CFDI clásico. Un solo lector que detecta y procesa:
 
 **Modo lote**: acepta hasta 5 XMLs. Analiza todos, dedup entre archivos y contra la BD, muestra preview consolidado por tipo de entidad (👥 parties · 📄 productos · 📦 mercancías · 📍 lugares · 🚚 vehículos · 🛡️ aseguradoras · 👤 operadores) con checkbox por ítem, marca en verde los que ya existen y pre-desmarca. Un solo click "Importar lo seleccionado" ejecuta la creación de todos los ítems marcados.
 
-### Catálogos SAT cargados (bug del seed original corregido)
-`sat_cp_colonia` (144,718), `sat_cp_municipio` (2,453), `sat_cp_localidad` (661), `sat_cp_config_autotransporte` (33), más los ya existentes de CFDI 4.0. **Fix crítico**: el seed original de gdmalmacen intercambiaba las columnas `codigo_postal ↔ descripcion` en `sat_cp_colonia` y `estado ↔ descripcion` en `sat_cp_municipio`/`sat_cp_localidad`. Se aplicó SWAP en las 3 tablas (ver `scratchpad/fix_colonia.sql` y `fix_muni_loc.sql`).
+### Catálogos SAT cargados (dos bugs del seed corregidos)
+
+`sat_cp_colonia` (144,718), `sat_cp_municipio` (2,453), `sat_cp_localidad` (661),
+`sat_cp_estaciones` (5,279: 123 puertos + 2,346 aeropuertos + 2,811 estaciones
+ferroviarias), `sat_cp_config_autotransporte` (33), más los de CFDI 4.0.
+
+**Bug 1 — columnas invertidas.** El seed original de gdmalmacen intercambiaba
+`codigo_postal ↔ descripcion` en `sat_cp_colonia` y `estado ↔ descripcion` en
+`sat_cp_municipio`/`sat_cp_localidad`. Corregido con `fix-cp-swap.js`,
+idempotente y cableado a `start:prod`.
+
+**Bug 2 — una clave perdida por catálogo (34 en total).** `apply-cp-seed.js`
+partía el seed por `;\n` y descartaba toda sentencia que empezara con `--`.
+Como el comentario que encabeza cada catálogo queda pegado al primer INSERT de
+su bloque, ese INSERT se iba con el comentario. Las bajas eran justo las claves
+de uso diario: `01 Pedimento`, `01 Operador`, `01 Autotransporte`,
+`01 Origen Nacional`, `01 Materia prima`, `TPAF01`, `CTR001`… Sin `01 Pedimento`
+la documentación aduanera era imposible de capturar. Parser corregido más
+`fix-cp-catalogos-faltantes.js` en `start:prod`, porque `apply-cp-seed` se salta
+el trabajo cuando `catalog_versions` ya tiene fila y las bases sembradas no se
+repararían solas.
 
 ### Endpoints nuevos
-- `GET /carta-porte/cp/:codigoPostal` — devuelve colonias + estado inferido + municipios + localidades del catálogo SAT.
-- `POST /xml-super-import/detect` · `/apply` · `/apply-selected` · `/check-existing`.
+
+**Carta Porte**
+- `GET /carta-porte/cp/:codigoPostal` — colonias + estado inferido + municipios + localidades.
+- `GET /carta-porte/catalogs/:name` — 35 catálogos SAT con búsqueda sin acentos. `?pais=` filtra estados.
+- `GET /carta-porte/puntos-entrada-salida?medio=` — cruces (01/04), puertos (02) o aeropuertos (03).
+- `GET /carta-porte/estaciones?medio=` — estaciones para `NumEstacion` de una ubicación (02/03/04).
+- `GET /carta-porte/cruces-fronterizos` — los 8 cruces México–EUA.
+- `GET|PUT|DELETE /invoices/:id/carta-porte` · `/validate` · `/xml`.
 - `GET /carta-porte/mercancias` · `/bitacora` · `DELETE`.
-- Todas las rutas de `carta-porte/*` (lugares, vehículos, aseguradoras, operadores, importar-xml, catalogos-empresa).
+- Rutas de `carta-porte/*` (lugares, vehículos, aseguradoras, operadores, importar-xml, catalogos-empresa).
+
+**Tipos de cambio**
+- `GET /exchange-rates` — cuadro de las 4 monedas.
+- `GET /exchange-rates/:moneda[?fecha=]` · `/:moneda/history` · `/log`.
+- `POST /exchange-rates/update` — fuerza consulta a Banxico (solo ADMIN).
+- `POST /exchange-rates/manual` — captura manual (solo ADMIN).
+- `GET /fx-difference?desde=&hasta=&moneda=` · `/por-factura/:invoiceId`.
+
+**Super Lector**
+- `POST /xml-super-import/detect` · `/apply` · `/apply-selected` · `/check-existing`.
 
 ### PDF mejorado
 - **Página 2 Carta Porte** con layout SAT: QR, IdCCP, Folio fiscal, RFC PAC, fecha timbrado, lugar expedición, barras oscuras con secciones (Autotransporte, Aseguradora, Vehículo, Figuras, Ubicaciones, Mercancías).
@@ -126,7 +188,7 @@ Reemplaza el importador CFDI clásico. Un solo lector que detecta y procesa:
 - **Sellos íntegros** en el TIMBRE FISCAL — antes se truncaban a 60 caracteres. Ahora wrap multilínea según Anexo 20 §III.A. Cadena original de certificación con formato correcto `||1.1|UUID|Fecha|PAC||SelloCFD|NoCertSAT||`.
 
 ### Sidebar reorganizado (más limpio, iconos 3D emoji)
-Orden: 🏠 Dashboard · 🧾 Facturas · 🚚 Carta Porte (colapsable con Lugares/Vehículos/Aseguradoras/Operadores/Mercancías) · 📉 Notas de Crédito · 📦 Productos · 👥 Clientes · 📥 Lector de XML · 📊 Reportes · 📜 Contrato.
+Orden: 🏠 Dashboard · 🧾 Facturas · 🚚 Carta Porte (colapsable con Lugares/Vehículos/Aseguradoras/Operadores/Mercancías) · 📉 Notas de Crédito · 📦 Productos · 👥 Clientes · 📥 Lector de XML · 📊 Reportes · 💱 Monedas (colapsable con Tipos de cambio / Diferencia cambiaria) · 📜 Contrato.
 - Iconos con `drop-shadow` CSS para look 3D.
 - "Datos de la empresa" NO va en sidebar — vive en el top bar (botón *DATOS DE MI EMPRESA*) para no duplicar.
 - Módulo "Usuarios" oculto en V2 (V2 se enfoca en facturación + CP, no gestiona equipos de empresa).
@@ -162,9 +224,9 @@ Requisitos:
 Pasos:
 
 ```bash
-# 1) Clonar (o si ya está clonado, cambiar a la rama V2)
+# 1) Clonar. Todo vive en main; la rama v2-carta-porte quedó absorbida.
 cd /e/Obsidian/GDM_FAC_2
-git checkout v2-carta-porte
+git checkout main
 
 # 2) Crear BD vacía
 export PGPASSWORD='tu_password'
@@ -177,6 +239,7 @@ psql -h localhost -U postgres -d gdmfac_v2 -c "CREATE EXTENSION IF NOT EXISTS pg
 #    BOOTSTRAP_ADMIN_EMAIL=admin@tudominio.local
 #    BOOTSTRAP_ADMIN_PASSWORD=xxxx
 #    VITE_API_BASE=http://localhost:3001
+#    BANXICO_TOKEN=            (opcional — sin él, tipos de cambio a mano)
 
 # 4) Aplicar migraciones y catálogos SAT
 cd backend
@@ -187,21 +250,12 @@ DATABASE_URL='postgresql://postgres:tu_password@localhost:5432/gdmfac_v2' \
 # ⚠ El apply-cp-seed carga 200K sentencias — tarda ~30 seg. Si falla por
 # "valor demasiado largo", correr primero el widen (ver widen-sat-cp.js).
 
-# 5) FIX crítico del seed CP (columnas invertidas)
-psql -h localhost -U postgres -d gdmfac_v2 \
-  -c "BEGIN; ALTER TABLE sat_cp_colonia ADD COLUMN _tmp TEXT;
-      UPDATE sat_cp_colonia SET _tmp = codigo_postal;
-      UPDATE sat_cp_colonia SET codigo_postal = descripcion, descripcion = _tmp;
-      ALTER TABLE sat_cp_colonia DROP COLUMN _tmp;
-      ALTER TABLE sat_cp_municipio ADD COLUMN _tmp TEXT;
-      UPDATE sat_cp_municipio SET _tmp = estado;
-      UPDATE sat_cp_municipio SET estado = descripcion, descripcion = _tmp;
-      ALTER TABLE sat_cp_municipio DROP COLUMN _tmp;
-      ALTER TABLE sat_cp_localidad ADD COLUMN _tmp TEXT;
-      UPDATE sat_cp_localidad SET _tmp = estado;
-      UPDATE sat_cp_localidad SET estado = descripcion, descripcion = _tmp;
-      ALTER TABLE sat_cp_localidad DROP COLUMN _tmp;
-      COMMIT;"
+# 5) Los dos fixes del seed CP. Ambos son idempotentes y ya viven en
+#    start:prod, así que en Render corren solos; en local hay que invocarlos.
+DATABASE_URL='postgresql://postgres:tu_password@localhost:5432/gdmfac_v2' \
+  node scripts/fix-cp-swap.js              # columnas codigo_postal ↔ descripcion
+DATABASE_URL='postgresql://postgres:tu_password@localhost:5432/gdmfac_v2' \
+  node scripts/fix-cp-catalogos-faltantes.js   # las 34 claves que el parser tiraba
 
 # 6) Bootstrap admin/empresa demo
 DATABASE_URL='postgresql://postgres:tu_password@localhost:5432/gdmfac_v2' \
@@ -215,12 +269,34 @@ cd frontend && npm run dev    # localhost:5173
 
 Login: `admin@gdmfac2.local` / `admin1234` (o los que hayas puesto en el bootstrap).
 
-## Antes de desplegar V2 a Render
+## Deploy a Render
 
-1. Correr el mismo SWAP fix en la BD Postgres de producción V2.
-2. Verificar que `PAC_PROVIDER=SW_SAPIEN` + token real esté en env vars.
-3. Correr el `apply-cp-seed.js` en el startCommand (ya está en `package.json` como `npm run cp:seed`).
-4. Firmar el manifiesto SW Sapien desde el modal DATOS DE MI EMPRESA con la e.firma FIEL de HCGM (o del contribuyente).
+`start:prod` encadena todo lo que la base necesita antes de levantar el server,
+así que un deploy normal no requiere pasos manuales:
+
+```
+migrate-up → apply-cp-seed → fix-cp-swap → fix-cp-catalogos-faltantes
+           → bootstrap-env → node dist/index.js
+```
+
+Todos los scripts son idempotentes: correrlos de más no hace daño.
+
+**Variables de entorno a revisar antes de un release:**
+
+| Variable | Para qué | Si falta |
+|---|---|---|
+| `PAC_PROVIDER` + token | Timbrado real con SW Sapien | cae a MOCK |
+| `BANXICO_TOKEN` | Actualización diaria de tipos de cambio | el cron no se registra; se capturan a mano |
+| `ENABLE_BILLING_CRON` | Cierre mensual de facturación | el cron no corre |
+| `ENCRYPTION_KEY` | CSD y contraseñas SMTP | no se pueden desencriptar |
+
+**Una sola vez por contribuyente:** firmar el manifiesto SW Sapien desde el
+modal *DATOS DE MI EMPRESA* con la e.firma FIEL.
+
+**Después de cada release:** subir el .zip del build a `hcgm.com.mx/erp` y
+comprobar que el navegador sirva el bundle nuevo — el `.htaccess` de SPA
+devuelve 200 con HTML para cualquier archivo faltante, así que un asset que no
+subió NO da 404 y el error pasa inadvertido.
 
 ---
 
