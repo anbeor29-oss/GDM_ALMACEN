@@ -10,9 +10,15 @@
  *   3. Mercancías — bienes transportados con búsqueda de catálogo
  *   4. Medio de transporte — sección condicional según el medio elegido
  *      · Autotransporte: config vehicular, placa, seguros, remolques
- *      · Marítimo/Aéreo/Ferroviario: se dejan como placeholder informativo
- *        hasta que HCGM confirme el primer caso real
+ *      · Marítimo: embarcación, agente naviero, viaje, contenedores
+ *      · Aéreo: aeronave, guía aérea, transportista, embarcador
+ *      · Ferroviario: servicio, tráfico, derechos de paso, carros y contenedores
+ *      El medio es exclusivo: solo viaja al SAT el bloque elegido.
  *   5. Figuras de transporte — mínimo 1 operador
+ *
+ * Cuando el traslado es internacional aparece además el bloque de comercio
+ * exterior (entrada/salida, país, regímenes aduaneros, cruce fronterizo) y
+ * cada mercancía puede llevar su documentación aduanera.
  *
  * Nota: este form es el primer entregable del CP. Las 110 reglas del SAT
  * (Matriz de Errores) se validan en el Bloque 7 antes del timbrado.
@@ -27,6 +33,14 @@ import { CatalogPicker, type CatalogItem } from '@/components/CatalogPicker';
 import { LugarPicker } from '@/components/LugarPicker';
 
 type Medio = 'auto' | 'maritimo' | 'aereo' | 'ferroviario';
+
+/** c_CveTransporte — lo que entiende el SAT. La UI usa nombres legibles. */
+const CLAVE_MEDIO: Record<Medio, string> = {
+  auto: '01', maritimo: '02', aereo: '03', ferroviario: '04',
+};
+const MEDIO_DESDE_CLAVE: Record<string, Medio> = {
+  '01': 'auto', '02': 'maritimo', '03': 'aereo', '04': 'ferroviario',
+};
 
 interface UbicacionRow {
   tipoUbicacion: 'Origen' | 'Destino';
@@ -48,6 +62,13 @@ interface UbicacionRow {
   guardarEnCatalogo?: boolean;   // ← el usuario marca para guardar como plantilla
   aliasCatalogo?: string;         // ← alias opcional; si vacío se autogenera
 }
+/** Un pedimento o permiso que ampara una mercancía concreta. */
+interface DocAduaneraRow {
+  tipoDocumento: string;
+  numPedimento: string;
+  identDocAduanero: string;
+  rfcImpo: string;
+}
 interface MercanciaRow {
   bienesTransp: string;
   descripcion: string;
@@ -59,6 +80,9 @@ interface MercanciaRow {
   embalaje: string;
   valorMercancia: string;
   moneda: string;
+  fraccionArancelaria?: string;
+  tipoMateria?: string;
+  docsAduaneros?: DocAduaneraRow[];
 }
 interface RemolqueRow { subTipoRem: string; placa: string; }
 interface FiguraRow {
@@ -66,7 +90,40 @@ interface FiguraRow {
   rfcFigura: string;
   numLicencia: string;
   nombreFigura: string;
+  pais?: string;
+  residenciaFiscalFig?: string;
+  numRegIdTrib?: string;
 }
+
+/* ─── Modalidades no carreteras ────────────────────────────────────── */
+
+interface ContenedorFerroRow { tipoContenedor: string; pesoContenedorVacio: string; pesoNetoMercancia: string; }
+interface CarroRow {
+  tipoCarro: string; matriculaCarro: string; guiaCarro: string;
+  toneladasNetasCarro: string; contenedores: ContenedorFerroRow[];
+}
+interface DerechoPasoRow { tipoDerechoDePaso: string; kilometrajePagado: string; }
+interface ContenedorMarRow {
+  matriculaContenedor: string; tipoContenedor: string; numPrecinto: string;
+  idCcpRelacionado: string; placaVmCcp: string; fechaCertificacionCcp: string;
+}
+
+const FERRO_VACIO = {
+  tipoDeServicio: '', tipoDeTrafico: '', nombreAseg: '', numPolizaSeguro: '',
+};
+const MARITIMO_VACIO = {
+  permSct: '', numPermisoSct: '', nombreAseg: '', numPolizaSeguro: '',
+  tipoEmbarcacion: '', matricula: '', numeroOmi: '', anioEmbarcacion: '',
+  nombreEmbarc: '', nacionalidadEmbarc: '', unidadesArqBruto: '', tipoCarga: '',
+  numCertItc: '', eslora: '', manga: '', calado: '', lineaNaviera: '',
+  nombreAgenteNaviero: '', numAutorizacionNaviero: '', numViaje: '',
+  numConocimientoEmbarque: '', permisoTempNavegacion: '',
+};
+const AEREO_VACIO = {
+  permSct: '', numPermisoSct: '', matriculaAeronave: '', nombreAseg: '',
+  numPolizaSeguro: '', numeroGuia: '', lugarContrato: '', codigoTransportista: '',
+  rfcEmbarcador: '', numRegIdTribEmbarc: '', residenciaFiscalEmbarc: '', nombreEmbarcador: '',
+};
 
 /**
  * Auto-generación de IDUbicacion del SAT: `OR` + 6 dígitos para Origen,
@@ -146,6 +203,9 @@ export function CartaPorteFormPage() {
   const [medio, setMedio] = useState<Medio>('auto');
   const [entradaSalidaMerc, setEntradaSalidaMerc] = useState<'Entrada' | 'Salida' | ''>('');
   const [paisOrigenDestino, setPaisOrigenDestino] = useState('');
+  const [regimenes, setRegimenes] = useState<string[]>([]);
+  const [cruceFronterizo, setCruceFronterizo] = useState('');
+  const [cruces, setCruces] = useState<any[]>([]);
 
   // ─── Ubicaciones / mercancías / figuras ────────────────────────────
   const [ubicaciones, setUbicaciones] = useState<UbicacionRow[]>(() => {
@@ -169,6 +229,14 @@ export function CartaPorteFormPage() {
   });
   const [remolques, setRemolques] = useState<RemolqueRow[]>([]);
 
+  // ─── Modalidades no carreteras ─────────────────────────────────────
+  const [ferro, setFerro] = useState({ ...FERRO_VACIO });
+  const [derechosPaso, setDerechosPaso] = useState<DerechoPasoRow[]>([]);
+  const [carros, setCarros] = useState<CarroRow[]>([]);
+  const [maritimo, setMaritimo] = useState({ ...MARITIMO_VACIO });
+  const [contMaritimos, setContMaritimos] = useState<ContenedorMarRow[]>([]);
+  const [aereo, setAereo] = useState({ ...AEREO_VACIO });
+
   // ─── Picker state (uno global, se abre según el trigger actual) ────
   const [picker, setPicker] = useState<{ name: string; title: string; onSelect: (i: CatalogItem) => void; showExtras?: string[] } | null>(null);
 
@@ -189,6 +257,9 @@ export function CartaPorteFormPage() {
     setTotalDistRec(String(existing.total_dist_rec || ''));
     setEntradaSalidaMerc(existing.entrada_salida_merc || '');
     setPaisOrigenDestino(existing.pais_origen_destino || '');
+    setMedio(MEDIO_DESDE_CLAVE[existing.medio_transporte] || 'auto');
+    setRegimenes(existing.regimenes_aduaneros || (existing.regimen_aduanero ? [existing.regimen_aduanero] : []));
+    setCruceFronterizo(existing.cruce_fronterizo || '');
     if (existing.ubicaciones?.length) {
       setUbicaciones(existing.ubicaciones.map((u: any) => ({
         tipoUbicacion: u.tipo_ubicacion, idUbicacion: u.id_ubicacion,
@@ -215,6 +286,14 @@ export function CartaPorteFormPage() {
         cveMaterialPeligroso: m.cve_material_peligroso || '', embalaje: m.embalaje || '',
         valorMercancia: m.valor_mercancia != null ? String(m.valor_mercancia) : '',
         moneda: m.moneda || 'MXN',
+        fraccionArancelaria: m.fraccion_arancelaria || '',
+        tipoMateria: m.tipo_materia || '',
+        docsAduaneros: (m.docs_aduaneros || []).map((d: any) => ({
+          tipoDocumento: d.tipo_documento,
+          numPedimento: d.num_pedimento || '',
+          identDocAduanero: d.ident_doc_aduanero || '',
+          rfcImpo: d.rfc_impo || '',
+        })),
       })));
     }
     if (existing.autotransporte) {
@@ -227,13 +306,78 @@ export function CartaPorteFormPage() {
       });
       setRemolques((a.remolques || []).map((r: any) => ({ subTipoRem: r.sub_tipo_rem, placa: r.placa })));
     }
+    if (existing.ferroviario) {
+      const f = existing.ferroviario;
+      setFerro({
+        tipoDeServicio: f.tipo_de_servicio || '', tipoDeTrafico: f.tipo_de_trafico || '',
+        nombreAseg: f.nombre_aseg || '', numPolizaSeguro: f.num_poliza_seguro || '',
+      });
+      setDerechosPaso((f.derechos_de_paso || []).map((d: any) => ({
+        tipoDerechoDePaso: d.tipo_derecho_de_paso,
+        kilometrajePagado: String(d.kilometraje_pagado ?? ''),
+      })));
+      setCarros((f.carros || []).map((c: any) => ({
+        tipoCarro: c.tipo_carro, matriculaCarro: c.matricula_carro,
+        guiaCarro: c.guia_carro, toneladasNetasCarro: String(c.toneladas_netas_carro ?? ''),
+        contenedores: (c.contenedores || []).map((k: any) => ({
+          tipoContenedor: k.tipo_contenedor,
+          pesoContenedorVacio: String(k.peso_contenedor_vacio ?? ''),
+          pesoNetoMercancia: String(k.peso_neto_mercancia ?? ''),
+        })),
+      })));
+    }
+    if (existing.maritimo) {
+      const m = existing.maritimo;
+      setMaritimo({
+        permSct: m.perm_sct || '', numPermisoSct: m.num_permiso_sct || '',
+        nombreAseg: m.nombre_aseg || '', numPolizaSeguro: m.num_poliza_seguro || '',
+        tipoEmbarcacion: m.tipo_embarcacion || '', matricula: m.matricula || '',
+        numeroOmi: m.numero_omi || '', anioEmbarcacion: String(m.anio_embarcacion ?? ''),
+        nombreEmbarc: m.nombre_embarc || '', nacionalidadEmbarc: m.nacionalidad_embarc || '',
+        unidadesArqBruto: String(m.unidades_arq_bruto ?? ''), tipoCarga: m.tipo_carga || '',
+        numCertItc: m.num_cert_itc || '', eslora: String(m.eslora ?? ''),
+        manga: String(m.manga ?? ''), calado: String(m.calado ?? ''),
+        lineaNaviera: m.linea_naviera || '', nombreAgenteNaviero: m.nombre_agente_naviero || '',
+        numAutorizacionNaviero: m.num_autorizacion_naviero || '', numViaje: m.num_viaje || '',
+        numConocimientoEmbarque: m.num_conocimiento_embarque || '',
+        permisoTempNavegacion: m.permiso_temp_navegacion || '',
+      });
+      setContMaritimos((m.contenedores || []).map((k: any) => ({
+        matriculaContenedor: k.matricula_contenedor, tipoContenedor: k.tipo_contenedor,
+        numPrecinto: k.num_precinto || '', idCcpRelacionado: k.id_ccp_relacionado || '',
+        placaVmCcp: k.placa_vm_ccp || '',
+        fechaCertificacionCcp: k.fecha_certificacion_ccp?.slice(0, 10) || '',
+      })));
+    }
+    if (existing.aereo) {
+      const a = existing.aereo;
+      setAereo({
+        permSct: a.perm_sct || '', numPermisoSct: a.num_permiso_sct || '',
+        matriculaAeronave: a.matricula_aeronave || '', nombreAseg: a.nombre_aseg || '',
+        numPolizaSeguro: a.num_poliza_seguro || '', numeroGuia: a.numero_guia || '',
+        lugarContrato: a.lugar_contrato || '', codigoTransportista: a.codigo_transportista || '',
+        rfcEmbarcador: a.rfc_embarcador || '', numRegIdTribEmbarc: a.num_reg_id_trib_embarc || '',
+        residenciaFiscalEmbarc: a.residencia_fiscal_embarc || '',
+        nombreEmbarcador: a.nombre_embarcador || '',
+      });
+    }
     if (existing.figuras?.length) {
       setFiguras(existing.figuras.map((f: any) => ({
         tipoFigura: f.tipo_figura, rfcFigura: f.rfc_figura,
         numLicencia: f.num_licencia || '', nombreFigura: f.nombre_figura || '',
+        pais: f.pais || '', residenciaFiscalFig: f.residencia_fiscal_fig || '',
+        numRegIdTrib: f.num_reg_id_trib || '',
       })));
     }
   }, [existing]);
+
+  // Los cruces fronterizos solo hacen falta en operación internacional.
+  useEffect(() => {
+    if (transpInternac !== 'Si' || cruces.length) return;
+    api.getCPCrucesFronterizos()
+      .then((r: any) => setCruces(r.items || []))
+      .catch(() => { /* la captura manual sigue disponible */ });
+  }, [transpInternac, cruces.length]);
 
   // ─── Guardar ───────────────────────────────────────────────────────
   const save = useMutation({
@@ -270,19 +414,41 @@ export function CartaPorteFormPage() {
           embalaje: m.embalaje || undefined,
           valorMercancia: m.valorMercancia ? Number(m.valorMercancia) : undefined,
           moneda: m.moneda || undefined,
+          fraccionArancelaria: m.fraccionArancelaria || undefined,
+          tipoMateria: m.tipoMateria || undefined,
+          docsAduaneros: (m.docsAduaneros || [])
+            .filter(d => d.tipoDocumento)
+            .map(d => ({
+              tipoDocumento: d.tipoDocumento,
+              // El SAT quiere pedimento o identificador, nunca los dos.
+              numPedimento: d.tipoDocumento === '01' ? d.numPedimento || undefined : undefined,
+              identDocAduanero: d.tipoDocumento !== '01' ? d.identDocAduanero || undefined : undefined,
+              rfcImpo: d.rfcImpo ? d.rfcImpo.toUpperCase() : undefined,
+            })),
         })),
         figuras: figuras.map(f => ({
           tipoFigura: f.tipoFigura,
           rfcFigura: f.rfcFigura.toUpperCase(),
           numLicencia: f.numLicencia || undefined,
           nombreFigura: f.nombreFigura || undefined,
+          pais: f.pais || undefined,
+          residenciaFiscalFig: f.residenciaFiscalFig || undefined,
+          numRegIdTrib: f.numRegIdTrib || undefined,
         })),
       };
+      payload.medioTransporte = CLAVE_MEDIO[medio];
+
       if (transpInternac === 'Si') {
         payload.entradaSalidaMerc = entradaSalidaMerc || undefined;
         payload.paisOrigenDestino = paisOrigenDestino || undefined;
-        payload.viaEntradaSalida = '01';
+        // La vía es el medio elegido: declarar una y capturar otra es rechazo
+        // seguro del PAC, así que no se pregunta dos veces lo mismo.
+        payload.viaEntradaSalida = CLAVE_MEDIO[medio];
+        payload.regimenesAduaneros = regimenes;
+        payload.cruceFronterizo = cruceFronterizo || undefined;
       }
+
+      // Solo viaja el bloque del medio elegido — el backend rechaza dos.
       if (medio === 'auto') {
         payload.autotransporte = {
           permSct: auto.permSct,
@@ -294,6 +460,49 @@ export function CartaPorteFormPage() {
           aseguraRespCivil: auto.aseguraRespCivil,
           polizaRespCivil: auto.polizaRespCivil,
           remolques: remolques.map(r => ({ subTipoRem: r.subTipoRem, placa: r.placa.toUpperCase() })),
+        };
+      } else if (medio === 'ferroviario') {
+        payload.ferroviario = {
+          ...ferro,
+          derechosDePaso: derechosPaso.map(d => ({
+            tipoDerechoDePaso: d.tipoDerechoDePaso,
+            kilometrajePagado: Number(d.kilometrajePagado),
+          })),
+          carros: carros.map(c => ({
+            tipoCarro: c.tipoCarro,
+            matriculaCarro: c.matriculaCarro.toUpperCase(),
+            guiaCarro: c.guiaCarro,
+            toneladasNetasCarro: Number(c.toneladasNetasCarro),
+            contenedores: c.contenedores.map(k => ({
+              tipoContenedor: k.tipoContenedor,
+              pesoContenedorVacio: Number(k.pesoContenedorVacio),
+              pesoNetoMercancia: Number(k.pesoNetoMercancia),
+            })),
+          })),
+        };
+      } else if (medio === 'maritimo') {
+        payload.maritimo = {
+          ...maritimo,
+          matricula: maritimo.matricula.toUpperCase(),
+          numeroOmi: maritimo.numeroOmi.toUpperCase(),
+          anioEmbarcacion: maritimo.anioEmbarcacion ? Number(maritimo.anioEmbarcacion) : undefined,
+          unidadesArqBruto: maritimo.unidadesArqBruto ? Number(maritimo.unidadesArqBruto) : undefined,
+          eslora: maritimo.eslora ? Number(maritimo.eslora) : undefined,
+          manga: maritimo.manga ? Number(maritimo.manga) : undefined,
+          calado: maritimo.calado ? Number(maritimo.calado) : undefined,
+          contenedores: contMaritimos.map(k => ({
+            ...k,
+            matriculaContenedor: k.matriculaContenedor.toUpperCase(),
+            placaVmCcp: k.placaVmCcp ? k.placaVmCcp.toUpperCase() : undefined,
+            numPrecinto: k.numPrecinto || undefined,
+            idCcpRelacionado: k.idCcpRelacionado || undefined,
+            fechaCertificacionCcp: k.fechaCertificacionCcp || undefined,
+          })),
+        };
+      } else if (medio === 'aereo') {
+        payload.aereo = {
+          ...aereo,
+          rfcEmbarcador: aereo.rfcEmbarcador ? aereo.rfcEmbarcador.toUpperCase() : undefined,
         };
       }
       const result = await api.saveCartaPorte(invoiceId, payload);
@@ -376,19 +585,88 @@ export function CartaPorteFormPage() {
             </select>
           </Field>
           <div />
-          {transpInternac === 'Si' && (
-            <>
+        </div>
+
+        {transpInternac === 'Si' && (
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            <p className="text-sm font-medium text-slate-700 mb-3">Comercio exterior</p>
+            <div className="grid grid-cols-4 gap-4">
               <Field label="Entrada / Salida">
                 <select value={entradaSalidaMerc} onChange={e => setEntradaSalidaMerc(e.target.value as any)} className="input">
                   <option value="">Elegir…</option><option>Entrada</option><option>Salida</option>
                 </select>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  México → extranjero es <b>Salida</b>; extranjero → México es <b>Entrada</b>.
+                </p>
               </Field>
-              <Field label="País origen/destino (3 letras)">
-                <input value={paisOrigenDestino} onChange={e => setPaisOrigenDestino(e.target.value.toUpperCase())} maxLength={3} className="input" />
+              <Field label="País origen/destino">
+                <PickerButton value={paisOrigenDestino} placeholder="Buscar país…"
+                  onClick={() => openPicker('pais', 'País extranjero de la operación', it => setPaisOrigenDestino(it.clave))} />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Es el país <b>extranjero</b>, no México.
+                </p>
               </Field>
-            </>
-          )}
-        </div>
+              <Field label="Vía de entrada/salida">
+                <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded text-sm text-slate-700">
+                  {medioLabel(medio)}
+                  <span className="ml-2 text-[11px] font-mono text-red-600">{CLAVE_MEDIO[medio]}</span>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500">Se toma del medio de transporte.</p>
+              </Field>
+              <Field label="Cruce fronterizo">
+                <select value={cruceFronterizo} onChange={e => setCruceFronterizo(e.target.value)} className="input">
+                  <option value="">Sin especificar</option>
+                  {cruces.map((c: any) => (
+                    <option key={c.clave} value={c.clave}>{c.nombreMx} – {c.nombreUs}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">Ayuda de captura, no viaja al SAT.</p>
+              </Field>
+            </div>
+
+            {/* Regímenes aduaneros: colección, no un solo valor */}
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-slate-700">
+                  Régimen aduanero
+                  {entradaSalidaMerc && (
+                    <span className="ml-2 text-xs font-normal text-slate-500">
+                      filtrado para {entradaSalidaMerc.toLowerCase()}
+                    </span>
+                  )}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openPicker(
+                    'regimen-aduanero',
+                    `Régimen aduanero${entradaSalidaMerc ? ` · ${entradaSalidaMerc}` : ''}`,
+                    it => setRegimenes(r => r.includes(it.clave) ? r : [...r, it.clave]),
+                    ['impoexpo'],
+                  )}
+                  className="btn-add"
+                ><Plus size={14} /> Régimen</button>
+              </div>
+              {regimenes.length === 0 ? (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  Una operación internacional necesita al menos un régimen aduanero.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {regimenes.map(r => (
+                    <span key={r} className="inline-flex items-center gap-2 px-2.5 py-1 bg-sky-50 border border-sky-200 rounded text-sm">
+                      <span className="font-mono text-sky-800">{r}</span>
+                      <button type="button" onClick={() => setRegimenes(x => x.filter(y => y !== r))}
+                              className="text-slate-400 hover:text-red-600"><Trash2 size={12} /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="mt-1 text-[11px] text-slate-500">
+                Elegir un régimen de exportación en una entrada (o al revés) hace que el PAC rechace el comprobante.
+              </p>
+            </div>
+          </div>
+        )}
       </Section>
 
       {/* 2. Ubicaciones */}
@@ -552,7 +830,70 @@ export function CartaPorteFormPage() {
                     </Field>
                   </>
                 )}
+                {transpInternac === 'Si' && (
+                  <>
+                    <Field label="Fracción arancelaria">
+                      <input value={m.fraccionArancelaria || ''} onChange={e => updateMer(i, { fraccionArancelaria: e.target.value })} maxLength={10} className="input font-mono" />
+                    </Field>
+                    <Field label="Tipo de materia">
+                      <PickerButton value={m.tipoMateria || ''} placeholder="Buscar…"
+                        onClick={() => openPicker('tipo-materia', 'Tipo de materia', it => updateMer(i, { tipoMateria: it.clave }))} />
+                    </Field>
+                  </>
+                )}
               </div>
+
+              {/* Documentación aduanera de ESTA mercancía. Va por mercancía y no
+                  por carta porte: un mismo embarque puede llevar unas con
+                  pedimento y otras nacionales. */}
+              {transpInternac === 'Si' && (
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-slate-600">Documentación aduanera de esta mercancía</p>
+                    <button type="button" onClick={() => updateMer(i, {
+                      docsAduaneros: [...(m.docsAduaneros || []), { tipoDocumento: '', numPedimento: '', identDocAduanero: '', rfcImpo: '' }],
+                    })} className="btn-add"><Plus size={12} /> Documento</button>
+                  </div>
+                  {(m.docsAduaneros || []).map((d, di) => {
+                    const setDoc = (patch: Partial<DocAduaneraRow>) => updateMer(i, {
+                      docsAduaneros: (m.docsAduaneros || []).map((x, xj) => xj === di ? { ...x, ...patch } : x),
+                    });
+                    const esPedimento = d.tipoDocumento === '01';
+                    return (
+                      <div key={di} className="grid grid-cols-6 gap-3 mb-2 items-start">
+                        <Field label="Tipo de documento" span={2}>
+                          <PickerButton value={d.tipoDocumento} placeholder="Buscar…"
+                            onClick={() => openPicker('documento-aduanero', 'Tipo de documento aduanero', it => setDoc({ tipoDocumento: it.clave }))} />
+                        </Field>
+                        {esPedimento ? (
+                          <Field label="Número de pedimento" span={2}>
+                            <input value={d.numPedimento} onChange={e => setDoc({ numPedimento: e.target.value })} maxLength={21} className="input font-mono" />
+                          </Field>
+                        ) : (
+                          <Field label="Identificador del documento" span={2}>
+                            <input value={d.identDocAduanero} onChange={e => setDoc({ identDocAduanero: e.target.value })} maxLength={36} className="input font-mono"
+                                   disabled={!d.tipoDocumento} placeholder={d.tipoDocumento ? '' : 'Elige primero el tipo'} />
+                          </Field>
+                        )}
+                        <Field label="RFC importador">
+                          <input value={d.rfcImpo} onChange={e => setDoc({ rfcImpo: e.target.value.toUpperCase() })} maxLength={13} className="input font-mono" />
+                        </Field>
+                        <div className="flex items-end h-full pb-2">
+                          <button onClick={() => updateMer(i, {
+                            docsAduaneros: (m.docsAduaneros || []).filter((_, xj) => xj !== di),
+                          })} className="text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!(m.docsAduaneros || []).length && (
+                    <p className="text-[11px] text-slate-500">
+                      Solo si esta mercancía viene amparada por un pedimento o permiso. No toda mercancía de una operación internacional lo necesita.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {mercancias.length > 1 && (
                 <button onClick={() => setMercancias(mercancias.filter((_, j) => j !== i))} className="absolute top-2 right-2 text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
               )}
@@ -641,11 +982,299 @@ export function CartaPorteFormPage() {
               ))}
             </div>
           </div>
+        ) : medio === 'maritimo' ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-4 gap-3">
+              <Field label="Tipo de permiso SCT">
+                <PickerButton value={maritimo.permSct} placeholder="Buscar…"
+                  onClick={() => openPicker('tipo-permiso', 'Tipo de permiso SCT', it => setMaritimo({ ...maritimo, permSct: it.clave }))} />
+              </Field>
+              <Field label="Número de permiso">
+                <input value={maritimo.numPermisoSct} onChange={e => setMaritimo({ ...maritimo, numPermisoSct: e.target.value })} className="input" />
+              </Field>
+              <Field label="Tipo de embarcación">
+                <PickerButton value={maritimo.tipoEmbarcacion} placeholder="Buscar…"
+                  onClick={() => openPicker('config-maritima', 'Tipo de embarcación', it => setMaritimo({ ...maritimo, tipoEmbarcacion: it.clave }))} />
+              </Field>
+              <Field label="Tipo de carga">
+                <PickerButton value={maritimo.tipoCarga} placeholder="Buscar…"
+                  onClick={() => openPicker('clave-tipo-carga', 'Tipo de carga', it => setMaritimo({ ...maritimo, tipoCarga: it.clave }))} />
+              </Field>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200">
+              <p className="text-sm font-medium text-slate-700 mb-2">Embarcación</p>
+              <div className="grid grid-cols-4 gap-3">
+                <Field label="Nombre">
+                  <input value={maritimo.nombreEmbarc} onChange={e => setMaritimo({ ...maritimo, nombreEmbarc: e.target.value })} maxLength={50} className="input" />
+                </Field>
+                <Field label="Matrícula">
+                  <input value={maritimo.matricula} onChange={e => setMaritimo({ ...maritimo, matricula: e.target.value.toUpperCase() })} maxLength={10} className="input font-mono" />
+                </Field>
+                <Field label="Número OMI">
+                  <input value={maritimo.numeroOmi} onChange={e => setMaritimo({ ...maritimo, numeroOmi: e.target.value.toUpperCase() })} maxLength={10} placeholder="IMO1234567" className="input font-mono" />
+                  <p className="mt-1 text-[11px] text-slate-500">7 dígitos, con o sin el prefijo IMO.</p>
+                </Field>
+                <Field label="Nacionalidad">
+                  <PickerButton value={maritimo.nacionalidadEmbarc} placeholder="País…"
+                    onClick={() => openPicker('pais', 'Nacionalidad de la embarcación', it => setMaritimo({ ...maritimo, nacionalidadEmbarc: it.clave }))} />
+                </Field>
+                <Field label="Año">
+                  <input type="number" value={maritimo.anioEmbarcacion} onChange={e => setMaritimo({ ...maritimo, anioEmbarcacion: e.target.value })} className="input" />
+                </Field>
+                <Field label="Arqueo bruto">
+                  <input type="number" step="0.01" value={maritimo.unidadesArqBruto} onChange={e => setMaritimo({ ...maritimo, unidadesArqBruto: e.target.value })} className="input" />
+                </Field>
+                <Field label="Certificado ITC">
+                  <input value={maritimo.numCertItc} onChange={e => setMaritimo({ ...maritimo, numCertItc: e.target.value })} maxLength={20} className="input font-mono" />
+                </Field>
+                <div />
+                <Field label="Eslora (m)">
+                  <input type="number" step="0.01" value={maritimo.eslora} onChange={e => setMaritimo({ ...maritimo, eslora: e.target.value })} className="input" />
+                </Field>
+                <Field label="Manga (m)">
+                  <input type="number" step="0.01" value={maritimo.manga} onChange={e => setMaritimo({ ...maritimo, manga: e.target.value })} className="input" />
+                </Field>
+                <Field label="Calado (m)">
+                  <input type="number" step="0.01" value={maritimo.calado} onChange={e => setMaritimo({ ...maritimo, calado: e.target.value })} className="input" />
+                </Field>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200">
+              <p className="text-sm font-medium text-slate-700 mb-2">Naviera y viaje</p>
+              <div className="grid grid-cols-4 gap-3">
+                <Field label="Línea naviera">
+                  <input value={maritimo.lineaNaviera} onChange={e => setMaritimo({ ...maritimo, lineaNaviera: e.target.value })} className="input" />
+                </Field>
+                <Field label="Agente naviero" span={2}>
+                  <input value={maritimo.nombreAgenteNaviero} onChange={e => setMaritimo({ ...maritimo, nombreAgenteNaviero: e.target.value })} className="input" />
+                </Field>
+                <Field label="No. autorización naviero">
+                  <PickerButton value={maritimo.numAutorizacionNaviero} placeholder="Buscar…"
+                    onClick={() => openPicker('num-autorizacion-naviero', 'Número de autorización del naviero', it => setMaritimo({ ...maritimo, numAutorizacionNaviero: it.clave }))} />
+                </Field>
+                <Field label="Número de viaje">
+                  <input value={maritimo.numViaje} onChange={e => setMaritimo({ ...maritimo, numViaje: e.target.value })} maxLength={10} className="input font-mono" />
+                </Field>
+                <Field label="Conocimiento de embarque" span={2}>
+                  <input value={maritimo.numConocimientoEmbarque} onChange={e => setMaritimo({ ...maritimo, numConocimientoEmbarque: e.target.value })} maxLength={20} className="input font-mono" />
+                </Field>
+                <Field label="Permiso temp. navegación">
+                  <input value={maritimo.permisoTempNavegacion} onChange={e => setMaritimo({ ...maritimo, permisoTempNavegacion: e.target.value })} maxLength={10} className="input font-mono" />
+                </Field>
+                <Field label="Aseguradora" span={2}>
+                  <input value={maritimo.nombreAseg} onChange={e => setMaritimo({ ...maritimo, nombreAseg: e.target.value })} className="input" />
+                </Field>
+                <Field label="No. póliza" span={2}>
+                  <input value={maritimo.numPolizaSeguro} onChange={e => setMaritimo({ ...maritimo, numPolizaSeguro: e.target.value })} className="input font-mono" />
+                </Field>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-slate-700">Contenedores</p>
+                <button type="button" onClick={() => setContMaritimos([...contMaritimos, {
+                  matriculaContenedor: '', tipoContenedor: '', numPrecinto: '',
+                  idCcpRelacionado: '', placaVmCcp: '', fechaCertificacionCcp: '',
+                }])} className="btn-add"><Plus size={14} /> Contenedor</button>
+              </div>
+              {contMaritimos.map((k, i) => (
+                <div key={i} className="grid grid-cols-6 gap-3 mb-2 items-start">
+                  <Field label="Matrícula">
+                    <input value={k.matriculaContenedor} onChange={e => setContMaritimos(contMaritimos.map((x, j) => j === i ? { ...x, matriculaContenedor: e.target.value.toUpperCase() } : x))} maxLength={10} className="input font-mono" />
+                  </Field>
+                  <Field label="Tipo">
+                    <PickerButton value={k.tipoContenedor} placeholder="Buscar…"
+                      onClick={() => openPicker('contenedor-maritimo', 'Tipo de contenedor marítimo', it => setContMaritimos(contMaritimos.map((x, j) => j === i ? { ...x, tipoContenedor: it.clave } : x)))} />
+                  </Field>
+                  <Field label="Precinto">
+                    <input value={k.numPrecinto} onChange={e => setContMaritimos(contMaritimos.map((x, j) => j === i ? { ...x, numPrecinto: e.target.value } : x))} maxLength={20} className="input font-mono" />
+                  </Field>
+                  <Field label="Placa que lo recoge">
+                    <input value={k.placaVmCcp} onChange={e => setContMaritimos(contMaritimos.map((x, j) => j === i ? { ...x, placaVmCcp: e.target.value.toUpperCase() } : x))} maxLength={7} className="input font-mono" />
+                  </Field>
+                  <Field label="Fecha certificación">
+                    <input type="date" value={k.fechaCertificacionCcp} onChange={e => setContMaritimos(contMaritimos.map((x, j) => j === i ? { ...x, fechaCertificacionCcp: e.target.value } : x))} className="input" />
+                  </Field>
+                  <div className="flex items-end h-full pb-2">
+                    <button onClick={() => setContMaritimos(contMaritimos.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : medio === 'aereo' ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-4 gap-3">
+              <Field label="Tipo de permiso SCT">
+                <PickerButton value={aereo.permSct} placeholder="Buscar…"
+                  onClick={() => openPicker('tipo-permiso', 'Tipo de permiso SCT', it => setAereo({ ...aereo, permSct: it.clave }))} />
+              </Field>
+              <Field label="Número de permiso">
+                <input value={aereo.numPermisoSct} onChange={e => setAereo({ ...aereo, numPermisoSct: e.target.value })} className="input" />
+              </Field>
+              <Field label="Matrícula de aeronave">
+                <input value={aereo.matriculaAeronave} onChange={e => setAereo({ ...aereo, matriculaAeronave: e.target.value.toUpperCase() })} maxLength={10} className="input font-mono" />
+              </Field>
+              <Field label="Código del transportista">
+                <PickerButton value={aereo.codigoTransportista} placeholder="Buscar aerolínea…"
+                  onClick={() => openPicker('codigo-transporte-aereo', 'Código del transportista aéreo', it => setAereo({ ...aereo, codigoTransportista: it.clave }), ['nombre_aerolinea', 'nacionalidad'])} />
+              </Field>
+              <Field label="Número de guía aérea" span={2}>
+                <input value={aereo.numeroGuia} onChange={e => setAereo({ ...aereo, numeroGuia: e.target.value })} maxLength={23} className="input font-mono" />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Si el embarque se parte en dos vuelos, cada vuelo lleva su propia guía y su propia carta porte.
+                </p>
+              </Field>
+              <Field label="Lugar del contrato" span={2}>
+                <input value={aereo.lugarContrato} onChange={e => setAereo({ ...aereo, lugarContrato: e.target.value })} className="input" />
+              </Field>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200">
+              <p className="text-sm font-medium text-slate-700 mb-2">Seguro</p>
+              <div className="grid grid-cols-4 gap-3">
+                <Field label="Aseguradora" span={2}>
+                  <input value={aereo.nombreAseg} onChange={e => setAereo({ ...aereo, nombreAseg: e.target.value })} className="input" />
+                </Field>
+                <Field label="No. póliza" span={2}>
+                  <input value={aereo.numPolizaSeguro} onChange={e => setAereo({ ...aereo, numPolizaSeguro: e.target.value })} className="input font-mono" />
+                </Field>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200">
+              <p className="text-sm font-medium text-slate-700 mb-2">Embarcador</p>
+              <div className="grid grid-cols-4 gap-3">
+                <Field label="Nombre" span={2}>
+                  <input value={aereo.nombreEmbarcador} onChange={e => setAereo({ ...aereo, nombreEmbarcador: e.target.value })} className="input" />
+                </Field>
+                <Field label="RFC">
+                  <input value={aereo.rfcEmbarcador} onChange={e => setAereo({ ...aereo, rfcEmbarcador: e.target.value.toUpperCase() })} maxLength={13} className="input font-mono" />
+                </Field>
+                <Field label="Residencia fiscal">
+                  <PickerButton value={aereo.residenciaFiscalEmbarc} placeholder="País…"
+                    onClick={() => openPicker('pais', 'Residencia fiscal del embarcador', it => setAereo({ ...aereo, residenciaFiscalEmbarc: it.clave }))} />
+                </Field>
+                {aereo.residenciaFiscalEmbarc && aereo.residenciaFiscalEmbarc !== 'MEX' && (
+                  <Field label="Registro tributario (Tax ID)" span={2}>
+                    <input value={aereo.numRegIdTribEmbarc} onChange={e => setAereo({ ...aereo, numRegIdTribEmbarc: e.target.value })} maxLength={40} className="input font-mono" />
+                  </Field>
+                )}
+              </div>
+            </div>
+          </div>
         ) : (
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800">
-            La captura completa para transporte <b>{medioLabel(medio)}</b> se habilitará cuando HCGM
-            confirme el primer caso real. Los catálogos ya están cargados; solo falta el layout específico
-            del medio. Por ahora se guarda como "sin detalle de medio" y el timbrado usará solo autotransporte.
+          <div className="space-y-3">
+            <div className="grid grid-cols-4 gap-3">
+              <Field label="Tipo de servicio">
+                <PickerButton value={ferro.tipoDeServicio} placeholder="Buscar…"
+                  onClick={() => openPicker('tipo-de-servicio', 'Tipo de servicio ferroviario', it => setFerro({ ...ferro, tipoDeServicio: it.clave }))} />
+              </Field>
+              <Field label="Tipo de tráfico">
+                <PickerButton value={ferro.tipoDeTrafico} placeholder="Buscar…"
+                  onClick={() => openPicker('tipo-de-trafico', 'Tipo de tráfico ferroviario', it => setFerro({ ...ferro, tipoDeTrafico: it.clave }))} />
+              </Field>
+              <Field label="Aseguradora">
+                <input value={ferro.nombreAseg} onChange={e => setFerro({ ...ferro, nombreAseg: e.target.value })} className="input" />
+              </Field>
+              <Field label="No. póliza">
+                <input value={ferro.numPolizaSeguro} onChange={e => setFerro({ ...ferro, numPolizaSeguro: e.target.value })} className="input font-mono" />
+              </Field>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-slate-700">Derechos de paso</p>
+                <button type="button" onClick={() => setDerechosPaso([...derechosPaso, { tipoDerechoDePaso: '', kilometrajePagado: '' }])} className="btn-add"><Plus size={14} /> Derecho de paso</button>
+              </div>
+              {derechosPaso.map((d, i) => (
+                <div key={i} className="grid grid-cols-6 gap-3 mb-2 items-start">
+                  <Field label="Tipo" span={2}>
+                    <PickerButton value={d.tipoDerechoDePaso} placeholder="Buscar…"
+                      onClick={() => openPicker('derechos-de-paso', 'Tipo de derecho de paso', it => setDerechosPaso(derechosPaso.map((x, j) => j === i ? { ...x, tipoDerechoDePaso: it.clave } : x)))} />
+                  </Field>
+                  <Field label="Kilometraje pagado">
+                    <input type="number" step="0.01" value={d.kilometrajePagado} onChange={e => setDerechosPaso(derechosPaso.map((x, j) => j === i ? { ...x, kilometrajePagado: e.target.value } : x))} className="input" />
+                  </Field>
+                  <div className="col-span-3 flex items-end h-full pb-2">
+                    <button onClick={() => setDerechosPaso(derechosPaso.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-3 border-t border-slate-200">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-slate-700">Carros ferroviarios</p>
+                <button type="button" onClick={() => setCarros([...carros, {
+                  tipoCarro: '', matriculaCarro: '', guiaCarro: '', toneladasNetasCarro: '', contenedores: [],
+                }])} className="btn-add"><Plus size={14} /> Carro</button>
+              </div>
+              {carros.length === 0 && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  El transporte ferroviario necesita al menos un carro para poder timbrar.
+                </p>
+              )}
+              {carros.map((c, i) => (
+                <div key={i} className="border border-slate-200 rounded p-3 mb-2 relative">
+                  <div className="grid grid-cols-4 gap-3">
+                    <Field label="Tipo de carro">
+                      <PickerButton value={c.tipoCarro} placeholder="Buscar…"
+                        onClick={() => openPicker('tipo-carro', 'Tipo de carro', it => setCarros(carros.map((x, j) => j === i ? { ...x, tipoCarro: it.clave } : x)))} />
+                    </Field>
+                    <Field label="Matrícula">
+                      <input value={c.matriculaCarro} onChange={e => setCarros(carros.map((x, j) => j === i ? { ...x, matriculaCarro: e.target.value.toUpperCase() } : x))} maxLength={10} className="input font-mono" />
+                    </Field>
+                    <Field label="Guía del carro">
+                      <input value={c.guiaCarro} onChange={e => setCarros(carros.map((x, j) => j === i ? { ...x, guiaCarro: e.target.value } : x))} maxLength={36} className="input font-mono" />
+                    </Field>
+                    <Field label="Toneladas netas">
+                      <input type="number" step="0.01" value={c.toneladasNetasCarro} onChange={e => setCarros(carros.map((x, j) => j === i ? { ...x, toneladasNetasCarro: e.target.value } : x))} className="input" />
+                    </Field>
+                  </div>
+
+                  <div className="mt-3 pt-3 border-t border-slate-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-medium text-slate-600">Contenedores de este carro</p>
+                      <button type="button" onClick={() => setCarros(carros.map((x, j) => j === i
+                        ? { ...x, contenedores: [...x.contenedores, { tipoContenedor: '', pesoContenedorVacio: '', pesoNetoMercancia: '' }] }
+                        : x))} className="btn-add"><Plus size={12} /> Contenedor</button>
+                    </div>
+                    {c.contenedores.map((k, ki) => (
+                      <div key={ki} className="grid grid-cols-6 gap-3 mb-2 items-start">
+                        <Field label="Tipo" span={2}>
+                          <PickerButton value={k.tipoContenedor} placeholder="Buscar…"
+                            onClick={() => openPicker('contenedor', 'Tipo de contenedor ferroviario', it => setCarros(carros.map((x, j) => j === i
+                              ? { ...x, contenedores: x.contenedores.map((y, yj) => yj === ki ? { ...y, tipoContenedor: it.clave } : y) }
+                              : x)))} />
+                        </Field>
+                        <Field label="Peso vacío (t)">
+                          <input type="number" step="0.01" value={k.pesoContenedorVacio} onChange={e => setCarros(carros.map((x, j) => j === i
+                            ? { ...x, contenedores: x.contenedores.map((y, yj) => yj === ki ? { ...y, pesoContenedorVacio: e.target.value } : y) }
+                            : x))} className="input" />
+                        </Field>
+                        <Field label="Peso neto mercancía (t)">
+                          <input type="number" step="0.01" value={k.pesoNetoMercancia} onChange={e => setCarros(carros.map((x, j) => j === i
+                            ? { ...x, contenedores: x.contenedores.map((y, yj) => yj === ki ? { ...y, pesoNetoMercancia: e.target.value } : y) }
+                            : x))} className="input" />
+                        </Field>
+                        <div className="col-span-2 flex items-end h-full pb-2">
+                          <button onClick={() => setCarros(carros.map((x, j) => j === i
+                            ? { ...x, contenedores: x.contenedores.filter((_, yj) => yj !== ki) }
+                            : x))} className="text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button onClick={() => setCarros(carros.filter((_, j) => j !== i))}
+                          className="absolute top-2 right-2 text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </Section>

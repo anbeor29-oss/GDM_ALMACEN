@@ -50,6 +50,12 @@ const CATALOGS: Record<string, { table: string; extra?: string[]; label?: string
   'sector-cofepris':      { table: 'sat_cp_sector_cofepris' },
   'forma-farmaceutica':   { table: 'sat_cp_forma_farmaceutica' },
   'condiciones-especiales':{ table: 'sat_cp_condiciones_especiales' },
+  'num-autorizacion-naviero': { table: 'sat_cp_num_autorizacion_naviero' },
+  'tipo-materia':         { table: 'sat_cp_tipo_materia' },
+  'registro-istmo':       { table: 'sat_cp_registro_istmo' },
+  // Internacional
+  'pais':                 { table: 'sat_cp_pais' },
+  'estado':               { table: 'sat_cp_estado',               extra: ['pais'] },
 };
 
 router.get(
@@ -63,12 +69,41 @@ router.get(
     const cols = ['clave', 'descripcion', ...extras].join(', ');
     let sql = `SELECT ${cols} FROM ${cat.table}`;
     const params: string[] = [];
+    const where: string[] = [];
+
     if (q) {
       params.push(q + '%', '%' + q + '%');
-      sql += ` WHERE clave ILIKE $1 OR descripcion ILIKE $2`;
+      where.push(`(clave ILIKE $${params.length - 1} OR descripcion ILIKE $${params.length})`);
     }
-    sql += ` ORDER BY clave LIMIT ${limit}`;
+    // Los estados solo tienen sentido dentro de un país: sin este filtro el
+    // combo de un domicilio en Texas ofrecería los 32 estados mexicanos.
+    if (extras.includes('pais') && req.query.pais) {
+      params.push(String(req.query.pais));
+      where.push(`pais = $${params.length}`);
+    }
+    if (where.length) sql += ` WHERE ${where.join(' AND ')}`;
+
+    sql += ` ORDER BY descripcion LIMIT ${limit}`;
     const r = await pool.query(sql, params);
+    res.json({ items: r.rows });
+  }),
+);
+
+/**
+ * GET /carta-porte/cruces-fronterizos — ayuda de captura para operaciones
+ * México–EUA. No es catálogo del SAT: el XML sigue viajando con las claves
+ * oficiales de vía, país y régimen.
+ */
+router.get(
+  '/cruces-fronterizos',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const r = await pool.query(
+      `SELECT clave, nombre_mx AS "nombreMx", estado_mx AS "estadoMx",
+              nombre_us AS "nombreUs", estado_us AS "estadoUs"
+         FROM cp_cruce_fronterizo
+        WHERE activo
+        ORDER BY nombre_mx`,
+    );
     res.json({ items: r.rows });
   }),
 );

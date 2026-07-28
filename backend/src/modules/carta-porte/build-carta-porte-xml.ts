@@ -12,9 +12,12 @@
  *     admite exactamente 36 caracteres para este atributo.
  *   · Solo se emiten atributos con valor; los opcionales vacíos se omiten
  *     (una cadena vacía no es lo mismo que "atributo no presente").
- *   · Autotransporte es la vía única implementada aquí. Marítimo/aéreo/
- *     ferroviario quedan documentados pero no se emiten hasta que HCGM
- *     confirme el primer caso real (§4 del CartaPorteForm).
+ *   · Las cuatro modalidades emiten su nodo: Autotransporte, TransporteMaritimo,
+ *     TransporteAereo y TransporteFerroviario. Son hermanos dentro de
+ *     <Mercancias> y se excluyen entre sí — carta_porte.medio_transporte manda,
+ *     y el validador rechaza que venga más de uno.
+ *   · La operación internacional agrega <RegimenesAduaneros> antes de
+ *     <Ubicaciones> y <DocumentacionAduanera> dentro de cada <Mercancia>.
  *
  * Este builder NO valida las 110 reglas SAT — eso es Bloque 7.
  * NI firma NI timbra — eso es Bloque 8.
@@ -34,9 +37,14 @@ interface Row {
   ubicacion_polo_origen?: string;
   ubicacion_polo_destino?: string;
   regimen_aduanero?: string;
+  regimenes_aduaneros?: string[];
+  medio_transporte?: string;
   ubicaciones: UbicRow[];
   mercancias: MercRow[];
   autotransporte: AutoRow | null;
+  ferroviario?: FerroRow | null;
+  maritimo?: MaritimoRow | null;
+  aereo?: AereoRow | null;
   figuras: FiguraRow[];
 }
 interface UbicRow {
@@ -60,6 +68,12 @@ interface UbicRow {
   pais?: string;
   codigo_postal: string;
 }
+interface DocAduaneraRow {
+  tipo_documento: string;
+  num_pedimento?: string;
+  ident_doc_aduanero?: string;
+  rfc_impo?: string;
+}
 interface MercRow {
   bienes_transp: string;
   descripcion: string;
@@ -75,6 +89,73 @@ interface MercRow {
   valor_mercancia?: string | number;
   moneda?: string;
   fraccion_arancelaria?: string;
+  tipo_materia?: string;
+  descripcion_materia?: string;
+  docs_aduaneros?: DocAduaneraRow[];
+}
+interface FerroRow {
+  tipo_de_servicio: string;
+  tipo_de_trafico: string;
+  nombre_aseg?: string;
+  num_poliza_seguro?: string;
+  derechos_de_paso?: { tipo_derecho_de_paso: string; kilometraje_pagado: string | number }[];
+  carros?: {
+    tipo_carro: string;
+    matricula_carro: string;
+    guia_carro: string;
+    toneladas_netas_carro: string | number;
+    contenedores?: {
+      tipo_contenedor: string;
+      peso_contenedor_vacio: string | number;
+      peso_neto_mercancia: string | number;
+    }[];
+  }[];
+}
+interface MaritimoRow {
+  perm_sct?: string;
+  num_permiso_sct?: string;
+  nombre_aseg?: string;
+  num_poliza_seguro?: string;
+  tipo_embarcacion?: string;
+  matricula: string;
+  numero_omi: string;
+  anio_embarcacion?: number;
+  nombre_embarc?: string;
+  nacionalidad_embarc?: string;
+  unidades_arq_bruto?: string | number;
+  tipo_carga?: string;
+  num_cert_itc: string;
+  eslora?: string | number;
+  manga?: string | number;
+  calado?: string | number;
+  linea_naviera?: string;
+  nombre_agente_naviero: string;
+  num_autorizacion_naviero?: string;
+  num_viaje?: string;
+  num_conocimiento_embarque?: string;
+  permiso_temp_navegacion?: string;
+  contenedores?: {
+    matricula_contenedor: string;
+    tipo_contenedor: string;
+    num_precinto?: string;
+    id_ccp_relacionado?: string;
+    placa_vm_ccp?: string;
+    fecha_certificacion_ccp?: string | Date;
+  }[];
+}
+interface AereoRow {
+  perm_sct: string;
+  num_permiso_sct: string;
+  matricula_aeronave?: string;
+  nombre_aseg?: string;
+  num_poliza_seguro?: string;
+  numero_guia: string;
+  lugar_contrato?: string;
+  codigo_transportista: string;
+  rfc_embarcador?: string;
+  num_reg_id_trib_embarc?: string;
+  residencia_fiscal_embarc?: string;
+  nombre_embarcador?: string;
 }
 interface AutoRow {
   perm_sct: string;
@@ -149,6 +230,14 @@ function iso(v: unknown): string {
   return d.toISOString().slice(0, 19);
 }
 
+/** Fecha sin hora (YYYY-MM-DD) — la certificación del contenedor no lleva hora. */
+function fecha(v: unknown): string {
+  if (!v) return '';
+  const d = v instanceof Date ? v : new Date(String(v));
+  if (isNaN(d.getTime())) return String(v);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * IdCCP — 36 caracteres. El SAT exige exactamente el patrón:
  *   CCC + 5 hex + '-' + 4 hex + '-' + 4 hex + '-' + 4 hex + '-' + 12 hex
@@ -186,6 +275,21 @@ export function buildCartaPorteXml(cp: Row, opts: BuildOptions = {}): string {
       attr('UbicacionPoloDestino', cp.ubicacion_polo_destino) +
       `>`,
   );
+
+  /* RegimenesAduaneros — va antes de Ubicaciones y solo en operación
+     internacional. Se acepta la colección o el valor único heredado. */
+  const regimenes = cp.regimenes_aduaneros?.length
+    ? cp.regimenes_aduaneros
+    : cp.regimen_aduanero
+      ? [cp.regimen_aduanero]
+      : [];
+  if (regimenes.length) {
+    lines.push(`  <cartaporte31:RegimenesAduaneros>`);
+    for (const r of regimenes) {
+      lines.push(`    <cartaporte31:RegimenAduaneroCCP` + attrReq('RegimenAduanero', r) + `/>`);
+    }
+    lines.push(`  </cartaporte31:RegimenesAduaneros>`);
+  }
 
   /* Ubicaciones */
   lines.push(`  <cartaporte31:Ubicaciones>`);
@@ -232,24 +336,43 @@ export function buildCartaPorteXml(cp: Row, opts: BuildOptions = {}): string {
       `>`,
   );
   for (const m of cp.mercancias) {
-    lines.push(
-      `    <cartaporte31:Mercancia` +
-        attrReq('BienesTransp', m.bienes_transp) +
-        attrReq('Descripcion', m.descripcion) +
-        attrReq('Cantidad', num(m.cantidad, 3)) +
-        attrReq('ClaveUnidad', m.clave_unidad) +
-        attr('Unidad', m.unidad) +
-        attr('Dimensiones', m.dimensiones) +
-        attr('MaterialPeligroso', m.material_peligroso) +
-        attr('CveMaterialPeligroso', m.cve_material_peligroso) +
-        attr('Embalaje', m.embalaje) +
-        attr('DescripEmbalaje', m.descrip_embalaje) +
-        attrReq('PesoEnKg', num(m.peso_en_kg, 3)) +
-        attr('ValorMercancia', m.valor_mercancia != null ? num(m.valor_mercancia, 2) : '') +
-        attr('Moneda', m.moneda) +
-        attr('FraccionArancelaria', m.fraccion_arancelaria) +
-        `/>`,
-    );
+    const atributos =
+      attrReq('BienesTransp', m.bienes_transp) +
+      attrReq('Descripcion', m.descripcion) +
+      attrReq('Cantidad', num(m.cantidad, 3)) +
+      attrReq('ClaveUnidad', m.clave_unidad) +
+      attr('Unidad', m.unidad) +
+      attr('Dimensiones', m.dimensiones) +
+      attr('MaterialPeligroso', m.material_peligroso) +
+      attr('CveMaterialPeligroso', m.cve_material_peligroso) +
+      attr('Embalaje', m.embalaje) +
+      attr('DescripEmbalaje', m.descrip_embalaje) +
+      attrReq('PesoEnKg', num(m.peso_en_kg, 3)) +
+      attr('ValorMercancia', m.valor_mercancia != null ? num(m.valor_mercancia, 2) : '') +
+      attr('Moneda', m.moneda) +
+      attr('FraccionArancelaria', m.fraccion_arancelaria) +
+      attr('TipoMateria', m.tipo_materia) +
+      attr('DescripcionMateria', m.descripcion_materia);
+
+    const docs = m.docs_aduaneros ?? [];
+    if (!docs.length) {
+      lines.push(`    <cartaporte31:Mercancia` + atributos + `/>`);
+      continue;
+    }
+    // Con documentación aduanera la mercancía deja de ser nodo vacío: cada
+    // pedimento o permiso cuelga de la mercancía a la que ampara (§6.3).
+    lines.push(`    <cartaporte31:Mercancia` + atributos + `>`);
+    for (const d of docs) {
+      lines.push(
+        `      <cartaporte31:DocumentacionAduanera` +
+          attrReq('TipoDocumento', d.tipo_documento) +
+          attr('NumPedimento', d.num_pedimento) +
+          attr('IdentDocAduanero', d.ident_doc_aduanero) +
+          attr('RFCImpo', d.rfc_impo) +
+          `/>`,
+      );
+    }
+    lines.push(`    </cartaporte31:Mercancia>`);
   }
 
   /* Autotransporte */
@@ -293,6 +416,116 @@ export function buildCartaPorteXml(cp: Row, opts: BuildOptions = {}): string {
       lines.push(`      </cartaporte31:Remolques>`);
     }
     lines.push(`    </cartaporte31:Autotransporte>`);
+  }
+
+  /* TransporteMaritimo — hermano de Autotransporte, nunca simultáneo. */
+  if (cp.maritimo) {
+    const m = cp.maritimo;
+    lines.push(
+      `    <cartaporte31:TransporteMaritimo` +
+        attr('PermSCT', m.perm_sct) +
+        attr('NumPermisoSCT', m.num_permiso_sct) +
+        attr('NombreAseg', m.nombre_aseg) +
+        attr('NumPolizaSeguro', m.num_poliza_seguro) +
+        attr('TipoEmbarcacion', m.tipo_embarcacion) +
+        attrReq('Matricula', m.matricula) +
+        attrReq('NumeroOMI', m.numero_omi) +
+        attr('AnioEmbarcacion', m.anio_embarcacion) +
+        attr('NombreEmbarc', m.nombre_embarc) +
+        attr('NacionalidadEmbarc', m.nacionalidad_embarc) +
+        attr('UnidadesDeArqBruto', m.unidades_arq_bruto != null ? num(m.unidades_arq_bruto, 2) : '') +
+        attr('TipoCarga', m.tipo_carga) +
+        attrReq('NumCertITC', m.num_cert_itc) +
+        attr('Eslora', m.eslora != null ? num(m.eslora, 2) : '') +
+        attr('Manga', m.manga != null ? num(m.manga, 2) : '') +
+        attr('Calado', m.calado != null ? num(m.calado, 2) : '') +
+        attr('LineaNaviera', m.linea_naviera) +
+        attrReq('NombreAgenteNaviero', m.nombre_agente_naviero) +
+        attr('NumAutorizacionNaviero', m.num_autorizacion_naviero) +
+        attr('NumViaje', m.num_viaje) +
+        attr('NumConocEmbarc', m.num_conocimiento_embarque) +
+        attr('PermisoTempNavegacion', m.permiso_temp_navegacion) +
+        `>`,
+    );
+    for (const k of m.contenedores ?? []) {
+      lines.push(
+        `      <cartaporte31:Contenedor` +
+          attrReq('MatriculaContenedor', k.matricula_contenedor) +
+          attrReq('TipoContenedor', k.tipo_contenedor) +
+          attr('NumPrecinto', k.num_precinto) +
+          attr('IdCCPRelacionado', k.id_ccp_relacionado) +
+          attr('PlacaVMCCP', k.placa_vm_ccp) +
+          attr('FechaCertificacionCCP', fecha(k.fecha_certificacion_ccp)) +
+          `/>`,
+      );
+    }
+    lines.push(`    </cartaporte31:TransporteMaritimo>`);
+  }
+
+  /* TransporteAereo — nodo hoja, sin hijos. */
+  if (cp.aereo) {
+    const a = cp.aereo;
+    lines.push(
+      `    <cartaporte31:TransporteAereo` +
+        attrReq('PermSCT', a.perm_sct) +
+        attrReq('NumPermisoSCT', a.num_permiso_sct) +
+        attr('MatriculaAeronave', a.matricula_aeronave) +
+        attr('NombreAseg', a.nombre_aseg) +
+        attr('NumPolizaSeguro', a.num_poliza_seguro) +
+        attrReq('NumeroGuia', a.numero_guia) +
+        attr('LugarContrato', a.lugar_contrato) +
+        attrReq('CodigoTransportista', a.codigo_transportista) +
+        attr('RFCEmbarcador', a.rfc_embarcador) +
+        attr('NumRegIdTribEmbarc', a.num_reg_id_trib_embarc) +
+        attr('ResidenciaFiscalEmbarc', a.residencia_fiscal_embarc) +
+        attr('NombreEmbarcador', a.nombre_embarcador) +
+        `/>`,
+    );
+  }
+
+  /* TransporteFerroviario — el contenedor cuelga del carro, no del nodo. */
+  if (cp.ferroviario) {
+    const f = cp.ferroviario;
+    lines.push(
+      `    <cartaporte31:TransporteFerroviario` +
+        attrReq('TipoDeServicio', f.tipo_de_servicio) +
+        attrReq('TipoDeTrafico', f.tipo_de_trafico) +
+        attr('NombreAseg', f.nombre_aseg) +
+        attr('NumPolizaSeguro', f.num_poliza_seguro) +
+        `>`,
+    );
+    for (const d of f.derechos_de_paso ?? []) {
+      lines.push(
+        `      <cartaporte31:DerechosDePaso` +
+          attrReq('TipoDerechoDePaso', d.tipo_derecho_de_paso) +
+          attrReq('KilometrajePagado', num(d.kilometraje_pagado, 2)) +
+          `/>`,
+      );
+    }
+    for (const carro of f.carros ?? []) {
+      const cont = carro.contenedores ?? [];
+      lines.push(
+        `      <cartaporte31:Carro` +
+          attrReq('TipoCarro', carro.tipo_carro) +
+          attrReq('MatriculaCarro', carro.matricula_carro) +
+          attrReq('GuiaCarro', carro.guia_carro) +
+          attrReq('ToneladasNetasCarro', num(carro.toneladas_netas_carro, 2)) +
+          (cont.length ? `>` : `/>`),
+      );
+      if (cont.length) {
+        for (const k of cont) {
+          lines.push(
+            `        <cartaporte31:Contenedor` +
+              attrReq('TipoContenedor', k.tipo_contenedor) +
+              attrReq('PesoContenedorVacio', num(k.peso_contenedor_vacio, 2)) +
+              attrReq('PesoNetoMercancia', num(k.peso_neto_mercancia, 2)) +
+              `/>`,
+          );
+        }
+        lines.push(`      </cartaporte31:Carro>`);
+      }
+    }
+    lines.push(`    </cartaporte31:TransporteFerroviario>`);
   }
 
   lines.push(`  </cartaporte31:Mercancias>`);

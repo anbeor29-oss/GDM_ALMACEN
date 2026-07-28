@@ -21,9 +21,42 @@ Todo lo de V1 sigue igual (facturación, NC, clientes, productos, reportes, cont
 - **`/carta-porte/aseguradoras`** — catálogo de pólizas por tipo (RespCivil / MedAmbiente / Carga).
 - **`/carta-porte/operadores`** — catálogo de figuras de transporte (operador, propietario, arrendador, notificado).
 - **`/carta-porte/mercancias`** — módulo SEPARADO de Productos: catálogo (plantilla reusable) + bitácora por viaje para inspecciones SAT.
-- **`/invoices/:id/carta-porte`** — formulario completo del CP: ubicaciones, mercancías, autotransporte, figuras. Con "Cargar plantilla" en cada bloque.
+- **`/invoices/:id/carta-porte`** — formulario completo del CP: ubicaciones, mercancías, medio de transporte, figuras. Con "Cargar plantilla" en cada bloque.
 - **Builder XML CP 3.1** + validator (Matriz de Errores SAT) + timbrado sandbox.
 - **Sección CP en el PDF** — hoja 2 con QR y datos del complemento, hoja 3 con las 14 cláusulas del contrato de transporte.
+
+### Carta Porte internacional y multimodal
+
+Las cuatro modalidades del SAT, exclusivas entre sí (`c_CveTransporte`):
+
+| Clave | Modalidad | Qué captura |
+|---|---|---|
+| `01` | Autotransporte | Config vehicular, placa, permiso SCT, seguros, remolques |
+| `02` | Marítimo | Embarcación (OMI, eslora/manga/calado), agente naviero, viaje, conocimiento de embarque, contenedores con precinto |
+| `03` | Aéreo | Aeronave, guía aérea, código de transportista, embarcador |
+| `04` | Ferroviario | Tipo de servicio y tráfico, derechos de paso, carros con sus contenedores |
+
+Al marcar **Transporte internacional = Sí** aparece el bloque de comercio
+exterior: entrada/salida, país extranjero, régimen aduanero (varios, filtrados
+por sentido de la operación) y cruce fronterizo. La **vía de entrada/salida se
+toma del medio elegido** — declarar una y capturar otra es rechazo del PAC.
+
+Cada mercancía puede llevar su propia **documentación aduanera** (pedimento o
+permiso): va por mercancía, no por carta porte, porque un embarque puede
+mezclar mercancías con pedimentos distintos y mercancías nacionales.
+
+Los **domicilios extranjeros** no se validan contra el catálogo mexicano: fuera
+de México se pide el RFC genérico `XEXX010101000` más el registro tributario
+(Tax ID / EIN) y la residencia fiscal. Igual para las figuras de transporte —
+a un operador de EUA no se le exige RFC mexicano.
+
+Catálogos propios: `sat_cp_pais` (ISO 3166-1 alfa-3), `sat_cp_estado`
+(México + EUA + Canadá, con PK por país) y `cp_cruce_fronterizo` (8 cruces
+México–EUA, ayuda de captura que no viaja al SAT).
+
+**Pendiente**: el expediente multimodal por tramos (§13 del documento de
+diseño) — hoy cada tramo de un traslado encadenado se captura como una carta
+porte independiente.
 
 ### Super Lector XML (`/xml-super-import`)
 Reemplaza el importador CFDI clásico. Un solo lector que detecta y procesa:

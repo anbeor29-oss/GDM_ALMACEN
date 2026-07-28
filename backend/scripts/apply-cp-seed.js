@@ -61,10 +61,15 @@ async function main() {
   // El propio SQL abre BEGIN/COMMIT global — se ignoran cuando aplicamos por
   // lotes (cada lote lleva su propia transacción). Los INSERTs son idempotentes
   // gracias a ON CONFLICT DO UPDATE, así que reintentar es seguro.
+  // Al partir por ';\n' el comentario que encabeza cada catálogo queda pegado
+  // al primer INSERT de ese bloque. Descartar la sentencia por empezar con
+  // '--' se llevaba también ese INSERT: una fila perdida por catálogo (34 en
+  // total, entre ellas '01 Pedimento', '01 Operador' y '01 Autotransporte').
+  // Por eso se recortan las líneas de comentario en lugar de tirar el bloque.
   const statements = sql
     .split(/;\s*\n/)
-    .map(s => s.trim())
-    .filter(s => s && !/^--/.test(s) && !/^(BEGIN|COMMIT)$/i.test(s));
+    .map(s => s.replace(/^(?:[ \t]*--[^\n]*\n|[ \t]*\n)+/, '').trim())
+    .filter(s => s && !/^(BEGIN|COMMIT)$/i.test(s));
 
   const BATCH = 500;
   const t0 = Date.now();

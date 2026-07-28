@@ -5,6 +5,111 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-07-27 — Carta Porte internacional y multimodal (CP 3.1)
+
+### Contexto
+Hasta hoy la Carta Porte solo sabía de autotransporte nacional. El documento
+`CARTA_PORTE_INTERNACIONAL.md` (HCGM Advisors v1.0) define cómo ampliarla a
+operaciones México–EUA por carretera, ferrocarril, barco y avión.
+
+### Bug encontrado antes de empezar: 34 claves perdidas en los catálogos
+
+`apply-cp-seed.js` partía el seed por `;\n` y descartaba toda sentencia que
+empezara con `--`. Como el comentario que encabeza cada catálogo queda pegado
+al primer INSERT de su bloque, ese INSERT se iba con el comentario:
+**una fila perdida por catálogo, 34 en total**. Las bajas eran justo las claves
+de uso diario:
+
+| Catálogo | Clave perdida |
+|---|---|
+| `sat_cp_documento_aduanero` | `01` Pedimento |
+| `sat_cp_figura_transporte` | `01` Operador |
+| `sat_cp_cve_transporte` | `01` Autotransporte |
+| `sat_cp_tipo_estacion` | `01` Origen Nacional |
+| `sat_cp_tipo_materia` | `01` Materia prima |
+| `sat_cp_tipo_permiso` | `TPAF01` |
+| `sat_cp_sub_tipo_rem` | `CTR001` |
+| …y 27 más | la primera clave de cada uno |
+
+Sin `01 Pedimento` la documentación aduanera era imposible de capturar. El
+parser quedó corregido (recorta el comentario en vez de tirar el bloque) y se
+agregó `fix-cp-catalogos-faltantes.js`, idempotente, al `start:prod` — las
+bases ya sembradas no se repararían solas porque `apply-cp-seed` se salta el
+trabajo cuando `catalog_versions` tiene fila.
+
+### Decisiones de diseño
+
+1. **Un solo módulo, no dos.** Se conserva la estructura nacional y se le
+   cuelgan las capas que faltan (§2 del documento). No hay "Carta Porte
+   internacional" separada.
+
+2. **La modalidad es exclusiva.** `carta_porte.medio_transporte` (01–04) manda,
+   y tanto el validador de guardado como el pre-PAC rechazan que venga más de
+   un bloque modal. El SAT admite un solo nodo dentro de `<Mercancias>`.
+
+3. **La vía no se pregunta dos veces.** `ViaEntradaSalida` se toma del medio
+   elegido. Declarar una vía y capturar otra es rechazo seguro del PAC.
+
+4. **Los regímenes son colección, no un valor.** Tabla `cp_regimenes_aduaneros`;
+   la columna vieja `carta_porte.regimen_aduanero` se conserva y se migró su
+   contenido para no romper lo ya capturado.
+
+5. **La documentación aduanera cuelga de la mercancía, no de la carta porte**
+   (§6.3). Un mismo embarque lleva mercancías con pedimentos distintos y
+   mercancías nacionales junto a extranjeras.
+
+6. **El domicilio extranjero no se valida contra el catálogo mexicano** (§5.2).
+   Antes se exigía RFC con formato mexicano y CP de 5 dígitos a toda ubicación;
+   ahora, si el país no es MEX, se pide el RFC genérico `XEXX010101000` más el
+   registro tributario y la residencia fiscal. `municipio` pasó de VARCHAR(4)
+   a 60 — "Los Angeles County" no cabía.
+
+7. **Estados por país en tabla propia.** `sat_catalogs.c_Estado` es una lista
+   plana sin país que usa el CFDI; meterle Texas ensuciaría el catálogo fiscal.
+   Se creó `sat_cp_estado` con PK (clave, pais), mismo patrón que
+   `sat_cp_municipio`.
+
+8. **El cruce fronterizo es ayuda de captura, no catálogo del SAT.**
+   `cp_cruce_fronterizo` con los 8 cruces del §8.1; el XML sigue viajando con
+   las claves oficiales.
+
+### Qué se agregó
+
+- Migración `2026-07-27_carta_porte_internacional.sql`: 9 tablas nuevas
+  (regímenes, doc. aduanera, ferroviario + derechos de paso + carros +
+  contenedores, marítimo + contenedores, aéreo, cruces), `sat_cp_pais` (66),
+  `sat_cp_estado` (97: 32 MEX + 65 USA/CAN).
+- Validadores y persistencia de las tres modalidades nuevas.
+- Builder de XML: `<RegimenesAduaneros>`, `<DocumentacionAduanera>` y los nodos
+  `TransporteMaritimo`, `TransporteAereo`, `TransporteFerroviario`.
+- Validador pre-PAC con capa internacional (§15.3) y capa modal (§15.4).
+- UI: bloque de comercio exterior, captura completa de las tres modalidades,
+  documentación aduanera por mercancía.
+
+### Verificado
+
+XML generado para las cuatro modalidades con exactamente un nodo modal cada
+una; guardado y relectura de una carta porte marítima internacional
+México–EUA con el validador pre-PAC en cero violaciones; borrado en cascada
+limpio. Ocho reglas de rechazo probadas contra la API viva (vía que no coincide
+con el medio, dos bloques modales, país = MEX, internacional sin régimen,
+pedimento en documento que no es pedimento, figura extranjera sin Tax ID, OMI
+mal formado, régimen repetido) y la regla de sentido del régimen en el pre-PAC
+(`ITR` de importación declarado en una Salida).
+
+### Pendiente
+
+- **Multimodal por tramos (§13 del documento)**: expediente logístico con
+  varios tramos encadenados (Shanghái → Manzanillo por barco → San Luis Potosí
+  por tren → planta por camión), cada tramo con su CFDI e IdCCP. No entra en
+  esta capa: requiere su propia tabla `carta_porte_tramos` y una pantalla de
+  expediente. Hoy cada tramo se captura como una carta porte independiente.
+- `sat_cp_pais` trae 66 países (socios comerciales de México) con claves
+  ISO 3166-1 alfa-3, que es lo que el SAT adopta. Si hace falta el catálogo
+  completo se reemplaza por el CSV oficial con el mismo `ON CONFLICT`.
+
+---
+
 ## 2026-07-02 (tarde) — Stabilización post-deploy y correcciones de UI
 
 ### Contexto

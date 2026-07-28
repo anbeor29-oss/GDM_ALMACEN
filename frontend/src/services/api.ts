@@ -1107,12 +1107,19 @@ class APIClient {
   }
 
   /* ─── Carta Porte 3.1 ─── */
-  async searchCartaPorteCatalog(name: string, q: string, limit = 50) {
+  async searchCartaPorteCatalog(name: string, q: string, limit = 50, extra: Record<string, string> = {}) {
     const res = await this.client.get<{ items: Array<{ clave: string; descripcion: string; [k: string]: any }> }>(
       `/carta-porte/catalogs/${name}`,
-      { params: { q, limit } },
+      { params: { q, limit, ...extra } },
     );
     return res.data;
+  }
+  /** Cruces fronterizos México–EUA: ayuda de captura, no catálogo del SAT. */
+  async getCPCrucesFronterizos() {
+    const r = await this.client.get<{ items: Array<{
+      clave: string; nombreMx: string; estadoMx: string; nombreUs: string; estadoUs: string;
+    }> }>('/carta-porte/cruces-fronterizos');
+    return r.data;
   }
   /* ─── Super lector XML (CFDI + CP + Nómina + Pagos + NC) ─── */
   async xmlSuperDetect(xml: string) {
