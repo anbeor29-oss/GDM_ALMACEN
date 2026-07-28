@@ -241,7 +241,10 @@ export function CartaPorteFormPage() {
   const [lugarPicker, setLugarPicker] = useState<{ index: number; tipo: 'Origen' | 'Destino' } | null>(null);
   const [mercPicker, setMercPicker] = useState<number | null>(null);
   const [autoPickerOpen, setAutoPickerOpen] = useState(false);
-  const [asegPickerOpen, setAsegPickerOpen] = useState(false);
+  // A qué bloque le va a llenar la póliza el picker. El catálogo de
+  // aseguradoras es el mismo para las cuatro modalidades; lo que cambia es
+  // dónde aterriza el dato.
+  const [asegPickerOpen, setAsegPickerOpen] = useState<null | Medio>(null);
   const [figPicker, setFigPicker] = useState<number | null>(null);
   const [mercancias, setMercancias] = useState<MercanciaRow[]>([blankMercancia()]);
   const [figuras, setFiguras] = useState<FiguraRow[]>([blankFigura()]);
@@ -1037,7 +1040,7 @@ export function CartaPorteFormPage() {
                 <p className="text-sm font-medium text-slate-700">Aseguradora Responsabilidad Civil</p>
                 <button
                   type="button"
-                  onClick={() => setAsegPickerOpen(true)}
+                  onClick={() => setAsegPickerOpen('auto')}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-sky-50 text-sky-700 rounded border border-sky-200 hover:bg-sky-100"
                 >
                   <BookMarked size={12} /> Cargar plantilla de aseguradora
@@ -1158,7 +1161,15 @@ export function CartaPorteFormPage() {
                   <input value={maritimo.permisoTempNavegacion} onChange={e => setMaritimo({ ...maritimo, permisoTempNavegacion: e.target.value })} maxLength={10} className="input font-mono" />
                 </Field>
                 <Field label="Aseguradora" span={2}>
-                  <input value={maritimo.nombreAseg} onChange={e => setMaritimo({ ...maritimo, nombreAseg: e.target.value })} className="input" />
+                  <div className="flex gap-1.5">
+                    <input value={maritimo.nombreAseg} onChange={e => setMaritimo({ ...maritimo, nombreAseg: e.target.value })} className="input flex-1" />
+                    <button
+                      type="button"
+                      title="Cargar plantilla de aseguradora"
+                      onClick={() => setAsegPickerOpen('maritimo')}
+                      className="shrink-0 px-2 bg-sky-50 text-sky-700 rounded border border-sky-200 hover:bg-sky-100"
+                    ><BookMarked size={14} /></button>
+                  </div>
                 </Field>
                 <Field label="No. póliza" span={2}>
                   <input value={maritimo.numPolizaSeguro} onChange={e => setMaritimo({ ...maritimo, numPolizaSeguro: e.target.value })} className="input font-mono" />
@@ -1228,7 +1239,16 @@ export function CartaPorteFormPage() {
             </div>
 
             <div className="pt-3 border-t border-slate-200">
-              <p className="text-sm font-medium text-slate-700 mb-2">Seguro</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-slate-700">Seguro</p>
+                <button
+                  type="button"
+                  onClick={() => setAsegPickerOpen('aereo')}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-sky-50 text-sky-700 rounded border border-sky-200 hover:bg-sky-100"
+                >
+                  <BookMarked size={12} /> Cargar plantilla de aseguradora
+                </button>
+              </div>
               <div className="grid grid-cols-4 gap-3">
                 <Field label="Aseguradora" span={2}>
                   <input value={aereo.nombreAseg} onChange={e => setAereo({ ...aereo, nombreAseg: e.target.value })} className="input" />
@@ -1272,7 +1292,15 @@ export function CartaPorteFormPage() {
                   onClick={() => openPicker('tipo-de-trafico', 'Tipo de tráfico ferroviario', it => setFerro({ ...ferro, tipoDeTrafico: it.clave }))} />
               </Field>
               <Field label="Aseguradora">
-                <input value={ferro.nombreAseg} onChange={e => setFerro({ ...ferro, nombreAseg: e.target.value })} className="input" />
+                <div className="flex gap-1.5">
+                  <input value={ferro.nombreAseg} onChange={e => setFerro({ ...ferro, nombreAseg: e.target.value })} className="input flex-1" />
+                  <button
+                    type="button"
+                    title="Cargar plantilla de aseguradora"
+                    onClick={() => setAsegPickerOpen('ferroviario')}
+                    className="shrink-0 px-2 bg-sky-50 text-sky-700 rounded border border-sky-200 hover:bg-sky-100"
+                  ><BookMarked size={14} /></button>
+                </div>
               </Field>
               <Field label="No. póliza">
                 <input value={ferro.numPolizaSeguro} onChange={e => setFerro({ ...ferro, numPolizaSeguro: e.target.value })} className="input font-mono" />
@@ -1490,9 +1518,17 @@ export function CartaPorteFormPage() {
       )}
       {asegPickerOpen && (
         <TemplatePicker
-          title="Aseguradoras de Responsabilidad Civil"
+          title={asegPickerOpen === 'auto'
+            ? 'Aseguradoras de Responsabilidad Civil'
+            : `Aseguradoras · ${medioLabel(asegPickerOpen)}`}
           color="sky"
-          fetchFn={(q) => api.listCPAseguradoras(q || undefined, 'RespCivil')}
+          // Autotransporte pide expresamente la de responsabilidad civil; las
+          // otras modalidades llevan una sola póliza genérica, así que se
+          // muestran todas para no esconderle al usuario la que sí tiene.
+          fetchFn={(q) => api.listCPAseguradoras(
+            q || undefined,
+            asegPickerOpen === 'auto' ? 'RespCivil' : undefined,
+          )}
           renderItem={(a: any) => (
             <div>
               <p className="text-sm font-medium">{a.nombre_aseguradora}</p>
@@ -1500,14 +1536,21 @@ export function CartaPorteFormPage() {
               <p className="text-[10px] text-slate-400">Tipo {a.tipo} · {a.alias || ''}</p>
             </div>
           )}
-          onClose={() => setAsegPickerOpen(false)}
+          onClose={() => setAsegPickerOpen(null)}
           onSelect={(a: any) => {
-            setAuto({
-              ...auto,
-              aseguraRespCivil: a.nombre_aseguradora || '',
-              polizaRespCivil: a.num_poliza || '',
-            });
-            setAsegPickerOpen(false);
+            const nombre = a.nombre_aseguradora || '';
+            const poliza = a.num_poliza || '';
+            // Cada modalidad guarda la póliza en sus propios campos.
+            if (asegPickerOpen === 'auto') {
+              setAuto(s => ({ ...s, aseguraRespCivil: nombre, polizaRespCivil: poliza }));
+            } else if (asegPickerOpen === 'maritimo') {
+              setMaritimo(s => ({ ...s, nombreAseg: nombre, numPolizaSeguro: poliza }));
+            } else if (asegPickerOpen === 'aereo') {
+              setAereo(s => ({ ...s, nombreAseg: nombre, numPolizaSeguro: poliza }));
+            } else {
+              setFerro(s => ({ ...s, nombreAseg: nombre, numPolizaSeguro: poliza }));
+            }
+            setAsegPickerOpen(null);
           }}
         />
       )}
