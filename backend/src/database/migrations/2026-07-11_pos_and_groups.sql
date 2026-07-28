@@ -60,7 +60,19 @@ CREATE TABLE IF NOT EXISTS pos_sales (
     created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE (company_id, folio)
 );
-CREATE INDEX IF NOT EXISTS idx_pos_sales_company ON pos_sales (company_id, created_at DESC);
+-- El índice solo si la tabla es la de ESTE esquema.
+--
+-- En la fusión con GDM Almacén, pos_sales puede existir ya con el esquema de
+-- allá (sold_at en vez de created_at): el CREATE TABLE IF NOT EXISTS de arriba
+-- no hace nada y este índice tumbaba el arranque completo. La reconciliación
+-- la hace 2026-07-28_fusion_pos_unificado.sql, que corre después.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name='pos_sales' AND column_name='created_at') THEN
+    CREATE INDEX IF NOT EXISTS idx_pos_sales_company ON pos_sales (company_id, created_at DESC);
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS pos_sale_items (
     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -76,7 +88,13 @@ CREATE TABLE IF NOT EXISTS pos_sale_items (
     line_tax      NUMERIC(15,2) NOT NULL,
     line_total    NUMERIC(15,2) NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_pos_sale_items_sale ON pos_sale_items (sale_id);
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name='pos_sale_items' AND column_name='sale_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_pos_sale_items_sale ON pos_sale_items (sale_id);
+  END IF;
+END $$;
 
 COMMENT ON TABLE pos_sales IS 'Ventas de mostrador (contado) — efectivo o tarjeta';
 
