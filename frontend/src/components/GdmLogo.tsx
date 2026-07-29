@@ -17,7 +17,10 @@ export function GdmLogo({ size = 40, className = '' }: { size?: number; classNam
       src={LOGO_URL}
       width={size}
       height={size}
-      alt="GDM HIGH CONSULTING MÉXICO"
+      // El alt va en minúsculas A PROPÓSITO, aunque la marca visible vaya en
+      // mayúsculas: el alt no se ve, se escucha. Varios lectores de pantalla
+      // toman una palabra toda en mayúsculas por sigla y la deletrean.
+      alt="GDM High Consulting México"
       className={`rounded-full object-cover select-none ${className}`}
       draggable={false}
     />
