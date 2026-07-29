@@ -54,6 +54,12 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Nombre del producto. Se ve en el log de arranque y en /api/v1. Va
+      # explícito porque el servicio se sigue llamando gdm-almacen-backend por
+      # las razones de arriba, y sin esto no había forma de saber desde fuera
+      # qué producto corre ahí.
+      - key: APP_NAME
+        value: GDM NEXO
       - key: API_VERSION
         value: v1
       - key: LOG_LEVEL

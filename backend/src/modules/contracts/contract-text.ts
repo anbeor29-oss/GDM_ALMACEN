@@ -15,7 +15,7 @@
  */
 
 /** Súbela SIEMPRE que cambie el texto. Formato: AAAA-MM-DD.N */
-export const CONTRACT_VERSION = '2026-07-27.1';
+export const CONTRACT_VERSION = '2026-07-29.1';
 
 export interface ContractParty {
   rfc: string;
@@ -40,7 +40,7 @@ export function buildContractText(opts: {
   });
 
   return `CONTRATO DE PRESTACIÓN DE SERVICIOS
-GDM FACTURACIÓN — FACTURACIÓN ELECTRÓNICA CFDI 4.0
+GDM NEXO — ERP CON FACTURACIÓN ELECTRÓNICA CFDI 4.0
 Versión de los Términos y Condiciones: ${CONTRACT_VERSION}
 
 PARTES
@@ -65,7 +65,7 @@ Ambas partes reconocen mutuamente capacidad legal para obligarse.
 PRIMERA — OBJETO
 
 HCGM otorga a EL CLIENTE el uso, en modalidad de Software como Servicio (SaaS),
-de la plataforma web denominada GDM Facturación para:
+de la plataforma web denominada GDM NEXO para:
 
   a) Emitir Comprobantes Fiscales Digitales por Internet CFDI 4.0 conforme al
      Anexo 20 del SAT.

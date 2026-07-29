@@ -106,7 +106,10 @@ function getConfig(): EnvironmentConfig {
 
   return {
     nodeEnv: process.env.NODE_ENV || 'development',
-    appName: process.env.APP_NAME || 'ERP CFDI Mexico Backend',
+    // Por omisión, el nombre del producto — no una descripción genérica. Se ve
+    // en el log de arranque y en la respuesta de /api/v1, así que Render lo
+    // toma solo sin depender de que alguien recuerde poner la variable.
+    appName: process.env.APP_NAME || 'GDM NEXO',
     appPort: runtimePort,
     apiVersion: process.env.API_VERSION || 'v1',
     logLevel: process.env.LOG_LEVEL || 'debug',

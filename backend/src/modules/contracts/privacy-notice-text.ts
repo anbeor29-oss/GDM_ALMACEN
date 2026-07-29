@@ -11,11 +11,11 @@
  *      para que se pueda hashear y auditar la versión que un cliente aceptó.
  */
 
-export const PRIVACY_VERSION = '2026-07-20.1';
+export const PRIVACY_VERSION = '2026-07-29.1';
 
 export function buildPrivacyNoticeText(): string {
   return `AVISO DE PRIVACIDAD INTEGRAL
-GDM FACTURACIÓN — GRUPO HCGM, S.A. DE C.V.
+GDM NEXO — GRUPO HCGM, S.A. DE C.V.
 Versión: ${PRIVACY_VERSION}
 
 ────────────────────────────────────────────────────────────────────────
