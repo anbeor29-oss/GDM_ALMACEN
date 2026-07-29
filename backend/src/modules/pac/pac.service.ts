@@ -141,7 +141,62 @@ export async function timbrarJson(
     logger.info(
       `Timbrando comprobante tipo ${payload?.TipoDeComprobante} vía ${provider.name} (JSON)`
     );
-    return provider.stampFromJson(payload, credentials);
+
+    /* BÚSQUEDA ACOTADA DE LA FORMA DEL COMPLEMENTO
+     *
+     * SW aceptó el comprobante tipo P pero el SAT respondió CFDI140230: "no
+     * existe el Complemento para recepción de Pagos". O sea: la ruta y los
+     * datos son correctos, lo que no coincide es CÓMO se anida el complemento
+     * en el JSON de SW, y su documentación no está a mano.
+     *
+     * En vez de adivinar de una en una —dos intentos ya fallaron así— se
+     * prueban las formas conocidas en orden y se usa la primera que SW acepte.
+     * Es seguro porque un rechazo NO cobra timbre, NO guarda nada y NO mueve
+     * saldos: el llamador solo persiste cuando success es true.
+     *
+     * Al acertar, queda en el log qué forma funcionó, para fijarla y borrar
+     * esta búsqueda. Si ninguna sirve, se devuelve el error de la primera —el
+     * más informativo— con la lista de lo intentado.
+     */
+    const comp = payload?.Complemento;
+    if (!comp) return provider.stampFromJson(payload, credentials);
+
+    const base = { ...payload };
+    delete (base as any).Complemento;
+
+    const variantes: Array<{ nombre: string; cuerpo: any }> = [
+      { nombre: 'Complemento:{}',        cuerpo: { ...base, Complemento: comp } },
+      { nombre: 'Complemento:[]',        cuerpo: { ...base, Complemento: [comp] } },
+      { nombre: 'Complementos:{}',       cuerpo: { ...base, Complementos: comp } },
+      { nombre: 'Complementos:[]',       cuerpo: { ...base, Complementos: [comp] } },
+      { nombre: 'Pagos en la raíz',      cuerpo: { ...base, ...comp } },
+    ];
+
+    let primerError: StampResult | null = null;
+    const intentados: string[] = [];
+
+    for (const v of variantes) {
+      const r = await provider.stampFromJson(v.cuerpo, credentials);
+      if (r.success) {
+        logger.info(
+          `[PAC] Complemento aceptado con la forma "${v.nombre}". ` +
+          `Fijar esa forma en el payload y retirar la búsqueda de variantes.`
+        );
+        return r;
+      }
+      intentados.push(`${v.nombre}: ${(r.errors || []).join(' ')}`);
+      if (!primerError) primerError = r;
+      logger.warn(`[PAC] forma "${v.nombre}" rechazada: ${(r.errors || []).join(' ')}`);
+    }
+
+    return {
+      success: false,
+      errors: [
+        `${(primerError?.errors || ['Rechazado por el PAC']).join('; ')} ` +
+        `— se probaron ${variantes.length} formas del complemento sin éxito. ` +
+        `Detalle en el log del backend.`,
+      ],
+    };
   }
 
   return provider.stamp(xmlFallback, credentials);
