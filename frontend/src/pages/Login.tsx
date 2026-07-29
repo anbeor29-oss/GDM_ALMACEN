@@ -105,9 +105,12 @@ export function LoginPage() {
           </div>
         </form>
 
-        {/* Footer */}
+        {/* Footer — el aviso de copyright nombra a la RAZÓN SOCIAL dueña de los
+            desarrollos, no al nombre comercial ni al del producto. Debe decir lo
+            mismo que las páginas legales; dos titulares distintos en dos
+            pantallas públicas se leen como dos empresas distintas. */}
         <div className="mt-6 pt-6 border-t border-gray-200 text-center text-sm text-gray-600">
-          <p>© {new Date().getFullYear()} GDM HIGH CONSULTING MÉXICO · ERP CFDI 4.0</p>
+          <p>© {new Date().getFullYear()} GRUPO HCGM, S.A. DE C.V. · ERP CFDI 4.0</p>
         </div>
       </div>
     </div>

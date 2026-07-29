@@ -418,7 +418,7 @@ export function PublicHomePage() {
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400">
         <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col md:flex-row items-center justify-between gap-3 text-sm">
-          <p>© {new Date().getFullYear()} HCGM · Sistema de facturación CFDI 4.0</p>
+          <p>© {new Date().getFullYear()} GRUPO HCGM, S.A. DE C.V. · ERP CFDI 4.0</p>
           <p>PAC autorizado: SW Sapien · Anexo 20 SAT</p>
         </div>
       </footer>

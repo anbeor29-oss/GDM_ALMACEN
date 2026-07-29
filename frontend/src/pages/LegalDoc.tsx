@@ -106,7 +106,9 @@ export function LegalDoc({ endpoint, title, subtitle }: Props) {
           <span className="mx-3">·</span>
           <Link to="/privacidad" className="hover:text-slate-800 underline">Aviso de Privacidad</Link>
           <span className="mx-3">·</span>
-          <span>© 2026 GRUPO HCGM, S.A. DE C.V.</span>
+          {/* El año se calcula, no se escribe: estaba fijo en 2026 y el 1 de
+              enero habría quedado viejo sin que nadie se diera cuenta. */}
+          <span>© {new Date().getFullYear()} GRUPO HCGM, S.A. DE C.V.</span>
         </div>
       </main>
     </div>
