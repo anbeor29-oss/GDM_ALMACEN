@@ -210,7 +210,64 @@ export async function createCreditNote(companyId: string, data: CreditNoteInput)
      * el PAC rechaza, se lanza el error dentro de la transacción y la NC NO
      * queda guardada.
      */
-    const timbre = await pacService.timbrarXml(companyId, xml);
+    /* El MISMO comprobante en el payload JSON de la ruta de EMISIÓN. El XML de
+     * arriba iba a /cfdi33/stamp/v4, que exige un XML ya sellado; el nuestro va
+     * sin sellar porque SW sella con el CSD de su bóveda. Se conserva como
+     * respaldo para el provider MOCK, que no implementa la ruta JSON. */
+    const trasladoNC = {
+      Base: subtotal.toFixed(2),
+      Impuesto: '002',
+      TipoFactor: 'Tasa',
+      TasaOCuota: '0.160000',
+      Importe: iva.toFixed(2),
+    };
+    const payloadNC: any = {
+      Version: '4.0',
+      Serie: 'NC',
+      Folio: String(folio),
+      Fecha: new Date().toISOString().slice(0, 19),
+      FormaPago: '01',
+      MetodoPago: 'PUE',
+      SubTotal: subtotal.toFixed(2),
+      Moneda: moneda,
+      Total: ncTotal.toFixed(2),
+      TipoDeComprobante: 'E',
+      Exportacion: '01',
+      LugarExpedicion: emisor?.postal_code || '00000',
+      // Obligatorio en una nota de crédito: a qué CFDI se refiere.
+      CfdiRelacionados: {
+        TipoRelacion: tipoRel,
+        CfdiRelacionado: [{ UUID: invoice.cfdi_uuid || '' }],
+      },
+      Emisor: {
+        Rfc: emisor?.rfc || '',
+        Nombre: emisor?.business_name || '',
+        RegimenFiscal: emisor?.fiscal_regime || '601',
+      },
+      Receptor: {
+        Rfc: receptor?.rfc || '',
+        Nombre: receptor?.business_name || '',
+        DomicilioFiscalReceptor: receptor?.postal_code || '00000',
+        RegimenFiscalReceptor: receptor?.fiscal_regime || '616',
+        UsoCFDI: 'G02',
+      },
+      Conceptos: [{
+        ClaveProdServ: '84111506',
+        Cantidad: '1',
+        ClaveUnidad: 'ACT',
+        Descripcion: motivoText,
+        ValorUnitario: subtotal.toFixed(2),
+        Importe: subtotal.toFixed(2),
+        ObjetoImp: '02',
+        Impuestos: { Traslados: [trasladoNC] },
+      }],
+      Impuestos: {
+        TotalImpuestosTrasladados: iva.toFixed(2),
+        Traslados: [trasladoNC],
+      },
+    };
+
+    const timbre = await pacService.timbrarJson(companyId, payloadNC, xml);
     if (!timbre.success) {
       throw new ValidationError(
         `No se pudo timbrar la nota de crédito: ${timbre.errors.join('; ')}. ` +

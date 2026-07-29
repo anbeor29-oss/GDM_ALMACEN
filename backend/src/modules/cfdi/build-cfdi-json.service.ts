@@ -57,6 +57,50 @@ interface CFDIJson {
     Traslados?: Array<TrasladoTotal>;
     Retenciones?: Array<RetencionTotal>;
   };
+  /**
+   * Relación con otros CFDI. Obligatoria en una nota de crédito (tipo E):
+   * TipoRelacion '01' = nota de crédito de los documentos relacionados.
+   */
+  CfdiRelacionados?: {
+    TipoRelacion: string;
+    CfdiRelacionado: Array<{ UUID: string }>;
+  };
+  /**
+   * Complemento de Pagos 2.0 — solo en comprobantes tipo P.
+   *
+   * Se declara aquí porque los pagos y las notas de crédito deben emitirse por
+   * la MISMA ruta que las facturas (/v3/cfdi33/issue/json/v4), donde SW sella
+   * con el CSD de su bóveda. Antes se armaba un XML sin sellar y se mandaba a
+   * /cfdi33/stamp/v4, que exige un XML YA sellado: de ahí el rechazo
+   * "Xml CFDI no proporcionado o viene vacío".
+   */
+  Complemento?: {
+    Pagos?: {
+      Version: '2.0';
+      Totales: {
+        MontoTotalPagos: string;
+        TotalTrasladosBaseIVA16?: string;
+        TotalTrasladosImpuestoIVA16?: string;
+      };
+      Pago: Array<{
+        FechaPago: string;
+        FormaDePagoP: string;
+        MonedaP: string;
+        TipoCambioP?: string;
+        Monto: string;
+        DoctoRelacionado: Array<{
+          IdDocumento: string;
+          MonedaDR: string;
+          EquivalenciaDR?: string;
+          NumParcialidad: string;
+          ImpSaldoAnt: string;
+          ImpPagado: string;
+          ImpSaldoInsoluto: string;
+          ObjetoImpDR: string;
+        }>;
+      }>;
+    };
+  };
 }
 
 interface Concepto {

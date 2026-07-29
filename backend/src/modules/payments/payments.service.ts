@@ -83,6 +83,20 @@ async function sumPaidForInvoice(client: any, invoiceId: string): Promise<number
  * de 4,943.95 quedaba en PARTIAL_PAYMENT porque solo se comparaba el pago
  * con el total, ignorando la NC ya aplicada.
  */
+/**
+ * Cuántos complementos de pago vigentes lleva ya la factura.
+ * El Anexo 20 pide NumParcialidad: este pago es el (previos + 1).
+ */
+async function contarPagosPrevios(client: any, invoiceId: string): Promise<number> {
+  const r = await transactionQuery<{ n: string }>(
+    client,
+    `SELECT COUNT(*) AS n FROM payments
+      WHERE invoice_id = $1 AND deleted_at IS NULL AND document_status != 'CANCELLED'`,
+    [invoiceId]
+  );
+  return Number(r.rows[0]?.n) || 0;
+}
+
 async function sumCreditedForInvoice(client: any, invoiceId: string): Promise<number> {
   const r = await transactionQuery<{ credited: number }>(
     client,
@@ -202,7 +216,72 @@ export async function createPayment(companyId: string, data: PaymentInput) {
      * transacción revierte: un pago que no se timbró NO puede quedar guardado
      * como timbrado ni bajar el saldo del cliente.
      */
-    const timbre = await pacService.timbrarXml(companyId, xml);
+    /* El MISMO comprobante en el payload JSON que espera la ruta de EMISIÓN.
+     * Esto es lo que faltaba: el XML de arriba iba a /cfdi33/stamp/v4, que
+     * exige un XML ya sellado, y el nuestro va sin sellar a propósito porque
+     * SW sella con el CSD de su bóveda. El XML se conserva como respaldo para
+     * el provider MOCK, que no implementa la ruta JSON. */
+    const saldoAnterior = total - alreadyPaid - alreadyCredited;
+    const saldoInsoluto = Math.max(0, saldoAnterior - Number(data.paymentAmount));
+    const payloadPago: any = {
+      Version: '4.0',
+      Serie: 'P',
+      Folio: String(folio),
+      Fecha: fechaISO.slice(0, 19),
+      // En un CFDI tipo P el comprobante NO lleva importes ni forma de pago:
+      // todo vive en el complemento. Moneda XXX y totales en cero (Anexo 20).
+      SubTotal: '0',
+      Moneda: 'XXX',
+      Total: '0',
+      TipoDeComprobante: 'P',
+      Exportacion: '01',
+      LugarExpedicion: emisor?.postal_code || '00000',
+      Emisor: {
+        Rfc: emisor?.rfc || '',
+        Nombre: emisor?.business_name || '',
+        RegimenFiscal: emisor?.fiscal_regime || '601',
+      },
+      Receptor: {
+        Rfc: receptor?.rfc || '',
+        Nombre: receptor?.business_name || '',
+        DomicilioFiscalReceptor: receptor?.postal_code || '00000',
+        RegimenFiscalReceptor: receptor?.fiscal_regime || '616',
+        UsoCFDI: 'CP01',
+      },
+      Conceptos: [{
+        ClaveProdServ: '84111506',
+        Cantidad: '1',
+        ClaveUnidad: 'ACT',
+        Descripcion: 'Pago',
+        ValorUnitario: '0',
+        Importe: '0',
+        ObjetoImp: '01',
+      }],
+      Complemento: {
+        Pagos: {
+          Version: '2.0',
+          Totales: { MontoTotalPagos: Number(data.paymentAmount).toFixed(2) },
+          Pago: [{
+            FechaPago: fechaISO.slice(0, 19),
+            FormaDePagoP: data.paymentForm,
+            MonedaP: moneda,
+            Monto: Number(data.paymentAmount).toFixed(2),
+            DoctoRelacionado: [{
+              IdDocumento: invoice.cfdi_uuid || '',
+              MonedaDR: moneda,
+              // Parcialidad = cuántos pagos van, contando este.
+              NumParcialidad: String(await contarPagosPrevios(client, invoice.id) + 1),
+              ImpSaldoAnt: saldoAnterior.toFixed(2),
+              ImpPagado: Number(data.paymentAmount).toFixed(2),
+              ImpSaldoInsoluto: saldoInsoluto.toFixed(2),
+              ObjetoImpDR: '01',
+            }],
+          }],
+        },
+      },
+    };
+
+    const timbre = await pacService.timbrarJson(companyId, payloadPago, xml);
     if (!timbre.success) {
       throw new ValidationError(
         `No se pudo timbrar el complemento de pago: ${timbre.errors.join('; ')}. ` +

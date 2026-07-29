@@ -99,6 +99,54 @@ export async function timbrarXml(companyId: string, xml: string): Promise<StampR
   return provider.stamp(xml, getCredentials(companyId));
 }
 
+/**
+ * Timbra un comprobante a partir del payload JSON — la ruta de EMISIÓN.
+ *
+ * Esta es la que hay que usar para pagos y notas de crédito, y la razón está en
+ * la diferencia entre las dos rutas de SW:
+ *
+ *   · /v3/cfdi33/issue/json/v4  (emisión) — recibe el comprobante SIN SELLAR y
+ *     SW lo sella con el CSD de su bóveda, luego lo timbra. Es la que usan las
+ *     facturas, y por eso funcionan.
+ *   · /cfdi33/stamp/v4          (timbrado) — exige un XML YA SELLADO.
+ *
+ * Pagos y NC se estaban mandando por la segunda con un XML sin sellar, y SW
+ * respondía "Xml CFDI no proporcionado o viene vacío". No era el formato del
+ * cuerpo: era la ruta.
+ *
+ * `xmlFallback` sirve para el provider MOCK, que no implementa stampFromJson:
+ * en desarrollo se sigue simulando desde el XML sin cambiar nada más.
+ */
+export async function timbrarJson(
+  companyId: string,
+  payload: any,
+  xmlFallback: string,
+): Promise<StampResult> {
+  const provider = getProvider();
+  const credentials = getCredentials(companyId);
+
+  if (typeof provider.stampFromJson === 'function') {
+    // Mismo candado que las facturas: el sandbox de SW solo acepta su RFC de
+    // prueba, y sin este aviso el rechazo llega como un 401 indescifrable.
+    const esSandbox =
+      provider.name === 'SW_SAPIEN' &&
+      (process.env.SW_SAPIEN_ENV || 'sandbox') !== 'production';
+    if (esSandbox && payload?.Emisor?.Rfc !== 'EKU9003173C9') {
+      throw new ValidationError(
+        `SW Sapien sandbox solo acepta el RFC de prueba EKU9003173C9. ` +
+        `Esta empresa emite con ${payload?.Emisor?.Rfc}. ` +
+        `Para timbrado real: SW_SAPIEN_ENV=production y el CSD en el vault de SW.`
+      );
+    }
+    logger.info(
+      `Timbrando comprobante tipo ${payload?.TipoDeComprobante} vía ${provider.name} (JSON)`
+    );
+    return provider.stampFromJson(payload, credentials);
+  }
+
+  return provider.stamp(xmlFallback, credentials);
+}
+
 /** Nombre del PAC activo, para que quien llame sepa si fue real o simulado. */
 export function proveedorActivo(): string {
   return DEFAULT_PROVIDER;
