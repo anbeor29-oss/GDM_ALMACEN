@@ -189,11 +189,31 @@ export async function timbrarJson(
       logger.warn(`[PAC] forma "${v.nombre}" rechazada: ${(r.errors || []).join(' ')}`);
     }
 
+    /* Ninguna anidación JSON sirvió. Último recurso: la ruta XML.
+     *
+     * Vale la pena porque el XML ya cumple el Anexo 20 para tipo P —Moneda XXX,
+     * SubTotal y Total en cero, sin FormaPago ni MetodoPago, sin nodo Impuestos,
+     * concepto 84111506/ACT/ObjetoImp 01— y ahora SÍ declara xmlns:xsi y
+     * xsi:schemaLocation apuntando a cfdv40.xsd y Pagos20.xsd.
+     *
+     * Eso último es lo que faltaba y explicaría los rechazos: sin
+     * schemaLocation, un validador no liga el namespace pago20 con su esquema y
+     * el complemento le resulta invisible — exactamente lo que dice CFDI140230.
+     * Las facturas, que sí timbran, lo declaran desde siempre en cfdi.service.
+     */
+    logger.warn('[PAC] ninguna forma JSON del complemento sirvió — se intenta la ruta XML');
+    const porXml = await provider.stamp(xmlFallback, credentials);
+    if (porXml.success) {
+      logger.info('[PAC] el complemento SÍ timbró por la ruta XML. Usar esa ruta y retirar la búsqueda JSON.');
+      return porXml;
+    }
+
     return {
       success: false,
       errors: [
         `${(primerError?.errors || ['Rechazado por el PAC']).join('; ')} ` +
-        `— se probaron ${variantes.length} formas del complemento sin éxito. ` +
+        `— se probaron ${variantes.length} formas JSON del complemento y la ruta XML. ` +
+        `Último error por XML: ${(porXml.errors || []).join('; ')}. ` +
         `Detalle en el log del backend.`,
       ],
     };

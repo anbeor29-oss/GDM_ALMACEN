@@ -174,6 +174,8 @@ export async function createPayment(companyId: string, data: PaymentInput) {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4"
   xmlns:pago20="http://www.sat.gob.mx/Pagos20"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd http://www.sat.gob.mx/Pagos20 http://www.sat.gob.mx/sitio_internet/cfd/Pagos/Pagos20.xsd"
   Version="4.0" Serie="P" Folio="${folio}"
   Fecha="${fechaISO.slice(0, 19)}"
   NoCertificado="${noCertEmisor}"

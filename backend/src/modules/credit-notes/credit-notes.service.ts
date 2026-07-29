@@ -168,6 +168,8 @@ export async function createCreditNote(companyId: string, data: CreditNoteInput)
     const esc = (s: any) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd"
   Version="4.0" Serie="NC" Folio="${folio}"
   Fecha="${new Date().toISOString().slice(0, 19)}"
   NoCertificado="${noCertEmisor}"
