@@ -419,12 +419,20 @@ function PaymentModal({
         paymentForm,
         paymentMethod,
       });
+      // El mensaje PREGUNTA al backend en vez de afirmar. Antes decía "MODO
+      // SIMULACIÓN / PAC real pendiente" con texto fijo, y lo habría seguido
+      // diciendo aunque el complemento ya se timbrara de verdad.
+      const simulado = res.data?.is_mock !== false;
       alert(
-        `✅ Complemento de Pago timbrado (MODO SIMULACIÓN)\n\n` +
+        (simulado
+          ? `✅ Complemento de Pago timbrado (MODO SIMULACIÓN)\n\n`
+          : `✅ Complemento de Pago timbrado con ${res.data?.provider}\n\n`) +
         `UUID: ${res.data?.payment?.uuid}\n` +
         `Nuevo estatus de la factura: ${res.data?.invoice?.new_status}\n` +
-        `Saldo restante: $${(res.data?.invoice?.remaining || 0).toFixed(2)}\n\n` +
-        `⚠ PAC real pendiente.`
+        `Saldo restante: $${(res.data?.invoice?.remaining || 0).toFixed(2)}` +
+        (simulado
+          ? `\n\n⚠ Sin validez fiscal: el PAC está en modo simulación.`
+          : `\n\nEl XML ya lleva el Timbre Fiscal Digital del SAT.`)
       );
       onDone();
     } catch (e: any) {

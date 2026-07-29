@@ -81,6 +81,29 @@ function getCredentials(_companyId: string): PACCredentials {
   };
 }
 
+/**
+ * Timbra un XML ya armado con el PAC activo.
+ *
+ * Existe para que OTROS comprobantes —hoy el Complemento de Pago— usen el mismo
+ * camino que las facturas en vez de inventarse el suyo. El complemento se
+ * estuvo "timbrando" con un uuidv4() local: la factura quedaba PAID y el saldo
+ * en cero, pero el SAT nunca se enteraba. En un CFDI PPD el complemento es
+ * obligación legal, así que era un hueco fiscal, no un detalle de pantalla.
+ *
+ * Devuelve el resultado tal cual: quien llama decide qué hacer si `success` es
+ * false. Aquí NO se traga el error — un pago que no se timbró no debe quedar
+ * guardado como timbrado.
+ */
+export async function timbrarXml(companyId: string, xml: string): Promise<StampResult> {
+  const provider = getProvider();
+  return provider.stamp(xml, getCredentials(companyId));
+}
+
+/** Nombre del PAC activo, para que quien llame sepa si fue real o simulado. */
+export function proveedorActivo(): string {
+  return DEFAULT_PROVIDER;
+}
+
 /** Minutos tras los cuales un reclamo de timbrado se considera abandonado. */
 const STAMP_CLAIM_TTL_MIN = 2;
 
