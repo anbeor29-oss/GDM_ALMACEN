@@ -91,15 +91,28 @@ export class SWSapienProvider implements IPACProvider {
   async stamp(xmlContent: string, _credentials: PACCredentials): Promise<StampResult> {
     try {
       const http = this.http();
-      // POST /cfdi33/stamp/v4 acepta el XML CFDI 4.0 en JSON envuelto en 'xml'
-      const r = await http.post('/cfdi33/stamp/v4', xmlContent, {
-        headers: { 'Content-Type': 'application/xml' },
+      // El comentario original ya decía que SW espera el XML "en JSON envuelto
+      // en 'xml'", pero el código mandaba la cadena cruda con Content-Type
+      // application/xml. SW buscaba el campo `xml`, no lo encontraba, y
+      // respondía "Xml CFDI no proporcionado o viene vacío" — que es
+      // exactamente lo que se veía al timbrar un complemento de pago.
+      //
+      // Se envía como JSON con el campo que el propio comentario documentaba.
+      const ENDPOINT = '/cfdi33/stamp/v4';
+      const r = await http.post(ENDPOINT, { xml: xmlContent }, {
+        headers: { 'Content-Type': 'application/json' },
       });
       const d = r.data?.data;
       if (r.data?.status !== 'success' || !d?.uuid) {
+        // Se nombra el endpoint en el error. Sin esto, un rechazo de SW no
+        // decía POR CUÁL ruta entró, y distinguir "el cuerpo iba mal" de "la
+        // ruta no era la correcta" costó varias vueltas.
         return {
           success: false,
-          errors: [r.data?.messageDetail || r.data?.message || 'Respuesta SW inválida'],
+          errors: [
+            `${r.data?.messageDetail || r.data?.message || 'Respuesta SW inválida'} ` +
+            `[SW ${ENDPOINT}]`,
+          ],
         };
       }
       return {
