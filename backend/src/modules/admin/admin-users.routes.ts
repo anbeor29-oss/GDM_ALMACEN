@@ -227,7 +227,11 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   await count('subió el CSD de una empresa', 'SELECT COUNT(*) n FROM companies WHERE csd_uploaded_by_user_id = $1');
   await count('firmó el contrato de servicios', 'SELECT COUNT(*) n FROM service_contracts WHERE signed_by_user = $1');
   await count('firmó un manifiesto del PAC', 'SELECT COUNT(*) n FROM sw_manifests WHERE signed_by_user = $1');
-  await count('registró ventas en el punto de venta', 'SELECT COUNT(*) n FROM pos_sales WHERE sold_by = $1');
+  // La columna es user_id, no sold_by: al fusionar los dos productos el
+  // esquema de pos_sales convergió en el de ALMACÉN (ver la migración
+  // 2026-07-28_fusion_pos_unificado.sql). Con el nombre viejo, intentar
+  // borrar un usuario reventaba con "column sold_by does not exist".
+  await count('registró ventas en el punto de venta', 'SELECT COUNT(*) n FROM pos_sales WHERE user_id = $1');
   await count('generó una facturación mensual', 'SELECT COUNT(*) n FROM monthly_invoicing WHERE generated_by = $1');
   await count('otorgó timbres prepago', 'SELECT COUNT(*) n FROM prepaid_stamp_purchases WHERE granted_by = $1');
   await count('creó otros usuarios', 'SELECT COUNT(*) n FROM users WHERE created_by_user_id = $1');
@@ -356,6 +360,106 @@ router.post('/:id/impersonate', asyncHandler(async (req, res) => {
       },
     },
   });
+}));
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * PERMISOS DEL USUARIO — grupo de trabajo + capacidades finas
+ *
+ * Los mismos datos que gestiona el ADMIN de una empresa en /team, pero desde
+ * el panel de plataforma. Existe por separado porque /team los bloquea a
+ * propósito para el SUPER_ADMIN: aquel router exige rol ADMIN y filtra por la
+ * empresa del JWT, y el SUPER_ADMIN no tiene empresa.
+ *
+ * Las dos capas son distintas y conviene no confundirlas:
+ *   · work_group  → QUÉ PANTALLAS ve (lo decide GROUP_MODULES)
+ *   · capacidades → QUÉ PUEDE HACER dentro de ellas (requireCapability)
+ * ADMIN, MANAGER y SUPER_ADMIN tienen todas las capacidades por su rol, así
+ * que las finas solo tienen sentido para un USER.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** GET /admin/users/:id/permissions — estado actual + catálogos para la UI. */
+router.get('/:id/permissions', asyncHandler(async (req: Request, res: Response) => {
+  const r = await query<any>(
+    `SELECT id, email, first_name, last_name, role, work_group, company_id
+       FROM users WHERE id = $1`,
+    [req.params.id]
+  );
+  if (r.rows.length === 0) throw new NotFoundError('Usuario no encontrado');
+  const u = r.rows[0];
+
+  const { CAPABILITIES, CAPABILITY_TEMPLATES, getEffectiveCapabilities } =
+    await import('../auth/capabilities');
+  const { GROUP_MODULES } = await import('../../middleware/permissions');
+
+  // Otorgamientos explícitos (lo que el operador puede marcar y desmarcar),
+  // separados de las efectivas (que incluyen la base que da el rol).
+  const granted = await query<{ capability: string }>(
+    `SELECT capability FROM user_capabilities WHERE user_id = $1`, [u.id]
+  );
+
+  res.json({
+    success: true,
+    data: {
+      user: u,
+      work_group: u.work_group,
+      /** Módulos que ve hoy con ese grupo — para enseñarlos sin adivinar. */
+      modules: (GROUP_MODULES as any)[u.work_group] || [],
+      granted_capabilities: granted.rows.map((x) => x.capability),
+      effective_capabilities: await getEffectiveCapabilities(u.id, u.role),
+      /** El rol ya se las da todas: la UI desactiva el bloque. */
+      capabilities_apply: u.role === 'USER',
+      catalog: Object.entries(CAPABILITIES).map(([key, label]) => ({ key, label })),
+      templates: Object.entries(CAPABILITY_TEMPLATES).map(([key, t]) => ({
+        key, label: t.label, caps: t.caps,
+      })),
+    },
+  });
+}));
+
+/** PUT /admin/users/:id/permissions — { workGroup?, capabilities? } */
+router.put('/:id/permissions', asyncHandler(async (req: Request, res: Response) => {
+  const { workGroup, capabilities } = req.body as any;
+
+  const r = await query<any>('SELECT id, email, role FROM users WHERE id = $1', [req.params.id]);
+  if (r.rows.length === 0) throw new NotFoundError('Usuario no encontrado');
+  const u = r.rows[0];
+
+  if (workGroup !== undefined) {
+    const wg = String(workGroup).toUpperCase();
+    if (!VALID_WORK_GROUPS.includes(wg)) {
+      throw new ValidationError(`workGroup inválido. Válidos: ${VALID_WORK_GROUPS.join(', ')}`);
+    }
+    await query('UPDATE users SET work_group = $1, updated_at = NOW() WHERE id = $2', [wg, u.id]);
+  }
+
+  if (capabilities !== undefined) {
+    if (u.role !== 'USER') {
+      throw new ValidationError(
+        `${u.email} tiene rol ${u.role}, que ya incluye todas las capacidades operativas. ` +
+        'Las capacidades finas solo aplican a usuarios operativos (USER).'
+      );
+    }
+    const { isValidCapability } = await import('../auth/capabilities');
+    const caps: string[] = Array.isArray(capabilities) ? capabilities : [];
+    const invalid = caps.filter((c) => !isValidCapability(c));
+    if (invalid.length) throw new ValidationError(`Capacidades desconocidas: ${invalid.join(', ')}`);
+
+    // Reemplazo completo: la pantalla manda el set final, no un delta.
+    await query('DELETE FROM user_capabilities WHERE user_id = $1', [u.id]);
+    for (const c of caps) {
+      await query(
+        `INSERT INTO user_capabilities (user_id, capability, granted_by)
+         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [u.id, c, req.user!.userId]
+      );
+    }
+  }
+
+  await audit(req, {
+    action: 'USER_PERMISSIONS_UPDATED', targetKind: 'user', targetId: u.id,
+    payload: { email: u.email, workGroup, capabilities },
+  });
+  res.json({ success: true, message: 'Permisos actualizados' });
 }));
 
 logger.info('admin-users routes loaded');

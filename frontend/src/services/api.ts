@@ -1004,6 +1004,18 @@ class APIClient {
    * el formulario: teclear 20 dígitos a mano es la forma más cara de romper
    * un timbrado.
    */
+  /* ── Permisos de un usuario desde el panel de plataforma ──
+   * Grupo de trabajo (qué pantallas ve) + capacidades finas (qué puede hacer).
+   * Es el equivalente de /team para el SUPER_ADMIN, que no tiene empresa y por
+   * eso no puede usar aquellas rutas. */
+  async adminGetUserPermissions(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/admin/users/${id}/permissions`);
+    return r.data;
+  }
+  async adminSetUserPermissions(id: string, data: { workGroup?: string; capabilities?: string[] }) {
+    const r = await this.client.put<APIResponse<any>>(`/admin/users/${id}/permissions`, data);
+    return r.data;
+  }
   async adminInspectCSD(id: string, data: { cerBase64: string; keyBase64?: string; keyPassword?: string }) {
     const r = await this.client.post<APIResponse<{
       no_certificado: string; rfc: string | null; razon_social: string | null;

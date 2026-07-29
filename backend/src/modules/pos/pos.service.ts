@@ -1,261 +1,391 @@
 /**
- * pos.service — Punto de Venta (ventas de mostrador, contado).
+ * POS Service — venta de mostrador + factura global diaria (Fase 5).
  *
- * Reglas:
- *  · Solo contado: EFECTIVO o TARJETA. Los clientes a crédito se facturan en
- *    el módulo de Facturas (no aquí).
- *  · Precio de MAYOREO: si la cantidad de una línea >= companies.pos_mayoreo_min_qty
- *    (default 4) y el producto tiene `wholesale_price`, se cobra ese precio.
- *    Si no, precio de menudeo (`base_price`).
- *  · Al confirmar la venta se DECREMENTA el stock (products.stock_quantity)
- *    dentro de la misma transacción.
- *  · EFECTIVO calcula cambio = recibido − total (rechaza si recibido < total).
+ *  · createSale(): descuenta inventario AL MOMENTO (SALE_OUT por partida,
+ *    misma transacción). Modo D3: si la empresa bloquea venta sin stock se
+ *    rechaza; si no, se descuenta lo disponible y el faltante queda en kardex.
+ *  · cancelSale(): devuelve el stock realmente descontado (CUSTOMER_RETURN).
+ *  · closeDay(): las ventas OPEN del día se facturan en UNA factura global
+ *    al público en general (RFC XAXX010101000, uso S01, un concepto por
+ *    ticket con clave SAT 01010101) timbrada por el flujo CFDI normal.
  */
 
+import { PoolClient } from 'pg';
 import { query, transaction, transactionQuery } from '../../config/database';
-import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
+import { ValidationError, NotFoundError, ConflictError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
+import { applyMovementTx, getOrCreateDefaultWarehouse } from '../inventory/inventory.service';
+import * as invoicesService from '../invoices/invoices.service';
+import * as productsService from '../products/products.service';
 
-const r2 = (n: number) => Math.round(n * 100) / 100;
-
-export interface POSCartItem {
-  productId: string;
-  quantity: number;
-}
-export interface CreateSaleInput {
-  items: POSCartItem[];
-  paymentMethod: 'EFECTIVO' | 'TARJETA';
-  amountTendered?: number;   // requerido si EFECTIVO
-  cardRef?: string;          // últimos 4 / referencia terminal (TARJETA)
-  customerName?: string;
-  soldBy?: string;
-}
+const PUBLIC_RFC = 'XAXX010101000';
+const GLOBAL_SKU = 'VENTA-GLOBAL';
+const IVA_RATE = 0.16;
 
 /**
- * Catálogo para el POS: productos activos con stock y ambos precios.
- * `search` filtra por nombre/SKU/clave. Devuelve el umbral de mayoreo de la
- * empresa para que el front calcule el precio en vivo.
+ * Fecha de HOY en horario de México (YYYY-MM-DD).
+ * Regla de oro #7 (lección GDM_FAC): jamás toISOString() para fechas de
+ * negocio — el servidor puede estar en UTC y "hoy" se vuelve "mañana"
+ * pasadas las 18:00. 'sv-SE' formatea como YYYY-MM-DD.
  */
-export async function getPOSCatalog(companyId: string, search?: string) {
-  const cfg = await query<{ pos_mayoreo_min_qty: number }>(
-    `SELECT pos_mayoreo_min_qty FROM companies WHERE id = $1`,
-    [companyId]
-  );
-  const mayoreoMinQty = Number(cfg.rows[0]?.pos_mayoreo_min_qty) || 4;
-
-  const params: any[] = [companyId];
-  let where = `company_id = $1 AND deleted_at IS NULL AND is_active = true`;
-  if (search && search.trim()) {
-    params.push(`%${search.trim()}%`);
-    where += ` AND (name ILIKE $${params.length} OR sku ILIKE $${params.length} OR clave_sat ILIKE $${params.length})`;
-  }
-  const prods = await query<any>(
-    `SELECT id, sku, name, clave_sat, unit_code, base_price, wholesale_price,
-            tax_rate, is_exempt, stock_quantity
-       FROM products
-      WHERE ${where}
-      ORDER BY name ASC
-      LIMIT 300`,
-    params
-  );
-
-  return {
-    mayoreo_min_qty: mayoreoMinQty,
-    products: prods.rows.map((p) => ({
-      id: p.id,
-      sku: p.sku,
-      name: p.name,
-      clave_sat: p.clave_sat,
-      unit_code: p.unit_code,
-      retail_price: Number(p.base_price) || 0,
-      wholesale_price: p.wholesale_price != null ? Number(p.wholesale_price) : null,
-      tax_rate: p.is_exempt ? 0 : (Number(p.tax_rate) || 0),
-      is_exempt: !!p.is_exempt,
-      stock: Number(p.stock_quantity) || 0,
-    })),
-  };
+export function todayMx(): string {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
 }
 
-/**
- * Crea una venta POS: valida stock, aplica mayoreo por línea, calcula
- * impuestos y cambio, decrementa inventario e inserta venta + items en una
- * transacción. Devuelve el ticket.
- */
-export async function createSale(companyId: string, data: CreateSaleInput) {
-  if (!data.items || data.items.length === 0) {
-    throw new ValidationError('La venta no tiene artículos');
-  }
-  if (data.paymentMethod !== 'EFECTIVO' && data.paymentMethod !== 'TARJETA') {
-    throw new ValidationError('Método de pago inválido (EFECTIVO | TARJETA)');
+/* ─────────────────────  VENTA  ───────────────────── */
+
+export interface PosSaleInput {
+  warehouseId?: string;
+  paymentForm?: string;          // c_FormaPago; default 01 efectivo
+  items: Array<{ productId: string; quantity: number; unitPrice?: number }>;
+}
+
+export async function createSale(
+  companyId: string,
+  input: PosSaleInput,
+  user: { userId?: string; email?: string }
+): Promise<any> {
+  if (!Array.isArray(input.items) || input.items.length === 0) {
+    throw new ValidationError('La venta necesita al menos un producto');
   }
 
   return transaction(async (client) => {
-    // Umbral de mayoreo
-    const cfgR = await transactionQuery<{ pos_mayoreo_min_qty: number }>(
-      client, `SELECT pos_mayoreo_min_qty FROM companies WHERE id = $1`, [companyId]
+    const warehouseId = input.warehouseId
+      || await getOrCreateDefaultWarehouse(client, companyId);
+
+    // ¿La empresa bloquea venta sin stock? (D3)
+    const blockR = await transactionQuery<{ inventory_block_no_stock: boolean }>(
+      client, `SELECT inventory_block_no_stock FROM companies WHERE id = $1`, [companyId]
     );
-    const minQty = Number(cfgR.rows[0]?.pos_mayoreo_min_qty) || 4;
+    const blockNoStock = !!blockR.rows[0]?.inventory_block_no_stock;
 
-    let subtotal = 0, tax = 0;
-    const lines: any[] = [];
+    const folioR = await transactionQuery<{ next: number }>(
+      client,
+      `SELECT COALESCE(MAX(folio), 0) + 1 AS next FROM pos_sales WHERE company_id = $1`,
+      [companyId]
+    );
+    const folio = Number(folioR.rows[0].next);
 
-    for (const it of data.items) {
-      if (!it.quantity || it.quantity <= 0) {
-        throw new ValidationError('Cantidad inválida en un artículo');
+    // Resolver productos, precios y total
+    let total = 0;
+    const lines: Array<{ productId: string; quantity: number; unitPrice: number; lineTotal: number; sku: string; name: string; tracked: boolean }> = [];
+    for (const it of input.items) {
+      const qty = Number(it.quantity);
+      if (!it.productId || !qty || qty <= 0) {
+        throw new ValidationError('Cada partida requiere productId y quantity > 0');
       }
       const pR = await transactionQuery<any>(
         client,
-        `SELECT id, sku, name, base_price, wholesale_price, tax_rate, is_exempt,
-                stock_quantity
-           FROM products
-          WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
+        `SELECT p.id, p.sku, p.name, p.base_price,
+                EXISTS (SELECT 1 FROM warehouse_stock ws WHERE ws.product_id = p.id) AS tracked
+           FROM products p
+          WHERE p.id = $1 AND p.company_id = $2 AND p.deleted_at IS NULL AND p.is_active = true`,
         [it.productId, companyId]
       );
+      if (pR.rows.length === 0) throw new NotFoundError(`Producto ${it.productId} no encontrado`);
       const p = pR.rows[0];
-      if (!p) throw new NotFoundError(`Producto ${it.productId} no encontrado`);
-
-      const stock = Number(p.stock_quantity) || 0;
-      if (stock < it.quantity) {
-        throw new ValidationError(
-          `Stock insuficiente de "${p.name}": disponibles ${stock}, se pidieron ${it.quantity}`
-        );
-      }
-
-      // Precio: mayoreo si qty >= umbral y hay precio de mayoreo
-      const isWholesale =
-        it.quantity >= minQty && p.wholesale_price != null && Number(p.wholesale_price) > 0;
-      const unitPrice = isWholesale ? Number(p.wholesale_price) : Number(p.base_price) || 0;
-      const rate = p.is_exempt ? 0 : (Number(p.tax_rate) || 0);
-
-      const lineSubtotal = r2(it.quantity * unitPrice);
-      const lineTax = r2(lineSubtotal * rate);
-      const lineTotal = r2(lineSubtotal + lineTax);
-
-      subtotal += lineSubtotal;
-      tax += lineTax;
-
-      lines.push({
-        product_id: p.id, sku: p.sku, description: p.name,
-        quantity: it.quantity, unit_price: unitPrice, is_wholesale: isWholesale,
-        tax_rate: rate, line_subtotal: lineSubtotal, line_tax: lineTax, line_total: lineTotal,
-      });
-
-      // Decrementar stock
-      await transactionQuery(
-        client,
-        `UPDATE products SET stock_quantity = stock_quantity - $1, updated_at = NOW()
-          WHERE id = $2 AND company_id = $3`,
-        [it.quantity, p.id, companyId]
-      );
+      const unitPrice = it.unitPrice != null ? Number(it.unitPrice) : Number(p.base_price || 0);
+      if (unitPrice < 0) throw new ValidationError(`Precio inválido en ${p.sku}`);
+      const lineTotal = Math.round(unitPrice * qty * 100) / 100;
+      total += lineTotal;
+      lines.push({ productId: p.id, quantity: qty, unitPrice, lineTotal, sku: p.sku, name: p.name, tracked: p.tracked });
     }
-
-    subtotal = r2(subtotal);
-    tax = r2(tax);
-    const total = r2(subtotal + tax);
-
-    // Cobro
-    let amountTendered: number | null = null;
-    let change = 0;
-    if (data.paymentMethod === 'EFECTIVO') {
-      amountTendered = Number(data.amountTendered) || 0;
-      if (amountTendered < total - 0.001) {
-        throw new ValidationError(
-          `Efectivo recibido ($${amountTendered.toFixed(2)}) es menor al total ($${total.toFixed(2)})`
-        );
-      }
-      change = r2(amountTendered - total);
-    }
-
-    // Folio POS
-    const folioR = await transactionQuery<{ folio: number }>(
-      client,
-      `UPDATE companies SET next_pos_folio = next_pos_folio + 1, updated_at = NOW()
-        WHERE id = $1 RETURNING (next_pos_folio - 1) AS folio`,
-      [companyId]
-    );
-    const folio = folioR.rows[0].folio;
+    total = Math.round(total * 100) / 100;
+    const subtotal = Math.round((total / (1 + IVA_RATE)) * 100) / 100;
+    const tax = Math.round((total - subtotal) * 100) / 100;
 
     const saleR = await transactionQuery<any>(
       client,
       `INSERT INTO pos_sales
-         (company_id, folio, customer_name, subtotal, tax, total,
-          payment_method, amount_tendered, change_given, card_ref, sold_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       RETURNING id, folio, created_at`,
-      [
-        companyId, folio, data.customerName?.trim() || 'Público en general',
-        subtotal, tax, total, data.paymentMethod,
-        amountTendered, change, data.cardRef?.trim() || null, data.soldBy || null,
-      ]
+         (company_id, warehouse_id, folio, status, payment_form, subtotal, tax, total, user_id, user_email)
+       VALUES ($1, $2, $3, 'OPEN', $4, $5, $6, $7, $8, $9)
+       RETURNING id, folio, total, sold_at`,
+      [companyId, warehouseId, folio, input.paymentForm || '01',
+       subtotal, tax, total, user.userId || null, user.email || null]
     );
     const sale = saleR.rows[0];
 
-    for (const l of lines) {
+    const warnings: string[] = [];
+    for (const line of lines) {
       await transactionQuery(
         client,
-        `INSERT INTO pos_sale_items
-           (sale_id, product_id, sku, description, quantity, unit_price,
-            is_wholesale, tax_rate, line_subtotal, line_tax, line_total)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [sale.id, l.product_id, l.sku, l.description, l.quantity, l.unit_price,
-         l.is_wholesale, l.tax_rate, l.line_subtotal, l.line_tax, l.line_total]
+        `INSERT INTO pos_sale_items (pos_sale_id, product_id, quantity, unit_price, line_total)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [sale.id, line.productId, line.quantity, line.unitPrice, line.lineTotal]
       );
+
+      // Solo los productos con control de inventario descuentan stock
+      if (!line.tracked) continue;
+
+      const stR = await transactionQuery<{ quantity: number }>(
+        client,
+        `SELECT quantity FROM warehouse_stock
+          WHERE warehouse_id = $1 AND product_id = $2 FOR UPDATE`,
+        [warehouseId, line.productId]
+      );
+      const available = Number(stR.rows[0]?.quantity ?? 0);
+
+      if (blockNoStock && available < line.quantity) {
+        throw new ConflictError(
+          `Existencia insuficiente de ${line.sku} ${line.name}: disponible ${available}, ` +
+          `pedido ${line.quantity} (la empresa bloquea venta sin stock)`
+        );
+      }
+      const toDiscount = Math.min(available, line.quantity);
+      const short = line.quantity - toDiscount;
+      if (short > 0) {
+        warnings.push(`${line.sku}: faltaron ${short} (disponible ${available})`);
+      }
+      if (toDiscount <= 0) continue;
+
+      await applyMovementTx(client, {
+        companyId,
+        productId: line.productId,
+        movementType: 'SALE_OUT',
+        quantity: toDiscount,
+        warehouseFromId: warehouseId,
+        referenceType: 'pos_sale',
+        referenceId: sale.id,
+        reason: short > 0
+          ? `Venta POS #${folio} (VENTA SIN EXISTENCIA SUFICIENTE: faltaron ${short})`
+          : `Venta POS #${folio}`,
+        userId: user.userId,
+        userEmail: user.email,
+      });
     }
 
-    logger.info(`Venta POS #${folio} creada: $${total} (${data.paymentMethod})`);
-
-    return {
-      id: sale.id,
-      folio: sale.folio,
-      created_at: sale.created_at,
-      customer_name: data.customerName?.trim() || 'Público en general',
-      payment_method: data.paymentMethod,
-      subtotal, tax, total,
-      amount_tendered: amountTendered,
-      change_given: change,
-      card_ref: data.cardRef?.trim() || null,
-      items: lines,
-    };
+    return { ...sale, warnings, items: lines.length };
   });
 }
 
-/** Lista las ventas POS recientes (para historial/corte). */
-export async function listSales(companyId: string, opts: { limit?: number } = {}) {
-  const limit = opts.limit ?? 50;
-  const r = await query<any>(
-    `SELECT s.id, s.folio, s.customer_name, s.subtotal, s.tax, s.total,
-            s.payment_method, s.change_given, s.status, s.created_at,
-            u.email AS sold_by_email,
-            (SELECT COUNT(*)::int FROM pos_sale_items i WHERE i.sale_id = s.id) AS item_count
-       FROM pos_sales s
-       LEFT JOIN users u ON u.id = s.sold_by
-      WHERE s.company_id = $1
-      ORDER BY s.created_at DESC
-      LIMIT $2`,
-    [companyId, limit]
-  );
-  return r.rows;
+/* ─────────────────────  CANCELACIÓN  ───────────────────── */
+
+export async function cancelSale(
+  companyId: string,
+  saleId: string,
+  user: { userId?: string; email?: string }
+): Promise<any> {
+  return transaction(async (client) => {
+    const r = await transactionQuery<any>(
+      client,
+      `SELECT id, folio, status FROM pos_sales
+        WHERE id = $1 AND company_id = $2 FOR UPDATE`,
+      [saleId, companyId]
+    );
+    if (r.rows.length === 0) throw new NotFoundError('Venta no encontrada');
+    const sale = r.rows[0];
+    if (sale.status === 'CANCELLED') throw new ConflictError('La venta ya está cancelada');
+    if (sale.status === 'IN_GLOBAL') {
+      throw new ConflictError(
+        'La venta ya está incluida en la factura global del día — cancela mediante nota de crédito'
+      );
+    }
+
+    // Devolver EXACTAMENTE lo descontado (guard anti-doble)
+    const already = await transactionQuery(
+      client,
+      `SELECT 1 FROM inventory_movements
+        WHERE reference_type = 'pos_sale_cancel' AND reference_id = $1 LIMIT 1`,
+      [saleId]
+    );
+    if (already.rows.length === 0) {
+      const sales = await transactionQuery<any>(
+        client,
+        `SELECT product_id, warehouse_from_id, SUM(quantity) AS quantity
+           FROM inventory_movements
+          WHERE reference_type = 'pos_sale' AND reference_id = $1 AND movement_type = 'SALE_OUT'
+          GROUP BY product_id, warehouse_from_id`,
+        [saleId]
+      );
+      for (const s of sales.rows) {
+        await applyMovementTx(client, {
+          companyId,
+          productId: s.product_id,
+          movementType: 'CUSTOMER_RETURN',
+          quantity: Number(s.quantity),
+          warehouseToId: s.warehouse_from_id,
+          referenceType: 'pos_sale_cancel',
+          referenceId: saleId,
+          reason: `Cancelación de venta POS #${sale.folio}`,
+          userId: user.userId,
+          userEmail: user.email,
+        });
+      }
+    }
+
+    const upd = await transactionQuery<any>(
+      client,
+      `UPDATE pos_sales SET status = 'CANCELLED', cancelled_at = NOW()
+        WHERE id = $1 RETURNING id, folio, status`,
+      [saleId]
+    );
+    return upd.rows[0];
+  });
 }
 
-/** Corte del día: totales por método de pago para una fecha (default hoy). */
-export async function getDailySummary(companyId: string, date?: string) {
-  const day = date || new Date().toISOString().slice(0, 10);
-  const r = await query<any>(
-    `SELECT payment_method,
-            COUNT(*)::int AS sales,
-            COALESCE(SUM(total), 0)::numeric AS total
-       FROM pos_sales
-      WHERE company_id = $1 AND status = 'COMPLETED'
-        AND created_at::date = $2::date
-      GROUP BY payment_method`,
+/* ─────────────────────  CIERRE DEL DÍA · FACTURA GLOBAL  ───────────────────── */
+
+/** Cliente "PÚBLICO EN GENERAL" de la empresa (upsert idempotente). */
+async function getOrCreatePublicCustomer(client: PoolClient, companyId: string): Promise<string> {
+  const r = await transactionQuery<{ id: string }>(
+    client,
+    `SELECT id FROM customers
+      WHERE company_id = $1 AND rfc = $2`,
+    [companyId, PUBLIC_RFC]
+  );
+  if (r.rows.length > 0) {
+    // Reactivar por si estaba soft-deleted
+    await transactionQuery(
+      client,
+      `UPDATE customers SET deleted_at = NULL, is_active = true WHERE id = $1`,
+      [r.rows[0].id]
+    );
+    return r.rows[0].id;
+  }
+  const cpR = await transactionQuery<{ postal_code: string }>(
+    client, `SELECT postal_code FROM companies WHERE id = $1`, [companyId]
+  );
+  const ins = await transactionQuery<{ id: string }>(
+    client,
+    `INSERT INTO customers
+       (company_id, rfc, business_name, fiscal_regime, postal_code, party_type, is_active)
+     VALUES ($1, $2, 'PUBLICO EN GENERAL', '616', $3, 'CUSTOMER', true)
+     RETURNING id`,
+    [companyId, PUBLIC_RFC, cpR.rows[0]?.postal_code || '00000']
+  );
+  return ins.rows[0].id;
+}
+
+/** Producto genérico para los conceptos de la global (sin control de stock). */
+async function getOrCreateGlobalProduct(companyId: string): Promise<string> {
+  const r = await query<{ id: string }>(
+    `SELECT id FROM products
+      WHERE company_id = $1 AND sku = $2 AND deleted_at IS NULL`,
+    [companyId, GLOBAL_SKU]
+  );
+  if (r.rows.length > 0) return r.rows[0].id;
+  const created = await productsService.createProduct(companyId, {
+    sku: GLOBAL_SKU,
+    name: 'VENTA MOSTRADOR (FACTURA GLOBAL)',
+    claveSat: '01010101',        // "No existe en el catálogo" — estándar para globales
+    unitCode: 'ACT',             // Actividad
+    basePrice: 0,
+    taxType: 'IVA',
+    taxRate: IVA_RATE,
+    taxPresetId: 'iva16',
+  } as any);
+  return created.id;
+}
+
+export interface CloseDayResult {
+  invoiceId: string | null;
+  folio?: string;
+  salesIncluded: number;
+  totalInvoiced: number;
+  stamped: boolean;
+  message: string;
+}
+
+/**
+ * Cierre del día: factura global de las ventas OPEN de la fecha dada
+ * (default hoy). Un concepto por ticket. Idempotente: las ventas quedan
+ * IN_GLOBAL y no vuelven a facturarse.
+ */
+export async function closeDay(
+  companyId: string,
+  dateStr?: string,
+  user?: { userId?: string; email?: string }
+): Promise<CloseDayResult> {
+  const day = dateStr || todayMx();
+
+  // 1) Ventas OPEN del día (fuera de TX: la creación de factura usa su propio flujo)
+  const salesR = await query<any>(
+    `SELECT id, folio, total FROM pos_sales
+      WHERE company_id = $1 AND status = 'OPEN' AND sold_at::date = $2::date
+      ORDER BY folio`,
     [companyId, day]
   );
-  const byMethod: Record<string, { sales: number; total: number }> = {};
-  let grandTotal = 0, grandSales = 0;
-  for (const row of r.rows) {
-    byMethod[row.payment_method] = { sales: Number(row.sales), total: Number(row.total) };
-    grandTotal += Number(row.total);
-    grandSales += Number(row.sales);
+  if (salesR.rows.length === 0) {
+    return {
+      invoiceId: null, salesIncluded: 0, totalInvoiced: 0, stamped: false,
+      message: `Sin ventas abiertas el ${day} — nada que facturar.`,
+    };
   }
-  return { date: day, by_method: byMethod, total: r2(grandTotal), sales: grandSales };
+
+  // 2) Cliente público general + producto global
+  const publicCustomerId = await transaction((client) =>
+    getOrCreatePublicCustomer(client, companyId)
+  );
+  const globalProductId = await getOrCreateGlobalProduct(companyId);
+
+  // 3) Factura: un concepto por ticket (precio pre-IVA; el preset iva16 lo
+  //    vuelve a desglosar — diferencias de centavos por redondeo se asumen
+  //    en esta etapa MOCK y se calibrarán con el PAC real)
+  const items = salesR.rows.map((s: any) => ({
+    productId: globalProductId,
+    quantity: 1,
+    unitPrice: Math.round((Number(s.total) / (1 + IVA_RATE)) * 100) / 100,
+    description: `Venta POS #${s.folio} del ${day}`,
+  }));
+
+  const invoice = await invoicesService.createInvoice(companyId, {
+    customerId: publicCustomerId,
+    cfdiType: 'I',
+    paymentForm: '01',
+    paymentMethod: 'PUE',
+    cfdiUse: 'S01',               // Sin efectos fiscales — estándar para global
+    items,
+    notes: `Factura global del día ${day} — ${salesR.rows.length} venta(s) de mostrador`,
+  } as any);
+
+  // 4) Timbrar por el flujo normal (MOCK/SW según env). El producto global no
+  //    tiene control de stock → el hook de inventario lo ignora (el stock ya
+  //    se descontó al momento de cada venta POS).
+  let stamped = false;
+  try {
+    const pac = await import('../pac/pac.service');
+    await pac.stampInvoice(companyId, invoice.id);
+    stamped = true;
+  } catch (e) {
+    logger.error(`[pos] Factura global creada pero el timbrado falló: ${(e as Error).message}`);
+  }
+
+  // 5) Marcar ventas como IN_GLOBAL
+  await query(
+    `UPDATE pos_sales SET status = 'IN_GLOBAL', global_invoice_id = $1
+      WHERE id = ANY($2::uuid[])`,
+    [invoice.id, salesR.rows.map((s: any) => s.id)]
+  );
+
+  const totalInvoiced = salesR.rows.reduce((a: number, s: any) => a + Number(s.total), 0);
+  logger.info(
+    `[pos] Cierre ${day}: factura global ${invoice.serie || ''}-${invoice.folio} ` +
+    `con ${salesR.rows.length} ventas por $${totalInvoiced.toFixed(2)} (stamped=${stamped})`
+  );
+
+  return {
+    invoiceId: invoice.id,
+    folio: `${invoice.serie || ''}-${invoice.folio}`,
+    salesIncluded: salesR.rows.length,
+    totalInvoiced: Math.round(totalInvoiced * 100) / 100,
+    stamped,
+    message: `Factura global generada con ${salesR.rows.length} venta(s).`,
+  };
+}
+
+/** Cierre para todas las empresas activas (cron 23:55). */
+export async function closeDayAllCompanies(): Promise<void> {
+  const companies = await query<{ id: string; business_name: string }>(
+    `SELECT id, business_name FROM companies WHERE deleted_at IS NULL AND is_active = true`
+  );
+  for (const c of companies.rows) {
+    try {
+      const r = await closeDay(c.id);
+      if (r.salesIncluded > 0) {
+        logger.info(`[pos-cron] ${c.business_name}: global ${r.folio} (${r.salesIncluded} ventas)`);
+      }
+    } catch (e) {
+      logger.error(`[pos-cron] ${c.business_name} falló: ${(e as Error).message}`);
+    }
+  }
 }

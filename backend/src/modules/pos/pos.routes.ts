@@ -1,20 +1,21 @@
 /**
- * /pos — Punto de Venta. Solo usuarios cuyo grupo tenga acceso al módulo POS
- * (VENTAS o ADMIN_ALL); SUPER_ADMIN opera plataforma, no vende.
+ * /pos — punto de venta y cierre del día (Fase 5 ALMACEN).
  *
- *  GET  /pos/catalog?search=   productos con stock + precios + umbral mayoreo
- *  POST /pos/sales             crea venta (efectivo/tarjeta) y decrementa stock
- *  GET  /pos/sales             historial de ventas
- *  GET  /pos/summary?date=     corte del día por método de pago
+ *  Vender: cualquier usuario de la empresa (incluye rol USER — cajeros).
+ *  Cancelar venta y cerrar el día: ADMIN/MANAGER.
  */
+
 import { Router, Request, Response } from 'express';
-import { authenticateToken } from '../../middleware/authentication';
+import { authenticateToken, authorize, requireCapability } from '../../middleware/authentication';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { requireModule } from '../../middleware/permissions';
-import * as posService from './pos.service';
+import { query } from '../../config/database';
+import { createSale, cancelSale, closeDay, todayMx } from './pos.service';
 
 const router = Router();
 router.use(authenticateToken);
+// Sobre la capacidad fina va el grupo de trabajo: un usuario de ALMACEN o de
+// TESORERIA no vende en mostrador aunque tenga la capacidad 'pos:sell' de base.
 router.use(requireModule('pos'));
 
 function companyId(req: Request): string {
@@ -22,33 +23,77 @@ function companyId(req: Request): string {
   return req.user.companyId;
 }
 
-router.get('/catalog', asyncHandler(async (req: Request, res: Response) => {
-  const data = await posService.getPOSCatalog(companyId(req), String(req.query.search || ''));
-  res.status(200).json({ success: true, data });
-}));
+/** POST /pos/sales — cobrar una venta (descuenta inventario al momento) */
+router.post(
+  '/sales',
+  requireCapability('pos:sell'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await createSale(companyId(req), req.body, {
+      userId: req.user?.userId,
+      email: req.user?.email,
+    });
+    res.status(201).json({ success: true, data: result });
+  })
+);
 
-router.post('/sales', asyncHandler(async (req: Request, res: Response) => {
-  const sale = await posService.createSale(companyId(req), {
-    items: req.body?.items,
-    paymentMethod: req.body?.paymentMethod,
-    amountTendered: req.body?.amountTendered,
-    cardRef: req.body?.cardRef,
-    customerName: req.body?.customerName,
-    soldBy: req.user?.userId,
-  });
-  res.status(201).json({ success: true, message: `Venta #${sale.folio} registrada`, data: sale });
-}));
+/** GET /pos/sales?date=YYYY-MM-DD — ventas del día con partidas */
+router.get(
+  '/sales',
+  asyncHandler(async (req: Request, res: Response) => {
+    // Regla #7: "hoy" en horario México, no UTC del servidor
+    const day = String(req.query.date || todayMx());
+    const r = await query<any>(
+      `SELECT s.id, s.folio, s.status, s.payment_form, s.subtotal, s.tax, s.total,
+              s.sold_at, s.user_email, s.global_invoice_id,
+              w.code AS warehouse_code,
+              COUNT(i.id)::int AS items_count,
+              COALESCE(SUM(i.quantity), 0) AS units
+         FROM pos_sales s
+         JOIN warehouses w ON w.id = s.warehouse_id
+         LEFT JOIN pos_sale_items i ON i.pos_sale_id = s.id
+        WHERE s.company_id = $1 AND s.sold_at::date = $2::date
+        GROUP BY s.id, w.code
+        ORDER BY s.folio DESC`,
+      [companyId(req), day]
+    );
 
-router.get('/sales', asyncHandler(async (req: Request, res: Response) => {
-  const list = await posService.listSales(companyId(req), {
-    limit: parseInt(String(req.query.limit || '50'), 10),
-  });
-  res.status(200).json({ success: true, data: { count: list.length, sales: list } });
-}));
+    const summary = {
+      date: day,
+      sales: r.rows.filter((s: any) => s.status !== 'CANCELLED').length,
+      cancelled: r.rows.filter((s: any) => s.status === 'CANCELLED').length,
+      open: r.rows.filter((s: any) => s.status === 'OPEN').length,
+      total: r.rows
+        .filter((s: any) => s.status !== 'CANCELLED')
+        .reduce((a: number, s: any) => a + Number(s.total), 0),
+    };
+    res.json({ success: true, data: { sales: r.rows, summary } });
+  })
+);
 
-router.get('/summary', asyncHandler(async (req: Request, res: Response) => {
-  const s = await posService.getDailySummary(companyId(req), String(req.query.date || ''));
-  res.status(200).json({ success: true, data: s });
-}));
+/** POST /pos/sales/:id/cancel — cancelar (devuelve el stock descontado) */
+router.post(
+  '/sales/:id/cancel',
+  requireCapability('pos:sell'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await cancelSale(companyId(req), req.params.id, {
+      userId: req.user?.userId,
+      email: req.user?.email,
+    });
+    res.json({ success: true, data: result });
+  })
+);
+
+/** POST /pos/close-day — factura global de las ventas OPEN del día (§ conclusión) */
+router.post(
+  '/close-day',
+  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await closeDay(companyId(req), req.body?.date, {
+      userId: req.user?.userId,
+      email: req.user?.email,
+    });
+    res.json({ success: true, data: result });
+  })
+);
 
 export default router;

@@ -4,7 +4,7 @@
  *   · Asignar a empresa
  *   · Visible solo para role=SUPER_ADMIN
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
@@ -26,6 +26,7 @@ export function AdminUsersPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [permsUser, setPermsUser] = useState<any | null>(null);
 
   if (user?.role !== 'SUPER_ADMIN') {
     return (
@@ -140,6 +141,14 @@ export function AdminUsersPage() {
                 </td>
                 <td className="px-4 py-2">
                   <div className="flex items-center justify-center gap-1">
+                    {/* Los permisos no aplican al SUPER_ADMIN: opera la
+                        plataforma y ve todo por definición. */}
+                    {u.role !== 'SUPER_ADMIN' && (
+                      <IconBtn title="Permisos: módulos y capacidades" color="violet"
+                        onClick={() => setPermsUser(u)}>
+                        <Emoji3D e="🛡️" size="base" />
+                      </IconBtn>
+                    )}
                     <IconBtn title="Resetear password" color="amber"
                       onClick={() => { if (confirm(`Generar nueva contraseña temporal para ${u.email}?`)) reset.mutate(u.id); }}>
                       <Emoji3D e="🔑" size="base" />
@@ -184,6 +193,152 @@ export function AdminUsersPage() {
           onDone={() => { setShowCreate(false); qc.invalidateQueries({ queryKey: ['admin-users'] }); }}
         />
       )}
+
+      {permsUser && (
+        <PermissionsModal
+          user={permsUser}
+          onClose={() => setPermsUser(null)}
+          onDone={() => { setPermsUser(null); qc.invalidateQueries({ queryKey: ['admin-users'] }); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Permisos de un usuario — las DOS capas, que conviene no confundir:
+ *
+ *   · Grupo de trabajo → QUÉ PANTALLAS ve. Es lo que esconde módulos del menú.
+ *   · Capacidades      → QUÉ PUEDE HACER dentro de esas pantallas.
+ *
+ * Un almacenista y un auditor pueden compartir grupo (los dos ven Almacén) y
+ * diferir en capacidades: uno autoriza ajustes de inventario y el otro solo
+ * mira. Por eso se editan juntas pero se muestran separadas.
+ *
+ * ADMIN y MANAGER tienen todas las capacidades por su rol: el bloque se
+ * desactiva en vez de mentir con casillas que no hacen nada.
+ */
+function PermissionsModal({ user, onClose, onDone }: any) {
+  const [data, setData] = useState<any | null>(null);
+  const [workGroup, setWorkGroup] = useState<string>('');
+  const [caps, setCaps] = useState<Set<string>>(new Set());
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const cargar = async () => {
+    try {
+      const r = await api.adminGetUserPermissions(user.id);
+      const d: any = r.data;
+      setData(d);
+      setWorkGroup(d.work_group || 'ADMIN_ALL');
+      setCaps(new Set(d.granted_capabilities || []));
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e.message);
+    }
+  };
+  useEffect(() => { cargar(); /* eslint-disable-next-line */ }, [user.id]);
+
+  const guardar = async () => {
+    setBusy(true); setError('');
+    try {
+      await api.adminSetUserPermissions(user.id, {
+        workGroup,
+        // Solo se mandan si aplican: para ADMIN/MANAGER el backend lo rechaza
+        // a propósito, y mandarlas sería pedirle que falle.
+        ...(data?.capabilities_apply ? { capabilities: Array.from(caps) } : {}),
+      });
+      onDone();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e.message);
+    } finally { setBusy(false); }
+  };
+
+  const toggle = (k: string) => setCaps(s => {
+    const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n;
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white">
+          <div>
+            <h2 className="font-bold text-lg">Permisos de {user.first_name} {user.last_name}</h2>
+            <p className="text-xs text-gray-500 font-mono">{user.email} · {user.role}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded"><X size={20} /></button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">{error}</div>}
+          {!data && !error && <p className="text-sm text-gray-500">Cargando permisos…</p>}
+
+          {data && (
+            <>
+              {/* ── Capa 1: qué pantallas ve ── */}
+              <section>
+                <h3 className="text-sm font-semibold text-slate-700 mb-1">Grupo de trabajo</h3>
+                <p className="text-xs text-slate-500 mb-2">Define qué módulos aparecen en su menú.</p>
+                <select value={workGroup} onChange={e => setWorkGroup(e.target.value)} className="input w-full">
+                  {(Object.keys(WORK_GROUP_LABELS) as WorkGroup[]).map(g => (
+                    <option key={g} value={g}>{WORK_GROUP_LABELS[g]}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-600 mt-2 bg-slate-50 border border-slate-200 rounded px-3 py-2">
+                  {WORK_GROUP_DETAIL[workGroup as WorkGroup]}
+                </p>
+              </section>
+
+              {/* ── Capa 2: qué puede hacer ── */}
+              <section>
+                <h3 className="text-sm font-semibold text-slate-700 mb-1">Capacidades</h3>
+                {!data.capabilities_apply ? (
+                  <p className="text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    El rol <b>{user.role}</b> ya incluye todas las capacidades operativas.
+                    Las capacidades finas solo aplican a usuarios <b>Operativos (USER)</b>.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-xs text-slate-500 mb-2">
+                      Acciones que puede ejecutar dentro de las pantallas que ve.
+                      Consultar inventario, vender y ver reportes los tiene de base cualquier operativo.
+                    </p>
+
+                    {/* Plantillas: un clic en vez de recordar qué marca cada puesto */}
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {(data.templates || []).map((t: any) => (
+                        <button
+                          key={t.key} type="button"
+                          onClick={() => setCaps(new Set(t.caps))}
+                          className="text-xs px-2.5 py-1 rounded-full border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                          title={t.caps.join(', ')}
+                        >{t.label}</button>
+                      ))}
+                    </div>
+
+                    <div className="border rounded-lg divide-y">
+                      {(data.catalog || []).map((c: any) => (
+                        <label key={c.key} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
+                          <input type="checkbox" checked={caps.has(c.key)} onChange={() => toggle(c.key)} />
+                          <span className="text-sm text-slate-700 flex-1">{c.label}</span>
+                          <span className="text-[10px] font-mono text-slate-400">{c.key}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </section>
+            </>
+          )}
+        </div>
+
+        <div className="flex gap-3 p-5 border-t sticky bottom-0 bg-white">
+          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
+          <button type="button" onClick={guardar} disabled={busy || !data}
+            className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50">
+            {busy ? 'Guardando…' : 'Guardar permisos'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -204,6 +359,7 @@ function IconBtn({ color, title, onClick, children }: any) {
     red:'text-red-600 hover:bg-red-50',
     green:'text-emerald-600 hover:bg-emerald-50',
     indigo:'text-indigo-600 hover:bg-indigo-50',
+    violet:'text-violet-600 hover:bg-violet-50',
   };
   return <button type="button" title={title} onClick={onClick} className={`p-1.5 rounded ${map[color]}`}>{children}</button>;
 }

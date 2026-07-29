@@ -38,20 +38,19 @@ export function registerInventoryCron(): void {
     );
   });
 
-  // PENDIENTE — cierre POS diario (factura global al público en general).
-  //
-  // En GDM ALMACÉN este cron llamaba a pos.service.closeDayAllCompanies() a
-  // las 23:55. Esa función NO existe en el pos.service de Nexo: la fusión trajo
-  // una versión reducida del módulo, y las dos ramas tenían esquemas de
-  // pos_sales distintos (por eso existe 2026-07-28_fusion_pos_unificado.sql).
-  //
-  // Portar el servicio de POS a ciegas contra el esquema ya reconciliado es
-  // justo la clase de cosa que rompe en producción a las 23:55 sin que nadie
-  // mire. Se deja fuera a propósito y anotado, en vez de programar un cron que
-  // falle en silencio cada noche.
+  // '55 23 * * *' → diario 23:55: cierre POS — factura global al público en
+  // general con las ventas OPEN del día (conclusión de ALMACEN.MD).
+  // Idempotente: las ventas quedan IN_GLOBAL y no se re-facturan.
+  cron.schedule('55 23 * * *', () => {
+    import('../modules/pos/pos.service')
+      .then((m) => m.closeDayAllCompanies())
+      .catch((e) =>
+        logger.error(`[inventory-cron] cierre POS global falló: ${e.message}`)
+      );
+  });
 
   logger.info(
     '[inventory-cron] Registrado: snapshot de valuación (día 1 00:30) · ' +
-    'análisis de reorden (diario 07:00). Cierre POS diario: pendiente de portar.'
+    'análisis de reorden (diario 07:00) · factura global POS (diario 23:55)'
   );
 }
