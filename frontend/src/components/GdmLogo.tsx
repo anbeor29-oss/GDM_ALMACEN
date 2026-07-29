@@ -17,7 +17,7 @@ export function GdmLogo({ size = 40, className = '' }: { size?: number; classNam
       src={LOGO_URL}
       width={size}
       height={size}
-      alt="GDM High Consulting México"
+      alt="GDM HIGH CONSULTING MÉXICO"
       className={`rounded-full object-cover select-none ${className}`}
       draggable={false}
     />

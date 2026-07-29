@@ -149,9 +149,9 @@ export async function sendTestMail(companyId: string, to: string): Promise<void>
   await t.sendMail({
     from: from || process.env.MAIL_FROM || process.env.MAIL_USER!,
     to,
-    subject: 'Prueba SMTP · GDM_FAC V2',
-    text: 'Este correo confirma que la configuración SMTP de tu empresa quedó lista para enviar facturas.\n\n— GDM Facturación V2',
-    html: '<p>Este correo confirma que la configuración SMTP de tu empresa quedó lista para enviar facturas.</p><p>— <b>GDM Facturación V2</b></p>',
+    subject: 'Prueba SMTP · GDM NEXO',
+    text: 'Este correo confirma que la configuración SMTP de tu empresa quedó lista para enviar facturas.\n\n— GDM NEXO',
+    html: '<p>Este correo confirma que la configuración SMTP de tu empresa quedó lista para enviar facturas.</p><p>— <b>GDM NEXO</b></p>',
   });
 }
 

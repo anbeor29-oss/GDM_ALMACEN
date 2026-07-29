@@ -70,8 +70,8 @@ export function Layout() {
             <div className="flex items-center gap-2.5">
               <GdmLogo size={40} className="shadow-md shrink-0" />
               <div className="leading-tight">
-                <h1 className="font-semibold text-sm text-slate-800 tracking-tight">GDM Facturación</h1>
-                <p className="font-semibold text-xs text-blue-800">High Consulting México</p>
+                <h1 className="font-semibold text-sm text-slate-800 tracking-tight">GDM NEXO</h1>
+                <p className="font-semibold text-xs text-blue-800">GDM HIGH CONSULTING MÉXICO</p>
               </div>
             </div>
           )}

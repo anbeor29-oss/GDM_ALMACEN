@@ -60,7 +60,7 @@ export function LegalDoc({ endpoint, title, subtitle }: Props) {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 text-slate-600 hover:text-slate-900">
-            <ArrowLeft size={18} /> <GdmLogo size={28} /> <span className="font-semibold">GDM Facturación</span>
+            <ArrowLeft size={18} /> <GdmLogo size={28} /> <span className="font-semibold">GDM NEXO</span>
           </Link>
           {text && (
             <button
@@ -115,7 +115,7 @@ export function LegalDoc({ endpoint, title, subtitle }: Props) {
 
 export function TerminosPage() {
   return <LegalDoc endpoint="terms" title="Términos y Condiciones de Uso"
-                   subtitle="Contrato de prestación de servicios GDM Facturación" />;
+                   subtitle="Contrato de prestación de servicios GDM NEXO" />;
 }
 
 export function PrivacidadPage() {

@@ -186,8 +186,10 @@ export function PublicHomePage() {
           <div className="flex items-center gap-3">
             <GdmLogo size={40} className="shadow-md rounded-full shrink-0" />
             <div>
-              <p className="font-bold text-slate-800 tracking-tight leading-tight">GDM Facturación</p>
-              <p className="text-xs text-slate-500 leading-tight">CFDI 4.0 México · High Consulting</p>
+              <p className="font-bold text-slate-800 tracking-tight leading-tight">GDM NEXO</p>
+              {/* En mayúsculas ocupa más ancho que en mixto: se deja corto a
+                  propósito para que no se parta en varias líneas en móvil. */}
+              <p className="text-xs text-slate-500 leading-tight">ERP CFDI 4.0 · GDM HIGH CONSULTING</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
