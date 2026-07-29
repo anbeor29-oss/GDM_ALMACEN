@@ -190,9 +190,42 @@ export class SWSapienProvider implements IPACProvider {
   async stampFromJson(payload: any, _credentials: PACCredentials): Promise<StampResult> {
     try {
       const http = this.http();
-      const r = await http.post('/v3/cfdi33/issue/json/v4', payload, {
+
+      /* La documentación de SW (developers.sw.com.mx → emision-timbrado-json-cfdi)
+       * especifica el cuerpo envuelto en "data", con Sello/NoCertificado/
+       * Certificado presentes aunque vacíos —los llena SW con el CSD del vault—:
+       *
+       *   { "data": { "Version": "4.0", …, "Sello": "", "NoCertificado": "", … } }
+       *
+       * Nuestro código mandaba el payload SUELTO. Las facturas timbran así
+       * porque SW tolera los campos estándar en la raíz, pero un COMPLEMENTO
+       * anidado no lo encuentra: de ahí el CFDI140230 "no existe el Complemento
+       * para recepción de Pagos" en los comprobantes tipo P.
+       *
+       * Se intenta primero la forma documentada. Si SW la rechazara, se cae a la
+       * forma suelta que hoy funciona para facturas: así este cambio no puede
+       * romper el timbrado que ya opera en producción.
+       */
+      const conData = {
+        data: { Sello: '', NoCertificado: '', Certificado: '', ...payload },
+      };
+
+      let r = await http.post('/v3/cfdi33/issue/json/v4', conData, {
         headers: { 'Content-Type': 'application/jsontoxml' },
-      });
+        validateStatus: () => true,
+      } as any);
+
+      if (r.data?.status !== 'success' || !r.data?.data?.uuid) {
+        const motivo = r.data?.messageDetail || r.data?.message || r.status;
+        // eslint-disable-next-line no-console
+        console.log(`[SW] forma documentada {data:…} rechazada (${motivo}); se reintenta suelta.`);
+        r = await http.post('/v3/cfdi33/issue/json/v4', payload, {
+          headers: { 'Content-Type': 'application/jsontoxml' },
+        });
+      } else {
+        // eslint-disable-next-line no-console
+        console.log('[SW] aceptado con la forma documentada {data:…}');
+      }
       const d = r.data?.data;
       if (r.data?.status !== 'success' || !d?.uuid) {
         return {
