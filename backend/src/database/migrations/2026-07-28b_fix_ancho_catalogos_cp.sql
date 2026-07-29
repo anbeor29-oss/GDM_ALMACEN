@@ -38,28 +38,70 @@
 -- fueron descubriendo de una en una a golpe de deploy fallido.
 BEGIN;
 
--- Corrimiento de columnas del generador: donde iba una bandera o una clave
--- quedó texto del catálogo.
-ALTER TABLE sat_cp_clave_prod_serv       ALTER COLUMN material_peligroso TYPE VARCHAR(600);
-ALTER TABLE sat_cp_colonia               ALTER COLUMN codigo_postal      TYPE VARCHAR(60);
-ALTER TABLE sat_cp_municipio             ALTER COLUMN estado             TYPE VARCHAR(60);
-ALTER TABLE sat_cp_localidad             ALTER COLUMN estado             TYPE VARCHAR(60);
-ALTER TABLE sat_cp_config_autotransporte ALTER COLUMN remolque           TYPE VARCHAR(60);
-ALTER TABLE sat_cp_config_autotransporte ALTER COLUMN numero_llantas     TYPE VARCHAR(10);
+-- Cada ensanche va GUARDADO por la existencia de su columna.
+--
+-- La primera versión llevaba doce ALTER TABLE a pelo. En base virgen funciona,
+-- porque las migraciones de Carta Porte crean esas tablas antes. En la base de
+-- producción de facturación NO: ahí los despliegues de CP habían fallado,
+-- faltaba alguna de esas tablas, y el ALTER moría con "relation does not
+-- exist". Como start:prod encadena con &&, migrate-up salía con código 1 y el
+-- servidor nunca arrancaba — Render lo reporta como "Exited with status 1
+-- while running your code".
+--
+-- Una migración que corre sobre bases en estados distintos no puede dar por
+-- hecho lo que hay. Si la columna aún no existe no hay nada que ensanchar: la
+-- migración que la cree ya la creará con el ancho correcto.
+DO $$
+DECLARE
+  objetivo RECORD;
+BEGIN
+  FOR objetivo IN
+    SELECT * FROM (VALUES
+      -- Corrimiento de columnas del generador: donde iba una bandera o una
+      -- clave quedó texto del catálogo.
+      ('sat_cp_clave_prod_serv',       'material_peligroso', 'VARCHAR(600)'),
+      ('sat_cp_colonia',               'codigo_postal',      'VARCHAR(60)'),
+      ('sat_cp_municipio',             'estado',             'VARCHAR(60)'),
+      ('sat_cp_localidad',             'estado',             'VARCHAR(60)'),
+      ('sat_cp_config_autotransporte', 'remolque',           'VARCHAR(60)'),
+      ('sat_cp_config_autotransporte', 'numero_llantas',     'VARCHAR(10)'),
+      -- Claves que el SAT publica más largas de lo que asumió el schema.
+      -- config_autotransporte.clave es llave primaria y llega a 'T2S1R2' (6):
+      -- el schema asumió 4 y dejaba fuera las 21 configuraciones de
+      -- tractocamión con semirremolque y remolque.
+      ('sat_cp_config_autotransporte',    'clave',            'VARCHAR(12)'),
+      ('sat_cp_clave_unidad_peso',        'nombre',           'VARCHAR(160)'),
+      ('sat_cp_num_autorizacion_naviero', 'clave',            'VARCHAR(20)'),
+      ('sat_cp_estaciones',               'clave',            'VARCHAR(16)'),
+      ('sat_cp_contenedor_maritimo',      'clave',            'VARCHAR(8)'),
+      ('sat_cp_tipo_estacion',            'clave_transporte', 'VARCHAR(16)'),
+      ('sat_cp_tipo_permiso',             'clave_transporte', 'VARCHAR(16)')
+    ) AS t(tabla, columna, tipo)
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_name = objetivo.tabla AND column_name = objetivo.columna
+    ) THEN
+      EXECUTE format('ALTER TABLE %I ALTER COLUMN %I TYPE %s',
+                     objetivo.tabla, objetivo.columna, objetivo.tipo);
+    ELSE
+      RAISE NOTICE '[ancho-cp] %.% aún no existe — se omite',
+                   objetivo.tabla, objetivo.columna;
+    END IF;
+  END LOOP;
+END $$;
 
--- Claves que el SAT publica más largas de lo que asumió el schema original.
--- config_autotransporte.clave es llave primaria y llega a 'T2S1R2' (6): el
--- schema asumió 4 y se quedaban fuera las 21 configuraciones de tractocamión
--- con semirremolque y remolque.
-ALTER TABLE sat_cp_config_autotransporte    ALTER COLUMN clave            TYPE VARCHAR(12);
-ALTER TABLE sat_cp_clave_unidad_peso        ALTER COLUMN nombre           TYPE VARCHAR(160);
-ALTER TABLE sat_cp_num_autorizacion_naviero ALTER COLUMN clave            TYPE VARCHAR(20);
-ALTER TABLE sat_cp_estaciones               ALTER COLUMN clave            TYPE VARCHAR(16);
-ALTER TABLE sat_cp_contenedor_maritimo      ALTER COLUMN clave            TYPE VARCHAR(8);
-ALTER TABLE sat_cp_tipo_estacion            ALTER COLUMN clave_transporte TYPE VARCHAR(16);
-ALTER TABLE sat_cp_tipo_permiso             ALTER COLUMN clave_transporte TYPE VARCHAR(16);
-
-COMMENT ON COLUMN sat_cp_clave_prod_serv.material_peligroso IS
-  'El seed del SAT deja aquí texto libre por un corrimiento de columnas. No usar para decidir si algo es peligroso: para eso está sat_cp_material_peligroso y la captura de la mercancía.';
+-- El COMMENT también va guardado: sobre una tabla inexistente aborta igual que
+-- un ALTER, y sería absurdo tumbar un arranque por un comentario.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'sat_cp_clave_prod_serv' AND column_name = 'material_peligroso'
+  ) THEN
+    COMMENT ON COLUMN sat_cp_clave_prod_serv.material_peligroso IS
+      'El seed del SAT deja aquí texto libre por un corrimiento de columnas. No usar para decidir si algo es peligroso: para eso está sat_cp_material_peligroso y la captura de la mercancía.';
+  END IF;
+END $$;
 
 COMMIT;
