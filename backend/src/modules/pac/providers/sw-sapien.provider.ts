@@ -99,9 +99,54 @@ export class SWSapienProvider implements IPACProvider {
       //
       // Se envía como JSON con el campo que el propio comentario documentaba.
       const ENDPOINT = '/cfdi33/stamp/v4';
-      const r = await http.post(ENDPOINT, { xml: xmlContent }, {
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const b64 = Buffer.from(xmlContent, 'utf8').toString('base64');
+
+      /* SW no dice CÓMO quiere el XML, y ya se probaron dos formas: cadena cruda
+       * con application/xml, y { xml: <crudo> } en JSON. Las dos devolvieron
+       * "Xml CFDI no proporcionado o viene vacío", que es SW diciendo que no
+       * encontró el documento donde lo buscaba.
+       *
+       * Se prueban las formas restantes en orden. SW transporta XML en base64
+       * en casi todos sus servicios, así que esa va primero. Es seguro: un
+       * rechazo no cobra timbre ni guarda nada, y el log dice cuál funcionó
+       * para fijarla y borrar el resto.
+       */
+      const formas: Array<{ nombre: string; cuerpo: any; tipo: string }> = [
+        { nombre: '{xml:base64}',  cuerpo: { xml: b64 },        tipo: 'application/json' },
+        { nombre: 'base64 crudo',  cuerpo: b64,                 tipo: 'text/plain' },
+        { nombre: 'XML crudo',     cuerpo: xmlContent,          tipo: 'application/xml' },
+        { nombre: '{xml:crudo}',   cuerpo: { xml: xmlContent }, tipo: 'application/json' },
+        { nombre: '{data:base64}', cuerpo: { data: b64 },       tipo: 'application/json' },
+      ];
+
+      let r: any = null;
+      let usada = '';
+      const rechazos: string[] = [];
+      for (const f of formas) {
+        const resp = await http.post(ENDPOINT, f.cuerpo, {
+          headers: { 'Content-Type': f.tipo },
+          // Que un 400 no lance: queremos leer el mensaje y seguir probando.
+          validateStatus: () => true,
+        } as any);
+        if (resp.data?.status === 'success' && resp.data?.data?.uuid) {
+          r = resp; usada = f.nombre;
+          break;
+        }
+        rechazos.push(`${f.nombre}: ${resp.data?.messageDetail || resp.data?.message || resp.status}`);
+      }
+
+      if (!r) {
+        return {
+          success: false,
+          errors: [
+            `SW rechazó las ${formas.length} formas de enviar el XML a ${ENDPOINT}. ` +
+            rechazos.join(' | '),
+          ],
+        };
+      }
+      // eslint-disable-next-line no-console
+      console.log(`[SW] XML aceptado con la forma "${usada}" — fijarla y retirar el resto.`);
+
       const d = r.data?.data;
       if (r.data?.status !== 'success' || !d?.uuid) {
         // Se nombra el endpoint en el error. Sin esto, un rechazo de SW no
