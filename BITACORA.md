@@ -1406,3 +1406,65 @@ Fix:
 - Fix seed CP swap columnas (SQL directo BD, no versionado)
 - Feat sellos íntegros wrap + cadena original Anexo 20
 - Feat Datos empresa + ManifestSigner (luego retirado del sidebar por duplicidad)
+
+---
+
+## 2026-07-29 — Un catálogo que no siembra ya no tumba la facturación
+
+### Contexto
+`gdmfac-backend` llevaba ~14 horas sin desplegar. Render solo decía:
+
+    Exited with status 1 while running your code
+
+No es fallo de compilación: es el arranque. `start:prod` encadenaba seis pasos
+con `&&` y los cinco scripts de datos hacen `process.exit(1)` ante cualquier
+error, así que **un catálogo del SAT que no cargara dejaba el servidor sin
+escuchar** — y sin decir cuál de los cinco había fallado.
+
+Detrás de ese bloqueo venían atorados el saldo de clientes, el filtro de
+permisos por modalidad y el aviso de timbrado simulado. También explicaba por
+qué el sistema seguía en MOCK pese a tener bien las variables: el proceso vivo
+era anterior a haberlas puesto.
+
+### Dos intentos que no bastaron
+1. **Migración `2026-07-28b` con guardas.** Llevaba doce `ALTER TABLE` sin
+   comprobar que la tabla existiera. La había probado en base virgen —donde las
+   migraciones de CP corren antes y crean todo—, y eso no probaba el caso real:
+   una base con 27 días de historia y despliegues de CP a medias. Corregido con
+   un bucle sobre `information_schema`; probado contra una base sin ninguna
+   tabla `sat_cp_*`. **Era un error real, pero no era el único.**
+2. Seguí buscando *cuál* script fallaba. Era la pregunta equivocada.
+
+### Decisión
+La pregunta correcta era **por qué un catálogo de apoyo puede tumbar la
+facturación**. `scripts/arranque-produccion.js` separa lo que es requisito de lo
+que no:
+
+* **Migraciones → fatales.** Si el esquema no aplica, el código habla con una
+  base que no le corresponde y puede corromper datos fiscales.
+* **Catálogos y bootstrap → avisan y siguen.** Que falten deja un combo vacío
+  en captura; no impide emitir ni timbrar. Tirar el servicio por eso es peor
+  que el problema que evita.
+
+Al final imprime qué pasos quedaron pendientes, qué significa en la práctica y
+que se reintentan solos —todos son idempotentes—. Ese resumen es el diagnóstico
+que no existía: el servicio se caía sin dejar rastro.
+
+### Verificación
+Se sustituyó `apply-cp-seed` por un stub que sale con código 1 —el fallo exacto
+que teníamos— y el servidor **arrancó igual**: `/health` respondió con 441 s de
+uptime. Con la cadena anterior, ese mismo fallo dejaba el servicio muerto.
+
+### Consecuencia
+Aplicado a los DOS productos: `beb229f` en GDM NEXO y `5d69e08` en GDM
+Facturación. No cambia qué hacen los scripts ni su orden — cambia qué pasa
+cuando uno falla.
+
+**Pendiente:** no sabemos todavía cuál script fallaba en la base de producción.
+Este cambio no lo adivina; hace que deje de importar para el servicio y que
+quede escrito en el log del próximo arranque.
+
+### Lección
+Probar en base virgen no prueba producción. Una migración que corre sobre bases
+en estados desconocidos no puede dar por hecho lo que hay — y un arranque no
+debería tratar un dato de apoyo con la misma severidad que el esquema.

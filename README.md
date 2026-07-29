@@ -271,15 +271,51 @@ Login: `admin@gdmfac2.local` / `admin1234` (o los que hayas puesto en el bootstr
 
 ## Deploy a Render
 
-`start:prod` encadena todo lo que la base necesita antes de levantar el server,
-así que un deploy normal no requiere pasos manuales:
+`start:prod` corre `scripts/arranque-produccion.js`, que prepara la base y luego
+levanta el server. Un deploy normal no requiere pasos manuales:
 
 ```
-migrate-up → apply-cp-seed → fix-cp-swap → fix-cp-catalogos-faltantes
-           → bootstrap-env → node dist/index.js
+migrate-up  ──► si falla, ABORTA el arranque
+     │
+     ├─ apply-cp-seed                  ┐
+     ├─ fix-cp-swap                    │  si alguno falla:
+     ├─ fix-cp-catalogos-faltantes     │  avisa y SIGUE
+     └─ bootstrap-env                  ┘
+     │
+     ▼
+node dist/index.js
 ```
 
-Todos los scripts son idempotentes: correrlos de más no hace daño.
+**Por qué dos categorías.** Antes era una cadena con `&&`, y los cinco scripts
+salen con código 1 ante cualquier error: un catálogo del SAT que no sembrara
+dejaba el servidor sin arrancar y la facturación entera caída, con Render
+reportando solo «Exited with status 1 while running your code» sin decir cuál
+de los cinco falló. Pasó de verdad, y costó varias rondas encontrarlo.
+
+La distinción es de gravedad:
+
+| Paso | ¿Aborta? | Por qué |
+|---|---|---|
+| Migraciones | **Sí** | Si el esquema no aplica, el código habla con una base que no le corresponde y puede corromper datos fiscales |
+| Catálogos y bootstrap | No | Que falten deja un combo vacío en captura; no impide emitir ni timbrar |
+
+Cuando un paso opcional falla, el arranque imprime un resumen con cuáles fueron
+y qué implica. **Ese resumen es el primer lugar donde mirar** si algo se
+comporta raro después de un deploy.
+
+Todos los scripts son idempotentes: correrlos de más no hace daño, y lo que
+falló se reintenta solo en el siguiente arranque.
+
+### Diagnóstico rápido tras un deploy
+
+En el log de arranque, dos líneas dicen casi todo:
+
+- `[arranque] migraciones y datos de apoyo, completos.` — todo en orden.
+- `[PAC] SW Sapien en PRODUCCIÓN` — timbrado real. Si en su lugar aparece el
+  recuadro **TIMBRADO SIMULADO (MOCK)**, los CFDI que emita NO tienen validez
+  fiscal, y el mensaje dice cuál de las dos condiciones falta: `PAC_PROVIDER`
+  distinto de `SW_SAPIEN`, o `SW_SAPIEN_TOKEN` vacío. Ojo: `SW_SAPIEN_ENV` no
+  interviene en esa decisión — solo elige a qué URL de SW se le pega después.
 
 **Variables de entorno a revisar antes de un release:**
 
