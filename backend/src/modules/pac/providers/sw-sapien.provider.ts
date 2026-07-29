@@ -91,42 +91,35 @@ export class SWSapienProvider implements IPACProvider {
   async stamp(xmlContent: string, _credentials: PACCredentials): Promise<StampResult> {
     try {
       const http = this.http();
-      // El comentario original ya decía que SW espera el XML "en JSON envuelto
-      // en 'xml'", pero el código mandaba la cadena cruda con Content-Type
-      // application/xml. SW buscaba el campo `xml`, no lo encontraba, y
-      // respondía "Xml CFDI no proporcionado o viene vacío" — que es
-      // exactamente lo que se veía al timbrar un complemento de pago.
-      //
-      // Se envía como JSON con el campo que el propio comentario documentaba.
-      /* El endpoint llevaba prefijo de versión y le faltaba.
+      /* Vuelve a /cfdi33/stamp/v4 SIN prefijo: con /v3 devolvió 404 en las cinco
+       * formas, así que ese path no existe. El original sí — respondía con un
+       * mensaje real de SW, no con 404.
        *
-       * Evidencia: se probaron CINCO cuerpos distintos —base64 en JSON, base64
-       * crudo, XML crudo, {xml:crudo}, {data:base64}— y los cinco devolvieron el
-       * MISMO mensaje palabra por palabra. Si el cuerpo importara, el error
-       * cambiaría entre formas; que no cambie significa que nadie lo está
-       * leyendo. Eso apunta al path, no al contenido.
-       *
-       * Y el endpoint hermano documentado sí lo lleva: /v3/cfdi33/issue/json/v4.
-       * El de timbrado estaba escrito sin el /v3.
+       * Y eso reencuadra el problema: el endpoint existe y responde "Xml CFDI no
+       * proporcionado" ante JSON, texto plano y XML crudo por igual. Lo que queda
+       * es la convención que SW usa en su servicio de timbrado: el XML va como
+       * ARCHIVO en multipart/form-data, en un campo llamado "xml". Por eso ningún
+       * cuerpo servía — buscaba una parte de formulario, no un cuerpo.
        */
-      const ENDPOINT = '/v3/cfdi33/stamp/v4';
+      const ENDPOINT = '/cfdi33/stamp/v4';
       const b64 = Buffer.from(xmlContent, 'utf8').toString('base64');
 
-      /* SW no dice CÓMO quiere el XML, y ya se probaron dos formas: cadena cruda
-       * con application/xml, y { xml: <crudo> } en JSON. Las dos devolvieron
-       * "Xml CFDI no proporcionado o viene vacío", que es SW diciendo que no
-       * encontró el documento donde lo buscaba.
+      /* multipart/form-data con el XML como ARCHIVO en el campo "xml" — la
+       * convención del servicio de timbrado de SW. Va primera porque es la única
+       * que explica que JSON, texto plano y XML crudo fallaran igual: SW no
+       * buscaba un cuerpo, buscaba una parte de formulario.
        *
-       * Se prueban las formas restantes en orden. SW transporta XML en base64
-       * en casi todos sus servicios, así que esa va primero. Es seguro: un
-       * rechazo no cobra timbre ni guarda nada, y el log dice cuál funcionó
-       * para fijarla y borrar el resto.
-       */
-      const formas: Array<{ nombre: string; cuerpo: any; tipo: string }> = [
+       * Se dejan las otras como respaldo hasta que el log confirme cuál sirve.
+       * Al saberlo se queda una sola y se borra el resto. */
+      const fd = new FormData();
+      fd.append('xml', new Blob([xmlContent], { type: 'application/xml' }), 'cfdi.xml');
+
+      const formas: Array<{ nombre: string; cuerpo: any; tipo?: string }> = [
+        // Sin Content-Type: que axios ponga el boundary del multipart.
+        { nombre: 'multipart campo xml', cuerpo: fd },
         { nombre: '{xml:base64}',  cuerpo: { xml: b64 },        tipo: 'application/json' },
         { nombre: 'base64 crudo',  cuerpo: b64,                 tipo: 'text/plain' },
         { nombre: 'XML crudo',     cuerpo: xmlContent,          tipo: 'application/xml' },
-        { nombre: '{xml:crudo}',   cuerpo: { xml: xmlContent }, tipo: 'application/json' },
         { nombre: '{data:base64}', cuerpo: { data: b64 },       tipo: 'application/json' },
       ];
 
@@ -135,7 +128,7 @@ export class SWSapienProvider implements IPACProvider {
       const rechazos: string[] = [];
       for (const f of formas) {
         const resp = await http.post(ENDPOINT, f.cuerpo, {
-          headers: { 'Content-Type': f.tipo },
+          headers: f.tipo ? { 'Content-Type': f.tipo } : {},
           // Que un 400 no lance: queremos leer el mensaje y seguir probando.
           validateStatus: () => true,
         } as any);
