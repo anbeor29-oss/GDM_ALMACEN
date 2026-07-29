@@ -16,6 +16,7 @@ import { ValidationError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import * as productsService from '../products/products.service';
 import { applyMovementTx, getOrCreateDefaultWarehouse } from '../inventory/inventory.service';
+import { validarRfcSat } from '../../utils/validators';
 import {
   PreviewResult,
   PreviewedParty,
@@ -154,14 +155,19 @@ export async function preview(
 
   // Match de emisor / receptor contra catálogo. Distinguimos kind para el preview.
   const partyMatch = async (rfc: string) => {
-    if (!rfc) return { exists: false } as { exists: boolean; id?: string; kind?: 'CUSTOMER'|'SUPPLIER' };
-    const r = await query<{ id: string; party_type: 'CUSTOMER'|'SUPPLIER' }>(
-      `SELECT id, party_type FROM customers
+    if (!rfc) return { exists: false } as {
+      exists: boolean; id?: string; kind?: 'CUSTOMER'|'SUPPLIER'; creditDays?: number;
+    };
+    const r = await query<{ id: string; party_type: 'CUSTOMER'|'SUPPLIER'; credit_days: number|null }>(
+      `SELECT id, party_type, credit_days FROM customers
         WHERE company_id = $1 AND UPPER(rfc) = UPPER($2) AND deleted_at IS NULL LIMIT 1`,
       [companyId, rfc]
     );
     return r.rows[0]
-      ? { exists: true, id: r.rows[0].id, kind: r.rows[0].party_type }
+      ? {
+          exists: true, id: r.rows[0].id, kind: r.rows[0].party_type,
+          creditDays: r.rows[0].credit_days ?? 0,
+        }
       : { exists: false };
   };
   const emisorMatch   = await partyMatch(parsed.emisor.rfc);
@@ -213,6 +219,9 @@ export async function preview(
     });
   }
 
+  const emisorRfc   = validarRfcSat(parsed.emisor.rfc);
+  const receptorRfc = validarRfcSat(parsed.receptor.rfc);
+
   const emisor: PreviewedParty = {
     rfc: parsed.emisor.rfc,
     nombre: parsed.emisor.nombre,
@@ -222,6 +231,10 @@ export async function preview(
     existing_customer_id: emisorMatch.id,
     existing_party_type: emisorMatch.kind,
     is_self: emisorIsSelf,
+    rfc_valido: emisorRfc.valido,
+    rfc_tipo:   emisorRfc.tipo,
+    rfc_motivo: emisorRfc.motivo,
+    credit_days: emisorMatch.creditDays,
   };
   const receptor: PreviewedParty = {
     rfc: parsed.receptor.rfc,
@@ -232,6 +245,10 @@ export async function preview(
     exists_in_catalog: receptorMatch.exists,
     existing_customer_id: receptorMatch.id,
     existing_party_type: receptorMatch.kind,
+    rfc_valido: receptorRfc.valido,
+    rfc_tipo:   receptorRfc.tipo,
+    rfc_motivo: receptorRfc.motivo,
+    credit_days: receptorMatch.creditDays,
     is_self: receptorIsSelf,
   };
 
@@ -278,6 +295,27 @@ export async function commit(
       const party = req.selection.party === 'emisor' ? parsed.emisor : parsed.receptor;
       if (!party.rfc) {
         throw new ValidationError(`El XML no tiene RFC del ${req.selection.party}`);
+      }
+
+      // Validación del RFC. Se hace también aquí y no solo en el preview:
+      // el preview es informativo y el cliente podría no haberlo consultado.
+      // Un RFC mal formado da de alta un proveedor fantasma al que después se
+      // le programa un pago — barato de impedir, caro de limpiar.
+      const chk = validarRfcSat(party.rfc);
+      if (!chk.valido) {
+        throw new ValidationError(
+          `El RFC del ${req.selection.party} ("${party.rfc}") no es válido: ${chk.motivo}. ` +
+          'Revisa el XML con tu proveedor antes de darlo de alta.'
+        );
+      }
+      // Los genéricos identifican "público en general" o "residente en el
+      // extranjero": no son un contribuyente concreto, así que no pueden ser
+      // un proveedor con cuenta por pagar y línea de crédito.
+      if (kind === 'SUPPLIER' && chk.tipo?.startsWith('GENERICO')) {
+        throw new ValidationError(
+          `${chk.rfc} es un RFC genérico del SAT, no identifica a un proveedor. ` +
+          'No se puede registrar una compra a su nombre.'
+        );
       }
 
       // Guard: si la party es "mi empresa" (mismo RFC que companies.rfc),
@@ -342,6 +380,10 @@ export async function commit(
 
     // 2) Products — solo los que el usuario marcó
     const productsCreated: CommitResult['products'] = [];
+    // Partidas que no se pudieron dar de alta, con su motivo. NO se tragan:
+    // el operador tiene que enterarse en la misma pantalla, no un mes después
+    // al cuadrar el kardex.
+    const productsFailed: CommitResult['products_failed'] = [];
     // FASE 2: mapa concepto→producto para generar las entradas de inventario
     // `cantidad` es lo que ENTRA al kardex (lo contado); `cantidadFacturada`
     // es lo que dice el XML. Se guardan las dos para poder avisar del faltante.
@@ -392,7 +434,9 @@ export async function commit(
           valorUnitario: c.valorUnitario,
         });
       } catch (e) {
-        logger.warn(`Skip product concept[${idx}] — ${(e as Error).message}`);
+        const motivo = (e as Error).message;
+        logger.warn(`[cfdi-import] concepto[${idx}] no se pudo dar de alta — ${motivo}`);
+        productsFailed.push({ index: idx, descripcion: c.descripcion, motivo });
       }
     }
 
@@ -421,15 +465,31 @@ export async function commit(
       importId: importIns.rows[0].id,
       party: partyResult,
       products: productsCreated,
+      products_failed: productsFailed,
     };
 
-    // 4) FASE 2 (ALMACEN §5): compra recibida → entrada de inventario,
-    //    productos del proveedor y pago programado. Solo cuando la party
-    //    es SUPPLIER y hay conceptos con producto resuelto.
-    const isPurchase = partyResult?.kind === 'SUPPLIER' && req.receiveInventory !== false;
-    if (isPurchase && conceptProducts.length > 0 && partyResult) {
-      const importId = importIns.rows[0].id;
+    /* ══════════════════════════════════════════════════════════════════════
+     * 4) Es una COMPRA (la party es proveedor). De aquí salen dos cosas
+     *    INDEPENDIENTES entre sí:
+     *
+     *      a) La entrada al almacén — solo si se pidió afectar existencias y
+     *         hubo partidas con producto resuelto.
+     *      b) La cuenta por pagar en tesorería — SIEMPRE que la factura tenga
+     *         importe. Se le debe al proveedor aunque la compra sea de puros
+     *         servicios, aunque el operador haya apagado "afectar existencias",
+     *         y aunque ninguna partida haya podido darse de alta como producto.
+     *
+     *    Antes (b) vivía dentro de (a) y por lo tanto no se generaba en
+     *    ninguno de esos tres casos, mientras la pantalla prometía registrar
+     *    la cuenta por pagar. Una deuda que el sistema no anota es una deuda
+     *    que se paga tarde o se paga dos veces.
+     * ══════════════════════════════════════════════════════════════════════ */
+    const isPurchase = partyResult?.kind === 'SUPPLIER';
+    const importId = importIns.rows[0].id;
+    const docRef = [parsed.serie, parsed.folio].filter(Boolean).join('-') || parsed.cfdiUUID || 'XML';
 
+    // ── a) Entrada de inventario ──────────────────────────────────────────
+    if (isPurchase && req.receiveInventory !== false && conceptProducts.length > 0 && partyResult) {
       // Guard anti-doble-entrada: el ON CONFLICT de xml_imports permite
       // re-commitear el mismo archivo — el stock NO debe duplicarse.
       const alreadyReceived = await transactionQuery(client,
@@ -444,7 +504,6 @@ export async function commit(
           warehouseId = await getOrCreateDefaultWarehouse(client, companyId);
         }
 
-        const docRef = [parsed.serie, parsed.folio].filter(Boolean).join('-') || parsed.cfdiUUID || 'XML';
         let totalUnits = 0;
         for (const cp of conceptProducts) {
           // Un renglón facturado pero NO recibido no genera movimiento: meter
@@ -497,35 +556,63 @@ export async function commit(
           movements: conceptProducts.length,
           totalUnits,
         };
-
-        // Pago programado (línea de crédito del proveedor):
-        // vencimiento = fecha de emisión + días de crédito (credit_days).
-        if (parsed.total && parsed.total > 0) {
-          const payR = await transactionQuery<any>(client,
-            `INSERT INTO supplier_payments_schedule
-               (company_id, supplier_id, xml_import_id, amount, due_date, notes)
-             SELECT $1, $2, $3, $4,
-                    (COALESCE($5::timestamp, NOW()) + make_interval(days => COALESCE(c.credit_days, 0)))::date,
-                    $6
-               FROM customers c WHERE c.id = $2
-             RETURNING id, amount, due_date`,
-            [companyId, partyResult.id, importId, parsed.total,
-             parsed.fechaEmision || null, `Compra XML ${docRef}`]
-          );
-          if (payR.rows[0]) {
-            await transactionQuery(client,
-              `UPDATE customers SET credit_used = COALESCE(credit_used, 0) + $1 WHERE id = $2`,
-              [parsed.total, partyResult.id]
-            );
-            result.payment = {
-              scheduleId: payR.rows[0].id,
-              amount: Number(payR.rows[0].amount),
-              dueDate: payR.rows[0].due_date,
-            };
-          }
-        }
       } else {
         logger.warn(`[cfdi-import] Import ${importId} ya tenía entradas de inventario — skip (anti-duplicado)`);
+      }
+    }
+
+    // ── b) Cuenta por pagar en tesorería ──────────────────────────────────
+    // Vencimiento = fecha de emisión de la factura + los días de crédito
+    // pactados con ESE proveedor (customers.credit_days). Si no tiene crédito
+    // pactado son 0 días: vence el mismo día, que es lo correcto para contado.
+    //
+    // El importe es el TOTAL de la factura, con impuestos: es lo que se le va
+    // a transferir. No se descuenta el faltante de mercancía — eso se aclara
+    // con nota de crédito, y restarlo aquí escondería el problema.
+    if (isPurchase && partyResult && parsed.total && parsed.total > 0) {
+      // Anti-duplicado propio: re-commitear el mismo XML no debe generar dos
+      // cuentas por pagar. Espeja al guard del inventario, no depende de él.
+      const yaProgramado = await transactionQuery<any>(client,
+        `SELECT id, amount, due_date FROM supplier_payments_schedule
+          WHERE xml_import_id = $1 AND status <> 'CANCELLED' LIMIT 1`,
+        [importId]
+      );
+
+      if (yaProgramado.rows[0]) {
+        logger.warn(`[cfdi-import] Import ${importId} ya tenía cuenta por pagar — skip (anti-duplicado)`);
+        result.payment = {
+          scheduleId: yaProgramado.rows[0].id,
+          amount: Number(yaProgramado.rows[0].amount),
+          dueDate: yaProgramado.rows[0].due_date,
+          alreadyExisted: true,
+        };
+      } else {
+        const payR = await transactionQuery<any>(client,
+          `INSERT INTO supplier_payments_schedule
+             (company_id, supplier_id, xml_import_id, amount, due_date, notes)
+           SELECT $1, $2, $3, $4,
+                  (COALESCE($5::timestamp, NOW()) + make_interval(days => COALESCE(c.credit_days, 0)))::date,
+                  $6
+             FROM customers c WHERE c.id = $2
+           RETURNING id, amount, due_date,
+                     (SELECT COALESCE(credit_days, 0) FROM customers WHERE id = $2) AS credit_days`,
+          [companyId, partyResult.id, importId, parsed.total,
+           parsed.fechaEmision || null, `Compra XML ${docRef}`]
+        );
+        if (payR.rows[0]) {
+          // Consume línea de crédito del proveedor.
+          await transactionQuery(client,
+            `UPDATE customers SET credit_used = COALESCE(credit_used, 0) + $1 WHERE id = $2`,
+            [parsed.total, partyResult.id]
+          );
+          result.payment = {
+            scheduleId: payR.rows[0].id,
+            amount: Number(payR.rows[0].amount),
+            dueDate: payR.rows[0].due_date,
+            creditDays: Number(payR.rows[0].credit_days || 0),
+            alreadyExisted: false,
+          };
+        }
       }
     }
 

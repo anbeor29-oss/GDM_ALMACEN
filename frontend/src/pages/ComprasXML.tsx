@@ -22,7 +22,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Upload, FileText, Package, Building2, AlertTriangle,
-  CheckCircle2, Loader2, Save,
+  CheckCircle2, Loader2, Save, Landmark,
 } from 'lucide-react';
 import api from '@/services/api';
 
@@ -37,6 +37,7 @@ export function ComprasXMLPage() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState<string[]>([]);
+  const [fallidas, setFallidas] = useState<Array<{ index: number; descripcion: string; motivo: string }>>([]);
 
   const [warehouseId, setWarehouseId] = useState('');
   const [costingMethod, setCostingMethod] = useState<'PROMEDIO' | 'ULTIMO' | 'CAPAS'>('PROMEDIO');
@@ -50,7 +51,7 @@ export function ComprasXMLPage() {
   });
 
   const leerArchivo = async (f: File) => {
-    setError(''); setOk([]); setPreview(null); setCargando(true);
+    setError(''); setOk([]); setFallidas([]); setPreview(null); setCargando(true);
     try {
       const buf = await f.arrayBuffer();
       const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
@@ -75,7 +76,7 @@ export function ComprasXMLPage() {
 
   const guardar = async () => {
     if (!preview) return;
-    setGuardando(true); setError(''); setOk([]);
+    setGuardando(true); setError(''); setOk([]); setFallidas([]);
     try {
       const recQty: Record<number, number> = {};
       conceptos.forEach(i => { recQty[i] = Number(recibidas[i] ?? 0); });
@@ -106,11 +107,21 @@ export function ComprasXMLPage() {
       }
       if (d.inventory) {
         msgs.push(`Entrada al almacén ${d.inventory.warehouseCode}: ${d.inventory.movements} movimiento(s), ${d.inventory.totalUnits} unidades`);
+      } else if (afectaInventario) {
+        msgs.push('Sin movimiento de inventario — ninguna partida llegó a producto.');
       }
       if (d.payment) {
-        msgs.push(`Cuenta por pagar: $${money(d.payment.amount)} con vencimiento ${String(d.payment.dueDate).slice(0, 10)}`);
+        msgs.push(
+          d.payment.alreadyExisted
+            ? `Cuenta por pagar: ya existía por $${money(d.payment.amount)} — no se duplicó.`
+            : `Cuenta por pagar en Tesorería: $${money(d.payment.amount)}, vence ${String(d.payment.dueDate).slice(0, 10)}` +
+              (d.payment.creditDays ? ` (${d.payment.creditDays} días de crédito)` : ' (sin días de crédito)')
+        );
       }
       setOk(msgs.length ? msgs : ['Compra registrada']);
+      // Las partidas que no se pudieron dar de alta se muestran aparte y NO se
+      // borran de pantalla al terminar: si se limpian, nadie se entera.
+      setFallidas(d.products_failed || []);
       setPreview(null); setXmlB64(''); setArchivo('');
     } catch (e: any) {
       setError(e?.response?.data?.error || e?.message || 'No se pudo registrar la compra');
@@ -120,10 +131,35 @@ export function ComprasXMLPage() {
   };
 
   const cs = preview?.conceptos || [];
+  const emisor = preview?.emisor;
+  const receptor = preview?.receptor;
+
   // Renglones donde lo contado no coincide con lo facturado.
   const diferencias = cs
     .map((c: any, i: number) => ({ i, c, rec: Number(recibidas[i] ?? 0) }))
     .filter((x: any) => conceptos.has(x.i) && x.rec !== Number(x.c.cantidad));
+
+  /**
+   * Motivos por los que NO se debe registrar esta compra. El backend los
+   * rechaza igual; aquí se enseñan antes para no hacer perder el viaje.
+   */
+  const bloqueos: string[] = [];
+  if (preview) {
+    if (emisor?.rfc_valido === false) {
+      bloqueos.push(`El RFC del proveedor ("${emisor.rfc}") no es válido: ${emisor.rfc_motivo}.`);
+    }
+    if (emisor?.is_self) {
+      bloqueos.push('El emisor de este XML es tu propia empresa: es una factura que TÚ emitiste, no una compra.');
+    }
+    // El receptor de una compra tiene que ser mi empresa. Si no lo es, o el
+    // archivo está equivocado o se subió al módulo que no era.
+    if (receptor && !receptor.is_self) {
+      bloqueos.push(
+        `El receptor de la factura es ${receptor.rfc}${receptor.nombre ? ` (${receptor.nombre})` : ''}, ` +
+        'que no es tu empresa. Esta factura no te la emitieron a ti.'
+      );
+    }
+  }
 
   return (
     <div className="mx-auto max-w-[1200px] p-6">
@@ -146,6 +182,26 @@ export function ComprasXMLPage() {
         <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded text-sm text-emerald-800">
           <div className="flex items-center gap-2 font-medium mb-1"><CheckCircle2 size={16} /> Compra registrada</div>
           <ul className="list-disc ml-6 space-y-0.5">{ok.map((m, i) => <li key={i}>{m}</li>)}</ul>
+        </div>
+      )}
+      {fallidas.length > 0 && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-900">
+          <div className="flex items-center gap-2 font-medium mb-1">
+            <AlertTriangle size={16} /> {fallidas.length} partida(s) NO entraron al catálogo
+          </div>
+          <p className="text-xs mb-2">
+            Estas partidas no se dieron de alta como producto y por lo tanto <b>no entraron al almacén</b>.
+            La cuenta por pagar sí se registró por el total de la factura. Da de alta el producto a mano
+            en Productos y captura la entrada, o corrige el dato que falla y vuelve a subir el XML.
+          </p>
+          <ul className="space-y-1">
+            {fallidas.map((f, i) => (
+              <li key={i} className="text-xs border-l-2 border-amber-300 pl-2">
+                <b>Partida {f.index + 1}:</b> {f.descripcion}
+                <span className="block text-amber-700">{f.motivo}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -172,18 +228,82 @@ export function ComprasXMLPage() {
 
       {preview && (
         <div className="space-y-4">
+          {/* Avisos que hay que leer ANTES de guardar */}
+          {bloqueos.map((b, i) => (
+            <div key={i} className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700 flex items-start gap-2">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" /><span>{b}</span>
+            </div>
+          ))}
+          {preview.already_imported?.yes && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800 flex items-start gap-2">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <span>
+                Este mismo archivo ya se subió el {String(preview.already_imported.ts || '').slice(0, 10)}
+                {preview.already_imported.by_user ? ` por ${preview.already_imported.by_user}` : ''}.
+                Si lo registras de nuevo, ni las existencias ni la cuenta por pagar se duplican.
+              </span>
+            </div>
+          )}
+
           {/* Proveedor */}
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center gap-2 mb-3">
               <Building2 size={16} className="text-slate-500" />
               <h2 className="text-sm font-semibold text-slate-700">Proveedor</h2>
               <span className="text-xs text-slate-400">· del emisor del XML</span>
+              {emisor?.exists_in_catalog
+                ? <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-600">ya registrado</span>
+                : <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">se dará de alta</span>}
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              <div><p className="text-xs text-slate-500">RFC</p><p className="font-mono">{preview.emisor?.rfc}</p></div>
-              <div className="md:col-span-2"><p className="text-xs text-slate-500">Razón social</p><p>{preview.emisor?.nombre}</p></div>
-              <div><p className="text-xs text-slate-500">Factura</p><p className="font-mono">{[preview.serie, preview.folio].filter(Boolean).join('-') || '—'}</p></div>
+              <div>
+                <p className="text-xs text-slate-500">RFC</p>
+                <p className={`font-mono ${emisor?.rfc_valido === false ? 'text-red-600 font-semibold' : ''}`}>
+                  {emisor?.rfc || '—'}
+                </p>
+                {emisor?.rfc_valido === false
+                  ? <p className="text-[11px] text-red-600 mt-0.5">{emisor.rfc_motivo}</p>
+                  : <p className="text-[11px] text-emerald-600 mt-0.5">
+                      RFC válido{emisor?.rfc_tipo === 'MORAL' ? ' · persona moral'
+                                : emisor?.rfc_tipo === 'FISICA' ? ' · persona física' : ''}
+                    </p>}
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-xs text-slate-500">Razón social</p>
+                <p>{emisor?.nombre || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Factura</p>
+                <p className="font-mono">{[preview.serie, preview.folio].filter(Boolean).join('-') || '—'}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Total ${money(preview.total)}
+                </p>
+              </div>
             </div>
+          </div>
+
+          {/* Cuenta por pagar — se explica antes de generarla */}
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Landmark size={16} className="text-slate-500" />
+              <h2 className="text-sm font-semibold text-slate-700">Cuenta por pagar</h2>
+            </div>
+            <p className="text-sm text-slate-600">
+              Se programará en Tesorería por <b>${money(preview.total)}</b>
+              {emisor?.exists_in_catalog ? (
+                Number(emisor.credit_days) > 0
+                  ? <> con vencimiento a <b>{emisor.credit_days} días</b> de la fecha de la factura,
+                      según el crédito pactado con este proveedor.</>
+                  : <> con vencimiento <b>inmediato</b>: este proveedor no tiene días de crédito
+                      pactados. Se cambia en su ficha de Proveedores.</>
+              ) : (
+                <> con vencimiento inmediato. Al ser proveedor nuevo entra con <b>0 días</b> de
+                   crédito; ajústalo en su ficha si acordaron plazo.</>
+              )}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              El importe es el total de la factura, con impuestos: es lo que se le va a transferir.
+            </p>
           </div>
 
           {/* Destino y costeo */}
@@ -254,8 +374,13 @@ export function ComprasXMLPage() {
                             })}
                           />
                         </td>
-                        <td className="px-3 py-2">{c.descripcion}</td>
-                        <td className="px-3 py-2 font-mono text-xs text-slate-500">{c.claveSat}</td>
+                        <td className="px-3 py-2">
+                          {c.descripcion}
+                          {c.exists_in_catalog
+                            ? <span className="block text-[10px] text-slate-400">ya está en el catálogo</span>
+                            : <span className="block text-[10px] text-emerald-600">se dará de alta</span>}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs text-slate-500">{c.clave_sat}</td>
                         <td className="px-3 py-2 text-right font-mono">{c.cantidad}</td>
                         <td className="px-3 py-2 text-right">
                           <input
@@ -266,7 +391,7 @@ export function ComprasXMLPage() {
                             className="w-24 px-2 py-1 border border-slate-300 rounded text-right font-mono disabled:bg-slate-50"
                           />
                         </td>
-                        <td className="px-3 py-2 text-right font-mono">${money(c.valorUnitario)}</td>
+                        <td className="px-3 py-2 text-right font-mono">${money(c.valor_unitario)}</td>
                         <td className={`px-3 py-2 text-right font-mono font-semibold ${
                           !marcado ? 'text-slate-300' : dif === 0 ? 'text-slate-400' : dif < 0 ? 'text-red-600' : 'text-amber-600'
                         }`}>
@@ -303,7 +428,8 @@ export function ComprasXMLPage() {
               <span className="text-xs text-slate-400">{archivo}</span>
               <button
                 onClick={guardar}
-                disabled={guardando || conceptos.size === 0}
+                disabled={guardando || conceptos.size === 0 || bloqueos.length > 0}
+                title={bloqueos.length > 0 ? bloqueos.join(' ') : undefined}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium"
               >
                 {guardando ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}

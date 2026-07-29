@@ -23,6 +23,19 @@ export interface PreviewedParty {
   existing_party_type?: 'CUSTOMER' | 'SUPPLIER';
   /** True si el RFC coincide con el de "mi empresa" — esa parte no se debe importar. */
   is_self: boolean;
+  /**
+   * Validación estricta del RFC (utils/validators → validarRfcSat).
+   *
+   * Un RFC mal formado en una compra no es cosmético: da de alta un proveedor
+   * fantasma, le programa un pago y ensucia el catálogo para siempre. Se
+   * reporta en el preview para que la pantalla lo enseñe ANTES de guardar, y
+   * el commit lo vuelve a exigir (el preview es informativo, no un permiso).
+   */
+  rfc_valido: boolean;
+  rfc_tipo?: 'FISICA' | 'MORAL' | 'GENERICO_NACIONAL' | 'GENERICO_EXTRANJERO';
+  rfc_motivo?: string;
+  /** Días de crédito pactados, si la party ya existe. Define el vencimiento del pago. */
+  credit_days?: number;
 }
 
 export interface PreviewedConcept {
@@ -126,6 +139,15 @@ export interface CommitResult {
     already_existed: boolean;
   };
   products:   Array<{ id: string; sku: string; name: string; already_existed: boolean }>;
+  /**
+   * Partidas que NO se pudieron dar de alta como producto, con el motivo.
+   *
+   * Antes se registraban con logger.warn y se seguía adelante: el operador
+   * veía "compra registrada" y se enteraba semanas después de que faltaban
+   * renglones en el kardex. Si el sistema no pudo con una partida, tiene que
+   * decirlo en la misma pantalla.
+   */
+  products_failed: Array<{ index: number; descripcion: string; motivo: string }>;
   /** FASE 2: resultado de la entrada de inventario cuando la party es SUPPLIER. */
   inventory?: {
     warehouseId: string;
@@ -133,11 +155,21 @@ export interface CommitResult {
     movements: number;
     totalUnits: number;
   };
-  /** FASE 2: pago programado al proveedor (conclusión ALMACEN.MD). */
+  /**
+   * Cuenta por pagar programada en tesorería.
+   *
+   * Se genera SIEMPRE que la party sea proveedor y la factura tenga importe —
+   * no depende de que se haya afectado el inventario ni de que las partidas
+   * hayan podido darse de alta como productos. Al proveedor se le debe igual.
+   */
   payment?: {
     scheduleId: string;
     amount: number;
     dueDate: string;
+    /** Días de crédito del proveedor que se usaron para calcular el vencimiento. */
+    creditDays?: number;
+    /** True si el XML ya se había registrado: no se duplicó la deuda. */
+    alreadyExisted?: boolean;
   };
   next?: {
     /** Solo cuando partyKind=CUSTOMER y prefillInvoice=true. */

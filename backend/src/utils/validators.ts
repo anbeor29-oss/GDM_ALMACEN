@@ -18,6 +18,88 @@ export function isValidRFC(rfc: string): boolean {
   return rfcRegex.test(cleanRFC);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * Validación ESTRICTA de RFC, con diagnóstico.
+ *
+ * isValidRFC (arriba) se queda como está porque lo usan varios módulos y
+ * relajarlo/apretarlo cambiaría su comportamiento. Esta versión es la que
+ * usa la recepción de compras, donde un RFC mal leído significa dar de alta
+ * un proveedor fantasma y programarle un pago.
+ *
+ * Diferencias con la laxa:
+ *   · La fecha (posiciones 4-9 / 5-10) debe ser una fecha REAL. "999999" pasa
+ *     el regex suelto y no existe.
+ *   · La longitud define el tipo: 12 = persona moral, 13 = persona física.
+ *     No hay término medio; el `(\d{3})?` opcional de la otra no corresponde
+ *     a ningún RFC del SAT.
+ *   · Reconoce los dos RFC genéricos del Anexo 20.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+export type TipoRfc = 'FISICA' | 'MORAL' | 'GENERICO_NACIONAL' | 'GENERICO_EXTRANJERO';
+
+export interface RfcCheck {
+  /** El RFC normalizado (mayúsculas, sin espacios ni guiones). */
+  rfc: string;
+  valido: boolean;
+  tipo?: TipoRfc;
+  /** Por qué se rechazó — en español, para mostrarlo tal cual en pantalla. */
+  motivo?: string;
+}
+
+/** Público en general y residentes en el extranjero (Anexo 20). */
+const RFC_GENERICO_NACIONAL   = 'XAXX010101000';
+const RFC_GENERICO_EXTRANJERO = 'XEXX010101000';
+
+export function validarRfcSat(raw: string | null | undefined): RfcCheck {
+  const rfc = String(raw || '').toUpperCase().replace(/[\s-]/g, '').trim();
+
+  if (!rfc) return { rfc, valido: false, motivo: 'El XML no trae RFC' };
+
+  if (rfc === RFC_GENERICO_NACIONAL) {
+    return { rfc, valido: true, tipo: 'GENERICO_NACIONAL' };
+  }
+  if (rfc === RFC_GENERICO_EXTRANJERO) {
+    return { rfc, valido: true, tipo: 'GENERICO_EXTRANJERO' };
+  }
+
+  if (rfc.length !== 12 && rfc.length !== 13) {
+    return {
+      rfc, valido: false,
+      motivo: `Tiene ${rfc.length} caracteres; un RFC son 12 (moral) o 13 (física)`,
+    };
+  }
+
+  const m = rfc.match(/^([A-ZÑ&]{3,4})(\d{2})(\d{2})(\d{2})([A-Z\d]{2})([A-Z\d])$/);
+  if (!m) {
+    return { rfc, valido: false, motivo: 'La forma no corresponde a un RFC (letras + fecha + homoclave)' };
+  }
+
+  const [, letras, aa, mm, dd] = m;
+  const esperadas = rfc.length === 13 ? 4 : 3;
+  if (letras.length !== esperadas) {
+    return {
+      rfc, valido: false,
+      motivo: rfc.length === 13
+        ? 'Una persona física lleva 4 letras iniciales'
+        : 'Una persona moral lleva 3 letras iniciales',
+    };
+  }
+
+  // La fecha debe existir de verdad. El siglo es ambiguo en un RFC (sólo hay
+  // dos dígitos de año), así que se valida contra 2000 y contra 1900: basta
+  // con que la combinación día/mes sea posible en alguno de los dos.
+  const anioNum = Number(aa), mesNum = Number(mm), diaNum = Number(dd);
+  const fechaPosible = (siglo: number) => {
+    const d = new Date(Date.UTC(siglo + anioNum, mesNum - 1, diaNum));
+    return d.getUTCMonth() === mesNum - 1 && d.getUTCDate() === diaNum;
+  };
+  if (mesNum < 1 || mesNum > 12 || diaNum < 1 || (!fechaPosible(2000) && !fechaPosible(1900))) {
+    return { rfc, valido: false, motivo: `La fecha ${dd}/${mm}/${aa} del RFC no existe` };
+  }
+
+  return { rfc, valido: true, tipo: rfc.length === 13 ? 'FISICA' : 'MORAL' };
+}
+
 /**
  * Validate email address
  */
@@ -188,6 +270,7 @@ export function validateRFCChecksum(rfc: string): boolean {
 
 export default {
   isValidRFC,
+  validarRfcSat,
   isValidEmail,
   isValidPostalCode,
   isValidUUID,
