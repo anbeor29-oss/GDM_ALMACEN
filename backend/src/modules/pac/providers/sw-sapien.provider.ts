@@ -98,7 +98,18 @@ export class SWSapienProvider implements IPACProvider {
       // exactamente lo que se veía al timbrar un complemento de pago.
       //
       // Se envía como JSON con el campo que el propio comentario documentaba.
-      const ENDPOINT = '/cfdi33/stamp/v4';
+      /* El endpoint llevaba prefijo de versión y le faltaba.
+       *
+       * Evidencia: se probaron CINCO cuerpos distintos —base64 en JSON, base64
+       * crudo, XML crudo, {xml:crudo}, {data:base64}— y los cinco devolvieron el
+       * MISMO mensaje palabra por palabra. Si el cuerpo importara, el error
+       * cambiaría entre formas; que no cambie significa que nadie lo está
+       * leyendo. Eso apunta al path, no al contenido.
+       *
+       * Y el endpoint hermano documentado sí lo lleva: /v3/cfdi33/issue/json/v4.
+       * El de timbrado estaba escrito sin el /v3.
+       */
+      const ENDPOINT = '/v3/cfdi33/stamp/v4';
       const b64 = Buffer.from(xmlContent, 'utf8').toString('base64');
 
       /* SW no dice CÓMO quiere el XML, y ya se probaron dos formas: cadena cruda
