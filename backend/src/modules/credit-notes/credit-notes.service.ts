@@ -7,12 +7,14 @@
  *
  * Reglas implementadas:
  *  - El monto total de la NC no puede exceder el saldo pendiente de la factura.
- *  - Al guardarse en BD se simula timbrado MOCK (status STAMPED, UUID).
+ *  - Al guardarse se TIMBRA con el PAC activo (pac.timbrarXml). Si el PAC
+ *    rechaza, la NC no se guarda.
  *  - El sistema aplica el monto como un "pago" a la factura referenciada
  *    (de forma que el seguimiento de saldo y los reportes funcionen sin código aparte).
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import * as pacService from '../pac/pac.service';
 import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
@@ -122,9 +124,8 @@ export async function createCreditNote(companyId: string, data: CreditNoteInput)
       );
     }
 
-    // 2) Crear NC con simulación de timbrado
+    // 2) Crear NC y TIMBRARLA con el PAC activo
     const folio = await getNextNCFolio(client, companyId);
-    const fakeUUID = uuidv4().toUpperCase();
 
     // IVA contenido en la NC:
     //   1) si lo pasaron explícito, lo usamos;
@@ -199,6 +200,29 @@ export async function createCreditNote(companyId: string, data: CreditNoteInput)
   </cfdi:Impuestos>
 </cfdi:Comprobante>`;
 
+    /* ── TIMBRADO REAL DE LA NOTA DE CRÉDITO ──────────────────────────────
+     * Aquí había `const fakeUUID = uuidv4()`: la NC se guardaba como STAMPED
+     * con un folio fiscal inventado y el SAT nunca la recibía. Una NC que no
+     * se timbra no cancela nada ante el SAT — la factura original sigue
+     * surtiendo efectos fiscales completos.
+     *
+     * Mismo camino que facturas y complementos de pago: pac.timbrarXml(). Si
+     * el PAC rechaza, se lanza el error dentro de la transacción y la NC NO
+     * queda guardada.
+     */
+    const timbre = await pacService.timbrarXml(companyId, xml);
+    if (!timbre.success) {
+      throw new ValidationError(
+        `No se pudo timbrar la nota de crédito: ${timbre.errors.join('; ')}. ` +
+        `La NC NO se registró — corrige y vuelve a intentar.`
+      );
+    }
+    const uuidTimbrado = (timbre.uuid || '').toUpperCase();
+    if (!uuidTimbrado) {
+      throw new ValidationError('El PAC no devolvió UUID para la nota de crédito. La NC NO se registró.');
+    }
+    const xmlFinal = timbre.xml_stamped || xml;
+
     const insR = await transactionQuery<any>(
       client,
       `INSERT INTO credit_notes
@@ -210,7 +234,7 @@ export async function createCreditNote(companyId: string, data: CreditNoteInput)
       [
         companyId, data.customerId, invoice.id, folio,
         tipoRel, motivoText,
-        subtotal, iva, ncTotal, moneda, fakeUUID, xml,
+        subtotal, iva, ncTotal, moneda, uuidTimbrado, xmlFinal,
       ]
     );
     const note = insR.rows[0];
