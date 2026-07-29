@@ -7,7 +7,7 @@
     "dev": "ts-node -r dotenv/config src/index.ts",
     "build": "./node_modules/.bin/tsc && node scripts/copy-assets.js",
     "start": "node dist/index.js",
-    "start:prod": "node scripts/migrate-up.js && node scripts/apply-cp-seed.js && node scripts/fix-cp-swap.js && node scripts/fix-cp-catalogos-faltantes.js && node scripts/bootstrap-env.js && node dist/index.js",
+    "start:prod": "node scripts/arranque-produccion.js",
     "start:prod:legacy": "node scripts/migrate-up.js && node dist/index.js",
     "start:prod:v2": "npm run start:prod",
     "cp:seed": "node scripts/apply-cp-seed.js",
@@ -30,7 +30,6 @@
     "create:admin": "ts-node -r dotenv/config scripts/create-admin.ts",
     "reset:company": "ts-node -r dotenv/config scripts/reset-company.ts",
     "seed:examples": "node -r dotenv/config scripts/seed-examples.js",
-    "bootstrap:env": "node -r dotenv/config scripts/bootstrap-env.js",
     "docs:icons": "ts-node -r dotenv/config scripts/generate-icons-guide.ts"
   },
   "keywords": [
