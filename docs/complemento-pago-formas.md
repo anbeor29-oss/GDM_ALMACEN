@@ -253,3 +253,91 @@ con la tasa 16% fija, porque así son todas nuestras facturas hoy. Para cubrir B
 C hay que leer los impuestos reales de los conceptos de la factura y elegir la
 forma correspondiente. No está hecho: es un cambio de comportamiento que conviene
 meter cuando aparezca la primera factura que lo necesite, no antes.
+
+---
+
+## Caso D — pago al RFC genérico (público en general)
+
+Cuando la factura se emitió al público en general, el complemento se emite al
+mismo receptor genérico. La estructura del complemento no cambia; lo que cambia
+son los datos del `Receptor`.
+
+```json
+"Receptor": {
+  "Rfc": "XAXX010101000",
+  "Nombre": "PUBLICO GENERAL",
+  "DomicilioFiscalReceptor": "75700",
+  "RegimenFiscalReceptor": "616",
+  "UsoCFDI": "CP01"
+}
+```
+
+Cuatro reglas que el SAT valida en conjunto y que se rompen fácil por separado:
+
+| Campo | Valor obligado | Nota |
+|---|---|---|
+| `Rfc` | `XAXX010101000` | Nacional. Extranjero es `XEXX010101000` |
+| `Nombre` | `PUBLICO GENERAL` | Exacto, en mayúsculas y **sin acento** en "PUBLICO" |
+| `RegimenFiscalReceptor` | `616` | "Sin obligaciones fiscales". Es el único que admite el genérico |
+| `DomicilioFiscalReceptor` | el del **emisor** | No hay domicilio del receptor: se repite `LugarExpedicion` |
+
+`UsoCFDI` sigue siendo `CP01`, como en cualquier tipo P.
+
+Que `DomicilioFiscalReceptor` sea el código postal del emisor es
+contraintuitivo pero es lo correcto: al público en general no se le conoce
+domicilio, y el SAT pide que ese campo coincida con el lugar de expedición.
+
+**Nuestro validador de RFC lo rechaza a propósito como proveedor**
+(`validarRfcSat()` en `backend/src/utils/validators.ts`), porque un genérico no
+sirve para registrar a quién le compramos. Como **receptor** de venta sí es
+válido: son dos usos distintos del mismo dato y no hay que unificar esa
+validación.
+
+---
+
+## Un pago puede liquidar varias facturas
+
+`DoctoRelacionado` es un arreglo, y el caso normal en cobranza es que un depósito
+cubra varias facturas. Cada elemento lleva su propio `IdDocumento`,
+`NumParcialidad`, saldos e `ImpuestosDR`:
+
+```json
+"Monto": "6778.00",
+"DoctoRelacionado": [
+  { "IdDocumento": "b7c8d2bf-...", "Serie": "FA", "Folio": "N0000216349",
+    "NumParcialidad": "2", "ImpSaldoAnt": "6777.41",
+    "ImpPagado": "6777.41", "ImpSaldoInsoluto": "0.00", ... },
+  { "IdDocumento": "94f4e541-...", "Serie": "FA", "Folio": "SI000032690",
+    "NumParcialidad": "1", "ImpSaldoAnt": "9610.81",
+    "ImpPagado": "0.59",    "ImpSaldoInsoluto": "9610.22", ... }
+]
+```
+
+Dos cosas que se derivan de ahí:
+
+- **`NumParcialidad` es por factura, no por pago.** En el ejemplo, un mismo pago
+  es la parcialidad 2 de una factura y la 1 de otra.
+- **`Monto` del pago debe cuadrar con la suma de los `ImpPagado`.** Aquí
+  `6777.41 + 0.59 = 6778.00`.
+
+Y `ImpuestosP` / `Totales` son la **suma de todos los documentos** del pago, no
+los de uno: `5842.60 + 0.51 = 5843.11` de base.
+
+### Los decimales de ImpuestosDR
+
+El ejemplo escribe `BaseDR: "5842.600000"` e `ImporteDR: "934.816000"` — **seis
+decimales**, no dos. Es válido y a veces necesario: el SAT valida
+`BaseDR × TasaOCuotaDR == ImporteDR`, y con importes que no son múltiplos
+redondos la igualdad sólo cuadra si se conserva la precisión. Nótese que
+`934.816` redondeado a dos decimales sería `934.82`, pero `Totales` declara
+`934.90` porque suma las dos facturas antes de redondear.
+
+En cambio `MontoTotalPagos`, `Monto`, `ImpPagado`, `ImpSaldoAnt` e
+`ImpSaldoInsoluto` van con **dos decimales**: son dinero, no bases de cálculo.
+
+## Estado actual del código, ampliado
+
+`payments.service.ts` emite hoy **un solo `DoctoRelacionado`**, porque la pantalla
+registra el pago contra una factura a la vez. Para cobrar un depósito que cubre
+varias hay que cambiar también la interfaz, no sólo el XML: es un cambio de
+alcance mayor que el resto de los casos de este documento.

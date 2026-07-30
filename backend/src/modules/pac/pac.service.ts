@@ -142,6 +142,43 @@ export async function timbrarJson(
       `Timbrando comprobante tipo ${payload?.TipoDeComprobante} vía ${provider.name} (JSON)`
     );
 
+    /* EL MOCK NO PUEDE "TIMBRAR" PAGOS NI NOTAS DE CRÉDITO.
+     *
+     * Una factura simulada es un borrador inofensivo: no se cobra, no mueve
+     * saldos, y se vuelve a timbrar cuando el PAC esté bien configurado. Un pago
+     * simulado NO: guarda un UUID inventado, marca la factura PAID y baja el
+     * saldo a cero. El sistema queda diciendo que le pagaron y que lo declaró
+     * ante el SAT, y las dos cosas son falsas — y en un CFDI PPD el complemento
+     * es obligación legal del mes siguiente, así que el hueco es fiscal.
+     *
+     * Es exactamente el daño que hacía el `fakeUUID` que se quitó de
+     * payments.service; entrar por el MOCK lo reintroducía por la puerta de
+     * atrás. Se corta aquí porque el "MODO SIMULACIÓN" del diálogo se lee como
+     * un aviso menor y no como lo que es: que ese comprobante no existe para el
+     * SAT.
+     *
+     * Para pruebas donde sí se quiera simular, hay que pedirlo a propósito con
+     * PAC_PERMITIR_SIMULACION_PAGOS=true. No hay caída silenciosa.
+     */
+    if (
+      DEFAULT_PROVIDER === 'MOCK' &&
+      process.env.PAC_PERMITIR_SIMULACION_PAGOS !== 'true'
+    ) {
+      const tipo = payload?.TipoDeComprobante === 'E'
+        ? 'una nota de crédito'
+        : 'un complemento de pago';
+      return {
+        success: false,
+        errors: [
+          `Este servidor está en modo SIMULACIÓN y no puede timbrar ${tipo}. ` +
+          `Un pago o una nota de crédito simulados dejarían la factura marcada como ` +
+          `pagada y declarada ante el SAT sin que sea cierto, así que no se registra nada. ` +
+          `Faltan variables de entorno en el backend que atiende esta dirección: ` +
+          `PAC_PROVIDER=SW_SAPIEN, SW_SAPIEN_TOKEN y SW_SAPIEN_ENV=production.`,
+        ],
+      };
+    }
+
     /* El complemento ya viene armado en la forma que SW espera —
      * Complemento.Any[] con la llave prefijada 'pago20:Pagos' (ver
      * payments.service). Se manda tal cual por la ruta de emisión JSON.
