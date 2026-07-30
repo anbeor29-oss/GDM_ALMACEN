@@ -122,7 +122,8 @@ export async function createPayment(companyId: string, data: PaymentInput) {
     // 1) Validar factura
     const invR = await transactionQuery<any>(
       client,
-      `SELECT id, company_id, customer_id, folio, serie, total, status, currency
+      `SELECT id, company_id, customer_id, folio, serie, total, status, currency,
+                cfdi_uuid, payment_method
          FROM invoices
         WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
       [data.invoiceId, companyId]
@@ -133,6 +134,19 @@ export async function createPayment(companyId: string, data: PaymentInput) {
       throw new ValidationError('No se puede pagar una factura cancelada');
     if (invoice.status === 'PAID')
       throw new ValidationError('Esta factura ya está pagada');
+
+    /* SIN FOLIO FISCAL NO HAY COMPLEMENTO POSIBLE.
+     * IdDocumento es el UUID de la factura que se está pagando, y el SAT lo
+     * valida contra un patrón: si va vacío, el rechazo llega hasta el PAC con un
+     * mensaje sobre "datatype String" que no dice nada del problema real.
+     * Se corta aquí, con la causa dicha en claro. */
+    if (!invoice.cfdi_uuid) {
+      throw new ValidationError(
+        `La factura ${invoice.serie || ''}${invoice.folio} no tiene folio fiscal (UUID). ` +
+        `Un complemento de pago solo puede referirse a una factura ya timbrada ante el SAT: ` +
+        `timbra primero la factura y vuelve a registrar el pago.`
+      );
+    }
 
     // 2) Validar que no excedamos el saldo REAL (total − pagos − NC).
     //    Sin considerar NC podríamos aceptar un pago que dejara la factura
@@ -305,8 +319,17 @@ export async function createPayment(companyId: string, data: PaymentInput) {
                 TipoCambioP: '1',
                 Monto: montoPago.toFixed(2),
                 DoctoRelacionado: [{
-                  IdDocumento: invoice.cfdi_uuid || '',
+                  IdDocumento: invoice.cfdi_uuid,
+                  // Serie y Folio son opcionales, pero van porque la
+                  // representación impresa del complemento los muestra y sin
+                  // ellos el receptor no identifica qué factura se le abonó.
+                  ...(invoice.serie ? { Serie: String(invoice.serie) } : {}),
+                  Folio: String(invoice.folio),
                   MonedaDR: moneda,
+                  // En un complemento de pago el documento relacionado siempre
+                  // es PPD: una factura PUE se pagó al emitirse y no admite
+                  // complemento. Se toma de la factura y se cae a PPD.
+                  MetodoDePagoDR: invoice.payment_method || 'PPD',
                   EquivalenciaDR: '1',
                   // Parcialidad = cuántos pagos van, contando este.
                   NumParcialidad: String(parcialidad),
