@@ -90,7 +90,6 @@ export class SWSapienProvider implements IPACProvider {
 
   async stamp(xmlContent: string, _credentials: PACCredentials): Promise<StampResult> {
     try {
-      const http = this.http();
       /* Vuelve a /cfdi33/stamp/v4 SIN prefijo: con /v3 devolvió 404 en las cinco
        * formas, así que ese path no existe. El original sí — respondía con un
        * mensaje real de SW, no con 404.
@@ -123,11 +122,30 @@ export class SWSapienProvider implements IPACProvider {
         { nombre: '{data:base64}', cuerpo: { data: b64 },       tipo: 'application/json' },
       ];
 
+      /* CLIENTE LIMPIO POR PETICIÓN — lo único común a los SEIS fracasos.
+       *
+       * this.http() fija 'Content-Type: application/jsontoxml' A NIVEL DE
+       * INSTANCIA, y axios FUSIONA cabeceras: al pasar headers:{} para que
+       * pusiera el boundary del multipart, se conservó jsontoxml y SW recibió un
+       * cuerpo que no podía parsear. Eso contaminaba las seis formas por igual —
+       * y explica que las seis dieran el MISMO mensaje.
+       *
+       * Aquí se arma un cliente sin Content-Type por omisión y con Authorization
+       * en 'Bearer' (mayúscula, como pide la documentación; la instancia usaba
+       * 'bearer'), para que cada forma viaje con la cabecera que le corresponde.
+       */
+      const cfgSW = readEnvConfig()!;
+      const limpio = axios.create({
+        baseURL: SW_ENDPOINTS[cfgSW.env],
+        timeout: 30_000,
+        headers: { Authorization: `Bearer ${cfgSW.token}` },
+      });
+
       let r: any = null;
       let usada = '';
       const rechazos: string[] = [];
       for (const f of formas) {
-        const resp = await http.post(ENDPOINT, f.cuerpo, {
+        const resp = await limpio.post(ENDPOINT, f.cuerpo, {
           headers: f.tipo ? { 'Content-Type': f.tipo } : {},
           // Que un 400 no lance: queremos leer el mensaje y seguir probando.
           validateStatus: () => true,
