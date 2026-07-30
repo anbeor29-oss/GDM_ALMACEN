@@ -142,81 +142,17 @@ export async function timbrarJson(
       `Timbrando comprobante tipo ${payload?.TipoDeComprobante} vía ${provider.name} (JSON)`
     );
 
-    /* BÚSQUEDA ACOTADA DE LA FORMA DEL COMPLEMENTO
+    /* El complemento ya viene armado en la forma que SW espera —
+     * Complemento.Any[] con la llave prefijada 'pago20:Pagos' (ver
+     * payments.service). Se manda tal cual por la ruta de emisión JSON.
      *
-     * SW aceptó el comprobante tipo P pero el SAT respondió CFDI140230: "no
-     * existe el Complemento para recepción de Pagos". O sea: la ruta y los
-     * datos son correctos, lo que no coincide es CÓMO se anida el complemento
-     * en el JSON de SW, y su documentación no está a mano.
-     *
-     * En vez de adivinar de una en una —dos intentos ya fallaron así— se
-     * prueban las formas conocidas en orden y se usa la primera que SW acepte.
-     * Es seguro porque un rechazo NO cobra timbre, NO guarda nada y NO mueve
-     * saldos: el llamador solo persiste cuando success es true.
-     *
-     * Al acertar, queda en el log qué forma funcionó, para fijarla y borrar
-     * esta búsqueda. Si ninguna sirve, se devuelve el error de la primera —el
-     * más informativo— con la lista de lo intentado.
+     * Aquí vivía una búsqueda que probaba cinco anidamientos distintos y luego
+     * caía a la ruta XML. Cumplió su propósito —descartó los cinco— y se retira:
+     * con la forma correcta conocida, reintentar cuatro veces solo enturbiaría
+     * el diagnóstico del siguiente error real, porque el mensaje que se reporta
+     * al usuario sería el de la primera forma y no el de la verdadera.
      */
-    const comp = payload?.Complemento;
-    if (!comp) return provider.stampFromJson(payload, credentials);
-
-    const base = { ...payload };
-    delete (base as any).Complemento;
-
-    const variantes: Array<{ nombre: string; cuerpo: any }> = [
-      { nombre: 'Complemento:{}',        cuerpo: { ...base, Complemento: comp } },
-      { nombre: 'Complemento:[]',        cuerpo: { ...base, Complemento: [comp] } },
-      { nombre: 'Complementos:{}',       cuerpo: { ...base, Complementos: comp } },
-      { nombre: 'Complementos:[]',       cuerpo: { ...base, Complementos: [comp] } },
-      { nombre: 'Pagos en la raíz',      cuerpo: { ...base, ...comp } },
-    ];
-
-    let primerError: StampResult | null = null;
-    const intentados: string[] = [];
-
-    for (const v of variantes) {
-      const r = await provider.stampFromJson(v.cuerpo, credentials);
-      if (r.success) {
-        logger.info(
-          `[PAC] Complemento aceptado con la forma "${v.nombre}". ` +
-          `Fijar esa forma en el payload y retirar la búsqueda de variantes.`
-        );
-        return r;
-      }
-      intentados.push(`${v.nombre}: ${(r.errors || []).join(' ')}`);
-      if (!primerError) primerError = r;
-      logger.warn(`[PAC] forma "${v.nombre}" rechazada: ${(r.errors || []).join(' ')}`);
-    }
-
-    /* Ninguna anidación JSON sirvió. Último recurso: la ruta XML.
-     *
-     * Vale la pena porque el XML ya cumple el Anexo 20 para tipo P —Moneda XXX,
-     * SubTotal y Total en cero, sin FormaPago ni MetodoPago, sin nodo Impuestos,
-     * concepto 84111506/ACT/ObjetoImp 01— y ahora SÍ declara xmlns:xsi y
-     * xsi:schemaLocation apuntando a cfdv40.xsd y Pagos20.xsd.
-     *
-     * Eso último es lo que faltaba y explicaría los rechazos: sin
-     * schemaLocation, un validador no liga el namespace pago20 con su esquema y
-     * el complemento le resulta invisible — exactamente lo que dice CFDI140230.
-     * Las facturas, que sí timbran, lo declaran desde siempre en cfdi.service.
-     */
-    logger.warn('[PAC] ninguna forma JSON del complemento sirvió — se intenta la ruta XML');
-    const porXml = await provider.stamp(xmlFallback, credentials);
-    if (porXml.success) {
-      logger.info('[PAC] el complemento SÍ timbró por la ruta XML. Usar esa ruta y retirar la búsqueda JSON.');
-      return porXml;
-    }
-
-    return {
-      success: false,
-      errors: [
-        `${(primerError?.errors || ['Rechazado por el PAC']).join('; ')} ` +
-        `— se probaron ${variantes.length} formas JSON del complemento y la ruta XML. ` +
-        `Último error por XML: ${(porXml.errors || []).join('; ')}. ` +
-        `Detalle en el log del backend.`,
-      ],
-    };
+    return provider.stampFromJson(payload, credentials);
   }
 
   return provider.stamp(xmlFallback, credentials);

@@ -224,7 +224,19 @@ export async function createPayment(companyId: string, data: PaymentInput) {
      * SW sella con el CSD de su bóveda. El XML se conserva como respaldo para
      * el provider MOCK, que no implementa la ruta JSON. */
     const saldoAnterior = total - alreadyPaid - alreadyCredited;
-    const saldoInsoluto = Math.max(0, saldoAnterior - Number(data.paymentAmount));
+    const montoPago = Number(data.paymentAmount);
+    const saldoInsoluto = Math.max(0, saldoAnterior - montoPago);
+    const parcialidad = (await contarPagosPrevios(client, invoice.id)) + 1;
+
+    /* DESGLOSE DEL IVA DEL PAGO.
+     * El monto que cobra el cliente viene con IVA incluido, pero el complemento
+     * pide la base y el impuesto por separado, y el SAT valida que
+     * BaseDR × 0.16 == ImporteDR con dos decimales. Se despeja la base y el
+     * impuesto se calcula SOBRE LA BASE YA REDONDEADA — si se calculara sobre la
+     * base sin redondear, base+iva podría no cuadrar con el monto por un centavo
+     * y el comprobante se rechazaría. */
+    const baseIVA = Math.round((montoPago / 1.16) * 100) / 100;
+    const ivaPago = Math.round(baseIVA * 0.16 * 100) / 100;
     const payloadPago: any = {
       Version: '4.0',
       Serie: 'P',
@@ -259,27 +271,75 @@ export async function createPayment(companyId: string, data: PaymentInput) {
         Importe: '0',
         ObjetoImp: '01',
       }],
+      /* COMPLEMENTO — la forma exacta que espera el convertidor de SW.
+       *
+       * Aquí estuvo el CFDI140230 durante todos los intentos anteriores. Probé
+       * cinco anidamientos (Complemento:{}, Complemento:[], Complementos:{},
+       * Complementos:[], Pagos en la raíz) y ninguno era el correcto:
+       *
+       *     Complemento: { Any: [ { 'pago20:Pagos': {...} } ] }
+       *
+       * Dos detalles que no se adivinan: el arreglo intermedio se llama **Any**
+       * —el convertidor lo traduce a <cfdi:Complemento> con hijos arbitrarios,
+       * igual que el xs:any del XSD— y la llave del complemento va **con el
+       * prefijo del namespace**, 'pago20:Pagos', no 'Pagos' a secas. Sin el
+       * prefijo SW no sabe a qué complemento se refiere y lo descarta en
+       * silencio: el CFDI sale tipo P sin complemento, y el SAT lo rechaza.
+       */
       Complemento: {
-        Pagos: {
-          Version: '2.0',
-          Totales: { MontoTotalPagos: Number(data.paymentAmount).toFixed(2) },
-          Pago: [{
-            FechaPago: fechaISO.slice(0, 19),
-            FormaDePagoP: data.paymentForm,
-            MonedaP: moneda,
-            Monto: Number(data.paymentAmount).toFixed(2),
-            DoctoRelacionado: [{
-              IdDocumento: invoice.cfdi_uuid || '',
-              MonedaDR: moneda,
-              // Parcialidad = cuántos pagos van, contando este.
-              NumParcialidad: String(await contarPagosPrevios(client, invoice.id) + 1),
-              ImpSaldoAnt: saldoAnterior.toFixed(2),
-              ImpPagado: Number(data.paymentAmount).toFixed(2),
-              ImpSaldoInsoluto: saldoInsoluto.toFixed(2),
-              ObjetoImpDR: '01',
-            }],
-          }],
-        },
+        Any: [
+          {
+            'pago20:Pagos': {
+              Version: '2.0',
+              Totales: {
+                MontoTotalPagos: montoPago.toFixed(2),
+                TotalTrasladosBaseIVA16: baseIVA.toFixed(2),
+                TotalTrasladosImpuestoIVA16: ivaPago.toFixed(2),
+              },
+              Pago: [{
+                FechaPago: fechaISO.slice(0, 19),
+                FormaDePagoP: data.paymentForm,
+                MonedaP: moneda,
+                // Obligatorio salvo que MonedaP sea MXN; se manda siempre
+                // porque con MXN vale 1 y el SAT lo acepta.
+                TipoCambioP: '1',
+                Monto: montoPago.toFixed(2),
+                DoctoRelacionado: [{
+                  IdDocumento: invoice.cfdi_uuid || '',
+                  MonedaDR: moneda,
+                  EquivalenciaDR: '1',
+                  // Parcialidad = cuántos pagos van, contando este.
+                  NumParcialidad: String(parcialidad),
+                  ImpSaldoAnt: saldoAnterior.toFixed(2),
+                  ImpPagado: montoPago.toFixed(2),
+                  ImpSaldoInsoluto: saldoInsoluto.toFixed(2),
+                  // '02' = sí objeto de impuesto. Antes iba '01' (no objeto),
+                  // que contradecía a la factura: nuestros CFDI llevan IVA 16%,
+                  // y con '01' el nodo ImpuestosDR ni siquiera es válido.
+                  ObjetoImpDR: '02',
+                  ImpuestosDR: {
+                    TrasladosDR: [{
+                      BaseDR: baseIVA.toFixed(2),
+                      ImpuestoDR: '002',
+                      TipoFactorDR: 'Tasa',
+                      TasaOCuotaDR: '0.160000',
+                      ImporteDR: ivaPago.toFixed(2),
+                    }],
+                  },
+                }],
+                ImpuestosP: {
+                  TrasladosP: [{
+                    BaseP: baseIVA.toFixed(2),
+                    ImpuestoP: '002',
+                    TipoFactorP: 'Tasa',
+                    TasaOCuotaP: '0.160000',
+                    ImporteP: ivaPago.toFixed(2),
+                  }],
+                },
+              }],
+            },
+          },
+        ],
       },
     };
 
