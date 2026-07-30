@@ -167,7 +167,7 @@ function qty(n: number | string | null | undefined): string {
  * "La fecha de emisión no se encuentra en el rango permitido".
  * Por eso forzamos la zona horaria explícitamente con toLocaleString.
  */
-function fmtFechaSAT(d: Date = new Date()): string {
+export function fmtFechaSAT(d: Date = new Date()): string {
   // 'sv-SE' (Suecia) usa formato ISO por default: "YYYY-MM-DD HH:MM:SS"
   // Con timeZone convertimos correctamente aunque corramos en UTC.
   const s = d.toLocaleString('sv-SE', {

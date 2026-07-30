@@ -12,6 +12,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { fmtFechaSAT } from '../cfdi/build-cfdi-json.service';
 import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
@@ -183,7 +184,21 @@ export async function createPayment(companyId: string, data: PaymentInput) {
     const noCertEmisor = emisor?.csd_no_certificado || '00001000000506430009';
 
     const folio = await getNextPaymentFolio(client, companyId);
-    const fechaISO = data.paymentDate || new Date().toISOString();
+    /* FECHA EN HORA DEL LUGAR DE EXPEDICIÓN, NO EN UTC.
+     * Render corre en UTC y el SAT valida contra hora de México: mandar
+     * toISOString() nos ponía 6 horas en el futuro y el PAC rechazaba con "la
+     * fecha de emisión no se encuentra en el rango permitido". Es la misma
+     * función que usan las facturas —por eso ellas sí timbran— y ahora se
+     * comparte en vez de duplicar el formateo.
+     *
+     * data.paymentDate es la fecha en que el cliente pagó (puede ser pasada) y
+     * va en FechaPago; la fecha del comprobante es SIEMPRE la de emisión. Antes
+     * se usaba la misma para las dos, así que un pago capturado días después
+     * emitía un comprobante con fecha vieja. */
+    const fechaEmision = fmtFechaSAT(new Date());
+    const fechaISO = data.paymentDate
+      ? fmtFechaSAT(new Date(data.paymentDate))
+      : fechaEmision;
     const moneda = data.currency || invoice.currency || 'MXN';
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4"
@@ -191,7 +206,7 @@ export async function createPayment(companyId: string, data: PaymentInput) {
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd http://www.sat.gob.mx/Pagos20 http://www.sat.gob.mx/sitio_internet/cfd/Pagos/Pagos20.xsd"
   Version="4.0" Serie="P" Folio="${folio}"
-  Fecha="${fechaISO.slice(0, 19)}"
+  Fecha="${fechaEmision}"
   NoCertificado="${noCertEmisor}"
   TipoDeComprobante="P" Moneda="XXX" SubTotal="0" Total="0" Exportacion="01"
   LugarExpedicion="${emisor?.postal_code || '00000'}">
@@ -206,7 +221,7 @@ export async function createPayment(companyId: string, data: PaymentInput) {
   </cfdi:Conceptos>
   <cfdi:Complemento>
     <pago20:Pagos Version="2.0">
-      <pago20:Pago FechaPago="${fechaISO.slice(0, 19)}"
+      <pago20:Pago FechaPago="${fechaISO}"
         FormaDePagoP="${data.paymentForm}" MonedaP="${moneda}"
         Monto="${Number(data.paymentAmount).toFixed(2)}">
         <pago20:DoctoRelacionado IdDocumento="${invoice.cfdi_uuid || ''}"
@@ -255,7 +270,7 @@ export async function createPayment(companyId: string, data: PaymentInput) {
       Version: '4.0',
       Serie: 'P',
       Folio: String(folio),
-      Fecha: fechaISO.slice(0, 19),
+      Fecha: fechaEmision,
       // En un CFDI tipo P el comprobante NO lleva importes ni forma de pago:
       // todo vive en el complemento. Moneda XXX y totales en cero (Anexo 20).
       SubTotal: '0',
@@ -311,7 +326,7 @@ export async function createPayment(companyId: string, data: PaymentInput) {
                 TotalTrasladosImpuestoIVA16: ivaPago.toFixed(2),
               },
               Pago: [{
-                FechaPago: fechaISO.slice(0, 19),
+                FechaPago: fechaISO,
                 FormaDePagoP: data.paymentForm,
                 MonedaP: moneda,
                 // Obligatorio salvo que MonedaP sea MXN; se manda siempre
