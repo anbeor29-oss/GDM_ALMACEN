@@ -263,10 +263,16 @@ export async function createCreditNote(companyId: string, data: CreditNoteInput)
       Exportacion: '01',
       LugarExpedicion: emisor?.postal_code || '00000',
       // Obligatorio en una nota de crédito: a qué CFDI se refiere.
-      CfdiRelacionados: {
+      /* ARREGLO, no objeto. En el Anexo 20 CfdiRelacionados es un nodo
+       * REPETIBLE: un comprobante puede relacionar varios documentos con
+       * TipoRelacion distinto —una nota de crédito por descuento y otra por
+       * devolución, por ejemplo—, así que cada TipoRelacion necesita su propio
+       * bloque. Mandarlo como objeto hace que el deserializador de SW falle
+       * antes de siquiera mirar el contenido. */
+      CfdiRelacionados: [{
         TipoRelacion: tipoRel,
         CfdiRelacionado: [{ UUID: invoice.cfdi_uuid }],
-      },
+      }],
       Emisor: {
         Rfc: emisor?.rfc || '',
         Nombre: emisor?.business_name || '',

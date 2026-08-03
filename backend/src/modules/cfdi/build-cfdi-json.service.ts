@@ -60,11 +60,16 @@ interface CFDIJson {
   /**
    * Relación con otros CFDI. Obligatoria en una nota de crédito (tipo E):
    * TipoRelacion '01' = nota de crédito de los documentos relacionados.
+   *
+   * Es un ARREGLO porque el nodo es repetible en el Anexo 20: un comprobante
+   * puede relacionar documentos con TipoRelacion distinto, y cada uno necesita
+   * su propio bloque. Declararlo como objeto —como estaba— hace que el
+   * deserializador de SW falle antes de mirar el contenido.
    */
-  CfdiRelacionados?: {
+  CfdiRelacionados?: Array<{
     TipoRelacion: string;
     CfdiRelacionado: Array<{ UUID: string }>;
-  };
+  }>;
   /**
    * Complemento de Pagos 2.0 — solo en comprobantes tipo P.
    *
