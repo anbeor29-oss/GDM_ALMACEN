@@ -743,3 +743,53 @@ export default {
   testConnection,
   listProviders,
 };
+
+/**
+ * Cancela CUALQUIER comprobante por su folio fiscal, sin pasar por la tabla de
+ * facturas.
+ *
+ * Existe porque las notas de crédito también se cancelan ante el SAT, y hasta
+ * ahora no había forma de hacerlo: cancelCreditNote sólo cambiaba el estado en
+ * la base y el CFDI quedaba VIGENTE. Cancelar un egreso es el mismo servicio del
+ * PAC y los mismos motivos del Anexo 20 que cancelar un ingreso, así que se
+ * comparte el camino en vez de escribir un segundo.
+ *
+ * Prepara el CSD igual que cancelInvoice: si la empresa lo tiene cargado se
+ * envía en la petición —y así no depende de la bóveda del PAC— y si no, se cae a
+ * la vía por UUID.
+ */
+export async function cancelarComprobante(
+  companyId: string,
+  uuid: string,
+  motivo: string,
+  folioSustitucion?: string,
+) {
+  const provider = getProvider();
+  const credentials = getCredentials(companyId);
+
+  const rfcR = await query<{ rfc: string }>(`SELECT rfc FROM companies WHERE id = $1`, [companyId]);
+  const rfcEmisor = (rfcR.rows[0]?.rfc || '').toUpperCase().trim();
+  if (!rfcEmisor) throw new ValidationError('La empresa no tiene RFC registrado.');
+
+  let csd: { b64Cer: string; b64Key: string; password: string } | undefined;
+  try {
+    const rc = await query<{ csd_cer_path: string | null; csd_key_path: string | null; csd_password_encrypted: string | null }>(
+      `SELECT csd_cer_path, csd_key_path, csd_password_encrypted FROM companies WHERE id = $1`,
+      [companyId]
+    );
+    const c = rc.rows[0];
+    if (c?.csd_cer_path && c.csd_key_path && c.csd_password_encrypted
+        && fs.existsSync(c.csd_cer_path) && fs.existsSync(c.csd_key_path)) {
+      csd = {
+        b64Cer: fs.readFileSync(c.csd_cer_path).toString('base64'),
+        b64Key: fs.readFileSync(c.csd_key_path).toString('base64'),
+        password: decryptCsdPassword(c.csd_password_encrypted),
+      };
+    }
+  } catch (e) {
+    logger.warn(`No se pudo preparar el CSD para cancelar ${uuid}: ${(e as Error).message}`);
+  }
+
+  logger.info(`Cancelando comprobante ${uuid} (motivo ${motivo}) vía ${provider.name}`);
+  return provider.cancel(uuid, rfcEmisor, motivo, credentials, folioSustitucion, csd);
+}

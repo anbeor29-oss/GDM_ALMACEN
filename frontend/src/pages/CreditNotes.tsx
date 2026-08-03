@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Receipt, X, FileText, ArrowDownCircle, FileDown, Eye } from 'lucide-react';
+import { Plus, Receipt, X, FileText, ArrowDownCircle, FileDown, Eye, Ban } from 'lucide-react';
 import api from '@/services/api';
 
 export function CreditNotesPage() {
@@ -53,6 +53,42 @@ export function CreditNotesPage() {
       alert(`No se pudo descargar el XML.
 
 ${e.response?.data?.message || e.message}`);
+    }
+  };
+
+  /* CANCELAR LA NC ANTE EL SAT.
+   *
+   * El botón se muestra SIEMPRE que la nota tenga folio fiscal, incluso si el
+   * sistema ya la marca como Cancelada. Parece contradictorio y es a propósito:
+   * el estado local puede estar desfasado del SAT —pasó: la NC figuraba
+   * Cancelada aquí y Vigente en el portal— y ocultar el botón dejaba sin salida,
+   * porque además la factura no se puede cancelar mientras su NC siga viva. */
+  const handleCancelar = async (n: any) => {
+    const motivoSat = window.prompt(
+      'Motivo de cancelacion (Anexo 20):\n' +
+      '  01  Emitido con errores CON relacion (exige folio sustituto)\n' +
+      '  02  Emitido con errores SIN relacion\n' +
+      '  03  No se llevo a cabo la operacion\n' +
+      '  04  Operacion nominativa en factura global',
+      '02'
+    );
+    if (!motivoSat) return;
+    let folioSustitucion: string | undefined;
+    if (motivoSat === '01') {
+      folioSustitucion = window.prompt('Folio fiscal (UUID) del CFDI que la sustituye:') || undefined;
+      if (!folioSustitucion) return;
+    }
+    const etiqueta = `${n.serie}-${String(n.folio).padStart(6, '0')}`;
+    if (!window.confirm(
+      `Se cancelara ante el SAT la nota ${etiqueta}.\n\n` +
+      `Si el SAT la rechaza, no se modifica nada en el sistema.`
+    )) return;
+    try {
+      await api.cancelCreditNote(n.id, undefined, motivoSat, folioSustitucion);
+      alert(`Nota de credito ${etiqueta} cancelada ante el SAT.`);
+      qc.invalidateQueries({ queryKey: ['credit-notes'] });
+    } catch (e: any) {
+      alert(`No se cancelo.\n\n${e.response?.data?.message || e.message}`);
     }
   };
 
@@ -133,6 +169,10 @@ ${e.response?.data?.message || e.message}`);
                     <div className="flex items-center gap-1">
                       <button onClick={() => handleDownload(n)} title="Descargar PDF"
                         className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"><FileDown size={18} /></button>
+                      {n.uuid && (
+                        <button onClick={() => handleCancelar(n)} title="Cancelar ante el SAT"
+                          className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg"><Ban size={18} /></button>
+                      )}
                       <button onClick={() => handleXML(n)} title="Descargar XML timbrado"
                         className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-bold">XML</button>
                       <button onClick={() => handlePreview(n)} title="Vista previa"

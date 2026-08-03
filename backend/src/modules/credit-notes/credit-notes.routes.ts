@@ -50,8 +50,16 @@ router.post(
 router.post(
   '/:id/cancel',
   asyncHandler(async (req: Request, res: Response) => {
+    /* motivoSat es la clave del Anexo 20 (c_MotivoCancelacion); `motivo` es la
+     * nota interna en texto libre. Se separan porque son cosas distintas y
+     * antes sólo viajaba la segunda: el SAT nunca supo por qué se cancelaba. */
     const result = await service.cancelCreditNote(
-      companyId(req), req.params.id, req.body?.motivo
+      companyId(req),
+      req.params.id,
+      req.body?.motivo,
+      req.body?.motivoSat || '02',
+      req.body?.folioSustitucion,
+      req.body?.soloLocal === true,
     );
     res.status(200).json({
       success: true,

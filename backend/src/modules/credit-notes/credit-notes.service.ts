@@ -516,7 +516,60 @@ export const MOTIVOS = MOTIVOS_NC;
  * Al cancelar la NC, el saldo de la factura padre aumenta, así que puede
  * cambiar de PAID → PARTIAL_PAYMENT o STAMPED según pagos vigentes.
  */
-export async function cancelCreditNote(companyId: string, creditNoteId: string, motivo?: string) {
+export async function cancelCreditNote(
+  companyId: string,
+  creditNoteId: string,
+  motivo?: string,
+  /* Motivo del Anexo 20 (c_MotivoCancelacion). Distinto del texto libre
+   * `motivo`, que es la nota interna que se agrega al registro. */
+  motivoSat: string = '02',
+  folioSustitucion?: string,
+  /* Cancelar SÓLO en el sistema, sin llamar al PAC. Existe para el caso en que
+   * el CFDI ya se canceló desde el panel del PAC y hay que reflejarlo aquí.
+   * NO es el camino normal: deja el comprobante vivo ante el SAT. */
+  soloLocal = false,
+) {
+  /* SE CANCELA ANTE EL SAT, NO SÓLO EN LA TABLA.
+   *
+   * Esta función hacía únicamente `UPDATE credit_notes SET status='CANCELLED'`.
+   * El sistema mostraba la nota como cancelada y el SAT la seguía teniendo
+   * VIGENTE — se comprobó en el portal: la NC A024FF96 aparecía "Vigente,
+   * cancelable sin aceptación" mientras aquí decía Cancelada.
+   *
+   * Eso además bloqueaba la factura: el SAT no deja cancelar un CFDI que tiene
+   * comprobantes vivos apuntándole, así que la factura quedaba "No cancelable"
+   * sin que nada en la pantalla explicara por qué.
+   *
+   * La llamada al PAC va FUERA de la transacción y ANTES de tocar la base: si
+   * el SAT rechaza, no se escribe nada. Al revés —marcar primero y llamar
+   * después— es como se llegó al estado actual.
+   */
+  const ncPrevia = await query<any>(
+    `SELECT id, status, uuid, serie, folio FROM credit_notes
+      WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
+    [creditNoteId, companyId]
+  );
+  const previa = ncPrevia.rows[0];
+  if (!previa) throw new NotFoundError('Nota de crédito no encontrada');
+
+  let acuseSat: string | undefined;
+  if (!soloLocal) {
+    if (!previa.uuid) {
+      throw new ValidationError(
+        'Esta nota de crédito no tiene folio fiscal, así que nunca se timbró ante el SAT. ' +
+        'Usa la cancelación local para retirarla del sistema.'
+      );
+    }
+    const res = await cancelarNcEnElSat(companyId, previa.uuid, motivoSat, folioSustitucion);
+    if (!res.success) {
+      throw new ValidationError(
+        `El SAT no aceptó la cancelación de ${previa.serie}-${previa.folio}: ` +
+        `${res.errors.join('; ')}. No se modificó nada en el sistema.`
+      );
+    }
+    acuseSat = res.acuse;
+  }
+
   return transaction(async (client) => {
     const r = await transactionQuery<any>(
       client,
@@ -526,8 +579,14 @@ export async function cancelCreditNote(companyId: string, creditNoteId: string, 
     );
     const nc = r.rows[0];
     if (!nc) throw new NotFoundError('Nota de crédito no encontrada');
-    if (nc.status === 'CANCELLED') {
-      throw new ValidationError('La nota de crédito ya está cancelada');
+    /* Ya NO se aborta si el estado local dice CANCELLED.
+     *
+     * Justo ese candado impedía reparar el desajuste: una NC marcada aquí como
+     * cancelada pero vigente ante el SAT no se podía reintentar, y era el único
+     * camino para destrabar la factura. Ahora, si el SAT ya la aceptó arriba,
+     * se deja actualizar el registro. */
+    if (nc.status === 'CANCELLED' && soloLocal) {
+      throw new ValidationError('La nota de crédito ya está cancelada en el sistema.');
     }
 
     await transactionQuery(
@@ -617,4 +676,20 @@ export async function cancelCreditNote(companyId: string, creditNoteId: string, 
     logger.info(`NC ${nc.serie}-${nc.folio} cancelada. Motivo: ${motivo || 'sin motivo'}`);
     return { id: nc.id, uuid: nc.uuid, status: 'CANCELLED' as const };
   });
+}
+
+/**
+ * Cancela la NC ante el SAT a través del PAC.
+ *
+ * Vive aparte porque cancelar un CFDI de egreso es exactamente lo mismo que
+ * cancelar uno de ingreso —mismo servicio del PAC, mismos motivos del Anexo 20—
+ * y conviene que se vea que comparten camino y no divergen.
+ */
+async function cancelarNcEnElSat(
+  companyId: string,
+  uuid: string,
+  motivoSat: string,
+  folioSustitucion?: string,
+) {
+  return pacService.cancelarComprobante(companyId, uuid, motivoSat, folioSustitucion);
 }
