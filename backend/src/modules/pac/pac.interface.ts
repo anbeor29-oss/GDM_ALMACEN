@@ -90,7 +90,12 @@ export interface IPACProvider {
     uuid: string,
     rfcEmisor: string,
     motivo: string,
-    credentials: PACCredentials
+    credentials: PACCredentials,
+    /* Obligatorio cuando motivo = '01' (comprobante emitido con errores CON
+     * relación): es el UUID de la factura que sustituye a la cancelada. Se
+     * validaba en pac.service pero NUNCA llegaba hasta aquí, así que una
+     * cancelación por motivo 01 se enviaba sin él. */
+    folioSustitucion?: string
   ): Promise<CancelResult>;
 
   /** Consultar timbres disponibles */

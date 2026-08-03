@@ -278,70 +278,58 @@ export class SWSapienProvider implements IPACProvider {
     uuid: string,
     rfcEmisor: string,
     motivo: string,
-    _credentials: PACCredentials
+    _credentials: PACCredentials,
+    folioSustitucion?: string
   ): Promise<CancelResult> {
     try {
       const http = this.http();
 
-      /* QUÉ RUTA USA LA CANCELACIÓN
+      /* LA RUTA LLEVA TODO EN LA URL, Y NO HAY CUERPO.
        *
-       * Se probaba SÓLO /v4/cfdi/cancel/{rfc}, escrita a partir de un comentario
-       * que la daba por buena. El resultado era un 404 que el manejador de
-       * errores traducía a "SW no encuentra el CFDI en su vault" — una
-       * conclusión que ese código no está en posición de sacar, porque un 404
-       * también significa que la RUTA no existe. Ya nos pasó con /v3 en el
-       * timbrado: cinco formas distintas devolvieron 404 y el path era el
-       * problema, no el cuerpo.
+       *   POST /cfdi33/cancel/{RFC}/{UUID}/{MOTIVO}[/{folioSustitucion}]
        *
-       * Ahora se intenta primero la ruta documentada de SW —/cfdi33/cancel/{rfc},
-       * la que su propia documentación describe— y sólo si ésa responde 404 se
-       * prueba la v4. Es seguro en este orden: un 404 significa que no se
-       * ejecutó nada, así que reintentar no puede cancelar dos veces. Y si el
-       * CFDI ya estaba cancelado, SW responde 202, no 404.
+       * Ésta es la causa de los 404. Se estaba haciendo POST a
+       * /cfdi33/cancel/{RFC} con los datos en un JSON, y esa ruta no existe:
+       * sin los segmentos de UUID y motivo, SW no tiene endpoint que responda.
+       * Antes se probó /v4/cfdi/cancel/{RFC} con el mismo cuerpo, y falló por
+       * lo mismo. Las dos veces el 404 se leyó como "el CFDI no está en el
+       * vault" cuando decía otra cosa.
        *
-       * El CSD vive en el vault de SW asociado al RFC del emisor; aquí sólo
-       * viaja el UUID.
+       * El folio de sustitución se añade SÓLO con motivo '01'. La
+       * documentación es explícita en que con cualquier otro motivo el
+       * segmento debe omitirse — no mandarse vacío, que es lo que hacía el
+       * cuerpo JSON anterior con `folioSustitucion: ''`.
+       *
+       * El CSD vive en el vault de SW asociado al RFC del emisor; por eso basta
+       * el token y no viajan certificados.
        */
-      const RUTAS_CANCELACION = [
-        `/cfdi33/cancel/${rfcEmisor}`,
-        `/v4/cfdi/cancel/${rfcEmisor}`,
+      const segmentos = [
+        'cfdi33', 'cancel',
+        encodeURIComponent(rfcEmisor),
+        encodeURIComponent(uuid),
+        encodeURIComponent(motivo),
       ];
-      const cuerpo = { uuid, motivo, folioSustitucion: '' };
-
-      let r: any = null;
-      const rutasFallidas: string[] = [];
-      for (const path of RUTAS_CANCELACION) {
-        logger.info(`SW cancel → POST ${path} uuid=${uuid} motivo=${motivo}`);
-        try {
-          r = await http.post(path, cuerpo, { headers: { 'Content-Type': 'application/json' } });
-          if (RUTAS_CANCELACION.indexOf(path) > 0) {
-            logger.warn(`[SW] la cancelación funcionó por ${path}; fijar esa ruta y retirar la otra.`);
-          }
-          break;
-        } catch (e: any) {
-          if (e?.response?.status !== 404) throw e;   // otro error: es real, se propaga
-          rutasFallidas.push(path);
-          logger.warn(`[SW] ${path} devolvió 404 — se prueba la siguiente ruta`);
+      if (motivo === '01') {
+        if (!folioSustitucion) {
+          return {
+            success: false,
+            uuid,
+            status: 'REJECTED' as const,
+            errors: [
+              'El motivo 01 (comprobante emitido con errores con relación) exige el ' +
+              'folio fiscal del CFDI que sustituye al cancelado.',
+            ],
+          };
         }
+        segmentos.push(encodeURIComponent(folioSustitucion));
       }
+      const path = '/' + segmentos.join('/');
 
-      if (!r) {
-        /* Las dos rutas dieron 404. AHORA sí es informativo decirlo, porque se
-         * agotaron las rutas conocidas: o ninguna existe en esta cuenta, o el
-         * CFDI no está en el vault. Se nombran las dos para que el diagnóstico
-         * no arranque de cero. */
-        return {
-          success: false,
-          uuid,
-          status: 'REJECTED' as const,
-          errors: [
-            `SW respondió 404 en las ${RUTAS_CANCELACION.length} rutas de cancelación conocidas ` +
-            `(${rutasFallidas.join(', ')}). Puede ser que el CFDI no exista en el vault de SW ` +
-            `—típico si se timbró en simulación— o que el token no tenga habilitada la cancelación. ` +
-            `Verifica el UUID ${uuid} en swpanel.mx antes de cancelar sólo localmente.`,
-          ],
-        };
-      }
+      logger.info(`SW cancel → POST ${path}`);
+      const r = await http.post(path, undefined, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+
       logger.info(
         `SW cancel ← status=${r.data?.status || 'unknown'} ` +
         `msg=${r.data?.message || ''} detail=${r.data?.messageDetail || ''}`

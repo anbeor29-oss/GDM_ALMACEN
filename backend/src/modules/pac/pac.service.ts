@@ -628,7 +628,8 @@ export async function cancelInvoice(
   }
 
   const credentials = getCredentials(companyId);
-  const result = await provider.cancel(invoice.cfdi_uuid, rfcEmisor, motivo, credentials);
+  const result = await provider.cancel(
+    invoice.cfdi_uuid, rfcEmisor, motivo, credentials, folioSustitucion);
 
   if (!result.success) {
     throw new ValidationError(`Cancelación fallida: ${result.errors.join('; ')}`);
