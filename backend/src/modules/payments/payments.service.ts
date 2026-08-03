@@ -448,10 +448,58 @@ export async function createPayment(companyId: string, data: PaymentInput) {
  * según pagos vigentes + NC vigentes). No borra el registro — mantiene la
  * huella para auditoría/SAT.
  *
- * En producción con PAC real, aquí también invocaríamos el endpoint de
- * cancelación del PAC. Por ahora solo estado local.
+ * SE CANCELA ANTE EL SAT, NO SOLO EN LA TABLA.
+ *
+ * Aquí decía "en producción con PAC real, aquí también invocaríamos el endpoint
+ * de cancelación del PAC. Por ahora solo estado local" — y ese "por ahora" se
+ * quedó. La función hacía únicamente UPDATE payments, así que el sistema
+ * mostraba el complemento cancelado y el SAT lo seguía teniendo VIGENTE.
+ *
+ * Es el mismo defecto que tenían las notas de crédito, con la misma
+ * consecuencia: el SAT no deja cancelar una factura que tiene comprobantes
+ * vivos apuntándole, así que un complemento fantasma la deja "No cancelable"
+ * para siempre y nada en la pantalla explica por qué.
+ *
+ * La llamada al PAC va ANTES de tocar la base y FUERA de la transacción: si el
+ * SAT rechaza, no se escribe nada.
  */
-export async function cancelPayment(companyId: string, paymentId: string, motivo?: string) {
+export async function cancelPayment(
+  companyId: string,
+  paymentId: string,
+  motivo?: string,
+  /* Clave de c_MotivoCancelacion (Anexo 20). Distinta del `motivo` en texto
+   * libre, que es la nota interna del registro. */
+  motivoSat: string = '02',
+  folioSustitucion?: string,
+  /* Cancelar sólo en el sistema. Para reflejar aquí algo ya cancelado desde el
+   * panel del PAC; no es el camino normal. */
+  soloLocal = false,
+) {
+  const previaR = await query<any>(
+    `SELECT id, document_status, uuid, serie, folio FROM payments
+      WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
+    [paymentId, companyId]
+  );
+  const previa = previaR.rows[0];
+  if (!previa) throw new NotFoundError('Complemento de pago no encontrado');
+
+  if (!soloLocal) {
+    if (!previa.uuid) {
+      throw new ValidationError(
+        'Este complemento de pago no tiene folio fiscal, así que nunca se timbró ' +
+        'ante el SAT. Usa la cancelación local para retirarlo del sistema.'
+      );
+    }
+    const res = await pacService.cancelarComprobante(
+      companyId, previa.uuid, motivoSat, folioSustitucion);
+    if (!res.success) {
+      throw new ValidationError(
+        `El SAT no aceptó la cancelación de ${previa.serie}-${previa.folio}: ` +
+        `${res.errors.join('; ')}. No se modificó nada en el sistema.`
+      );
+    }
+  }
+
   return transaction(async (client) => {
     const r = await transactionQuery<any>(
       client,
@@ -461,8 +509,10 @@ export async function cancelPayment(companyId: string, paymentId: string, motivo
     );
     const pay = r.rows[0];
     if (!pay) throw new NotFoundError('Complemento de pago no encontrado');
-    if (pay.document_status === 'CANCELLED') {
-      throw new ValidationError('El complemento de pago ya está cancelado');
+    /* Ya no se aborta si el estado local dice CANCELLED: ese candado impedía
+     * reparar un desajuste con el SAT, que es justo lo que hay que poder hacer. */
+    if (pay.document_status === 'CANCELLED' && soloLocal) {
+      throw new ValidationError('El complemento de pago ya está cancelado en el sistema.');
     }
 
     await transactionQuery(
