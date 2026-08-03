@@ -1379,9 +1379,15 @@ function CancelModal({
                 ⚠ El PAC no pudo procesar la cancelación
               </p>
               <p className="text-xs text-amber-800">
-                Puedes marcar la factura como CANCELADA solo en tu ERP (bypass local).
-                Úsalo cuando SW rebote por bug de vault en sandbox o cuando ya
-                cancelaste el CFDI directamente en el panel del PAC.
+                Esto marca la factura como CANCELADA <b>sólo en el sistema</b>. Ante
+                el SAT seguirá vigente.
+              </p>
+              <p className="text-xs text-amber-800">
+                Úsalo únicamente si ya <b>verificaste el UUID en swpanel.mx</b> y
+                confirmaste que el CFDI no existe ahí, o que ya lo cancelaste desde
+                el panel del PAC. Si el comprobante sigue vivo ante el SAT y aquí
+                aparece cancelado, la contabilidad deja de cuadrar con la
+                declaración.
               </p>
               <button
                 type="button"

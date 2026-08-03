@@ -282,21 +282,66 @@ export class SWSapienProvider implements IPACProvider {
   ): Promise<CancelResult> {
     try {
       const http = this.http();
-      // Endpoint v4 real: /v4/cfdi/cancel/{rfc} — SIN el "33" en el path.
-      // (El legacy /cfdi33/cancel/{rfc} sigue funcionando pero SW recomienda
-      // v4 y devuelve mensajes de error más útiles.)
-      // Body JSON: { uuid, motivo, folioSustitucion }.
-      // El CSD/PFX vive en el vault de SW asociado al RFC del emisor;
-      // aquí solo mandamos el UUID a cancelar.
-      const path = `/v4/cfdi/cancel/${rfcEmisor}`;
-      logger.info(`SW cancel → POST ${path} uuid=${uuid} motivo=${motivo}`);
-      const r = await http.post(path, {
-        uuid,
-        motivo,
-        folioSustitucion: '',
-      }, {
-        headers: { 'Content-Type': 'application/json' },
-      });
+
+      /* QUÉ RUTA USA LA CANCELACIÓN
+       *
+       * Se probaba SÓLO /v4/cfdi/cancel/{rfc}, escrita a partir de un comentario
+       * que la daba por buena. El resultado era un 404 que el manejador de
+       * errores traducía a "SW no encuentra el CFDI en su vault" — una
+       * conclusión que ese código no está en posición de sacar, porque un 404
+       * también significa que la RUTA no existe. Ya nos pasó con /v3 en el
+       * timbrado: cinco formas distintas devolvieron 404 y el path era el
+       * problema, no el cuerpo.
+       *
+       * Ahora se intenta primero la ruta documentada de SW —/cfdi33/cancel/{rfc},
+       * la que su propia documentación describe— y sólo si ésa responde 404 se
+       * prueba la v4. Es seguro en este orden: un 404 significa que no se
+       * ejecutó nada, así que reintentar no puede cancelar dos veces. Y si el
+       * CFDI ya estaba cancelado, SW responde 202, no 404.
+       *
+       * El CSD vive en el vault de SW asociado al RFC del emisor; aquí sólo
+       * viaja el UUID.
+       */
+      const RUTAS_CANCELACION = [
+        `/cfdi33/cancel/${rfcEmisor}`,
+        `/v4/cfdi/cancel/${rfcEmisor}`,
+      ];
+      const cuerpo = { uuid, motivo, folioSustitucion: '' };
+
+      let r: any = null;
+      const rutasFallidas: string[] = [];
+      for (const path of RUTAS_CANCELACION) {
+        logger.info(`SW cancel → POST ${path} uuid=${uuid} motivo=${motivo}`);
+        try {
+          r = await http.post(path, cuerpo, { headers: { 'Content-Type': 'application/json' } });
+          if (RUTAS_CANCELACION.indexOf(path) > 0) {
+            logger.warn(`[SW] la cancelación funcionó por ${path}; fijar esa ruta y retirar la otra.`);
+          }
+          break;
+        } catch (e: any) {
+          if (e?.response?.status !== 404) throw e;   // otro error: es real, se propaga
+          rutasFallidas.push(path);
+          logger.warn(`[SW] ${path} devolvió 404 — se prueba la siguiente ruta`);
+        }
+      }
+
+      if (!r) {
+        /* Las dos rutas dieron 404. AHORA sí es informativo decirlo, porque se
+         * agotaron las rutas conocidas: o ninguna existe en esta cuenta, o el
+         * CFDI no está en el vault. Se nombran las dos para que el diagnóstico
+         * no arranque de cero. */
+        return {
+          success: false,
+          uuid,
+          status: 'REJECTED' as const,
+          errors: [
+            `SW respondió 404 en las ${RUTAS_CANCELACION.length} rutas de cancelación conocidas ` +
+            `(${rutasFallidas.join(', ')}). Puede ser que el CFDI no exista en el vault de SW ` +
+            `—típico si se timbró en simulación— o que el token no tenga habilitada la cancelación. ` +
+            `Verifica el UUID ${uuid} en swpanel.mx antes de cancelar sólo localmente.`,
+          ],
+        };
+      }
       logger.info(
         `SW cancel ← status=${r.data?.status || 'unknown'} ` +
         `msg=${r.data?.message || ''} detail=${r.data?.messageDetail || ''}`
@@ -397,15 +442,25 @@ export class SWSapienProvider implements IPACProvider {
     if (status === 401)      return { success: false, errors: ['Token SW inválido o expirado — genera uno nuevo en swpanel.mx'] };
     if (status === 402)      return { success: false, errors: ['Sin timbres disponibles en el plan SW Sapien'] };
     if (status === 404) {
-      // 404 tipico al cancelar/consultar: SW no encuentra el UUID en su vault.
-      // Suele pasar cuando la factura se timbro con MOCK (sin registro real en
-      // SW) o cuando el UUID esta mal formado.
+      /* UN 404 NO DICE POR QUÉ.
+       *
+       * Este mensaje afirmaba que SW "no encuentra el CFDI en su vault" y
+       * recomendaba cancelar sólo localmente. Pero un 404 significa lo mismo
+       * cuando el recurso no existe que cuando la RUTA no existe, y el segundo
+       * caso ya nos costó una tarde con el timbrado por /v3. Aconsejar el
+       * bypass local ante un problema de ruta es peor que no aconsejar nada:
+       * deja el CFDI vivo en el SAT y cancelado en el ERP, que es la peor
+       * combinación posible.
+       *
+       * Ahora se dice lo que se sabe —hubo un 404— y se enumeran las dos causas
+       * sin elegir una. */
       return {
         success: false,
         errors: [
-          `SW no encuentra el CFDI en su vault (404). Suele pasar cuando la ` +
-          `factura fue timbrada con MOCK antes de conectar SW real. Marca la ` +
-          `factura como CANCELADA localmente y emite una nueva.`,
+          `SW respondió 404 (${op}). Puede ser que el comprobante no exista en el ` +
+          `vault de SW —típico si se timbró en simulación— o que la ruta del servicio ` +
+          `no esté disponible para este token. Revisa el UUID en swpanel.mx antes de ` +
+          `marcarlo como cancelado sólo en el sistema.`,
         ],
       };
     }
