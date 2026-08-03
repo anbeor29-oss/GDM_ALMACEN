@@ -116,18 +116,10 @@ export function InvoicesPage() {
     setStampingId(invoice.id);
     try {
       const result = await api.stampInvoice(invoice.id);
-      const isMock = result.data?.is_mock !== false && result.data?.provider === 'MOCK';
       alert(
-        isMock
-          ? (`✅ Factura timbrada (MODO SIMULACIÓN)\n\n` +
-             `UUID asignado: ${result.data.uuid}\n` +
-             `Sello del SAT generado a partir del CSD del emisor.\n\n` +
-             `⚠ Estamos usando un PAC MOCK. Cuando se conecte un PAC real, ` +
-             `este mismo CSD se usará para el sello digital real.`)
-          : (`✅ Factura timbrada con ${result.data.provider}\n\n` +
-             `UUID SAT: ${result.data.uuid}\n` +
-             `Fecha timbrado: ${result.data.fecha_timbrado || ''}\n\n` +
-             `El XML y PDF ya contienen el sello real del SAT.`)
+        `✅ Factura timbrada con ${result.data?.provider || 'el PAC'}\n\n` +
+        `UUID: ${result.data.uuid}\n` +
+        `Fecha timbrado: ${result.data.fecha_timbrado || ''}`
       );
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
     } catch (e: any) {
@@ -419,20 +411,20 @@ function PaymentModal({
         paymentForm,
         paymentMethod,
       });
-      // El mensaje PREGUNTA al backend en vez de afirmar. Antes decía "MODO
-      // SIMULACIÓN / PAC real pendiente" con texto fijo, y lo habría seguido
-      // diciendo aunque el complemento ya se timbrara de verdad.
-      const simulado = res.data?.is_mock !== false;
+      /* El aviso NOMBRA AL PAC que timbró, en vez de etiquetar el modo.
+       *
+       * Antes anteponía "(MODO SIMULACIÓN)" y cerraba con una advertencia de
+       * falta de validez fiscal. Esa etiqueta se decidía con
+       * `is_mock !== false`, así que bastaba con que el backend no mandara el
+       * campo para que un timbrado real apareciera rotulado como simulado —
+       * exactamente lo que estaba pasando. Decir qué PAC firmó es un dato
+       * verificable; decir "modo simulación" era una conclusión que el
+       * frontend no está en posición de sacar. */
       alert(
-        (simulado
-          ? `✅ Complemento de Pago timbrado (MODO SIMULACIÓN)\n\n`
-          : `✅ Complemento de Pago timbrado con ${res.data?.provider}\n\n`) +
+        `✅ Complemento de Pago timbrado con ${res.data?.provider || 'el PAC'}\n\n` +
         `UUID: ${res.data?.payment?.uuid}\n` +
         `Nuevo estatus de la factura: ${res.data?.invoice?.new_status}\n` +
-        `Saldo restante: $${(res.data?.invoice?.remaining || 0).toFixed(2)}` +
-        (simulado
-          ? `\n\n⚠ Sin validez fiscal: el PAC está en modo simulación.`
-          : `\n\nEl XML ya lleva el Timbre Fiscal Digital del SAT.`)
+        `Saldo restante: $${(res.data?.invoice?.remaining || 0).toFixed(2)}`
       );
       onDone();
     } catch (e: any) {

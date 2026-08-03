@@ -249,7 +249,7 @@ function CreateCreditNoteModal({
         applyToInvoice: true,
       } as any);
       alert(
-        `✅ Nota de Crédito timbrada (MODO SIMULACIÓN)\n\n` +
+        `✅ Nota de Crédito timbrada con ${res.data?.provider || 'el PAC'}\n\n` +
         `Folio: ${res.data?.serie}-${res.data?.folio}\n` +
         `UUID:  ${res.data?.uuid}\n` +
         `Motivo: ${res.data?.tipo_relacion}\n` +

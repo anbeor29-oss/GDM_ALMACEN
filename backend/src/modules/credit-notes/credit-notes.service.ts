@@ -407,7 +407,8 @@ export async function createCreditNote(companyId: string, data: CreditNoteInput)
       (returnedCount > 0 ? ` · ${returnedCount} producto(s) devueltos al inventario.` : '.')
     );
 
-    return { ...note, inventory_returns: returnedCount };
+    /* Quién timbró, para que el aviso lo diga en vez de suponerlo. */
+    return { ...note, inventory_returns: returnedCount, provider: pacService.proveedorActivo() };
   });
 }
 
