@@ -34,6 +34,28 @@ export function CreditNotesPage() {
     }
   };
 
+  /* Descarga del XML timbrado.
+   *
+   * El endpoint existía en el backend desde hace tiempo; esta pantalla sólo
+   * ofrecía el PDF. Sin el XML no hay forma de comprobar el Timbre Fiscal
+   * Digital ni de entregarle al contador el archivo que el SAT considera
+   * válido: el PDF es una representación impresa, no el comprobante. */
+  const handleXML = async (n: any) => {
+    try {
+      const xml = await api.creditNoteXML(n.id);
+      const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nota-credito-${n.serie}-${String(n.folio).padStart(6, '0')}.xml`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(`No se pudo descargar el XML.
+
+${e.response?.data?.message || e.message}`);
+    }
+  };
+
   const handlePreview = async (n: any) => {
     try {
       const blob = await api.creditNotePDF(n.id, true);
@@ -111,6 +133,8 @@ export function CreditNotesPage() {
                     <div className="flex items-center gap-1">
                       <button onClick={() => handleDownload(n)} title="Descargar PDF"
                         className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"><FileDown size={18} /></button>
+                      <button onClick={() => handleXML(n)} title="Descargar XML timbrado"
+                        className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-bold">XML</button>
                       <button onClick={() => handlePreview(n)} title="Vista previa"
                         className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Eye size={18} /></button>
                     </div>
