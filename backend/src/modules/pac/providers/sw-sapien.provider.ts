@@ -25,6 +25,7 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import logger from '../../../middleware/logger';
 import {
+  CsdParaCancelar,
   IPACProvider,
   PACCredentials,
   PACAccountStatus,
@@ -274,15 +275,110 @@ export class SWSapienProvider implements IPACProvider {
 
   /* ─────────────── CANCELACIÓN ─────────────── */
 
+  /**
+   * Interpreta la respuesta de cancelación de SW.
+   *
+   * Se extrajo para que las dos vías —por UUID y enviando el CSD— la compartan.
+   * Si cada una interpretara la respuesta por su cuenta, tarde o temprano una
+   * daría por buena una cancelación que la otra rechaza, y el sistema quedaría
+   * diciendo que canceló algo que ante el SAT sigue vigente.
+   */
+  private leerRespuestaCancelacion(r: any, uuid: string): CancelResult {
+    logger.info(
+      `SW cancel ← status=${r.data?.status || 'unknown'} ` +
+      `msg=${r.data?.message || ''} detail=${r.data?.messageDetail || ''}`
+    );
+    const d = r.data?.data;
+    if (r.data?.status !== 'success') {
+      return {
+        success: false,
+        uuid,
+        status: 'REJECTED',
+        errors: [r.data?.messageDetail || r.data?.message || 'Cancelación rechazada'],
+      };
+    }
+    /* La respuesta trae { data: { uuid: { "<UUID>": "201"|"202"|"205"|… }, acuse } }
+     * Códigos del SAT que importan:
+     *   201 → cancelación aceptada
+     *   202 → ya estaba cancelado (se trata como éxito: el fin ya se cumplió)
+     *   205 → no existe / rechazado
+     * SW puede responder success y traer un 205 dentro: el estado del UUID manda
+     * sobre el estado de la petición. */
+    const uuidStatuses = d?.uuid && typeof d.uuid === 'object' ? d.uuid : null;
+    const uuidCode = uuidStatuses
+      ? String(uuidStatuses[uuid] || uuidStatuses[uuid.toLowerCase()] || uuidStatuses[uuid.toUpperCase()] || '')
+      : '';
+    if (uuidCode && !['201', '202'].includes(uuidCode)) {
+      return {
+        success: false,
+        uuid,
+        status: 'REJECTED',
+        errors: [`SAT rechazó cancelación (código ${uuidCode}). Revisa el UUID en swpanel.mx.`],
+      };
+    }
+    return {
+      success: true,
+      uuid,
+      status: 'CANCELLED',
+      acuse: d?.acuse,
+      fecha_cancelacion: d?.fechaCancelacion || new Date().toISOString(),
+      errors: [],
+    };
+  }
+
   async cancel(
     uuid: string,
     rfcEmisor: string,
     motivo: string,
     _credentials: PACCredentials,
-    folioSustitucion?: string
+    folioSustitucion?: string,
+    csd?: CsdParaCancelar
   ): Promise<CancelResult> {
     try {
       const http = this.http();
+
+      /* CON CERTIFICADO PROPIO NO HACE FALTA LA BÓVEDA DE SW.
+       *
+       * La cancelación por UUID exige que el CSD esté cargado en la cuenta de
+       * SW. Si no lo está —o está vencido— el SAT responde CA305 "Certificado
+       * Inválido", y desde el código no hay nada que arreglar: hay que entrar
+       * al panel del PAC a subirlo.
+       *
+       * Este camino evita esa dependencia. El sistema ya guarda el .cer, el
+       * .key y su contraseña de cada empresa, así que puede firmar la
+       * cancelación con ellos. Se prefiere cuando están disponibles porque no
+       * depende de que alguien se acuerde de configurar el panel, y porque el
+       * certificado con el que se cancela es entonces EL MISMO con el que se
+       * timbró — que es exactamente lo que el SAT valida.
+       */
+      if (csd) {
+        const cuerpoCsd: Record<string, string> = {
+          uuid,
+          rfc: rfcEmisor,
+          motivo,
+          b64Cer: csd.b64Cer,
+          b64Key: csd.b64Key,
+          password: csd.password,
+        };
+        // Sólo con motivo '01'; con cualquier otro el campo se omite.
+        if (motivo === '01') {
+          if (!folioSustitucion) {
+            return {
+              success: false, uuid, status: 'REJECTED' as const,
+              errors: [
+                'El motivo 01 (comprobante emitido con errores con relación) exige el ' +
+                'folio fiscal del CFDI que sustituye al cancelado.',
+              ],
+            };
+          }
+          cuerpoCsd.folioSustitucion = folioSustitucion;
+        }
+        logger.info(`SW cancel → POST /cfdi33/cancel/csd uuid=${uuid} motivo=${motivo}`);
+        const rc = await http.post('/cfdi33/cancel/csd', cuerpoCsd, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+        return this.leerRespuestaCancelacion(rc, uuid);
+      }
 
       /* LA RUTA LLEVA TODO EN LA URL, Y NO HAY CUERPO.
        *
@@ -330,45 +426,7 @@ export class SWSapienProvider implements IPACProvider {
         headers: { 'Content-Type': 'application/json' },
       });
 
-      logger.info(
-        `SW cancel ← status=${r.data?.status || 'unknown'} ` +
-        `msg=${r.data?.message || ''} detail=${r.data?.messageDetail || ''}`
-      );
-      const d = r.data?.data;
-      if (r.data?.status !== 'success') {
-        return {
-          success: false,
-          uuid,
-          status: 'REJECTED',
-          errors: [r.data?.messageDetail || r.data?.message || 'Cancelación rechazada'],
-        };
-      }
-      // v4 devuelve { data: { uuid: { "<UUID>": "201"|"202"|"205"|... }, acuse } }
-      // Códigos SAT relevantes:
-      //   201 → Cancelación aceptada
-      //   202 → Ya estaba cancelado
-      //   205 → No existe / rechazado
-      // Si SW responde success pero el UUID interno da 205, fue rechazo real.
-      const uuidStatuses = d?.uuid && typeof d.uuid === 'object' ? d.uuid : null;
-      const uuidCode = uuidStatuses
-        ? String(uuidStatuses[uuid] || uuidStatuses[uuid.toLowerCase()] || uuidStatuses[uuid.toUpperCase()] || '')
-        : '';
-      if (uuidCode && !['201', '202'].includes(uuidCode)) {
-        return {
-          success: false,
-          uuid,
-          status: 'REJECTED',
-          errors: [`SAT rechazó cancelación (código ${uuidCode}). Revisa el UUID en swpanel.mx.`],
-        };
-      }
-      return {
-        success: true,
-        uuid,
-        status: 'CANCELLED',
-        acuse: d?.acuse,
-        fecha_cancelacion: d?.fechaCancelacion || new Date().toISOString(),
-        errors: [],
-      };
+      return this.leerRespuestaCancelacion(r, uuid);
     } catch (e) {
       const err = this.handleAxiosError(e, 'cancelación');
       return { success: false, uuid, status: 'REJECTED', errors: err.errors };

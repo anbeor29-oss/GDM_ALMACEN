@@ -33,22 +33,11 @@ function checkAccess(req: Request, companyId: string) {
   }
 }
 
-/* ------------ Cifrado de contraseña del CSD ------------ */
-
-function getKey(): Buffer {
-  // ENCRYPTION_KEY es una cadena de 32 chars. La usamos como buffer directo.
-  const raw = (config.encryption.key || '').padEnd(32, '0').slice(0, 32);
-  return Buffer.from(raw, 'utf8');
-}
-
-function encryptPassword(plain: string): string {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', getKey(), iv);
-  const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  // Formato: base64(iv | tag | enc)
-  return Buffer.concat([iv, tag, enc]).toString('base64');
-}
+/* El cifrado de la contraseña del CSD vive en utils/csd-crypto, no aquí: hace
+ * falta también para cancelar enviando el certificado, y dos implementaciones
+ * del mismo formato acaban divergiendo hasta que una no entiende lo que cifró
+ * la otra. */
+import { encryptCsdPassword } from '../../utils/csd-crypto';
 
 /* ------------ Multer (memoria, validación por extensión) ------------ */
 
@@ -94,7 +83,7 @@ router.post(
     fs.writeFileSync(cerPath, cer.buffer);
     fs.writeFileSync(keyPath, key.buffer);
 
-    const encrypted = encryptPassword(password);
+    const encrypted = encryptCsdPassword(password);
     await query(
       `UPDATE companies
           SET csd_cer_path = $1,

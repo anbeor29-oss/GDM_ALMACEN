@@ -55,6 +55,20 @@ export interface PACAccountStatus {
 /**
  * Credenciales del PAC
  */
+/**
+ * Certificado de sello para cancelar SIN depender de la bóveda del PAC.
+ *
+ * El método por UUID exige que el CSD esté cargado en la cuenta del PAC; si no
+ * lo está, el SAT responde CA305 (Certificado Inválido) y no hay nada que
+ * corregir desde el código. Mandando el certificado, la cancelación se sostiene
+ * sola con lo que el sistema ya guarda.
+ */
+export interface CsdParaCancelar {
+  b64Cer: string;
+  b64Key: string;
+  password: string;
+}
+
 export interface PACCredentials {
   provider: string;
   username: string;
@@ -95,7 +109,10 @@ export interface IPACProvider {
      * relación): es el UUID de la factura que sustituye a la cancelada. Se
      * validaba en pac.service pero NUNCA llegaba hasta aquí, así que una
      * cancelación por motivo 01 se enviaba sin él. */
-    folioSustitucion?: string
+    folioSustitucion?: string,
+    /* Si viene, se cancela enviando el certificado en la petición en lugar de
+     * confiar en el que el PAC tenga guardado. */
+    csd?: CsdParaCancelar
   ): Promise<CancelResult>;
 
   /** Consultar timbres disponibles */

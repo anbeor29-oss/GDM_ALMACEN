@@ -8,6 +8,8 @@
  */
 
 import { query, transaction, transactionQuery } from '../../config/database';
+import * as fs from 'fs';
+import { decryptCsdPassword } from '../../utils/csd-crypto';
 import { ValidationError, NotFoundError, ConflictError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import {
@@ -628,8 +630,48 @@ export async function cancelInvoice(
   }
 
   const credentials = getCredentials(companyId);
+
+  /* SE CANCELA CON EL CSD DE LA EMPRESA, SI ESTÁ CARGADO.
+   *
+   * La vía por UUID depende de que el certificado esté en la bóveda del PAC.
+   * Cuando no lo está, el SAT responde CA305 "Certificado Inválido" y no hay
+   * nada que corregir en el código: alguien tiene que entrar al panel del PAC.
+   *
+   * Como el sistema ya guarda el .cer, el .key y su contraseña —cifrada—, se
+   * mandan en la petición y la cancelación deja de depender de una
+   * configuración externa. Además el certificado con el que se cancela pasa a
+   * ser EL MISMO con el que se timbró, que es lo que el SAT valida.
+   *
+   * Si algo falta o la contraseña no descifra, NO se aborta: se sigue por la
+   * vía del UUID, que es como venía funcionando.
+   */
+  let csdParaCancelar: { b64Cer: string; b64Key: string; password: string } | undefined;
+  try {
+    const rc = await query<{ csd_cer_path: string | null; csd_key_path: string | null; csd_password_encrypted: string | null }>(
+      `SELECT csd_cer_path, csd_key_path, csd_password_encrypted FROM companies WHERE id = $1`,
+      [companyId]
+    );
+    const c = rc.rows[0];
+    if (c?.csd_cer_path && c.csd_key_path && c.csd_password_encrypted
+        && fs.existsSync(c.csd_cer_path) && fs.existsSync(c.csd_key_path)) {
+      csdParaCancelar = {
+        b64Cer: fs.readFileSync(c.csd_cer_path).toString('base64'),
+        b64Key: fs.readFileSync(c.csd_key_path).toString('base64'),
+        password: decryptCsdPassword(c.csd_password_encrypted),
+      };
+      logger.info(`Cancelación de ${invoice.cfdi_uuid}: se enviará el CSD de la empresa.`);
+    } else {
+      logger.warn(
+        `Cancelación de ${invoice.cfdi_uuid}: sin CSD utilizable en el sistema; ` +
+        `se usará el que el PAC tenga en su bóveda.`
+      );
+    }
+  } catch (e) {
+    logger.warn(`No se pudo preparar el CSD para cancelar: ${(e as Error).message}. Se intenta por UUID.`);
+  }
+
   const result = await provider.cancel(
-    invoice.cfdi_uuid, rfcEmisor, motivo, credentials, folioSustitucion);
+    invoice.cfdi_uuid, rfcEmisor, motivo, credentials, folioSustitucion, csdParaCancelar);
 
   if (!result.success) {
     throw new ValidationError(`Cancelación fallida: ${result.errors.join('; ')}`);
