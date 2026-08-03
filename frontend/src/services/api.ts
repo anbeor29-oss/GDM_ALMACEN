@@ -589,9 +589,12 @@ class APIClient {
     return response.data;
   }
 
-  async cancelPayment(paymentId: string, motivo?: string) {
-    const response = await this.client.post(`/payments/${paymentId}/cancel`, { motivo });
-    return response.data;
+  /** Cancela el complemento ante el SAT. motivoSat es la clave del Anexo 20. */
+  async cancelPayment(paymentId: string, motivo?: string, motivoSat?: string, folioSustitucion?: string, soloLocal?: boolean) {
+    const r = await this.client.post<APIResponse<any>>(`/payments/${paymentId}/cancel`, {
+      motivo, motivoSat, folioSustitucion, soloLocal,
+    });
+    return r.data;
   }
 
   /** Cancela la NC ante el SAT. motivoSat es la clave del Anexo 20. */

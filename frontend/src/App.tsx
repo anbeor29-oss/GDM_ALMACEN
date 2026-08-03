@@ -15,6 +15,7 @@ import { CustomersPage } from '@/pages/Customers';
 import { ProductsPage } from '@/pages/Products';
 import { ReportsPage } from '@/pages/Reports';
 import { CreditNotesPage } from '@/pages/CreditNotes';
+import PaymentsPage from '@/pages/Payments';
 import { AdminPackagesPage } from '@/pages/AdminPackages';
 import { AdminUsersPage }    from '@/pages/AdminUsers';
 import { AdminCompaniesPage } from '@/pages/AdminCompanies';
@@ -155,6 +156,7 @@ export function App() {
             <Route path="invoices/new"       element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
             <Route path="invoices/:id/edit"  element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
             <Route path="credit-notes" element={<ModuleRoute module="credit_notes"><CreditNotesPage /></ModuleRoute>} />
+            <Route path="payments" element={<ModuleRoute module="credit_notes"><PaymentsPage /></ModuleRoute>} />
             <Route path="customers"    element={<ModuleRoute module="customers"><CustomersPage /></ModuleRoute>} />
             <Route path="reports"      element={<ModuleRoute module="reports"><ReportsPage /></ModuleRoute>} />
             <Route path="products" element={<ModuleRoute module="products"><ProductsPage /></ModuleRoute>} />

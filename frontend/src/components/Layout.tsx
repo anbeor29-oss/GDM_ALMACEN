@@ -122,6 +122,7 @@ export function Layout() {
                   />
                 )}
                 {show('credit_notes') && <NavItem to="/credit-notes" icon={emoji3D('📉')} accent="rose"    label="Notas de Crédito" open={sidebarOpen} />}
+                {show('credit_notes') && <NavItem to="/payments"     icon={emoji3D('💵')} accent="emerald" label="Complementos de Pago" open={sidebarOpen} />}
                 {show('products')     && <NavItem to="/products"     icon={emoji3D('📦')} accent="fuchsia" label="Productos"        open={sidebarOpen} />}
                 {show('customers')    && <NavItem to="/customers"    icon={emoji3D('👥')} accent="emerald" label="Clientes"         open={sidebarOpen} />}
                 {show('xml_reader')   && <NavItem to="/xml-super-import" icon={emoji3D('📥')} accent="violet"  label="Lector de XML"    open={sidebarOpen} />}
