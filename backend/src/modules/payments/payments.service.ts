@@ -12,6 +12,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { construirPagos20, envolverComplemento, PartidaFiscal } from './pagos20.builder';
 import { fmtFechaSAT } from '../cfdi/build-cfdi-json.service';
 import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
@@ -257,15 +258,35 @@ export async function createPayment(companyId: string, data: PaymentInput) {
     const saldoInsoluto = Math.max(0, saldoAnterior - montoPago);
     const parcialidad = (await contarPagosPrevios(client, invoice.id)) + 1;
 
-    /* DESGLOSE DEL IVA DEL PAGO.
-     * El monto que cobra el cliente viene con IVA incluido, pero el complemento
-     * pide la base y el impuesto por separado, y el SAT valida que
-     * BaseDR × 0.16 == ImporteDR con dos decimales. Se despeja la base y el
-     * impuesto se calcula SOBRE LA BASE YA REDONDEADA — si se calculara sobre la
-     * base sin redondear, base+iva podría no cuadrar con el monto por un centavo
-     * y el comprobante se rechazaría. */
-    const baseIVA = Math.round((montoPago / 1.16) * 100) / 100;
-    const ivaPago = Math.round(baseIVA * 0.16 * 100) / 100;
+    /* LOS IMPUESTOS SE LEEN DE LA FACTURA, NO SE SUPONEN.
+     *
+     * Antes se calculaba aquí un IVA del 16% fijo. Funcionaba porque todas las
+     * facturas eran al 16%, pero una exenta, una a tasa 0% o una con retención
+     * producía un complemento que el SAT rechaza — y el rechazo llega al
+     * timbrar, que es el momento más caro para enterarse.
+     *
+     * Ahora se leen las tasas reales de las partidas y pagos20.builder deriva
+     * de ellas el nodo completo: traslados, retenciones, exentos, ObjetoImpDR y
+     * los totales por tasa. */
+    const partidasR = await transactionQuery<PartidaFiscal>(
+      client,
+      `SELECT COALESCE(subtotal, 0)::float       AS subtotal,
+              COALESCE(tax_rate, 0)::float       AS tax_rate,
+              COALESCE(is_exempt, false)         AS is_exempt,
+              COALESCE(ret_iva_rate, 0)::float   AS ret_iva_rate,
+              COALESCE(ret_isr_rate, 0)::float   AS ret_isr_rate,
+              COALESCE(ieps_rate, 0)::float      AS ieps_rate
+         FROM invoice_items
+        WHERE invoice_id = $1
+        ORDER BY line_number`,
+      [invoice.id]
+    );
+    if (!partidasR.rows.length) {
+      throw new ValidationError(
+        `La factura ${invoice.serie || ''}${invoice.folio} no tiene partidas, ` +
+        `así que no se puede determinar qué impuestos declarar en el complemento.`
+      );
+    }
     const payloadPago: any = {
       Version: '4.0',
       Serie: 'P',
@@ -300,85 +321,26 @@ export async function createPayment(companyId: string, data: PaymentInput) {
         Importe: '0',
         ObjetoImp: '01',
       }],
-      /* COMPLEMENTO — la forma exacta que espera el convertidor de SW.
-       *
-       * Aquí estuvo el CFDI140230 durante todos los intentos anteriores. Probé
-       * cinco anidamientos (Complemento:{}, Complemento:[], Complementos:{},
-       * Complementos:[], Pagos en la raíz) y ninguno era el correcto:
-       *
-       *     Complemento: { Any: [ { 'pago20:Pagos': {...} } ] }
-       *
-       * Dos detalles que no se adivinan: el arreglo intermedio se llama **Any**
-       * —el convertidor lo traduce a <cfdi:Complemento> con hijos arbitrarios,
-       * igual que el xs:any del XSD— y la llave del complemento va **con el
-       * prefijo del namespace**, 'pago20:Pagos', no 'Pagos' a secas. Sin el
-       * prefijo SW no sabe a qué complemento se refiere y lo descarta en
-       * silencio: el CFDI sale tipo P sin complemento, y el SAT lo rechaza.
-       */
-      Complemento: {
-        Any: [
-          {
-            'pago20:Pagos': {
-              Version: '2.0',
-              Totales: {
-                MontoTotalPagos: montoPago.toFixed(2),
-                TotalTrasladosBaseIVA16: baseIVA.toFixed(2),
-                TotalTrasladosImpuestoIVA16: ivaPago.toFixed(2),
-              },
-              Pago: [{
-                FechaPago: fechaISO,
-                FormaDePagoP: data.paymentForm,
-                MonedaP: moneda,
-                // Obligatorio salvo que MonedaP sea MXN; se manda siempre
-                // porque con MXN vale 1 y el SAT lo acepta.
-                TipoCambioP: '1',
-                Monto: montoPago.toFixed(2),
-                DoctoRelacionado: [{
-                  IdDocumento: invoice.cfdi_uuid,
-                  // Serie y Folio son opcionales, pero van porque la
-                  // representación impresa del complemento los muestra y sin
-                  // ellos el receptor no identifica qué factura se le abonó.
-                  ...(invoice.serie ? { Serie: String(invoice.serie) } : {}),
-                  Folio: String(invoice.folio),
-                  MonedaDR: moneda,
-                  // En un complemento de pago el documento relacionado siempre
-                  // es PPD: una factura PUE se pagó al emitirse y no admite
-                  // complemento. Se toma de la factura y se cae a PPD.
-                  MetodoDePagoDR: invoice.payment_method || 'PPD',
-                  EquivalenciaDR: '1',
-                  // Parcialidad = cuántos pagos van, contando este.
-                  NumParcialidad: String(parcialidad),
-                  ImpSaldoAnt: saldoAnterior.toFixed(2),
-                  ImpPagado: montoPago.toFixed(2),
-                  ImpSaldoInsoluto: saldoInsoluto.toFixed(2),
-                  // '02' = sí objeto de impuesto. Antes iba '01' (no objeto),
-                  // que contradecía a la factura: nuestros CFDI llevan IVA 16%,
-                  // y con '01' el nodo ImpuestosDR ni siquiera es válido.
-                  ObjetoImpDR: '02',
-                  ImpuestosDR: {
-                    TrasladosDR: [{
-                      BaseDR: baseIVA.toFixed(2),
-                      ImpuestoDR: '002',
-                      TipoFactorDR: 'Tasa',
-                      TasaOCuotaDR: '0.160000',
-                      ImporteDR: ivaPago.toFixed(2),
-                    }],
-                  },
-                }],
-                ImpuestosP: {
-                  TrasladosP: [{
-                    BaseP: baseIVA.toFixed(2),
-                    ImpuestoP: '002',
-                    TipoFactorP: 'Tasa',
-                    TasaOCuotaP: '0.160000',
-                    ImporteP: ivaPago.toFixed(2),
-                  }],
-                },
-              }],
-            },
-          },
-        ],
-      },
+      /* El complemento lo arma pagos20.builder a partir de los impuestos
+       * reales de la factura. La envoltura —Complemento.Any[] con la llave
+       * prefijada 'pago20:Pagos'— también vive ahí, junto a la explicación de
+       * por qué sin el prefijo SW la descarta en silencio. */
+      Complemento: envolverComplemento(construirPagos20({
+        partidas: partidasR.rows,
+        totalFactura: total,
+        montoPago,
+        saldoAnterior,
+        saldoInsoluto,
+        parcialidad,
+        uuidFactura: invoice.cfdi_uuid,
+        serieFactura: invoice.serie,
+        folioFactura: invoice.folio,
+        metodoPagoFactura: invoice.payment_method,
+        monedaDR: invoice.currency || 'MXN',
+        monedaP: moneda,
+        fechaPago: fechaISO,
+        formaPago: data.paymentForm,
+      })),
     };
 
     const timbre = await pacService.timbrarJson(companyId, payloadPago, xml);

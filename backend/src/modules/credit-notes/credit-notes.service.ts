@@ -88,12 +88,31 @@ export async function createCreditNote(companyId: string, data: CreditNoteInput)
     const invR = await transactionQuery<any>(
       client,
       `SELECT id, customer_id, folio, serie, subtotal, total, tax_transferred,
-              status, currency
+              status, currency, cfdi_uuid
          FROM invoices
         WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
       [data.invoiceId, companyId]
     );
     const invoice = invR.rows[0];
+
+    /* SIN FOLIO FISCAL NO HAY NOTA DE CRÉDITO POSIBLE.
+     *
+     * CfdiRelacionados.UUID es el folio fiscal de la factura que se acredita, y
+     * el SAT lo valida contra un patrón. Iba como `invoice.cfdi_uuid || ''`
+     * mientras el SELECT ni siquiera traía esa columna: el valor era undefined,
+     * viajaba cadena vacía y el comprobante se rechazaba.
+     *
+     * Es el MISMO defecto que tenían los complementos de pago, en el mismo
+     * lugar y por la misma razón: un campo que se lee del objeto sin haberlo
+     * pedido en la consulta. Que apareciera dos veces sugiere revisar el resto
+     * de los SELECT antes de dar por cerrado el timbrado.
+     */
+    if (!invoice.cfdi_uuid) {
+      throw new ValidationError(
+        `La factura ${invoice.serie || ''}${invoice.folio} no tiene folio fiscal (UUID). ` +
+        `Una nota de crédito solo puede referirse a una factura ya timbrada ante el SAT.`
+      );
+    }
     if (!invoice) throw new NotFoundError('Factura no encontrada');
     if (invoice.customer_id !== data.customerId) {
       throw new ValidationError('La factura no pertenece a ese cliente');
@@ -189,7 +208,7 @@ export async function createCreditNote(companyId: string, data: CreditNoteInput)
     DomicilioFiscalReceptor="${receptor?.postal_code || '00000'}"
     RegimenFiscalReceptor="${receptor?.fiscal_regime || '616'}" UsoCFDI="G02"/>
   <cfdi:CfdiRelacionados TipoRelacion="${tipoRel}">
-    <cfdi:CfdiRelacionado UUID="${invoice.cfdi_uuid || ''}"/>
+    <cfdi:CfdiRelacionado UUID="${invoice.cfdi_uuid}"/>
   </cfdi:CfdiRelacionados>
   <cfdi:Conceptos>
     <cfdi:Concepto ClaveProdServ="84111506" Cantidad="1" ClaveUnidad="ACT"
@@ -246,7 +265,7 @@ export async function createCreditNote(companyId: string, data: CreditNoteInput)
       // Obligatorio en una nota de crédito: a qué CFDI se refiere.
       CfdiRelacionados: {
         TipoRelacion: tipoRel,
-        CfdiRelacionado: [{ UUID: invoice.cfdi_uuid || '' }],
+        CfdiRelacionado: [{ UUID: invoice.cfdi_uuid }],
       },
       Emisor: {
         Rfc: emisor?.rfc || '',
