@@ -47,7 +47,7 @@ export function DashboardPage() {
   });
 
   const qc = useQueryClient();
-  const { user, setToken } = useAuthStore();
+  const { user, setToken, setUser } = useAuthStore();
 
   const s = summary?.data || {};
   const u = usage?.data;
@@ -72,10 +72,30 @@ export function DashboardPage() {
     setCambiando(companyId);
     try {
       const r: any = await api.cambiarEmpresa(companyId);
-      /* El token nuevo reemplaza al anterior y se limpia TODO lo que había en
-       * memoria: si se conservara, la pantalla mostraría facturas de la empresa
-       * anterior mientras el token ya apunta a otra. */
+
+      /* SE ACTUALIZA EL TOKEN **Y** EL USUARIO GUARDADO.
+       *
+       * Aquí estaba el bloqueo: sólo se reemplazaba el token, pero el store
+       * PERSISTE el usuario, y `user.companyId` seguía siendo el de la empresa
+       * anterior. Con eso, el selector volvía a marcar la vieja —su value sale
+       * de ahí— y el guard de arriba, que compara contra ese mismo campo,
+       * impedía regresar: parecía atorado en una empresa.
+       *
+       * El token llevaba la empresa nueva, así que los datos SÍ cambiaban por
+       * debajo. Era peor que un error visible: la pantalla decía una cosa y el
+       * servidor respondía otra. */
       if (r?.data?.token) setToken(r.data.token);
+      if (user) {
+        setUser({
+          ...user,
+          companyId: r?.data?.company?.id || companyId,
+          workGroup: r?.data?.workGroup || user.workGroup,
+        });
+      }
+
+      /* Se limpia TODA la caché antes de recargar: si se conservara, la pantalla
+       * mostraría facturas de la empresa anterior mientras el token ya apunta a
+       * otra. */
       qc.clear();
       window.location.reload();
     } catch (e: any) {
