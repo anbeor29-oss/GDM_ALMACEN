@@ -371,6 +371,46 @@ function PaymentModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  /* OTRAS FACTURAS DEL MISMO CLIENTE.
+   *
+   * Un CFDI tipo P admite varios DoctoRelacionado, así que un depósito que cubre
+   * tres facturas debe consumir UN timbre y generar UN comprobante. Antes había
+   * que registrar tres pagos: tres timbres, tres folios y un cliente recibiendo
+   * tres archivos por un solo movimiento bancario.
+   *
+   * Sólo del MISMO cliente: un comprobante tiene un receptor, y mezclar dos
+   * sería imposible en el Anexo 20, no una limitación del sistema. */
+  const [extras, setExtras] = useState<Record<string, number>>({});
+
+  const otrasFacturas = useQuery({
+    queryKey: ['invoices', 'pendientes', invoice.customer_id],
+    queryFn: () => api.getInvoices(1, 100),
+    enabled: !!invoice.customer_id,
+  });
+
+  const candidatas: any[] = (((otrasFacturas.data as any)?.data?.invoices)
+    || ((otrasFacturas.data as any)?.data) || [])
+    .filter((f: any) =>
+      f.id !== invoice.id &&
+      f.customer_id === invoice.customer_id &&
+      f.cfdi_uuid &&
+      ['STAMPED', 'PARTIAL_PAYMENT'].includes(f.status));
+
+  const saldoDe = (f: any) =>
+    Math.max(0, Number(f.total || 0) - Number(f.paid_total || 0) - Number(f.credited_total || 0));
+
+  const alternar = (f: any) => {
+    setExtras((prev) => {
+      const copia = { ...prev };
+      if (f.id in copia) delete copia[f.id];
+      else copia[f.id] = saldoDe(f);   // por omisión, el saldo completo
+      return copia;
+    });
+  };
+
+  const totalExtras = Object.values(extras).reduce((a, n) => a + (Number(n) || 0), 0);
+  const totalPago = amount + totalExtras;
+
   const formasPago = useQuery({
     queryKey: ['catalog', 'formapago'],
     queryFn: () => api.getCatalog('formapago'),
@@ -405,8 +445,17 @@ function PaymentModal({
     setBusy(true);
     try {
       const res = await api.createPayment({
-        invoiceId: invoice.id,
-        paymentAmount: amount,
+        /* La factura desde la que se abrió el modal va primero; las demás
+         * después, en el orden en que se marcaron. El backend valida cada una
+         * ANTES de llamar al PAC: si alguna no puede pagarse, no se gasta el
+         * timbre. */
+        documentos: [
+          { invoiceId: invoice.id, monto: amount },
+          ...Object.entries(extras).map(([invoiceId, monto]) => ({
+            invoiceId,
+            monto: Number(monto),
+          })),
+        ],
         paymentDate: new Date(paymentDate).toISOString(),
         paymentForm,
         paymentMethod,
@@ -522,6 +571,63 @@ function PaymentModal({
               {amount >= restante ? '→ Marca la factura como Pagada' : '→ Marca la factura como Pago parcial'}
             </span>
           </label>
+
+          {/* CUBRIR OTRAS FACTURAS CON EL MISMO PAGO.
+              Sólo aparece si el cliente tiene más facturas pendientes: cuando no
+              las hay, un bloque vacío sería ruido en la pantalla que más se usa. */}
+          {candidatas.length > 0 && (
+            <div className="border border-slate-200 rounded-lg">
+              <div className="px-3 py-2 bg-slate-50 border-b border-slate-200">
+                <span className="text-sm font-medium text-slate-700">
+                  Cubrir otras facturas del mismo cliente
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Un solo comprobante y un solo timbre para todas las que marques.
+                </p>
+              </div>
+              <div className="max-h-44 overflow-y-auto divide-y divide-slate-100">
+                {candidatas.map((f: any) => {
+                  const marcada = f.id in extras;
+                  const saldo = saldoDe(f);
+                  return (
+                    <div key={f.id} className="flex items-center gap-2 px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={marcada}
+                        onChange={() => alternar(f)}
+                        className="shrink-0"
+                      />
+                      <span className="text-sm text-slate-700 flex-1 truncate">
+                        {f.serie}-{String(f.folio).padStart(6, '0')}
+                        <span className="text-slate-400 text-xs"> · saldo ${saldo.toFixed(2)}</span>
+                      </span>
+                      <input
+                        type="number"
+                        min={0.01}
+                        step="0.01"
+                        max={saldo}
+                        disabled={!marcada}
+                        value={marcada ? extras[f.id] : ''}
+                        onChange={(e) => setExtras((prev) => ({
+                          ...prev,
+                          [f.id]: parseFloat(e.target.value) || 0,
+                        }))}
+                        className="input w-28 text-right text-sm disabled:bg-slate-50"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              {totalExtras > 0 && (
+                <div className="px-3 py-2 bg-slate-50 border-t border-slate-200 flex justify-between text-sm">
+                  <span className="text-slate-600">
+                    Total del pago ({Object.keys(extras).length + 1} facturas)
+                  </span>
+                  <b className="text-slate-900">${totalPago.toFixed(2)}</b>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="bg-blue-50 border border-blue-200 text-blue-800 px-3 py-2 rounded text-xs">
             <b>Anexo 20:</b> el Complemento de Pago se emite cuando el método es PPD o cuando una factura PUE

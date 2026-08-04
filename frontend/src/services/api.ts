@@ -724,8 +724,11 @@ class APIClient {
   /* ───────────── Complemento de Pago ───────────── */
 
   async createPayment(data: {
-    invoiceId: string;
-    paymentAmount: number;
+    /* Forma antigua, una factura. Se conserva para las llamadas que ya existen. */
+    invoiceId?: string;
+    paymentAmount?: number;
+    /* Forma nueva: varias facturas del mismo cliente en un solo comprobante. */
+    documentos?: Array<{ invoiceId: string; monto: number }>;
     paymentDate?: string;
     paymentForm: string;
     paymentMethod?: string;

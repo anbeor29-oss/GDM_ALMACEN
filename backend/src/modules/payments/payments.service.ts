@@ -43,9 +43,21 @@ async function resolverTipoCambioPago(
   }
 }
 
-export interface PaymentInput {
+export interface DocumentoPagado {
   invoiceId: string;
-  paymentAmount: number;
+  /** Cuánto de este pago se abona a esta factura. */
+  monto: number;
+}
+
+export interface PaymentInput {
+  /* Forma antigua: una factura. Se conserva porque media docena de llamadas la
+   * usan y porque el caso de una sola factura sigue siendo el más común. */
+  invoiceId?: string;
+  paymentAmount?: number;
+  /* Forma nueva: varias facturas en un solo comprobante. El SAT admite varios
+   * DoctoRelacionado en un CFDI tipo P, y un depósito que cubre tres facturas
+   * debería consumir UN timbre, no tres. Si viene, manda sobre lo anterior. */
+  documentos?: DocumentoPagado[];
   paymentDate?: string;       // ISO; default = hoy
   paymentForm: string;        // c_FormaPago (01 efectivo, 03 transferencia, etc.)
   paymentMethod?: string;     // PUE/PPD — opcional, se hereda de la factura
@@ -114,54 +126,160 @@ async function sumCreditedForInvoice(client: any, invoiceId: string): Promise<nu
 
 /* ─────────────── crear complemento de pago ─────────────── */
 
+/** Una factura ya validada, con todo lo que el complemento necesita de ella. */
+interface DocumentoValidado {
+  invoice: any;
+  monto: number;
+  saldoAnterior: number;
+  saldoInsoluto: number;
+  parcialidad: number;
+  partidas: PartidaFiscal[];
+  pagadoPrevio: number;
+  acreditado: number;
+  totalFactura: number;
+}
+
 export async function createPayment(companyId: string, data: PaymentInput) {
-  if (!data.invoiceId) throw new ValidationError('invoiceId es requerido');
-  if (!data.paymentAmount || data.paymentAmount <= 0)
-    throw new ValidationError('El monto del pago debe ser mayor que 0');
   if (!data.paymentForm) throw new ValidationError('La forma de pago es requerida');
 
+  /* Se normalizan las dos formas de entrada a una sola lista. Todo lo que sigue
+   * trabaja con `documentos`, así que el caso de una factura deja de ser un
+   * camino aparte: es una lista de uno. */
+  const documentos: DocumentoPagado[] = data.documentos?.length
+    ? data.documentos
+    : (data.invoiceId && data.paymentAmount
+        ? [{ invoiceId: data.invoiceId, monto: data.paymentAmount }]
+        : []);
+
+  if (!documentos.length) {
+    throw new ValidationError('Indica al menos una factura y su monto.');
+  }
+  for (const d of documentos) {
+    if (!d.invoiceId) throw new ValidationError('Falta el identificador de una factura.');
+    if (!d.monto || d.monto <= 0) {
+      throw new ValidationError('El monto abonado a cada factura debe ser mayor que 0.');
+    }
+  }
+  /* Una factura repetida serían dos DoctoRelacionado con el mismo IdDocumento,
+   * y el SAT rechaza el comprobante entero. Mejor detenerlo aquí. */
+  const vistos = new Set<string>();
+  for (const d of documentos) {
+    if (vistos.has(d.invoiceId)) {
+      throw new ValidationError('Una misma factura no puede aparecer dos veces en el mismo pago.');
+    }
+    vistos.add(d.invoiceId);
+  }
+
+  const montoTotalPago = Math.round(documentos.reduce((a, d) => a + d.monto, 0) * 100) / 100;
+
   return transaction(async (client) => {
-    // 1) Validar factura
-    const invR = await transactionQuery<any>(
-      client,
-      `SELECT id, company_id, customer_id, folio, serie, total, status, currency,
+    /* 1) VALIDAR CADA FACTURA Y REUNIR SUS DATOS.
+     *
+     * Antes esto era una factura y una comprobación; ahora es un ciclo. Se
+     * valida TODO antes de tocar el PAC: si la tercera factura de la lista está
+     * cancelada, conviene enterarse antes de gastar el timbre, no después.
+     *
+     * Las validaciones son las mismas de siempre —existe, no cancelada, no
+     * pagada, tiene folio fiscal, el monto cabe en el saldo— sólo que aplicadas
+     * a cada una. */
+    const docs: DocumentoValidado[] = [];
+    let clienteDelPago: string | null = null;
+
+    for (const d of documentos) {
+      const invR = await transactionQuery<any>(
+        client,
+        `SELECT id, company_id, customer_id, folio, serie, total, status, currency,
                 cfdi_uuid, payment_method
-         FROM invoices
-        WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
-      [data.invoiceId, companyId]
-    );
-    const invoice = invR.rows[0];
-    if (!invoice) throw new NotFoundError('Factura no encontrada');
-    if (invoice.status === 'CANCELLED')
-      throw new ValidationError('No se puede pagar una factura cancelada');
-    if (invoice.status === 'PAID')
-      throw new ValidationError('Esta factura ya está pagada');
-
-    /* SIN FOLIO FISCAL NO HAY COMPLEMENTO POSIBLE.
-     * IdDocumento es el UUID de la factura que se está pagando, y el SAT lo
-     * valida contra un patrón: si va vacío, el rechazo llega hasta el PAC con un
-     * mensaje sobre "datatype String" que no dice nada del problema real.
-     * Se corta aquí, con la causa dicha en claro. */
-    if (!invoice.cfdi_uuid) {
-      throw new ValidationError(
-        `La factura ${invoice.serie || ''}${invoice.folio} no tiene folio fiscal (UUID). ` +
-        `Un complemento de pago solo puede referirse a una factura ya timbrada ante el SAT: ` +
-        `timbra primero la factura y vuelve a registrar el pago.`
+           FROM invoices
+          WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
+        [d.invoiceId, companyId]
       );
+      const inv = invR.rows[0];
+      if (!inv) throw new NotFoundError(`Factura no encontrada (${d.invoiceId})`);
+
+      const etiqueta = `${inv.serie || ''}${inv.folio}`;
+      if (inv.status === 'CANCELLED')
+        throw new ValidationError(`La factura ${etiqueta} está cancelada y no se puede pagar.`);
+      if (inv.status === 'PAID')
+        throw new ValidationError(`La factura ${etiqueta} ya está pagada.`);
+
+      /* SIN FOLIO FISCAL NO HAY COMPLEMENTO POSIBLE.
+       * IdDocumento es el UUID de la factura, y el SAT lo valida contra un
+       * patrón: si va vacío, el rechazo llega hasta el PAC con un mensaje sobre
+       * "datatype String" que no dice nada del problema real. */
+      if (!inv.cfdi_uuid) {
+        throw new ValidationError(
+          `La factura ${etiqueta} no tiene folio fiscal (UUID). ` +
+          `Un complemento de pago solo puede referirse a una factura ya timbrada ante el SAT.`
+        );
+      }
+
+      /* TODAS LAS FACTURAS DEBEN SER DEL MISMO CLIENTE.
+       * Un CFDI tiene UN receptor. Mezclar facturas de dos clientes en un
+       * comprobante no es una limitación del sistema: es imposible en el
+       * Anexo 20, y el SAT lo rechazaría. */
+      if (clienteDelPago && inv.customer_id !== clienteDelPago) {
+        throw new ValidationError(
+          'Todas las facturas de un mismo complemento de pago deben ser del mismo cliente: ' +
+          'un CFDI tiene un solo receptor.'
+        );
+      }
+      clienteDelPago = inv.customer_id;
+
+      /* El monto abonado no puede exceder el saldo REAL de esa factura
+       * (total − pagos − notas de crédito). Sin considerar las NC se aceptaría
+       * un pago que la dejara sobre-cobrada en el sentido fiscal. */
+      const pagado = await sumPaidForInvoice(client, inv.id);
+      const acreditado = await sumCreditedForInvoice(client, inv.id);
+      const totalInv = Number(inv.total);
+      const restante = totalInv - pagado - acreditado;
+      if (d.monto > restante + 0.01) {
+        throw new ValidationError(
+          `El abono a la factura ${etiqueta} ($${d.monto.toFixed(2)}) excede su saldo ` +
+          `($${restante.toFixed(2)}).`
+        );
+      }
+
+      const partidasR = await transactionQuery<PartidaFiscal>(
+        client,
+        `SELECT COALESCE(subtotal, 0)::float       AS subtotal,
+                COALESCE(tax_rate, 0)::float       AS tax_rate,
+                COALESCE(is_exempt, false)         AS is_exempt,
+                COALESCE(ret_iva_rate, 0)::float   AS ret_iva_rate,
+                COALESCE(ret_isr_rate, 0)::float   AS ret_isr_rate,
+                COALESCE(ieps_rate, 0)::float      AS ieps_rate
+           FROM invoice_items
+          WHERE invoice_id = $1
+          ORDER BY line_number`,
+        [inv.id]
+      );
+      if (!partidasR.rows.length) {
+        throw new ValidationError(
+          `La factura ${etiqueta} no tiene partidas, así que no se puede determinar ` +
+          `qué impuestos declarar en el complemento.`
+        );
+      }
+
+      docs.push({
+        invoice: inv,
+        monto: d.monto,
+        saldoAnterior: restante,
+        saldoInsoluto: Math.max(0, restante - d.monto),
+        parcialidad: (await contarPagosPrevios(client, inv.id)) + 1,
+        partidas: partidasR.rows,
+        pagadoPrevio: pagado,
+        acreditado,
+        totalFactura: totalInv,
+      });
     }
 
-    // 2) Validar que no excedamos el saldo REAL (total − pagos − NC).
-    //    Sin considerar NC podríamos aceptar un pago que dejara la factura
-    //    "sobre-cobrada" en el sentido fiscal.
-    const alreadyPaid = await sumPaidForInvoice(client, invoice.id);
-    const alreadyCredited = await sumCreditedForInvoice(client, invoice.id);
-    const total = Number(invoice.total);
-    const restante = total - alreadyPaid - alreadyCredited;
-    if (data.paymentAmount > restante + 0.01) {
-      throw new ValidationError(
-        `El pago ($${data.paymentAmount.toFixed(2)}) excede el saldo restante ($${restante.toFixed(2)}).`
-      );
-    }
+    /* La factura "principal" es la primera. Se usa para la moneda del pago, para
+     * payments.invoice_id —que se conserva por compatibilidad— y para el
+     * receptor del comprobante, que es el mismo para todas. */
+    const invoice = docs[0].invoice;
+    const total = docs[0].totalFactura;
+    const alreadyPaid = docs[0].pagadoPrevio;
+    const alreadyCredited = docs[0].acreditado;
 
     // 3) Insertar pago + simular timbrado (con XML CFDI 4.0 + Pagos 2.0)
     //    Necesitamos datos del emisor y receptor para que el XML del
@@ -224,12 +342,12 @@ export async function createPayment(companyId: string, data: PaymentInput) {
     <pago20:Pagos Version="2.0">
       <pago20:Pago FechaPago="${fechaISO}"
         FormaDePagoP="${data.paymentForm}" MonedaP="${moneda}"
-        Monto="${Number(data.paymentAmount).toFixed(2)}">
+        Monto="${montoTotalPago.toFixed(2)}">
         <pago20:DoctoRelacionado IdDocumento="${invoice.cfdi_uuid || ''}"
           MonedaDR="${moneda}" NumParcialidad="1"
           ImpSaldoAnt="${Number(total - alreadyPaid - alreadyCredited).toFixed(2)}"
-          ImpPagado="${Number(data.paymentAmount).toFixed(2)}"
-          ImpSaldoInsoluto="${Math.max(0, total - alreadyPaid - alreadyCredited - data.paymentAmount).toFixed(2)}"
+          ImpPagado="${docs[0].monto.toFixed(2)}"
+          ImpSaldoInsoluto="${docs[0].saldoInsoluto.toFixed(2)}"
           ObjetoImpDR="01"/>
       </pago20:Pago>
     </pago20:Pagos>
@@ -253,9 +371,9 @@ export async function createPayment(companyId: string, data: PaymentInput) {
      * exige un XML ya sellado, y el nuestro va sin sellar a propósito porque
      * SW sella con el CSD de su bóveda. El XML se conserva como respaldo para
      * el provider MOCK, que no implementa la ruta JSON. */
-    const saldoAnterior = total - alreadyPaid - alreadyCredited;
-    const montoPago = Number(data.paymentAmount);
-    const saldoInsoluto = Math.max(0, saldoAnterior - montoPago);
+    /* Los saldos y la parcialidad de cada factura se calcularon en el ciclo de
+     * validación; aquí sólo se usa el total del pago. */
+    const montoPago = montoTotalPago;
     const parcialidad = (await contarPagosPrevios(client, invoice.id)) + 1;
 
     /* LOS IMPUESTOS SE LEEN DE LA FACTURA, NO SE SUPONEN.
@@ -328,20 +446,24 @@ export async function createPayment(companyId: string, data: PaymentInput) {
       /* Se manda UN documento porque la pantalla registra el pago contra una
        * factura a la vez. El constructor acepta la lista completa: cuando la
        * interfaz permita seleccionar varias, aquí sólo cambia el arreglo. */
+      /* TODAS las facturas del pago van en el mismo complemento. El SAT admite
+       * varios DoctoRelacionado en un CFDI tipo P, así que un depósito que cubre
+       * tres facturas consume UN timbre y el cliente recibe UN comprobante — no
+       * tres, como antes. */
       Complemento: envolverComplemento(construirPagos20({
-        documentos: [{
-          partidas: partidasR.rows,
-          totalFactura: total,
-          montoPagado: montoPago,
-          saldoAnterior,
-          saldoInsoluto,
-          parcialidad,
-          uuid: invoice.cfdi_uuid,
-          serie: invoice.serie,
-          folio: invoice.folio,
-          metodoPago: invoice.payment_method,
-          monedaDR: invoice.currency || 'MXN',
-        }],
+        documentos: docs.map((d) => ({
+          partidas: d.partidas,
+          totalFactura: d.totalFactura,
+          montoPagado: d.monto,
+          saldoAnterior: d.saldoAnterior,
+          saldoInsoluto: d.saldoInsoluto,
+          parcialidad: d.parcialidad,
+          uuid: d.invoice.cfdi_uuid,
+          serie: d.invoice.serie,
+          folio: d.invoice.folio,
+          metodoPago: d.invoice.payment_method,
+          monedaDR: d.invoice.currency || 'MXN',
+        })),
         monedaP: moneda,
         fechaPago: fechaISO,
         formaPago: data.paymentForm,
@@ -372,7 +494,7 @@ export async function createPayment(companyId: string, data: PaymentInput) {
     // utilidad cambiaria y solo se puede calcular si aquí queda guardado el
     // tipo de cambio de hoy en lugar de reusar el de la factura.
     const tcPago = await resolverTipoCambioPago(moneda, fechaISO);
-    const montoMxn = Math.round(Number(data.paymentAmount) * tcPago.valor * 100) / 100;
+    const montoMxn = Math.round(montoTotalPago * tcPago.valor * 100) / 100;
 
     const insR = await transactionQuery<any>(
       client,
@@ -386,7 +508,7 @@ export async function createPayment(companyId: string, data: PaymentInput) {
        RETURNING *`,
       [
         companyId, invoice.id, invoice.customer_id, folio,
-        data.paymentAmount, fechaISO, data.paymentForm,
+        montoTotalPago, fechaISO, data.paymentForm,
         data.paymentMethod || 'PUE',
         moneda, uuidTimbrado, data.notes || null, xmlFinal,
         tcPago.valor, tcPago.fecha, montoMxn,
@@ -394,17 +516,45 @@ export async function createPayment(companyId: string, data: PaymentInput) {
     );
     const payment = insR.rows[0];
 
-    // 4) Actualizar estatus de la factura. Cubierto = pagos acumulados + NC.
-    //    Si cubierto ≥ total (con tolerancia de 1 centavo por redondeos)
-    //    la factura queda PAID; si no, PARTIAL_PAYMENT.
-    const nuevoPagado = alreadyPaid + data.paymentAmount;
-    const cubierto = nuevoPagado + alreadyCredited;
-    const nuevoStatus = cubierto >= total - 0.01 ? 'PAID' : 'PARTIAL_PAYMENT';
-    await transactionQuery(
-      client,
-      `UPDATE invoices SET status = $1, updated_at = NOW() WHERE id = $2`,
-      [nuevoStatus, invoice.id]
-    );
+    /* 4) EL DESGLOSE: qué facturas cubre este pago y cuánto a cada una.
+     *
+     * payments.invoice_id sigue apuntando a la primera por compatibilidad, pero
+     * la verdad de un pago multi-factura vive aquí. Se guardan también los
+     * saldos y la parcialidad TAL COMO SE ENVIARON al SAT: el comprobante ya se
+     * timbró con esos valores, y recalcularlos después con los saldos de hoy
+     * mostraría cifras distintas a las del CFDI. */
+    for (const d of docs) {
+      await transactionQuery(
+        client,
+        `INSERT INTO payment_invoices
+           (payment_id, invoice_id, monto, parcialidad, saldo_anterior, saldo_insoluto)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [payment.id, d.invoice.id, d.monto, d.parcialidad, d.saldoAnterior, d.saldoInsoluto]
+      );
+    }
+
+    /* 5) Estatus de CADA factura. Cubierto = pagos acumulados + notas de
+     * crédito; con tolerancia de un centavo por redondeos. */
+    const estados: Array<{ id: string; etiqueta: string; nuevo: string; restante: number }> = [];
+    for (const d of docs) {
+      const nuevoPagadoInv = d.pagadoPrevio + d.monto;
+      const cubiertoInv = nuevoPagadoInv + d.acreditado;
+      const nuevo = cubiertoInv >= d.totalFactura - 0.01 ? 'PAID' : 'PARTIAL_PAYMENT';
+      await transactionQuery(
+        client,
+        `UPDATE invoices SET status = $1, updated_at = NOW() WHERE id = $2`,
+        [nuevo, d.invoice.id]
+      );
+      estados.push({
+        id: d.invoice.id,
+        etiqueta: `${d.invoice.serie || ''}${d.invoice.folio}`,
+        nuevo,
+        restante: Math.max(0, d.totalFactura - cubiertoInv),
+      });
+    }
+    const nuevoStatus = estados[0].nuevo;
+    const nuevoPagado = docs[0].pagadoPrevio + docs[0].monto;
+    const cubierto = nuevoPagado + docs[0].acreditado;
 
     // 5) Recalcular saldo del cliente (best-effort)
     await transactionQuery(
@@ -424,8 +574,8 @@ export async function createPayment(companyId: string, data: PaymentInput) {
     );
 
     logger.info(
-      `Pago ${payment.serie}-${payment.folio} creado para factura ${invoice.serie}-${invoice.folio} ` +
-      `($${data.paymentAmount}). Estatus ahora: ${nuevoStatus}.`
+      `Pago ${payment.serie}-${payment.folio} por $${montoTotalPago.toFixed(2)} sobre ` +
+      `${docs.length} factura(s): ${estados.map((e) => `${e.etiqueta}→${e.nuevo}`).join(', ')}`
     );
 
     return {
@@ -441,6 +591,8 @@ export async function createPayment(companyId: string, data: PaymentInput) {
         credited_total: alreadyCredited,
         remaining: Math.max(0, total - cubierto),
       },
+      /* Detalle por factura, para cuando el pago cubre más de una. */
+      facturas: estados,
     };
   });
 }
