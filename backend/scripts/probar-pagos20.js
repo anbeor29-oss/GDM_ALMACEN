@@ -25,18 +25,24 @@ function revisar(titulo, cond, detalle) {
   if (detalle !== undefined) console.log(`      ${JSON.stringify(detalle)}`);
 }
 
-/** Datos comunes: el pago cubre la factura completa salvo que se diga otra cosa. */
-const base = (partidas, total, monto) => ({
+/** Un documento suelto: cubre la factura completa salvo que se diga otra cosa. */
+const doc = (partidas, total, monto, extra = {}) => ({
   partidas,
   totalFactura: total,
-  montoPago: monto === undefined ? total : monto,
+  montoPagado: monto === undefined ? total : monto,
   saldoAnterior: total,
   saldoInsoluto: total - (monto === undefined ? total : monto),
   parcialidad: 1,
-  uuidFactura: 'daca5d85-b8cd-463b-a056-b021fe33c2f9',
-  serieFactura: 'B',
-  folioFactura: '1',
+  uuid: 'daca5d85-b8cd-463b-a056-b021fe33c2f9',
+  serie: 'B',
+  folio: '1',
   monedaDR: 'MXN',
+  ...extra,
+});
+
+/** Datos del pago, con un solo documento salvo que se pasen más. */
+const base = (partidas, total, monto, extraDoc = {}) => ({
+  documentos: [doc(partidas, total, monto, extraDoc)],
   monedaP: 'MXN',
   fechaPago: '2026-08-03T12:00:00',
   formaPago: '03',
@@ -129,8 +135,8 @@ console.log('\nPago parcial (prorrateo)');
 console.log('\nPago en dólares');
 {
   const r = construirPagos20({
-    ...base([P({ subtotal: 100, tax_rate: 0.16 })], 116),
-    monedaDR: 'USD', monedaP: 'USD',
+    ...base([P({ subtotal: 100, tax_rate: 0.16 })], 116, undefined, { monedaDR: 'USD' }),
+    monedaP: 'USD',
   });
   revisar('TipoCambioP obligatorio fuera de MXN',
     r.Pago[0].TipoCambioP !== undefined, r.Pago[0].TipoCambioP);
@@ -139,8 +145,9 @@ console.log('\nPago en dólares');
 }
 {
   const r = construirPagos20({
-    ...base([P({ subtotal: 100, tax_rate: 0.16 })], 116),
-    monedaDR: 'USD', monedaP: 'MXN', equivalenciaDR: 0.045331,
+    ...base([P({ subtotal: 100, tax_rate: 0.16 })], 116, undefined,
+            { monedaDR: 'USD', equivalenciaDR: 0.045331 }),
+    monedaP: 'MXN',
   });
   revisar('EquivalenciaDR con 6 decimales si difieren',
     r.Pago[0].DoctoRelacionado[0].EquivalenciaDR === '0.045331',
@@ -172,6 +179,76 @@ console.log('\nInvariante BaseDR x TasaOCuotaDR == ImporteDR');
     }
   }
   revisar('se cumple en los cinco montos probados', ok);
+}
+
+/* --- Un pago que liquida DOS facturas ---------------------------------- */
+console.log('\nUn pago sobre dos facturas');
+{
+  const r = construirPagos20({
+    documentos: [
+      /* Las partidas son las de la factura COMPLETA; el prorrateo lo hace el
+       * constructor con montoPagado/totalFactura. Poner aquí la base de lo
+       * pagado en vez de la de la factura da bases minúsculas — así se detectó,
+       * y era un error del dato de prueba, no del constructor. */
+      // Factura 1: 5842.60 + IVA = 6777.42, pagada completa.
+      { partidas: [P({ subtotal: 5842.60, tax_rate: 0.16 })], totalFactura: 6777.42,
+        montoPagado: 6777.42, saldoAnterior: 6777.42, saldoInsoluto: 0,
+        parcialidad: 2, uuid: 'b7c8d2bf-cb4e-4f84-af89-c68b6731206a',
+        serie: 'FA', folio: 'N0000216349', monedaDR: 'MXN' },
+      // Factura 2: 8285.18 + IVA = 9610.81, de la que se abonan 0.59.
+      // Prorrateado: 8285.18 x 0.59 / 9610.81 = 0.51 de base.
+      { partidas: [P({ subtotal: 8285.18, tax_rate: 0.16 })], totalFactura: 9610.81,
+        montoPagado: 0.59, saldoAnterior: 9610.81, saldoInsoluto: 9610.22,
+        parcialidad: 1, uuid: '94f4e541-bb38-4355-b779-02d337dc9720',
+        serie: 'FA', folio: 'SI000032690', monedaDR: 'MXN' },
+    ],
+    monedaP: 'MXN', fechaPago: '2026-08-03T12:00:00', formaPago: '01',
+  });
+  const p0 = r.Pago[0];
+  revisar('hay DOS DoctoRelacionado', p0.DoctoRelacionado.length === 2, p0.DoctoRelacionado.length);
+  revisar('cada uno con su UUID',
+    p0.DoctoRelacionado[0].IdDocumento !== p0.DoctoRelacionado[1].IdDocumento);
+  revisar('NumParcialidad es POR FACTURA, no por pago',
+    p0.DoctoRelacionado[0].NumParcialidad === '2' && p0.DoctoRelacionado[1].NumParcialidad === '1',
+    p0.DoctoRelacionado.map((x) => x.NumParcialidad));
+  const suma = p0.DoctoRelacionado.reduce((a, x) => a + Number(x.ImpPagado), 0);
+  revisar('Monto = suma de los ImpPagado',
+    Number(p0.Monto).toFixed(2) === suma.toFixed(2), { monto: p0.Monto, suma: suma.toFixed(2) });
+  revisar('MontoTotalPagos coincide con Monto',
+    r.Totales.MontoTotalPagos === p0.Monto, r.Totales.MontoTotalPagos);
+  revisar('Totales suma las bases de las DOS facturas (5842.60 + 0.51)',
+    r.Totales.TotalTrasladosBaseIVA16 === '5843.11', r.Totales.TotalTrasladosBaseIVA16);
+  revisar('ImpuestosP agrupa la misma tasa en UN renglon',
+    p0.ImpuestosP.TrasladosP.length === 1, p0.ImpuestosP.TrasladosP);
+}
+
+/* --- Dos facturas con tasas distintas ---------------------------------- */
+console.log('\nDos facturas con tasas distintas');
+{
+  const r = construirPagos20({
+    documentos: [
+      { partidas: [P({ subtotal: 100, tax_rate: 0.16 })], totalFactura: 116, montoPagado: 116,
+        saldoAnterior: 116, saldoInsoluto: 0, parcialidad: 1, uuid: 'aaa', folio: '1', monedaDR: 'MXN' },
+      { partidas: [P({ subtotal: 200, is_exempt: true })], totalFactura: 200, montoPagado: 200,
+        saldoAnterior: 200, saldoInsoluto: 0, parcialidad: 1, uuid: 'bbb', folio: '2', monedaDR: 'MXN' },
+    ],
+    monedaP: 'MXN', fechaPago: '2026-08-03T12:00:00', formaPago: '03',
+  });
+  revisar('declara base al 16%', r.Totales.TotalTrasladosBaseIVA16 === '100.00', r.Totales);
+  revisar('y base exenta, por separado', r.Totales.TotalTrasladosBaseIVAExento === '200.00', r.Totales);
+  revisar('el exento no declara impuesto',
+    r.Totales.TotalTrasladosImpuestoIVAExento === undefined, r.Totales);
+  revisar('ImpuestosP lleva los dos renglones',
+    r.Pago[0].ImpuestosP.TrasladosP.length === 2, r.Pago[0].ImpuestosP.TrasladosP.length);
+}
+
+/* --- Sin documentos no hay complemento posible ------------------------- */
+console.log('\nSin facturas relacionadas');
+{
+  let lanzo = false;
+  try { construirPagos20({ documentos: [], monedaP: 'MXN', fechaPago: 'x', formaPago: '03' }); }
+  catch { lanzo = true; }
+  revisar('se rechaza en vez de emitir un complemento vacio', lanzo);
 }
 
 console.log(`\n${pruebas - fallos}/${pruebas} comprobaciones correctas`);

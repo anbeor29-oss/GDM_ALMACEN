@@ -325,18 +325,23 @@ export async function createPayment(companyId: string, data: PaymentInput) {
        * reales de la factura. La envoltura —Complemento.Any[] con la llave
        * prefijada 'pago20:Pagos'— también vive ahí, junto a la explicación de
        * por qué sin el prefijo SW la descarta en silencio. */
+      /* Se manda UN documento porque la pantalla registra el pago contra una
+       * factura a la vez. El constructor acepta la lista completa: cuando la
+       * interfaz permita seleccionar varias, aquí sólo cambia el arreglo. */
       Complemento: envolverComplemento(construirPagos20({
-        partidas: partidasR.rows,
-        totalFactura: total,
-        montoPago,
-        saldoAnterior,
-        saldoInsoluto,
-        parcialidad,
-        uuidFactura: invoice.cfdi_uuid,
-        serieFactura: invoice.serie,
-        folioFactura: invoice.folio,
-        metodoPagoFactura: invoice.payment_method,
-        monedaDR: invoice.currency || 'MXN',
+        documentos: [{
+          partidas: partidasR.rows,
+          totalFactura: total,
+          montoPagado: montoPago,
+          saldoAnterior,
+          saldoInsoluto,
+          parcialidad,
+          uuid: invoice.cfdi_uuid,
+          serie: invoice.serie,
+          folio: invoice.folio,
+          metodoPago: invoice.payment_method,
+          monedaDR: invoice.currency || 'MXN',
+        }],
         monedaP: moneda,
         fechaPago: fechaISO,
         formaPago: data.paymentForm,
