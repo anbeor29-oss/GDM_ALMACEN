@@ -99,11 +99,29 @@ router.get(
     if (!row) throw new ValidationError('Nota de crédito no encontrada');
 
     let xml = row.xml_content as string | null;
+    /* SI NO HAY XML TIMBRADO, NO SE ENTREGA NADA.
+     *
+     * Aquí se FABRICABA un XML a partir de los datos de la tabla cuando
+     * xml_content venía vacío. Se veía como un CFDI —mismo namespace, misma
+     * estructura— pero le faltaba lo único que lo hace válido: el
+     * TimbreFiscalDigital y los sellos. Nadie que lo descargara podía notar la
+     * diferencia sin abrirlo y buscar el nodo a mano.
+     *
+     * Eso convierte una carencia en un engaño: quien lo mande a su contador o lo
+     * archive como respaldo fiscal creerá que tiene el comprobante, y sólo se
+     * enterará de que no cuando el SAT se lo rechace o en una auditoría.
+     *
+     * Ahora se dice lo que pasa. Un error claro es mejor que un archivo que
+     * parece correcto — sobre todo cuando el archivo es la prueba de un hecho
+     * fiscal.
+     */
     if (!xml) {
-      const fecha = new Date(row.date_issued).toISOString().slice(0, 19);
-      const moneda = row.currency || 'MXN';
-      const esc = (s: any) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-      xml = `<?xml version="1.0" encoding="UTF-8"?>\n<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" Version="4.0" Serie="${row.serie || 'NC'}" Folio="${row.folio}" Fecha="${fecha}" TipoDeComprobante="E" Moneda="${moneda}" SubTotal="${Number(row.subtotal).toFixed(2)}" Total="${Number(row.total).toFixed(2)}" Exportacion="01"><cfdi:CfdiRelacionados TipoRelacion="${row.tipo_relacion || '01'}"><cfdi:CfdiRelacionado UUID="${row.inv_uuid || ''}"/></cfdi:CfdiRelacionados><cfdi:Conceptos><cfdi:Concepto ClaveProdServ="84111506" Cantidad="1" ClaveUnidad="ACT" Descripcion="${esc(row.motivo || 'Nota de crédito')}" ValorUnitario="${Number(row.subtotal).toFixed(2)}" Importe="${Number(row.subtotal).toFixed(2)}" ObjetoImp="02"><cfdi:Impuestos><cfdi:Traslados><cfdi:Traslado Base="${Number(row.subtotal).toFixed(2)}" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="${Number(row.iva).toFixed(2)}"/></cfdi:Traslados></cfdi:Impuestos></cfdi:Concepto></cfdi:Conceptos><cfdi:Impuestos TotalImpuestosTrasladados="${Number(row.iva).toFixed(2)}"><cfdi:Traslados><cfdi:Traslado Base="${Number(row.subtotal).toFixed(2)}" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="${Number(row.iva).toFixed(2)}"/></cfdi:Traslados></cfdi:Impuestos></cfdi:Comprobante>`;
+      throw new ValidationError(
+        `La nota de crédito ${row.serie || 'NC'}-${row.folio} NO ESTÁ TIMBRADA ante el SAT, así que no existe un XML que descargar. ` +
+        `El sistema guarda el XML sólo cuando el PAC devuelve el timbre; si esta nota de crédito ` +
+        `figura como timbrada pero no tiene XML, se registró sin llegar al SAT. ` +
+        `Verifica su folio fiscal en verificacfdi.facturaelectronica.sat.gob.mx.`
+      );
     }
 
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');

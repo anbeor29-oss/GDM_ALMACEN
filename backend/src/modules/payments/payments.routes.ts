@@ -103,11 +103,29 @@ router.get(
     if (!row) throw new ValidationError('Pago no encontrado');
 
     let xml = row.xml_content as string | null;
+    /* SI NO HAY XML TIMBRADO, NO SE ENTREGA NADA.
+     *
+     * Aquí se FABRICABA un XML a partir de los datos de la tabla cuando
+     * xml_content venía vacío. Se veía como un CFDI —mismo namespace, misma
+     * estructura— pero le faltaba lo único que lo hace válido: el
+     * TimbreFiscalDigital y los sellos. Nadie que lo descargara podía notar la
+     * diferencia sin abrirlo y buscar el nodo a mano.
+     *
+     * Eso convierte una carencia en un engaño: quien lo mande a su contador o lo
+     * archive como respaldo fiscal creerá que tiene el comprobante, y sólo se
+     * enterará de que no cuando el SAT se lo rechace o en una auditoría.
+     *
+     * Ahora se dice lo que pasa. Un error claro es mejor que un archivo que
+     * parece correcto — sobre todo cuando el archivo es la prueba de un hecho
+     * fiscal.
+     */
     if (!xml) {
-      // Reconstruimos a partir de datos persistidos (modo mock retroactivo)
-      const fecha = new Date(row.payment_date).toISOString().slice(0, 19);
-      const moneda = row.currency || 'MXN';
-      xml = `<?xml version="1.0" encoding="UTF-8"?>\n<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:pago20="http://www.sat.gob.mx/Pagos20" Version="4.0" Serie="${row.serie || 'P'}" Folio="${row.folio}" Fecha="${fecha}" TipoDeComprobante="P" Moneda="XXX" SubTotal="0" Total="0" Exportacion="01"><cfdi:Conceptos><cfdi:Concepto ClaveProdServ="84111506" Cantidad="1" ClaveUnidad="ACT" Descripcion="Pago" ValorUnitario="0" Importe="0" ObjetoImp="01"/></cfdi:Conceptos><cfdi:Complemento><pago20:Pagos Version="2.0"><pago20:Pago FechaPago="${fecha}" FormaDePagoP="${row.payment_form || '03'}" MonedaP="${moneda}" Monto="${Number(row.payment_amount).toFixed(2)}"><pago20:DoctoRelacionado IdDocumento="${row.inv_uuid || ''}" MonedaDR="${moneda}" NumParcialidad="1" ImpSaldoAnt="${Number(row.inv_total).toFixed(2)}" ImpPagado="${Number(row.payment_amount).toFixed(2)}" ImpSaldoInsoluto="0.00" ObjetoImpDR="01"/></pago20:Pago></pago20:Pagos></cfdi:Complemento></cfdi:Comprobante>`;
+      throw new ValidationError(
+        `El complemento de pago ${row.serie || 'P'}-${row.folio} NO ESTÁ TIMBRADO ante el SAT, así que no existe un XML que descargar. ` +
+        `El sistema guarda el XML sólo cuando el PAC devuelve el timbre; si esta complemento de pago ` +
+        `figura como timbrada pero no tiene XML, se registró sin llegar al SAT. ` +
+        `Verifica su folio fiscal en verificacfdi.facturaelectronica.sat.gob.mx.`
+      );
     }
 
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
