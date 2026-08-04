@@ -83,16 +83,30 @@ router.post(
     fs.writeFileSync(cerPath, cer.buffer);
     fs.writeFileSync(keyPath, key.buffer);
 
+    /* EL CERTIFICADO SE GUARDA EN LA BASE, NO SOLO EN DISCO.
+     *
+     * Los archivos se siguen escribiendo porque otras partes del sistema aun
+     * leen las rutas, pero la fuente buena es la base: en Render el disco es
+     * EFIMERO y cada despliegue borra los .cer y .key. Eso dejaba a la empresa
+     * sin poder timbrar hasta que alguien los recargara, y el sintoma era un
+     * CA305 del SAT que no apuntaba a la causa.
+     *
+     * Se cifra con la misma funcion que la contrasena: un solo formato, una
+     * sola llave, un solo lugar donde equivocarse. */
     const encrypted = encryptCsdPassword(password);
+    const cerB64 = encryptCsdPassword(cer.buffer.toString('base64'));
+    const keyB64 = encryptCsdPassword(key.buffer.toString('base64'));
     await query(
       `UPDATE companies
           SET csd_cer_path = $1,
               csd_key_path = $2,
               csd_password_encrypted = $3,
+              csd_cer_data = $4,
+              csd_key_data = $5,
               csd_uploaded_at = NOW(),
               updated_at = NOW()
-        WHERE id = $4`,
-      [cerPath, keyPath, encrypted, id]
+        WHERE id = $6`,
+      [cerPath, keyPath, encrypted, cerB64, keyB64, id]
     );
 
     logger.info(`CSD subido para empresa ${id} (${cer.originalname}, ${key.originalname})`);
