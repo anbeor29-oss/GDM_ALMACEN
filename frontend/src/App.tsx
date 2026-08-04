@@ -21,6 +21,7 @@ import { AdminUsersPage }    from '@/pages/AdminUsers';
 import { AdminCompaniesPage } from '@/pages/AdminCompanies';
 import { AdminBillingPage }   from '@/pages/AdminBilling';
 import { AdminPrepaidPage }   from '@/pages/AdminPrepaid';
+import AdminAccesosPage from '@/pages/AdminAccesos';
 import { ImportXMLWizardPage } from '@/pages/ImportXMLWizard';
 import { SuppliersPage }      from '@/pages/Suppliers';
 import { TeamPage }           from '@/pages/Team';
@@ -197,6 +198,7 @@ export function App() {
             <Route path="admin/packages"  element={<SuperAdminRoute><AdminPackagesPage /></SuperAdminRoute>} />
             <Route path="admin/billing"   element={<SuperAdminRoute><AdminBillingPage /></SuperAdminRoute>} />
             <Route path="admin/prepaid"   element={<SuperAdminRoute><AdminPrepaidPage /></SuperAdminRoute>} />
+            <Route path="admin/accesos"   element={<SuperAdminRoute><AdminAccesosPage /></SuperAdminRoute>} />
             <Route path="admin/users"     element={<SuperAdminRoute><AdminUsersPage /></SuperAdminRoute>} />
             <Route path="admin/companies" element={<SuperAdminRoute><AdminCompaniesPage /></SuperAdminRoute>} />
             <Route path="import-xml"      element={<SuperAdminRoute><ImportXMLWizardPage /></SuperAdminRoute>} />

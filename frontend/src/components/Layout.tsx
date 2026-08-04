@@ -199,6 +199,7 @@ export function Layout() {
               </div>
               <NavItem to="/admin/companies" icon={<Emoji3D e="🏢" />} accent="sky"     label="Empresas"              open={sidebarOpen} />
               <NavItem to="/admin/users"     icon={<Emoji3D e="🛡️" />} accent="emerald" label="Usuarios"              open={sidebarOpen} />
+              <NavItem to="/admin/accesos"  icon={<Emoji3D e="🔗" />} accent="sky"     label="Accesos por empresa"   open={sidebarOpen} />
               <NavItem to="/admin/packages"  icon={<Emoji3D e="💳" />} accent="violet"  label="Paquetes fiscales"     open={sidebarOpen} />
               <NavItem to="/admin/billing"   icon={<Emoji3D e="💰" />} accent="emerald" label="Facturación y consumo" open={sidebarOpen} />
               <NavItem to="/admin/prepaid"   icon={<Emoji3D e="🛒" />} accent="fuchsia" label="Compras prepago"       open={sidebarOpen} />
