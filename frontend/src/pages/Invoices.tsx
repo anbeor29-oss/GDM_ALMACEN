@@ -1258,6 +1258,27 @@ function CancelModal({
   const [error, setError] = useState('');
   // Cuando SW responde 404 (bug de vault en sandbox), ofrecemos "cancelar solo
   // local" para destrabar al usuario sin que tenga que volver a abrir el modal.
+  const [estatusSat, setEstatusSat] = useState<any | null>(null);
+  const [consultando, setConsultando] = useState(false);
+
+  /* Se consulta a petición y no al abrir el modal: el servicio del SAT es lento
+   * y se cae con frecuencia, así que esperar por él antes de mostrar la pantalla
+   * convertiría una caída suya en una cancelación que no se puede ni intentar. */
+  const consultarEstatus = async () => {
+    setConsultando(true);
+    try {
+      const r: any = await api.estatusSat(invoice.id);
+      setEstatusSat(r?.data || null);
+    } catch (e: any) {
+      setEstatusSat({
+        encontrado: false,
+        resumen: `No se pudo consultar: ${e.response?.data?.message || e.message}`,
+      });
+    } finally {
+      setConsultando(false);
+    }
+  };
+
   const [showForceLocal, setShowForceLocal] = useState(false);
 
   const selected = CANCEL_REASONS.find((r) => r.key === motivo);
@@ -1328,6 +1349,36 @@ function CancelModal({
               {error}
             </div>
           )}
+
+          {/* QUÉ DICE EL SAT, ANTES DE INTENTAR.
+              Cuando el SAT responde "No cancelable" no explica por qué, y hasta
+              ahora había que salir al portal a pegar el UUID y luego adivinar
+              cuál de los comprobantes relacionados seguía vigente. Esto lo
+              pregunta desde aquí y lo traduce a una frase entendible. */}
+          <div className="bg-slate-50 border border-slate-200 rounded p-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-slate-700">Estatus ante el SAT</span>
+              <button
+                type="button"
+                onClick={consultarEstatus}
+                disabled={consultando}
+                className="text-xs px-3 py-1.5 rounded bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {consultando ? 'Consultando…' : 'Consultar'}
+              </button>
+            </div>
+            {estatusSat && (
+              <div className="mt-2 space-y-1">
+                <p className="text-sm text-slate-800">{estatusSat.resumen}</p>
+                {estatusSat.encontrado && (
+                  <p className="text-[11px] text-slate-500">
+                    Estado: <b>{estatusSat.estado}</b> · {estatusSat.esCancelable}
+                    {estatusSat.estatusCancelacion ? ` · ${estatusSat.estatusCancelacion}` : ''}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
 
           <label className="block">
             <span className="text-sm font-medium text-gray-700 block mb-1">

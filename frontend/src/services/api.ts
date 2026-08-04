@@ -575,6 +575,16 @@ class APIClient {
     return response.data;
   }
 
+  /** Qué dice el SAT de esta factura: vigente, cancelable, cancelación en curso. */
+  async estatusSat(invoiceId: string) {
+    const r = await this.client.get<APIResponse<{
+      encontrado: boolean; estado: string; esCancelable: string;
+      estatusCancelacion: string; codigoEstatus: string;
+      validacionEfos: string; resumen: string; error?: string;
+    }>>(`/pac/estatus-sat/${invoiceId}`);
+    return r.data;
+  }
+
   async cancelInvoice(
     invoiceId: string,
     motivo: string,

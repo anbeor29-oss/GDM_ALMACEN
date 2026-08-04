@@ -16,6 +16,7 @@ router.use(authenticateToken);
 
 // Específicas primero
 router.get('/providers', asyncHandler(pacController.providers));
+router.get('/estatus-sat/:invoiceId', asyncHandler(pacController.estatusSat));
 router.get('/account-status', asyncHandler(pacController.accountStatus));
 router.get('/test-connection', asyncHandler(pacController.testConnection));
 

@@ -3,6 +3,9 @@
  */
 
 import { Request, Response } from 'express';
+import { NotFoundError } from '../../middleware/errorHandler';
+import { consultarEstatusSat } from './sat-status.service';
+import { query } from '../../config/database';
 import * as pacService from './pac.service';
 import { ValidationError } from '../../middleware/errorHandler';
 import { MotivoCancelacion } from './pac.interface';
@@ -138,3 +141,47 @@ export default {
   testConnection,
   providers,
 };
+
+/**
+ * GET /pac/estatus-sat/:invoiceId — qué dice el SAT de esta factura.
+ *
+ * Los datos de la consulta se arman AQUÍ, leyéndolos de la base. El frontend
+ * sólo manda el id: si mandara la expresión impresa ya formada, cualquiera
+ * podría consultar comprobantes ajenos.
+ */
+export async function estatusSat(req: Request, res: Response): Promise<void> {
+  const companyId = (req as any).user?.companyId;
+  const { invoiceId } = req.params;
+
+  const r = await query<any>(
+    `SELECT i.cfdi_uuid, i.total, i.xml_content,
+            c.rfc AS rfc_emisor, cu.rfc AS rfc_receptor
+       FROM invoices i
+       JOIN companies c  ON c.id  = i.company_id
+       LEFT JOIN customers cu ON cu.id = i.customer_id
+      WHERE i.id = $1 AND i.company_id = $2 AND i.deleted_at IS NULL`,
+    [invoiceId, companyId]
+  );
+  const inv = r.rows[0];
+  if (!inv) throw new NotFoundError('Factura no encontrada');
+  if (!inv.cfdi_uuid) {
+    res.status(200).json({
+      success: true,
+      data: { encontrado: false, resumen: 'Esta factura no está timbrada, así que el SAT no la conoce.' },
+    });
+    return;
+  }
+
+  /* El sello sale del XML timbrado: el del COMPROBANTE, no el del timbre. */
+  const sello = /Sello="([^"]+)"/.exec(String(inv.xml_content || ''))?.[1] || '';
+
+  const estatus = await consultarEstatusSat({
+    rfcEmisor: inv.rfc_emisor,
+    rfcReceptor: inv.rfc_receptor,
+    total: Number(inv.total),
+    uuid: inv.cfdi_uuid,
+    sello,
+  });
+
+  res.status(200).json({ success: true, data: estatus });
+}
