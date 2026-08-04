@@ -1021,6 +1021,29 @@ class APIClient {
     return r.data;
   }
 
+  /* ── Empresas de un usuario (multi-empresa) ─────────────────────────────
+   * Las tres devuelven la lista completa ya actualizada, para que la pantalla
+   * no la reconstruya en memoria y muestre algo distinto de lo guardado. */
+  async empresasDeUsuario(userId: string) {
+    const r = await this.client.get<APIResponse<Array<{
+      id: string; rfc: string; business_name: string;
+      work_group: string | null; is_default: boolean;
+    }>>>(`/admin/users/${userId}/companies`);
+    return r.data;
+  }
+
+  async asociarEmpresaAUsuario(userId: string, companyId: string, workGroup?: string) {
+    const r = await this.client.post<APIResponse<any>>(
+      `/admin/users/${userId}/companies`, { companyId, workGroup });
+    return r.data;
+  }
+
+  async desasociarEmpresaDeUsuario(userId: string, companyId: string) {
+    const r = await this.client.delete<APIResponse<any>>(
+      `/admin/users/${userId}/companies/${companyId}`);
+    return r.data;
+  }
+
   async adminListCompanies(params: { search?: string } = {}) {
     const r = await this.client.get('/admin/companies', { params });
     return r.data;

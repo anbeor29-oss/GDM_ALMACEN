@@ -26,6 +26,10 @@ export function AdminUsersPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  /* Usuario cuyas empresas se están administrando. Se guarda el objeto entero y
+   * no sólo el id: el modal muestra el correo, y volver a buscarlo en la lista
+   * para pintar un encabezado sería trabajo de más. */
+  const [empresasDe, setEmpresasDe] = useState<any | null>(null);
   const [permsUser, setPermsUser] = useState<any | null>(null);
 
   if (user?.role !== 'SUPER_ADMIN') {
@@ -149,6 +153,15 @@ export function AdminUsersPage() {
                         <Emoji3D e="🛡️" size="base" />
                       </IconBtn>
                     )}
+                    {/* Empresas del usuario. Se ofrece para todos menos el
+                        SUPER_ADMIN, que no opera dentro de una empresa sino
+                        sobre la plataforma entera. */}
+                    {u.role !== 'SUPER_ADMIN' && (
+                      <IconBtn title="Empresas de este usuario" color="sky"
+                        onClick={() => setEmpresasDe(u)}>
+                        <Emoji3D e="🏢" size="base" />
+                      </IconBtn>
+                    )}
                     <IconBtn title="Resetear password" color="amber"
                       onClick={() => { if (confirm(`Generar nueva contraseña temporal para ${u.email}?`)) reset.mutate(u.id); }}>
                       <Emoji3D e="🔑" size="base" />
@@ -185,6 +198,13 @@ export function AdminUsersPage() {
           </tbody>
         </table>
       </div>
+
+      {empresasDe && (
+        <EmpresasDeUsuarioModal
+          usuario={empresasDe}
+          onClose={() => setEmpresasDe(null)}
+        />
+      )}
 
       {showCreate && (
         <CreateUserModal
@@ -447,6 +467,184 @@ function CreateUserModal({ companies, onClose, onDone }: any) {
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+
+/**
+ * Empresas a las que tiene acceso un usuario.
+ *
+ * POR QUÉ EXISTE
+ * `user_companies` permite que un correo administre varios RFC, pero hasta ahora
+ * sólo se podía llenar con un INSERT a mano. Esta pantalla es su cara visible.
+ *
+ * Lo que se ve aquí determina a qué datos fiscales puede entrar esa persona, así
+ * que la lista se recarga desde el servidor después de cada cambio en vez de
+ * modificarse en memoria: si una asociación falla a medias, es preferible ver el
+ * estado real y no el que el navegador supone.
+ */
+function EmpresasDeUsuarioModal({ usuario, onClose }: { usuario: any; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [porAgregar, setPorAgregar] = useState('');
+  const [grupo, setGrupo] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const asignadasQ = useQuery({
+    queryKey: ['admin-user-companies', usuario.id],
+    queryFn: () => api.empresasDeUsuario(usuario.id),
+  });
+  const asignadas: any[] = (asignadasQ.data as any)?.data || [];
+
+  const todasQ = useQuery({
+    queryKey: ['admin-companies-todas'],
+    queryFn: () => api.adminListCompanies(),
+  });
+  const todas: any[] = ((todasQ.data as any)?.data?.companies || (todasQ.data as any)?.data || []);
+
+  // Sólo las que aún no tiene: ofrecer una ya asignada sería un clic que falla.
+  const disponibles = todas.filter((c: any) => !asignadas.some((a: any) => a.id === c.id));
+
+  const refrescar = () => {
+    qc.invalidateQueries({ queryKey: ['admin-user-companies', usuario.id] });
+    qc.invalidateQueries({ queryKey: ['admin-users'] });
+  };
+
+  const agregar = async () => {
+    if (!porAgregar) return;
+    setBusy(true); setError('');
+    try {
+      await api.asociarEmpresaAUsuario(usuario.id, porAgregar, grupo || undefined);
+      setPorAgregar(''); setGrupo('');
+      refrescar();
+    } catch (e: any) {
+      setError(e.response?.data?.message || e.message);
+    } finally { setBusy(false); }
+  };
+
+  const quitar = async (companyId: string, nombre: string) => {
+    if (!confirm(
+      `Quitar el acceso de ${usuario.email} a ${nombre}?\n\n` +
+      `Dejará de ver sus facturas, clientes y reportes. Los datos de la empresa no se tocan.`
+    )) return;
+    setBusy(true); setError('');
+    try {
+      await api.desasociarEmpresaDeUsuario(usuario.id, companyId);
+      refrescar();
+    } catch (e: any) {
+      setError(e.response?.data?.message || e.message);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto">
+        <div className="flex items-start justify-between p-5 border-b">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Empresas del usuario</h2>
+            <p className="text-sm text-gray-500 font-mono mt-0.5">{usuario.email}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">✕</button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">{error}</div>
+          )}
+
+          <p className="text-xs text-slate-600">
+            Un mismo correo puede administrar varios RFC y cambiar entre ellos desde el
+            Dashboard, sin cerrar sesión. Los datos de cada empresa siguen separados:
+            asociarlas <b>no</b> los mezcla.
+          </p>
+
+          {/* Asignadas */}
+          <div className="border border-slate-200 rounded-lg">
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-700">
+              Con acceso ({asignadas.length})
+            </div>
+            {asignadasQ.isLoading ? (
+              <p className="p-4 text-sm text-slate-500">Cargando…</p>
+            ) : !asignadas.length ? (
+              <p className="p-4 text-sm text-slate-500 italic">
+                Sin empresas asignadas. Este usuario no podrá entrar hasta que tenga al menos una.
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {asignadas.map((e: any) => (
+                  <div key={e.id} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 truncate">{e.business_name}</p>
+                      <p className="text-xs font-mono text-slate-500">
+                        {e.rfc}
+                        {e.work_group ? ` · ${e.work_group}` : ''}
+                      </p>
+                    </div>
+                    {e.is_default && (
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded shrink-0">
+                        Por omisión
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => quitar(e.id, e.business_name)}
+                      className="text-xs px-2 py-1 border border-rose-200 text-rose-700 rounded hover:bg-rose-50 disabled:opacity-50"
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Agregar */}
+          <div className="border border-slate-200 rounded-lg p-3 space-y-2">
+            <span className="text-sm font-medium text-slate-700">Dar acceso a otra empresa</span>
+            <div className="flex flex-wrap gap-2">
+              <select
+                className="input flex-1 min-w-[14rem]"
+                value={porAgregar}
+                onChange={(e) => setPorAgregar(e.target.value)}
+              >
+                <option value="">Elige una empresa…</option>
+                {disponibles.map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.business_name} — {c.rfc}</option>
+                ))}
+              </select>
+              {/* El grupo es POR EMPRESA: la misma persona puede ser de Ventas
+                  en una y de Tesorería en otra. Vacío hereda el del usuario. */}
+              <select className="input w-44" value={grupo} onChange={(e) => setGrupo(e.target.value)}>
+                <option value="">Grupo por omisión</option>
+                <option value="ADMIN_ALL">Todo (ADMIN_ALL)</option>
+                <option value="VENTAS">Ventas</option>
+                <option value="ALMACEN">Almacén</option>
+                <option value="COMPRAS">Compras</option>
+                <option value="TESORERIA">Tesorería</option>
+              </select>
+              <button
+                type="button"
+                onClick={agregar}
+                disabled={busy || !porAgregar}
+                className="px-4 py-2 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+              >
+                Agregar
+              </button>
+            </div>
+            {!disponibles.length && todas.length > 0 && (
+              <p className="text-xs text-slate-500 italic">Ya tiene acceso a todas las empresas.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end p-5 border-t">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-300 rounded hover:bg-slate-50">
+            Cerrar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
