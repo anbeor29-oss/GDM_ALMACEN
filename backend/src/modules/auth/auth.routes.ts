@@ -43,4 +43,8 @@ router.post('/change-password', authenticateToken, errorAsyncHandler(authControl
  */
 router.get('/me', authenticateToken, errorAsyncHandler(authController.getCurrentUser));
 
+/** Empresas del usuario y cambio de la empresa activa (multi-empresa). */
+router.get('/companies', authenticateToken, errorAsyncHandler(authController.misEmpresas));
+router.post('/switch-company', authenticateToken, errorAsyncHandler(authController.cambiarEmpresa));
+
 export default router;

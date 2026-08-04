@@ -95,6 +95,25 @@ class APIClient {
     return response.data;
   }
 
+  /** Empresas a las que este usuario tiene acceso (multi-empresa). */
+  async misEmpresas() {
+    const r = await this.client.get<APIResponse<Array<{
+      id: string; rfc: string; business_name: string;
+      work_group: string | null; is_default: boolean;
+    }>>>('/auth/companies');
+    return r.data;
+  }
+
+  /** Cambia la empresa activa. Devuelve un token NUEVO que hay que guardar. */
+  async cambiarEmpresa(companyId: string) {
+    const r = await this.client.post<APIResponse<{
+      token: string;
+      company: { id: string; rfc: string; business_name: string };
+      workGroup: string;
+    }>>('/auth/switch-company', { companyId });
+    return r.data;
+  }
+
   async logout() {
     return this.client.post('/auth/logout');
   }

@@ -2,7 +2,7 @@
  * Captura de Nueva Factura — CFDI 4.0
  *
  * - Header con datos del emisor (mi empresa) y del receptor (cliente)
- * - 10 líneas editables por defecto (se agregan más con un botón)
+ * - hasta 15 líneas por factura (aparecen conforme se completa la anterior)
  * - Cantidad + Clave Unidad + Descripción + Clave SAT + Precio Unit. + Subtotal
  * - Totales abajo a la izquierda con desglose IVA / retenciones según el preset
  *   de impuesto seleccionado por línea (matriz cliente×impuesto del wiki)
@@ -141,7 +141,7 @@ export function NewInvoicePage() {
   const isEditing = !!editingInvoiceId;
 
   // Máximo de líneas por factura (regla del sistema).
-  const MAX_LINES = 10;
+  const MAX_LINES = 15;
 
   const [customerId, setCustomerId] = useState('');
   // Empezamos con UNA sola línea. Cada vez que la última está "completa",
