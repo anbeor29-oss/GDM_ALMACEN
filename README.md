@@ -1,13 +1,51 @@
-# GDM_FAC V2 — Facturación CFDI 4.0 + Complemento Carta Porte 3.1
+# GDM NEXO — ERP: facturación, inventarios, compras y tesorería
 
-Sistema de **facturación electrónica CFDI 4.0** para México **con Complemento Carta Porte 3.1**.
-Backend Node/Express + TypeScript, frontend React + Vite, PostgreSQL 16. Integrado con
-**SW Sapien** como PAC para timbrado real.
+Este repositorio es **GDM NEXO**, el ERP unificado: la facturación CFDI 4.0 de
+GDM Facturación más los módulos de almacén, compras, punto de venta y tesorería.
+Backend Node/Express + TypeScript, frontend React + Vite, PostgreSQL 16, PAC
+SW Sapien.
 
-**Estado** (al 2026-07-27):
-- 🟢 **Producción** — FACTURANDO REAL con **GRUPO HCGM** desde 2026-07-17 · SW Sapien production.
-- 🟢 **V2 desplegada en sitio** — se decidió actualizar los servicios existentes de Render en lugar de levantar un par nuevo. Todo vive en `origin/main`; la rama `v2-carta-porte` quedó absorbida.
-- 🟡 **`hcgm.com.mx/erp`** — el hosting de México se actualiza subiendo el .zip del build; verificar que sirva la versión vigente después de cada release.
+> **No confundir con GDM Facturación.** Son **dos productos distintos** de
+> GRUPO HCGM, S.A. de C.V. GDM Facturación es solo facturación y **está
+> facturando de verdad** para HCGM en los servicios `gdmfac-*`; **eso no se
+> toca desde aquí**. GDM NEXO vive en los servicios `gdm-almacen-*` —el nombre
+> quedó de antes y **se conserva a propósito**: renombrarlos en Render crea un
+> par vacío y deja colgado el actual, con su inventario dentro.
+
+**Estado** (al 2026-08-04):
+- 🟢 **Desplegado y respondiendo** en `gdm-almacen-*`, con todo lo del 08-04
+  incluido (multi-empresa, pagos multi-factura, CSD en base).
+- 🟡 **PAC en sandbox** de SW Sapien. Timbra, pero no ante el SAT real.
+- 🔴 **Contabilidad** — no existe en ningún fork. Fase pendiente.
+
+## 🔑 Cómo entrar
+
+| Qué | Dónde |
+|-----|-------|
+| Frontend | https://gdm-almacen-frontend.onrender.com |
+| Backend API | https://gdm-almacen-backend.onrender.com/api/v1 |
+| Health check | https://gdm-almacen-backend.onrender.com/health |
+| Repo del deploy | `anbeor29-oss/GDM_ALMACEN`, rama `main` (remoto `gdmalmacen`) |
+| Rama de trabajo | `erp-unificado` |
+
+**Admin:** `admin@gdmalmacen.mx` — la contraseña la fija
+`BOOTSTRAP_ADMIN_PASSWORD` en Render (`sync: false`, no vive en el repo). Si se
+perdió, se restablece desde el Shell de Render:
+
+```bash
+node -e "const b=require('bcryptjs'),{Pool}=require('pg');new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false}}).query(\"UPDATE users SET password_hash=\$1, password_change_required=false WHERE email='admin@gdmalmacen.mx'\",[b.hashSync('LaNueva1!',12)]).then(r=>{console.log(r.rowCount);process.exit(0)})"
+```
+
+En el runtime de Render **no hay devDependencies** (ni `ts-node`): todo script
+que se corra ahí tiene que ser JS plano con dependencias de producción.
+
+**Ojo con el push:** `origin` (GDM_FACT) y `gdmalmacen` (GDM_ALMACEN) **no
+comparten ancestro**, así que publicar exige `git push gdmalmacen
+erp-unificado:main --force` y eso **reemplaza la rama entera**. Antes de
+forzar, verificar que Nexo no se esté comiendo trabajo del otro lado.
+
+Las credenciales de capacitación que aparecen más abajo son de **GDM
+Facturación**, no de este entorno.
 
 ---
 
