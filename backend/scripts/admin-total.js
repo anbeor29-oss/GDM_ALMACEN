@@ -87,7 +87,17 @@ async function main(db) {
   }
 
   // ── 2. Rol y estado ──────────────────────────────────────────────────────
-  const sets = [`role = 'SUPER_ADMIN'`, 'is_active = true', 'failed_login_attempts = 0'];
+  //
+  // El correo se normaliza a minúsculas y sin espacios. NO es cosmético: el
+  // login busca con `email = $1`, comparación literal. Si la fila quedó como
+  // "Admin@..." o con un espacio al final, teclear el correo bien no encuentra
+  // a nadie y la pantalla responde "credenciales incorrectas" — mientras este
+  // script, que busca con LOWER(), sí lo encuentra y reporta que todo salió
+  // bien. Las dos cosas ciertas a la vez, y el usuario sin poder entrar.
+  const sets = [
+    'email = LOWER(TRIM(email))',
+    `role = 'SUPER_ADMIN'`, 'is_active = true', 'failed_login_attempts = 0',
+  ];
   if (tiene('locked_until'))              sets.push('locked_until = NULL');
   if (tiene('deleted_at'))                sets.push('deleted_at = NULL');
   if (tiene('work_group'))                sets.push(`work_group = 'ADMIN_ALL'`);
@@ -137,7 +147,11 @@ async function main(db) {
   }
 
   // ── 4. Cómo quedó ────────────────────────────────────────────────────────
-  console.log(`\n  ${correo}`);
+  //
+  // Se relee de la base en vez de imprimir lo que se tecleó: lo que importa es
+  // con qué correo quedó guardado, que es contra lo que el login va a comparar.
+  const final = (await db.query('SELECT email FROM users WHERE id = $1', [u.id])).rows[0];
+  console.log(`\n  ENTRA CON ESTE CORREO, tal cual: "${final.email}"`);
   console.log(`  rol: SUPER_ADMIN · grupo: ADMIN_ALL · activo, sin bloqueo`);
   console.log(`  contraseña: ${passNueva ? 'CAMBIADA' : 'sin tocar'}`);
   console.log(`  empresas con acceso: ${hayPuente ? empresas.length : 'n/d'}`);
