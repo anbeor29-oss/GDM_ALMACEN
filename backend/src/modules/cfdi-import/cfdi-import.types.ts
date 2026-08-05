@@ -107,6 +107,19 @@ export interface CommitRequest {
    */
   receiveInventory?: boolean;
   warehouseId?: string;
+  /**
+   * Almacén destino POR PARTIDA, por índice de concepto del XML.
+   *
+   * Una misma entrega puede repartirse: el acero a la nave y la tornillería al
+   * anaquel de refacciones. Con un solo almacén por documento, repartir
+   * obligaba a partir la compra en dos importaciones — y eso duplica la cuenta
+   * por pagar o deja media factura sin registrar.
+   *
+   * Un índice que no venga cae en `warehouseId`, y si tampoco hay, en el
+   * almacén por omisión de la empresa. Así el caso normal —todo al mismo
+   * lugar— no obliga a capturar nada renglón por renglón.
+   */
+  warehouseByConcept?: Record<number, string>;
   /** Política de costos para ESTA entrada (pregunta al operador):
    *  PROMEDIO=prorratear · ULTIMO=revaluar todo · CAPAS=respetar precios.
    *  Si falta, aplica la configurada en la empresa. */
@@ -150,10 +163,25 @@ export interface CommitResult {
   products_failed: Array<{ index: number; descripcion: string; motivo: string }>;
   /** FASE 2: resultado de la entrada de inventario cuando la party es SUPPLIER. */
   inventory?: {
+    /** El almacén donde cayó la mayor parte — el que se nombra en el resumen
+     *  corto. Con una sola bodega es el único que hay. */
     warehouseId: string;
     warehouseCode: string;
     movements: number;
     totalUnits: number;
+    /**
+     * Desglose por almacén, uno por cada bodega que recibió algo.
+     *
+     * Va aparte del total y no lo sustituye: quien reparte una compra necesita
+     * ver a dónde fue cada cosa, y quien no reparte no debería tener que leer
+     * una lista de un solo renglón para saber que entraron 40 piezas.
+     */
+    porAlmacen: Array<{
+      warehouseId: string;
+      warehouseCode: string;
+      movements: number;
+      totalUnits: number;
+    }>;
   };
   /**
    * Cuenta por pagar programada en tesorería.

@@ -9,7 +9,8 @@
  * Lo que resuelve en un solo paso:
  *   · Da de alta al proveedor con lo que trae el XML (o lo reconoce si ya está)
  *   · Da de alta los productos que no existan
- *   · Deja elegir el almacén que recibe
+ *   · Deja elegir el almacén que recibe: uno para toda la factura, y otro
+ *     distinto en los renglones que se vayan a otra bodega
  *   · Permite capturar CUÁNTO SE RECIBIÓ, que no siempre es lo facturado
  *   · Registra la factura como cuenta por pagar
  *
@@ -40,6 +41,10 @@ export function ComprasXMLPage() {
   const [fallidas, setFallidas] = useState<Array<{ index: number; descripcion: string; motivo: string }>>([]);
 
   const [warehouseId, setWarehouseId] = useState('');
+  /* Destino por renglón. Sólo guarda los que se desviaron: lo que no está aquí
+   * entra al almacén de arriba, que es el caso normal. Así una compra que llega
+   * completa a una sola bodega no obliga a tocar la columna ni una vez. */
+  const [almacenPorPartida, setAlmacenPorPartida] = useState<Record<number, string>>({});
   const [costingMethod, setCostingMethod] = useState<'PROMEDIO' | 'ULTIMO' | 'CAPAS'>('PROMEDIO');
   const [recibidas, setRecibidas] = useState<Record<number, string>>({});
   const [conceptos, setConceptos] = useState<Set<number>>(new Set());
@@ -67,6 +72,9 @@ export function ComprasXMLPage() {
       const r: Record<number, string> = {};
       (p.conceptos || []).forEach((c: any, i: number) => { r[i] = String(c.cantidad ?? 0); });
       setRecibidas(r);
+      // Los destinos del XML anterior no aplican a este: si se quedaran, una
+      // partida heredaría la bodega de una compra que no tiene nada que ver.
+      setAlmacenPorPartida({});
     } catch (e: any) {
       setError(e?.response?.data?.error || e?.message || 'No se pudo leer el XML');
     } finally {
@@ -81,6 +89,12 @@ export function ComprasXMLPage() {
       const recQty: Record<number, number> = {};
       conceptos.forEach(i => { recQty[i] = Number(recibidas[i] ?? 0); });
 
+      // Solo los renglones marcados Y desviados. Mandar el destino de una
+      // partida que el usuario desmarco haria que el backend validara un
+      // almacen que no va a usar.
+      const destinos: Record<number, string> = {};
+      conceptos.forEach(i => { if (almacenPorPartida[i]) destinos[i] = almacenPorPartida[i]; });
+
       const res = await api.cfdiCommit({
         sha256: preview.sha256,
         xmlBase64: xmlB64,
@@ -93,6 +107,7 @@ export function ComprasXMLPage() {
         prefillInvoice: false,       // a un proveedor no se le factura
         receiveInventory: afectaInventario,
         warehouseId: warehouseId || undefined,
+        warehouseByConcept: Object.keys(destinos).length ? destinos : undefined,
         costingMethod,
         receivedQuantities: recQty,
       });
@@ -106,7 +121,17 @@ export function ComprasXMLPage() {
         msgs.push(`Productos: ${d.products.length} en total, ${nuevos} nuevos`);
       }
       if (d.inventory) {
-        msgs.push(`Entrada al almacén ${d.inventory.warehouseCode}: ${d.inventory.movements} movimiento(s), ${d.inventory.totalUnits} unidades`);
+        const reparto = d.inventory.porAlmacen || [];
+        if (reparto.length > 1) {
+          // Repartida: se nombra cada bodega. Un total unico obligaria a ir a
+          // buscar al kardex donde quedo cada cosa.
+          msgs.push(
+            `Entrada repartida en ${reparto.length} almacenes — ` +
+            reparto.map((w: any) => `${w.warehouseCode}: ${w.totalUnits} unidades`).join(' · ')
+          );
+        } else {
+          msgs.push(`Entrada al almacén ${d.inventory.warehouseCode}: ${d.inventory.movements} movimiento(s), ${d.inventory.totalUnits} unidades`);
+        }
       } else if (afectaInventario) {
         msgs.push('Sin movimiento de inventario — ninguna partida llegó a producto.');
       }
@@ -131,6 +156,10 @@ export function ComprasXMLPage() {
   };
 
   const cs = preview?.conceptos || [];
+  // La respuesta del API viene envuelta o pelada segun el endpoint; se
+  // normaliza aqui una vez para no repetir el desdoble en cada uso.
+  const listaAlmacenes: any[] = (almacenes as any)?.data ?? (almacenes as any) ?? [];
+  const almacenElegido = listaAlmacenes.find((w: any) => w.id === warehouseId);
   const emisor = preview?.emisor;
   const receptor = preview?.receptor;
 
@@ -314,7 +343,7 @@ export function ComprasXMLPage() {
                 <span className="text-xs text-slate-500">Almacén que recibe</span>
                 <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className="input mt-1">
                   <option value="">— el almacén por omisión —</option>
-                  {(almacenes?.data ?? almacenes ?? []).map((w: any) => (
+                  {listaAlmacenes.map((w: any) => (
                     <option key={w.id} value={w.id}>{w.code} · {w.name}</option>
                   ))}
                 </select>
@@ -355,6 +384,7 @@ export function ComprasXMLPage() {
                     <th className="text-left px-3 py-2">Clave SAT</th>
                     <th className="text-right px-3 py-2">Facturado</th>
                     <th className="text-right px-3 py-2">Recibido</th>
+                    <th className="text-left px-3 py-2">Entra a</th>
                     <th className="text-right px-3 py-2">P. unitario</th>
                     <th className="text-right px-3 py-2">Diferencia</th>
                   </tr>
@@ -390,6 +420,28 @@ export function ComprasXMLPage() {
                             onChange={e => setRecibidas(s => ({ ...s, [i]: e.target.value }))}
                             className="w-24 px-2 py-1 border border-slate-300 rounded text-right font-mono disabled:bg-slate-50"
                           />
+                        </td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={almacenPorPartida[i] ?? ''}
+                            disabled={!marcado || !afectaInventario}
+                            onChange={e => setAlmacenPorPartida(s => {
+                              const n = { ...s };
+                              // Vacío = "el de la factura". Se BORRA la clave en vez
+                              // de guardar '', para que el backend reciba solo los
+                              // renglones que de verdad se desviaron.
+                              if (e.target.value) n[i] = e.target.value; else delete n[i];
+                              return n;
+                            })}
+                            className="w-40 px-2 py-1 border border-slate-300 rounded text-xs disabled:bg-slate-50 disabled:text-slate-400"
+                          >
+                            <option value="">
+                              {almacenElegido ? `• ${almacenElegido.code}` : '• el de la factura'}
+                            </option>
+                            {listaAlmacenes.map((w: any) => (
+                              <option key={w.id} value={w.id}>{w.code} · {w.name}</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-3 py-2 text-right font-mono">${money(c.valor_unitario)}</td>
                         <td className={`px-3 py-2 text-right font-mono font-semibold ${

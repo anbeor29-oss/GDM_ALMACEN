@@ -387,7 +387,10 @@ export async function commit(
     // FASE 2: mapa concepto→producto para generar las entradas de inventario
     // `cantidad` es lo que ENTRA al kardex (lo contado); `cantidadFacturada`
     // es lo que dice el XML. Se guardan las dos para poder avisar del faltante.
+    // `index` es el renglón del XML del que salió: se necesita para saber a qué
+    // almacén va esa partida, que se elige por renglón.
     const conceptProducts: Array<{
+      index: number;
       productId: string; cantidad: number; cantidadFacturada: number; valorUnitario: number;
     }> = [];
     // Lo que el almacenista contó, por índice de concepto.
@@ -405,6 +408,7 @@ export async function commit(
       if (existing.rows.length > 0) {
         productsCreated.push({ ...existing.rows[0], already_existed: true });
         conceptProducts.push({
+          index: idx,
           productId: existing.rows[0].id,
           cantidad: recibidas[idx] != null ? Number(recibidas[idx]) : c.cantidad,
           cantidadFacturada: c.cantidad,
@@ -428,6 +432,7 @@ export async function commit(
           already_existed: false,
         });
         conceptProducts.push({
+          index: idx,
           productId: created.id,
           cantidad: recibidas[idx] != null ? Number(recibidas[idx]) : c.cantidad,
           cantidadFacturada: c.cantidad,
@@ -498,14 +503,50 @@ export async function commit(
         [importId]
       );
       if (alreadyReceived.rows.length === 0) {
-        // Almacén destino: el indicado o el default de la empresa
-        let warehouseId = req.warehouseId;
-        if (!warehouseId) {
-          warehouseId = await getOrCreateDefaultWarehouse(client, companyId);
+        // Almacén de respaldo: el indicado para todo el documento o el default
+        // de la empresa. Es el que reciben las partidas que no eligieron uno.
+        let warehouseBase = req.warehouseId;
+        if (!warehouseBase) {
+          warehouseBase = await getOrCreateDefaultWarehouse(client, companyId);
         }
 
+        /* Los almacenes que se van a usar, validados de una sola vez ANTES de
+         * mover nada.
+         *
+         * Se comprueba que cada uno exista y sea DE ESTA EMPRESA: los ids
+         * llegan del navegador, y sin esta verificación un id de otra compañía
+         * metería mercancía en su bodega. Va antes del primer applyMovementTx
+         * a propósito — dentro del bucle, la mitad de las partidas ya se
+         * habrían movido cuando saltara el error, y aunque la transacción lo
+         * revierta, el mensaje saldría después de un trabajo que no servía. */
+        const porConcepto = req.warehouseByConcept || {};
+        const idsUsados = Array.from(new Set<string>([
+          warehouseBase,
+          ...conceptProducts
+            .map(cp => porConcepto[cp.index])
+            .filter((w): w is string => Boolean(w)),
+        ]));
+        const whR = await transactionQuery<{ id: string; code: string }>(client,
+          `SELECT id, code FROM warehouses
+            WHERE company_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL`,
+          [companyId, idsUsados]
+        );
+        const codigoDe = new Map(whR.rows.map(w => [w.id, w.code]));
+        const desconocido = idsUsados.find(id => !codigoDe.has(id));
+        if (desconocido) {
+          throw new ValidationError(
+            `El almacén ${desconocido} no existe o no es de esta empresa. ` +
+            'No se recibió nada: corrige el destino de esa partida y vuelve a guardar.'
+          );
+        }
+
+        /* Cuánto entró en cada bodega. Se acumula por almacén en lugar de
+         * llevar un solo total porque, repartida la compra, "entraron 40
+         * unidades" no le dice a nadie dónde buscarlas. */
+        const acumulado = new Map<string, { movements: number; totalUnits: number }>();
         let totalUnits = 0;
         for (const cp of conceptProducts) {
+          const destino = porConcepto[cp.index] || warehouseBase;
           // Un renglón facturado pero NO recibido no genera movimiento: meter
           // un PURCHASE_IN de cero ensucia el kardex sin aportar nada.
           if (cp.cantidad <= 0) continue;
@@ -523,7 +564,7 @@ export async function commit(
             movementType: 'PURCHASE_IN',
             quantity: cp.cantidad,
             unitCost: cp.valorUnitario,
-            warehouseToId: warehouseId,
+            warehouseToId: destino,
             referenceType: 'xml_import',
             referenceId: importId,
             // La diferencia queda escrita en el kardex: dentro de un mes nadie
@@ -534,6 +575,10 @@ export async function commit(
             costingMethod: req.costingMethod,
           });
           totalUnits += cp.cantidad;
+          const acc = acumulado.get(destino) || { movements: 0, totalUnits: 0 };
+          acc.movements += 1;
+          acc.totalUnits += cp.cantidad;
+          acumulado.set(destino, acc);
 
           // Catálogo proveedor→producto (§4): último precio y contador
           await transactionQuery(client,
@@ -547,14 +592,27 @@ export async function commit(
           );
         }
 
-        const whR = await transactionQuery<{ code: string }>(client,
-          `SELECT code FROM warehouses WHERE id = $1`, [warehouseId]
-        );
+        const porAlmacen = Array.from(acumulado.entries())
+          .map(([id, a]) => ({
+            warehouseId: id,
+            warehouseCode: codigoDe.get(id) || '',
+            movements: a.movements,
+            totalUnits: a.totalUnits,
+          }))
+          .sort((a, b) => b.totalUnits - a.totalUnits);
+
+        /* El almacén "principal" es el que más recibió, no el que se eligió
+         * como respaldo: si toda la mercancía se desvió renglón por renglón, el
+         * resumen nombraría una bodega en la que no entró nada. Si ninguna
+         * partida se movió —todas venían en cero— se cae al de respaldo, que
+         * ya está validado. */
+        const principal = porAlmacen[0];
         result.inventory = {
-          warehouseId,
-          warehouseCode: whR.rows[0]?.code || '',
-          movements: conceptProducts.length,
+          warehouseId: principal?.warehouseId || warehouseBase,
+          warehouseCode: principal?.warehouseCode || codigoDe.get(warehouseBase) || '',
+          movements: porAlmacen.reduce((s, w) => s + w.movements, 0),
           totalUnits,
+          porAlmacen,
         };
       } else {
         logger.warn(`[cfdi-import] Import ${importId} ya tenía entradas de inventario — skip (anti-duplicado)`);
