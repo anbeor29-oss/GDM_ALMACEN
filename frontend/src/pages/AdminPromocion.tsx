@@ -11,7 +11,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Gift, Calculator, Receipt, Check, Loader2, AlertTriangle } from 'lucide-react';
+import { Gift, Calculator, Receipt, Check, Loader2, AlertTriangle, Mail, FileText } from 'lucide-react';
 import api from '@/services/api';
 
 const money = (n: any) =>
@@ -37,7 +37,12 @@ export function AdminPromocionPage() {
   /** Envuelve una acción para no repetir el manejo de aviso/error en cada botón. */
   const correr = async (clave: string, fn: () => Promise<any>, exito: string) => {
     setError(''); setOk(''); setOcupado(clave);
-    try { await fn(); setOk(exito); refrescar(); }
+    /* `exito` sólo se aplica si trae texto. Las acciones que arman su propio
+     * mensaje —las que reportan si salió el correo o si se timbró la factura—
+     * pasan cadena vacía, y sin esta condición el setOk de aquí borraría lo
+     * que acaban de escribir: la pantalla quedaría muda justo en los casos en
+     * que hay algo que decir. */
+    try { await fn(); if (exito) setOk(exito); refrescar(); }
     catch (e: any) { setError(e?.response?.data?.message || e?.message || 'No se pudo completar'); }
     finally { setOcupado(''); }
   };
@@ -140,9 +145,13 @@ export function AdminPromocionPage() {
             ))}
           </select>
           <select value={paqueteSel} onChange={(e) => { setPaqueteSel(e.target.value); setCotiza(null); }} className="input">
-            <option value="PKG_100">100 timbres — $399</option>
-            <option value="PKG_200">200 timbres — $699</option>
-            <option value="PKG_500">500 timbres — $1,399</option>
+            {/* Sin precios escritos aquí: los tuve puestos a mano y quedaron
+                en $1,399 el mismo día que Empresarial subió a $1,800. El
+                importe real lo dice el servidor en "Ver cuánto paga hoy", que
+                lee stamp_packages — que es lo que de verdad se cobra. */}
+            <option value="PKG_100">Esencial — 100 timbres</option>
+            <option value="PKG_200">Pyme — 200 timbres</option>
+            <option value="PKG_500">Empresarial — 500 timbres</option>
           </select>
           <button onClick={cotizar} disabled={ocupado === 'cotizar'}
             className="px-4 py-2 border border-indigo-300 text-indigo-700 rounded-lg hover:bg-indigo-50">
@@ -170,9 +179,16 @@ export function AdminPromocionPage() {
             </p>
             <button
               disabled={!empresaSel || ocupado === 'cobro'}
-              onClick={() => correr('cobro',
-                () => api.promoGenerarCobro(empresaSel, paqueteSel),
-                'Cobro generado. Mándale el importe al cliente; el servicio se libera al registrar el pago.')}
+              onClick={() => correr('cobro', async () => {
+                const r: any = await api.promoGenerarCobro(empresaSel, paqueteSel);
+                const aviso = (r.data ?? r)?.aviso;
+                /* Se dice explicitamente si el correo salio o no. Un "cobro
+                   generado" a secas deja creyendo que al cliente ya le
+                   avisaron, y nadie vuelve a mirar hasta que no paga. */
+                setOk(aviso?.enviado
+                  ? `Cobro generado y ${String(aviso.detalle).toLowerCase()}.`
+                  : `Cobro generado, PERO el aviso no salió: ${aviso?.detalle ?? 'sin detalle'}. Avísale por otra vía.`);
+              }, '')}
               className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-40"
             >
               {ocupado === 'cobro' ? 'Generando…' : 'Generar el cobro'}
@@ -207,12 +223,43 @@ export function AdminPromocionPage() {
                     · desde {String(c.starts_on).slice(0, 10)}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-bold text-slate-900">${money(c.amount_mxn)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-900 mr-1">${money(c.amount_mxn)}</span>
+                  {/* Dos botones y no uno: el correo puede no haber salido
+                      aunque la factura esté timbrada, y al revés. Un
+                      "reintentar todo" volvería a timbrar un CFDI que ya
+                      existe y le mandaría dos facturas al cliente. */}
+                  <button
+                    title={c.notified_at ? `Avisado el ${String(c.notified_at).slice(0, 10)}` : 'Todavía no se le avisa'}
+                    disabled={ocupado === `av-${c.id}`}
+                    onClick={() => correr(`av-${c.id}`, async () => {
+                      const r: any = await api.promoReavisar(c.id);
+                      const d = r.data ?? r;
+                      setOk(d?.detalle ?? 'Aviso reenviado');
+                    }, '')}
+                    className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded border ${
+                      c.notified_at
+                        ? 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                        : 'border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100'
+                    }`}
+                  >
+                    <Mail size={13} /> {c.notified_at ? 'Reenviar' : 'Avisar'}
+                  </button>
+                  {c.invoice_id && (
+                    <span title="Ya tiene su CFDI" className="flex items-center gap-1 px-2 py-1.5 text-xs text-emerald-700">
+                      <FileText size={13} /> facturado
+                    </span>
+                  )}
                   <button
                     disabled={ocupado === c.id}
-                    onClick={() => correr(c.id, () => api.promoRegistrarPago(c.id),
-                      'Pago registrado. La empresa ya puede timbrar.')}
+                    onClick={() => correr(c.id, async () => {
+                      const r: any = await api.promoRegistrarPago(c.id);
+                      const cfdi = (r.data ?? r)?.cfdi;
+                      setOk(cfdi?.status === 'INVOICED'
+                        ? `Pago registrado, la empresa ya puede timbrar, y ${String(cfdi.detail).toLowerCase()}.`
+                        : `Pago registrado y la empresa ya puede timbrar. La factura NO se emitió: ` +
+                          `${cfdi?.detail ?? 'sin detalle'} — usa "Facturar" cuando se resuelva.`);
+                    }, '')}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg disabled:opacity-40"
                   >
                     <Check size={14} /> {ocupado === c.id ? 'Registrando…' : 'Registrar pago'}

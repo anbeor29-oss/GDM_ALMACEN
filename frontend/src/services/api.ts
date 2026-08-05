@@ -277,6 +277,14 @@ class APIClient {
     const r = await this.client.post(`/admin/promocion/cobros/${chargeId}/pagado`, { nota });
     return r.data;
   }
+  async promoReavisar(chargeId: string) {
+    const r = await this.client.post(`/admin/promocion/cobros/${chargeId}/avisar`);
+    return r.data;
+  }
+  async promoFacturar(chargeId: string) {
+    const r = await this.client.post(`/admin/promocion/cobros/${chargeId}/facturar`);
+    return r.data;
+  }
   async promoExencion(companyId: string, exempt: boolean, motivo?: string) {
     const r = await this.client.patch(`/admin/promocion/exencion/${companyId}`, { exempt, motivo });
     return r.data;

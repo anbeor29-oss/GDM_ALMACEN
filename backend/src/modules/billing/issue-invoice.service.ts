@@ -44,7 +44,7 @@ interface PlatformCompany {
   business_name: string;
 }
 
-async function getPlatformCompany(): Promise<PlatformCompany | null> {
+export async function getPlatformCompany(): Promise<PlatformCompany | null> {
   const rfc = platformRfc();
   if (!rfc) return null;
   const r = await query<PlatformCompany>(
@@ -58,7 +58,7 @@ async function getPlatformCompany(): Promise<PlatformCompany | null> {
  * Upsert del cliente (la empresa que paga) dentro del catálogo de customers
  * de la plataforma. Devuelve el customer_id.
  */
-async function upsertPlatformCustomer(
+export async function upsertPlatformCustomer(
   platformCompanyId: string,
   client: { rfc: string; business_name: string; fiscal_regime: string | null; postal_code: string | null; contact_email: string | null }
 ): Promise<string> {
@@ -103,7 +103,7 @@ async function upsertPlatformCustomer(
  * ClaveProdServ 81112000 = "Servicios de datos en línea", la clave usual para
  * servicios de facturación electrónica. Unidad E48 = "Unidad de servicio".
  */
-async function upsertPlatformProduct(platformCompanyId: string): Promise<string> {
+export async function upsertPlatformProduct(platformCompanyId: string): Promise<string> {
   const existing = await query<{ id: string }>(
     `SELECT id FROM products
       WHERE company_id = $1 AND sku = $2 AND deleted_at IS NULL`,

@@ -17,6 +17,7 @@ import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import { requireSuperAdmin, audit } from './admin.middleware';
 import * as promo from '../billing/prueba-y-prorrateo.service';
+import * as cobro from '../billing/cobro-prepago.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -107,7 +108,12 @@ router.post('/cobros', asyncHandler(async (req: Request, res: Response) => {
   await audit(req, { action: 'promocion.cobro', targetId: companyId,
     payload: { paquete: packageCode, importe: r.prorrateo.amount,
                dias: `${r.prorrateo.daysCharged}/${r.prorrateo.daysInMonth}` } } as any).catch(() => {});
-  res.status(201).json({ success: true, data: r });
+
+  /* El aviso va DESPUÉS de crear el cargo y su resultado se devuelve, no se
+   * lanza: si el correo falla, el cargo sigue siendo válido y quien atiende
+   * tiene que enterarse en la misma pantalla para avisar por otra vía. */
+  const aviso = await cobro.enviarAvisoDeCobro(r.cargo.id);
+  res.status(201).json({ success: true, data: { ...r, aviso } });
 }));
 
 router.post('/cobros/:id/pagado', asyncHandler(async (req: Request, res: Response) => {
@@ -118,7 +124,13 @@ router.post('/cobros/:id/pagado', asyncHandler(async (req: Request, res: Respons
   });
   await audit(req, { action: 'promocion.pago', targetId: req.params.id,
     payload: { paquete: r.package_code, importe: r.amount_mxn } } as any).catch(() => {});
-  res.json({ success: true, data: r });
+
+  /* El CFDI se emite FUERA de la transacción del pago: timbrar habla con el
+   * PAC por red, y un PAC lento no debe mantener abierta la transacción que
+   * libera el servicio. Si falla, el pago ya quedó y el cliente ya trabaja —
+   * la factura se reintenta desde el botón. */
+  const cfdi = await cobro.emitirCfdiDeCargo(req.params.id);
+  res.json({ success: true, data: { ...r, cfdi } });
 }));
 
 /* ─────────────── Exención ─────────────── */
@@ -148,6 +160,20 @@ router.patch('/exencion/:companyId', asyncHandler(async (req: Request, res: Resp
   await audit(req, { action: 'promocion.exencion', targetId: req.params.companyId,
     payload: { exempt, motivo } } as any).catch(() => {});
   res.json({ success: true, data: r.rows[0] });
+}));
+
+/* ─────────────── Reintentos ───────────────
+ *
+ * Dos botones separados porque son dos fallas distintas: el correo puede no
+ * haber salido aunque la factura esté timbrada, y al revés. Un solo
+ * "reintentar todo" volvería a timbrar un CFDI que ya existe. */
+
+router.post('/cobros/:id/avisar', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await cobro.enviarAvisoDeCobro(req.params.id) });
+}));
+
+router.post('/cobros/:id/facturar', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await cobro.emitirCfdiDeCargo(req.params.id) });
 }));
 
 export default router;
