@@ -226,14 +226,25 @@ class APIClient {
     return r.data;
   }
 
-  async createWarehouse(data: { code: string; name: string; address?: string }) {
+  async createWarehouse(data: {
+    code: string; name: string; address?: string;
+    postalCode?: string; street?: string; extNumber?: string; intNumber?: string;
+    colonia?: string; municipio?: string; estado?: string;
+    /** Nombre legible del estado. Solo para armar el domicilio que se muestra;
+     *  lo que se guarda como estado es la clave SAT. */
+    estadoNombre?: string;
+  }) {
     const r = await this.client.post<APIResponse<any>>('/warehouses', data);
     return r.data;
   }
 
   async updateWarehouse(
     id: string,
-    data: { name?: string; address?: string; isActive?: boolean; isDefault?: boolean }
+    data: {
+      name?: string; address?: string; isActive?: boolean; isDefault?: boolean;
+      postalCode?: string; street?: string; extNumber?: string; intNumber?: string;
+      colonia?: string; municipio?: string; estado?: string; estadoNombre?: string;
+    }
   ) {
     const r = await this.client.put<APIResponse<any>>(`/warehouses/${id}`, data);
     return r.data;
