@@ -12,10 +12,10 @@
 import { Link } from 'react-router-dom';
 import {
   Zap, Star, Rocket, Coins, Check,
-  FileText, ScanText, FileUp, FileMinus2, Users, Boxes, BarChart3,
-  ShieldCheck, LogIn, Wallet, Mail, Ban, QrCode, Scale,
+  FileText, ShieldCheck, LogIn, Mail, Scale,
   ClipboardCheck, Building2, FileSignature, Send,
   ChevronDown, BookOpen, Stamp,
+  Warehouse, ShoppingCart, Landmark, Truck,
 } from 'lucide-react';
 import { useState } from 'react';
 import { GdmLogo } from '@/components/GdmLogo';
@@ -80,19 +80,72 @@ const PLANS = [
  * que vio aquí. Las clases van completas porque Tailwind no compila strings
  * construidos en tiempo de ejecución.
  */
-const MODULES = [
-  { icon: <ScanText size={22}/>,     tint: 'bg-sky-50 text-sky-600',         title: 'Lector CIF',       desc: 'Sube el PDF de la Constancia de Situación Fiscal SAT y el sistema autollena RFC, razón social, régimen y CP.' },
-  { icon: <FileUp size={22}/>,       tint: 'bg-amber-50 text-amber-600',     title: 'Importar XMLs',    desc: 'Al leer un XML recibido, detecta si el emisor es cliente o proveedor y crea el catálogo automáticamente.' },
-  { icon: <Stamp size={22}/>,        tint: 'bg-purple-50 text-purple-600',   title: 'Facturación CFDI 4.0', desc: 'Emisión con retenciones RESICO, honorarios, arrendamiento; timbrado real ante el SAT con PAC autorizado.' },
-  { icon: <FileMinus2 size={22}/>,   tint: 'bg-rose-50 text-rose-600',       title: 'Notas de crédito', desc: 'Aplica descuentos o cancelaciones con prorrateo automático de IVA. CFDI tipo E vinculado a la factura origen.' },
-  { icon: <Wallet size={22}/>,       tint: 'bg-green-50 text-green-700',     title: 'Complemento de Pago', desc: 'CFDI tipo P para facturas PPD. Descuenta pagos previos y NC en el cálculo del saldo insoluto (Anexo 20).' },
-  { icon: <Mail size={22}/>,         tint: 'bg-indigo-50 text-indigo-600',   title: 'Envío por correo',  desc: 'Manda al cliente PDF + XML de la factura y de cada NC o complemento de pago vinculado. SMTP con dominio propio.' },
-  { icon: <Ban size={22}/>,          tint: 'bg-orange-50 text-orange-600',   title: 'Cancelación en cascada', desc: 'Cancela primero pagos y NC desde el modal Historia; después la factura padre. Envío directo al PAC + bypass local.' },
-  { icon: <QrCode size={22}/>,       tint: 'bg-blue-50 text-blue-600',       title: 'QR de verificación SAT', desc: 'Los PDFs incluyen QR con la URL oficial del portal SAT. El cliente escanea y valida el CFDI en el momento.' },
-  { icon: <Users size={22}/>,        tint: 'bg-emerald-50 text-emerald-600', title: 'Clientes y Proveedores', desc: 'Catálogo con dirección fiscal, régimen, uso CFDI por defecto y saldo de cuenta.' },
-  { icon: <Boxes size={22}/>,        tint: 'bg-fuchsia-50 text-fuchsia-600', title: 'Productos',        desc: 'Preset fiscal por producto (IVA 16, 8, 0, exento, RESICO, honorarios, IEPS). 52 mil claves SAT indexadas.' },
-  { icon: <BarChart3 size={22}/>,    tint: 'bg-violet-50 text-violet-600',   title: 'Reportes',         desc: 'Cobranza total, cobranza detallada por cliente con saldo > $0.20, ventas por período, fiscal y auditable.' },
-  { icon: <ShieldCheck size={22}/>,  tint: 'bg-teal-50 text-teal-600',       title: 'Compliance SAT',   desc: 'CSD cifrado con pgcrypto, bitácora inmutable 5 años, XML timbrado firmado por el SAT, PDF Anexo 20.' },
+/* Los módulos, agrupados por área.
+ *
+ * Antes eran doce tarjetas sueltas, cada una con su icono y su color: para
+ * saber si el sistema hace lo que uno busca había que leerlas de una en una, y
+ * la pantalla parecía un tablero de estampas. Agrupados en seis áreas, el
+ * icono señala el área y las líneas se leen de corrido.
+ *
+ * Y caben los módulos que ya existían sin anunciarse — almacén, compras,
+ * tesorería, Carta Porte—: quien evaluaba el sistema no se enteraba de ellos.
+ */
+const AREAS = [
+  {
+    icon: <Stamp size={20}/>, tint: 'bg-indigo-50 text-indigo-600',
+    title: 'Facturación CFDI 4.0',
+    items: [
+      'Emisión con retenciones RESICO, honorarios y arrendamiento; timbrado real ante el SAT con PAC autorizado',
+      'Notas de crédito tipo E con prorrateo automático de IVA, vinculadas a su factura origen',
+      'Complemento de pago tipo P para facturas PPD, descontando pagos previos y NC del saldo insoluto',
+      'Cancelación en cascada: primero pagos y NC, después la factura padre',
+    ],
+  },
+  {
+    icon: <Warehouse size={20}/>, tint: 'bg-sky-50 text-sky-600',
+    title: 'Almacén e inventarios',
+    items: [
+      'Varios almacenes con kardex por producto y costeo promedio, último o por capas',
+      'Timbrar descuenta existencias; cancelar o hacer nota de crédito las devuelve',
+      'Inventario físico con conciliación de diferencias y reportes de rotación',
+    ],
+  },
+  {
+    icon: <ShoppingCart size={20}/>, tint: 'bg-amber-50 text-amber-600',
+    title: 'Compras y proveedores',
+    items: [
+      'El XML del proveedor da de alta al proveedor, los productos y la entrada al almacén',
+      'Cada partida puede entrar a un almacén distinto, y se captura lo recibido de verdad',
+      'Órdenes de compra con punto de reorden y proyección a 15 días',
+    ],
+  },
+  {
+    icon: <Landmark size={20}/>, tint: 'bg-emerald-50 text-emerald-600',
+    title: 'Tesorería y cobranza',
+    items: [
+      'La factura de compra genera su cuenta por pagar con los días de crédito del proveedor',
+      'Programación de pagos y control de línea de crédito',
+      'Cobranza por cliente, ventas por período y reportes fiscales auditables',
+    ],
+  },
+  {
+    icon: <Truck size={20}/>, tint: 'bg-orange-50 text-orange-600',
+    title: 'Carta Porte 3.1',
+    items: [
+      'Autotransporte, marítimo, aéreo y ferroviario, incluido comercio exterior',
+      'Catálogos de vehículos, remolques, operadores, aseguradoras y lugares frecuentes',
+      'Validador previo al PAC: los errores se ven antes de gastar el timbre',
+    ],
+  },
+  {
+    icon: <ShieldCheck size={20}/>, tint: 'bg-slate-100 text-slate-600',
+    title: 'Catálogos y control',
+    items: [
+      'Lector de la Constancia de Situación Fiscal: autollena RFC, razón social, régimen y CP',
+      'Clientes, proveedores y productos con preset fiscal y 52 mil claves SAT indexadas',
+      'CSD cifrado, bitácora de 5 años, y un correo puede administrar varias empresas',
+    ],
+  },
 ];
 
 const HOW_STEPS = [
@@ -211,12 +264,13 @@ export function PublicHomePage() {
       {/* Hero */}
       <section className="max-w-6xl mx-auto px-6 py-12 md:py-20 text-center">
         <h1 className="text-4xl md:text-6xl font-bold text-slate-900 tracking-tight leading-tight">
-          Facturación <span className="bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent">CFDI 4.0</span><br/>
-          sin complicaciones
+          <span className="bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent">GDM NEXO</span><br/>
+          Tu empresa en un solo sistema
         </h1>
         <p className="text-lg text-slate-600 mt-6 max-w-2xl mx-auto">
-          Emite, timbra y respalda tus facturas ante el SAT. Importa XMLs recibidos,
-          lee la Constancia de Situación Fiscal y genera PDFs listos para descarga en segundos.
+          Factura ante el SAT, controla tu inventario, recibe compras desde el XML de
+          tu proveedor y programa tus pagos. Todo conectado: lo que se factura sale del
+          almacén, y lo que se compra entra con su cuenta por pagar.
         </p>
         <div className="mt-8 flex items-center justify-center gap-3">
           <Link
@@ -247,18 +301,24 @@ export function PublicHomePage() {
       {/* Módulos */}
       <section className="max-w-6xl mx-auto px-6 py-12">
         <h2 className="text-3xl font-bold text-slate-900 text-center mb-2">Módulos incluidos</h2>
-        <p className="text-slate-600 text-center mb-10">Todo lo que necesita tu empresa en un solo sistema</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {MODULES.map((m) => (
-            <div
-              key={m.title}
-              className="group bg-white border border-slate-200 rounded-xl p-5 transition-all duration-200 hover:shadow-lg hover:border-slate-300 hover:-translate-y-0.5"
-            >
-              <div className={`w-11 h-11 ${m.tint} rounded-lg flex items-center justify-center mb-3 transition-transform duration-200 group-hover:scale-110`}>
-                {m.icon}
+        <p className="text-slate-600 text-center mb-10">Facturación, almacén, compras y tesorería, conectados entre sí</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8 max-w-5xl mx-auto">
+          {AREAS.map((a) => (
+            <div key={a.title}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`w-9 h-9 ${a.tint} rounded-lg flex items-center justify-center shrink-0`}>
+                  {a.icon}
+                </div>
+                <h3 className="font-bold text-slate-900">{a.title}</h3>
               </div>
-              <h3 className="font-bold text-slate-900 mb-1">{m.title}</h3>
-              <p className="text-sm text-slate-600 leading-relaxed">{m.desc}</p>
+              <ul className="space-y-2 pl-1">
+                {a.items.map((t) => (
+                  <li key={t} className="flex gap-2.5 text-sm text-slate-600 leading-relaxed">
+                    <Check size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+                    <span>{t}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           ))}
         </div>
