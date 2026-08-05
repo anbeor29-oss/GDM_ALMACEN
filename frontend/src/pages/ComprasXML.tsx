@@ -156,9 +156,23 @@ export function ComprasXMLPage() {
   };
 
   const cs = preview?.conceptos || [];
-  // La respuesta del API viene envuelta o pelada segun el endpoint; se
-  // normaliza aqui una vez para no repetir el desdoble en cada uso.
-  const listaAlmacenes: any[] = (almacenes as any)?.data ?? (almacenes as any) ?? [];
+  /* La lista de almacenes, saque la forma que saque la respuesta.
+   *
+   * `GET /warehouses` contesta { success, data: { warehouses: [...] } } — el
+   * arreglo va DOS niveles adentro. El desdoble que había aquí se quedaba en
+   * `data`, que es un objeto, y llamarle .map() o .find() truena y deja la
+   * pantalla en blanco sin más pista que el error en consola.
+   *
+   * Se prueban las tres formas y se termina comprobando que sea de verdad un
+   * arreglo: si mañana el endpoint cambia, la pantalla se queda sin almacenes
+   * que ofrecer, que es molesto pero se puede leer y corregir. Tumbar la
+   * página entera no. */
+  const rawAlmacenes: any = almacenes;
+  const listaAlmacenes: any[] = (() => {
+    const c = rawAlmacenes?.data?.warehouses ?? rawAlmacenes?.warehouses
+           ?? rawAlmacenes?.data ?? rawAlmacenes;
+    return Array.isArray(c) ? c : [];
+  })();
   const almacenElegido = listaAlmacenes.find((w: any) => w.id === warehouseId);
   const emisor = preview?.emisor;
   const receptor = preview?.receptor;
