@@ -285,10 +285,6 @@ class APIClient {
     const r = await this.client.post(`/admin/promocion/cobros/${chargeId}/facturar`);
     return r.data;
   }
-  async promoExencion(companyId: string, exempt: boolean, motivo?: string) {
-    const r = await this.client.patch(`/admin/promocion/exencion/${companyId}`, { exempt, motivo });
-    return r.data;
-  }
 
   async deleteWarehouse(id: string) {
     return this.client.delete(`/warehouses/${id}`);

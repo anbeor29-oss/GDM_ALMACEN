@@ -7,7 +7,6 @@
  *  POST  /admin/promocion/cobros                 genera el cargo prorrateado y el aviso
  *  GET   /admin/promocion/cobros                 los cargos, filtrables por estado
  *  POST  /admin/promocion/cobros/:id/pagado      registra el pago y libera el servicio
- *  PATCH /admin/promocion/exencion/:companyId    marca/desmarca empresa propia
  *
  * Todo bajo requireSuperAdmin: son decisiones de dinero.
  */
@@ -133,34 +132,24 @@ router.post('/cobros/:id/pagado', asyncHandler(async (req: Request, res: Respons
   res.json({ success: true, data: { ...r, cfdi } });
 }));
 
-/* ─────────────── Exención ─────────────── */
-
-/**
- * Marca una empresa como propia: deja de entrar al cierre mensual.
+/* ─────────────── Exención ───────────────
  *
- * Es una bandera editable y no una lista de RFC dentro del código, para que
- * dar de alta otra empresa del grupo no exija tocar el servidor. Se pide el
- * motivo cuando se activa: dentro de un año, "por qué esta empresa no factura"
- * tiene que poder responderse sin preguntarle a nadie.
+ * NO HAY ENDPOINT, Y ES DELIBERADO.
+ *
+ * Aquí vivía un PATCH que marcaba cualquier empresa como exenta de
+ * facturación. La justificación era no redesplegar al dar de alta otra empresa
+ * del grupo; el costo era que un clic dejaba de cobrarle a un cliente de pago
+ * y el cierre mensual lo saltaba en silencio, mes tras mes, sin que nada lo
+ * delatara.
+ *
+ * La exención es de las dos empresas propias de GRUPO HCGM y de nadie más. La
+ * migración 2026-08-05d lo sostiene con una restricción en la base, así que un
+ * UPDATE directo tampoco puede abrir la puerta.
+ *
+ * Para agregar una tercera: migración nueva que modifique esa restricción.
+ * Que cueste un poco es el punto — así queda en el historial y se decide, no
+ * se resbala.
  */
-router.patch('/exencion/:companyId', asyncHandler(async (req: Request, res: Response) => {
-  const exempt = req.body?.exempt === true;
-  const motivo = exempt ? String(req.body?.motivo || '').trim() : null;
-  if (exempt && !motivo) {
-    throw new ValidationError('Escribe el motivo de la exención — sin él, nadie sabrá después por qué esta empresa no se factura.');
-  }
-  const r = await query<any>(
-    `UPDATE companies
-        SET billing_exempt = $2, billing_exempt_reason = $3
-      WHERE id = $1 AND deleted_at IS NULL
-      RETURNING id, rfc, business_name, billing_exempt, billing_exempt_reason`,
-    [req.params.companyId, exempt, motivo]
-  );
-  if (r.rows.length === 0) throw new ValidationError('Empresa no encontrada');
-  await audit(req, { action: 'promocion.exencion', targetId: req.params.companyId,
-    payload: { exempt, motivo } } as any).catch(() => {});
-  res.json({ success: true, data: r.rows[0] });
-}));
 
 /* ─────────────── Reintentos ───────────────
  *

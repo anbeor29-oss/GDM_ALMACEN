@@ -78,6 +78,7 @@ export function AdminCompaniesPage() {
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">RFC</th>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Razón social</th>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Plan</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Contratada</th>
               <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">Cap / Usados</th>
               <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">CSD</th>
               <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Usuarios</th>
@@ -95,6 +96,22 @@ export function AdminCompaniesPage() {
                   }`}>
                     {c.billing_plan} · ${c.monthly_fee}
                   </span>
+                </td>
+                <td className="px-4 py-2 text-sm whitespace-nowrap">
+                  {/* Fecha en que empezó el servicio PAGADO. Sin pago no se
+                      inventa una: poner el alta haría creer que la empresa
+                      lleva meses pagando cuando todavía no paga nada. */}
+                  {c.contratada_el ? (
+                    <span className="text-gray-700">{String(c.contratada_el).slice(0, 10)}</span>
+                  ) : c.billing_exempt ? (
+                    <span className="text-xs text-slate-500 italic">empresa propia</span>
+                  ) : c.stamp_package_code === 'PKG_TRIAL' ? (
+                    <span className="text-xs text-fuchsia-700">
+                      cortesía · {c.trial_stamps_left ?? 0} timbres
+                    </span>
+                  ) : (
+                    <span className="text-xs text-amber-700 italic">sin contratar</span>
+                  )}
                 </td>
                 <td className="px-4 py-2 text-right text-sm">
                   <b>{c.facturas_mes}</b><span className="text-gray-400"> / {c.cap_timbres}</span>
@@ -549,9 +566,13 @@ interface StampPlanOption {
 }
 
 const PLAN_OPTIONS: StampPlanOption[] = [
+  /* Empresarial estaba en $1,399 desde julio; el vigente es $1,800 y es el que
+   * cobra el cierre mensual. Con la cifra vieja, companies.monthly_fee nacía
+   * desalineada de stamp_packages desde el minuto cero. */
+  { code:'PKG_TRIAL',label:'Prueba · 10 timbres de cortesía · sin costo', billingPlan:'iguala', capTimbres:0, monthlyFee:0 },
   { code:'PKG_100',  label:'Esencial · 100 timbres · $399/mes',    billingPlan:'iguala', capTimbres:100, monthlyFee:399 },
   { code:'PKG_200',  label:'Pyme · 200 timbres · $699/mes',        billingPlan:'iguala', capTimbres:200, monthlyFee:699 },
-  { code:'PKG_500',  label:'Empresarial · 500 timbres · $1,399/mes', billingPlan:'iguala', capTimbres:500, monthlyFee:1399 },
+  { code:'PKG_500',  label:'Empresarial · 500 timbres · $1,800/mes', billingPlan:'iguala', capTimbres:500, monthlyFee:1800 },
   { code:'PKG_FLEX', label:'Uso libre (pay-per-stamp) · sin renta', billingPlan:'renta',  capTimbres:0,   monthlyFee:0 },
 ];
 
@@ -602,15 +623,23 @@ function CreateCompanyModal({ onClose, onDone }: any) {
     } finally { setCsfLoading(false); }
   };
 
+  /* Queda en true cuando la empresa SÍ se creó pero hay algo que decir: el
+   * formulario deja de ofrecer "Crear" —reenviar daría RFC duplicado— y sólo
+   * queda cerrar. */
+  const [creada, setCreada] = useState(false);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setBusy(true);
     try {
-      // Enviamos también `stampPackageCode` para que el backend lo guarde
-      // en la nueva columna `stamp_package_code` cuando esté disponible.
-      await api.adminCreateCompany({
+      const r: any = await api.adminCreateCompany({
         ...form,
         stampPackageCode: form.planCode,
       });
+      /* La empresa pudo crearse Y la cortesía fallar —por ejemplo con los 3
+       * lugares ocupados—. Cerrar de golpe se llevaría ese aviso y el cliente
+       * se quedaría sin poder timbrar sin que nadie supiera por qué. */
+      const aviso = (r?.data ?? r)?.aviso;
+      if (aviso) { setError(aviso); setCreada(true); return; }
       onDone();
     } catch (e: any) {
       setError(e.response?.data?.message || e.message);
@@ -703,8 +732,14 @@ function CreateCompanyModal({ onClose, onDone }: any) {
           </div>
         </div>
         <div className="flex gap-3 p-5 border-t">
-          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
-          <button type="submit" disabled={busy} className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50">
+          <button type="button" onClick={creada ? onDone : onClose} className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">
+            {creada ? 'Cerrar' : 'Cancelar'}
+          </button>
+          {/* Con la empresa ya creada no se ofrece crear de nuevo: el segundo
+              intento chocaría contra el RFC duplicado y el mensaje real —el de
+              la cortesía— se perdería detrás de ese error. */}
+          <button type="submit" disabled={busy || creada}
+            className={`flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 ${creada ? 'hidden' : ''}`}>
             {busy?'Creando…':'Crear empresa'}
           </button>
         </div>

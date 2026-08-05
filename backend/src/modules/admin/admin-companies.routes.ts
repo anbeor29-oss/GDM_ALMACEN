@@ -23,6 +23,7 @@ import { authenticateToken } from '../../middleware/authentication';
 import { asyncHandler, ValidationError, NotFoundError, ConflictError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import { requireSuperAdmin, audit } from './admin.middleware';
+import * as promo from '../billing/prueba-y-prorrateo.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -55,7 +56,18 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
             (SELECT COUNT(*)::int FROM users  u WHERE u.company_id = c.id AND u.is_active) AS users_active,
             (SELECT COUNT(*)::int FROM invoices i
                WHERE i.company_id = c.id AND i.deleted_at IS NULL
-                 AND date_trunc('month', i.date_issued) = date_trunc('month', NOW())) AS facturas_mes
+                 AND date_trunc('month', i.date_issued) = date_trunc('month', NOW())) AS facturas_mes,
+            /* Fecha de contratación: el día en que empezó el SERVICIO PAGADO,
+             * no el del alta. Una empresa puede estar capturada semanas antes
+             * de contratar, y mostrar el alta haría creer que lleva más tiempo
+             * pagando del que lleva. Sin pago queda en NULL y la pantalla lo
+             * dice con todas sus letras. */
+            (SELECT MIN(pc.starts_on) FROM plan_charges pc
+              WHERE pc.company_id = c.id AND pc.status = 'PAID')  AS contratada_el,
+            c.created_at,
+            c.stamp_package_code,
+            c.trial_stamps_left,
+            c.billing_exempt
        FROM companies c
       WHERE ${filters.join(' AND ')}
       ORDER BY c.business_name ASC`,
@@ -66,7 +78,8 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 
 /* ────────────────────────  CREATE  ──────────────────────── */
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
-  const { rfc, businessName, fiscalRegime, postalCode, billingPlan, capTimbres, monthlyFee, extraStampFee } = req.body as any;
+  const { rfc, businessName, fiscalRegime, postalCode, billingPlan, capTimbres,
+          monthlyFee, extraStampFee, planCode } = req.body as any;
   if (!rfc || !RFC_REGEX.test(rfc)) throw new ValidationError('RFC inválido (formato SAT)');
   if (!businessName) throw new ValidationError('businessName requerido');
   if (!fiscalRegime) throw new ValidationError('fiscalRegime requerido');
@@ -77,17 +90,53 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const dup = await query('SELECT 1 FROM companies WHERE UPPER(rfc) = UPPER($1) LIMIT 1', [rfc]);
   if (dup.rowCount! > 0) throw new ConflictError('Ya existe una empresa con ese RFC');
 
+  /* EL PAQUETE NO SE GUARDABA. NUNCA.
+   *
+   * El alta escribía billing_plan, cap_timbres y monthly_fee, pero jamás
+   * `stamp_package_code`: toda empresa nueva se quedaba con el valor por
+   * omisión de la columna —PKG_100— sin importar qué eligiera el operador. El
+   * cierre mensual lee el paquete por JOIN, así que una empresa dada de alta
+   * como Empresarial se habría facturado como Esencial; y la pantalla mostraba
+   * el plan correcto porque leía las OTRAS columnas. Dos verdades, y la falsa
+   * era la visible.
+   *
+   * Se aceptan los dos nombres del campo: leer sólo uno hace caer en el
+   * PKG_100 en silencio, que es como este defecto vivió hasta hoy. */
+  const codigoPaquete = planCode || (req.body as any)?.stampPackageCode;
+  let paquete: string | null = null;
+  if (codigoPaquete) {
+    const pk = await query('SELECT code FROM stamp_packages WHERE code = $1 AND is_active = TRUE', [codigoPaquete]);
+    if (pk.rowCount === 0) throw new ValidationError(`El paquete ${codigoPaquete} no existe o está inactivo`);
+    paquete = codigoPaquete;
+  }
+
   const r = await query<any>(
     `INSERT INTO companies (rfc, business_name, fiscal_regime, postal_code,
-                            billing_plan, cap_timbres, monthly_fee, extra_stamp_fee, is_active)
-     VALUES (UPPER($1), $2, $3, $4, $5, $6, $7, $8, true)
+                            billing_plan, cap_timbres, monthly_fee, extra_stamp_fee,
+                            stamp_package_code, is_active)
+     VALUES (UPPER($1), $2, $3, $4, $5, $6, $7, $8, COALESCE($9, 'PKG_100'), true)
      RETURNING id, rfc, business_name`,
     [rfc, businessName, fiscalRegime, postalCode || null,
-     billingPlan || 'iguala', capTimbres || 100, monthlyFee || 500, extraStampFee || 0.80]
+     billingPlan || 'iguala', capTimbres || 100, monthlyFee || 500, extraStampFee || 0.80,
+     paquete]
   );
+
+  /* La cortesía se otorga por su propia vía: ahí viven el cupo de 3 empresas y
+   * el sello de "una sola vez". Si el cupo está lleno, la empresa YA quedó
+   * creada —eso no se deshace— y se devuelve el motivo para que quien la dio
+   * de alta se entere en la misma pantalla. */
+  let aviso: string | null = null;
+  if (paquete === 'PKG_TRIAL') {
+    try {
+      await promo.activarPrueba(r.rows[0].id, req.user?.userId);
+    } catch (e) {
+      aviso = `La empresa se creó, pero no se le pudo dar la cortesía: ${(e as Error).message}`;
+    }
+  }
+
   await audit(req, { action: 'COMPANY_CREATED', targetKind: 'company', targetId: r.rows[0].id,
-    payload: { rfc, businessName, billingPlan } });
-  res.status(201).json({ success: true, data: r.rows[0] });
+    payload: { rfc, businessName, billingPlan, planCode: paquete } });
+  res.status(201).json({ success: true, data: { ...r.rows[0], aviso } });
 }));
 
 /* ────────────────────────  UPDATE  ──────────────────────── */
