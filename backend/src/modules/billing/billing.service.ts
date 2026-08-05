@@ -18,6 +18,7 @@
 
 import { PoolClient } from 'pg';
 import { query, transactionQuery } from '../../config/database';
+import { verificarTimbresDePrueba, descontarTimbreDePrueba } from './prueba-y-prorrateo.service';
 import { ValidationError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 
@@ -111,6 +112,14 @@ export async function getPrepaidBalance(companyId: string): Promise<number> {
  * validaciones (CSD cargado, factura no cancelada, etc.).
  */
 export async function assertCanStamp(companyId: string): Promise<void> {
+  /* La prueba de cortesía se revisa PRIMERO y fuera del snapshot.
+   *
+   * PKG_TRIAL trae monthly_stamps = 0 y no es prepago, así que el snapshot lo
+   * deja pasar: los 10 timbres no son una dotación mensual —si lo fueran, el
+   * cierre de mes los repondría y la cortesía sería infinita— sino un saldo en
+   * `companies.trial_stamps_left` que nadie recarga. */
+  await verificarTimbresDePrueba(companyId);
+
   const snap = await getCompanyBillingSnapshot(companyId).catch(() => null);
   if (!snap) return;
 
@@ -185,7 +194,11 @@ export async function recordStampUsed(
   );
   const cap = Number(capR.rows[0]?.cap) || 0;
   const isExtra = usedBefore + 1 > cap;
-  const extraCharge = isExtra && pkg.code !== 'PKG_FLEX' ? Number(pkg.extra) : 0;
+  /* Ni FLEX ni la prueba generan cargo por excedente: el primero ya se pagó
+   * por adelantado, y la segunda es cortesía —cobrarle a quien está probando
+   * el sistema sería exactamente lo contrario de la oferta—. */
+  const extraCharge = isExtra && pkg.code !== 'PKG_FLEX' && pkg.code !== 'PKG_TRIAL'
+    ? Number(pkg.extra) : 0;
 
   await transactionQuery(
     client,
@@ -196,6 +209,14 @@ export async function recordStampUsed(
     [companyId, invoiceId || null, creditNoteId || null, stampUuid || null,
      pkg.code, isExtra, extraCharge]
   );
+
+  /* La cortesía se descuenta aquí, en la misma transacción que registra el
+   * consumo. Si se hiciera fuera y esa parte fallara, la empresa habría
+   * timbrado sin que le bajara el saldo — y con reintentos suficientes, los 10
+   * timbres no se acabarían nunca. */
+  if (pkg.code === 'PKG_TRIAL') {
+    await descontarTimbreDePrueba(client, companyId);
+  }
 
   // Si es FLEX, decrementa el prepago.
   if (pkg.code === 'PKG_FLEX') {

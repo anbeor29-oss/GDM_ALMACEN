@@ -91,7 +91,16 @@ export async function closeMonth(opts: {
        JOIN stamp_packages sp ON sp.code = c.stamp_package_code
       WHERE c.id NOT IN (
         SELECT company_id FROM monthly_invoicing WHERE billing_period = $1
-      )`,
+      )
+        /* Las empresas de la casa no se facturan a sí mismas. Es una bandera y
+         * no una lista de RFC en el código: el día que haya otra empresa
+         * propia se marca desde la pantalla, sin redesplegar. */
+        AND c.billing_exempt = FALSE
+        /* La prueba de cortesía no genera cobro. Si entrara al cierre, el
+         * prospecto recibiría una factura de $0 el primer mes — que además
+         * habría que cancelar. */
+        AND c.stamp_package_code <> 'PKG_TRIAL'
+        AND c.deleted_at IS NULL`,
     [periodStr]
   );
 
@@ -154,14 +163,40 @@ async function closeMonthForCompany(
       [comp.id, periodStr]
     );
     const stampsUsed = Number(usedR.rows[0].n) || 0;
-    const included = Number(comp.monthly_stamps) || 0;
+
+    /* ¿Este mes se cobró por adelantado y prorrateado?
+     *
+     * Cuando alguien contrata a media mes se le cobra la parte proporcional
+     * ANTES de darle el servicio. Si el cierre no se enterara, haría dos
+     * cosas mal a la vez: volvería a cobrar la renta completa del mes que ya
+     * está pagado, y le daría el cupo completo de timbres cuando sólo pagó
+     * una fracción.
+     *
+     * El cargo es la fuente: de ahí sale el cupo real y el importe ya
+     * cobrado. Sólo cuenta si está PAGADO — un aviso sin cobrar no le da
+     * derecho a nada. */
+    const cargoR = await transactionQuery<any>(
+      client,
+      `SELECT stamps_granted, amount_mxn, days_charged, days_in_month
+         FROM plan_charges
+        WHERE company_id = $1 AND billing_period = $2 AND status = 'PAID'
+        LIMIT 1`,
+      [comp.id, periodStr]
+    );
+    const prepagado = cargoR.rows[0] || null;
+
+    const included = prepagado
+      ? Number(prepagado.stamps_granted)
+      : (Number(comp.monthly_stamps) || 0);
     const rollFrom = Number(comp.carried_over_stamps) || 0;
     const effectiveCap = included + rollFrom;
 
     const stampsExtra = Math.max(0, stampsUsed - effectiveCap);
     const rollingToNext = Math.max(0, effectiveCap - stampsUsed);
 
-    const monthlyFee = Number(comp.monthly_fee_mxn) || 0;
+    /* Renta cero si ya se pagó por adelantado. Los excedentes SÍ se cobran:
+     * el prepago cubre el paquete contratado, no lo que se timbre de más. */
+    const monthlyFee = prepagado ? 0 : (Number(comp.monthly_fee_mxn) || 0);
     const extraCharge = Math.round(stampsExtra * Number(comp.extra_stamp_mxn) * 100) / 100;
     const total = Math.round((monthlyFee + extraCharge) * 100) / 100;
 

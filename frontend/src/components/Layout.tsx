@@ -203,6 +203,7 @@ export function Layout() {
               <NavItem to="/admin/packages"  icon={<Emoji3D e="💳" />} accent="violet"  label="Paquetes fiscales"     open={sidebarOpen} />
               <NavItem to="/admin/billing"   icon={<Emoji3D e="💰" />} accent="emerald" label="Facturación y consumo" open={sidebarOpen} />
               <NavItem to="/admin/prepaid"   icon={<Emoji3D e="🛒" />} accent="fuchsia" label="Compras prepago"       open={sidebarOpen} />
+              <NavItem to="/admin/promocion" icon={<Emoji3D e="🎁" />} accent="amber"   label="Promoción y cobros"    open={sidebarOpen} />
               <NavItem to="/import-xml"      icon={<Emoji3D e="📥" />} accent="amber"   label="Importar XML"          open={sidebarOpen} />
               {/* Proveedores ya vive en el grupo Compras, que sí ve el ADMIN
                   de la empresa. Aquí duplicaba la entrada. */}

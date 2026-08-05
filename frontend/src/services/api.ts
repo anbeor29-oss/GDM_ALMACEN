@@ -250,6 +250,38 @@ class APIClient {
     return r.data;
   }
 
+  /* ─── Promoción: prueba de cortesía y cobro prepago prorrateado ─── */
+  async promoEstadoPrueba() {
+    const r = await this.client.get('/admin/promocion/prueba');
+    return r.data;
+  }
+  async promoActivarPrueba(companyId: string) {
+    const r = await this.client.post(`/admin/promocion/prueba/${companyId}`);
+    return r.data;
+  }
+  async promoCotizar(packageCode: string, desde?: string) {
+    const q = new URLSearchParams({ packageCode });
+    if (desde) q.set('desde', desde);
+    const r = await this.client.get(`/admin/promocion/cotizar?${q}`);
+    return r.data;
+  }
+  async promoCobros(status = 'PENDING') {
+    const r = await this.client.get(`/admin/promocion/cobros?status=${status}`);
+    return r.data;
+  }
+  async promoGenerarCobro(companyId: string, packageCode: string, desde?: string) {
+    const r = await this.client.post('/admin/promocion/cobros', { companyId, packageCode, desde });
+    return r.data;
+  }
+  async promoRegistrarPago(chargeId: string, nota?: string) {
+    const r = await this.client.post(`/admin/promocion/cobros/${chargeId}/pagado`, { nota });
+    return r.data;
+  }
+  async promoExencion(companyId: string, exempt: boolean, motivo?: string) {
+    const r = await this.client.patch(`/admin/promocion/exencion/${companyId}`, { exempt, motivo });
+    return r.data;
+  }
+
   async deleteWarehouse(id: string) {
     return this.client.delete(`/warehouses/${id}`);
   }
