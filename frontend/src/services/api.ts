@@ -259,6 +259,11 @@ class APIClient {
     const r = await this.client.post(`/admin/promocion/prueba/${companyId}`);
     return r.data;
   }
+  /** Catálogo de paquetes con los precios que de verdad cobra el cierre. */
+  async promoPaquetes() {
+    const r = await this.client.get('/admin/promocion/paquetes');
+    return r.data;
+  }
   async promoCotizar(packageCode: string, desde?: string) {
     const q = new URLSearchParams({ packageCode });
     if (desde) q.set('desde', desde);

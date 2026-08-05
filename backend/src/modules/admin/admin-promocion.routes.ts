@@ -3,6 +3,7 @@
  *
  *  GET   /admin/promocion/prueba                 quién está de cortesía y cuántos lugares quedan
  *  POST  /admin/promocion/prueba/:companyId      le da sus 10 timbres
+ *  GET   /admin/promocion/paquetes              catálogo con los precios que de verdad se cobran
  *  GET   /admin/promocion/cotizar                cuánto pagaría si contrata hoy
  *  POST  /admin/promocion/cobros                 genera el cargo prorrateado y el aviso
  *  GET   /admin/promocion/cobros                 los cargos, filtrables por estado
@@ -55,6 +56,27 @@ router.post('/prueba/:companyId', asyncHandler(async (req: Request, res: Respons
   await audit(req, { action: 'promocion.prueba', targetId: req.params.companyId,
     payload: { rfc: r.rfc, timbres: promo.TIMBRES_DE_CORTESIA } } as any).catch(() => {});
   res.status(201).json({ success: true, data: r });
+}));
+
+/* ─────────────── Catálogo de paquetes ───────────────
+ *
+ * Los precios estaban escritos a mano en TRES pantallas —la landing, el
+ * selector del alta y Paquetes fiscales— y el 2026-08-05 las tres decían
+ * $1,399 cuando Empresarial ya costaba $1,800. Uno se corrige, los otros dos
+ * se quedan, y la pantalla del SUPER_ADMIN sigue mintiendo con cara de dato
+ * oficial.
+ *
+ * Este endpoint devuelve `stamp_packages`, que es lo que de verdad cobra el
+ * cierre mensual. Un solo número, en un solo lugar.
+ */
+router.get('/paquetes', asyncHandler(async (_req: Request, res: Response) => {
+  const r = await query<any>(
+    `SELECT code, name, monthly_stamps, monthly_fee_mxn, extra_stamp_mxn, is_active
+       FROM stamp_packages
+      WHERE is_active = TRUE
+      ORDER BY monthly_fee_mxn, monthly_stamps`
+  );
+  res.json({ success: true, data: { paquetes: r.rows } });
 }));
 
 /* ─────────────── Cotizador ─────────────── */

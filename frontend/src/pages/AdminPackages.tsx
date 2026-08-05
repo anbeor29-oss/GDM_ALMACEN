@@ -77,7 +77,10 @@ const PLANS: StampPlan[] = [
     code: 'PKG_500',
     name: 'Empresarial',
     monthlyStamps: 500,
-    monthlyFeeMXN: 1399,
+    /* Vigente desde 2026-08-05. Es sólo el valor de respaldo mientras carga el
+     * catálogo, pero tiene que estar bien: un respaldo que miente se ve igual
+     * que el dato bueno durante el segundo que dura. */
+    monthlyFeeMXN: 1800,
     extraStampMXN: 2.0,
     color: 'text-violet-700',
     ring: 'border-violet-200',
@@ -115,6 +118,36 @@ const PLANS: StampPlan[] = [
 /* ─────────────── Página ─────────────── */
 
 export function AdminPackagesPage() {
+  /* Los precios y los cupos salen de la BASE, no de la constante de abajo.
+   *
+   * PLANS conserva lo que es presentación —color, icono, viñetas— porque eso no
+   * vive en `stamp_packages`. Pero el importe, los timbres incluidos y el
+   * timbre extra se toman del servidor: estaban escritos a mano en TRES
+   * pantallas y el 2026-08-05 las tres decían $1,399 cuando Empresarial ya
+   * costaba $1,800. Una pantalla de administración que miente con cara de dato
+   * oficial es peor que no tenerla.
+   *
+   * Si la consulta aún no responde se muestran los valores de la constante:
+   * quedarse sin tarjetas mientras carga sería un retroceso, y el desfase dura
+   * lo que tarda una petición. */
+  const paquetesQ = useQuery({
+    queryKey: ['catalogo-paquetes'],
+    queryFn: () => api.promoPaquetes(),
+  });
+  const planesVigentes: StampPlan[] = (() => {
+    const filas: any[] = (paquetesQ.data as any)?.data?.paquetes ?? [];
+    if (!filas.length) return PLANS;
+    return PLANS.map((p) => {
+      const f = filas.find((x) => x.code === p.code);
+      return f ? {
+        ...p,
+        monthlyStamps: Number(f.monthly_stamps),
+        monthlyFeeMXN: Number(f.monthly_fee_mxn),
+        extraStampMXN: Number(f.extra_stamp_mxn),
+      } : p;
+    });
+  })();
+
   const { user } = useAuthStore();
 
   if (user?.role !== 'SUPER_ADMIN') {
@@ -143,7 +176,7 @@ export function AdminPackagesPage() {
       <section>
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Planes de timbrado</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {PLANS.map((p) => <PlanCard key={p.code} plan={p} />)}
+          {planesVigentes.map((p) => <PlanCard key={p.code} plan={p} />)}
         </div>
         <p className="text-xs text-gray-500 mt-4">
           La asignación de plan a una empresa se hace desde el módulo{' '}
@@ -163,7 +196,9 @@ function PlanCard({ plan }: { plan: StampPlan }) {
   const priceLabel = plan.monthlyFeeMXN === 0
     ? 'Sin renta'
     : `$${plan.monthlyFeeMXN.toLocaleString('es-MX')}`;
-  const perLabel = plan.monthlyFeeMXN === 0 ? 'pay-per-stamp' : '/ mes';
+  /* Con "Sin renta" arriba, pegarle "MXN pay-per-stamp" se leía como una
+   * frase partida a la mitad. */
+  const perLabel = plan.monthlyFeeMXN === 0 ? 'pagas solo lo que timbras' : 'MXN / mes';
 
   return (
     <div
@@ -187,7 +222,7 @@ function PlanCard({ plan }: { plan: StampPlan }) {
       <div className="mb-1">
         <span className="text-3xl font-bold text-gray-900">{priceLabel}</span>
         {' '}
-        <span className="text-sm text-gray-500">MXN {perLabel}</span>
+        <span className="text-sm text-gray-500">{perLabel}</span>
       </div>
       <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-4">Precios más IVA</p>
 
