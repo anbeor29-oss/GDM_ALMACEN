@@ -15,7 +15,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 
-export type WorkGroup = 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA';
+export type WorkGroup = 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA' | 'PUNTO_VENTA';
 
 /**
  * Claves de módulo protegibles — una por bloque del menú.
@@ -57,6 +57,16 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   ALMACEN:   ['products', 'inventory', 'reports'],
   COMPRAS:   ['purchasing', 'suppliers', 'products', 'inventory', 'xml_reader', 'reports'],
   TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'reports'],
+  /* Cajero de mostrador: SÓLO la caja.
+   *
+   * VENTAS ya existía pero alcanza facturas, clientes y Carta Porte, que es
+   * demasiado para quien únicamente cobra: un cajero con acceso a facturación
+   * puede timbrar por error, y en un turno compartido nadie sabría quién fue.
+   *
+   * Este mapa es el que MANDA — el del frontend sólo decide qué pinta el menú.
+   * Si sólo se hubiera agregado allá, el cajero no vería las otras pantallas
+   * pero podría llegar a ellas escribiendo la URL. */
+  PUNTO_VENTA: ['pos'],
 };
 
 export function groupCanAccess(group: WorkGroup | undefined, mod: ModuleKey): boolean {

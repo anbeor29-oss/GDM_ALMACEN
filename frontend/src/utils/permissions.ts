@@ -9,7 +9,7 @@
  * Quien corta el acceso de verdad es el backend (requireModule / capacidades).
  */
 
-export type WorkGroup = 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA';
+export type WorkGroup = 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA' | 'PUNTO_VENTA';
 
 /**
  * Una clave por bloque del menú. 'dashboard' es común a todos los grupos y se
@@ -44,6 +44,17 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   COMPRAS:   ['dashboard', 'purchasing', 'suppliers', 'products', 'inventory',
               'xml_reader', 'reports'],
   TESORERIA: ['dashboard', 'treasury', 'suppliers', 'exchange_rates', 'reports'],
+  /* Cajero de mostrador: SÓLO el punto de venta.
+   *
+   * VENTAS ya existía, pero alcanza facturas, clientes, Carta Porte y el lector
+   * de XML — demasiado para quien únicamente cobra en mostrador. Un cajero con
+   * acceso a la facturación puede timbrar por error, y en un turno con varias
+   * personas nadie sabría quién fue.
+   *
+   * No lleva 'products' ni 'inventory': la pantalla del POS busca lo que vende
+   * por su propio endpoint, así que no necesita el catálogo abierto. Lo que ve
+   * es la caja y nada más. */
+  PUNTO_VENTA: ['dashboard', 'pos'],
 };
 
 /** Etiquetas legibles de cada grupo (para selectores). */
@@ -53,6 +64,7 @@ export const WORK_GROUP_LABELS: Record<WorkGroup, string> = {
   ALMACEN:   'Almacén (productos, existencias, inventario físico)',
   COMPRAS:   'Compras (órdenes, recepción XML, proveedores)',
   TESORERIA: 'Tesorería (pagos a proveedores, tipos de cambio)',
+  PUNTO_VENTA: 'Punto de venta (sólo caja)',
 };
 
 /** Detalle de lo que ve cada grupo — se muestra bajo el selector al dar de alta. */
@@ -65,6 +77,8 @@ export const WORK_GROUP_DETAIL: Record<WorkGroup, string> = {
   COMPRAS:   'Compras (órdenes y recepción de XML), Proveedores, Productos, ' +
              'existencias de Almacén, Lector de XML y Reportes.',
   TESORERIA: 'Tesorería, Proveedores, Monedas y Reportes. No ve facturación ni almacén.',
+  PUNTO_VENTA: 'Únicamente el Punto de Venta. No ve facturación, catálogos, ' +
+               'almacén, compras ni reportes. Pensado para el cajero de mostrador.',
 };
 
 export function canAccess(group: string | undefined, mod: ModuleKey): boolean {
