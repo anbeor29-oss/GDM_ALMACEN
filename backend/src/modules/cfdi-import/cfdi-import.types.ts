@@ -184,6 +184,21 @@ export interface CommitResult {
     }>;
   };
   /**
+   * Órdenes de compra que esta recepción cerró o dejó a medias.
+   *
+   * Se devuelve para que la pantalla lo diga: quien sube el XML necesita
+   * enterarse de que además saldó la orden 000123, o de que quedó parcial
+   * porque llegó menos de lo pedido. Sin esto, el cambio de estado ocurriría
+   * en silencio y nadie sabría si el enlace funcionó.
+   */
+  ordenesRecibidas?: Array<{
+    ordenId: string;
+    folio: string;
+    estadoAnterior: string;
+    estadoNuevo: string;
+    renglones: Array<{ productId: string; abonado: number; pedido: number; recibidoTotal: number }>;
+  }>;
+  /**
    * Cuenta por pagar programada en tesorería.
    *
    * Se genera SIEMPRE que la party sea proveedor y la factura tenga importe —

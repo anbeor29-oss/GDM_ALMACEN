@@ -17,6 +17,7 @@ import logger from '../../middleware/logger';
 import * as productsService from '../products/products.service';
 import { applyMovementTx, getOrCreateDefaultWarehouse } from '../inventory/inventory.service';
 import { validarRfcSat } from '../../utils/validators';
+import { aplicarRecepcionDesdeXml } from '../purchasing/recepcion-por-xml.service';
 import {
   PreviewResult,
   PreviewedParty,
@@ -591,6 +592,20 @@ export async function commit(
             [partyResult.id, cp.productId, cp.valorUnitario, parsed.fechaEmision || new Date()]
           );
         }
+
+        /* La mercancía entró: si había una orden de compra esperándola, se
+         * abona y se mueve su estado. Va DENTRO de la transacción para que, si
+         * la importación se revierte, la orden no quede marcada como recibida
+         * por mercancía que nunca entró. */
+        result.ordenesRecibidas = await aplicarRecepcionDesdeXml(client, {
+          companyId,
+          supplierId: partyResult.id,
+          warehouseId: warehouseBase,
+          recibido: conceptProducts
+            .filter(cp => cp.cantidad > 0)
+            .map(cp => ({ productId: cp.productId, cantidad: cp.cantidad })),
+          userEmail,
+        });
 
         const porAlmacen = Array.from(acumulado.entries())
           .map(([id, a]) => ({

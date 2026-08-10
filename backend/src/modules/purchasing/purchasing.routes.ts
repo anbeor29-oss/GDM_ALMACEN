@@ -95,6 +95,85 @@ router.get(
   })
 );
 
+/**
+ * GET /purchase-orders/faltantes — qué hay que comprar, SIN generar nada.
+ *
+ * `reorder-check` ya existía, pero genera las órdenes en el mismo golpe: obliga
+ * a decidir a ciegas. Quien compra necesita ver primero la lista —qué producto,
+ * en qué almacén, cuánto queda, cuánto se sugiere y con qué proveedor— y
+ * después decidir.
+ *
+ * SE PARTE DE warehouse_stock, NO DE LA VISTA DE PROYECCIÓN
+ * `v_projected_stockout_15d` filtra `stock_minimum > 0`, y eso deja fuera
+ * justamente lo que se pidió listar: un producto EN CEROS al que nadie le
+ * configuró mínimo no aparece. Al medirlo, los 3 renglones agotados de la base
+ * de pruebas eran exactamente los 3 sin mínimo. Se parte del stock y se
+ * enriquece con la vista cuando hay proyección, no al revés.
+ *
+ * Se distinguen tres situaciones y se ordenan por urgencia:
+ *   agotado    → existencia en 0 o negativa
+ *   bajo       → en o por debajo del mínimo configurado
+ *   proyectado → llegará al mínimo en ≤15 días según el consumo
+ */
+router.get(
+  '/faltantes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await query<any>(
+      `SELECT ws.warehouse_id, w.code AS warehouse_code, w.name AS warehouse_name,
+              ws.product_id, pr.sku, pr.name AS product_name,
+              ws.quantity, ws.stock_minimum, ws.stock_maximum,
+              v.days_to_minimum, v.daily_consumption,
+              CASE
+                WHEN ws.quantity <= 0 THEN 'agotado'
+                WHEN ws.stock_minimum > 0 AND ws.quantity <= ws.stock_minimum THEN 'bajo'
+                ELSE 'proyectado'
+              END AS situacion,
+              /* Cuánto sugerir. La vista lo calcula cuando hay máximo y
+               * consumo; si no, se propone llegar al máximo; y si tampoco hay
+               * máximo queda en 0 para que lo escriba quien compra. Inventar
+               * una cantidad sin base sería peor que dejarla vacía. */
+              COALESCE(NULLIF(v.suggested_qty, 0),
+                       GREATEST(COALESCE(ws.stock_maximum, 0) - ws.quantity, 0)) AS sugerido,
+              sp.supplier_id, sp.last_price,
+              c.business_name AS supplier_name, c.rfc AS supplier_rfc,
+              /* ¿Ya hay una orden abierta con este producto en este almacén?
+               * Sin este dato la pantalla invitaría a pedir dos veces lo mismo,
+               * y el aviso llegaría cuando el proveedor entregue doble. */
+              EXISTS (
+                SELECT 1 FROM purchase_order_items poi
+                  JOIN purchase_orders po ON po.id = poi.purchase_order_id
+                 WHERE po.company_id = pr.company_id
+                   AND po.warehouse_id = ws.warehouse_id
+                   AND poi.product_id = ws.product_id
+                   AND po.status IN ('PENDING','QUOTED','APPROVED','PURCHASED','RECEIVED_PARTIAL')
+              ) AS ya_pedido
+         FROM warehouse_stock ws
+         JOIN products   pr ON pr.id = ws.product_id AND pr.deleted_at IS NULL
+         JOIN warehouses w  ON w.id  = ws.warehouse_id AND w.deleted_at IS NULL
+         LEFT JOIN v_projected_stockout_15d v
+                ON v.product_id = ws.product_id AND v.warehouse_id = ws.warehouse_id
+         LEFT JOIN LATERAL (
+           SELECT sp2.supplier_id, sp2.last_price
+             FROM supplier_products sp2
+            WHERE sp2.product_id = ws.product_id
+            ORDER BY sp2.is_primary DESC, sp2.last_purchase_date DESC NULLS LAST
+            LIMIT 1
+         ) sp ON true
+         LEFT JOIN customers c ON c.id = sp.supplier_id
+        WHERE pr.company_id = $1
+          AND (ws.quantity <= 0
+               OR (ws.stock_minimum > 0 AND ws.quantity <= ws.stock_minimum)
+               OR v.reorder_needed = true)
+        ORDER BY (ws.quantity <= 0) DESC,
+                 v.days_to_minimum ASC NULLS LAST,
+                 pr.name`,
+      [companyId(req)]
+    );
+    res.json({ success: true, data: { faltantes: r.rows } });
+  })
+);
+
+
 /** POST /purchase-orders/reorder-check — ejecutar el análisis ahora (§2) */
 router.post(
   '/reorder-check',
