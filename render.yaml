@@ -158,3 +158,15 @@ services:
       - path: /*
         name: Referrer-Policy
         value: strict-origin-when-cross-origin
+      # index.html y version.json NO se guardan en caché.
+      #
+      # Los bundles llevan hash en el nombre y pueden cachearse para siempre;
+      # index.html es quien dice CUÁL bundle cargar. Si el navegador conserva
+      # uno viejo sigue pidiendo el bundle viejo —que no se borra al desplegar—
+      # y se trabaja sobre la versión de la semana pasada sin ninguna señal.
+      - path: /index.html
+        name: Cache-Control
+        value: no-store, no-cache, must-revalidate, max-age=0
+      - path: /version.json
+        name: Cache-Control
+        value: no-store, no-cache, must-revalidate, max-age=0

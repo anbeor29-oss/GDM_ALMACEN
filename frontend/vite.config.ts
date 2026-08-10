@@ -2,14 +2,36 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 
+/* Identificador de ESTA compilación. Se incrusta en el código y se escribe en
+ * `version.json`; al arrancar, la aplicación compara los dos y se recarga sola
+ * si el servidor anuncia otro. Ver src/utils/version-guard.ts. */
+const BUILD_ID = Date.now().toString(36);
+
+/** Deja `version.json` junto al index.html en cada build. */
+function pluginVersion() {
+  return {
+    name: 'gdmnexo-version',
+    generateBundle() {
+      (this as any).emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({ buildId: BUILD_ID, builtAt: new Date().toISOString() }),
+      });
+    },
+  };
+}
+
 export default defineConfig({
+  define: {
+    'import.meta.env.VITE_BUILD_ID': JSON.stringify(BUILD_ID),
+  },
   // Base path del deploy:
   //   · Render (raíz):            sin env → '/'
   //   · Hosting México (/erp):    VITE_BASE_PATH=/erp/ (script build:hosting)
   // App.tsx pasa import.meta.env.BASE_URL como basename del Router para que
   // las rutas SPA funcionen igual en ambos.
   base: process.env.VITE_BASE_PATH || '/',
-  plugins: [react()],
+  plugins: [react(), pluginVersion()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
