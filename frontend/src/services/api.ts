@@ -455,6 +455,12 @@ class APIClient {
     return r.data;
   }
 
+  /** Faltantes: qué comprar, SIN generar nada todavía. */
+  async getFaltantes() {
+    const r = await this.client.get<APIResponse<any>>('/purchase-orders/faltantes');
+    return r.data;
+  }
+
   async createPurchaseOrder(data: {
     warehouseId: string;
     supplierId?: string;

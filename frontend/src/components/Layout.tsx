@@ -148,6 +148,7 @@ export function Layout() {
                     se filtran una por una y el grupo aparece solo si queda alguna. */}
                 {(() => {
                   const hijas = [
+                    show('purchasing') && { to: '/faltantes', icon: emoji3D('🚨'), label: 'Faltantes' },
                     show('purchasing') && { to: '/purchase-orders', icon: emoji3D('📝'), label: 'Órdenes de compra' },
                     show('purchasing') && { to: '/compras/xml',     icon: emoji3D('📥'), label: 'Recibir XML' },
                     show('suppliers')  && { to: '/suppliers',       icon: emoji3D('🚚'), label: 'Proveedores' },
