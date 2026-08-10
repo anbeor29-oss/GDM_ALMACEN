@@ -123,8 +123,13 @@ export function Layout() {
                 )}
                 {show('credit_notes') && <NavItem to="/credit-notes" icon={emoji3D('📉')} accent="rose"    label="Notas de Crédito" open={sidebarOpen} />}
                 {show('credit_notes') && <NavItem to="/payments"     icon={emoji3D('💵')} accent="emerald" label="Complementos de Pago" open={sidebarOpen} />}
-                {show('products')     && <NavItem to="/products"     icon={emoji3D('📦')} accent="fuchsia" label="Productos"        open={sidebarOpen} />}
                 {show('customers')    && <NavItem to="/customers"    icon={emoji3D('👥')} accent="emerald" label="Clientes"         open={sidebarOpen} />}
+                {/* Sin módulo de inventario no existe el grupo Almacén, y
+                    Productos quedaría inalcanzable. Sólo en ese caso se muestra
+                    suelto. */}
+                {show('products') && !show('inventory') && (
+                  <NavItem to="/products" icon={emoji3D('📦')} accent="fuchsia" label="Productos" open={sidebarOpen} />
+                )}
                 {show('xml_reader')   && <NavItem to="/xml-super-import" icon={emoji3D('📥')} accent="violet"  label="Lector de XML"    open={sidebarOpen} />}
                 {/* Inventarios, compras y tesorería — fusión ERP */}
                 {show('inventory') && (
@@ -137,6 +142,13 @@ export function Layout() {
                     pathPrefix="/inventory"
                     children={[
                       { to: '/inventory',        icon: emoji3D('📊'), label: 'Existencias' },
+                      /* Productos vive aquí y no suelto: lo que se vende es lo
+                       * que se almacena, y tenerlos separados obligaba a saltar
+                       * de módulo para dar de alta algo y luego ver su
+                       * existencia. */
+                      ...(show('products') ? [
+                        { to: '/products',       icon: emoji3D('📦'), label: 'Productos' },
+                      ] : []),
                       { to: '/warehouses',       icon: emoji3D('🏬'), label: 'Almacenes' },
                       { to: '/physical-counts',  icon: emoji3D('📋'), label: 'Inventario físico' },
                       { to: '/kardex',           icon: emoji3D('📒'), label: 'Kardex' },
