@@ -103,6 +103,10 @@ export function Layout() {
                     con drop-shadow para look moderno. Usuarios queda oculto en
                     esta versión (V2 se enfoca en facturación + CP). */}
                 <NavItem to="/dashboard"    icon={emoji3D('🏠')} accent="sky"     label="Dashboard"        open={sidebarOpen} />
+                {/* Punto de Venta va justo debajo del Dashboard: es la pantalla
+                    que más veces se abre al día en un mostrador, y estaba hasta
+                    abajo de la lista. Para el cajero es además la única. */}
+                {show('pos')          && <NavItem to="/pos"          icon={emoji3D('🧮')} accent="rose"    label="Punto de Venta"   open={sidebarOpen} />}
                 {show('invoices')     && <NavItem to="/invoices"     icon={emoji3D('🧾')} accent="amber"   label="Facturas"         open={sidebarOpen} />}
                 {show('carta_porte') && (
                   <NavGroup
@@ -178,7 +182,6 @@ export function Layout() {
                     />
                   );
                 })()}
-                {show('pos')          && <NavItem to="/pos"          icon={emoji3D('🧮')} accent="rose"    label="Punto de Venta"   open={sidebarOpen} />}
                 {show('treasury')     && <NavItem to="/treasury"     icon={emoji3D('🏦')} accent="sky"     label="Tesorería"        open={sidebarOpen} />}
                 {show('reports')      && <NavItem to="/reports"      icon={emoji3D('📊')} accent="violet"  label="Reportes"         open={sidebarOpen} />}
                 {show('exchange_rates') && (

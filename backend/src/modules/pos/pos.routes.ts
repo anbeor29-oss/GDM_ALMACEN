@@ -11,6 +11,7 @@ import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { requireModule } from '../../middleware/permissions';
 import { query } from '../../config/database';
 import { createSale, cancelSale, closeDay, todayMx } from './pos.service';
+import { facturarVenta } from './factura-individual.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -93,6 +94,30 @@ router.post(
       email: req.user?.email,
     });
     res.json({ success: true, data: result });
+  })
+);
+
+/**
+ * POST /pos/sales/:id/facturar — el cliente pidió su factura.
+ *
+ * Se emite a su nombre con las partidas reales del ticket y la venta sale de la
+ * factura global del día. El inventario NO se vuelve a descontar: los
+ * movimientos que ya generó la venta se reapuntan a la factura.
+ */
+router.post(
+  '/sales/:id/facturar',
+  requireCapability('pos:sell'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { customerId, cfdiUse } = req.body || {};
+    if (!customerId) throw new ValidationError('Falta el cliente al que se le factura');
+    const r = await facturarVenta({
+      companyId: companyId(req),
+      saleId: req.params.id,
+      customerId,
+      cfdiUse,
+      user: { userId: req.user?.userId, email: req.user?.email },
+    });
+    res.json({ success: true, data: r });
   })
 );
 
