@@ -14,6 +14,7 @@ import {
   takeSnapshot, getCurrentValue, getValueHistory,
 } from './inventory-reports.service';
 import { listReports, toExcel, toPdf } from './inventory-export.service';
+import { kardexDeProducto } from './kardex.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -152,6 +153,32 @@ router.get(
       return res.send(buf);
     }
     throw new ValidationError("format debe ser 'xlsx' o 'pdf'");
+  })
+);
+
+/**
+ * GET /inventory/reports/kardex — la historia de UN producto en UN mes.
+ *
+ *   ?productId=…&anio=2026&mes=8[&warehouseId=…]
+ *
+ * Sin `warehouseId` consolida todos los almacenes, que es lo que se quiere para
+ * saber "cuánto tengo de esto"; con él, responde por bodega, que es lo que se
+ * necesita cuando hay que ir a contarlo.
+ */
+router.get(
+  '/kardex',
+  asyncHandler(async (req: Request, res: Response) => {
+    const productId = String(req.query.productId || '');
+    if (!productId) throw new ValidationError('Falta productId');
+    const hoy = new Date();
+    const data = await kardexDeProducto({
+      companyId: companyId(req),
+      productId,
+      anio: Number(req.query.anio) || hoy.getFullYear(),
+      mes:  Number(req.query.mes)  || hoy.getMonth() + 1,
+      warehouseId: req.query.warehouseId ? String(req.query.warehouseId) : undefined,
+    });
+    res.json({ success: true, data });
   })
 );
 

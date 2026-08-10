@@ -359,6 +359,19 @@ class APIClient {
   /**
    * Inventory reports endpoints (§12 + dashboard)
    */
+  /** Kardex MENSUAL: la historia de un producto en un mes, con saldo corrido.
+   *
+   *  No confundir con `getKardex`, que ya existía y devuelve el listado crudo
+   *  de movimientos filtrable por fechas. Éste responde a la pregunta del
+   *  reporte —de cuánto partí, qué entró, qué salió, con qué cerré— y por eso
+   *  lleva otro nombre en vez de sobrecargar el que ya estaba. */
+  async getKardexMensual(p: { productId: string; anio: number; mes: number; warehouseId?: string }) {
+    const q = new URLSearchParams({ productId: p.productId, anio: String(p.anio), mes: String(p.mes) });
+    if (p.warehouseId) q.set('warehouseId', p.warehouseId);
+    const r = await this.client.get<APIResponse<any>>(`/inventory/reports/kardex?${q}`);
+    return r.data;
+  }
+
   async getInventoryValue() {
     const r = await this.client.get<APIResponse<any>>('/inventory/reports/value');
     return r.data;

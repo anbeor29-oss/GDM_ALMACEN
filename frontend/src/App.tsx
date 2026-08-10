@@ -46,6 +46,7 @@ import { PurchaseOrdersPage }         from '@/pages/PurchaseOrders';
 import { PointOfSalePage }            from '@/pages/PointOfSale';
 import { TreasuryPage }               from '@/pages/Treasury';
 import { PhysicalCountPage }          from '@/pages/PhysicalCount';
+import { KardexPage }                 from '@/pages/Kardex';
 import { SuperXMLImportPage }         from '@/pages/SuperXMLImport';
 import { CompanyProfilePage }         from '@/pages/CompanyProfile';
 import { useAuthStore } from '@/store/auth';
@@ -185,6 +186,7 @@ export function App() {
             <Route path="warehouses"                      element={<ModuleRoute module="inventory"><WarehousesPage /></ModuleRoute>} />
             <Route path="inventory"                       element={<ModuleRoute module="inventory"><InventoryPage /></ModuleRoute>} />
             <Route path="physical-counts"                 element={<ModuleRoute module="inventory"><PhysicalCountPage /></ModuleRoute>} />
+            <Route path="kardex"                          element={<ModuleRoute module="inventory"><KardexPage /></ModuleRoute>} />
             <Route path="purchase-orders"                 element={<ModuleRoute module="purchasing"><PurchaseOrdersPage /></ModuleRoute>} />
             <Route path="compras/xml"                     element={<ModuleRoute module="purchasing"><ComprasXMLPage /></ModuleRoute>} />
             {/* Proveedores es catálogo DE LA EMPRESA, no de plataforma: las

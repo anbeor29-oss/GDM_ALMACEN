@@ -139,6 +139,7 @@ export function Layout() {
                       { to: '/inventory',        icon: emoji3D('📊'), label: 'Existencias' },
                       { to: '/warehouses',       icon: emoji3D('🏬'), label: 'Almacenes' },
                       { to: '/physical-counts',  icon: emoji3D('📋'), label: 'Inventario físico' },
+                      { to: '/kardex',           icon: emoji3D('📒'), label: 'Kardex' },
                     ]}
                   />
                 )}
