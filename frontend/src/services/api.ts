@@ -481,6 +481,19 @@ class APIClient {
     return r.data;
   }
 
+  /**
+   * Registra la factura que llegó DESPUÉS de haber recibido la mercancía.
+   * Genera la deuda en tesorería; no vuelve a mover existencias.
+   */
+  async registrarFacturaDeOrden(id: string, datos: {
+    invoiceNumber: string; invoiceAmount?: number; invoiceDate?: string; supplierId?: string;
+  }) {
+    const r = await this.client.post<APIResponse<any>>(
+      `/purchase-orders/${id}/invoice`, datos
+    );
+    return r.data;
+  }
+
   /** Cambia el proveedor al que se le compra — el sugerido es sólo una propuesta. */
   async setPurchaseOrderSupplier(id: string, supplierId: string | null) {
     const r = await this.client.put<APIResponse<any>>(

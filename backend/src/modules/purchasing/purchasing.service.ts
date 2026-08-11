@@ -231,6 +231,192 @@ export async function changeStatus(
   });
 }
 
+/* ─────────────────────  LA DEUDA CON EL PROVEEDOR  ───────────────────── */
+
+/**
+ * Da de alta la cuenta por pagar de una compra en tesorería.
+ *
+ * Vive aquí, en un solo lugar, porque la deuda nace por DOS caminos: con la
+ * factura que trae el repartidor al recibir, y con la factura que llega días
+ * después de una orden ya surtida. Son el mismo hecho contable, y tenerlo
+ * duplicado garantizaba que un día uno de los dos dejara de consumir la línea
+ * de crédito o de respetar los días de vencimiento.
+ *
+ * No lanza si la factura ya estaba registrada: devuelve la existente marcada.
+ * El doble clic y la segunda entrega amparada por una sola factura son casos
+ * de todos los días, no errores que valga la pena interrumpir.
+ */
+async function generarDeudaProveedor(
+  client: PoolClient,
+  d: {
+    companyId: string;
+    supplierId: string | null;
+    orderId: string;
+    folio: number;
+    invoiceNumber: string;
+    invoiceAmount?: number;
+    invoiceDate?: string;
+    /** Costo de la mercancía, como propuesta cuando no capturan el total. */
+    importePropuesto: number;
+  }
+): Promise<any> {
+  if (!d.supplierId) {
+    throw new ValidationError(
+      'Elige el proveedor de la orden primero: sin proveedor no hay a quién ' +
+      'deberle y la factura no se puede registrar en tesorería.'
+    );
+  }
+
+  const yaExiste = await transactionQuery<any>(
+    client,
+    `SELECT id, amount, due_date FROM supplier_payments_schedule
+      WHERE company_id = $1 AND supplier_id = $2
+        AND UPPER(invoice_number) = UPPER($3) AND status <> 'CANCELLED'
+      LIMIT 1`,
+    [d.companyId, d.supplierId, d.invoiceNumber]
+  );
+  if (yaExiste.rows[0]) {
+    return {
+      id: yaExiste.rows[0].id,
+      amount: Number(yaExiste.rows[0].amount),
+      dueDate: yaExiste.rows[0].due_date,
+      yaExistia: true,
+    };
+  }
+
+  /* El importe que se debe es el TOTAL de la factura, con impuestos: es lo que
+   * se le va a transferir al proveedor. El costo de la mercancía sólo sirve de
+   * propuesta cuando no lo capturan. */
+  const importe = d.invoiceAmount != null && Number(d.invoiceAmount) > 0
+    ? Number(d.invoiceAmount)
+    : d.importePropuesto;
+  if (!(importe > 0)) return null;
+
+  const insR = await transactionQuery<any>(
+    client,
+    `INSERT INTO supplier_payments_schedule
+       (company_id, supplier_id, purchase_order_id, invoice_number,
+        amount, due_date, notes)
+     SELECT $1, $2, $3, $4, $5,
+            (COALESCE($6::timestamp, NOW())
+              + make_interval(days => COALESCE(c.credit_days, 0)))::date,
+            $7
+       FROM customers c WHERE c.id = $2
+     RETURNING id, amount, due_date,
+               (SELECT COALESCE(credit_days, 0) FROM customers WHERE id = $2) AS credit_days`,
+    [d.companyId, d.supplierId, d.orderId, d.invoiceNumber, importe,
+     d.invoiceDate || null,
+     `Orden de compra #${d.folio} · factura ${d.invoiceNumber}`]
+  );
+  if (!insR.rows[0]) return null;
+
+  // Consume línea de crédito, igual que la compra por XML.
+  await transactionQuery(
+    client,
+    `UPDATE customers SET credit_used = COALESCE(credit_used, 0) + $1 WHERE id = $2`,
+    [importe, d.supplierId]
+  );
+  return {
+    id: insR.rows[0].id,
+    amount: Number(insR.rows[0].amount),
+    dueDate: insR.rows[0].due_date,
+    creditDays: Number(insR.rows[0].credit_days || 0),
+    yaExistia: false,
+  };
+}
+
+/**
+ * Registra la factura de una orden YA SURTIDA — la mercancía entró antes que
+ * el papel.
+ *
+ * Es lo más común del mundo: llega el camión con la remisión, se recibe para
+ * que el almacén pueda vender, y la factura aparece tres días después. Sin
+ * esto había que capturar la deuda a mano en tesorería, sin liga con la orden
+ * que la originó, y el proveedor quedaba con la línea de crédito libre como si
+ * no se le debiera nada.
+ *
+ * NO mueve existencias: la mercancía ya se registró al recibir. Aquí sólo
+ * nace el pasivo.
+ */
+export async function registrarFacturaDeOrden(
+  companyId: string,
+  orderId: string,
+  datos: {
+    invoiceNumber: string;
+    invoiceAmount?: number;
+    invoiceDate?: string;
+    /** Sólo se usa si la orden no tenía proveedor asignado. */
+    supplierId?: string;
+  }
+): Promise<any> {
+  const folioFactura = String(datos?.invoiceNumber || '').trim().slice(0, 60);
+  if (!folioFactura) throw new ValidationError('Captura el número de la factura');
+
+  return transaction(async (client) => {
+    const poR = await transactionQuery<any>(
+      client,
+      `SELECT id, folio, status, supplier_id FROM purchase_orders
+        WHERE id = $1 AND company_id = $2 FOR UPDATE`,
+      [orderId, companyId]
+    );
+    if (poR.rows.length === 0) throw new NotFoundError('Orden no encontrada');
+    const po = poR.rows[0];
+
+    if (!['RECEIVED', 'RECEIVED_PARTIAL'].includes(po.status)) {
+      throw new ConflictError(
+        'Esta orden todavía no tiene mercancía recibida. Captura la factura ' +
+        'desde "Recibir mercancía", junto con lo que entra al almacén.'
+      );
+    }
+
+    /* Si la orden se cerró sin proveedor, aquí se completa. Es llenar un dato
+     * que faltaba, no reescribir historia: si ya tenía proveedor, se le debe a
+     * ese y el que venga en el cuerpo se ignora. */
+    let supplierId = po.supplier_id;
+    if (!supplierId && datos.supplierId) {
+      const sup = await transactionQuery<any>(
+        client,
+        `SELECT id FROM customers
+          WHERE id = $1 AND company_id = $2 AND party_type = 'SUPPLIER' AND deleted_at IS NULL`,
+        [datos.supplierId, companyId]
+      );
+      if (sup.rows.length === 0) throw new NotFoundError('Proveedor no encontrado');
+      await transactionQuery(
+        client,
+        `UPDATE purchase_orders SET supplier_id = $1, updated_at = NOW() WHERE id = $2`,
+        [datos.supplierId, orderId]
+      );
+      supplierId = datos.supplierId;
+    }
+
+    /* Propuesta de importe: lo que costó lo que YA se recibió. Sin impuestos,
+     * como en la recepción — la pantalla lo advierte. */
+    const costoR = await transactionQuery<{ costo: string }>(
+      client,
+      `SELECT COALESCE(SUM(quantity_received * COALESCE(last_purchase_price, 0)), 0)::text AS costo
+         FROM purchase_order_items WHERE purchase_order_id = $1`,
+      [orderId]
+    );
+
+    const deuda = await generarDeudaProveedor(client, {
+      companyId,
+      supplierId,
+      orderId,
+      folio: po.folio,
+      invoiceNumber: folioFactura,
+      invoiceAmount: datos.invoiceAmount,
+      invoiceDate: datos.invoiceDate,
+      importePropuesto: Number(costoR.rows[0].costo || 0),
+    });
+
+    logger.info(
+      `[purchasing] orden #${po.folio}: factura ${folioFactura} registrada ` +
+      `(deuda ${deuda?.yaExistia ? 'ya existente' : 'generada'} ${deuda?.amount ?? 0})`
+    );
+    return { id: po.id, folio: po.folio, invoiceNumber: folioFactura, deuda };
+  });
+}
+
 /* ─────────────────────  PROVEEDOR DE LA ORDEN  ───────────────────── */
 
 /**
@@ -413,88 +599,19 @@ export async function receiveOrder(
       [newStatus, orderId]
     );
 
-    /* ── La deuda con el proveedor ────────────────────────────────────────
-     *
-     * Recibir mercancía es contraer una deuda. Hasta hoy la recepción sólo
-     * movía existencias y el pasivo aparecía —si aparecía— cuando alguien lo
-     * capturaba a mano en tesorería. Aquí nace con la factura que trae el
-     * repartidor, que es el momento en que realmente se sabe cuánto se debe.
-     *
-     * Requiere proveedor: una deuda sin acreedor no se le puede pagar a
-     * nadie. Por eso el frente obliga a elegirlo antes de recibir. */
-    let deuda: any = null;
     const folioFactura = String(factura?.invoiceNumber || '').trim().slice(0, 60);
-
-    if (folioFactura) {
-      if (!po.supplier_id) {
-        throw new ValidationError(
-          'Elige el proveedor de la orden antes de recibir: sin proveedor no se ' +
-          'puede registrar la deuda en tesorería.'
-        );
-      }
-
-      const yaExiste = await transactionQuery<any>(
-        client,
-        `SELECT id, amount, due_date FROM supplier_payments_schedule
-          WHERE company_id = $1 AND supplier_id = $2
-            AND UPPER(invoice_number) = UPPER($3) AND status <> 'CANCELLED'
-          LIMIT 1`,
-        [companyId, po.supplier_id, folioFactura]
-      );
-
-      if (yaExiste.rows[0]) {
-        /* Segunda entrega amparada por la misma factura, o doble clic en
-         * "Confirmar". La mercancía sí entró —eso ya se registró arriba—,
-         * pero la deuda no se duplica. */
-        deuda = {
-          id: yaExiste.rows[0].id,
-          amount: Number(yaExiste.rows[0].amount),
-          dueDate: yaExiste.rows[0].due_date,
-          yaExistia: true,
-        };
-      } else {
-        /* El importe que se debe es el TOTAL de la factura, con impuestos: es
-         * lo que se le va a transferir al proveedor. El costo de la mercancía
-         * recibida sólo sirve de propuesta cuando no lo capturan. */
-        const importe = factura?.invoiceAmount != null && Number(factura.invoiceAmount) > 0
-          ? Number(factura.invoiceAmount)
-          : costoRecibido;
-
-        if (importe > 0) {
-          const insR = await transactionQuery<any>(
-            client,
-            `INSERT INTO supplier_payments_schedule
-               (company_id, supplier_id, purchase_order_id, invoice_number,
-                amount, due_date, notes)
-             SELECT $1, $2, $3, $4, $5,
-                    (COALESCE($6::timestamp, NOW())
-                      + make_interval(days => COALESCE(c.credit_days, 0)))::date,
-                    $7
-               FROM customers c WHERE c.id = $2
-             RETURNING id, amount, due_date,
-                       (SELECT COALESCE(credit_days, 0) FROM customers WHERE id = $2) AS credit_days`,
-            [companyId, po.supplier_id, orderId, folioFactura, importe,
-             factura?.invoiceDate || null,
-             `Orden de compra #${po.folio} · factura ${folioFactura}`]
-          );
-          if (insR.rows[0]) {
-            // Consume línea de crédito, igual que la compra por XML.
-            await transactionQuery(
-              client,
-              `UPDATE customers SET credit_used = COALESCE(credit_used, 0) + $1 WHERE id = $2`,
-              [importe, po.supplier_id]
-            );
-            deuda = {
-              id: insR.rows[0].id,
-              amount: Number(insR.rows[0].amount),
-              dueDate: insR.rows[0].due_date,
-              creditDays: Number(insR.rows[0].credit_days || 0),
-              yaExistia: false,
-            };
-          }
-        }
-      }
-    }
+    const deuda = folioFactura
+      ? await generarDeudaProveedor(client, {
+          companyId,
+          supplierId: po.supplier_id,
+          orderId,
+          folio: po.folio,
+          invoiceNumber: folioFactura,
+          invoiceAmount: factura?.invoiceAmount,
+          invoiceDate: factura?.invoiceDate,
+          importePropuesto: costoRecibido,
+        })
+      : null;
 
     logger.info(
       `[purchasing] orden #${po.folio}: ${received} partida(s) recibida(s)` +

@@ -46,6 +46,21 @@ devuelve, sólo obliga a meterla por ajuste manual y ahí se pierde de qué comp
 vino y a qué costo. El excedente queda anotado en el kardex y se devuelve a la
 pantalla para que quien recibe lo vea.
 
+**4-bis. La factura que llega DESPUÉS.** `POST /purchase-orders/:id/invoice`.
+Lo normal es que el camión traiga la remisión, se reciba para que el almacén
+pueda vender, y la factura aparezca tres días más tarde — y quedaban órdenes
+surtidas sin deuda, con el proveedor mostrando línea de crédito libre como si
+no se le debiera nada. Ahora se captura desde la misma orden, con botón
+**Registrar factura**, y no vuelve a mover existencias: la mercancía ya entró.
+Si la orden se cerró sin proveedor, ahí mismo se elige (es llenar un dato que
+faltaba, no reescribir historia: si ya tenía uno, se le debe a ese). El detalle
+de la orden lista las facturas ya registradas con su estado en tesorería, para
+que nadie la capture dos veces "por si acaso".
+
+La generación del pasivo quedó extraída en `generarDeudaProveedor()`: nace por
+dos caminos y tenerlo duplicado garantizaba que un día uno de los dos dejara de
+consumir la línea de crédito o de respetar los días de vencimiento.
+
 **5. La orden surtida se archiva, no se borra.** La lista trae por omisión sólo
 las vivas (`status NOT IN ('RECEIVED','CANCELLED')`), con casilla para ver las
 cerradas. Borrarlas perdería el historial de a quién se le compró y con qué

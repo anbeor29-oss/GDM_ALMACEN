@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ClipboardList, Sparkles, CheckCircle2, PackageCheck, XCircle,
-  ShoppingCart, Eye,
+  ShoppingCart, Eye, Receipt,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -217,6 +217,9 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
 }) {
   const qc = useQueryClient();
   const [receiving, setReceiving] = useState(false);
+  /* Captura de la factura que llegó después de recibir la mercancía. */
+  const [capturandoFactura, setCapturandoFactura] = useState(false);
+  const [proveedorFactura, setProveedorFactura] = useState('');
   const [receiveQty, setReceiveQty] = useState<Record<string, string>>({});
   const [costing, setCosting] = useState<'' | 'PROMEDIO' | 'ULTIMO' | 'CAPAS'>('');
   const [busy, setBusy] = useState(false);
@@ -234,6 +237,7 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
   });
   const order = q.data?.data?.order;
   const items: any[] = q.data?.data?.items || [];
+  const facturas: any[] = q.data?.data?.facturas || [];
 
   /* Catálogo de proveedores para el combo: el sugerido por el análisis es sólo
    * una propuesta y cualquiera puede surtir la orden. */
@@ -265,6 +269,34 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
       refreshDetail();
     } catch (e: any) {
       setError(e?.response?.data?.message || 'No se pudo cambiar el proveedor');
+    } finally { setBusy(false); }
+  };
+
+  const guardarFactura = async () => {
+    if (!numFactura.trim()) { setError('Captura el número de la factura'); return; }
+    setBusy(true); setError(''); setAviso('');
+    try {
+      const r = await api.registrarFacturaDeOrden(orderId, {
+        invoiceNumber: numFactura.trim(),
+        invoiceAmount: importeFactura ? Number(importeFactura) : undefined,
+        invoiceDate: fechaFactura || undefined,
+        supplierId: proveedorFactura || undefined,
+      });
+      const d: any = r.data?.deuda;
+      setAviso(
+        d?.yaExistia
+          ? `Esa factura ya estaba registrada por ${money(d.amount)} — no se duplicó la deuda.`
+          : d
+            ? `Deuda registrada en tesorería: ${money(d.amount)}, vence el ` +
+              `${new Date(d.dueDate).toLocaleDateString('es-MX')}` +
+              (d.creditDays ? ` (${d.creditDays} días de crédito).` : '.')
+            : 'La factura se registró.'
+      );
+      setCapturandoFactura(false);
+      setNumFactura(''); setImporteFactura(''); setFechaFactura(''); setProveedorFactura('');
+      refreshDetail();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo registrar la factura');
     } finally { setBusy(false); }
   };
 
@@ -331,6 +363,14 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
     const qty = Number(receiveQty[it.id] || 0);
     return acc + (qty > 0 ? qty * Number(it.last_purchase_price || 0) : 0);
   }, 0);
+  /* Para la factura que llega después, la propuesta es lo que YA se recibió. */
+  const costoYaRecibido = items.reduce(
+    (acc, it) => acc + Number(it.quantity_received || 0) * Number(it.last_purchase_price || 0), 0);
+  const propuestaImporte = receiving ? totalRecibiendo : costoYaRecibido;
+
+  /* La factura puede llegar días después de la mercancía. Mientras haya algo
+   * recibido, se puede capturar y generar la deuda. */
+  const puedeFacturar = ['RECEIVED', 'RECEIVED_PARTIAL'].includes(order.status);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -457,11 +497,58 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
               cuando el documento está físicamente en la mano de quien recibe,
               y de ahí sale sola la cuenta por pagar de tesorería con su
               vencimiento según los días de crédito del proveedor. */}
-          {receiving && (
+          {/* Las facturas que ya generaron deuda — para no capturarlas dos veces. */}
+          {facturas.length > 0 && (
+            <div className="bg-gray-50 border rounded-lg p-3">
+              <p className="text-xs font-semibold text-gray-600 mb-2">
+                Facturas registradas en tesorería
+              </p>
+              <ul className="space-y-1 text-sm">
+                {facturas.map((f) => (
+                  <li key={f.id} className="flex items-center gap-2">
+                    <Receipt size={14} className="text-gray-400 shrink-0" />
+                    <span className="font-medium">{f.invoice_number || 'sin folio'}</span>
+                    <span>· {money(f.amount)}</span>
+                    <span className="text-gray-500">
+                      · vence {new Date(f.due_date).toLocaleDateString('es-MX')}
+                    </span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                      f.status === 'PAID' ? 'bg-emerald-100 text-emerald-700'
+                        : f.status === 'CANCELLED' ? 'bg-gray-200 text-gray-600'
+                        : 'bg-amber-100 text-amber-700'}`}>
+                      {f.status === 'PAID' ? 'Pagada' : f.status === 'CANCELLED' ? 'Cancelada' : 'Por pagar'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {(receiving || capturandoFactura) && (
             <div className="bg-violet-50/70 border border-violet-200 rounded-lg p-4 space-y-3">
               <p className="text-sm font-medium text-violet-900">
-                Factura del proveedor — genera la deuda en tesorería
+                {capturandoFactura
+                  ? 'Factura que llegó después — genera la deuda sin volver a mover existencias'
+                  : 'Factura del proveedor — genera la deuda en tesorería'}
               </p>
+
+              {/* Orden cerrada sin proveedor: aquí se completa el dato que faltó,
+                  porque una deuda sin acreedor no se le puede pagar a nadie. */}
+              {capturandoFactura && !order.supplier_id && (
+                <div>
+                  <label className="block text-xs text-violet-900 mb-1">Proveedor</label>
+                  <select value={proveedorFactura} onChange={(e) => setProveedorFactura(e.target.value)}
+                    className="input w-full">
+                    <option value="">— Elige a quién se le debe —</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.business_name}{s.rfc ? ` · ${s.rfc}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs text-violet-900 mb-1">Número de factura</label>
@@ -472,7 +559,7 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
                   <label className="block text-xs text-violet-900 mb-1">Total con impuestos</label>
                   <input type="number" min="0" step="0.01" value={importeFactura}
                     onChange={(e) => setImporteFactura(e.target.value)}
-                    placeholder={totalRecibiendo > 0 ? totalRecibiendo.toFixed(2) : '0.00'}
+                    placeholder={propuestaImporte > 0 ? propuestaImporte.toFixed(2) : '0.00'}
                     className="input w-full text-right" />
                 </div>
                 <div>
@@ -485,10 +572,11 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
               <p className="text-xs text-violet-800">
                 El importe es lo que se le va a <strong>transferir</strong>: captura el total
                 de la factura con IVA. Si lo dejas vacío se usa el costo de la mercancía
-                recibida ({money(totalRecibiendo)}), que <strong>no incluye impuestos</strong>.
-                Los días de crédito del proveedor se cuentan desde la fecha de la factura.
+                {capturandoFactura ? ' ya recibida' : ' recibida'} ({money(propuestaImporte)}),
+                que <strong>no incluye impuestos</strong>. Los días de crédito del proveedor
+                se cuentan desde la fecha de la factura.
               </p>
-              {!order.supplier_id && (
+              {receiving && !order.supplier_id && (
                 <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">
                   Esta orden no tiene proveedor asignado. Elígelo arriba: sin proveedor no
                   hay a quién deberle y la factura no se puede registrar.
@@ -527,9 +615,26 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
               <ActionBtn icon={<ShoppingCart size={16} />} label="Marcar comprada" color="violet"
                 disabled={busy} onClick={() => doStatus('PURCHASED')} />
             )}
-            {canReceive && !receiving && (
+            {canReceive && !receiving && !capturandoFactura && (
               <ActionBtn icon={<PackageCheck size={16} />} label="Recibir mercancía" color="emerald"
                 disabled={busy} onClick={() => setReceiving(true)} />
+            )}
+            {/* La mercancía entró con remisión y la factura llegó después: se
+                captura aquí y la deuda nace ligada a esta orden, en vez de a
+                mano en Tesorería sin saber de qué compra vino. */}
+            {puedeFacturar && !receiving && !capturandoFactura && (
+              <ActionBtn icon={<Receipt size={16} />} label="Registrar factura" color="violet"
+                disabled={busy} onClick={() => setCapturandoFactura(true)} />
+            )}
+            {capturandoFactura && (
+              <>
+                <button onClick={() => { setCapturandoFactura(false); setError(''); }}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">
+                  Cancelar
+                </button>
+                <ActionBtn icon={<Receipt size={16} />} label={busy ? 'Guardando…' : 'Guardar factura'}
+                  color="violet" disabled={busy} onClick={guardarFactura} />
+              </>
             )}
             {receiving && (
               <>
@@ -541,7 +646,7 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
                   color="emerald" disabled={busy} onClick={doReceive} />
               </>
             )}
-            {!['RECEIVED', 'CANCELLED'].includes(order.status) && !receiving && (
+            {!cerrada && !receiving && !capturandoFactura && (
               <ActionBtn icon={<XCircle size={16} />} label="Cancelar orden" color="rose"
                 disabled={busy}
                 onClick={() => { if (window.confirm('¿Cancelar esta orden?')) doStatus('CANCELLED'); }} />

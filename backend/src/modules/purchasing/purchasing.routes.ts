@@ -12,7 +12,8 @@ import { authenticateToken, requireCapability } from '../../middleware/authentic
 import { asyncHandler, ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import { query, transaction, transactionQuery } from '../../config/database';
 import {
-  runReorderCheck, changeStatus, receiveOrder, setSupplier, OrderStatus,
+  runReorderCheck, changeStatus, receiveOrder, setSupplier,
+  registrarFacturaDeOrden, OrderStatus,
 } from './purchasing.service';
 
 const router = Router();
@@ -101,7 +102,23 @@ router.get(
         ORDER BY p.name`,
       [req.params.id]
     );
-    res.json({ success: true, data: { order: po.rows[0], items: items.rows } });
+    /* Las facturas ya registradas de esta orden: sin esto, quien abre una
+     * orden surtida no puede saber si la deuda ya se generó o sigue pendiente
+     * de capturar, y acaba registrándola dos veces "por si acaso". */
+    const facturas = await query<any>(
+      `SELECT sps.id, sps.invoice_number, sps.amount, sps.due_date, sps.status,
+              sps.paid_at, c.business_name AS supplier_name
+         FROM supplier_payments_schedule sps
+         LEFT JOIN customers c ON c.id = sps.supplier_id
+        WHERE sps.purchase_order_id = $1
+        ORDER BY sps.created_at`,
+      [req.params.id]
+    );
+
+    res.json({
+      success: true,
+      data: { order: po.rows[0], items: items.rows, facturas: facturas.rows },
+    });
   })
 );
 
@@ -292,6 +309,26 @@ router.put(
   asyncHandler(async (req: Request, res: Response) => {
     const supplierId = req.body?.supplierId ? String(req.body.supplierId) : null;
     const result = await setSupplier(companyId(req), req.params.id, supplierId);
+    res.json({ success: true, data: result });
+  })
+);
+
+/**
+ * POST /purchase-orders/:id/invoice — la factura que llegó DESPUÉS.
+ *
+ * Para órdenes ya surtidas: la mercancía entró con remisión y el papel llegó
+ * días después. Genera la deuda en tesorería sin volver a mover existencias.
+ */
+router.post(
+  '/:id/invoice',
+  requireCapability('purchasing:capture'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await registrarFacturaDeOrden(companyId(req), req.params.id, {
+      invoiceNumber: req.body?.invoiceNumber,
+      invoiceAmount: req.body?.invoiceAmount,
+      invoiceDate:   req.body?.invoiceDate,
+      supplierId:    req.body?.supplierId,
+    });
     res.json({ success: true, data: result });
   })
 );
