@@ -49,6 +49,11 @@ export function PointOfSalePage() {
   const [busy, setBusy] = useState(false);
   const [banner, setBanner] = useState('');
   const [error, setError] = useState('');
+  /* Cliente al que se le factura la venta. Vacío = público general, que es el
+   * caso normal en mostrador y termina en la factura global del día. */
+  const [customerId, setCustomerId] = useState('');
+  /** Última venta cobrada: de ahí sale el ticket que se imprime. */
+  const [ticket, setTicket] = useState<any>(null);
 
   const productsQ = useQuery({
     queryKey: ['pos-products', search],
@@ -60,6 +65,12 @@ export function PointOfSalePage() {
   const salesQ = useQuery({
     queryKey: ['pos-sales-today'],
     queryFn: () => api.getPosSales(),
+  });
+  /* Los clientes se cargan una vez y se filtran en el navegador: en mostrador
+   * no se puede esperar una petición por cada letra mientras hay fila. */
+  const clientesQ = useQuery({
+    queryKey: ['clientes-pos'],
+    queryFn: () => api.getCustomers(1, 300),
     refetchInterval: 60_000,
   });
   const sales: any[] = salesQ.data?.data?.sales || [];
@@ -108,12 +119,78 @@ export function PointOfSalePage() {
       });
       const warn = (r.data.warnings || []).length > 0
         ? ` ⚠ ${r.data.warnings.join(' · ')}` : '';
-      setBanner(`✅ Venta #${r.data.folio} cobrada: ${money(r.data.total)} (${PAYMENT_FORMS[paymentForm]})${warn}`);
+
+      /* El ticket se arma con lo que se tenía en pantalla, no se vuelve a
+       * pedir al servidor: el cliente ya está esperando su papel y una
+       * petición más sólo agrega demora. */
+      setTicket({
+        folio: r.data.folio, total: r.data.total, fecha: new Date(),
+        formaPago: PAYMENT_FORMS[paymentForm], lineas: cart,
+      });
+
+      let extra = '';
+      if (customerId) {
+        /* Pidió factura. Se emite a su nombre con las partidas del ticket; el
+         * inventario NO se descuenta otra vez —el backend reapunta los
+         * movimientos de la venta a la factura—. */
+        try {
+          const f: any = await api.facturarVentaPos(r.data.id, customerId);
+          const d = f?.data ?? f;
+          extra = d?.stamped
+            ? ` · Factura ${d.folio} timbrada`
+            : ` · Factura ${d?.folio || ''} creada SIN timbrar: ${d?.aviso || 'revisa Facturas'}`;
+        } catch (e: any) {
+          /* La venta ya está cobrada: no se deshace por un fallo al facturar.
+           * Se avisa para que se emita desde Facturas. */
+          extra = ` · ⚠ La venta se cobró pero no se pudo facturar: ${e?.response?.data?.message || e.message}`;
+        }
+      }
+
+      setBanner(`✅ Venta #${r.data.folio} cobrada: ${money(r.data.total)} (${PAYMENT_FORMS[paymentForm]})${warn}${extra}`);
       setCart([]);
+      setCustomerId('');
       refresh();
     } catch (e: any) {
       setError(e?.response?.data?.message || 'No se pudo cobrar la venta');
     } finally { setBusy(false); }
+  };
+
+  /* El ticket se imprime abriendo una ventana con su propio HTML.
+   *
+   * No se usa window.print() de la página completa porque imprimiría el menú,
+   * el carrito y la lista de ventas. Y no se arma un PDF en el servidor porque
+   * en mostrador el papel tiene que salir YA: una ida al backend por cada
+   * ticket agrega segundos con gente esperando. */
+  const imprimirTicket = () => {
+    if (!ticket) return;
+    const filas = ticket.lineas.map((l: any) =>
+      `<tr><td>${l.quantity} x ${l.name}</td><td class="d">${money(l.unitPrice * l.quantity)}</td></tr>`
+    ).join('');
+    const w = window.open('', '_blank', 'width=380,height=600');
+    if (!w) { setError('El navegador bloqueó la ventana del ticket. Permite las ventanas emergentes.'); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ticket ${ticket.folio}</title>
+      <style>
+        /* 58 mm es el ancho de la mayoría de las impresoras de tickets. */
+        @page { size: 58mm auto; margin: 3mm; }
+        body { font-family: ui-monospace, monospace; font-size: 11px; width: 52mm; }
+        h1 { font-size: 13px; text-align: center; margin: 0 0 2px; }
+        .c { text-align: center; } .d { text-align: right; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        td { padding: 1px 0; vertical-align: top; }
+        .tot { border-top: 1px dashed #000; font-weight: bold; font-size: 13px; }
+      </style></head><body>
+      <h1>TICKET DE VENTA</h1>
+      <p class="c">Folio #${ticket.folio}<br>${ticket.fecha.toLocaleString('es-MX')}</p>
+      <table>${filas}
+        <tr class="tot"><td>TOTAL</td><td class="d">${money(ticket.total)}</td></tr>
+      </table>
+      <p class="c" style="margin-top:8px">Pago: ${ticket.formaPago}</p>
+      <p class="c" style="margin-top:10px">¡Gracias por su compra!</p>
+      <p class="c" style="font-size:9px">Este ticket no es un comprobante fiscal.</p>
+      </body></html>`);
+    w.document.close();
+    w.focus();
+    w.print();
   };
 
   const handleCancel = async (sale: any) => {
@@ -165,6 +242,21 @@ export function PointOfSalePage() {
       </div>
 
       {banner && <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">{banner}</div>}
+      {ticket && (
+        <div className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm">
+          <span className="text-slate-700">Ticket de la venta <b>#{ticket.folio}</b> listo.</span>
+          <div className="flex gap-2">
+            <button onClick={imprimirTicket}
+              className="px-3 py-1.5 bg-slate-800 text-white rounded text-xs hover:bg-slate-900">
+              Imprimir ticket
+            </button>
+            <button onClick={() => setTicket(null)}
+              className="px-3 py-1.5 border border-slate-300 rounded text-xs hover:bg-white">
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
       {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -230,6 +322,23 @@ export function PointOfSalePage() {
                 <option key={k} value={k}>{v}</option>
               ))}
             </select>
+            {/* Cliente. Vacío es lo normal —público general, va a la global del
+                día—; con cliente se emite su factura al cobrar. Se deja aquí,
+                junto a la forma de pago, porque las dos son decisiones del
+                momento de cobrar y no del armado del carrito. */}
+            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}
+                    className="input w-auto max-w-[260px]"
+                    title="Déjalo en público general si no piden factura">
+              <option value="">Público general (sin factura)</option>
+              {((clientesQ.data as any)?.data?.customers ?? []).map((c: any) => (
+                <option key={c.id} value={c.id}>{c.rfc} · {c.business_name}</option>
+              ))}
+            </select>
+            {customerId && (
+              <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+                Se emitirá factura a este cliente
+              </span>
+            )}
             <div className="ml-auto text-right">
               <p className="text-xs text-gray-500 uppercase">Total (IVA incluido)</p>
               <p className="text-2xl font-bold text-gray-900">{money(total)}</p>

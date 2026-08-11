@@ -506,6 +506,12 @@ class APIClient {
     return r.data;
   }
 
+  /** El cliente pidió su factura de una venta de mostrador. */
+  async facturarVentaPos(saleId: string, customerId: string, cfdiUse?: string) {
+    const r = await this.client.post(`/pos/sales/${saleId}/facturar`, { customerId, cfdiUse });
+    return r.data;
+  }
+
   async cancelPosSale(id: string) {
     const r = await this.client.post<APIResponse<any>>(`/pos/sales/${id}/cancel`);
     return r.data;
