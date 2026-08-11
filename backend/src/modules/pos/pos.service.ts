@@ -50,7 +50,25 @@ export async function createSale(
   }
 
   return transaction(async (client) => {
-    const warehouseId = input.warehouseId
+    /* De qué almacén sale la mercancía, por orden de prioridad:
+     *   1. La CAJA ASIGNADA del cajero, si la tiene.
+     *   2. El almacén que mandó la pantalla.
+     *   3. El almacén por omisión de la empresa.
+     *
+     * La caja asignada gana sobre lo que mande el navegador a propósito: si el
+     * cajero de la Bodega Norte pudiera vender del almacén central —por un
+     * selector mal puesto o por una petición armada a mano— las dos existencias
+     * quedarían mal y nadie lo notaría hasta el inventario físico. Quien no
+     * tiene caja fija (ADMIN, VENTAS) sigue eligiendo como hasta ahora. */
+    const cajaR = user.userId
+      ? await transactionQuery<{ warehouse_id: string | null }>(
+          client, `SELECT warehouse_id FROM users WHERE id = $1`, [user.userId]
+        )
+      : { rows: [] as any[] };
+    const cajaAsignada = cajaR.rows[0]?.warehouse_id || null;
+
+    const warehouseId = cajaAsignada
+      || input.warehouseId
       || await getOrCreateDefaultWarehouse(client, companyId);
 
     // ¿La empresa bloquea venta sin stock? (D3)

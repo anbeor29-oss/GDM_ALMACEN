@@ -203,6 +203,8 @@ function WarehouseModal({
   const [isActive, setIsActive] = useState(warehouse?.is_active ?? true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  /** Cajero recién creado: se enseña su acceso y el modal deja de guardar. */
+  const [cajero, setCajero] = useState<any>(null);
 
   // ── Domicilio ────────────────────────────────────────────────────────────
   const [cp, setCp] = useState(warehouse?.postal_code || '');
@@ -277,7 +279,13 @@ function WarehouseModal({
       if (isEdit) {
         await api.updateWarehouse(warehouse.id, { name: name.trim(), isActive, ...domicilio });
       } else {
-        await api.createWarehouse({ code: codeLimpio, name: name.trim(), ...domicilio });
+        const r: any = await api.createWarehouse({ code: codeLimpio, name: name.trim(), ...domicilio });
+        /* Al crear un almacén se crea también su cajero, con contraseña
+         * temporal. Se muestra UNA vez y no se cierra el modal: si se cerrara
+         * como en un alta normal, la clave se perdería y habría que
+         * restablecerla antes de que el cajero pueda siquiera entrar. */
+        const cajero = (r?.data ?? r)?.cajero;
+        if (cajero) { setCajero(cajero); return; }
       }
       onSaved();
     } catch (e: any) {
@@ -304,6 +312,34 @@ function WarehouseModal({
           {error && (
             <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded text-sm">
               {error}
+            </div>
+          )}
+          {cajero && (
+            <div className={`px-3 py-3 rounded text-sm border ${
+              cajero.creado ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                            : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+              {cajero.creado ? (
+                <>
+                  <p className="font-semibold mb-1">Almacén creado, con su punto de venta.</p>
+                  <p className="mb-2 text-xs">
+                    Entrégale estos datos al cajero. La contraseña <b>no se vuelve a mostrar</b>:
+                    si se pierde, hay que restablecerla desde Usuarios.
+                  </p>
+                  <div className="bg-white/70 rounded p-2 font-mono text-sm">
+                    <div>Usuario: <b>{cajero.email}</b></div>
+                    <div>Contraseña temporal: <b>{cajero.passwordTemporal}</b></div>
+                  </div>
+                  <p className="mt-2 text-xs">
+                    Se le pedirá cambiarla al entrar. Sólo ve el Punto de Venta, y vende
+                    desde este almacén.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold mb-1">El almacén se creó, pero sin su cajero.</p>
+                  <p className="text-xs">{cajero.motivo}</p>
+                </>
+              )}
             </div>
           )}
           {!isEdit && (
@@ -419,9 +455,12 @@ function WarehouseModal({
           <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
             Cancelar
           </button>
-          <button onClick={handleSave} disabled={saving}
+          {/* Con el acceso en pantalla, el único movimiento sensato es cerrar:
+              volver a guardar chocaría contra el código duplicado y taparía el
+              aviso con un error. */}
+          <button onClick={cajero ? onSaved : handleSave} disabled={saving}
             className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 disabled:opacity-50">
-            {saving ? 'Guardando…' : 'Guardar'}
+            {cajero ? 'Listo' : saving ? 'Guardando…' : 'Guardar'}
           </button>
         </div>
       </div>

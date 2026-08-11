@@ -10,6 +10,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken, authorize } from '../../middleware/authentication';
 import { asyncHandler, ValidationError, NotFoundError, ConflictError } from '../../middleware/errorHandler';
 import { query, transaction, transactionQuery } from '../../config/database';
+import { crearCajeroDelAlmacen, CajeroCreado } from './cajero-del-almacen.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -139,7 +140,21 @@ router.post(
          dom.postalCode, dom.street, dom.extNumber, dom.intNumber,
          dom.colonia, dom.municipio, dom.estado]
       );
-      return ins.rows[0];
+      /* Su cajero, en la MISMA transacción: si el alta del almacén se revierte,
+       * no queda un usuario colgando que apunta a una bodega inexistente.
+       *
+       * `crearCajeroDelAlmacen` nunca lanza — devuelve el motivo. Un almacén es
+       * un dato de inventario y no tiene por qué depender de que su cajero se
+       * haya podido crear. */
+      const cajero = await crearCajeroDelAlmacen(client, {
+        companyId: companyId(req),
+        warehouseId: ins.rows[0].id,
+        warehouseCode: ins.rows[0].code,
+        warehouseName: ins.rows[0].name,
+        creadorEmail: req.user?.email,
+        creadorId: req.user?.userId,
+      });
+      return { ...ins.rows[0], cajero };
     }).catch((e: any) => {
       if (e?.code === '23505') throw new ConflictError(`Ya existe un almacén con código ${code}`);
       throw e;
