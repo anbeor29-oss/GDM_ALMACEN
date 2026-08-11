@@ -107,7 +107,38 @@ export function Layout() {
                     que más veces se abre al día en un mostrador, y estaba hasta
                     abajo de la lista. Para el cajero es además la única. */}
                 {show('pos')          && <NavItem to="/pos"          icon={emoji3D('🧮')} accent="rose"    label="Punto de Venta"   open={sidebarOpen} />}
-                {show('invoices')     && <NavItem to="/invoices"     icon={emoji3D('🧾')} accent="amber"   label="Facturas"         open={sidebarOpen} />}
+                {/* FACTURAS COMO AGRUPADOR.
+                     Facturas, notas de crédito, complementos de pago, clientes y
+                     monedas son partes del MISMO ciclo: se factura, se corrige,
+                     se cobra, y todo eso ocurre contra un cliente y en una
+                     moneda. Sueltos, el menú se leía como una lista de pantallas
+                     sin relación y había que recordar en cuál estaba cada cosa.
+                     El grupo abre en Facturas, que es a donde se entra casi
+                     siempre. */}
+                {show('invoices')     && (
+                  <NavGroup
+                    to="/invoices"
+                    icon={emoji3D('🧾')}
+                    label="Facturas"
+                    accent="amber"
+                    open={sidebarOpen}
+                    pathPrefix="/invoices"
+                    children={[
+                      { to: '/invoices',             icon: emoji3D('🧾'), label: 'Facturas' },
+                      ...(show('credit_notes') ? [
+                        { to: '/credit-notes',       icon: emoji3D('📉'), label: 'Notas de Crédito' },
+                        { to: '/payments',           icon: emoji3D('💵'), label: 'Complementos de Pago' },
+                      ] : []),
+                      ...(show('customers') ? [
+                        { to: '/customers',          icon: emoji3D('👥'), label: 'Clientes' },
+                      ] : []),
+                      ...(show('exchange_rates') ? [
+                        { to: '/tipos-de-cambio',      icon: emoji3D('🪙'), label: 'Tipos de cambio' },
+                        { to: '/diferencia-cambiaria', icon: emoji3D('⚖️'), label: 'Diferencia cambiaria' },
+                      ] : []),
+                    ]}
+                  />
+                )}
                 {show('carta_porte') && (
                   <NavGroup
                     to="/carta-porte"
@@ -125,9 +156,6 @@ export function Layout() {
                     ]}
                   />
                 )}
-                {show('credit_notes') && <NavItem to="/credit-notes" icon={emoji3D('📉')} accent="rose"    label="Notas de Crédito" open={sidebarOpen} />}
-                {show('credit_notes') && <NavItem to="/payments"     icon={emoji3D('💵')} accent="emerald" label="Complementos de Pago" open={sidebarOpen} />}
-                {show('customers')    && <NavItem to="/customers"    icon={emoji3D('👥')} accent="emerald" label="Clientes"         open={sidebarOpen} />}
                 {/* Sin módulo de inventario no existe el grupo Almacén, y
                     Productos quedaría inalcanzable. Sólo en ese caso se muestra
                     suelto. */}
@@ -184,7 +212,12 @@ export function Layout() {
                 })()}
                 {show('treasury')     && <NavItem to="/treasury"     icon={emoji3D('🏦')} accent="sky"     label="Tesorería"        open={sidebarOpen} />}
                 {show('reports')      && <NavItem to="/reports"      icon={emoji3D('📊')} accent="violet"  label="Reportes"         open={sidebarOpen} />}
-                {show('exchange_rates') && (
+                {/* Monedas sigue existiendo aparte SÓLO para quien no ve
+                     facturas —Tesorería, que sí necesita tipos de cambio—. Con
+                     facturas, estas dos pantallas ya viven dentro del grupo de
+                     arriba; mostrarlas dos veces marcaría dos renglones activos
+                     a la vez y duplicaría el camino a la misma página. */}
+                {show('exchange_rates') && !show('invoices') && (
                   <NavGroup
                     to="/tipos-de-cambio"
                     icon={emoji3D('💱')}
