@@ -80,6 +80,22 @@ services:
         generateValue: true
       - key: CSD_MASTER_KEY
         generateValue: true
+      # Llave maestra de la bóveda de e.firma (descarga masiva del SAT).
+      #
+      # Va aparte de ENCRYPTION_KEY a propósito: aquélla protege contraseñas de
+      # CSD, que se reemplazan pidiendo otro sello; ésta protege la LLAVE
+      # PRIVADA de la e.firma, que tiene efectos de firma autógrafa. Con llaves
+      # separadas, rotar una no obliga a recargar la otra.
+      #
+      # OJO AL ROTARLA: si cambia, las e.firma ya guardadas dejan de poder
+      # descifrarse y hay que volver a cargarlas. No es una variable que se
+      # toque a la ligera.
+      - key: SAT_VAULT_KEY
+        generateValue: true
+      # El motor que firma solicitudes ante el SAT NO arranca solo: se enciende
+      # aquí cuando alguien lo decide. Ver sat-descarga-cron.ts.
+      - key: ENABLE_SAT_DESCARGA_CRON
+        value: "false"
       - key: JWT_EXPIRATION
         value: 1h
       - key: JWT_REFRESH_EXPIRATION
