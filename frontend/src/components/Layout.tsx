@@ -211,6 +211,10 @@ export function Layout() {
                   );
                 })()}
                 {show('treasury')     && <NavItem to="/treasury"     icon={emoji3D('🏦')} accent="sky"     label="Tesorería"        open={sidebarOpen} />}
+                {/* Auditoría vive junto a Tesorería: las dos miran hacia afuera
+                    —una al banco, la otra al SAT— y las dos las revisa la misma
+                    persona antes del cierre del mes. */}
+                {show('auditoria')    && <NavItem to="/auditoria"    icon={emoji3D('🛡️')} accent="emerald" label="Auditoría"        open={sidebarOpen} />}
                 {show('reports')      && <NavItem to="/reports"      icon={emoji3D('📊')} accent="violet"  label="Reportes"         open={sidebarOpen} />}
                 {/* Monedas sigue existiendo aparte SÓLO para quien no ve
                      facturas —Tesorería, que sí necesita tipos de cambio—. Con

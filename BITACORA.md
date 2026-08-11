@@ -5,6 +5,85 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-11 (noche) — Auditoría: lo que el SAT dice de nuestros comprobantes
+
+### Contexto
+Timbrar dejaba el CFDI marcado como timbrado aquí dentro, y ahí terminaba la
+historia. Lo que pasara después en el SAT —una cancelación que solicitó el
+receptor, un plazo vencido, un comprobante que allá está cancelado y aquí se
+sigue cobrando— se descubría en la revisión anual, con el contador enfrente.
+
+### Qué servicio se usa, y por qué ése
+El `ConsultaCFDIService` del SAT: público, sin e.firma, sin cuota conocida.
+Necesita RFC emisor, RFC receptor, total, UUID y los últimos ocho caracteres del
+sello — que se sacan del `xml_content` timbrado. Es exactamente la pregunta que
+hay que hacer y no obliga a custodiar la llave privada de nadie.
+
+El motor de descarga masiva de `DESCARGA_MASIVA_SAT_Y_SERVICIOS.md` resuelve
+otra cosa: traerse los XML que NOS emitieron. Eso sí necesita e.firma, cola de
+paquetes, partición adaptativa y bóveda de credenciales. Se construye aparte;
+mezclarlo habría metido el manejo de llaves privadas en una tarea que no lo
+necesita.
+
+### Decisiones
+
+**Una tabla `auditoria_cfdi`, no columnas en cada tabla.** Se auditan tres
+documentos —facturas, notas de crédito y complementos— y mañana los XML
+recibidos. El comprobante se identifica por su UUID, que es como lo identifica
+el SAT. Guarda el ÚLTIMO estado, no el histórico: un CFDI cambia de estado dos o
+tres veces en su vida, y 200 revisiones idénticas por comprobante harían lenta
+la única consulta que importa, "¿qué está mal hoy?".
+
+**El cron corre a diario y toma los de más de 72 h.** Un cron de calendario
+"cada 3 días" se desfasa en los meses de 31 y, si el servidor está caído ese
+día, la revisión se pierde tres días. Así cada CFDI lleva su propio reloj, la
+carga se reparte y un día perdido se recupera solo. A las 04:00: el servicio del
+SAT es compartido con todo el país y de madrugada responde.
+
+**Viene encendido, al revés que los demás crones.** Los otros son opt-in porque
+mueven datos; éste sólo pregunta y anota. Apagado por omisión, la auditoría no
+correría hasta que alguien recordara encender una variable, y la única señal
+sería una pantalla en ceros idéntica a "todo está bien".
+
+**Nunca escribe sobre el documento.** Si el SAT dice "Cancelado" y aquí está
+vigente, se marca la DISCREPANCIA; no se cancela la factura. Cancelar mueve
+inventario, saldos y CFDI relacionados: es decisión de alguien, no de un proceso
+de madrugada.
+
+**"No Encontrado" no es discrepancia.** El SAT tarda en publicar lo recién
+timbrado y un CFDI de pruebas nunca aparecerá. En rojo llenaría la pantalla de
+alarmas vacías y enterraría las dos que sí importan; se cuenta en su propia
+columna del resumen.
+
+**Complemento de pago con total 0.00.** El Anexo 20 obliga a que un tipo P lleve
+Total en cero y el SAT compara contra eso; mandar el importe pagado devuelve "no
+encontrado" y parece un CFDI perdido cuando sólo está mal la pregunta.
+
+**Menú Auditoría** en la barra lateral (🛡️), visible para ADMIN_ALL y TESORERIA.
+Es la casa del módulo: ahí vivirá la verificación de proveedores contra las
+listas del 69-B del CFF. La respuesta `ValidacionEFOS` del SAT ya se guarda y la
+pantalla avisa cuando es distinta de 100.
+
+### Verificación
+Contra el servicio real del SAT con los 5 comprobantes de GHC1707275Y0 (3
+facturas, 1 nota de crédito, 1 complemento): las 5 consultas SOAP salieron y se
+guardaron, el resumen pasó de 0 a 5 revisados, y la segunda corrida en modo
+"sólo pendientes" devolvió 0 revisados — la ventana de 72 horas se respeta. Los
+5 volvieron "No Encontrado" porque son timbres de sandbox: el SAT real no los
+conoce, que es la respuesta correcta.
+
+En GDM Facturación se portó el módulo completo y se comprobó columna por columna
+que las cinco tablas que consulta la auditoría existen con esos nombres; ese
+checkout no tiene base local, así que ahí la verificación fue de esquema y
+compilación, no de ejecución.
+
+### Pendiente que deja abierto
+La descarga masiva (XML recibidos de proveedores) y con ella la pantalla de
+comprobantes recibidos del mes. Es el motor completo del documento: e.firma,
+particionador adaptativo, cola de paquetes y descompresión segura.
+
+---
+
 ## 2026-08-11 (tarde) — Remesas de pago: la lista del viernes para el lunes
 
 ### Contexto

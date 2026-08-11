@@ -1039,6 +1039,25 @@ class APIClient {
     return r.data;
   }
 
+  /* ───────────── Auditoría: qué dice el SAT de nuestros CFDI ───────────── */
+  async getAuditoria(params?: { soloDiscrepancias?: boolean; estado?: string; docType?: string }) {
+    const r = await this.client.get<APIResponse<any>>('/auditoria', { params });
+    return r.data;
+  }
+  async getAuditoriaResumen() {
+    const r = await this.client.get<APIResponse<any>>('/auditoria/resumen');
+    return r.data;
+  }
+  /** `todos = true` vuelve a preguntar por el universo completo, sin esperar las 72 h. */
+  async correrAuditoria(todos = false) {
+    const r = await this.client.post<APIResponse<any>>('/auditoria/revisar', { todos });
+    return r.data;
+  }
+  async revisarComprobanteSat(docType: string, docId: string) {
+    const r = await this.client.post<APIResponse<any>>(`/auditoria/revisar/${docType}/${docId}`);
+    return r.data;
+  }
+
   /* ───────────── Remesas de pago (la lista del viernes) ───────────── */
   async getPaymentRuns(params?: { from?: string; to?: string; status?: string }) {
     const r = await this.client.get<APIResponse<any>>('/treasury/payment-runs', { params });

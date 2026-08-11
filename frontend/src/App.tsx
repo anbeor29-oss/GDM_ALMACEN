@@ -45,6 +45,7 @@ import { InventoryPage }              from '@/pages/Inventory';
 import { PurchaseOrdersPage }         from '@/pages/PurchaseOrders';
 import { PointOfSalePage }            from '@/pages/PointOfSale';
 import { TreasuryPage }               from '@/pages/Treasury';
+import { AuditoriaPage }              from '@/pages/Auditoria';
 import { PhysicalCountPage }          from '@/pages/PhysicalCount';
 import { KardexPage }                 from '@/pages/Kardex';
 import { FaltantesPage }              from '@/pages/Faltantes';
@@ -197,6 +198,7 @@ export function App() {
             <Route path="suppliers"                       element={<ModuleRoute module="suppliers"><SuppliersPage /></ModuleRoute>} />
             <Route path="pos"                             element={<ModuleRoute module="pos"><PointOfSalePage /></ModuleRoute>} />
             <Route path="treasury"                        element={<ModuleRoute module="treasury"><TreasuryPage /></ModuleRoute>} />
+            <Route path="auditoria"                       element={<ModuleRoute module="auditoria"><AuditoriaPage /></ModuleRoute>} />
             <Route path="company"                         element={<CompanyOnlyRoute><CompanyProfilePage /></CompanyOnlyRoute>} />
 
             {/* Módulos de plataforma — SOLO SUPER_ADMIN (guard por URL directa) */}

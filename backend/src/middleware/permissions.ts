@@ -29,12 +29,12 @@ export type WorkGroup = 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORE
 export type ModuleKey =
   | 'invoices' | 'carta_porte' | 'credit_notes' | 'customers' | 'products'
   | 'xml_reader' | 'inventory' | 'purchasing' | 'suppliers' | 'pos'
-  | 'treasury' | 'reports' | 'exchange_rates';
+  | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria';
 
 const ALL_MODULES: ModuleKey[] = [
   'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
   'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos',
-  'treasury', 'reports', 'exchange_rates',
+  'treasury', 'reports', 'exchange_rates', 'auditoria',
 ];
 
 /**
@@ -56,7 +56,7 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   ],
   ALMACEN:   ['products', 'inventory', 'reports'],
   COMPRAS:   ['purchasing', 'suppliers', 'products', 'inventory', 'xml_reader', 'reports'],
-  TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'reports'],
+  TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'reports', 'auditoria'],
   /* Cajero de mostrador: SÓLO la caja.
    *
    * VENTAS ya existía pero alcanza facturas, clientes y Carta Porte, que es

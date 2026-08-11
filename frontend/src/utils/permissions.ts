@@ -19,13 +19,13 @@ export type ModuleKey =
   | 'dashboard'
   | 'invoices' | 'carta_porte' | 'credit_notes' | 'customers' | 'products'
   | 'xml_reader' | 'inventory' | 'purchasing' | 'suppliers' | 'pos'
-  | 'treasury' | 'reports' | 'exchange_rates';
+  | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria';
 
 const ALL_MODULES: ModuleKey[] = [
   'dashboard',
   'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
   'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos',
-  'treasury', 'reports', 'exchange_rates',
+  'treasury', 'reports', 'exchange_rates', 'auditoria',
 ];
 
 /**
@@ -43,7 +43,8 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   ALMACEN:   ['dashboard', 'products', 'inventory', 'reports'],
   COMPRAS:   ['dashboard', 'purchasing', 'suppliers', 'products', 'inventory',
               'xml_reader', 'reports'],
-  TESORERIA: ['dashboard', 'treasury', 'suppliers', 'exchange_rates', 'reports'],
+  TESORERIA: ['dashboard', 'treasury', 'suppliers', 'exchange_rates', 'reports',
+              'auditoria'],
   /* Cajero de mostrador: SÓLO el punto de venta.
    *
    * VENTAS ya existía, pero alcanza facturas, clientes, Carta Porte y el lector
