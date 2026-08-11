@@ -56,6 +56,19 @@ router.post(
     const key = archivos?.key?.[0]?.buffer;
     const password = String(req.body?.password || '');
 
+    /* La bóveda se revisa ANTES de mirar los archivos.
+     *
+     * Sin esto, la contraseña de la e.firma ya viajó hasta aquí para morir en un
+     * error de configuración del servidor —y el usuario recibía un 500 genérico
+     * en vez de saber qué falta. Se contesta con el motivo y sin tocar nada. */
+    if (!bovedaLista()) {
+      throw new ValidationError(
+        'El servidor todavía no tiene configurada la llave de la bóveda ' +
+        '(SAT_VAULT_KEY). Hasta que exista, la e.firma no se puede guardar cifrada ' +
+        'y el módulo no la acepta. Es una variable de entorno del backend.'
+      );
+    }
+
     if (!cer || !key) throw new ValidationError('Faltan los archivos .cer y .key de la e.firma');
     if (!password) throw new ValidationError('Falta la contraseña de la clave privada');
 

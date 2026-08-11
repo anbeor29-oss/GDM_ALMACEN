@@ -111,11 +111,17 @@ export function XmlRecibidos() {
       {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
       {bovedaLista === false && (
-        <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-lg text-sm">
-          <strong>Falta configurar la bóveda.</strong> La descarga masiva guarda la
-          e.firma cifrada y necesita su llave maestra en el servidor
-          (<code>SAT_VAULT_KEY</code>, de 32 caracteres o más). Sin ella, el módulo no
-          acepta credenciales — a propósito: una bóveda con llave conocida no protege nada.
+        <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-lg text-sm space-y-1">
+          <p>
+            <strong>Falta configurar la bóveda.</strong> La descarga masiva guarda la
+            e.firma cifrada y necesita su llave maestra en el servidor
+            (<code>SAT_VAULT_KEY</code>, de 32 caracteres o más). Sin ella, el módulo no
+            acepta credenciales — a propósito: una bóveda con llave conocida no protege nada.
+          </p>
+          <p className="text-xs">
+            Se agrega en las variables de entorno del backend. Mientras tanto, esta
+            pantalla no pide la e.firma: no tendría dónde guardarla.
+          </p>
         </div>
       )}
 
@@ -142,6 +148,17 @@ export function XmlRecibidos() {
               </button>
             )}
           </div>
+        ) : bovedaLista === false ? (
+          /* Sin bóveda no se pide la e.firma.
+           *
+           * Pedirla igual —como pasaba antes— hacía que alguien eligiera sus
+           * archivos, tecleara la contraseña de su llave privada y la mandara por
+           * la red para recibir a cambio un error de configuración del servidor.
+           * Si ya se sabe que va a fallar, no se pide. */
+          <p className="text-sm text-gray-500 italic">
+            La carga de la e.firma se habilita en cuanto el servidor tenga su llave
+            maestra (el aviso de arriba).
+          </p>
         ) : esAdmin ? (
           <FormaEfirma onCargada={(msg) => { setAviso(msg); refrescar(); }} onError={setError} />
         ) : (
