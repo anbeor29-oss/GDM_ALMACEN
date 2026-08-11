@@ -24,6 +24,32 @@ const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 const fecha = (d: any) => (d ? new Date(d).toLocaleDateString('es-MX') : '—');
 
+/** AAAA-MM-DD en hora local: `toISOString` cambia el día al pasar por UTC. */
+const iso = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const primerDiaDelMes = (d: Date) => iso(new Date(d.getFullYear(), d.getMonth(), 1));
+
+/**
+ * Atajos de periodo.
+ *
+ * Son los cortes con los que de verdad se trabaja: el mes que se está
+ * conciliando, el anterior cuando se cierra, el trimestre para los pagos
+ * provisionales y el ejercicio completo cuando llega la anual. Teclear dos
+ * fechas para eso, cada vez, es trabajo que la pantalla puede ahorrar.
+ */
+function atajos(hoy: Date): Array<{ nombre: string; desde: string; hasta: string }> {
+  const a = hoy.getFullYear();
+  const m = hoy.getMonth();
+  const finDeMes = (anio: number, mes: number) => iso(new Date(anio, mes + 1, 0));
+  return [
+    { nombre: 'Este mes',      desde: iso(new Date(a, m, 1)),      hasta: iso(hoy) },
+    { nombre: 'Mes pasado',    desde: iso(new Date(a, m - 1, 1)),  hasta: finDeMes(a, m - 1) },
+    { nombre: 'Últimos 3 meses', desde: iso(new Date(a, m - 2, 1)), hasta: iso(hoy) },
+    { nombre: `Año ${a}`,      desde: iso(new Date(a, 0, 1)),      hasta: iso(hoy) },
+    { nombre: `Año ${a - 1}`,  desde: iso(new Date(a - 1, 0, 1)),  hasta: finDeMes(a - 1, 11) },
+  ];
+}
+
 const ESTADO_TRABAJO: Record<string, { label: string; cls: string }> = {
   CREADO:      { label: 'Creado',      cls: 'bg-gray-200 text-gray-700' },
   EN_PROCESO:  { label: 'En proceso',  cls: 'bg-sky-100 text-sky-700' },
@@ -38,11 +64,23 @@ export function XmlRecibidos() {
   const esAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(user?.role || '');
 
   const hoy = new Date();
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  /* El periodo es un RANGO libre, no un mes.
+   *
+   * Con año y mes había que pedir doce veces para traerse un ejercicio, y cada
+   * petición es una vuelta completa de solicitud, espera y recogida. El SAT
+   * entrega miles de comprobantes por paquete: acotar la pantalla a un mes
+   * desperdiciaba esa capacidad y multiplicaba el trabajo de quien la usa. */
+  const [desde, setDesde] = useState(primerDiaDelMes(hoy));
+  const [hasta, setHasta] = useState(iso(hoy));
+  const [que, setQue] = useState<'recibidos' | 'emitidos' | 'ambos'>('recibidos');
   const [cargando, setCargando] = useState(false);
   const [aviso, setAviso] = useState('');
   const [error, setError] = useState('');
+
+  /* Los filtros de la lista de abajo salen del mismo rango: pedir un periodo y
+   * que la tabla siga mostrando otro sería enseñar lo que no se acaba de traer. */
+  const anio = Number(desde.slice(0, 4));
+  const mes = desde.slice(0, 7) === hasta.slice(0, 7) ? Number(desde.slice(5, 7)) : undefined;
 
   const credQ = useQuery({ queryKey: ['sat-credencial'], queryFn: () => api.getSatCredencial() });
   const credencial = credQ.data?.data?.credencial;
@@ -86,18 +124,24 @@ export function XmlRecibidos() {
     } finally { setCargando(false); }
   };
 
-  const pedirMes = async (direccion: 'recibidos' | 'emitidos') => {
-    const ultimo = new Date(anio, mes, 0).getDate();
+  const dias = Math.max(
+    1,
+    Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86_400_000) + 1
+  );
+
+  const pedirPeriodo = async () => {
+    if (new Date(hasta) < new Date(desde)) {
+      setError('La fecha final es anterior a la inicial.');
+      return;
+    }
     setCargando(true); setError(''); setAviso('');
     try {
-      const r = await api.crearSatTrabajo({
-        desde: `${anio}-${String(mes).padStart(2, '0')}-01`,
-        hasta: `${anio}-${String(mes).padStart(2, '0')}-${ultimo}`,
-        direccion,
-      });
+      const r = await api.crearSatTrabajo({ desde, hasta, direccion: que });
+      const d: any = r.data;
       setAviso(
-        `Trabajo creado con ${r.data.particiones_total} solicitud(es). El SAT tarda ` +
-        'de minutos a horas; el proceso avanza solo cada 15 minutos.'
+        `${d.trabajos.length === 2 ? 'Dos trabajos creados' : 'Trabajo creado'} con ` +
+        `${d.particiones_total} solicitud(es) de ${d.dias_por_bloque} días. El SAT tarda ` +
+        'de minutos a horas; el proceso avanza solo cada 15 minutos, o con "Avanzar ahora".'
       );
       refrescar();
     } catch (e: any) {
@@ -174,29 +218,45 @@ export function XmlRecibidos() {
           <h2 className="font-semibold flex items-center gap-2">
             <Download className="text-emerald-600" size={20} /> Traer comprobantes del SAT
           </h2>
+          {/* Atajos: los cortes con los que de verdad se trabaja. */}
+          <div className="flex flex-wrap gap-2">
+            {atajos(hoy).map((a) => {
+              const activo = a.desde === desde && a.hasta === hasta;
+              return (
+                <button key={a.nombre}
+                  onClick={() => { setDesde(a.desde); setHasta(a.hasta); }}
+                  className={`px-3 py-1 rounded-full text-xs border ${
+                    activo
+                      ? 'bg-emerald-100 border-emerald-300 text-emerald-800 font-medium'
+                      : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                  {a.nombre}
+                </button>
+              );
+            })}
+          </div>
+
           <div className="flex flex-wrap items-end gap-3">
             <label className="block">
-              <span className="block text-xs text-gray-600 mb-1">Año</span>
-              <input type="number" value={anio} onChange={(e) => setAnio(Number(e.target.value))}
-                className="input w-28" />
+              <span className="block text-xs text-gray-600 mb-1">Desde</span>
+              <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+                className="input w-44" />
             </label>
             <label className="block">
-              <span className="block text-xs text-gray-600 mb-1">Mes</span>
-              <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input w-40">
-                {Array.from({ length: 12 }, (_, i) => (
-                  <option key={i + 1} value={i + 1}>
-                    {new Date(2000, i, 1).toLocaleDateString('es-MX', { month: 'long' })}
-                  </option>
-                ))}
+              <span className="block text-xs text-gray-600 mb-1">Hasta</span>
+              <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+                className="input w-44" />
+            </label>
+            <label className="block">
+              <span className="block text-xs text-gray-600 mb-1">Qué traer</span>
+              <select value={que} onChange={(e) => setQue(e.target.value as any)} className="input w-48">
+                <option value="recibidos">Recibidos</option>
+                <option value="emitidos">Emitidos</option>
+                <option value="ambos">Recibidos y emitidos</option>
               </select>
             </label>
-            <button onClick={() => pedirMes('recibidos')} disabled={cargando}
+            <button onClick={pedirPeriodo} disabled={cargando}
               className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm">
-              <Download size={16} /> Pedir recibidos del mes
-            </button>
-            <button onClick={() => pedirMes('emitidos')} disabled={cargando}
-              className="flex items-center gap-2 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50 text-sm">
-              Emitidos
+              <Download size={16} /> {cargando ? 'Pidiendo…' : 'Pedir al SAT'}
             </button>
             <button onClick={avanzar} disabled={cargando}
               title="El proceso avanza solo cada 15 minutos; esto lo empuja ahora"
@@ -204,10 +264,13 @@ export function XmlRecibidos() {
               <PlayCircle size={16} className={cargando ? 'animate-spin' : ''} /> Avanzar ahora
             </button>
           </div>
+
           <p className="text-xs text-gray-500">
-            El SAT entrega por lotes: acepta la solicitud, la procesa de minutos a horas y
-            deja un paquete que caduca a las 72 horas. El motor pide, espera y recoge solo;
-            si un rango trae demasiados comprobantes, lo parte a la mitad y reintenta.
+            {dias} día(s) seleccionados{que === 'ambos' && ', en dos trabajos (el SAT pide emitidos y recibidos por separado)'}.
+            El SAT entrega por lotes: acepta la solicitud, la procesa de minutos a horas y deja
+            un paquete que caduca a las 72 horas. El motor pide, espera y recoge solo; si un
+            rango trae demasiados comprobantes, lo parte a la mitad y reintenta.
+            {dias > 180 && ' En periodos largos se empieza con bloques de 30 días para no gastar el límite diario de solicitudes del SAT.'}
           </p>
         </div>
       )}

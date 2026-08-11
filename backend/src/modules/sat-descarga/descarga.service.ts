@@ -35,8 +35,24 @@ import * as soap from './soap';
 import { extraerXml, ZipSospechoso } from './zip-seguro';
 import { validarEfirma } from './efirma';
 
-/** Días del primer corte. El documento sugiere 7 para volumen desconocido. */
-const DIAS_INICIALES = 7;
+/**
+ * Tamaño del primer corte, según lo largo que sea el periodo pedido.
+ *
+ * El documento sugiere 7 días para volumen desconocido, y para un mes está
+ * bien. Pero pedir un año en bloques de 7 días son 52 solicitudes, y el SAT
+ * limita cuántas admite por día: quien pide un año se queda a medias sin saber
+ * por qué.
+ *
+ * Como el motor YA parte a la mitad cuando el SAT responde 5003, empezar con
+ * bloques grandes cuesta —a lo sumo— una ida y vuelta extra por bloque que se
+ * pase del tope, y ahorra decenas de solicitudes cuando el volumen es bajo. La
+ * partición adaptativa existe justamente para no tener que adivinar esto.
+ */
+function diasDelPrimerCorte(dias: number): number {
+  if (dias > 180) return 30;
+  if (dias > 31) return 15;
+  return 7;
+}
 /** Hasta dónde se parte antes de pedir revisión humana. */
 const PROFUNDIDAD_MAXIMA = 4;
 /** Cuántas particiones y paquetes se atienden por corrida. */
@@ -188,14 +204,17 @@ export async function crearTrabajo(
     );
     const trabajo = t.rows[0];
 
-    /* Bloques de 7 días. Emitidos y recibidos van en trabajos distintos, y CFDI
-     * y metadatos también: el SAT los cuenta por separado y mezclarlos en una
-     * solicitud es la forma más rápida de topar el límite. */
+    /* Emitidos y recibidos van en trabajos distintos, y CFDI y metadatos
+     * también: el SAT los cuenta por separado y mezclarlos en una solicitud es
+     * la forma más rápida de topar el límite. */
+    const diasTotales = Math.ceil((hasta.getTime() - desde.getTime()) / 86_400_000);
+    const bloque = diasDelPrimerCorte(diasTotales);
+
     let cursor = new Date(desde);
     let n = 0;
     while (cursor <= hasta) {
       const fin = new Date(cursor);
-      fin.setDate(fin.getDate() + DIAS_INICIALES);
+      fin.setDate(fin.getDate() + bloque);
       fin.setSeconds(fin.getSeconds() - 1);
       const finReal = fin > hasta ? hasta : fin;
 
@@ -217,8 +236,11 @@ export async function crearTrabajo(
         WHERE id = $2`,
       [n, trabajo.id]
     );
-    logger.info(`[sat-descarga] trabajo ${trabajo.id} creado: ${n} partición(es) de ${DIAS_INICIALES} días`);
-    return { ...trabajo, particiones_total: n };
+    logger.info(
+      `[sat-descarga] trabajo ${trabajo.id} (${d.direccion}) creado: ` +
+      `${n} partición(es) de ${bloque} días sobre ${diasTotales} días`
+    );
+    return { ...trabajo, particiones_total: n, dias_por_bloque: bloque };
   });
 }
 

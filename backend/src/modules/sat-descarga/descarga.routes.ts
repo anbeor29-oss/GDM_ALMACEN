@@ -117,19 +117,46 @@ router.get(
   })
 );
 
-/** POST /sat-descarga/trabajos — "tráeme lo recibido de enero" */
+/**
+ * POST /sat-descarga/trabajos — "tráeme lo de este periodo".
+ *
+ * `direccion` admite 'ambos', y entonces se crean DOS trabajos. No es un
+ * capricho de la interfaz: el SAT tiene operaciones distintas para emitidos y
+ * recibidos y no acepta pedir las dos en una solicitud. Que el usuario tenga
+ * que apretar dos botones para expresar "todo lo del mes" era trasladarle esa
+ * costura; aquí se resuelve del lado que sabe de ella.
+ */
 router.post(
   '/trabajos',
   authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
-    const trabajo = await service.crearTrabajo(companyId(req), {
-      desde:      req.body?.desde,
-      hasta:      req.body?.hasta,
-      direccion:  req.body?.direccion === 'emitidos' ? 'emitidos' : 'recibidos',
-      tipo:       req.body?.tipo,
-      filtros:    req.body?.filtros,
-    }, req.user?.userId);
-    res.status(201).json({ success: true, data: trabajo });
+    const pedida = String(req.body?.direccion || 'recibidos');
+    const direcciones: Array<'recibidos' | 'emitidos'> =
+      pedida === 'ambos' ? ['recibidos', 'emitidos']
+      : pedida === 'emitidos' ? ['emitidos']
+      : ['recibidos'];
+
+    const trabajos = [];
+    for (const direccion of direcciones) {
+      trabajos.push(await service.crearTrabajo(companyId(req), {
+        desde:     req.body?.desde,
+        hasta:     req.body?.hasta,
+        direccion,
+        tipo:      req.body?.tipo,
+        filtros:   req.body?.filtros,
+      }, req.user?.userId));
+    }
+
+    res.status(201).json({
+      success: true,
+      data: {
+        trabajos,
+        /* Se devuelven sumados porque es lo que la pantalla anuncia: al usuario
+         * le importa cuántas solicitudes salieron, no cómo se repartieron. */
+        particiones_total: trabajos.reduce((a, t) => a + Number(t.particiones_total || 0), 0),
+        dias_por_bloque: trabajos[0]?.dias_por_bloque,
+      },
+    });
   })
 );
 

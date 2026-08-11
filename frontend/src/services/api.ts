@@ -1064,7 +1064,9 @@ class APIClient {
     return r.data;
   }
   async crearSatTrabajo(data: {
-    desde: string; hasta: string; direccion: 'recibidos' | 'emitidos';
+    desde: string; hasta: string;
+    /** 'ambos' crea dos trabajos: el SAT pide emitidos y recibidos por separado. */
+    direccion: 'recibidos' | 'emitidos' | 'ambos';
     tipo?: 'CFDI' | 'Metadata'; filtros?: any;
   }) {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/trabajos', data);
