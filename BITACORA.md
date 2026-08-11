@@ -5,6 +5,60 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-11 (tarde) — Remesas de pago: la lista del viernes para el lunes
+
+### Contexto
+Tesorería sabía qué se debe y cuándo vence, pero no la decisión intermedia: de
+todo lo que se debe, esto es lo que se paga el lunes. Esa decisión se toma el
+viernes, se autoriza, se imprime y se ejecuta — y vivía en una hoja de cálculo
+aparte o en la cabeza de quien paga.
+
+### Decisiones
+
+**Tabla `payment_runs` + `supplier_payments_schedule.payment_run_id`.** No bastaba
+con mover `due_date`: el vencimiento es del proveedor, pactado con sus días de
+crédito; la fecha en que decidimos pagar es nuestra y suele ser otra. Meterlas en
+la misma columna borraría el vencimiento real y con él la posibilidad de saber
+qué se pagó tarde. Y una etiqueta de fecha por renglón no puede llevar quién
+autorizó ni impedir que se agreguen facturas después de firmada.
+
+**Una factura, una remesa.** Al agregar se verifica que el renglón no esté ya en
+otra corrida viva. Sin ese candado la misma factura entra en la lista del lunes
+y en la del martes, y se paga dos veces — el error más caro de este módulo. El
+filtro `sinRemesa` de la pantalla contempla que una remesa cancelada suelta sus
+facturas pero deja el apuntador puesto, así que no basta con `IS NULL`.
+
+**Autorizar es requisito para pagar.** La corrida se arma un día y se ejecuta
+otro; ese paso intermedio es donde alguien la revisa. Permitir "pagar" un
+borrador convertiría la autorización en un adorno. Autorizada, ya no admite
+altas ni bajas de renglones.
+
+**Cancelar una remesa NO cancela las deudas**: las suelta y vuelven a estar
+disponibles para la siguiente corrida. `ON DELETE SET NULL` en la FK por lo
+mismo — perder la deuda porque se canceló la lista sería el peor error posible.
+
+**El reporte se imprime en ventana aparte**, agrupado por proveedor y con banco,
+CLABE y beneficiario, más renglones de firma "Elaboró / Autorizó". Sin los datos
+bancarios la lista no sirve para transferir y alguien tendría que ir a buscarlos
+proveedor por proveedor.
+
+Pagar la remesa marca PAID todas sus facturas y libera la línea de crédito de
+cada proveedor con `GREATEST(credit_used - amount, 0)`, en una sola transacción
+— la misma regla del pago individual.
+
+### Verificación
+Ciclo completo contra Postgres local: armar con 3 facturas de 2 proveedores
+($4,000); segunda remesa rechaza las 3 con "Ya está en otra remesa"; las
+pendientes sin programar dejan de listarlas; pagar sin autorizar se rechaza;
+autorizada no deja quitar renglones; pagar deja las 3 en PAID y devuelve
+`credit_used` a su valor original; cancelar una remesa vacía no rompe nada.
+
+De paso salió un `42P08` (`$1` deducido como varchar y como text en el mismo
+UPDATE) — el mismo choque de tipos que ya se había resuelto en el ciclo de
+órdenes de compra; se corrigió con `$1::varchar` en cada aparición.
+
+---
+
 ## 2026-08-11 — La orden de compra cierra el círculo: factura, deuda y archivo
 
 ### Contexto

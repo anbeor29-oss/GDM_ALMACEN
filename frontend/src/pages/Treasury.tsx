@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { RemesasDePago } from '@/components/RemesasDePago';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -29,6 +30,7 @@ export function TreasuryPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const canManage = ['ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(user?.role || '');
+  const [tab, setTab] = useState<'pagos' | 'remesas'>('pagos');
   const [statusFilter, setStatusFilter] = useState('PENDING');
   const [showManual, setShowManual] = useState(false);
   const [error, setError] = useState('');
@@ -89,6 +91,23 @@ export function TreasuryPage() {
 
       {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
+      {/* Dos vistas del mismo dinero: lo que se debe, y lo que se decidió pagar
+          en la corrida de esta semana. */}
+      <div className="flex gap-1 border-b">
+        {([['pagos', 'Cuentas por pagar'], ['remesas', 'Remesas de pago']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+              tab === k
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'remesas' && <RemesasDePago canManage={canManage} />}
+
+      {tab === 'pagos' && (<>
       {/* KPIs */}
       {s && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -174,6 +193,7 @@ export function TreasuryPage() {
           </tbody>
         </table>
       </div>
+      </>)}
 
       {showManual && (
         <ManualPaymentModal onClose={() => setShowManual(false)}

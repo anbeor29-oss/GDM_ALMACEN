@@ -1030,8 +1030,41 @@ class APIClient {
   }
 
   /* ───────────── Tesorería (Fase 6 ALMACEN) ───────────── */
-  async getTreasuryPayments(params?: { status?: string; supplierId?: string; from?: string; to?: string }) {
+  async getTreasuryPayments(params?: {
+    status?: string; supplierId?: string; from?: string; to?: string;
+    /** true = sólo lo que aún no está en ninguna remesa. */
+    sinRemesa?: boolean;
+  }) {
     const r = await this.client.get<APIResponse<any>>('/treasury/payments', { params });
+    return r.data;
+  }
+
+  /* ───────────── Remesas de pago (la lista del viernes) ───────────── */
+  async getPaymentRuns(params?: { from?: string; to?: string; status?: string }) {
+    const r = await this.client.get<APIResponse<any>>('/treasury/payment-runs', { params });
+    return r.data;
+  }
+  async getPaymentRun(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/treasury/payment-runs/${id}`);
+    return r.data;
+  }
+  async createPaymentRun(data: { paymentDate: string; notes?: string; paymentIds: string[] }) {
+    const r = await this.client.post<APIResponse<any>>('/treasury/payment-runs', data);
+    return r.data;
+  }
+  async addPaymentsToRun(id: string, paymentIds: string[]) {
+    const r = await this.client.post<APIResponse<any>>(
+      `/treasury/payment-runs/${id}/payments`, { paymentIds });
+    return r.data;
+  }
+  async removePaymentFromRun(id: string, paymentId: string) {
+    const r = await this.client.delete<APIResponse<any>>(
+      `/treasury/payment-runs/${id}/payments/${paymentId}`);
+    return r.data;
+  }
+  async setPaymentRunStatus(id: string, status: 'AUTHORIZED' | 'PAID' | 'CANCELLED' | 'DRAFT') {
+    const r = await this.client.put<APIResponse<any>>(
+      `/treasury/payment-runs/${id}/status`, { status });
     return r.data;
   }
   async getTreasurySummary() {

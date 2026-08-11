@@ -19,6 +19,8 @@ export interface PaymentFilters {
   supplierId?: string;
   from?: string;
   to?: string;
+  /** Sólo lo que todavía no está en ninguna remesa — para armar la del lunes. */
+  sinRemesa?: boolean;
 }
 
 /** Lista de pagos con datos del proveedor y "bucket" temporal para la UI. */
@@ -37,10 +39,21 @@ export async function listPayments(companyId: string, filters: PaymentFilters = 
   }
   if (filters.from) { params.push(filters.from); where.push(`sp.due_date >= $${params.length}::date`); }
   if (filters.to)   { params.push(filters.to);   where.push(`sp.due_date <= $${params.length}::date`); }
+  if (filters.sinRemesa) {
+    /* Una remesa cancelada suelta sus facturas, pero la columna conserva el
+     * apuntador; por eso no basta con `IS NULL`. */
+    where.push(
+      `(sp.payment_run_id IS NULL OR EXISTS (
+          SELECT 1 FROM payment_runs pr
+           WHERE pr.id = sp.payment_run_id AND pr.status = 'CANCELLED'))`
+    );
+  }
 
   const r = await query<any>(
-    `SELECT sp.id, sp.amount, sp.due_date, sp.status, sp.paid_at, sp.notes,
-            sp.created_at, sp.xml_import_id,
+    `SELECT sp.id, sp.amount, sp.subtotal, sp.tax_rate, sp.invoice_number,
+            sp.due_date, sp.status, sp.paid_at, sp.notes,
+            sp.created_at, sp.xml_import_id, sp.payment_run_id,
+            pr.folio AS remesa_folio, pr.payment_date AS remesa_fecha, pr.status AS remesa_status,
             c.id AS supplier_id, c.business_name AS supplier_name, c.rfc AS supplier_rfc,
             c.credit_days, c.credit_line, c.credit_used,
             -- Semáforo temporal: vencido / esta semana / próximo
@@ -53,6 +66,7 @@ export async function listPayments(companyId: string, filters: PaymentFilters = 
             (sp.due_date - CURRENT_DATE) AS days_to_due
        FROM supplier_payments_schedule sp
        JOIN customers c ON c.id = sp.supplier_id
+       LEFT JOIN payment_runs pr ON pr.id = sp.payment_run_id
       WHERE ${where.join(' AND ')}
       ORDER BY sp.due_date ASC, sp.created_at ASC`,
     params
