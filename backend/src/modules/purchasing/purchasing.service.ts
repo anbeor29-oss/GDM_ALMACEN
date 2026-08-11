@@ -231,7 +231,72 @@ export async function changeStatus(
   });
 }
 
+/* ─────────────────────  PROVEEDOR DE LA ORDEN  ───────────────────── */
+
+/**
+ * Cambia el proveedor al que se le va a comprar.
+ *
+ * El análisis de mínimos propone UN proveedor —el del último precio de compra—
+ * pero es apenas una sugerencia: el que surtió la vez pasada puede no tener
+ * existencia, tardar tres semanas o haber subido el precio. Sin esta función,
+ * la única salida era cancelar la orden y capturarla otra vez a mano.
+ *
+ * Se permite hasta RECEIVED_PARTIAL porque el cambio de proveedor a media
+ * entrega ocurre —el primero surtió la mitad y el resto se le compra a otro—.
+ * En una orden ya surtida o cancelada sí se bloquea: ahí el proveedor es parte
+ * del historial y de la deuda que ya se generó.
+ */
+export async function setSupplier(
+  companyId: string,
+  orderId: string,
+  supplierId: string | null
+): Promise<any> {
+  return transaction(async (client) => {
+    const poR = await transactionQuery<any>(
+      client,
+      `SELECT id, folio, status FROM purchase_orders
+        WHERE id = $1 AND company_id = $2 FOR UPDATE`,
+      [orderId, companyId]
+    );
+    if (poR.rows.length === 0) throw new NotFoundError('Orden no encontrada');
+    if (['RECEIVED', 'CANCELLED'].includes(poR.rows[0].status)) {
+      throw new ConflictError(
+        'La orden ya está cerrada — el proveedor no se puede cambiar.'
+      );
+    }
+
+    if (supplierId) {
+      const sup = await transactionQuery<any>(
+        client,
+        `SELECT id, business_name FROM customers
+          WHERE id = $1 AND company_id = $2 AND party_type = 'SUPPLIER' AND deleted_at IS NULL`,
+        [supplierId, companyId]
+      );
+      if (sup.rows.length === 0) throw new NotFoundError('Proveedor no encontrado');
+    }
+
+    const upd = await transactionQuery<any>(
+      client,
+      `UPDATE purchase_orders SET supplier_id = $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING id, folio, supplier_id,
+                  (SELECT business_name FROM customers WHERE id = $1) AS supplier_name`,
+      [supplierId, orderId]
+    );
+    return upd.rows[0];
+  });
+}
+
 /* ─────────────────────  RECEPCIÓN (§14 parcial)  ───────────────────── */
+
+export interface DatosDeFactura {
+  /** Folio de la factura del proveedor — obligatorio para generar la deuda. */
+  invoiceNumber?: string;
+  /** Total a pagar CON impuestos. Si no viene, se calcula de lo recibido. */
+  invoiceAmount?: number;
+  /** Fecha de la factura: de ahí cuentan los días de crédito. */
+  invoiceDate?: string;
+}
 
 export async function receiveOrder(
   companyId: string,
@@ -239,14 +304,15 @@ export async function receiveOrder(
   receipts: Array<{ itemId: string; quantity: number; unitCost?: number }>,
   user: { userId?: string; email?: string },
   /** Política de costos para esta recepción (pregunta al operador). */
-  costingMethod?: 'PROMEDIO' | 'ULTIMO' | 'CAPAS'
+  costingMethod?: 'PROMEDIO' | 'ULTIMO' | 'CAPAS',
+  factura?: DatosDeFactura
 ): Promise<any> {
   if (!receipts?.length) throw new ValidationError('Indica qué items y cantidades recibes');
 
   return transaction(async (client) => {
     const poR = await transactionQuery<any>(
       client,
-      `SELECT id, folio, status, warehouse_id FROM purchase_orders
+      `SELECT id, folio, status, warehouse_id, supplier_id FROM purchase_orders
         WHERE id = $1 AND company_id = $2 FOR UPDATE`,
       [orderId, companyId]
     );
@@ -259,29 +325,50 @@ export async function receiveOrder(
     }
 
     let received = 0;
+    let costoRecibido = 0;
+    const excedentes: Array<{ producto: string; pedido: number; recibido: number }> = [];
+
     for (const rec of receipts) {
       const qty = Number(rec.quantity);
       if (!qty || qty <= 0) continue;
 
       const itR = await transactionQuery<any>(
         client,
-        `SELECT id, product_id, quantity_ordered, quantity_received, last_purchase_price
-           FROM purchase_order_items
-          WHERE id = $1 AND purchase_order_id = $2 FOR UPDATE`,
+        `SELECT poi.id, poi.product_id, poi.quantity_ordered, poi.quantity_received,
+                poi.last_purchase_price, p.name AS product_name
+           FROM purchase_order_items poi
+           JOIN products p ON p.id = poi.product_id
+          WHERE poi.id = $1 AND poi.purchase_order_id = $2 FOR UPDATE OF poi`,
         [rec.itemId, orderId]
       );
       if (itR.rows.length === 0) throw new NotFoundError(`Item ${rec.itemId} no es de esta orden`);
       const it = itR.rows[0];
 
+      /* Se admite recibir MÁS de lo pedido.
+       *
+       * Antes esto se rechazaba, y era un rechazo contra la realidad: el
+       * proveedor manda la caja completa aunque se le hayan pedido 47 piezas,
+       * o surte de más para no dejar el pedido abierto. La mercancía ya está
+       * en el andén; negarse a registrarla no la devuelve — sólo obliga a
+       * meterla por un ajuste manual, que es justo donde se pierde el rastro
+       * de qué compra la trajo y a qué costo.
+       *
+       * El excedente no se esconde: se anota en el movimiento del kardex y se
+       * devuelve al frente para que quien recibe lo vea y decida si lo acepta
+       * o lo regresa. */
       const pending = Number(it.quantity_ordered) - Number(it.quantity_received);
-      if (qty > pending) {
-        throw new ConflictError(
-          `Recepción excede lo pendiente (pendiente ${pending}, recibiendo ${qty})`
-        );
+      const deMas = qty - pending;
+      if (deMas > 0.000001) {
+        excedentes.push({
+          producto: it.product_name,
+          pedido: Number(it.quantity_ordered),
+          recibido: Number(it.quantity_received) + qty,
+        });
       }
 
       const unitCost = rec.unitCost != null ? Number(rec.unitCost)
                      : (it.last_purchase_price != null ? Number(it.last_purchase_price) : 0);
+      costoRecibido += qty * unitCost;
 
       await applyMovementTx(client, {
         companyId,
@@ -292,7 +379,9 @@ export async function receiveOrder(
         warehouseToId: po.warehouse_id,
         referenceType: 'purchase_order',
         referenceId: orderId,
-        reason: `Recepción orden de compra #${po.folio}`,
+        reason: `Recepción orden de compra #${po.folio}` +
+                (factura?.invoiceNumber ? ` · factura ${factura.invoiceNumber}` : '') +
+                (deMas > 0.000001 ? ` · ${deMas} de más sobre lo pedido` : ''),
         userId: user.userId,
         userEmail: user.email,
         costingMethod,
@@ -319,9 +408,108 @@ export async function receiveOrder(
 
     const upd = await transactionQuery<any>(
       client,
-      `UPDATE purchase_orders SET status = $1 WHERE id = $2 RETURNING id, folio, status`,
+      `UPDATE purchase_orders SET status = $1, updated_at = NOW() WHERE id = $2
+        RETURNING id, folio, status`,
       [newStatus, orderId]
     );
-    return { ...upd.rows[0], itemsReceived: received, stillPending };
+
+    /* ── La deuda con el proveedor ────────────────────────────────────────
+     *
+     * Recibir mercancía es contraer una deuda. Hasta hoy la recepción sólo
+     * movía existencias y el pasivo aparecía —si aparecía— cuando alguien lo
+     * capturaba a mano en tesorería. Aquí nace con la factura que trae el
+     * repartidor, que es el momento en que realmente se sabe cuánto se debe.
+     *
+     * Requiere proveedor: una deuda sin acreedor no se le puede pagar a
+     * nadie. Por eso el frente obliga a elegirlo antes de recibir. */
+    let deuda: any = null;
+    const folioFactura = String(factura?.invoiceNumber || '').trim().slice(0, 60);
+
+    if (folioFactura) {
+      if (!po.supplier_id) {
+        throw new ValidationError(
+          'Elige el proveedor de la orden antes de recibir: sin proveedor no se ' +
+          'puede registrar la deuda en tesorería.'
+        );
+      }
+
+      const yaExiste = await transactionQuery<any>(
+        client,
+        `SELECT id, amount, due_date FROM supplier_payments_schedule
+          WHERE company_id = $1 AND supplier_id = $2
+            AND UPPER(invoice_number) = UPPER($3) AND status <> 'CANCELLED'
+          LIMIT 1`,
+        [companyId, po.supplier_id, folioFactura]
+      );
+
+      if (yaExiste.rows[0]) {
+        /* Segunda entrega amparada por la misma factura, o doble clic en
+         * "Confirmar". La mercancía sí entró —eso ya se registró arriba—,
+         * pero la deuda no se duplica. */
+        deuda = {
+          id: yaExiste.rows[0].id,
+          amount: Number(yaExiste.rows[0].amount),
+          dueDate: yaExiste.rows[0].due_date,
+          yaExistia: true,
+        };
+      } else {
+        /* El importe que se debe es el TOTAL de la factura, con impuestos: es
+         * lo que se le va a transferir al proveedor. El costo de la mercancía
+         * recibida sólo sirve de propuesta cuando no lo capturan. */
+        const importe = factura?.invoiceAmount != null && Number(factura.invoiceAmount) > 0
+          ? Number(factura.invoiceAmount)
+          : costoRecibido;
+
+        if (importe > 0) {
+          const insR = await transactionQuery<any>(
+            client,
+            `INSERT INTO supplier_payments_schedule
+               (company_id, supplier_id, purchase_order_id, invoice_number,
+                amount, due_date, notes)
+             SELECT $1, $2, $3, $4, $5,
+                    (COALESCE($6::timestamp, NOW())
+                      + make_interval(days => COALESCE(c.credit_days, 0)))::date,
+                    $7
+               FROM customers c WHERE c.id = $2
+             RETURNING id, amount, due_date,
+                       (SELECT COALESCE(credit_days, 0) FROM customers WHERE id = $2) AS credit_days`,
+            [companyId, po.supplier_id, orderId, folioFactura, importe,
+             factura?.invoiceDate || null,
+             `Orden de compra #${po.folio} · factura ${folioFactura}`]
+          );
+          if (insR.rows[0]) {
+            // Consume línea de crédito, igual que la compra por XML.
+            await transactionQuery(
+              client,
+              `UPDATE customers SET credit_used = COALESCE(credit_used, 0) + $1 WHERE id = $2`,
+              [importe, po.supplier_id]
+            );
+            deuda = {
+              id: insR.rows[0].id,
+              amount: Number(insR.rows[0].amount),
+              dueDate: insR.rows[0].due_date,
+              creditDays: Number(insR.rows[0].credit_days || 0),
+              yaExistia: false,
+            };
+          }
+        }
+      }
+    }
+
+    logger.info(
+      `[purchasing] orden #${po.folio}: ${received} partida(s) recibida(s)` +
+      (folioFactura ? `, factura ${folioFactura}` : ', sin factura') +
+      (deuda ? `, deuda ${deuda.yaExistia ? 'ya existente' : 'generada'} ${deuda.amount}` : '') +
+      (excedentes.length ? `, ${excedentes.length} partida(s) con excedente` : '')
+    );
+
+    return {
+      ...upd.rows[0],
+      itemsReceived: received,
+      stillPending,
+      invoiceNumber: folioFactura || null,
+      deuda,
+      excedentes,
+    };
   });
 }

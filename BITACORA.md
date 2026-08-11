@@ -5,6 +5,67 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-11 — La orden de compra cierra el círculo: factura, deuda y archivo
+
+### Contexto
+Recibir mercancía de una orden de compra sólo movía existencias. La deuda con
+el proveedor no nacía en ningún lado: quien pagaba se enteraba cuando llegaba
+la factura por correo. Las compras por XML sí generaban su cuenta por pagar
+desde el día uno — era la misma compra tratada distinto según por dónde entró.
+
+Además, el proveedor de la orden era inamovible (el que propuso el análisis de
+mínimos), la recepción rechazaba cualquier pieza de más, y las órdenes surtidas
+se quedaban en la lista de pendientes para siempre.
+
+### Decisiones
+
+**1. El proveedor sugerido pasa a ser un combo.** `PUT /purchase-orders/:id/supplier`.
+El análisis propone el del último precio de compra, pero ese puede no tener
+existencia o haber subido. Se puede cambiar hasta RECEIVED_PARTIAL — el cambio
+a media entrega ocurre. En orden surtida o cancelada se bloquea: ahí el
+proveedor ya es parte de la deuda generada.
+
+**2. Al recibir se captura la factura y nace el pasivo.** Dos columnas nuevas en
+`supplier_payments_schedule` (`invoice_number`, `purchase_order_id`) — la misma
+tabla que ya usan el XML y el alta manual, no una nueva: tesorería ya la lista,
+la marca pagada y libera línea de crédito. El vencimiento sale de
+`customers.credit_days` contados desde la fecha de la factura, igual que en el
+XML. Sin folio de factura la mercancía entra igual, pero se pide confirmación
+explícita: la remisión que llega antes que la factura es un caso legítimo, un
+descuido no.
+
+**3. Índice único parcial contra la deuda duplicada.**
+`(company_id, supplier_id, UPPER(invoice_number)) WHERE status <> 'CANCELLED'`.
+El caso real no es el fraude sino el doble clic, y la recepción en dos partidas
+amparadas por una sola factura: la segunda entrega mueve existencias pero no
+vuelve a deber. En `UPPER` porque "A-123" y "a-123" son la misma factura.
+
+**4. Se admite recibir más de lo pedido.** Antes lanzaba ConflictError. La caja
+completa llega aunque se hayan pedido 47 piezas; negarse a registrarla no la
+devuelve, sólo obliga a meterla por ajuste manual y ahí se pierde de qué compra
+vino y a qué costo. El excedente queda anotado en el kardex y se devuelve a la
+pantalla para que quien recibe lo vea.
+
+**5. La orden surtida se archiva, no se borra.** La lista trae por omisión sólo
+las vivas (`status NOT IN ('RECEIVED','CANCELLED')`), con casilla para ver las
+cerradas. Borrarlas perdería el historial de a quién se le compró y con qué
+factura. En pantalla RECEIVED se llama **Surtida**.
+
+### Verificación
+Prueba directa contra Postgres local con una orden creada al vuelo: recibir 13
+de 10 pedidas dejó `stock +13`, `status RECEIVED`, deuda de $1,508 y un
+excedente reportado; repetir la misma factura en minúsculas devolvió
+`yaExistia: true` con **una sola** fila en tesorería; el cambio de proveedor
+funcionó y la orden cerrada lo rechazó. `tsc --noEmit` limpio en los dos lados.
+
+### Consecuencia
+Tesorería ve la deuda el día que entra la mercancía, no cuando alguien la
+captura. Como contrapartida, el importe se pide con impuestos y el sistema no
+lo calcula: si lo dejan vacío usa el costo de la mercancía, que **no** trae IVA
+— por eso el campo lo advierte en pantalla.
+
+---
+
 ## 2026-07-27 (mañana) — Iconos vectoriales en el manual de usuario
 
 ### Contexto

@@ -12,7 +12,7 @@ import { authenticateToken, requireCapability } from '../../middleware/authentic
 import { asyncHandler, ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import { query, transaction, transactionQuery } from '../../config/database';
 import {
-  runReorderCheck, changeStatus, receiveOrder, OrderStatus,
+  runReorderCheck, changeStatus, receiveOrder, setSupplier, OrderStatus,
 } from './purchasing.service';
 
 const router = Router();
@@ -32,6 +32,16 @@ router.get(
     if (req.query.status) {
       params.push(String(req.query.status));
       filters.push(`po.status = $${params.length}`);
+    } else if (req.query.includeClosed !== 'true') {
+      /* Sin filtro explícito, la lista muestra el trabajo VIVO.
+       *
+       * Una orden surtida ya no se aprueba, ni se cotiza, ni se recibe: no hay
+       * nada que hacerle. Dejarla mezclada con las pendientes hace que la
+       * pantalla crezca sin límite y que las que sí piden acción se pierdan
+       * entre las cerradas. Siguen a un clic con "Ver también las cerradas" —
+       * se archivan, no se borran: son el historial de a quién se le compró,
+       * a qué precio y con qué factura. */
+      filters.push(`po.status NOT IN ('RECEIVED', 'CANCELLED')`);
     }
     if (req.query.warehouseId) {
       params.push(String(req.query.warehouseId));
@@ -271,7 +281,28 @@ router.put(
   })
 );
 
-/** POST /purchase-orders/:id/receive — recepción parcial o total (§14) */
+/**
+ * PUT /purchase-orders/:id/supplier — a quién se le compra.
+ *
+ * El análisis sugiere uno; aquí se elige el que de verdad va a surtir.
+ */
+router.put(
+  '/:id/supplier',
+  requireCapability('purchasing:capture'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const supplierId = req.body?.supplierId ? String(req.body.supplierId) : null;
+    const result = await setSupplier(companyId(req), req.params.id, supplierId);
+    res.json({ success: true, data: result });
+  })
+);
+
+/**
+ * POST /purchase-orders/:id/receive — recepción parcial o total (§14).
+ *
+ * Con `invoiceNumber` la recepción también genera la cuenta por pagar en
+ * tesorería; sin él sólo entra la mercancía (caso de la remisión que llega
+ * antes que la factura).
+ */
 router.post(
   '/:id/receive',
   requireCapability('purchasing:capture'),
@@ -281,7 +312,11 @@ router.post(
     const result = await receiveOrder(companyId(req), req.params.id, receipts, {
       userId: req.user?.userId,
       email: req.user?.email,
-    }, costingMethod);
+    }, costingMethod, {
+      invoiceNumber: req.body?.invoiceNumber,
+      invoiceAmount: req.body?.invoiceAmount,
+      invoiceDate:   req.body?.invoiceDate,
+    });
     res.json({ success: true, data: result });
   })
 );

@@ -20,8 +20,8 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   QUOTED:           { label: 'Cotizada',         cls: 'bg-sky-100 text-sky-700' },
   APPROVED:         { label: 'Aprobada',         cls: 'bg-emerald-100 text-emerald-700' },
   PURCHASED:        { label: 'Comprada',         cls: 'bg-violet-100 text-violet-700' },
-  RECEIVED_PARTIAL: { label: 'Recibida parcial', cls: 'bg-amber-100 text-amber-700' },
-  RECEIVED:         { label: 'Recibida',         cls: 'bg-emerald-100 text-emerald-700' },
+  RECEIVED_PARTIAL: { label: 'Surtida parcial',  cls: 'bg-amber-100 text-amber-700' },
+  RECEIVED:         { label: 'Surtida',          cls: 'bg-emerald-100 text-emerald-700' },
   CANCELLED:        { label: 'Cancelada',        cls: 'bg-rose-100 text-rose-700' },
 };
 
@@ -35,14 +35,20 @@ export function PurchaseOrdersPage() {
   const canWrite = ['ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(user?.role || '');
 
   const [statusFilter, setStatusFilter] = useState('');
+  /* Las surtidas y canceladas se archivan: la pantalla es la lista de pendientes. */
+  const [verCerradas, setVerCerradas] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [banner, setBanner] = useState('');
   const [error, setError] = useState('');
 
   const q = useQuery({
-    queryKey: ['purchase-orders', statusFilter],
-    queryFn: () => api.getPurchaseOrders({ status: statusFilter || undefined, limit: 100 }),
+    queryKey: ['purchase-orders', statusFilter, verCerradas],
+    queryFn: () => api.getPurchaseOrders({
+      status: statusFilter || undefined,
+      includeClosed: verCerradas || undefined,
+      limit: 100,
+    }),
   });
   const orders: any[] = q.data?.data?.orders || [];
 
@@ -111,6 +117,14 @@ export function PurchaseOrdersPage() {
             <option key={k} value={k}>{v.label}</option>
           ))}
         </select>
+        {!statusFilter && (
+          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+            <input type="checkbox" checked={verCerradas}
+              onChange={(e) => setVerCerradas(e.target.checked)}
+              className="rounded border-gray-300" />
+            Ver también las surtidas y canceladas
+          </label>
+        )}
         <span className="ml-auto text-sm text-gray-500">{orders.length} órdenes</span>
       </div>
 
@@ -207,6 +221,12 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
   const [costing, setCosting] = useState<'' | 'PROMEDIO' | 'ULTIMO' | 'CAPAS'>('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [aviso, setAviso] = useState('');
+
+  /* Datos de la factura del proveedor — con ellos nace la cuenta por pagar. */
+  const [numFactura, setNumFactura] = useState('');
+  const [importeFactura, setImporteFactura] = useState('');
+  const [fechaFactura, setFechaFactura] = useState('');
 
   const q = useQuery({
     queryKey: ['purchase-order', orderId],
@@ -214,6 +234,14 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
   });
   const order = q.data?.data?.order;
   const items: any[] = q.data?.data?.items || [];
+
+  /* Catálogo de proveedores para el combo: el sugerido por el análisis es sólo
+   * una propuesta y cualquiera puede surtir la orden. */
+  const supsQ = useQuery({
+    queryKey: ['suppliers-combo'],
+    queryFn: () => api.listSuppliers({ limit: 500 }),
+  });
+  const suppliers: any[] = supsQ.data?.data?.suppliers || [];
 
   const refreshDetail = () => {
     qc.invalidateQueries({ queryKey: ['purchase-order', orderId] });
@@ -230,15 +258,62 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
     } finally { setBusy(false); }
   };
 
-  const doReceive = async () => {
+  const cambiarProveedor = async (supplierId: string) => {
     setBusy(true); setError('');
     try {
-      const receipts = items
-        .map((it) => ({ itemId: it.id, quantity: Number(receiveQty[it.id] || 0) }))
-        .filter((r) => r.quantity > 0);
-      if (receipts.length === 0) { setError('Captura al menos una cantidad a recibir'); setBusy(false); return; }
-      await api.receivePurchaseOrder(orderId, receipts, costing || undefined);
+      await api.setPurchaseOrderSupplier(orderId, supplierId || null);
+      refreshDetail();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo cambiar el proveedor');
+    } finally { setBusy(false); }
+  };
+
+  const doReceive = async () => {
+    const receipts = items
+      .map((it) => ({ itemId: it.id, quantity: Number(receiveQty[it.id] || 0) }))
+      .filter((r) => r.quantity > 0);
+    if (receipts.length === 0) { setError('Captura al menos una cantidad a recibir'); return; }
+
+    /* Sin folio de factura la mercancía entra pero NADIE le debe nada al
+     * proveedor. Es un caso legítimo —la remisión suele llegar antes que la
+     * factura— pero tiene que ser una decisión, no un descuido. */
+    if (!numFactura.trim() && !window.confirm(
+      'No capturaste el número de factura.\n\n' +
+      'La mercancía va a entrar al almacén, pero NO se va a generar la deuda ' +
+      'en tesorería. Tendrás que capturarla a mano cuando llegue la factura.\n\n' +
+      '¿Recibir de todas formas?'
+    )) return;
+
+    setBusy(true); setError(''); setAviso('');
+    try {
+      const r = await api.receivePurchaseOrder(orderId, receipts, costing || undefined, {
+        invoiceNumber: numFactura.trim() || undefined,
+        invoiceAmount: importeFactura ? Number(importeFactura) : undefined,
+        invoiceDate: fechaFactura || undefined,
+      });
+      const d: any = r.data || {};
+      const partes: string[] = [];
+      if (d.deuda) {
+        partes.push(
+          d.deuda.yaExistia
+            ? `Esa factura ya estaba registrada en tesorería por ${money(d.deuda.amount)} — no se duplicó la deuda.`
+            : `Deuda registrada en tesorería: ${money(d.deuda.amount)}, vence el ` +
+              `${new Date(d.deuda.dueDate).toLocaleDateString('es-MX')}` +
+              (d.deuda.creditDays ? ` (${d.deuda.creditDays} días de crédito).` : '.')
+        );
+      }
+      if (d.excedentes?.length) {
+        partes.push(
+          'Recibiste de más: ' +
+          d.excedentes.map((x: any) => `${x.producto} (${num(x.recibido)} de ${num(x.pedido)})`).join(', ') +
+          '. Quedó registrado en el kardex.'
+        );
+      }
+      if (d.status === 'RECEIVED') partes.push('La orden queda SURTIDA y sale de la lista de pendientes.');
+      setAviso(partes.join(' '));
+
       setReceiving(false); setReceiveQty({});
+      setNumFactura(''); setImporteFactura(''); setFechaFactura('');
       refreshDetail();
     } catch (e: any) {
       setError(e?.response?.data?.message || 'No se pudo registrar la recepción');
@@ -248,6 +323,14 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
   if (!order) return null;
   const badge = STATUS_BADGE[order.status] || { label: order.status, cls: 'bg-gray-100 text-gray-600' };
   const canReceive = ['APPROVED', 'PURCHASED', 'RECEIVED_PARTIAL'].includes(order.status);
+  const cerrada = ['RECEIVED', 'CANCELLED'].includes(order.status);
+
+  /* Costo de lo que se está recibiendo ahora — propuesta de importe cuando no
+   * capturan el total de la factura. */
+  const totalRecibiendo = items.reduce((acc, it) => {
+    const qty = Number(receiveQty[it.id] || 0);
+    return acc + (qty > 0 ? qty * Number(it.last_purchase_price || 0) : 0);
+  }, 0);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -260,7 +343,6 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
             <div>
               <h2 className="font-bold">Orden #{order.folio} · {order.warehouse_code} — {order.warehouse_name}</h2>
               <p className="text-xs text-gray-500">
-                {order.supplier_name ? `Proveedor: ${order.supplier_name}` : 'Sin proveedor asignado'} ·
                 creada {new Date(order.created_at).toLocaleDateString('es-MX')} ·
                 necesidad {order.needed_by_date ? new Date(order.needed_by_date).toLocaleDateString('es-MX') : '—'}
               </p>
@@ -274,7 +356,41 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
 
         <div className="p-5 space-y-4">
           {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded text-sm">{error}</div>}
+          {aviso && <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-3 py-2 rounded text-sm">{aviso}</div>}
           {order.notes && <p className="text-sm text-gray-600 bg-gray-50 rounded p-3">{order.notes}</p>}
+
+          {/* ── A QUIÉN SE LE COMPRA ──────────────────────────────────────
+              El análisis propone el proveedor del último precio de compra,
+              pero ese puede no tener existencia, tardar o haber subido. Aquí
+              se elige el que de verdad va a surtir — y es el que va a quedar
+              debiéndosele en tesorería al recibir. */}
+          <div className="bg-sky-50/60 border border-sky-200 rounded-lg p-3">
+            <label className="block text-xs font-semibold text-sky-900 mb-1">
+              Proveedor que surte esta orden
+            </label>
+            {cerrada || !canWrite ? (
+              <p className="text-sm font-medium">{order.supplier_name || 'Sin proveedor asignado'}</p>
+            ) : (
+              <>
+                <select
+                  value={order.supplier_id || ''}
+                  disabled={busy}
+                  onChange={(e) => cambiarProveedor(e.target.value)}
+                  className="input w-full max-w-lg">
+                  <option value="">— Sin asignar —</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.business_name}{s.rfc ? ` · ${s.rfc}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-sky-800 mt-1">
+                  El sugerido por el análisis es el del último precio de compra. Puedes
+                  cambiarlo por cualquier otro proveedor sin cancelar la orden.
+                </p>
+              </>
+            )}
+          </div>
 
           <table className="w-full text-sm">
             <thead>
@@ -313,11 +429,21 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
                     </td>
                     {receiving && (
                       <td className="py-1.5 text-right">
-                        <input type="number" min="0" max={pending} step="any"
+                        {/* Sin `max`: el proveedor puede mandar de más y la
+                            mercancía ya está en el andén. Se avisa, no se
+                            bloquea — bloquearlo obligaría a meterla por un
+                            ajuste manual y se perdería de qué compra vino. */}
+                        <input type="number" min="0" step="any"
                           value={receiveQty[it.id] ?? ''}
                           onChange={(e) => setReceiveQty({ ...receiveQty, [it.id]: e.target.value })}
-                          placeholder={`máx ${num(pending)}`}
-                          className="input w-28 text-right" />
+                          placeholder={`faltan ${num(pending)}`}
+                          className={`input w-28 text-right ${
+                            Number(receiveQty[it.id] || 0) > pending ? 'border-amber-500 bg-amber-50' : ''}`} />
+                        {Number(receiveQty[it.id] || 0) > pending && (
+                          <p className="text-[11px] text-amber-700 mt-0.5">
+                            {num(Number(receiveQty[it.id]) - pending)} de más
+                          </p>
+                        )}
                       </td>
                     )}
                   </tr>
@@ -325,6 +451,51 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
               })}
             </tbody>
           </table>
+
+          {/* ── LA FACTURA DEL PROVEEDOR ─────────────────────────────────
+              Recibir mercancía es contraer una deuda. Se captura aquí, que es
+              cuando el documento está físicamente en la mano de quien recibe,
+              y de ahí sale sola la cuenta por pagar de tesorería con su
+              vencimiento según los días de crédito del proveedor. */}
+          {receiving && (
+            <div className="bg-violet-50/70 border border-violet-200 rounded-lg p-4 space-y-3">
+              <p className="text-sm font-medium text-violet-900">
+                Factura del proveedor — genera la deuda en tesorería
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs text-violet-900 mb-1">Número de factura</label>
+                  <input value={numFactura} onChange={(e) => setNumFactura(e.target.value)}
+                    placeholder="A-12345" className="input w-full" />
+                </div>
+                <div>
+                  <label className="block text-xs text-violet-900 mb-1">Total con impuestos</label>
+                  <input type="number" min="0" step="0.01" value={importeFactura}
+                    onChange={(e) => setImporteFactura(e.target.value)}
+                    placeholder={totalRecibiendo > 0 ? totalRecibiendo.toFixed(2) : '0.00'}
+                    className="input w-full text-right" />
+                </div>
+                <div>
+                  <label className="block text-xs text-violet-900 mb-1">Fecha de la factura</label>
+                  <input type="date" value={fechaFactura}
+                    onChange={(e) => setFechaFactura(e.target.value)}
+                    className="input w-full" />
+                </div>
+              </div>
+              <p className="text-xs text-violet-800">
+                El importe es lo que se le va a <strong>transferir</strong>: captura el total
+                de la factura con IVA. Si lo dejas vacío se usa el costo de la mercancía
+                recibida ({money(totalRecibiendo)}), que <strong>no incluye impuestos</strong>.
+                Los días de crédito del proveedor se cuentan desde la fecha de la factura.
+              </p>
+              {!order.supplier_id && (
+                <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">
+                  Esta orden no tiene proveedor asignado. Elígelo arriba: sin proveedor no
+                  hay a quién deberle y la factura no se puede registrar.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* La PREGUNTA de costos (requerimiento): cómo aplicar el costo nuevo */}
           {receiving && (

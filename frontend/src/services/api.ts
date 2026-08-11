@@ -440,7 +440,11 @@ class APIClient {
   /**
    * Purchase orders endpoints (§3 ALMACEN — Fase 4)
    */
-  async getPurchaseOrders(params?: { status?: string; warehouseId?: string; limit?: number }) {
+  async getPurchaseOrders(params?: {
+    status?: string; warehouseId?: string; limit?: number;
+    /** Sin esto la lista trae sólo las órdenes vivas (ni surtidas ni canceladas). */
+    includeClosed?: boolean;
+  }) {
     const r = await this.client.get<APIResponse<any>>('/purchase-orders', { params });
     return r.data;
   }
@@ -477,14 +481,25 @@ class APIClient {
     return r.data;
   }
 
+  /** Cambia el proveedor al que se le compra — el sugerido es sólo una propuesta. */
+  async setPurchaseOrderSupplier(id: string, supplierId: string | null) {
+    const r = await this.client.put<APIResponse<any>>(
+      `/purchase-orders/${id}/supplier`, { supplierId }
+    );
+    return r.data;
+  }
+
   async receivePurchaseOrder(
     id: string,
     receipts: Array<{ itemId: string; quantity: number; unitCost?: number }>,
-    costingMethod?: 'PROMEDIO' | 'ULTIMO' | 'CAPAS'
+    costingMethod?: 'PROMEDIO' | 'ULTIMO' | 'CAPAS',
+    /** Factura del proveedor: con ella la recepción genera la deuda en tesorería. */
+    factura?: { invoiceNumber?: string; invoiceAmount?: number; invoiceDate?: string }
   ) {
     const r = await this.client.post<APIResponse<any>>(`/purchase-orders/${id}/receive`, {
       receipts,
       costingMethod,
+      ...factura,
     });
     return r.data;
   }
