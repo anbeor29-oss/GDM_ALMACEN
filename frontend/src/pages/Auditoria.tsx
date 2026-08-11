@@ -14,6 +14,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, AlertTriangle, RefreshCw, Clock, HelpCircle } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { XmlRecibidos } from '@/components/XmlRecibidos';
 
 const fechaHora = (d: any) =>
   d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—';
@@ -35,6 +36,9 @@ export function AuditoriaPage() {
   const { user } = useAuthStore();
   const puedeRevisar = ['ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(user?.role || '');
 
+  /* Dos caras del mismo módulo: lo que emitimos —y hay que vigilar— y lo que
+   * nos emitieron, que hay que ir a buscar al SAT. */
+  const [tab, setTab] = useState<'emitidos' | 'recibidos'>('emitidos');
   const [soloDiferencias, setSoloDiferencias] = useState(false);
   const [revisando, setRevisando] = useState(false);
   const [aviso, setAviso] = useState('');
@@ -100,6 +104,21 @@ export function AuditoriaPage() {
         )}
       </div>
 
+      <div className="flex gap-1 border-b">
+        {([['emitidos', 'Nuestros comprobantes'], ['recibidos', 'XML recibidos del SAT']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+              tab === k
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'recibidos' && <XmlRecibidos />}
+
+      {tab === 'emitidos' && (<>
       {aviso && <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">{aviso}</div>}
       {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
@@ -204,6 +223,8 @@ export function AuditoriaPage() {
           </tbody>
         </table>
       </div>
+
+      </>)}
 
       <p className="text-xs text-gray-500">
         Esta pantalla sólo consulta: nunca cancela ni modifica un comprobante. Cuando el

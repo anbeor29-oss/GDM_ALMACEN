@@ -78,6 +78,15 @@ async function bootstrap() {
       logger.warn(`No se pudo registrar auditoria-cron: ${e.message}`);
     }
 
+    // Descarga masiva del SAT: avanza los trabajos abiertos
+    // (solo si ENABLE_SAT_DESCARGA_CRON=true — usa la e.firma de la empresa)
+    try {
+      const { registerSatDescargaCron } = await import('./jobs/sat-descarga-cron');
+      registerSatDescargaCron();
+    } catch (e: any) {
+      logger.warn(`No se pudo registrar sat-descarga-cron: ${e.message}`);
+    }
+
     // Graceful shutdown
     const shutdown = async (signal: string) => {
       logger.info(`Received ${signal}, shutting down gracefully...`);

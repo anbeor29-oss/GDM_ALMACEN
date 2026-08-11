@@ -1039,6 +1039,54 @@ class APIClient {
     return r.data;
   }
 
+  /* ───────────── Descarga masiva del SAT ───────────── */
+  async getSatCredencial() {
+    const r = await this.client.get<APIResponse<any>>('/sat-descarga/credencial');
+    return r.data;
+  }
+  /** La e.firma viaja una sola vez; el servidor la cifra y no la devuelve nunca. */
+  async subirSatCredencial(cer: File, key: File, password: string) {
+    const fd = new FormData();
+    fd.append('cer', cer);
+    fd.append('key', key);
+    fd.append('password', password);
+    const r = await this.client.post<APIResponse<any>>('/sat-descarga/credencial', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return r.data;
+  }
+  async borrarSatCredencial() {
+    const r = await this.client.delete<APIResponse<any>>('/sat-descarga/credencial');
+    return r.data;
+  }
+  async getSatTrabajos() {
+    const r = await this.client.get<APIResponse<any>>('/sat-descarga/trabajos');
+    return r.data;
+  }
+  async crearSatTrabajo(data: {
+    desde: string; hasta: string; direccion: 'recibidos' | 'emitidos';
+    tipo?: 'CFDI' | 'Metadata'; filtros?: any;
+  }) {
+    const r = await this.client.post<APIResponse<any>>('/sat-descarga/trabajos', data);
+    return r.data;
+  }
+  async avanzarSatDescarga(trabajoId?: string) {
+    const r = await this.client.post<APIResponse<any>>('/sat-descarga/avanzar', { trabajoId });
+    return r.data;
+  }
+  async getSatComprobantes(params: {
+    anio?: number; mes?: number; direccion?: string; rfc?: string; buscar?: string;
+  } = {}) {
+    const r = await this.client.get<APIResponse<any>>('/sat-descarga/comprobantes', { params });
+    return r.data;
+  }
+  async getSatResumen(anio?: number, mes?: number) {
+    const r = await this.client.get<APIResponse<any>>('/sat-descarga/comprobantes/resumen', {
+      params: { anio, mes },
+    });
+    return r.data;
+  }
+
   /* ───────────── Mensajería interna ───────────── */
   async getMensajes(buzon: 'recibidos' | 'enviados' = 'recibidos') {
     const r = await this.client.get<APIResponse<any>>('/mensajes', { params: { buzon } });

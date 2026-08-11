@@ -5,6 +5,94 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-12 — Motor de descarga masiva del SAT (sólo NEXO)
+
+Base: `DESCARGA_MASIVA_SAT_Y_SERVICIOS.md`. Va **sólo en NEXO** por decisión de
+Antonio: facturación ya quedó funcional con lo que tiene, y NEXO es el que va a
+cargar nómina y contabilidad, que es donde estos XML hacen falta.
+
+### Qué resuelve, y por qué no bastaba Auditoría
+Auditoría pregunta por comprobante: "este UUID, ¿sigue vigente?". Sirve para lo
+NUESTRO, que ya está en la base. De lo que nos emitieron no sabemos ni siquiera
+qué existe, y eso sólo se trae con el servicio de descarga masiva: e.firma,
+lotes asíncronos, se pide, se espera, se recoge.
+
+### Decisiones
+
+**e.firma cifrada con llave maestra aparte (`SAT_VAULT_KEY`).** No se reutilizó
+`ENCRYPTION_KEY` —la de los CSD— porque ata dos secretos de gravedad distinta:
+una contraseña de sello se reemplaza pidiendo otro CSD; la llave privada de la
+e.firma tiene efectos de firma autógrafa. Si falta la variable, el módulo NO
+arranca: una bóveda con llave por omisión da la impresión de proteger algo.
+**No existe ninguna ruta que devuelva el .cer, el .key ni la contraseña.**
+
+**Se valida antes de mandar nada.** El SAT responde 300/305 —"revisar
+identidad", "tipo de certificado"— sin distinguir entre archivo corrupto,
+contraseña mala, certificado vencido y **haber subido el CSD en vez de la
+e.firma**, que es el error más común porque están en la misma carpeta. Se
+separan las cuatro leyendo el certificado: la e.firma declara cifrado de datos
+en su uso de llave; el CSD sólo firma y no repudia.
+
+**Sin librería de SOAP, a propósito.** Lo difícil no es el sobre sino la firma:
+el SAT valida XML-DSig con canonicalización exclusiva, y las bibliotecas
+genéricas re-serializan el documento —reordenan atributos, mueven espacios— y la
+firma deja de cuadrar por un carácter. Construyendo la cadena a mano, lo que se
+firma es exactamente lo que viaja.
+
+**Los endpoints son configurables por variable de entorno**, como pide §24 del
+documento: las URL de los ejemplos del SAT cambian.
+
+**Partición adaptativa**: bloques de 7 días; ante el código 5003 ("pasa del
+tope") el rango se parte a la mitad, hasta 4 niveles —de 7 días a ~10 horas—.
+Más abajo el problema deja de ser el tamaño y se pide revisión humana en vez de
+inundar al SAT con cientos de solicitudes diminutas. Cada partición lleva una
+**huella** de sus parámetros: el SAT rechaza solicitudes duplicadas.
+
+**Prioridad al recoger, no al pedir** (§8): primero los paquetes listos —vencen
+a las 72 h—, luego verificar lo viejo, y sólo al final mandar solicitudes
+nuevas. Crear más trabajo cuando hay paquetes por vencer es la forma más fácil
+de perderlos.
+
+**Lector de ZIP propio, con topes.** Un paquete del SAT es un ZIP simple y leer
+su índice son cuarenta líneas con `zlib`; traer una dependencia nueva a
+producción para eso cuesta más de lo que ahorra. Tres topes —por archivo, por
+paquete y en número de archivos— revisados ANTES de descomprimir, leyendo el
+tamaño declarado en el índice. Y la defensa más fuerte contra Zip Slip es que
+**los XML nunca tocan el disco**: se leen a memoria y se guardan en la base.
+
+**El cron NO viene encendido**, al revés que el de auditoría. Aquél sólo
+pregunta; éste **actúa ante el SAT firmando con la e.firma de una empresa**. Un
+motor que empieza a firmar solicitudes porque alguien desplegó una versión nueva
+no es una comodidad, es una sorpresa. Se enciende con
+`ENABLE_SAT_DESCARGA_CRON=true`.
+
+### Verificación
+Todo lo que se puede probar sin la e.firma real, contra Postgres local:
+
+- **Bóveda**: ida y vuelta idéntica sobre datos binarios, y manipulación del
+  registro detectada (falla en vez de devolver basura).
+- **e.firma**: la extensión keyUsage leída del DER coincide byte a byte con lo
+  que dice `openssl`; el CSD real del repo se **rechaza** con su motivo; una
+  e.firma legítima se acepta; contraseña equivocada y .cer/.key de trámites
+  distintos se rechazan por separado.
+- **ZIP**: extrae los XML e ignora lo que no lo es; rechaza `../../../etc/...`
+  y las rutas absolutas —con un ZIP malicioso fabricado a nivel de bytes,
+  porque `archiver` sanea los nombres y no dejaba ejercer el guard—; y rechaza
+  lo que no es un ZIP.
+- **Indexado**: leyó un CFDI timbrado real de la base (tipo, emisor, receptor,
+  total, moneda, fecha) y al repetirlo devolvió `false` — no duplica.
+- **Particionador**: enero → 5 bloques de 7 días, con 5 huellas distintas.
+
+### Lo que NO está verificado, y hay que saberlo
+**El viaje al SAT.** Autenticación, solicitud, verificación y descarga están
+implementadas conforme al documento, pero no se han ejecutado contra el servicio
+real: eso exige la e.firma de la empresa, que no está cargada. La primera
+corrida de verdad puede tropezar con detalles del sobre o con endpoints que
+cambiaron, y para eso el sistema guarda el código y el mensaje del SAT en cada
+partición.
+
+---
+
 ## 2026-08-11 (noche, 4) — El estado de la ubicación se puede corregir
 
 ### El error que se reportó
