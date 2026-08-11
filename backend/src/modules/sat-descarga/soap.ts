@@ -85,6 +85,26 @@ function digestSha1(texto: string): string {
 }
 
 /**
+ * El transform depende de QUÉ se firma, y confundirlos es el error que devuelve
+ * "An error occurred when verifying security for the message".
+ *
+ *  · `enveloped-signature` dice "quita la firma antes de calcular el digest".
+ *    Sólo tiene sentido cuando la firma vive DENTRO de lo firmado, que es el
+ *    caso de la solicitud, la verificación y la descarga: ahí se firma el
+ *    documento entero con `URI=""` y la firma queda adentro.
+ *
+ *  · En la AUTENTICACIÓN se firma el `<u:Timestamp>` por su Id (`URI="#_0"`),
+ *    y la firma NO está dentro del Timestamp: está al lado, en el mismo header
+ *    de seguridad. Pedirle al validador que "quite la firma envolvente" de un
+ *    elemento que no la contiene le da un digest distinto al que calculamos
+ *    nosotros, y rechaza el sobre sin decir por qué.
+ */
+const TRANSFORM = {
+  timestamp: 'http://www.w3.org/2001/10/xml-exc-c14n#',
+  documento: 'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
+};
+
+/**
  * Arma el bloque `<Signature>` de una referencia.
  *
  * El SignedInfo se construye ya canonicalizado —sin saltos, sin espacios entre
@@ -95,7 +115,8 @@ function bloqueFirma(
   uriReferencia: string,
   digest: string,
   cred: Credencial,
-  keyInfo: string
+  keyInfo: string,
+  transform: string
 ): string {
   const signedInfo =
     '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">' +
@@ -103,7 +124,7 @@ function bloqueFirma(
     '<SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"></SignatureMethod>' +
     `<Reference URI="${uriReferencia}">` +
     '<Transforms>' +
-    '<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></Transform>' +
+    `<Transform Algorithm="${transform}"></Transform>` +
     '</Transforms>' +
     '<DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"></DigestMethod>' +
     `<DigestValue>${digest}</DigestValue>` +
@@ -130,7 +151,14 @@ export interface Token {
  * uno por operación multiplicaría las llamadas sin ganar nada.
  */
 export async function autenticar(cred: Credencial): Promise<Token> {
-  const creado = new Date();
+  /* El sello se fecha 30 segundos ATRÁS a propósito.
+   *
+   * WS-Security rechaza un Created que esté en el futuro respecto al reloj del
+   * SAT, y el de un contenedor en la nube se desfasa unos segundos con
+   * facilidad. Restar medio minuto no le quita validez al sello —sigue
+   * venciendo cinco minutos después de emitido— y evita un rechazo que se
+   * vería idéntico a una firma mal armada. */
+  const creado = new Date(Date.now() - 30_000);
   const expira = new Date(creado.getTime() + 5 * 60_000);
   const iso = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, '.000Z');
 
@@ -155,7 +183,7 @@ export async function autenticar(cred: Credencial): Promise<Token> {
     '<o:BinarySecurityToken u:Id="uuid-token" ValueType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3" EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary">' +
     b64(cred.cer) +
     '</o:BinarySecurityToken>' +
-    bloqueFirma('#_0', digestSha1(timestamp), cred, keyInfo) +
+    bloqueFirma('#_0', digestSha1(timestamp), cred, keyInfo, TRANSFORM.timestamp) +
     '</o:Security></s:Header>' +
     '<s:Body><Autentica xmlns="http://DescargaMasivaTerceros.gob.mx"></Autentica></s:Body>' +
     '</s:Envelope>';
@@ -212,7 +240,7 @@ export async function solicitar(
     `<des:${operacion} xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx">${cuerpo}</des:${operacion}>`;
 
   const keyInfo = keyInfoX509(cred);
-  const firma = bloqueFirma('', digestSha1(sinFirma), cred, keyInfo);
+  const firma = bloqueFirma('', digestSha1(sinFirma), cred, keyInfo, TRANSFORM.documento);
   const sobre =
     '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx" xmlns:xd="http://www.w3.org/2000/09/xmldsig#">' +
     '<s:Header/><s:Body>' +
@@ -256,7 +284,7 @@ export async function verificar(
   const sinFirma =
     `<des:VerificaSolicitudDescarga xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx">${cuerpo}</des:VerificaSolicitudDescarga>`;
 
-  const firma = bloqueFirma('', digestSha1(sinFirma), cred, keyInfoX509(cred));
+  const firma = bloqueFirma('', digestSha1(sinFirma), cred, keyInfoX509(cred), TRANSFORM.documento);
   const sobre =
     '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx" xmlns:xd="http://www.w3.org/2000/09/xmldsig#">' +
     '<s:Header/><s:Body>' +
@@ -291,7 +319,7 @@ export async function descargar(
   const sinFirma =
     `<des:PeticionDescargaMasivaTercerosEntrada xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx">${cuerpo}</des:PeticionDescargaMasivaTercerosEntrada>`;
 
-  const firma = bloqueFirma('', digestSha1(sinFirma), cred, keyInfoX509(cred));
+  const firma = bloqueFirma('', digestSha1(sinFirma), cred, keyInfoX509(cred), TRANSFORM.documento);
   const sobre =
     '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx" xmlns:xd="http://www.w3.org/2000/09/xmldsig#">' +
     '<s:Header/><s:Body>' +
