@@ -12,8 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Boxes, Search, ArrowLeftRight, SlidersHorizontal, History,
   PackagePlus, PackageMinus, AlertTriangle, BarChart3, Camera,
-  ClipboardCheck, TrendingUp, FileSpreadsheet, FileText, Download,
-} from 'lucide-react';
+  ClipboardCheck, TrendingUp, FileSpreadsheet, FileText, Download, Gauge } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 
@@ -238,9 +237,14 @@ function StockTab() {
                         className="p-1.5 text-violet-600 hover:bg-violet-50 rounded">
                         <ArrowLeftRight size={16} />
                       </button>
-                      <button title="Mínimo / máximo" onClick={() => setLimits(r)}
-                        className="p-1.5 text-amber-600 hover:bg-amber-50 rounded">
-                        <AlertTriangle size={16} />
+                      {/* Un triángulo de advertencia no dice "definir mínimo":
+                          este botón existía desde el principio y nadie lo
+                          encontraba. Con la etiqueta de texto y el icono de
+                          medidor, se ve lo que hace. También se llega desde
+                          Ajuste manual → Mínimo y máximo. */}
+                      <button title="Definir mínimo y máximo" onClick={() => setLimits(r)}
+                        className="inline-flex items-center gap-1 px-1.5 py-1 text-amber-700 hover:bg-amber-50 rounded text-xs font-medium">
+                        <Gauge size={16} /> Mín/Máx
                       </button>
                     </div>
                   )}
@@ -751,6 +755,16 @@ function ProductHeader({ row }: { row: StockRow }) {
 function AdjustModal({ row, onClose, onSaved }: {
   row: StockRow; onClose: () => void; onSaved: () => void;
 }) {
+  /* Dos cosas distintas sobre el mismo renglón, en la misma ventana: MOVER
+   * existencia y FIJAR sus límites. Antes los límites vivían detrás de un
+   * triángulo de advertencia en la lista —un icono que no dice "definir
+   * mínimo"— y por eso nadie los encontraba. Van en pestañas separadas y no
+   * mezclados: confundirlos movería inventario cuando sólo se quería cambiar
+   * un número. */
+  const [pestana, setPestana] = useState<'movimiento' | 'limites'>('movimiento');
+  const [minimo, setMinimo] = useState(String(row.stock_minimum ?? 0));
+  const [maximo, setMaximo] = useState(String(row.stock_maximum ?? 0));
+
   const [direction, setDirection] = useState<'IN' | 'OUT'>('IN');
   const [typed, setTyped] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -758,6 +772,26 @@ function AdjustModal({ row, onClose, onSaved }: {
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const guardarLimites = async () => {
+    setError('');
+    const mn = Number(minimo);
+    const mx = Number(maximo);
+    if (mn < 0 || mx < 0) { setError('Mínimo y máximo no pueden ser negativos'); return; }
+    if (mx > 0 && mx < mn) { setError('El máximo no puede ser menor que el mínimo'); return; }
+    setSaving(true);
+    try {
+      await api.setStockLimits({
+        productId: row.product_id,
+        warehouseId: row.warehouse_id,
+        stockMinimum: mn,
+        stockMaximum: mx,
+      });
+      onSaved();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudieron guardar los límites');
+    } finally { setSaving(false); }
+  };
 
   const handleSave = async () => {
     setError('');
@@ -793,6 +827,58 @@ function AdjustModal({ row, onClose, onSaved }: {
         {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded text-sm">{error}</div>}
         <ProductHeader row={row} />
 
+        {/* Qué se va a hacer con este renglón. */}
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+          <button onClick={() => setPestana('movimiento')}
+            className={`flex-1 px-3 py-1.5 rounded-md text-sm font-medium ${
+              pestana === 'movimiento' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'
+            }`}>
+            Mover existencia
+          </button>
+          <button onClick={() => setPestana('limites')}
+            className={`flex-1 px-3 py-1.5 rounded-md text-sm font-medium ${
+              pestana === 'limites' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'
+            }`}>
+            Mínimo y máximo
+          </button>
+        </div>
+
+        {pestana === 'limites' ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Mínimo</label>
+                <input type="number" min="0" step="any" value={minimo}
+                  onChange={(e) => setMinimo(e.target.value)} className="input" autoFocus />
+                <p className="text-xs text-gray-500 mt-1">
+                  Por debajo de esto, el producto aparece en Faltantes.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Máximo</label>
+                <input type="number" min="0" step="any" value={maximo}
+                  onChange={(e) => setMaximo(e.target.value)} className="input" />
+                <p className="text-xs text-gray-500 mt-1">
+                  Hasta dónde reponer. Es la base de la cantidad sugerida al comprar.
+                </p>
+              </div>
+            </div>
+            {/* Se dice que es POR ALMACÉN porque no es evidente: el mismo
+                producto puede llevar mínimos distintos en cada bodega, y quien
+                lo captura creyendo que aplica a todas se lleva una sorpresa. */}
+            <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded p-2">
+              Estos límites son de <b>{row.product_name}</b> en <b>{row.warehouse_code}</b>.
+              Otro almacén puede tener los suyos.
+            </p>
+            {Number(minimo) === 0 && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                Con el mínimo en 0, este producto sólo aparecerá en Faltantes cuando
+                llegue a cero. Ponle un número si quieres que avise antes.
+              </p>
+            )}
+          </>
+        ) : (
+        <>
         <div className="grid grid-cols-2 gap-2">
           <button onClick={() => { setDirection('IN'); setTyped(''); }}
             className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium ${
@@ -845,12 +931,17 @@ function AdjustModal({ row, onClose, onSaved }: {
           <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2}
             placeholder="Ej. conteo físico, corrección de captura, merma por caducidad…" className="input" />
         </div>
+        </>
+        )}
       </div>
       <div className="flex justify-end gap-3 p-5 border-t bg-gray-50">
         <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
-        <button onClick={handleSave} disabled={saving}
+        {/* El botón dice lo que va a hacer. Un "Guardar" genérico en una
+            ventana que puede mover inventario es justo donde no conviene la
+            ambigüedad. */}
+        <button onClick={pestana === 'limites' ? guardarLimites : handleSave} disabled={saving}
           className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 disabled:opacity-50">
-          {saving ? 'Aplicando…' : 'Aplicar ajuste'}
+          {saving ? 'Guardando…' : pestana === 'limites' ? 'Guardar límites' : 'Aplicar ajuste'}
         </button>
       </div>
     </ModalShell>
