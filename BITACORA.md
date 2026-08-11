@@ -73,11 +73,23 @@ excedente reportado; repetir la misma factura en minúsculas devolvió
 `yaExistia: true` con **una sola** fila en tesorería; el cambio de proveedor
 funcionó y la orden cerrada lo rechazó. `tsc --noEmit` limpio en los dos lados.
 
+**6. El IVA se calcula, no se advierte.** Primera versión: el campo pedía el
+total con impuestos y avisaba que el costo de la mercancía no los trae. Un
+aviso no es un cálculo — quien recibe con prisa deja el campo vacío y el pago
+queda 16% corto. Ahora se captura el **subtotal** (propuesto con el costo de lo
+recibido) y se elige la tasa entre **16%, 8% y 0%**; el total sale solo y se
+muestra desglosado antes de guardar.
+
+Las tres cifras se guardan (`subtotal`, `tax_rate`, `amount`) porque el IVA de
+compras es acreditable: reconstruirlo dividiendo totales entre 1.16 falla en
+cuanto una factura viene al 8% de frontera. La lista de tasas es cerrada en dos
+lugares explícitos —`TASAS_IVA` y un CHECK en la tabla—: con campo libre alguien
+captura 15 o 1.6 y el pago sale mal sin que nada lo detecte. Una tasa fuera de
+lista se rechaza en vez de convertirse calladamente en 16.
+
 ### Consecuencia
 Tesorería ve la deuda el día que entra la mercancía, no cuando alguien la
-captura. Como contrapartida, el importe se pide con impuestos y el sistema no
-lo calcula: si lo dejan vacío usa el costo de la mercancía, que **no** trae IVA
-— por eso el campo lo advierte en pantalla.
+captura, y por el importe que el proveedor va a cobrar de verdad.
 
 ---
 

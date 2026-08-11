@@ -226,9 +226,11 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
   const [error, setError] = useState('');
   const [aviso, setAviso] = useState('');
 
-  /* Datos de la factura del proveedor — con ellos nace la cuenta por pagar. */
+  /* Datos de la factura del proveedor — con ellos nace la cuenta por pagar.
+   * Se captura el SUBTOTAL y la tasa; el total lo calcula el sistema. */
   const [numFactura, setNumFactura] = useState('');
   const [importeFactura, setImporteFactura] = useState('');
+  const [tasaIva, setTasaIva] = useState('16');
   const [fechaFactura, setFechaFactura] = useState('');
 
   const q = useQuery({
@@ -278,7 +280,8 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
     try {
       const r = await api.registrarFacturaDeOrden(orderId, {
         invoiceNumber: numFactura.trim(),
-        invoiceAmount: importeFactura ? Number(importeFactura) : undefined,
+        subtotal: importeFactura ? Number(importeFactura) : undefined,
+        taxRate: Number(tasaIva),
         invoiceDate: fechaFactura || undefined,
         supplierId: proveedorFactura || undefined,
       });
@@ -287,13 +290,14 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
         d?.yaExistia
           ? `Esa factura ya estaba registrada por ${money(d.amount)} — no se duplicó la deuda.`
           : d
-            ? `Deuda registrada en tesorería: ${money(d.amount)}, vence el ` +
-              `${new Date(d.dueDate).toLocaleDateString('es-MX')}` +
+            ? `Deuda registrada en tesorería: ${money(d.subtotal)} + IVA ${d.taxRate}% = ` +
+              `${money(d.amount)}, vence el ${new Date(d.dueDate).toLocaleDateString('es-MX')}` +
               (d.creditDays ? ` (${d.creditDays} días de crédito).` : '.')
             : 'La factura se registró.'
       );
       setCapturandoFactura(false);
-      setNumFactura(''); setImporteFactura(''); setFechaFactura(''); setProveedorFactura('');
+      setNumFactura(''); setImporteFactura(''); setTasaIva('16');
+      setFechaFactura(''); setProveedorFactura('');
       refreshDetail();
     } catch (e: any) {
       setError(e?.response?.data?.message || 'No se pudo registrar la factura');
@@ -320,7 +324,8 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
     try {
       const r = await api.receivePurchaseOrder(orderId, receipts, costing || undefined, {
         invoiceNumber: numFactura.trim() || undefined,
-        invoiceAmount: importeFactura ? Number(importeFactura) : undefined,
+        subtotal: importeFactura ? Number(importeFactura) : undefined,
+        taxRate: Number(tasaIva),
         invoiceDate: fechaFactura || undefined,
       });
       const d: any = r.data || {};
@@ -329,7 +334,8 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
         partes.push(
           d.deuda.yaExistia
             ? `Esa factura ya estaba registrada en tesorería por ${money(d.deuda.amount)} — no se duplicó la deuda.`
-            : `Deuda registrada en tesorería: ${money(d.deuda.amount)}, vence el ` +
+            : `Deuda registrada en tesorería: ${money(d.deuda.subtotal)} + IVA ` +
+              `${d.deuda.taxRate}% = ${money(d.deuda.amount)}, vence el ` +
               `${new Date(d.deuda.dueDate).toLocaleDateString('es-MX')}` +
               (d.deuda.creditDays ? ` (${d.deuda.creditDays} días de crédito).` : '.')
         );
@@ -345,7 +351,7 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
       setAviso(partes.join(' '));
 
       setReceiving(false); setReceiveQty({});
-      setNumFactura(''); setImporteFactura(''); setFechaFactura('');
+      setNumFactura(''); setImporteFactura(''); setTasaIva('16'); setFechaFactura('');
       refreshDetail();
     } catch (e: any) {
       setError(e?.response?.data?.message || 'No se pudo registrar la recepción');
@@ -367,6 +373,14 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
   const costoYaRecibido = items.reduce(
     (acc, it) => acc + Number(it.quantity_received || 0) * Number(it.last_purchase_price || 0), 0);
   const propuestaImporte = receiving ? totalRecibiendo : costoYaRecibido;
+
+  /* El total que va a quedar en tesorería, calculado igual que en el backend
+   * (misma base y mismo redondeo a centavos) para que la pantalla no prometa
+   * una cifra y se guarde otra. */
+  const baseFactura = importeFactura ? Number(importeFactura) : propuestaImporte;
+  const pesos = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+  const ivaFactura = pesos(baseFactura * (Number(tasaIva) / 100));
+  const totalFactura = pesos(baseFactura * (1 + Number(tasaIva) / 100));
 
   /* La factura puede llegar días después de la mercancía. Mientras haya algo
    * recibido, se puede capturar y generar la deuda. */
@@ -509,6 +523,11 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
                     <Receipt size={14} className="text-gray-400 shrink-0" />
                     <span className="font-medium">{f.invoice_number || 'sin folio'}</span>
                     <span>· {money(f.amount)}</span>
+                    {f.subtotal != null && (
+                      <span className="text-xs text-gray-500">
+                        ({money(f.subtotal)} + IVA {Number(f.tax_rate)}%)
+                      </span>
+                    )}
                     <span className="text-gray-500">
                       · vence {new Date(f.due_date).toLocaleDateString('es-MX')}
                     </span>
@@ -549,18 +568,27 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="block text-xs text-violet-900 mb-1">Número de factura</label>
                   <input value={numFactura} onChange={(e) => setNumFactura(e.target.value)}
                     placeholder="A-12345" className="input w-full" />
                 </div>
                 <div>
-                  <label className="block text-xs text-violet-900 mb-1">Total con impuestos</label>
+                  <label className="block text-xs text-violet-900 mb-1">Subtotal (sin IVA)</label>
                   <input type="number" min="0" step="0.01" value={importeFactura}
                     onChange={(e) => setImporteFactura(e.target.value)}
                     placeholder={propuestaImporte > 0 ? propuestaImporte.toFixed(2) : '0.00'}
                     className="input w-full text-right" />
+                </div>
+                <div>
+                  <label className="block text-xs text-violet-900 mb-1">IVA</label>
+                  <select value={tasaIva} onChange={(e) => setTasaIva(e.target.value)}
+                    className="input w-full">
+                    <option value="16">16 % — general</option>
+                    <option value="8">8 % — región fronteriza</option>
+                    <option value="0">0 % — tasa cero / exento</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs text-violet-900 mb-1">Fecha de la factura</label>
@@ -569,12 +597,23 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
                     className="input w-full" />
                 </div>
               </div>
+
+              {/* El total se muestra ANTES de guardar: es la cifra que va a
+                  aparecer en tesorería y la que alguien va a transferir. */}
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 bg-white/70 border border-violet-200 rounded px-3 py-2 text-sm">
+                <span className="text-gray-600">Subtotal <strong>{money(baseFactura)}</strong></span>
+                <span className="text-gray-600">+ IVA {tasaIva}% <strong>{money(ivaFactura)}</strong></span>
+                <span className="text-violet-900 font-semibold ml-auto">
+                  Total a pagar: {money(totalFactura)}
+                </span>
+              </div>
+
               <p className="text-xs text-violet-800">
-                El importe es lo que se le va a <strong>transferir</strong>: captura el total
-                de la factura con IVA. Si lo dejas vacío se usa el costo de la mercancía
-                {capturandoFactura ? ' ya recibida' : ' recibida'} ({money(propuestaImporte)}),
-                que <strong>no incluye impuestos</strong>. Los días de crédito del proveedor
-                se cuentan desde la fecha de la factura.
+                Captura el <strong>subtotal</strong> de la factura; el IVA lo calcula el
+                sistema y el total es lo que se le va a transferir. Si dejas el subtotal
+                vacío se usa el costo de la mercancía
+                {capturandoFactura ? ' ya recibida' : ' recibida'} ({money(propuestaImporte)}).
+                Los días de crédito del proveedor se cuentan desde la fecha de la factura.
               </p>
               {receiving && !order.supplier_id && (
                 <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">

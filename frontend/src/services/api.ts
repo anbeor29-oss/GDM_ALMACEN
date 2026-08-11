@@ -486,7 +486,8 @@ class APIClient {
    * Genera la deuda en tesorería; no vuelve a mover existencias.
    */
   async registrarFacturaDeOrden(id: string, datos: {
-    invoiceNumber: string; invoiceAmount?: number; invoiceDate?: string; supplierId?: string;
+    invoiceNumber: string; subtotal?: number; taxRate?: number;
+    invoiceDate?: string; supplierId?: string;
   }) {
     const r = await this.client.post<APIResponse<any>>(
       `/purchase-orders/${id}/invoice`, datos
@@ -507,7 +508,9 @@ class APIClient {
     receipts: Array<{ itemId: string; quantity: number; unitCost?: number }>,
     costingMethod?: 'PROMEDIO' | 'ULTIMO' | 'CAPAS',
     /** Factura del proveedor: con ella la recepción genera la deuda en tesorería. */
-    factura?: { invoiceNumber?: string; invoiceAmount?: number; invoiceDate?: string }
+    factura?: {
+      invoiceNumber?: string; subtotal?: number; taxRate?: number; invoiceDate?: string;
+    }
   ) {
     const r = await this.client.post<APIResponse<any>>(`/purchase-orders/${id}/receive`, {
       receipts,

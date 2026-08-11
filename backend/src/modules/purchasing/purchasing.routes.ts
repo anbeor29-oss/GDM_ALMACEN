@@ -325,7 +325,8 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const result = await registrarFacturaDeOrden(companyId(req), req.params.id, {
       invoiceNumber: req.body?.invoiceNumber,
-      invoiceAmount: req.body?.invoiceAmount,
+      subtotal:      req.body?.subtotal,
+      taxRate:       req.body?.taxRate,
       invoiceDate:   req.body?.invoiceDate,
       supplierId:    req.body?.supplierId,
     });
@@ -351,7 +352,8 @@ router.post(
       email: req.user?.email,
     }, costingMethod, {
       invoiceNumber: req.body?.invoiceNumber,
-      invoiceAmount: req.body?.invoiceAmount,
+      subtotal:      req.body?.subtotal,
+      taxRate:       req.body?.taxRate,
       invoiceDate:   req.body?.invoiceDate,
     });
     res.json({ success: true, data: result });

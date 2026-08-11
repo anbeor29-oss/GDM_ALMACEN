@@ -20,6 +20,39 @@ export type OrderStatus =
   | 'PENDING' | 'QUOTED' | 'APPROVED' | 'PURCHASED'
   | 'RECEIVED_PARTIAL' | 'RECEIVED' | 'CANCELLED';
 
+/**
+ * Las únicas tasas de IVA que existen en México: 16% general, 8% en la región
+ * fronteriza y 0% en alimentos, medicinas y exportación.
+ *
+ * La lista es cerrada a propósito. Con un campo libre alguien captura 15 o 1.6
+ * y el pago programado sale mal sin que nada lo detecte; aquí una tasa que no
+ * esté en la lista se rechaza en vez de convertirse calladamente en 16.
+ */
+export const TASAS_IVA = [16, 8, 0] as const;
+const TASA_IVA_DEFAULT = 16;
+
+function tasaDeIvaValida(tasa?: number): number {
+  if (tasa == null || tasa === undefined) return TASA_IVA_DEFAULT;
+  const n = Number(tasa);
+  if (!TASAS_IVA.includes(n as any)) {
+    throw new ValidationError(
+      `Tasa de IVA no válida: ${tasa}. Las únicas admitidas son 16%, 8% y 0%.`
+    );
+  }
+  return n;
+}
+
+/**
+ * Redondeo a centavos.
+ *
+ * `subtotal * 1.16` en punto flotante da 1160.0000000000002 y ese número acaba
+ * en la pantalla de tesorería y en la transferencia. Se corta aquí, una vez,
+ * en lugar de maquillarlo en cada lugar que lo muestre.
+ */
+function redondeaPesos(n: number): number {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
 /** Estados que cuentan como "orden abierta" para el anti-duplicado. */
 const OPEN_STATUSES = ['PENDING', 'QUOTED', 'APPROVED', 'PURCHASED', 'RECEIVED_PARTIAL'];
 
@@ -254,9 +287,12 @@ async function generarDeudaProveedor(
     orderId: string;
     folio: number;
     invoiceNumber: string;
-    invoiceAmount?: number;
+    /** Importe antes de impuestos. Si no viene, se usa el costo de la mercancía. */
+    subtotal?: number;
+    /** 16, 8 o 0. Si no viene, 16. */
+    taxRate?: number;
     invoiceDate?: string;
-    /** Costo de la mercancía, como propuesta cuando no capturan el total. */
+    /** Costo de la mercancía, como propuesta cuando no capturan el subtotal. */
     importePropuesto: number;
   }
 ): Promise<any> {
@@ -269,7 +305,7 @@ async function generarDeudaProveedor(
 
   const yaExiste = await transactionQuery<any>(
     client,
-    `SELECT id, amount, due_date FROM supplier_payments_schedule
+    `SELECT id, amount, subtotal, tax_rate, due_date FROM supplier_payments_schedule
       WHERE company_id = $1 AND supplier_id = $2
         AND UPPER(invoice_number) = UPPER($3) AND status <> 'CANCELLED'
       LIMIT 1`,
@@ -279,34 +315,43 @@ async function generarDeudaProveedor(
     return {
       id: yaExiste.rows[0].id,
       amount: Number(yaExiste.rows[0].amount),
+      subtotal: yaExiste.rows[0].subtotal != null ? Number(yaExiste.rows[0].subtotal) : null,
+      taxRate: yaExiste.rows[0].tax_rate != null ? Number(yaExiste.rows[0].tax_rate) : null,
       dueDate: yaExiste.rows[0].due_date,
       yaExistia: true,
     };
   }
 
-  /* El importe que se debe es el TOTAL de la factura, con impuestos: es lo que
-   * se le va a transferir al proveedor. El costo de la mercancía sólo sirve de
-   * propuesta cuando no lo capturan. */
-  const importe = d.invoiceAmount != null && Number(d.invoiceAmount) > 0
-    ? Number(d.invoiceAmount)
+  /* El IVA se calcula, no se supone.
+   *
+   * Antes se guardaba el costo de la mercancía tal cual cuando nadie capturaba
+   * el total, y eso programaba un pago 16% más chico que el que el proveedor
+   * iba a cobrar. Aquí el subtotal es el dato que se captura —el costo sirve de
+   * propuesta— y el total sale de la tasa elegida. */
+  const base = d.subtotal != null && Number(d.subtotal) > 0
+    ? Number(d.subtotal)
     : d.importePropuesto;
+  const tasa = tasaDeIvaValida(d.taxRate);
+  const importe = redondeaPesos(base * (1 + tasa / 100));
   if (!(importe > 0)) return null;
 
   const insR = await transactionQuery<any>(
     client,
     `INSERT INTO supplier_payments_schedule
        (company_id, supplier_id, purchase_order_id, invoice_number,
-        amount, due_date, notes)
-     SELECT $1, $2, $3, $4, $5,
-            (COALESCE($6::timestamp, NOW())
+        subtotal, tax_rate, amount, due_date, notes)
+     SELECT $1, $2, $3, $4, $5, $6, $7,
+            (COALESCE($8::timestamp, NOW())
               + make_interval(days => COALESCE(c.credit_days, 0)))::date,
-            $7
+            $9
        FROM customers c WHERE c.id = $2
-     RETURNING id, amount, due_date,
+     RETURNING id, amount, subtotal, tax_rate, due_date,
                (SELECT COALESCE(credit_days, 0) FROM customers WHERE id = $2) AS credit_days`,
-    [d.companyId, d.supplierId, d.orderId, d.invoiceNumber, importe,
+    [d.companyId, d.supplierId, d.orderId, d.invoiceNumber,
+     redondeaPesos(base), tasa, importe,
      d.invoiceDate || null,
-     `Orden de compra #${d.folio} · factura ${d.invoiceNumber}`]
+     `Orden de compra #${d.folio} · factura ${d.invoiceNumber} · ` +
+     `subtotal ${redondeaPesos(base)} + IVA ${tasa}%`]
   );
   if (!insR.rows[0]) return null;
 
@@ -319,6 +364,8 @@ async function generarDeudaProveedor(
   return {
     id: insR.rows[0].id,
     amount: Number(insR.rows[0].amount),
+    subtotal: Number(insR.rows[0].subtotal),
+    taxRate: Number(insR.rows[0].tax_rate),
     dueDate: insR.rows[0].due_date,
     creditDays: Number(insR.rows[0].credit_days || 0),
     yaExistia: false,
@@ -343,7 +390,8 @@ export async function registrarFacturaDeOrden(
   orderId: string,
   datos: {
     invoiceNumber: string;
-    invoiceAmount?: number;
+    subtotal?: number;
+    taxRate?: number;
     invoiceDate?: string;
     /** Sólo se usa si la orden no tenía proveedor asignado. */
     supplierId?: string;
@@ -389,8 +437,8 @@ export async function registrarFacturaDeOrden(
       supplierId = datos.supplierId;
     }
 
-    /* Propuesta de importe: lo que costó lo que YA se recibió. Sin impuestos,
-     * como en la recepción — la pantalla lo advierte. */
+    /* Propuesta de subtotal: lo que costó lo que YA se recibió. El IVA se le
+     * suma después, según la tasa elegida. */
     const costoR = await transactionQuery<{ costo: string }>(
       client,
       `SELECT COALESCE(SUM(quantity_received * COALESCE(last_purchase_price, 0)), 0)::text AS costo
@@ -404,7 +452,8 @@ export async function registrarFacturaDeOrden(
       orderId,
       folio: po.folio,
       invoiceNumber: folioFactura,
-      invoiceAmount: datos.invoiceAmount,
+      subtotal: datos.subtotal,
+      taxRate: datos.taxRate,
       invoiceDate: datos.invoiceDate,
       importePropuesto: Number(costoR.rows[0].costo || 0),
     });
@@ -478,8 +527,10 @@ export async function setSupplier(
 export interface DatosDeFactura {
   /** Folio de la factura del proveedor — obligatorio para generar la deuda. */
   invoiceNumber?: string;
-  /** Total a pagar CON impuestos. Si no viene, se calcula de lo recibido. */
-  invoiceAmount?: number;
+  /** Importe ANTES de impuestos. Si no viene, se usa el costo de lo recibido. */
+  subtotal?: number;
+  /** Tasa de IVA: 16, 8 o 0. Si no viene, 16. */
+  taxRate?: number;
   /** Fecha de la factura: de ahí cuentan los días de crédito. */
   invoiceDate?: string;
 }
@@ -607,7 +658,8 @@ export async function receiveOrder(
           orderId,
           folio: po.folio,
           invoiceNumber: folioFactura,
-          invoiceAmount: factura?.invoiceAmount,
+          subtotal: factura?.subtotal,
+          taxRate: factura?.taxRate,
           invoiceDate: factura?.invoiceDate,
           importePropuesto: costoRecibido,
         })
