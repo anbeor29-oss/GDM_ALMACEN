@@ -845,8 +845,12 @@ export function CartaPorteFormPage() {
                   ubi={u}
                   onChange={(patch) => updateUbi(i, patch)}
                 />
-                <Field label="País (3)">
-                  <input value={u.pais} onChange={e => updateUbi(i, { pais: e.target.value.toUpperCase() })} maxLength={3} className="input font-mono" />
+                {/* País como combo: es lo que decide con qué catálogo se lee
+                    el código postal y qué estados se ofrecen. Tecleado a mano,
+                    un "EUA" en vez de "USA" dejaba la ubicación sin estados
+                    que elegir y sin explicación de por qué. */}
+                <Field label="País">
+                  <PaisSelect value={u.pais} onChange={(v) => updateUbi(i, { pais: v, estado: '' })} />
                 </Field>
                 <Field label="Referencia" span={4}>
                   <input value={u.referencia} onChange={e => updateUbi(i, { referencia: e.target.value })} maxLength={500} className="input" placeholder="Entre calles, entrada, etc." />
@@ -1677,6 +1681,37 @@ function TemplatePicker<T extends { id: string }>({
 /* ─── UI helpers ───────────────────────────────────────────────────── */
 
 /**
+ * PaisSelect — el catálogo de países del SAT en un combo.
+ *
+ * Cambiar de país limpia el estado desde el llamador: una clave mexicana en un
+ * domicilio de Texas es justo lo que el PAC rechaza, y es lo que quedaría si
+ * sólo cambiara el país.
+ */
+function PaisSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [paises, setPaises] = useState<Array<{ clave: string; descripcion: string }>>([]);
+  useEffect(() => {
+    let cancelado = false;
+    api.searchCartaPorteCatalog('pais', '', 250)
+      .then(r => { if (!cancelado) setPaises(r.items || []); })
+      .catch(() => { if (!cancelado) setPaises([]); });
+    return () => { cancelado = true; };
+  }, []);
+
+  const actual = String(value || 'MEX').toUpperCase();
+  return (
+    <select value={actual} onChange={e => onChange(e.target.value)} className="input">
+      {/* Si el valor guardado no está en el catálogo —un XML viejo, una
+          plantilla con una clave rara— se muestra igual en vez de cambiarlo en
+          silencio por México. */}
+      {!paises.some(p => p.clave === actual) && <option value={actual}>{actual}</option>}
+      {paises.map(p => (
+        <option key={p.clave} value={p.clave}>{p.clave} · {p.descripcion}</option>
+      ))}
+    </select>
+  );
+}
+
+/**
  * CPGeoBlock — bloque de captura geográfica dependiente del CP.
  *
  * Al escribir CP de 5 dígitos, consulta /carta-porte/cp/:CP y precarga:
@@ -1700,33 +1735,79 @@ function CPGeoBlock({ ubi, onChange }: {
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [estados, setEstados] = useState<Array<{ clave: string; descripcion: string }>>([]);
+  const [avisoCP, setAvisoCP] = useState('');
+
+  const pais = String(ubi.pais || 'MEX').toUpperCase();
+  const esMexico = pais === 'MEX';
+
+  /* Los estados del país en un combo: 32 mexicanos, 51 de la Unión Americana,
+   * 13 provincias canadienses. Antes había que saberse la clave de tres letras
+   * y teclearla; ahora se elige por nombre y la clave viaja sola al XML. */
+  useEffect(() => {
+    let cancelado = false;
+    api.searchCartaPorteCatalog('estado', '', 200, { pais })
+      .then(r => { if (!cancelado) setEstados(r.items || []); })
+      .catch(() => { if (!cancelado) setEstados([]); });
+    return () => { cancelado = true; };
+  }, [pais]);
 
   useEffect(() => {
     const cp = String(ubi.codigoPostal || '').trim();
-    if (!/^\d{5}$/.test(cp)) { setData(null); setNotFound(false); return; }
     let cancelled = false;
+
+    /* El CP se lee con la tabla del PAÍS de la ubicación.
+     *
+     * Sin esta separación, un domicilio en Calexico con ZIP 92231 pasaba por el
+     * catálogo mexicano y quedaba en Veracruz —porque en México el 92 es
+     * Veracruz—. El dato salía mal y, además, el campo quedaba de sólo lectura
+     * y no había manera de corregirlo. */
+    if (!esMexico) {
+      setData(null); setNotFound(false);
+      if (cp.replace(/[\s-]/g, '').length < 3) { setAvisoCP(''); return; }
+      setLoading(true);
+      api.resolveCPInternacional(pais, cp).then(r => {
+        if (cancelled) return;
+        setAvisoCP(r.mensaje);
+        /* Sólo rellena lo que está vacío: si ya eligieron el estado a mano —que
+         * es justo lo que este cambio vino a permitir— no se les pisa. */
+        if (r.estado && !ubi.estado) onChange({ estado: r.estado });
+      }).catch(() => { if (!cancelled) setAvisoCP(''); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+      return () => { cancelled = true; };
+    }
+
+    setAvisoCP('');
+    if (!/^\d{5}$/.test(cp)) { setData(null); setNotFound(false); return; }
     setLoading(true); setNotFound(false);
     api.resolveCP(cp).then(r => {
       if (cancelled) return;
       setData(r);
-      // Auto-set estado si viene vacío o distinto
-      if (r.estado && r.estado !== ubi.estado) onChange({ estado: r.estado });
+      if (r.estado && !ubi.estado) onChange({ estado: r.estado });
       if ((!r.colonias || r.colonias.length === 0)) setNotFound(true);
     }).catch(() => { if (!cancelled) setNotFound(true); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [ubi.codigoPostal]);
+  }, [ubi.codigoPostal, pais, esMexico]);
 
   return (
     <>
-      <Field label="CP (5)">
+      <Field label={esMexico ? 'CP (5)' : 'Código postal'}>
         <input
           value={ubi.codigoPostal}
-          onChange={e => onChange({ codigoPostal: e.target.value.replace(/\D/g, '').slice(0, 5) })}
-          maxLength={5}
+          /* Fuera de México el código postal lleva letras y espacio
+             ('K1A 0B1', 'SW1A 1AA'): el filtro de cinco dígitos los borraba
+             mientras se tecleaban. */
+          onChange={e => onChange({
+            codigoPostal: esMexico
+              ? e.target.value.replace(/\D/g, '').slice(0, 5)
+              : e.target.value.toUpperCase().slice(0, 12),
+          })}
+          maxLength={esMexico ? 5 : 12}
           className="input font-mono"
-          placeholder="20126"
+          placeholder={esMexico ? '20126' : pais === 'USA' ? '92231' : 'Código postal'}
         />
+        {avisoCP && <p className="text-[10px] text-emerald-700 mt-0.5">{avisoCP}</p>}
       </Field>
       {/* Colonia — combo con descripción; clave SAT en badge chiquito abajo */}
       <Field label={`Colonia ${loading ? '(cargando…)' : data?.colonias?.length ? `(${data.colonias.length})` : ''}`} span={2}>
@@ -1757,8 +1838,9 @@ function CPGeoBlock({ ubi, onChange }: {
           />
         )}
       </Field>
-      {/* Municipio */}
-      <Field label={`Municipio ${data?.estado ? `de ${data.estado}` : ''}`}>
+      {/* Municipio — fuera de México se llama ciudad, y así se rotula: el nodo
+          del XML es el mismo, pero nadie en Laredo captura un "municipio". */}
+      <Field label={esMexico ? `Municipio ${data?.estado ? `de ${data.estado}` : ''}` : 'Ciudad'}>
         {data?.municipios && data.municipios.length > 0 ? (
           <div>
             <select
@@ -1803,22 +1885,33 @@ function CPGeoBlock({ ubi, onChange }: {
           <input value={ubi.localidad} onChange={e => onChange({ localidad: e.target.value })} maxLength={60} className="input" />
         )}
       </Field>
+      {/* Estado — SIEMPRE se puede cambiar.
+       *
+       * Antes, en cuanto el CP resolvía un estado, el campo se volvía de sólo
+       * lectura "porque ya estaba inferido". Pero el CP se equivoca —o se
+       * captura mal, o viene de una plantilla vieja— y entonces no quedaba
+       * ninguna forma de corregirlo salvo borrar la ubicación entera. Un dato
+       * deducido es una propuesta, no una verdad: se propone y se deja tocar. */}
       <Field label="Estado">
         <div>
-          {data?.estadoDescripcion ? (
-            <input
-              value={data.estadoDescripcion}
-              readOnly
-              className="input bg-slate-50 text-slate-700"
-              title={`Auto-inferido del CP · Clave SAT ${ubi.estado}`}
-            />
+          {estados.length > 0 ? (
+            <select
+              value={ubi.estado || ''}
+              onChange={e => onChange({ estado: e.target.value })}
+              className="input"
+            >
+              <option value="">— elige estado —</option>
+              {estados.map(s => (
+                <option key={s.clave} value={s.clave}>{s.descripcion}</option>
+              ))}
+            </select>
           ) : (
             <input
               value={ubi.estado}
               onChange={e => onChange({ estado: e.target.value.toUpperCase() })}
               maxLength={3}
               className="input font-mono"
-              placeholder="AGU"
+              placeholder={esMexico ? 'AGU' : 'TX'}
             />
           )}
           {ubi.estado && (

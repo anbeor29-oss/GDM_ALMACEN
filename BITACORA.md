@@ -5,6 +5,55 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-11 (noche, 4) — El estado de la ubicación se puede corregir
+
+### El error que se reportó
+Una ubicación de destino con **país USA y código postal 92231** —Calexico,
+California— aparecía en **Veracruz**, con su "Clave SAT: VER" en verde, y el
+campo Estado no dejaba cambiarse. Dos fallas encadenadas:
+
+**1. El código postal se leía siempre con la tabla mexicana.** En México el 92
+es Veracruz; en Estados Unidos el 92231 es California. `CPGeoBlock` llamaba a
+`/carta-porte/cp/:cp` sin mirar el país de la ubicación, así que un domicilio
+extranjero se resolvía como si fuera nacional. El dato no sólo estaba mal:
+estaba mal **con aire de autoridad**, porque venía con la clave del SAT al lado.
+
+**2. El campo era de sólo lectura.** En cuanto el CP resolvía un estado, el
+input pasaba a `readOnly` "porque ya estaba inferido". Pero un CP se teclea mal,
+o llega de una plantilla vieja, y entonces no había forma de corregirlo salvo
+borrar la ubicación completa y capturarla otra vez. **Un dato deducido es una
+propuesta, no una verdad**: se propone y se deja tocar.
+
+### Lo que se cambió
+- **Estado siempre editable**, y ahora es un combo con los estados del país:
+  32 mexicanos, 52 de la Unión Americana, 13 provincias canadienses. Se elige
+  por nombre y la clave del SAT viaja sola al XML — antes había que saberse que
+  Texas es TX.
+- **El CP se lee con la tabla del país**: México por el catálogo del SAT
+  (colonias, municipio, localidad); el resto por los rangos de prefijo de
+  `sat_cp_zip_estado`. 92231 con país USA ahora da **California**.
+- **El autocompletado ya no pisa lo capturado**: sólo rellena el estado cuando
+  está vacío. Antes se reescribía en cada resolución, que es la otra mitad de
+  por qué no se podía corregir.
+- **País pasa a ser combo.** Es lo que decide con qué catálogo se lee el código
+  postal; tecleado a mano, un "EUA" en vez de "USA" dejaba la ubicación sin
+  estados que elegir y sin ninguna explicación. Cambiar de país limpia el estado.
+- El código postal admite letras y espacio fuera de México, y el rótulo
+  "Municipio" se vuelve "Ciudad": el nodo del XML es el mismo, pero nadie en
+  Laredo captura un municipio.
+
+### Verificación
+Contra la base: 92231 con país USA → **CA / California**; el mismo 92231 con
+país MEX sigue dando **VER / Veracruz**, así que la ruta nacional quedó intacta.
+Catálogos completos: MEX 32, USA 52, CAN 13.
+
+Aplicado en **los dos productos**. El archivo no se copió: la versión de
+facturación tiene el filtro de permisos SCT por modalidad y la de NEXO tiene el
+aviso de concurrencia, así que el bloque se trasplantó y el resto se dejó como
+estaba en cada uno.
+
+---
+
 ## 2026-08-11 (noche, 3) — Concurrencia visible y mensajería interna
 
 ### #15 · Dos personas en la misma pantalla
