@@ -296,6 +296,61 @@ router.get(
   }),
 );
 
+/**
+ * GET /carta-porte/cp-internacional/:pais/:codigo → el estado de un domicilio
+ * extranjero, deducido de su código postal.
+ *
+ * ES EL HERMANO DEL RESOLVEDOR MEXICANO, PERO RESPONDE MENOS
+ * El de arriba devuelve colonias, municipio y estado porque el SAT publica ese
+ * catálogo. Del extranjero sólo se puede resolver el ESTADO, y así se dice: la
+ * ciudad se captura a mano. Devolverla vacía en silencio la haría parecer un
+ * campo olvidado.
+ *
+ * Responde 200 aunque no encuentre nada. Un ZIP militar, un país sin tabla o un
+ * código canadiense que empieza con X no son errores de quien captura: son
+ * casos en los que el sistema no sabe, y decirlo es la respuesta correcta.
+ */
+router.get(
+  '/cp-internacional/:pais/:codigo',
+  asyncHandler(async (req: Request, res: Response) => {
+    const pais = String(req.params.pais || '').trim().toUpperCase().slice(0, 3);
+    /* Se quitan espacios y guiones: 'K1A 0B1' y 'K1A-0B1' son el mismo código,
+     * y cada quien lo teclea como venga en la factura. */
+    const codigo = String(req.params.codigo || '').trim().toUpperCase().replace(/[\s-]/g, '');
+    if (!pais || !codigo) throw new ValidationError('Falta el país o el código postal');
+
+    if (pais === 'MEX') {
+      throw new ValidationError(
+        'Para México usa /carta-porte/cp/:codigoPostal, que además resuelve colonias',
+      );
+    }
+
+    const r = await pool.query(
+      `SELECT z.estado, e.descripcion
+         FROM sat_cp_zip_estado z
+         LEFT JOIN sat_cp_estado e ON e.clave = z.estado AND e.pais = z.pais
+        WHERE z.pais = $1
+          AND LEFT($2, LENGTH(z.prefijo_desde)) BETWEEN z.prefijo_desde AND z.prefijo_hasta
+        LIMIT 1`,
+      [pais, codigo],
+    );
+
+    const fila = r.rows[0];
+    res.json({
+      pais,
+      codigoPostal: codigo,
+      estado: fila?.estado || null,
+      estadoDescripcion: fila?.descripcion || null,
+      /* La ciudad NUNCA sale de aquí: haría falta la tabla completa de códigos
+       * postales, decenas de miles de renglones que además cambian cada mes. */
+      ciudad: null,
+      mensaje: fila
+        ? `${fila.descripcion || fila.estado} — la ciudad se captura a mano`
+        : 'No se pudo deducir el estado de ese código postal: elígelo de la lista',
+    });
+  }),
+);
+
 router.get(
   '/error-matrix',
   asyncHandler(async (_req: Request, res: Response) => {

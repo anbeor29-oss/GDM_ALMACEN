@@ -253,9 +253,8 @@ export function CartaPorteLugaresPage() {
                   <Field label="Localidad">
                     <input value={modal.form.localidad} onChange={e => setModal({ ...modal, form: { ...modal.form, localidad: e.target.value } })} className={`input ${needsFill(modal.form.localidad)}`} />
                   </Field>
-                  <Field label="País (3 letras)">
-                    <input value={modal.form.pais} onChange={e => setModal({ ...modal, form: { ...modal.form, pais: e.target.value.toUpperCase() } })} maxLength={3} className="input font-mono" />
-                  </Field>
+                  {/* El país se eligió arriba, en el bloque del domicilio: es
+                      lo que decide cómo se captura todo lo demás. */}
                   <Field label="Referencia" span={4}>
                     <input value={modal.form.referencia} onChange={e => setModal({ ...modal, form: { ...modal.form, referencia: e.target.value } })} maxLength={500} className="input" placeholder="Entre calles, entrada, etc." />
                   </Field>
@@ -300,33 +299,167 @@ function Field({ label, children, required, span = 1 }: { label: string; childre
 }
 
 /**
- * CPAutofillBlock — 3 campos primeros: CP + Colonia (dropdown) + Municipio +
- * Estado. Al capturar 5 dígitos en CP, consulta el catálogo SAT y precarga
- * las colonias disponibles. El usuario elige una, o teclea manualmente si
- * el CP no está en el catálogo.
+ * CPAutofillBlock — País + CP + Colonia/Ciudad + Municipio + Estado.
+ *
+ * DOS DOMICILIOS DISTINTOS EN EL MISMO BLOQUE
+ * En México el CP resuelve colonia, municipio y estado desde el catálogo del
+ * SAT. En el extranjero eso no existe: del código postal sólo se puede deducir
+ * el ESTADO, y la ciudad se teclea. En vez de una pantalla aparte —que
+ * obligaría a decidir cuál abrir antes de saber a dónde va la mercancía—, el
+ * bloque cambia de forma cuando cambia el país.
+ *
+ * EL PAÍS SUBIÓ HASTA ARRIBA
+ * Estaba abajo, junto a "Referencia", como un campo de tres letras que había
+ * que saberse. Pero es lo primero que determina cómo se captura todo lo demás:
+ * con el país al final, quien manda a Laredo llenaba el domicilio como si fuera
+ * mexicano y al llegar abajo ya no había nada que corregir.
  */
 function CPAutofillBlock({ form, setForm }: { form: any; setForm: (f: any) => void }) {
   const [loading, setLoading] = useState(false);
   const [colonias, setColonias] = useState<Array<{ clave: string; descripcion: string }>>([]);
   const [error, setError] = useState<string>('');
+  const [aviso, setAviso] = useState<string>('');
+  const [paises, setPaises] = useState<Array<{ clave: string; descripcion: string }>>([]);
+  const [estados, setEstados] = useState<Array<{ clave: string; descripcion: string }>>([]);
+
+  const pais = String(form.pais || 'MEX').toUpperCase();
+  const esMexico = pais === 'MEX';
+
+  // Catálogo de países (una vez).
+  useEffect(() => {
+    api.searchCartaPorteCatalog('pais', '', 200)
+      .then(r => setPaises(r.items || []))
+      .catch(() => setPaises([]));
+  }, []);
+
+  /* Estados del país elegido. Sin este filtro, el combo de un domicilio en
+   * Texas ofrecería los 32 estados mexicanos. */
+  useEffect(() => {
+    if (esMexico) { setEstados([]); return; }
+    api.searchCartaPorteCatalog('estado', '', 200, { pais })
+      .then(r => setEstados(r.items || []))
+      .catch(() => setEstados([]));
+  }, [pais, esMexico]);
 
   useEffect(() => {
     const cp = String(form.codigoPostal || '').trim();
-    if (!/^\d{5}$/.test(cp)) { setColonias([]); setError(''); return; }
     let cancelled = false;
+
+    if (esMexico) {
+      if (!/^\d{5}$/.test(cp)) { setColonias([]); setError(''); setAviso(''); return; }
+      setLoading(true); setError(''); setAviso('');
+      api.resolveCP(cp).then(r => {
+        if (cancelled) return;
+        setColonias(r.colonias || []);
+        if (!r.colonias || r.colonias.length === 0) setError('CP no encontrado en el catálogo SAT — captura manual');
+      }).catch(e => {
+        if (!cancelled) setError(e?.response?.data?.error || 'Error al buscar CP');
+      }).finally(() => { if (!cancelled) setLoading(false); });
+      return () => { cancelled = true; };
+    }
+
+    /* Extranjero: se resuelve el estado en cuanto hay suficiente código.
+     * Tres caracteres bastan para EUA y uno para Canadá; se espera a tres para
+     * no disparar una consulta con cada tecla. */
+    setColonias([]);
+    if (cp.replace(/[\s-]/g, '').length < 3) { setError(''); setAviso(''); return; }
     setLoading(true); setError('');
-    api.resolveCP(cp).then(r => {
+    api.resolveCPInternacional(pais, cp).then(r => {
       if (cancelled) return;
-      setColonias(r.colonias || []);
-      if (!r.colonias || r.colonias.length === 0) setError('CP no encontrado en el catálogo SAT — captura manual');
-    }).catch(e => {
-      if (!cancelled) setError(e?.response?.data?.error || 'Error al buscar CP');
+      setAviso(r.mensaje);
+      /* Sólo se rellena si el campo está vacío: si alguien ya eligió el estado
+       * a mano, el sistema no le pisa la decisión. */
+      if (r.estado && !form.estado) setForm({ ...form, estado: r.estado });
+    }).catch(() => {
+      if (!cancelled) { setAviso(''); setError('No se pudo consultar el código postal'); }
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [form.codigoPostal]);
+  }, [form.codigoPostal, pais, esMexico]);
 
   return (
     <div className="grid grid-cols-4 gap-3 p-3 bg-slate-50 rounded border border-slate-200">
+      <label className="block col-span-2">
+        <span className="block text-xs text-slate-500 mb-1">
+          País <span className="text-red-500">*</span>
+        </span>
+        <select
+          value={pais}
+          onChange={e => {
+            /* Al cambiar de país se limpian estado y colonia: una clave de
+             * estado mexicana en un domicilio de Texas es un dato inválido que
+             * el PAC rechaza, y es exactamente lo que quedaría si sólo se
+             * cambiara el país. */
+            setForm({ ...form, pais: e.target.value, estado: '', colonia: '' });
+            setAviso(''); setError('');
+          }}
+          className="input"
+        >
+          {!paises.some(p => p.clave === pais) && <option value={pais}>{pais}</option>}
+          {paises.map(p => (
+            <option key={p.clave} value={p.clave}>{p.clave} · {p.descripcion}</option>
+          ))}
+        </select>
+      </label>
+      <div className="col-span-2 flex items-end">
+        <p className="text-[11px] text-slate-500 pb-2">
+          {esMexico
+            ? 'El código postal resuelve colonia, municipio y estado.'
+            : 'Del código postal sólo se deduce el estado; la ciudad se captura a mano.'}
+        </p>
+      </div>
+      {!esMexico && (<>
+        <label className="block">
+          <span className="block text-xs text-slate-500 mb-1">
+            Código postal <span className="text-red-500">*</span>
+            {loading && <Loader2 size={12} className="inline animate-spin ml-2" />}
+          </span>
+          <input
+            /* Alfanumérico y hasta 12: 'SW1A 1AA' y 'K1A 0B1' llevan letras y
+             * espacio, y el filtro de 5 dígitos del CP mexicano los borraba
+             * mientras se tecleaban. */
+            value={form.codigoPostal}
+            onChange={e => setForm({ ...form, codigoPostal: e.target.value.toUpperCase().slice(0, 12) })}
+            maxLength={12}
+            className="input font-mono"
+            placeholder={pais === 'USA' ? '78045' : pais === 'CAN' ? 'K1A 0B1' : 'Código postal'}
+          />
+        </label>
+        <label className="block">
+          <span className="block text-xs text-slate-500 mb-1">Estado <span className="text-red-500">*</span></span>
+          {estados.length > 0 ? (
+            <select
+              value={form.estado}
+              onChange={e => setForm({ ...form, estado: e.target.value })}
+              className="input"
+            >
+              <option value="">— elige estado —</option>
+              {estados.map(s => (
+                <option key={s.clave} value={s.clave}>{s.clave} · {s.descripcion}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={form.estado}
+              onChange={e => setForm({ ...form, estado: e.target.value.toUpperCase().slice(0, 3) })}
+              maxLength={3}
+              className="input font-mono"
+              placeholder="TX"
+            />
+          )}
+        </label>
+        <label className="block col-span-2">
+          <span className="block text-xs text-slate-500 mb-1">Ciudad</span>
+          <input
+            value={form.municipio}
+            onChange={e => setForm({ ...form, municipio: e.target.value })}
+            className={`input ${form.municipio ? '' : 'bg-emerald-50 border-emerald-300'}`}
+            placeholder="Laredo"
+          />
+        </label>
+        {aviso && <p className="col-span-4 text-xs text-emerald-700">✓ {aviso}</p>}
+        {error && <p className="col-span-4 text-xs text-amber-600">⚠ {error}</p>}
+      </>)}
+      {esMexico && (<>
       <label className="block">
         <span className="block text-xs text-slate-500 mb-1">
           Código postal <span className="text-red-500">*</span>
@@ -389,6 +522,7 @@ function CPAutofillBlock({ form, setForm }: { form: any; setForm: (f: any) => vo
       {colonias.length > 0 && !error && (
         <p className="col-span-4 text-xs text-emerald-700">✓ {colonias.length} colonia(s) disponibles para este CP</p>
       )}
+      </>)}
     </div>
   );
 }

@@ -5,6 +5,61 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-11 (noche, 2) — Destinos internacionales: el ZIP dice el estado
+
+### Contexto
+En un domicilio mexicano basta teclear el CP y salen colonia, municipio y
+estado. En uno de Laredo había que saberse que Texas es TX y teclearlo en un
+campo de tres letras que estaba hasta abajo del formulario, junto a
+"Referencia". Quien equivoca esa clave timbra un CFDI con un domicilio que no
+existe.
+
+### Decisiones
+
+**Rangos de prefijo, no la tabla completa de ZIPs.** Los ~41,000 códigos
+postales de Estados Unidos cambian cada mes; para saber el ESTADO basta el
+prefijo, porque la USPS asigna los bloques por estado y esa asignación lleva
+décadas estable. 63 renglones en vez de 41,000, sin mantenimiento.
+
+**No se resuelve la ciudad, y se dice.** Saber que 78045 es Texas sale del
+prefijo; saber que es Laredo exige la tabla completa. La pantalla lo anuncia
+—"la ciudad se captura a mano"— en vez de dejar el campo vacío como si se
+hubiera olvidado.
+
+**Canadá entra incompleto a propósito.** La primera letra identifica la
+provincia, salvo la X, que se reparte entre Territorios del Noroeste y Nunavut.
+No se siembra: un autocompletado que acierta la mitad de las veces es peor que
+ninguno, porque nadie revisa lo que el sistema ya llenó.
+
+**El país subió al principio del bloque.** Estaba al final, y con él ahí quien
+mandaba a Laredo llenaba el domicilio como si fuera mexicano; al llegar abajo ya
+no había nada que corregir. Ahora es lo primero y cambia la forma del bloque:
+con MEX, colonias del SAT; con cualquier otro, código postal alfanumérico,
+estado en combo del país y ciudad libre. Cambiar de país limpia estado y
+colonia — una clave mexicana en un domicilio de Texas es justo lo que el PAC
+rechaza.
+
+**El autocompletado no pisa lo capturado**: si alguien ya eligió el estado a
+mano, la respuesta del resolvedor no lo sobreescribe.
+
+`cp_lugares.codigo_postal` se ensanchó a 12 caracteres: 'SW1A 1AA' y 'K1A 0B1'
+llevan letras y espacio.
+
+### Verificación
+18 casos contra la base, todos correctos: Laredo→TX, Beverly Hills→CA, el ZIP
+00501 que empieza en cero→NY, Austin 73301→TX (la excepción dentro del bloque de
+Oklahoma) contra Oklahoma City 73101→OK, El Paso 885→TX, Ottawa con espacio→ON,
+Montreal con guion→QC; y los tres casos donde debe callar: correo militar,
+Canadá con X y un país sin tabla.
+
+### Hallazgo al portar
+GDM Facturación filtra los permisos SCT por modalidad (backend y pickers) y NEXO
+**no**: allá el selector de una Carta Porte marítima ofrece también los permisos
+de autotransporte federal, y elegir uno produce un CFDI que el SAT rechaza. No
+se tocó en esta entrega —es otro cambio— pero queda anotado.
+
+---
+
 ## 2026-08-11 (noche) — Auditoría: lo que el SAT dice de nuestros comprobantes
 
 ### Contexto

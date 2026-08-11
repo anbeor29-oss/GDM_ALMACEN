@@ -1485,6 +1485,22 @@ class APIClient {
     return res.data;
   }
 
+  /**
+   * Domicilio extranjero: el código postal dice el ESTADO, nunca la ciudad.
+   * Responde igual cuando no lo sabe — con `estado: null` y el motivo.
+   */
+  async resolveCPInternacional(pais: string, codigo: string) {
+    const res = await this.client.get<{
+      pais: string;
+      codigoPostal: string;
+      estado: string | null;
+      estadoDescripcion: string | null;
+      ciudad: null;
+      mensaje: string;
+    }>(`/carta-porte/cp-internacional/${pais}/${encodeURIComponent(codigo)}`);
+    return res.data;
+  }
+
   /* ─── Mercancías transportadas ─── */
   async listMercanciasCatalog(params?: { search?: string; clienteRfc?: string }) {
     const q = new URLSearchParams();
