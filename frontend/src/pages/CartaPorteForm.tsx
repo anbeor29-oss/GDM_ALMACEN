@@ -26,6 +26,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { usePresencia } from '@/hooks/usePresencia';
+import { AvisoDeConcurrencia } from '@/components/AvisoDeConcurrencia';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Route as RouteIcon, Plus, Trash2, Save, ArrowLeft, MapPin, Package2, Truck, UserCog, Ship, Plane, Train, Search, BookMarked } from 'lucide-react';
 import api from '@/services/api';
@@ -217,6 +219,10 @@ const blankFigura = (): FiguraRow => ({ tipoFigura: '01', rfcFigura: '', numLice
 
 export function CartaPorteFormPage() {
   const { invoiceId = '' } = useParams();
+
+  /* Es el formulario más largo del sistema: media hora de captura que otro
+   * puede pisar sin enterarse. Aquí es donde más falta hacía verse. */
+  const { otros, soyElPrimero } = usePresencia('carta_porte', invoiceId || null);
   const navigate = useNavigate();
 
   // ─── Encabezado ─────────────────────────────────────────────────────
@@ -623,6 +629,12 @@ export function CartaPorteFormPage() {
           <Save size={16} /> {save.isPending ? 'Guardando…' : 'Guardar'}
         </button>
       </div>
+
+      {otros.length > 0 && (
+        <div className="mb-4">
+          <AvisoDeConcurrencia otros={otros} soyElPrimero={soyElPrimero} />
+        </div>
+      )}
 
       {save.error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">

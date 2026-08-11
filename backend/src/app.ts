@@ -60,6 +60,8 @@ import inventoryReportsRoutes from './modules/inventory/inventory-reports.routes
 import purchasingRoutes      from './modules/purchasing/purchasing.routes';
 import treasuryRoutes        from './modules/treasury/treasury.routes';
 import auditoriaRoutes       from './modules/auditoria/auditoria.routes';
+import presenciaRoutes       from './modules/presencia/presencia.routes';
+import mensajesRoutes        from './modules/mensajes/mensajes.routes';
 import physicalCountRoutes   from './modules/physical-count/physical-count.routes';
 import xmlSuperImportRoutes from './modules/xml-super-import/xml-super-import.routes';
 
@@ -200,6 +202,8 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/purchase-orders`, purchasingRoutes);
   app.use(`/api/${config.apiVersion}/treasury`,        treasuryRoutes);
   app.use(`/api/${config.apiVersion}/auditoria`,       auditoriaRoutes);
+  app.use(`/api/${config.apiVersion}/presencia`,       presenciaRoutes);
+  app.use(`/api/${config.apiVersion}/mensajes`,        mensajesRoutes);
   app.use(`/api/${config.apiVersion}/physical-counts`, physicalCountRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { canAccess, type ModuleKey } from '@/utils/permissions';
 import { useState, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
 import api from '@/services/api';
@@ -31,6 +32,21 @@ export function Layout() {
   const [showIssuer, setShowIssuer] = useState(false);
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+
+  /* Mensajes sin leer, para el número del menú.
+   *
+   * Cada minuto y no en vivo: un recado interno no es una notificación de chat,
+   * y abrir un websocket por un número que cambia tres veces al día costaría
+   * más de lo que resuelve. `refetchOnWindowFocus` cubre el caso real —vuelves
+   * a la pestaña y ahí está. */
+  const noLeidos = useQuery({
+    queryKey: ['mensajes-no-leidos'],
+    queryFn: () => api.getMensajesNoLeidos(),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    enabled: !!user,
+  });
+  const sinLeer = Number(noLeidos.data?.data?.noLeidos || 0);
 
   const doLogout = useCallback(async (reason?: 'idle') => {
     try {
@@ -215,6 +231,7 @@ export function Layout() {
                     —una al banco, la otra al SAT— y las dos las revisa la misma
                     persona antes del cierre del mes. */}
                 {show('auditoria')    && <NavItem to="/auditoria"    icon={emoji3D('🛡️')} accent="emerald" label="Auditoría"        open={sidebarOpen} />}
+                {show('mensajes')     && <NavItem to="/mensajes"     icon={emoji3D('✉️')} accent="sky"     label="Mensajes"         open={sidebarOpen} contador={sinLeer} />}
                 {show('reports')      && <NavItem to="/reports"      icon={emoji3D('📊')} accent="violet"  label="Reportes"         open={sidebarOpen} />}
                 {/* Monedas sigue existiendo aparte SÓLO para quien no ve
                      facturas —Tesorería, que sí necesita tipos de cambio—. Con
@@ -415,12 +432,15 @@ function NavItem({
   label,
   open,
   accent,
+  contador,
 }: {
   to: string;
   icon: React.ReactNode;
   label: string;
   open: boolean;
   accent: AccentColor;
+  /** Número en rojo — hoy sólo lo usan los mensajes sin leer. */
+  contador?: number;
 }) {
   const c = ACCENT_MAP[accent];
   return (
@@ -440,8 +460,20 @@ function NavItem({
           {isActive && (
             <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 ${c.bar} rounded-r`} />
           )}
-          <span className={isActive ? c.iconActive : c.iconIdle}>{icon}</span>
+          <span className={`relative ${isActive ? c.iconActive : c.iconIdle}`}>
+            {icon}
+            {!open && !!contador && contador > 0 && (
+              <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[10px] leading-none px-1 py-0.5 rounded-full">
+                {contador > 9 ? '9+' : contador}
+              </span>
+            )}
+          </span>
           {open && <span className="text-sm">{label}</span>}
+          {open && !!contador && contador > 0 && (
+            <span className="ml-auto bg-rose-600 text-white text-[11px] px-1.5 py-0.5 rounded-full">
+              {contador > 99 ? '99+' : contador}
+            </span>
+          )}
         </>
       )}
     </NavLink>

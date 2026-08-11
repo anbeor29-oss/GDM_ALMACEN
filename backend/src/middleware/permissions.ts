@@ -29,12 +29,12 @@ export type WorkGroup = 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORE
 export type ModuleKey =
   | 'invoices' | 'carta_porte' | 'credit_notes' | 'customers' | 'products'
   | 'xml_reader' | 'inventory' | 'purchasing' | 'suppliers' | 'pos'
-  | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria';
+  | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria' | 'mensajes';
 
 const ALL_MODULES: ModuleKey[] = [
   'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
   'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos',
-  'treasury', 'reports', 'exchange_rates', 'auditoria',
+  'treasury', 'reports', 'exchange_rates', 'auditoria', 'mensajes',
 ];
 
 /**
@@ -52,11 +52,12 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   ADMIN_ALL: ALL_MODULES,
   VENTAS: [
     'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
-    'xml_reader', 'pos', 'reports', 'exchange_rates',
+    'xml_reader', 'pos', 'reports', 'exchange_rates', 'mensajes',
   ],
-  ALMACEN:   ['products', 'inventory', 'reports'],
-  COMPRAS:   ['purchasing', 'suppliers', 'products', 'inventory', 'xml_reader', 'reports'],
-  TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'reports', 'auditoria'],
+  ALMACEN:   ['products', 'inventory', 'reports', 'mensajes'],
+  COMPRAS:   ['purchasing', 'suppliers', 'products', 'inventory', 'xml_reader', 'reports',
+              'mensajes'],
+  TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'reports', 'auditoria', 'mensajes'],
   /* Cajero de mostrador: SÓLO la caja.
    *
    * VENTAS ya existía pero alcanza facturas, clientes y Carta Porte, que es
@@ -66,7 +67,9 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
    * Este mapa es el que MANDA — el del frontend sólo decide qué pinta el menú.
    * Si sólo se hubiera agregado allá, el cajero no vería las otras pantallas
    * pero podría llegar a ellas escribiendo la URL. */
-  PUNTO_VENTA: ['pos'],
+  /* El cajero recibe recados como cualquiera: 'se acabó el rollo de la
+   * impresora' tiene que poder salir de la caja. */
+  PUNTO_VENTA: ['pos', 'mensajes'],
 };
 
 export function groupCanAccess(group: WorkGroup | undefined, mod: ModuleKey): boolean {

@@ -5,6 +5,81 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-11 (noche, 3) — Concurrencia visible y mensajería interna
+
+### #15 · Dos personas en la misma pantalla
+
+**Lo primero fue comprobar, no construir.** Nada impedía ya que dos personas
+trabajaran en el mismo módulo: los `FOR UPDATE` que hay viven dentro de
+transacciones de milisegundos —descontar existencias, marcar un pago—, no
+mientras alguien tiene un formulario abierto. No había ningún candado que
+quitar.
+
+El problema real era otro: dos personas abren la misma Carta Porte, cada una
+captura veinte minutos y la segunda en guardar borra el trabajo de la primera
+sin que ninguna se entere. **El daño no lo hace la concurrencia, lo hace no
+verla.**
+
+**Aviso, no candado.** Nueva tabla `presencia_edicion` con latido: cada pantalla
+avisa que está abierta cada 30 segundos y caduca a los 90 sin latir —nadie
+cierra sesión con el botón, se cierra la laptop—. Un candado real congelaría el
+documento de quien se fue a comer, y acabaría necesitando un botón de "forzar"
+que devuelve el problema al inicio.
+
+`entro_at` define quién llegó primero y **no se toca al recargar**: si se
+actualizara, la prioridad sería de quien más le da F5.
+
+El nombre del remitente se resuelve dentro del mismo INSERT contra `users`,
+porque el JWT sólo trae correo y el aviso tiene que decir "Antonio Bernal", no
+"admin@gdmfac2.local" — y hacerlo con un SELECT aparte costaría una consulta
+extra en cada latido de cada pantalla abierta.
+
+Cableado en el formulario de Carta Porte (media hora de captura que otro puede
+pisar) y en el detalle de órdenes de compra (uno aprueba mientras el otro
+recibe).
+
+**Verificación**: seis pruebas, todas correctas — los dos entran sin bloqueo,
+cada uno ve al otro por su nombre, tres recargas del segundo no le quitan la
+prioridad al primero, un latido viejo lo hace desaparecer, salir libera de
+inmediato, y dos escrituras simultáneas al mismo registro terminan las dos sin
+error de base: gana la última. **Eso último es exactamente lo que el aviso
+advierte antes de que ocurra** — y es la limitación honesta de esta entrega: se
+avisa, no se impide.
+
+### #16 · Mensajería interna
+
+**El análisis previo que se pidió.** `users` ya tiene todo: correo, nombre,
+`company_id`, grupo y si está activo. El "mismo dominio" es, en los datos, el
+mismo `company_id` — el alta hace que los usuarios de una empresa compartan
+dominio porque el cajero hereda el de quien lo dio de alta. Filtrar por el texto
+del correo dejaría fuera al contador externo que entra con su Gmail, que es
+justo alguien a quien hay que poder mandarle un recado. La frontera es la
+empresa, que además es la que ya respeta todo el sistema.
+
+**No es chat ni correo**: sin adjuntos, sin grupos, sin borradores. Es el recado
+que hoy se grita entre el almacén y la oficina o se manda por WhatsApp y se
+pierde. Cada pieza extra trae su propia pantalla y su propia forma de fallar, y
+ninguna hace que el recado llegue mejor.
+
+El remitente se **congela** en el renglón (`de_nombre`, `de_email`): si esa
+persona se da de baja, el mensaje sigue diciendo quién lo mandó, que es cuando
+más falta hace saberlo.
+
+`leido_at` se escribe **una sola vez** (`WHERE leido_at IS NULL`): volver a abrir
+el mensaje no mueve la hora, que es el dato que alguien va a reclamar. Y se
+marca al ABRIRLO, no al verlo en la lista — donde sólo se ve el asunto.
+
+Está disponible para todos los grupos, incluido PUNTO_VENTA: "se acabó el rollo
+de la impresora" tiene que poder salir de la caja. El contador del menú se
+refresca cada minuto y al volver a la pestaña; no hay websocket, porque un
+recado interno no es una notificación de chat.
+
+**Verificación**: seis pruebas — enviar y recibir con el nombre congelado, el
+contador, la hora de lectura que no se mueve al releer, y los tres rechazos que
+importan: a otra empresa, a uno mismo, y mensaje vacío.
+
+---
+
 ## 2026-08-11 (noche, 2) — Destinos internacionales: el ZIP dice el estado
 
 ### Contexto

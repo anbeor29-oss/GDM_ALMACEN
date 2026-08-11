@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { usePresencia } from '@/hooks/usePresencia';
+import { AvisoDeConcurrencia } from '@/components/AvisoDeConcurrencia';
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   PENDING:          { label: 'Pendiente',        cls: 'bg-gray-200 text-gray-700' },
@@ -233,6 +235,10 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
   const [tasaIva, setTasaIva] = useState('16');
   const [fechaFactura, setFechaFactura] = useState('');
 
+  /* Dos compradores en la misma orden es el cruce más probable: uno la
+   * aprueba mientras el otro recibe mercancía. */
+  const { otros, soyElPrimero } = usePresencia('purchase_order', orderId);
+
   const q = useQuery({
     queryKey: ['purchase-order', orderId],
     queryFn: () => api.getPurchaseOrder(orderId),
@@ -409,6 +415,7 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
         </div>
 
         <div className="p-5 space-y-4">
+          {otros.length > 0 && <AvisoDeConcurrencia otros={otros} soyElPrimero={soyElPrimero} />}
           {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded text-sm">{error}</div>}
           {aviso && <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-3 py-2 rounded text-sm">{aviso}</div>}
           {order.notes && <p className="text-sm text-gray-600 bg-gray-50 rounded p-3">{order.notes}</p>}

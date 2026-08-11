@@ -1039,6 +1039,42 @@ class APIClient {
     return r.data;
   }
 
+  /* ───────────── Mensajería interna ───────────── */
+  async getMensajes(buzon: 'recibidos' | 'enviados' = 'recibidos') {
+    const r = await this.client.get<APIResponse<any>>('/mensajes', { params: { buzon } });
+    return r.data;
+  }
+  async getMensajesNoLeidos() {
+    const r = await this.client.get<APIResponse<any>>('/mensajes/no-leidos');
+    return r.data;
+  }
+  async getDestinatarios() {
+    const r = await this.client.get<APIResponse<any>>('/mensajes/destinatarios');
+    return r.data;
+  }
+  async enviarMensaje(data: { paraUserId: string; asunto?: string; cuerpo: string; respondeA?: string }) {
+    const r = await this.client.post<APIResponse<any>>('/mensajes', data);
+    return r.data;
+  }
+  async marcarMensajeLeido(id: string) {
+    const r = await this.client.post<APIResponse<any>>(`/mensajes/${id}/leido`);
+    return r.data;
+  }
+  async marcarTodosLosMensajes() {
+    const r = await this.client.post<APIResponse<any>>('/mensajes/leer-todo');
+    return r.data;
+  }
+
+  /* ───────────── Presencia: quién más tiene abierta la pantalla ───────────── */
+  async presenciaEntrar(recurso: string, recursoId: string) {
+    const r = await this.client.post<APIResponse<any>>('/presencia/entrar', { recurso, recursoId });
+    return r.data;
+  }
+  async presenciaSalir(recurso: string, recursoId: string) {
+    const r = await this.client.post<APIResponse<any>>('/presencia/salir', { recurso, recursoId });
+    return r.data;
+  }
+
   /* ───────────── Auditoría: qué dice el SAT de nuestros CFDI ───────────── */
   async getAuditoria(params?: { soloDiscrepancias?: boolean; estado?: string; docType?: string }) {
     const r = await this.client.get<APIResponse<any>>('/auditoria', { params });

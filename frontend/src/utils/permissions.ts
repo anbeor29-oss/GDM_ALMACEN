@@ -19,13 +19,13 @@ export type ModuleKey =
   | 'dashboard'
   | 'invoices' | 'carta_porte' | 'credit_notes' | 'customers' | 'products'
   | 'xml_reader' | 'inventory' | 'purchasing' | 'suppliers' | 'pos'
-  | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria';
+  | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria' | 'mensajes';
 
 const ALL_MODULES: ModuleKey[] = [
   'dashboard',
   'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
   'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos',
-  'treasury', 'reports', 'exchange_rates', 'auditoria',
+  'treasury', 'reports', 'exchange_rates', 'auditoria', 'mensajes',
 ];
 
 /**
@@ -38,13 +38,13 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   ADMIN_ALL: ALL_MODULES,
   VENTAS: [
     'dashboard', 'invoices', 'carta_porte', 'credit_notes', 'customers',
-    'products', 'xml_reader', 'pos', 'reports', 'exchange_rates',
+    'products', 'xml_reader', 'pos', 'reports', 'exchange_rates', 'mensajes',
   ],
-  ALMACEN:   ['dashboard', 'products', 'inventory', 'reports'],
+  ALMACEN:   ['dashboard', 'products', 'inventory', 'reports', 'mensajes'],
   COMPRAS:   ['dashboard', 'purchasing', 'suppliers', 'products', 'inventory',
-              'xml_reader', 'reports'],
+              'xml_reader', 'reports', 'mensajes'],
   TESORERIA: ['dashboard', 'treasury', 'suppliers', 'exchange_rates', 'reports',
-              'auditoria'],
+              'auditoria', 'mensajes'],
   /* Cajero de mostrador: SÓLO el punto de venta.
    *
    * VENTAS ya existía, pero alcanza facturas, clientes, Carta Porte y el lector
@@ -54,8 +54,9 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
    *
    * No lleva 'products' ni 'inventory': la pantalla del POS busca lo que vende
    * por su propio endpoint, así que no necesita el catálogo abierto. Lo que ve
-   * es la caja y nada más. */
-  PUNTO_VENTA: ['dashboard', 'pos'],
+   * es la caja y nada más — salvo los mensajes: "se acabó el rollo de la
+   * impresora" tiene que poder salir de ahí. */
+  PUNTO_VENTA: ['dashboard', 'pos', 'mensajes'],
 };
 
 /** Etiquetas legibles de cada grupo (para selectores). */
