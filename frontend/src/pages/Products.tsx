@@ -483,7 +483,12 @@ function ProductModal({
     mutationFn: (data: any) =>
       mode === 'create'
         ? api.createProduct(data)
-        : api.updateProduct(productId!, data),
+        /* Ver Customers: el número de edición evita guardar encima de otro. */
+        : api.updateProduct(productId!, {
+            ...data,
+            /* El producto viene envuelto de dos maneras según el endpoint. */
+            edicion: (existing as any)?.data?.product?.edicion ?? (existing as any)?.data?.edicion,
+          }),
     onSuccess: () => {
       // Invalida TODAS las caches del producto (la lista, el detalle y next SKU)
       // para que la tabla y el próximo abrir del editor traigan los datos frescos.

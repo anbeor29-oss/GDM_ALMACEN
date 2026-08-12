@@ -37,7 +37,9 @@ router.put(
   '/invoices/:invoiceId/carta-porte',
   asyncHandler(async (req: Request, res: Response) => {
     const input = parseCartaPorte(req.body);
-    const r = await upsert(companyId(req), req.params.invoiceId, input);
+    /* `edicion` no es parte de la Carta Porte: es el número que traía el
+     * formulario, para no guardar encima de quien capturó en paralelo. */
+    const r = await upsert(companyId(req), req.params.invoiceId, input, req.body?.edicion);
     res.status(201).json({ id: r.id });
   }),
 );

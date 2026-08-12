@@ -3,7 +3,8 @@
  * Business logic for product management with SAT catalog validation
  */
 
-import { query } from '../../config/database';
+import { query, transaction, transactionQuery } from '../../config/database';
+import { tomarEdicion } from '../../utils/edicion';
 import { ConflictError, NotFoundError, ValidationError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import { Product } from '../../types';
@@ -387,6 +388,10 @@ export async function updateProduct(
   companyId: string,
   productId: string,
   data: Partial<Product>
+,
+  /* Número de edición del formulario. Sin él no se compara: los procesos
+   * internos no vienen de una pantalla. */
+  edicionEsperada?: number | string | null
 ): Promise<Product> {
   const product = await getProductById(companyId, productId);
 
@@ -513,10 +518,15 @@ export async function updateProduct(
   fields.push(`updated_at = NOW()`);
   values.push(productId);
 
-  const result = await query<Product>(
-    `UPDATE products SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
-    values
-  );
+  /* Contador de edición y UPDATE en la misma transacción — ver utils/edicion. */
+  const result = await transaction(async (client) => {
+    await tomarEdicion(client, 'products', productId, edicionEsperada);
+    return transactionQuery<Product>(
+      client,
+      `UPDATE products SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+      values
+    );
+  });
 
   if (result.rows.length === 0) {
     throw new Error('Failed to update product');

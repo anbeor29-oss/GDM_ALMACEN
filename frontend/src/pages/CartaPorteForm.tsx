@@ -576,6 +576,11 @@ export function CartaPorteFormPage() {
           rfcEmbarcador: aereo.rfcEmbarcador ? aereo.rfcEmbarcador.toUpperCase() : undefined,
         };
       }
+      /* El número de edición de la FACTURA: la Carta Porte se guarda
+       * reemplazándola entera, así que el contador vive en el documento
+       * del que forma parte. Si alguien más guardó en medio, el servidor
+       * rechaza antes de borrar su captura. */
+      payload.edicion = (invoice as any)?.data?.edicion;
       const result = await api.saveCartaPorte(invoiceId, payload);
 
       // Persistir ubicaciones marcadas como "guardar en catálogo".
@@ -618,7 +623,7 @@ export function CartaPorteFormPage() {
           <div className="p-2 bg-sky-100 rounded-lg"><RouteIcon size={24} className="text-sky-700" /></div>
           <div>
             <h1 className="text-xl font-semibold text-slate-800">Carta Porte 3.1</h1>
-            <p className="text-xs text-slate-500">Factura {(invoice as any)?.folio || invoiceId.slice(0, 8)}</p>
+            <p className="text-xs text-slate-500">Factura {(invoice as any)?.data?.folio || invoiceId.slice(0, 8)}</p>
           </div>
         </div>
         <button

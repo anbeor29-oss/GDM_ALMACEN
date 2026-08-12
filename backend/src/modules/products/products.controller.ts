@@ -226,7 +226,10 @@ export async function updateProduct(req: Request, res: Response) {
   const { id } = req.params;
   const updateData = req.body;
 
-  const product = await productsService.updateProduct(req.user.companyId, id, updateData);
+  /* Ver customers.controller: `edicion` no es un dato del producto. */
+  const product = await productsService.updateProduct(
+    req.user.companyId, id, updateData, req.body?.edicion
+  );
 
   res.status(200).json({
     success: true,

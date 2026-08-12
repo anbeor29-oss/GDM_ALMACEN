@@ -3,7 +3,8 @@
  * Business logic for customer management
  */
 
-import { query } from '../../config/database';
+import { query, transaction, transactionQuery } from '../../config/database';
+import { tomarEdicion } from '../../utils/edicion';
 import { ConflictError, NotFoundError, ValidationError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import { Customer } from '../../types';
@@ -262,7 +263,11 @@ export async function listCustomers(
 export async function updateCustomer(
   companyId: string,
   customerId: string,
-  data: Partial<Customer>
+  data: Partial<Customer>,
+  /* Número de edición que traía el formulario. Sin él no se compara: los
+   * procesos internos —el importador de XML, por ejemplo— no vienen de una
+   * pantalla y no tienen ninguno que devolver. */
+  edicionEsperada?: number | string | null
 ): Promise<Customer> {
   // Get current customer
   const customer = await getCustomerById(companyId, customerId);
@@ -355,10 +360,19 @@ export async function updateCustomer(
   fields.push(`updated_at = NOW()`);
   values.push(customerId);
 
-  const result = await query<Customer>(
-    `UPDATE customers SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
-    values
-  );
+  /* El contador de edición y el UPDATE van en la MISMA transacción.
+   *
+   * Separados, un fallo del UPDATE dejaría el contador subido por un guardado
+   * que nunca ocurrió, y el siguiente en abrir la pantalla recibiría un
+   * conflicto inventado. */
+  const result = await transaction(async (client) => {
+    await tomarEdicion(client, 'customers', customerId, edicionEsperada);
+    return transactionQuery<Customer>(
+      client,
+      `UPDATE customers SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+      values
+    );
+  });
 
   if (result.rows.length === 0) {
     throw new Error('Failed to update customer');

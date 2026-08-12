@@ -173,7 +173,11 @@ export async function updateCustomer(req: Request, res: Response) {
     if (b[sn] !== undefined) updateData[sn] = b[sn];  // si ya viene en snake_case
   }
 
-  const customer = await customersService.updateCustomer(req.user.companyId, id, updateData);
+  /* `edicion` viaja aparte de los datos: no es un campo del cliente, es el
+   * número que traía el formulario para saber si alguien guardó en medio. */
+  const customer = await customersService.updateCustomer(
+    req.user.companyId, id, updateData, b.edicion
+  );
 
   res.status(200).json({
     success: true,

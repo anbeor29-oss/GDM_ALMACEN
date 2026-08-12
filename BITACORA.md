@@ -5,6 +5,71 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-12 (tarde) — Control de edición: el segundo ya no borra al primero
+
+### Contexto
+La presencia (2026-08-11e) avisa que alguien más tiene el documento abierto.
+Sirve para que se pongan de acuerdo, pero es un letrero: si los dos guardan, el
+segundo sigue pisando al primero y nadie se entera. **Avisar del riesgo no es lo
+mismo que impedir el daño.**
+
+### Cómo funciona
+Cada documento lleva un contador. El formulario lo recibe al abrirlo y lo
+devuelve al guardar; si ya no coincide, alguien guardó en medio y el guardado se
+rechaza con un 409 en vez de sobrescribir.
+
+**El contador se sube y se compara en la MISMA sentencia**
+(`UPDATE … SET edicion = edicion + 1 WHERE id = $1 AND edicion = $2`). Hacerlo
+en dos pasos —leer, comparar, escribir— dejaría una rendija entre la lectura y
+la escritura por la que se cuela justo lo que se quiere evitar.
+
+**Y va dentro de la transacción del guardado.** Si el UPDATE de los datos falla
+después, el contador vuelve atrás con él; un contador que sube por un guardado
+que no ocurrió obligaría a recargar sin motivo.
+
+### Decisiones
+
+**Se llama `edicion`, no `version`.** `carta_porte.version` ya existe y guarda
+"3.1", la versión del complemento del SAT. Reusar el nombre habría mezclado dos
+cosas sin relación, y un día alguien habría incrementado la versión del
+complemento creyendo que llevaba la cuenta de las ediciones.
+
+**Arranca en 1, no en 0.** Un contador en cero se confunde con "no tiene
+contador" en cuanto pasa por un JSON o un COALESCE.
+
+**Sin número no se compara.** Los procesos internos —el importador de XML dando
+de alta un cliente, el cierre del POS— no vienen de un formulario y no tienen
+nada que devolver. Exigírselo sólo los rompería sin proteger a nadie: la
+protección es para la edición humana, que es donde alguien pierde media hora.
+
+**La Carta Porte lleva el contador de la FACTURA.** Guardarla es un reemplazo
+total —se borra y se inserta de nuevo—, así que el renglón cambia de id en cada
+guardado y no hay nada estable a lo que colgarle un contador. La factura sí es
+estable, y además es el documento del que la Carta Porte forma parte.
+
+**Documento borrado ≠ conflicto.** Cuando el UPDATE no toca nada se relee para
+distinguir: decirle "hubo un conflicto" a quien abrió un documento que alguien
+borró lo mandaría a buscar un choque que nunca pasó.
+
+### Dónde quedó cableado
+Clientes, productos y Carta Porte. La columna ya existe también en `invoices` y
+`purchase_orders`, así que extenderlo a esas pantallas es cablear el parámetro,
+no volver a diseñarlo.
+
+### Verificación
+Seis casos contra Postgres local: guardar con el número correcto sube el
+contador; guardar con uno viejo se rechaza **y los datos del primero quedan
+intactos**; tras recargar, el mismo guardado sí entra; sin número guarda (proceso
+interno); **dos guardados simultáneos con el mismo número → uno gana, el otro
+recibe el aviso**; y un documento borrado responde "no encontrado".
+
+### Hallazgo al pasar
+En el formulario de Carta Porte, el encabezado leía `invoice.folio` sobre la
+respuesta envuelta de la API, así que el folio nunca se mostraba y siempre caía
+al respaldo de mostrar los primeros ocho caracteres del id. Corregido.
+
+---
+
 ## 2026-08-12 — Motor de descarga masiva del SAT (sólo NEXO)
 
 Base: `DESCARGA_MASIVA_SAT_Y_SERVICIOS.md`. Va **sólo en NEXO** por decisión de

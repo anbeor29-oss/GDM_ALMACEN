@@ -7,7 +7,8 @@
  *   · La generación del XML y el timbrado son Bloques posteriores (6-8).
  */
 
-import { pool } from '../../config/database';
+import { pool } from '../../config/database';
+import { tomarEdicion } from '../../utils/edicion';
 import type { PoolClient } from 'pg';
 import type { CartaPorteInput } from './carta-porte.validators';
 
@@ -126,6 +127,9 @@ export async function upsert(
   companyId: string,
   invoiceId: string,
   input: CartaPorteInput,
+  /* Número de edición que traía el formulario. Ver más abajo por qué se lleva
+   * sobre la FACTURA y no sobre la Carta Porte. */
+  edicionEsperada?: number | string | null,
 ) {
   return inTx(async (c) => {
     const inv = await c.query(
@@ -136,6 +140,16 @@ export async function upsert(
     if (inv.rows[0].status !== 'DRAFT') {
       throw new Error('Solo se puede modificar Carta Porte en facturas DRAFT');
     }
+
+    /* El contador vive en la FACTURA, no en carta_porte.
+     *
+     * Guardar aquí es un reemplazo total: se borra la Carta Porte anterior y se
+     * inserta una nueva, así que el renglón cambia de id en cada guardado y no
+     * hay nada estable a lo que colgarle un contador. La factura sí es estable,
+     * y además es el documento del que la Carta Porte forma parte: si dos
+     * personas capturan el traslado de la misma factura, están editando el
+     * mismo documento aunque los datos vivan en otras tablas. */
+    await tomarEdicion(c, 'invoices', invoiceId, edicionEsperada);
 
     // Reemplazo total: si ya había una CP, se borra en cascada y se crea de nuevo.
     await c.query('DELETE FROM carta_porte WHERE invoice_id = $1', [invoiceId]);

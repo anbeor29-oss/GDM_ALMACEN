@@ -254,7 +254,10 @@ function CustomerModal({
     mutationFn: (data: CustomerForm) =>
       mode === 'create'
         ? api.createCustomer(data)
-        : api.updateCustomer(customerId!, data),
+        /* Se devuelve el número de edición que traía el cliente al abrirlo. Si
+         * alguien más guardó en medio, el servidor rechaza en vez de dejar que
+         * esta pantalla borre lo que el otro acaba de capturar. */
+        : api.updateCustomer(customerId!, { ...data, edicion: (existing as any)?.data?.edicion }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', customerId] });
       onSaved();
