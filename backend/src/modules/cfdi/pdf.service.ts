@@ -140,13 +140,47 @@ function palabraMoneda(currency = 'MXN'): string {
   return map[currency] || currency;
 }
 
-/** Devuelve la cadena oficial "MONTO EN LETRA <MONEDA> 00/100 M.N." */
+/**
+ * Cómo cierra el importe con letra.
+ *
+ * "M.N." quiere decir MONEDA NACIONAL, así que ponerlo detrás de una cifra en
+ * euros es una contradicción: el documento dice a la vez que son euros y que
+ * son pesos mexicanos. En moneda extranjera se cierra con la clave ISO, que es
+ * la misma que ya viaja en el atributo Moneda del CFDI — así el papel y el XML
+ * dicen lo mismo.
+ *
+ * SOBRE LOS CENTAVOS: la fracción NO cambia con la moneda. El "/100" no es una
+ * abreviatura de "centavos", es la parte fraccionaria expresada en centésimos,
+ * y el dólar, el euro y la libra se dividen igual en cien —centavos, céntimos y
+ * peniques—. Lo único que cambia es qué unidad se está partiendo, y eso ya lo
+ * dice la palabra de la moneda que va antes.
+ *
+ * Este campo no lo regula el Anexo 20: el SAT no pide importe con letra en el
+ * CFDI. Es costumbre del papel, y la costumbre en operaciones en divisas es
+ * cerrar con la clave ISO.
+ */
+function sufijoMoneda(currency = 'MXN'): string {
+  const c = String(currency || 'MXN').toUpperCase();
+  return c === 'MXN' ? 'M.N.' : c;
+}
+
+/** Devuelve la cadena del importe con letra: "<LETRAS> <MONEDA> 00/100 <SUFIJO>". */
 function montoEnLetra(total: number, currency = 'MXN'): string {
   const entero = Math.floor(total);
   const cent = Math.round((total - entero) * 100);
   const centStr = String(cent).padStart(2, '0');
   const letras = numeroALetras(entero);
-  return `${letras} ${palabraMoneda(currency)} ${centStr}/100 M.N.`;
+
+  /* "UN MILLÓN DE PESOS", no "UN MILLÓN PESOS".
+   *
+   * Millón y millones piden la preposición cuando el sustantivo va justo
+   * después; pero sólo entonces: "UN MILLÓN DOSCIENTOS MIL PESOS" no la lleva,
+   * porque entre el millón y los pesos hay otra cantidad. De ahí que se agregue
+   * únicamente cuando la cifra es millones exactos. */
+  const millonesExactos = entero >= 1_000_000 && entero % 1_000_000 === 0;
+  const de = millonesExactos ? ' DE' : '';
+
+  return `${letras}${de} ${palabraMoneda(currency)} ${centStr}/100 ${sufijoMoneda(currency)}`;
 }
 
 const FORMA_PAGO: Record<string, string> = {

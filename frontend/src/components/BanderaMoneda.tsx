@@ -57,8 +57,28 @@ export function BanderaMoneda({ moneda, size = 18 }: Props) {
             })}
           </>
         );
+      case 'GBP':
+        /* Union Jack: aspas blancas y rojas, y encima la cruz de San Jorge.
+         * Las aspas rojas de San Patricio van centradas y no descentradas como
+         * en la bandera real — a 18 px ese desfase no se ve y sí ensucia el
+         * dibujo. Lo que identifica la bandera a este tamaño es la estructura
+         * de aspas más cruz, y esa sí está completa. */
+        return (
+          <>
+            <rect x="0" y="0" width={size} height={size} fill="#012169" />
+            <g strokeLinecap="butt">
+              <path d={`M0,0 L${size},${size} M${size},0 L0,${size}`}
+                stroke="#FFFFFF" strokeWidth={size * 0.3} />
+              <path d={`M0,0 L${size},${size} M${size},0 L0,${size}`}
+                stroke="#C8102E" strokeWidth={size * 0.13} />
+              <path d={`M${r},0 L${r},${size} M0,${r} L${size},${r}`}
+                stroke="#FFFFFF" strokeWidth={size * 0.34} />
+              <path d={`M${r},0 L${r},${size} M0,${r} L${size},${r}`}
+                stroke="#C8102E" strokeWidth={size * 0.2} />
+            </g>
+          </>
+        );
       case 'MXN':
-      default:
         /* Verde, blanco y rojo. El escudo no se dibuja: a 18 px sería un
          * borrón, y las tres franjas ya identifican la bandera sin ambigüedad. */
         return (
@@ -66,6 +86,24 @@ export function BanderaMoneda({ moneda, size = 18 }: Props) {
             <rect x="0" y="0" width={size / 3} height={size} fill="#006847" />
             <rect x={size / 3} y="0" width={size / 3} height={size} fill="#FFFFFF" />
             <rect x={(size * 2) / 3} y="0" width={size / 3} height={size} fill="#CE1126" />
+          </>
+        );
+      default:
+        /* CUALQUIER OTRA MONEDA: la clave, no una bandera.
+         *
+         * Antes el `default` caía en México, así que una factura en libras
+         * mostraba la bandera mexicana — el peor error posible en un icono cuyo
+         * único trabajo es decir en qué moneda está el documento. Dibujar de
+         * memoria las banderas que faltan sería cambiar un dato falso por otro
+         * aproximado; la clave ISO no se equivoca nunca. */
+        return (
+          <>
+            <rect x="0" y="0" width={size} height={size} fill="#E2E8F0" />
+            <text x={r} y={r} fill="#475569" fontSize={size * 0.42} fontWeight="700"
+              textAnchor="middle" dominantBaseline="central"
+              fontFamily="system-ui, sans-serif">
+              {m.slice(0, 3)}
+            </text>
           </>
         );
     }
