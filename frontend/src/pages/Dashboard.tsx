@@ -258,33 +258,52 @@ export function DashboardPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {empresas.map((e) => {
               const activa = e.id === user?.companyId;
+              /* Iniciales para el avatar: dos letras bastan para reconocer la
+               * empresa de un vistazo, y funcionan sin logotipo cargado. */
+              const iniciales = String(e.business_name || '?')
+                .split(/\s+/).filter(Boolean).slice(0, 2)
+                .map((p: string) => p[0]).join('').toUpperCase();
               return (
-                <button
+                <div
                   key={e.id}
-                  type="button"
-                  onClick={() => cambiarEmpresa(e.id)}
-                  disabled={!!cambiando || activa}
-                  className={`text-left border rounded-lg p-4 transition-colors ${
+                  /* DOBLE CLIC para cambiar de empresa.
+                   *
+                   * Con un clic sencillo, rozar la tarjeta equivocada recargaba
+                   * la aplicación entera y dejaba a alguien facturando desde el
+                   * RFC de otra empresa sin haberlo pedido. Cambiar de emisor
+                   * es de las pocas acciones aquí que no se deshace con otro
+                   * clic: pedir dos es proporcional al estropicio. */
+                  onDoubleClick={() => { if (!activa && !cambiando) cambiarEmpresa(e.id); }}
+                  title={activa ? 'Es la empresa en la que estás trabajando' : 'Doble clic para trabajar en esta empresa'}
+                  className={`select-none rounded-xl border p-4 transition-all ${
                     activa
-                      ? 'border-indigo-400 bg-indigo-50 cursor-default'
-                      : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                      ? 'border-indigo-300 bg-gradient-to-br from-indigo-50 to-white ring-1 ring-indigo-100'
+                      : 'border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md cursor-pointer'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="font-semibold text-gray-900 leading-tight">
-                      {e.business_name}
-                    </span>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 ${
+                      activa ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      {iniciales}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-gray-900 leading-tight truncate">
+                        {e.business_name}
+                      </p>
+                      <p className="text-xs font-mono text-gray-500 mt-0.5">{e.rfc}</p>
+                    </div>
                     {activa && (
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded shrink-0">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full shrink-0">
                         Activa
                       </span>
                     )}
                   </div>
-                  <p className="text-sm font-mono text-gray-500 mt-1">{e.rfc}</p>
-                  {cambiando === e.id && (
-                    <p className="text-xs text-indigo-600 mt-2">Cambiando…</p>
-                  )}
-                </button>
+                  {cambiando === e.id
+                    ? <p className="text-xs text-indigo-600 mt-2">Cambiando…</p>
+                    : !activa && (
+                      <p className="text-[11px] text-slate-400 mt-2">Doble clic para entrar</p>
+                    )}
+                </div>
               );
             })}
           </div>
@@ -301,12 +320,22 @@ export function DashboardPage() {
               </div>
               <div>
                 <h3 className="text-gray-900 font-semibold">Timbres del mes</h3>
-                <p className="text-xs text-gray-500">Periodo {u.period} · plan iguala</p>
+                {/* El nombre del paquete, junto al número.
+                  *
+                  * "5 / 200" a secas no deja ver si ese 200 es el paquete
+                  * contratado o el que quedó por omisión en el alta. Con el
+                  * paquete escrito al lado, un tope equivocado salta a la vista
+                  * el primer día y no al cerrar el mes. */}
+                <p className="text-xs text-gray-500">
+                  Periodo {u.period}
+                  {u.plan.package_name ? ` · ${u.plan.package_name}` : ''}
+                  {u.plan.package_code ? ` (${u.plan.package_code})` : ''}
+                </p>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-bold text-gray-900">
-                {u.usage.total}<span className="text-base text-gray-400"> / {u.plan.cap_timbres}</span>
+              <p className="text-3xl font-bold text-gray-900 tabular-nums">
+                {u.usage.total}<span className="text-lg text-gray-400 font-semibold"> / {u.plan.cap_timbres}</span>
               </p>
               <p className={`text-xs font-medium ${u.plan.over ? 'text-rose-700' : 'text-emerald-700'}`}>
                 {u.plan.over ? `+${u.usage.total - u.plan.cap_timbres} excedente` : `${u.plan.remaining} disponibles`}
@@ -338,21 +367,41 @@ interface MetricCardProps {
   hint?: string;
 }
 
+/**
+ * Tarjeta de indicador.
+ *
+ * QUÉ CAMBIÓ Y POR QUÉ
+ * El icono ocupaba un renglón entero arriba y empujaba el número —que es lo
+ * único que alguien viene a leer— hasta la mitad de la tarjeta. Ahora va a la
+ * derecha, en su propio color y en segundo plano: sigue sirviendo para
+ * distinguir las cuatro tarjetas de un vistazo, pero deja de competir con la
+ * cifra. La barra de color arriba hace ese mismo trabajo sin ocupar espacio.
+ *
+ * `tabular-nums` alinea los dígitos entre tarjetas: sin eso, cuatro importes
+ * de distinto largo se ven desparejos aunque estén perfectamente alineados.
+ */
 function MetricCard({ icon, title, value, color, hint }: MetricCardProps) {
   const palette = {
-    indigo:  { bg: 'bg-indigo-50',  text: 'text-indigo-600',  ring: 'ring-indigo-100' },
-    sky:     { bg: 'bg-sky-50',     text: 'text-sky-600',     ring: 'ring-sky-100' },
-    emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', ring: 'ring-emerald-100' },
-    amber:   { bg: 'bg-amber-50',   text: 'text-amber-600',   ring: 'ring-amber-100' },
+    indigo:  { barra: 'bg-indigo-500',  bg: 'bg-indigo-50',  text: 'text-indigo-600' },
+    sky:     { barra: 'bg-sky-500',     bg: 'bg-sky-50',     text: 'text-sky-600' },
+    emerald: { barra: 'bg-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-600' },
+    amber:   { barra: 'bg-amber-500',   bg: 'bg-amber-50',   text: 'text-amber-600' },
   }[color];
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
-      <div className={`${palette.bg} ${palette.text} ${palette.ring} ring-1 p-3 rounded-lg w-fit mb-4`}>
-        {icon}
+    <div className="relative bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+      <div className={`h-1 ${palette.barra}`} />
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-gray-500 text-xs font-medium uppercase tracking-wide">{title}</h3>
+            <p className="text-3xl font-bold text-gray-900 truncate mt-1 tabular-nums">{value}</p>
+          </div>
+          <div className={`${palette.bg} ${palette.text} p-2.5 rounded-lg shrink-0`}>
+            {icon}
+          </div>
+        </div>
+        {hint && <p className="text-xs text-gray-500 mt-3">{hint}</p>}
       </div>
-      <h3 className="text-gray-600 text-sm font-medium mb-1">{title}</h3>
-      <p className="text-3xl font-bold text-gray-900 truncate">{value}</p>
-      {hint && <p className="text-xs text-gray-500 mt-2">{hint}</p>}
     </div>
   );
 }

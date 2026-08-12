@@ -17,6 +17,7 @@ import {
   Mail, Send, FileText, FileMinus2, Pencil, Ship,
 } from 'lucide-react';
 import api from '@/services/api';
+import { BanderaMoneda } from '@/components/BanderaMoneda';
 import { Invoice } from '@/types';
 
 /* ───────────── Helpers de estado (español) ───────────── */
@@ -207,7 +208,14 @@ export function InvoicesPage() {
                       {new Date(invoice.date_issued).toLocaleDateString('es-MX')}
                     </td>
                     <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">
-                      $ {Number(invoice.total).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {/* La bandera va PEGADA al importe, no en su propia
+                          columna: la moneda no es un dato suelto, es lo que
+                          define qué significa ese número. Separarla obliga a
+                          mirar dos lugares para leer una sola cosa. */}
+                      <span className="inline-flex items-center justify-end gap-2">
+                        <BanderaMoneda moneda={(invoice as any).currency} />
+                        $ {Number(invoice.total).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-right">
                       {(() => {

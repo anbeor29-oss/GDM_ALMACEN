@@ -217,16 +217,37 @@ router.get(
     const row = r.rows[0];
     const total = Number(row.facturas_mes) + Number(row.nc_mes) + Number(row.pagos_mes);
 
-    // Plan real desde companies.billing_plan (migración 2026-06-22)
+    /* El tope sale del PAQUETE CONTRATADO, no de companies.cap_timbres.
+     *
+     * Había dos columnas guardando el mismo hecho: `cap_timbres`, que se
+     * escribe en el alta, y `stamp_package_code`, de donde el timbrado saca la
+     * cuota de verdad. Cuando alguien cambia de paquete después del alta sólo
+     * se mueve la segunda, y el dashboard seguía anunciando el tope viejo: se
+     * veía "5 / 200" mientras el sistema permitía 500, o al revés. Aquí se lee
+     * la vista que gobierna el timbrado, y `cap_timbres` queda de respaldo para
+     * empresas que todavía no tengan paquete asignado.
+     *
+     * `effective_cap` incluye los timbres arrastrados del mes anterior, que es
+     * lo que de verdad queda disponible. */
     const planR = await query<any>(
-      `SELECT COALESCE(billing_plan,'iguala') AS billing_plan,
-              COALESCE(cap_timbres,100)::int AS cap_timbres,
-              COALESCE(monthly_fee,500)::numeric AS monthly_fee,
-              COALESCE(extra_stamp_fee,0.80)::numeric AS extra_stamp_fee
-         FROM companies WHERE id = $1`,
+      `SELECT COALESCE(v.stamp_package_code, c.stamp_package_code)      AS package_code,
+              sp.name                                                   AS package_name,
+              COALESCE(v.effective_cap, c.cap_timbres, 100)::int        AS cap_timbres,
+              COALESCE(v.carried_over_stamps, 0)::int                   AS arrastrados,
+              COALESCE(c.billing_plan, 'iguala')                        AS billing_plan,
+              COALESCE(v.monthly_fee_mxn, c.monthly_fee, 500)::numeric  AS monthly_fee,
+              COALESCE(v.extra_stamp_mxn, c.extra_stamp_fee, 0.80)::numeric AS extra_stamp_fee
+         FROM companies c
+         LEFT JOIN v_stamp_usage_current v ON v.company_id = c.id
+         LEFT JOIN stamp_packages sp
+                ON sp.code = COALESCE(v.stamp_package_code, c.stamp_package_code)
+        WHERE c.id = $1`,
       [companyId(req)]
     );
-    const plan = planR.rows[0] || { billing_plan: 'iguala', cap_timbres: 100, monthly_fee: 500, extra_stamp_fee: 0.80 };
+    const plan = planR.rows[0] || {
+      billing_plan: 'iguala', cap_timbres: 100, monthly_fee: 500, extra_stamp_fee: 0.80,
+      package_code: null, package_name: null, arrastrados: 0,
+    };
     const cap = Number(plan.cap_timbres);
     const overCount = Math.max(0, total - cap);
 
@@ -243,6 +264,12 @@ router.get(
         plan: {
           tipo: plan.billing_plan,             // 'renta' | 'iguala'
           cap_timbres: cap,
+          /* Se devuelven para que la pantalla pueda decir de dónde sale ese
+           * tope: un número solo no deja ver si es el paquete contratado o el
+           * que quedó por omisión. */
+          package_code: plan.package_code || null,
+          package_name: plan.package_name || null,
+          arrastrados: Number(plan.arrastrados) || 0,
           monthly_fee: Number(plan.monthly_fee),
           extra_stamp_fee: Number(plan.extra_stamp_fee),
           consumed_pct: cap > 0 ? Math.round((total / cap) * 100) : 0,
