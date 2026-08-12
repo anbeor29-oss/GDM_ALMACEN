@@ -247,11 +247,26 @@ export function InvoicesPage() {
                         <IconBtn color="red"    title="Descargar PDF"     onClick={() => handleDownloadPDF(invoice)}><FileDown size={18} /></IconBtn>
                         <IconBtn color="green"  title="Descargar XML"     onClick={() => handleDownloadXML(invoice)}><Download size={18} /></IconBtn>
                         <IconBtn color="blue"   title="Vista previa"      onClick={() => handlePreviewPDF(invoice)}><Eye size={18} /></IconBtn>
+                        {/* Rojo cuando la factura YA lleva Carta Porte.
+                             El color distingue de un vistazo cuáles son de
+                             traslado sin abrir ninguna: antes había que entrar
+                             factura por factura para saberlo. */}
                         <IconBtn
-                          color="amber"
-                          title={invoice.is_stamped ? 'Carta Porte no disponible — las facturas timbradas ya no pueden anexar Carta Porte. Debe crearse antes del timbrado.' : 'Carta Porte'}
-                          disabled={invoice.is_stamped}
-                          onClick={() => !invoice.is_stamped && navigate(`/invoices/${invoice.id}/carta-porte`)}
+                          color={(invoice as any).tiene_carta_porte ? 'red' : 'amber'}
+                          title={
+                            (invoice as any).tiene_carta_porte
+                              ? 'Esta factura lleva Carta Porte — clic para verla'
+                              : invoice.is_stamped
+                                ? 'Carta Porte no disponible — las facturas timbradas ya no pueden anexar Carta Porte. Debe crearse antes del timbrado.'
+                                : 'Carta Porte'
+                          }
+                          /* Con Carta Porte ya creada SÍ se puede abrir aunque
+                             esté timbrada: bloquearlo impedía consultar la que
+                             uno mismo emitió. Lo que no se permite es crear una
+                             nueva sobre una factura timbrada. */
+                          disabled={invoice.is_stamped && !(invoice as any).tiene_carta_porte}
+                          onClick={() => ((invoice as any).tiene_carta_porte || !invoice.is_stamped)
+                            && navigate(`/invoices/${invoice.id}/carta-porte`)}
                         ><Ship size={18} /></IconBtn>
                         {canEdit && (
                           <IconBtn color="sky" title="Editar factura (solo DRAFT)"

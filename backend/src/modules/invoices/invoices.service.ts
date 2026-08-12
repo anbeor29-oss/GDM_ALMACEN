@@ -371,6 +371,11 @@ export async function listInvoices(
     `SELECT i.*,
             c.business_name as customer_name,
             c.rfc as customer_rfc,
+            /* Para pintar de rojo el icono de las facturas que YA llevan Carta
+             * Porte. Sin este dato hay que entrar factura por factura para
+             * saber cuáles son de traslado. EXISTS y no un JOIN: interesa si
+             * hay o no, no cuántas, y un JOIN duplicaría el renglón. */
+            EXISTS (SELECT 1 FROM carta_porte cp WHERE cp.invoice_id = i.id) AS tiene_carta_porte,
             COALESCE((SELECT SUM(payment_amount) FROM payments
                        WHERE invoice_id = i.id AND deleted_at IS NULL
                          AND document_status != 'CANCELLED'), 0)::numeric AS paid_total,
