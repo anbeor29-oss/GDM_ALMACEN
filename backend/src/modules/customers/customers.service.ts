@@ -11,6 +11,76 @@ import { Customer } from '../../types';
 import { isValidRFC, isValidEmail, isValidPostalCode, isValidStateCode } from '../../utils/validators';
 
 /**
+ * SALDO DEL CLIENTE — lo que nos debe hoy.
+ *
+ * Se define una sola vez porque lo usan el listado y calculateBalance(), y
+ * tenerlo duplicado fue precisamente lo que dejó que se desincronizaran.
+ *
+ * Dos errores que corrige respecto de la versión anterior:
+ *
+ *  1. Filtraba por `status IN ('SENT','PARTIAL_PAYMENT')`, y esos dos estados
+ *     NO EXISTEN en este sistema: una factura es DRAFT, STAMPED, PAID o
+ *     CANCELLED. El filtro no casaba con nada, así que el saldo salía SIEMPRE
+ *     en cero — por eso "cuando hay saldo, no aparece".
+ *  2. Hacía `SUM(i.total) - SUM(p.payment_amount)` sobre un LEFT JOIN. Con dos
+ *     pagos parciales, el total de la factura se sumaba DOS veces y la deuda
+ *     salía inflada. Los pagos se agregan ahora en una subconsulta, de modo
+ *     que cada factura entra una sola vez.
+ *
+ * Se cuentan solo las STAMPED: la timbrada es la que ampara la deuda. DRAFT
+ * todavía no existe para el SAT, CANCELLED dejó de existir, y PAID ya se
+ * liquidó.
+ */
+const SALDO_SQL = `
+  COALESCE((
+    SELECT SUM(
+             i.total
+             /* Lo pagado. Sale de payment_invoices, que es donde vive el
+              * desglose desde que un pago puede liquidar VARIAS facturas.
+              *
+              * Antes se leía payments.invoice_id, que en un pago multi-factura
+              * apunta sólo a la PRIMERA —"por compatibilidad", dice el propio
+              * código de pagos—. El total del cliente salía bien de milagro
+              * (el importe completo se restaba una vez), pero factura por
+              * factura era falso: la primera quedaba con saldo negativo y las
+              * demás debiendo entero.
+              *
+              * El COALESCE al final cubre los pagos viejos, anteriores a la
+              * tabla puente, que sólo existen en payments.invoice_id. */
+             - COALESCE((
+                 SELECT SUM(pi.monto)
+                   FROM payment_invoices pi
+                   JOIN payments p ON p.id = pi.payment_id
+                  WHERE pi.invoice_id = i.id
+                    AND p.document_status = 'STAMPED'
+                    AND p.deleted_at IS NULL
+               ), (
+                 SELECT SUM(p.payment_amount)
+                   FROM payments p
+                  WHERE p.invoice_id = i.id
+                    AND p.document_status = 'STAMPED'
+                    AND p.deleted_at IS NULL
+               ), 0)
+             /* Las notas de crédito NO se restaban.
+              *
+              * Una NC reduce lo que el cliente debe —para eso existe—, así que
+              * sin esto el sistema le seguía cobrando un descuento que ya se le
+              * había concedido. Sólo cuentan las timbradas: una NC en borrador
+              * no ampara nada y una cancelada dejó de existir. */
+             - COALESCE((
+                 SELECT SUM(cn.total)
+                   FROM credit_notes cn
+                  WHERE cn.invoice_id = i.id
+                    AND cn.status = 'STAMPED'
+               ), 0)
+           )
+      FROM invoices i
+     WHERE i.customer_id = c.id
+       AND i.status = 'STAMPED'
+       AND i.deleted_at IS NULL
+  ), 0)`;
+
+/**
  * Create customer
  */
 export async function createCustomer(companyId: string, data: {
@@ -237,9 +307,19 @@ export async function listCustomers(
 
   // Get customers
   const customersResult = await query<Customer>(
-    `SELECT * FROM customers ${whereClause}
-     ORDER BY ${sortField} ${sortOrder}
-     LIMIT $${paramCount} OFFSET $${paramCount + 1}`,
+    /* El saldo se CALCULA, no se lee de la columna.
+     *
+     * `customers.balance` sólo cambia si alguien llama updateCustomerBalance(),
+     * y basta un pago, una nota de crédito o un timbrado que no la llame para
+     * que el listado muestre un saldo viejo — que es justo lo que pasaba.
+     *
+     * El alias es `saldo_calculado` y NO `balance`: `c.*` ya trae la columna de
+     * la tabla, y dos columnas con el mismo nombre dejan al driver decidir cuál
+     * gana. Eso no lo puede decidir un driver. Abajo se pisa explícitamente. */
+    `SELECT c.*, ${SALDO_SQL} AS saldo_calculado
+       FROM customers c ${whereClause}
+      ORDER BY ${sortField === 'balance' ? SALDO_SQL : sortField} ${sortOrder}
+      LIMIT $${paramCount} OFFSET $${paramCount + 1}`,
     [...params, limit, offset]
   );
 
@@ -252,7 +332,13 @@ export async function listCustomers(
   const total = parseInt(totalResult.rows[0].count, 10);
 
   return {
-    customers: customersResult.rows,
+    /* `balance` se pisa con el calculado: la columna de la tabla viaja en la
+     * fila pero está vieja, y quien consuma esto debe ver el saldo real sin
+     * enterarse de que existen dos. */
+    customers: customersResult.rows.map((r: any) => ({
+      ...r,
+      balance: Number(r.saldo_calculado ?? 0),
+    })),
     total,
   };
 }

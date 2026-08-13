@@ -35,45 +35,65 @@ import {
 import { getCompanyLogo } from './logo-cache';
 
 export async function generatePaymentPDF(companyId: string, paymentId: string): Promise<Buffer> {
-  // 1) Cargar pago + factura asociada
+  // 1) Cargar el pago
   const r = await query(
-    `SELECT p.*, i.serie AS inv_serie, i.folio AS inv_folio, i.total AS inv_total,
-            i.cfdi_uuid AS inv_uuid, i.payment_method AS inv_method,
-            i.customer_id AS inv_customer
-       FROM payments p
-       JOIN invoices i ON i.id = p.invoice_id
+    `SELECT p.* FROM payments p
       WHERE p.id = $1 AND p.company_id = $2 AND p.deleted_at IS NULL`,
     [paymentId, companyId]
   );
   const payment: any = r.rows[0];
   if (!payment) throw new NotFoundError('Pago no encontrado');
 
+  /* 2) TODAS las facturas que liquida este pago.
+   *
+   * El PDF leía `payments.invoice_id` —UNA sola— mientras el XML timbrado ya
+   * declaraba todos los DoctoRelacionado. El comprobante estaba bien y el papel
+   * mentía: un depósito que cubría tres facturas se imprimía como si cubriera
+   * una, y el cliente no podía cuadrar su estado de cuenta con lo que recibió.
+   *
+   * Los saldos y la parcialidad se leen de `payment_invoices` TAL COMO SE
+   * TIMBRARON, no se recalculan: el CFDI ya se emitió con esas cifras y volver
+   * a calcularlas con los saldos de hoy imprimiría números distintos a los del
+   * XML que el cliente tiene. */
+  const docsR = await query<any>(
+    `SELECT pi.monto, pi.parcialidad, pi.saldo_anterior, pi.saldo_insoluto,
+            i.serie, i.folio, i.cfdi_uuid, i.currency, i.customer_id
+       FROM payment_invoices pi
+       JOIN invoices i ON i.id = pi.invoice_id
+      WHERE pi.payment_id = $1
+      ORDER BY i.date_issued, i.folio`,
+    [paymentId]
+  );
+
+  /* Respaldo para los pagos anteriores a la tabla puente (agosto 2026): ahí la
+   * única relación es `payments.invoice_id`. Sin esto, sus PDF saldrían sin
+   * ningún documento relacionado, que es peor que mostrar uno. */
+  let documentos = docsR.rows;
+  if (documentos.length === 0 && payment.invoice_id) {
+    const uno = await query<any>(
+      `SELECT $2::numeric AS monto, 1 AS parcialidad,
+              i.total AS saldo_anterior,
+              GREATEST(0, i.total - $2::numeric) AS saldo_insoluto,
+              i.serie, i.folio, i.cfdi_uuid, i.currency, i.customer_id
+         FROM invoices i WHERE i.id = $1`,
+      [payment.invoice_id, payment.payment_amount]
+    );
+    documentos = uno.rows;
+  }
+  if (documentos.length === 0) {
+    throw new NotFoundError('El pago no tiene facturas relacionadas');
+  }
+
   // 2) Empresa + cliente
   const company = await companiesService.getCompanyById(companyId);
   const customer = await customersService.getCustomerById(companyId, payment.customer_id);
 
-  // 3) Pagos previos + NC vigentes para calcular saldo anterior y saldo insoluto.
-  //    Sin descontar NC el PDF mostraba insoluto = NC (ej. FAC-000003 con NC $450
-  //    aparecía con $450 pendiente aunque el saldo real ya fuera 0).
-  const prev = await query<{ paid: number }>(
-    `SELECT COALESCE(SUM(payment_amount), 0) AS paid
-       FROM payments
-      WHERE invoice_id = $1 AND deleted_at IS NULL AND payment_date < $2
-        AND document_status != 'CANCELLED'`,
-    [payment.invoice_id, payment.payment_date]
-  );
-  const nc = await query<{ credited: number }>(
-    `SELECT COALESCE(SUM(total), 0) AS credited
-       FROM credit_notes
-      WHERE invoice_id = $1 AND deleted_at IS NULL AND status != 'CANCELLED'`,
-    [payment.invoice_id]
-  );
-  const pagadoAntes = Number(prev.rows[0]?.paid) || 0;
-  const acreditado = Number(nc.rows[0]?.credited) || 0;
-  const totalFactura = Number(payment.inv_total);
-  const saldoAnterior = Math.max(0, totalFactura - pagadoAntes - acreditado);
-  const saldoInsoluto = Math.max(0, saldoAnterior - Number(payment.payment_amount));
-  const numParcialidad = Math.max(1, Math.floor(pagadoAntes / Number(payment.payment_amount)) + 1);
+  /* Ya NO se recalculan saldos ni parcialidad aquí.
+   *
+   * Antes se derivaban de los pagos previos de UNA factura. Ahora vienen de
+   * `payment_invoices`, que los guardó tal como se timbraron; recalcularlos hoy
+   * daría cifras distintas a las del XML en cuanto entre otro pago o una nota
+   * de crédito posterior. El papel debe decir lo mismo que el comprobante. */
 
   const [regE, regR] = await Promise.all([
     loadRegimenDesc(company.fiscal_regime),
@@ -157,21 +177,41 @@ export async function generatePaymentPDF(companyId: string, paymentId: string): 
   doc.text('IMP. PAGADO',   cols.pagado.x,  headerY + 5, { width: cols.pagado.w, align: 'right' });
   doc.text('SALDO INSOLUTO',cols.salins.x,  headerY + 5, { width: cols.salins.w, align: 'right' });
 
-  const rowY = headerY + 22;
-  doc.fillColor('#0f172a').font('Helvetica').fontSize(8);
-  doc.text(`${payment.inv_serie}-${String(payment.inv_folio).padStart(6, '0')}`, cols.folio.x, rowY);
-  doc.font('Courier').fontSize(6.5).fillColor('#475569')
-    .text(payment.inv_uuid || '—', cols.uuid.x, rowY, { width: cols.uuid.w });
-  doc.font('Helvetica').fontSize(8).fillColor('#0f172a')
-    .text(payment.currency || 'MXN', cols.moneda.x, rowY);
-  doc.text(String(numParcialidad), cols.nparc.x, rowY, { width: cols.nparc.w, align: 'center' });
-  doc.text(`$ ${fmtMoney(saldoAnterior)}`, cols.salant.x, rowY, { width: cols.salant.w, align: 'right' });
-  doc.font('Helvetica-Bold').fillColor('#15803d')
-    .text(`$ ${fmtMoney(payment.payment_amount)}`, cols.pagado.x, rowY, { width: cols.pagado.w, align: 'right' });
-  doc.font('Helvetica').fillColor(saldoInsoluto > 0 ? '#dc2626' : '#16a34a')
-    .text(`$ ${fmtMoney(saldoInsoluto)}`, cols.salins.x, rowY, { width: cols.salins.w, align: 'right' });
+  /* Una fila por documento. La tabla crece con el número de facturas que
+   * liquida el pago; antes era una sola fila fija. */
+  let rowY = headerY + 22;
+  for (const d of documentos) {
+    const pagado = Number(d.monto) || 0;
+    const salAnt = Number(d.saldo_anterior) || 0;
+    const salIns = Number(d.saldo_insoluto) || 0;
 
-  doc.rect(PAGE_LEFT, headerY, PAGE_RIGHT - PAGE_LEFT, rowY - headerY + 18)
+    doc.fillColor('#0f172a').font('Helvetica').fontSize(8);
+    doc.text(`${d.serie || ''}-${String(d.folio).padStart(6, '0')}`, cols.folio.x, rowY);
+    doc.font('Courier').fontSize(6.5).fillColor('#475569')
+      .text(d.cfdi_uuid || '—', cols.uuid.x, rowY, { width: cols.uuid.w });
+    doc.font('Helvetica').fontSize(8).fillColor('#0f172a')
+      .text(d.currency || payment.currency || 'MXN', cols.moneda.x, rowY);
+    doc.text(String(d.parcialidad ?? 1), cols.nparc.x, rowY, { width: cols.nparc.w, align: 'center' });
+    doc.text(`$ ${fmtMoney(salAnt)}`, cols.salant.x, rowY, { width: cols.salant.w, align: 'right' });
+    doc.font('Helvetica-Bold').fillColor('#15803d')
+      .text(`$ ${fmtMoney(pagado)}`, cols.pagado.x, rowY, { width: cols.pagado.w, align: 'right' });
+    doc.font('Helvetica').fillColor(salIns > 0 ? '#dc2626' : '#16a34a')
+      .text(`$ ${fmtMoney(salIns)}`, cols.salins.x, rowY, { width: cols.salins.w, align: 'right' });
+
+    rowY += 16;
+  }
+
+  /* Con varias facturas se imprime el total, porque la suma de los importes es
+   * justamente lo que el cliente va a cotejar contra su transferencia. */
+  if (documentos.length > 1) {
+    const suma = documentos.reduce((a: number, d: any) => a + (Number(d.monto) || 0), 0);
+    doc.font('Helvetica-Bold').fontSize(8).fillColor('#0f172a')
+      .text(`${documentos.length} facturas`, cols.folio.x, rowY + 2)
+      .text(`$ ${fmtMoney(suma)}`, cols.pagado.x, rowY + 2, { width: cols.pagado.w, align: 'right' });
+    rowY += 16;
+  }
+
+  doc.rect(PAGE_LEFT, headerY, PAGE_RIGHT - PAGE_LEFT, rowY - headerY + 2)
     .lineWidth(0.5).strokeColor('#cbd5e1').stroke();
   doc.fillColor('#000000').strokeColor('#000000');
 

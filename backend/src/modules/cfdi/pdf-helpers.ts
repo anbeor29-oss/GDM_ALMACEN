@@ -240,11 +240,49 @@ export function palabraMoneda(currency = 'MXN'): string {
   return map[currency] || currency;
 }
 
+/**
+ * Cómo cierra el importe con letra.
+ *
+ * "M.N." quiere decir MONEDA NACIONAL, así que ponerlo detrás de una cifra en
+ * euros es una contradicción: el documento dice a la vez que son euros y que
+ * son pesos mexicanos. En moneda extranjera se cierra con la clave ISO, la
+ * misma que ya viaja en el atributo Moneda del CFDI — así el papel y el XML
+ * dicen lo mismo.
+ *
+ * SOBRE LOS CENTAVOS: la fracción NO cambia con la moneda. El "/100" no es una
+ * abreviatura de "centavos", es la parte fraccionaria en centésimos, y el
+ * dólar, el euro y la libra se dividen igual en cien —centavos, céntimos y
+ * peniques—. Lo que cambia es qué unidad se parte, y eso ya lo dice la palabra
+ * de la moneda que va antes.
+ *
+ * Este campo no lo regula el Anexo 20: el SAT no pide importe con letra. Es
+ * costumbre del papel, y la costumbre en divisas es cerrar con la clave ISO.
+ */
+export function sufijoMoneda(currency = 'MXN'): string {
+  const c = String(currency || 'MXN').toUpperCase();
+  return c === 'MXN' ? 'M.N.' : c;
+}
+
+/**
+ * Importe con letra: "<LETRAS> <MONEDA> 00/100 <SUFIJO>".
+ *
+ * VIVE AQUÍ Y EN NINGÚN OTRO LADO. Había dos copias —una para la factura y
+ * otra para notas de crédito y complementos de pago— y al corregir el sufijo
+ * de moneda sólo se arregló una: las facturas en euros quedaron bien y los
+ * complementos siguieron diciendo "M.N.". Una función duplicada no se arregla
+ * dos veces, se arregla una y se olvida la otra.
+ */
 export function montoEnLetra(total: number, currency = 'MXN'): string {
   const entero = Math.floor(total);
   const cent = Math.round((total - entero) * 100);
   const centStr = String(cent).padStart(2, '0');
-  return `${numeroALetras(entero)} ${palabraMoneda(currency)} ${centStr}/100 M.N.`;
+
+  /* "UN MILLÓN DE PESOS", no "UN MILLÓN PESOS". Sólo en millones exactos:
+   * "UN MILLÓN DOSCIENTOS MIL PESOS" no lleva la preposición. */
+  const de = entero >= 1_000_000 && entero % 1_000_000 === 0 ? ' DE' : '';
+
+  return `${numeroALetras(entero)}${de} ${palabraMoneda(currency)} ` +
+         `${centStr}/100 ${sufijoMoneda(currency)}`;
 }
 
 /* ─────────────── catálogos de presentación ─────────────── */
