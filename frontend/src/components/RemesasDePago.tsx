@@ -14,7 +14,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  CalendarCheck, Printer, Check, XCircle, FileSignature, Building2, Trash2,
+  CalendarCheck, Printer, Check, XCircle, FileSignature, Building2, Trash2, Search,
 } from 'lucide-react';
 import api from '@/services/api';
 
@@ -40,6 +40,10 @@ export function RemesasDePago({ canManage }: { canManage: boolean }) {
   const qc = useQueryClient();
   const [supplierId, setSupplierId] = useState('');
   const [seleccion, setSeleccion] = useState<Record<string, boolean>>({});
+  /* Filtro sobre las facturas del proveedor. Con un proveedor de veinte o
+   * treinta facturas, marcar "las tres de septiembre" a base de scroll es
+   * justo donde se marca la de al lado por error. */
+  const [filtroFactura, setFiltroFactura] = useState('');
   const [fechaPago, setFechaPago] = useState(proximoLunes());
   const [notas, setNotas] = useState('');
   const [detalleId, setDetalleId] = useState<string | null>(null);
@@ -67,10 +71,30 @@ export function RemesasDePago({ canManage }: { canManage: boolean }) {
   const runsQ = useQuery({ queryKey: ['payment-runs'], queryFn: () => api.getPaymentRuns() });
   const runs: any[] = runsQ.data?.data?.runs || [];
 
+  /* Lo que se ve después del filtro. Busca por número de factura y por la
+   * nota, que es donde queda escrito el concepto de una compra sin folio. */
+  const visibles = useMemo(() => {
+    const q = filtroFactura.trim().toLowerCase();
+    if (!q) return pendientes;
+    return pendientes.filter((p) =>
+      String(p.invoice_number || '').toLowerCase().includes(q) ||
+      String(p.notes || '').toLowerCase().includes(q)
+    );
+  }, [pendientes, filtroFactura]);
+
+  /* Se elige sobre `pendientes` y NO sobre `visibles`: si alguien marca tres
+   * facturas y luego escribe en el filtro, las tres siguen elegidas aunque
+   * dejen de verse. Perderlas al teclear sería el peor momento para perderlas. */
   const elegidas = useMemo(
     () => pendientes.filter((p) => seleccion[p.id]),
     [pendientes, seleccion]
   );
+  /* Marcar o limpiar de golpe, sobre lo que el filtro está mostrando. */
+  const marcarVisibles = (v: boolean) => {
+    const s2 = { ...seleccion };
+    for (const p of visibles) s2[p.id] = v;
+    setSeleccion(s2);
+  };
   const totalElegido = elegidas.reduce((a, p) => a + Number(p.amount), 0);
 
   const refresh = () => {
@@ -118,7 +142,7 @@ export function RemesasDePago({ canManage }: { canManage: boolean }) {
             <div>
               <label className="block text-xs text-gray-600 mb-1">1 · Proveedor</label>
               <select value={supplierId}
-                onChange={(e) => { setSupplierId(e.target.value); setSeleccion({}); }}
+                onChange={(e) => { setSupplierId(e.target.value); setSeleccion({}); setFiltroFactura(''); }}
                 className="input w-full">
                 <option value="">— Elige un proveedor —</option>
                 {suppliers.map((s) => (
@@ -146,11 +170,48 @@ export function RemesasDePago({ canManage }: { canManage: boolean }) {
           {/* 2 · las facturas que se le deben */}
           {supplierId && (
             <div className="border rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600 flex items-center">
-                2 · Facturas por pagar de este proveedor
-                <span className="ml-auto font-normal">
-                  {pendientes.length} sin programar
-                </span>
+              <div className="bg-gray-50 px-3 py-2 border-b">
+                <div className="text-xs font-semibold text-gray-600 flex items-center">
+                  2 · Facturas por pagar de este proveedor
+                  <span className="ml-auto font-normal">
+                    {filtroFactura
+                      ? `${visibles.length} de ${pendientes.length} sin programar`
+                      : `${pendientes.length} sin programar`}
+                  </span>
+                </div>
+                {pendientes.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <div className="relative flex-1 min-w-[12rem]">
+                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        className="w-full border rounded pl-8 pr-3 py-1.5 text-sm"
+                        placeholder="Filtrar por número de factura o nota…"
+                        value={filtroFactura}
+                        onChange={(e) => setFiltroFactura(e.target.value)}
+                      />
+                    </div>
+                    {canManage && (
+                      <>
+                        <button type="button" onClick={() => marcarVisibles(true)}
+                          className="text-xs px-2 py-1.5 border rounded hover:bg-white">
+                          Marcar {filtroFactura ? 'lo filtrado' : 'todas'}
+                        </button>
+                        <button type="button" onClick={() => marcarVisibles(false)}
+                          className="text-xs px-2 py-1.5 border rounded hover:bg-white">
+                          Limpiar
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+                {/* Se avisa cuando hay elegidas que el filtro dejó fuera: si no,
+                    el total de abajo no cuadraría con lo que se ve. */}
+                {filtroFactura && elegidas.some((p) => !visibles.includes(p)) && (
+                  <p className="text-[11px] text-amber-700 mt-1.5">
+                    Hay facturas marcadas que el filtro no está mostrando. Siguen contando
+                    en el total.
+                  </p>
+                )}
               </div>
               {pendientesQ.isLoading && (
                 <p className="px-3 py-4 text-sm text-gray-500">Cargando…</p>
@@ -160,7 +221,12 @@ export function RemesasDePago({ canManage }: { canManage: boolean }) {
                   Este proveedor no tiene facturas pendientes sin programar.
                 </p>
               )}
-              {pendientes.length > 0 && (
+              {pendientes.length > 0 && visibles.length === 0 && (
+                <p className="px-3 py-6 text-sm text-gray-500 italic text-center">
+                  Ninguna factura de este proveedor coincide con “{filtroFactura}”.
+                </p>
+              )}
+              {visibles.length > 0 && (
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs text-gray-500 border-b">
@@ -172,7 +238,7 @@ export function RemesasDePago({ canManage }: { canManage: boolean }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {pendientes.map((p) => {
+                    {visibles.map((p) => {
                       const vencida = p.bucket === 'OVERDUE';
                       return (
                         <tr key={p.id} className={seleccion[p.id] ? 'bg-emerald-50/50' : ''}>

@@ -255,6 +255,21 @@ function ManualPaymentModal({ onClose, onSaved }: { onClose: () => void; onSaved
         </div>
         <div className="p-5 space-y-4">
           {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded text-sm">{error}</div>}
+
+          {/* PARA QUÉ ES ESTA PANTALLA, Y PARA QUÉ NO.
+              Aquí se captura un pasivo que NO tiene factura en el sistema: un
+              anticipo, una compra sin XML. Pagar varias facturas que ya se
+              recibieron es otra cosa y ya existe —Remesas de pago—, pero quien
+              llega buscándolo aterriza aquí, que es el botón visible. Decirlo
+              cuesta tres renglones y evita capturar a mano un pasivo que ya
+              estaba en la base. */}
+          <div className="bg-sky-50 border border-sky-200 text-sky-900 px-3 py-2 rounded text-xs">
+            Esto es para un pasivo <b>sin factura en el sistema</b> (un anticipo, una compra
+            sin XML). Si lo que quieres es pagar varias facturas que ya recibiste,
+            usa la pestaña <b>Remesas de pago</b>: ahí eliges el proveedor, filtras sus
+            facturas y las juntas en un solo pago.
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor *</label>
             <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="input">
