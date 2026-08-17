@@ -18,6 +18,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { FileUp, Upload, X, Check, ArrowLeft, Users, Truck, UserCog, DollarSign, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
+import { PropuestaDeExpediente } from '@/pages/nomina/PropuestaDeExpediente';
 
 const TYPE_LABEL: Record<string, { label: string; color: string; icon: string }> = {
   CFDI:            { label: 'Factura CFDI 4.0',      color: 'sky',     icon: '📄' },
@@ -54,6 +55,16 @@ export function SuperXMLImportPage() {
     saveCartaPorte: true,
     saveMercancias: true,
     saveNomina: false,
+  });
+
+  /* Recibo de nómina → expediente. Dos pasos a propósito: éste sólo LEE. */
+  const [propuesta, setPropuesta] = useState<any | null>(null);
+  const [errNomina, setErrNomina] = useState('');
+  const proponerNomina = useMutation({
+    mutationFn: () => api.proponerEmpleadoDesdeXml(xml),
+    onSuccess: (r: any) => { setPropuesta(r.data); setErrNomina(''); },
+    onError: (e: any) =>
+      setErrNomina(e?.response?.data?.message || 'No se pudo leer el expediente del recibo'),
   });
 
   const detectMut = useMutation({
@@ -577,7 +588,40 @@ export function SuperXMLImportPage() {
               <p className="text-xs text-slate-500 mt-2 italic">
                 El detalle de percepciones/deducciones no se procesa todavía; solo se guarda para consulta futura.
               </p>
+
+              {/* ── Del recibo al expediente del personal ──────────────────
+                  Un recibo timbrado ya pasó por el SAT: el RFC, la CURP y el
+                  NSS que trae están bien escritos. Recapturarlos a mano es la
+                  forma más fácil de meter el error que después rechaza el
+                  timbrado. Pero NO se da de alta a nadie desde aquí: se abre el
+                  expediente con lo rescatado y alguien confirma. */}
+              <div className="mt-4 border-t pt-3">
+                <button
+                  onClick={() => proponerNomina.mutate()}
+                  disabled={proponerNomina.isPending}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium"
+                >
+                  <UserCog size={15} />
+                  {proponerNomina.isPending ? 'Leyendo el recibo…' : 'Importar al expediente del personal'}
+                </button>
+                <p className="text-xs text-slate-500 mt-2">
+                  Rescata del XML todo lo que sirva para el expediente y lo muestra antes de
+                  guardar nada. El alta del trabajador la confirmas tú.
+                </p>
+                {errNomina && (
+                  <p className="text-xs text-rose-600 mt-2">{errNomina}</p>
+                )}
+              </div>
             </Card>
+          )}
+
+          {/* Lo que se rescató del recibo, para revisarlo antes de dar de alta */}
+          {propuesta && (
+            <PropuestaDeExpediente
+              propuesta={propuesta}
+              onCerrar={() => setPropuesta(null)}
+              onAlta={() => { setPropuesta(null); navigate('/nomina/empleados'); }}
+            />
           )}
 
           <div className="flex justify-end gap-3 pt-4">

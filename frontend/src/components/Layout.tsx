@@ -226,6 +226,27 @@ export function Layout() {
                     />
                   );
                 })()}
+                {/* NÓMINA.
+                    Va después de Compras y antes de Tesorería porque la nómina
+                    es, en la práctica, el pago más grande del mes: se calcula
+                    con la plantilla y termina de verse en el banco. */}
+                {show('nomina') && (
+                  <NavGroup
+                    to="/nomina"
+                    icon={emoji3D('👷')}
+                    label="Nómina"
+                    accent="violet"
+                    open={sidebarOpen}
+                    pathPrefix="/nomina"
+                    children={[
+                      { to: '/nomina',            icon: emoji3D('🏠'), label: 'Dashboard' },
+                      { to: '/nomina/empleados',  icon: emoji3D('👥'), label: 'Empleados' },
+                      { to: '/nomina/calculo',    icon: emoji3D('🧮'), label: 'Nómina' },
+                      { to: '/nomina/parametros', icon: emoji3D('⚙️'), label: 'Parámetros' },
+                      { to: '/nomina/reportes',   icon: emoji3D('📊'), label: 'Reportes' },
+                    ]}
+                  />
+                )}
                 {show('treasury')     && <NavItem to="/treasury"     icon={emoji3D('🏦')} accent="sky"     label="Tesorería"        open={sidebarOpen} />}
                 {/* Auditoría vive junto a Tesorería: las dos miran hacia afuera
                     —una al banco, la otra al SAT— y las dos las revisa la misma

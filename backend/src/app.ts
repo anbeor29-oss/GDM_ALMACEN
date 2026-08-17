@@ -65,6 +65,7 @@ import mensajesRoutes        from './modules/mensajes/mensajes.routes';
 import satDescargaRoutes     from './modules/sat-descarga/descarga.routes';
 import physicalCountRoutes   from './modules/physical-count/physical-count.routes';
 import xmlSuperImportRoutes from './modules/xml-super-import/xml-super-import.routes';
+import nominaRoutes          from './modules/nomina/nomina.routes';
 
 export function createApp(): Express {
   const app = express();
@@ -207,6 +208,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/mensajes`,        mensajesRoutes);
   app.use(`/api/${config.apiVersion}/sat-descarga`,    satDescargaRoutes);
   app.use(`/api/${config.apiVersion}/physical-counts`, physicalCountRoutes);
+  app.use(`/api/${config.apiVersion}/nomina`,          nominaRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);
 

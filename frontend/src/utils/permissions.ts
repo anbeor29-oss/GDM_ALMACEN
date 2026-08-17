@@ -19,13 +19,17 @@ export type ModuleKey =
   | 'dashboard'
   | 'invoices' | 'carta_porte' | 'credit_notes' | 'customers' | 'products'
   | 'xml_reader' | 'inventory' | 'purchasing' | 'suppliers' | 'pos'
-  | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria' | 'mensajes';
+  | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria' | 'mensajes'
+  | 'nomina';
 
 const ALL_MODULES: ModuleKey[] = [
   'dashboard',
   'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
   'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos',
   'treasury', 'reports', 'exchange_rates', 'auditoria', 'mensajes',
+  /* Nómina sólo la alcanza ADMIN_ALL: sueldos, CURP, cuentas bancarias y
+   * órdenes de pensión alimenticia no son "un módulo más". */
+  'nomina',
 ];
 
 /**

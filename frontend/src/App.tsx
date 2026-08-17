@@ -47,6 +47,10 @@ import { PointOfSalePage }            from '@/pages/PointOfSale';
 import { TreasuryPage }               from '@/pages/Treasury';
 import { AuditoriaPage }              from '@/pages/Auditoria';
 import { MensajesPage }               from '@/pages/Mensajes';
+import { NominaDashboardPage }        from '@/pages/nomina/NominaDashboard';
+import { EmpleadosPage }              from '@/pages/nomina/Empleados';
+import { NominaParametrosPage }       from '@/pages/nomina/NominaParametros';
+import { NominaCalculoPage, NominaReportesPage } from '@/pages/nomina/NominaPendiente';
 import { PhysicalCountPage }          from '@/pages/PhysicalCount';
 import { KardexPage }                 from '@/pages/Kardex';
 import { FaltantesPage }              from '@/pages/Faltantes';
@@ -201,6 +205,13 @@ export function App() {
             <Route path="treasury"                        element={<ModuleRoute module="treasury"><TreasuryPage /></ModuleRoute>} />
             <Route path="auditoria"                       element={<ModuleRoute module="auditoria"><AuditoriaPage /></ModuleRoute>} />
             <Route path="mensajes"                        element={<ModuleRoute module="mensajes"><MensajesPage /></ModuleRoute>} />
+            {/* Nómina. El gateo real lo hace el backend (requireModule) — esto
+                sólo evita que la URL escrita a mano pinte una pantalla vacía. */}
+            <Route path="nomina"                          element={<ModuleRoute module="nomina"><NominaDashboardPage /></ModuleRoute>} />
+            <Route path="nomina/empleados"                element={<ModuleRoute module="nomina"><EmpleadosPage /></ModuleRoute>} />
+            <Route path="nomina/calculo"                  element={<ModuleRoute module="nomina"><NominaCalculoPage /></ModuleRoute>} />
+            <Route path="nomina/parametros"               element={<ModuleRoute module="nomina"><NominaParametrosPage /></ModuleRoute>} />
+            <Route path="nomina/reportes"                 element={<ModuleRoute module="nomina"><NominaReportesPage /></ModuleRoute>} />
             <Route path="company"                         element={<CompanyOnlyRoute><CompanyProfilePage /></CompanyOnlyRoute>} />
 
             {/* Módulos de plataforma — SOLO SUPER_ADMIN (guard por URL directa) */}

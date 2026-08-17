@@ -2099,3 +2099,84 @@ quede escrito en el log del próximo arranque.
 Probar en base virgen no prueba producción. Una migración que corre sobre bases
 en estados desconocidos no puede dar por hecho lo que hay — y un arranque no
 debería tratar un dato de apoyo con la misma severidad que el esquema.
+
+---
+
+## 2026-08-17 — Nómina, primera capa: expediente del personal
+
+### De dónde viene
+El sistema de nómina que se integra (`D:\Obsidian\NOM_COM_1\nom_com_v2`) es
+Express 5 + **sql.js** —SQLite compilado a WebAssembly— con las pantallas en
+HTML sueltos de JavaScript plano. ~17,700 líneas, 16 tablas, una sola empresa.
+Nada de eso se pudo portar tal cual.
+
+Dos hallazgos que decidieron el alcance:
+
+1. **El motor de cálculo vive en el navegador.** `calcISPT`, `calcIMSS`,
+   `calcINFONAVIT` y la tarifa del Art. 96 están dentro de `nomina.html`,
+   no en el servidor. En un sistema multiempresa eso es a la vez un problema
+   de corrección y de seguridad: cualquiera puede cambiar su propio ISR desde
+   la consola del navegador.
+2. **El timbrado es simulado.** `POST /api/cfdi/:id/timbrar` dice, textual,
+   "simula timbre PAC". Genera CFDI 4.0 + Nómina 1.2 pre-timbre, sin sello.
+
+### Qué se hizo
+La capa que el resto necesita para existir y que no dependía de ninguna
+decisión pendiente:
+
+* **`companies` NO se duplicó.** El sistema anterior traía su propia tabla de
+  empresas con RFC, régimen, domicilio y CSD en base64. Todo eso ya existe en
+  NEXO. Se le agregaron a `companies` los tres datos que sólo nómina necesita:
+  `registro_patronal`, `prima_riesgo` y el factor de integración
+  (`fi_aguinaldo_dias`, `fi_prima_vac_pct`), con los CHECK de los Arts. 72 LSS,
+  87 y 80 LFT. Se dejan NULL a propósito: los mínimos se PROPONEN en pantalla,
+  no se guardan solos — una empresa que da 30 días de aguinaldo con el mínimo
+  puesto por omisión calcularía mal el SDI sin que nada se viera roto.
+* **`nomina_empleados`** — expediente completo con los campos del CFDI 4.0.
+  Un trabajador NO es un usuario del sistema: el 90 % de la plantilla nunca
+  entra al ERP. Número de empleado y RFC únicos POR EMPRESA (en el sistema
+  anterior eran globales porque atendía a una sola).
+* **Lo que falta no bloquea el alta.** El trabajador entra el lunes y ese día
+  muchas veces no se tiene el NSS. El expediente se guarda incompleto y el
+  servicio dice qué le falta (`faltantes`), porque cada hueco es un timbrado
+  rechazado el día de la primera nómina.
+* **Del recibo timbrado al expediente.** El super lector de XML ahora saca el
+  `nomina12:Receptor` completo, percepciones, deducciones y otros pagos.
+  `POST /xml-super-import/nomina/proponer-empleado` **sólo lee**: devuelve lo
+  rescatado, de dónde salió cada dato y qué falta. El alta va por el endpoint
+  de siempre, con lo que la persona confirmó.
+* **El nombre se parte con la CURP, no a ojo.** El CFDI trae "MARIA DE LOS
+  ANGELES DE LA TORRE GARCIA" en una sola cadena. RENAPO construye las cuatro
+  primeras posiciones de la CURP con reglas fijas, así que se prueban todos los
+  cortes y gana el que las reproduce. Si ninguno cuadra, se marca `incierto` y
+  la pantalla lo pide confirmar.
+* **Nómina sólo la ve ADMIN_ALL.** Sueldos, CURP, cuentas bancarias y órdenes
+  de pensión alimenticia. Abrirlo después a un grupo de RH es un renglón;
+  recoger sueldos que ya se vieron, no.
+* **Cero datos importados**, como se pidió.
+
+### Verificación
+* `npm test` — 17 pruebas del reparto de nombre contra la CURP, verde.
+* `scripts/probar-nomina.ts` contra Postgres real — 19/19: duplicados, RFC de
+  moral rechazado, CURP incompleta, NSS que no trae 11 dígitos, clave fuera del
+  catálogo del SAT, INFONAVIT sin forma de descuento, candado de edición
+  concurrente (409), baja anterior al ingreso, aislamiento entre empresas y los
+  cuatro límites legales de los parámetros patronales.
+* `tsc --noEmit` limpio en los dos lados; `vite build` OK.
+* Endpoints en vivo: `/nomina/catalogos`, `/nomina/parametros` y
+  `/nomina/empleados` responden; un usuario de VENTAS recibe **403**.
+
+### Lo que se encontró probando
+`fecha_baja` volvía como `2026-08-15T06:00:00.000Z`. Una DATE de Postgres llega
+al driver como Date a medianoche local y al serializarse a JSON se convierte a
+UTC — con el servidor en otro huso, la baja del 15 se vuelve el 14. Aquí no hay
+instantes: son fechas de calendario, y el día en que alguien causó baja ante el
+IMSS no puede depender de dónde corre el proceso. Las fechas salen con `TO_CHAR`
+como texto `AAAA-MM-DD`, que además es lo que espera el `<input type="date">`.
+
+### Pendiente, y por qué no se inventó
+El cálculo (periodos, ISR, cuotas, subsidio) y los reportes están en blanco a
+propósito. Dependen de cuatro decisiones que no me tocaba tomar solo: de dónde
+salen las tarifas y la UMA, si el recibo se timbra con el PAC que ya usa la
+facturación, qué periodicidades hacen falta el primer día y qué reportes se usan
+de verdad. Un cálculo de nómina equivocado no se ve roto: se ve como un número.

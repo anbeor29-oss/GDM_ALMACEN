@@ -72,6 +72,43 @@ export interface DetectionResult {
     totalPercepciones?: number;
     totalDeducciones?: number;
     totalOtrosPagos?: number;
+    /* Registro patronal del emisor — el dato que le falta a `companies` para
+     * poder timbrar nómina. Se rescata para poder ofrecerlo. */
+    registroPatronal?: string;
+    /* nomina12:Receptor — el expediente del trabajador tal como quedó en un
+     * recibo ya timbrado. Es la fuente más confiable que hay: si el SAT lo
+     * aceptó, el RFC y la CURP están bien escritos. */
+    trabajador?: {
+      curp?: string;
+      numSeguridadSocial?: string;
+      fechaInicioRelLaboral?: string;
+      antiguedad?: string;
+      tipoContrato?: string;
+      tipoJornada?: string;
+      tipoRegimen?: string;
+      numEmpleado?: string;
+      departamento?: string;
+      puesto?: string;
+      riesgoPuesto?: string;
+      periodicidadPago?: string;
+      banco?: string;
+      cuentaBancaria?: string;
+      salarioBaseCotApor?: number;
+      salarioDiarioIntegrado?: number;
+      claveEntFed?: string;
+      sindicalizado?: string;
+    };
+    percepciones?: Array<{
+      tipo: string; clave: string; concepto: string;
+      gravado: number; exento: number;
+    }>;
+    deducciones?: Array<{
+      tipo: string; clave: string; concepto: string; importe: number;
+    }>;
+    otrosPagos?: Array<{
+      tipo: string; clave: string; concepto: string; importe: number;
+      subsidioCausado?: number;
+    }>;
   };
   xmlBlob: string;
   xmlSha256: string;
@@ -110,6 +147,87 @@ function extractMercanciasFromCP(cp: any) {
     valorMercancia: num(attr(m, 'ValorMercancia')),
     moneda:         attr(m, 'Moneda') || 'MXN',
   })).filter(m => m.claveSat && m.descripcion);
+}
+
+/**
+ * Saca del complemento de nómina TODO lo que sirva para armar un expediente.
+ *
+ * POR QUÉ VALE LA PENA LEERLO ENTERO
+ * Un recibo timbrado ya pasó por el SAT y por el PAC: el RFC, la CURP y el NSS
+ * que trae están bien escritos, y la fecha de inicio de la relación laboral es
+ * la que la autoridad tiene registrada. Recapturar eso a mano es la forma más
+ * fácil de introducir un error que después rechaza el timbrado.
+ *
+ * Lo que se lee aquí NO se guarda solo: se propone. Quien decide si se da de
+ * alta al trabajador —y con qué datos— es la persona, no el importador.
+ */
+function extractNomina(n: any) {
+  const receptor  = get(n, 'nomina12:Receptor', 'Receptor');
+  const emisorNom = get(n, 'nomina12:Emisor', 'Emisor');
+  const percs     = get(n, 'nomina12:Percepciones', 'Percepciones');
+  const deducs    = get(n, 'nomina12:Deducciones', 'Deducciones');
+  const otros     = get(n, 'nomina12:OtrosPagos', 'OtrosPagos');
+
+  const percepciones = toArr(get(percs, 'nomina12:Percepcion', 'Percepcion')).map((p: any) => ({
+    tipo:     String(attr(p, 'TipoPercepcion') || ''),
+    clave:    String(attr(p, 'Clave') || ''),
+    concepto: String(attr(p, 'Concepto') || ''),
+    gravado:  num(attr(p, 'ImporteGravado')) ?? 0,
+    exento:   num(attr(p, 'ImporteExento')) ?? 0,
+  }));
+
+  const deducciones = toArr(get(deducs, 'nomina12:Deduccion', 'Deduccion')).map((d: any) => ({
+    tipo:     String(attr(d, 'TipoDeduccion') || ''),
+    clave:    String(attr(d, 'Clave') || ''),
+    concepto: String(attr(d, 'Concepto') || ''),
+    importe:  num(attr(d, 'Importe')) ?? 0,
+  }));
+
+  const otrosPagos = toArr(get(otros, 'nomina12:OtroPago', 'OtroPago')).map((o: any) => {
+    const sub = get(o, 'nomina12:SubsidioAlEmpleo', 'SubsidioAlEmpleo');
+    return {
+      tipo:     String(attr(o, 'TipoOtroPago') || ''),
+      clave:    String(attr(o, 'Clave') || ''),
+      concepto: String(attr(o, 'Concepto') || ''),
+      importe:  num(attr(o, 'Importe')) ?? 0,
+      subsidioCausado: sub ? num(attr(sub, 'SubsidioCausado')) : undefined,
+    };
+  });
+
+  return {
+    tipoNomina:        attr(n, 'TipoNomina'),
+    fechaPago:         attr(n, 'FechaPago'),
+    fechaInicialPago:  attr(n, 'FechaInicialPago'),
+    fechaFinalPago:    attr(n, 'FechaFinalPago'),
+    numDiasPagados:    num(attr(n, 'NumDiasPagados')),
+    totalPercepciones: num(attr(n, 'TotalPercepciones')),
+    totalDeducciones:  num(attr(n, 'TotalDeducciones')),
+    totalOtrosPagos:   num(attr(n, 'TotalOtrosPagos')),
+    registroPatronal:  emisorNom ? attr(emisorNom, 'RegistroPatronal') : undefined,
+    trabajador: receptor ? {
+      curp:                   attr(receptor, 'Curp'),
+      numSeguridadSocial:     attr(receptor, 'NumSeguridadSocial'),
+      fechaInicioRelLaboral:  attr(receptor, 'FechaInicioRelLaboral'),
+      antiguedad:             attr(receptor, 'Antigüedad') || attr(receptor, 'Antiguedad'),
+      tipoContrato:           attr(receptor, 'TipoContrato'),
+      tipoJornada:            attr(receptor, 'TipoJornada'),
+      tipoRegimen:            attr(receptor, 'TipoRegimen'),
+      numEmpleado:            attr(receptor, 'NumEmpleado'),
+      departamento:           attr(receptor, 'Departamento'),
+      puesto:                 attr(receptor, 'Puesto'),
+      riesgoPuesto:           attr(receptor, 'RiesgoPuesto'),
+      periodicidadPago:       attr(receptor, 'PeriodicidadPago'),
+      banco:                  attr(receptor, 'Banco'),
+      cuentaBancaria:         attr(receptor, 'CuentaBancaria'),
+      salarioBaseCotApor:     num(attr(receptor, 'SalarioBaseCotApor')),
+      salarioDiarioIntegrado: num(attr(receptor, 'SalarioDiarioIntegrado')),
+      claveEntFed:            attr(receptor, 'ClaveEntFed'),
+      sindicalizado:          attr(receptor, 'Sindicalizado'),
+    } : undefined,
+    percepciones,
+    deducciones,
+    otrosPagos,
+  };
 }
 
 /**
@@ -170,20 +288,8 @@ export async function detect(xmlContent: string): Promise<DetectionResult> {
     };
   });
 
-  // Nómina metadata
-  let nomina;
-  if (nominaNode) {
-    nomina = {
-      tipoNomina:         attr(nominaNode, 'TipoNomina'),
-      fechaPago:          attr(nominaNode, 'FechaPago'),
-      fechaInicialPago:   attr(nominaNode, 'FechaInicialPago'),
-      fechaFinalPago:     attr(nominaNode, 'FechaFinalPago'),
-      numDiasPagados:     num(attr(nominaNode, 'NumDiasPagados')),
-      totalPercepciones:  num(attr(nominaNode, 'TotalPercepciones')),
-      totalDeducciones:   num(attr(nominaNode, 'TotalDeducciones')),
-      totalOtrosPagos:    num(attr(nominaNode, 'TotalOtrosPagos')),
-    };
-  }
+  // Nómina — metadata del recibo + expediente del trabajador
+  const nomina = nominaNode ? extractNomina(nominaNode) : undefined;
 
   return {
     type,

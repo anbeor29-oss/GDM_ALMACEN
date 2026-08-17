@@ -33,7 +33,9 @@ import { ConflictError, NotFoundError } from '../middleware/errorHandler';
  * Lista blanca explícita: el nombre de la tabla se interpola en el SQL —no
  * puede ir como parámetro— así que sólo pueden llegar valores de aquí.
  */
-const TABLAS = ['invoices', 'customers', 'products', 'purchase_orders'] as const;
+const TABLAS = [
+  'invoices', 'customers', 'products', 'purchase_orders', 'nomina_empleados',
+] as const;
 export type TablaConEdicion = typeof TABLAS[number];
 
 /** Nombre legible para el mensaje de error. */
@@ -42,6 +44,7 @@ const COMO_SE_LLAMA: Record<TablaConEdicion, string> = {
   customers: 'el cliente',
   products: 'el producto',
   purchase_orders: 'la orden de compra',
+  nomina_empleados: 'el expediente del trabajador',
 };
 
 /**

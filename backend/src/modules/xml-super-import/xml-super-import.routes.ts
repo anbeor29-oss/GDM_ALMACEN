@@ -18,6 +18,8 @@ import * as vehiculosSvc from '../carta-porte/vehiculos.service';
 import * as aseguradorasSvc from '../carta-porte/aseguradoras.service';
 import * as operadoresSvc from '../carta-porte/operadores.service';
 import * as mercanciasSvc from '../carta-porte/mercancias.service';
+import * as nominaImport from '../nomina/importar-xml.service';
+import { requireModule } from '../../middleware/permissions';
 import { pool } from '../../config/database';
 
 const router = Router();
@@ -35,6 +37,32 @@ router.post('/detect', asyncHandler(async (req: Request, res: Response) => {
   const dedup = await svc.checkDuplicates(companyId(req), det);
   res.json({ detection: det, duplicates: dedup });
 }));
+
+/* ═══════════ DEL RECIBO DE NÓMINA AL EXPEDIENTE DEL TRABAJADOR ═══════════
+ *
+ * Este endpoint SÓLO LEE. Devuelve lo que se rescató del recibo y ahí se
+ * detiene; el alta ocurre por POST /nomina/empleados, con los datos que la
+ * persona haya confirmado en pantalla —que pueden no ser los propuestos—.
+ *
+ * Partirlo así no es ceremonia: un importador que lee y da de alta en el mismo
+ * golpe hace exactamente lo que se pidió evitar, crear al trabajador sin
+ * preguntar. Y reusar el alta de siempre evita tener dos caminos distintos para
+ * meter gente a la plantilla, que es como terminan divergiendo las validaciones.
+ *
+ * El acceso va cerrado con requireModule('nomina') aunque cuelgue del lector de
+ * XML: quien puede leer facturas no por eso puede ver sueldos.
+ */
+router.post(
+  '/nomina/proponer-empleado',
+  requireModule('nomina'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const xml = req.body?.xml;
+    if (!xml || typeof xml !== 'string') throw new ValidationError('Debe enviar { xml: "…" }');
+    const det = await svc.detect(xml);
+    const propuesta = await nominaImport.proponerDesdeXml(companyId(req), det);
+    res.json({ success: true, data: propuesta });
+  })
+);
 
 /**
  * Aplicación en 2 fases (según instrucción del usuario "pregúntame"):

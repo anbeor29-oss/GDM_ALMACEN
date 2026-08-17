@@ -1054,6 +1054,70 @@ class APIClient {
     return r.data;
   }
 
+  /* ───────────── Nómina ───────────── */
+  async getNominaCatalogos() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/catalogos');
+    return r.data;
+  }
+  async getNominaParametros() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/parametros');
+    return r.data;
+  }
+  async guardarNominaParametros(datos: any) {
+    const r = await this.client.put<APIResponse<any>>('/nomina/parametros', datos);
+    return r.data;
+  }
+  async getNominaPuestos() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/puestos');
+    return r.data;
+  }
+  async crearNominaPuesto(nombre: string, riesgo_puesto?: string) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/puestos', { nombre, riesgo_puesto });
+    return r.data;
+  }
+  async getEmpleados(params: { buscar?: string; incluirBajas?: boolean } = {}) {
+    const r = await this.client.get<APIResponse<any>>('/nomina/empleados', {
+      params: { buscar: params.buscar || undefined, incluirBajas: params.incluirBajas || undefined },
+    });
+    return r.data;
+  }
+  async getEmpleadosResumen() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/empleados/resumen');
+    return r.data;
+  }
+  async getSiguienteNumEmpleado() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/empleados/siguiente-numero');
+    return r.data;
+  }
+  async getEmpleado(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/empleados/${id}`);
+    return r.data;
+  }
+  async crearEmpleado(datos: any) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/empleados', datos);
+    return r.data;
+  }
+  async actualizarEmpleado(id: string, datos: any) {
+    const r = await this.client.put<APIResponse<any>>(`/nomina/empleados/${id}`, datos);
+    return r.data;
+  }
+  async darDeBajaEmpleado(id: string, fecha_baja: string, motivo?: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/empleados/${id}/baja`, { fecha_baja, motivo });
+    return r.data;
+  }
+  async reingresarEmpleado(id: string, fecha_reingreso: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/empleados/${id}/reingreso`, { fecha_reingreso });
+    return r.data;
+  }
+  /**
+   * Lector de XML → expediente. Lee y propone; NO da de alta a nadie: el alta
+   * va por crearEmpleado(), con lo que la persona confirmó en pantalla.
+   */
+  async proponerEmpleadoDesdeXml(xml: string) {
+    const r = await this.client.post<APIResponse<any>>('/xml-super-import/nomina/proponer-empleado', { xml });
+    return r.data;
+  }
+
   /* ───────────── Descarga masiva del SAT ───────────── */
   async getSatCredencial() {
     const r = await this.client.get<APIResponse<any>>('/sat-descarga/credencial');
