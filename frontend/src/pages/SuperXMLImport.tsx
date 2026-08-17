@@ -46,8 +46,17 @@ export function SuperXMLImportPage() {
   const [batchSel, setBatchSel] = useState<any>({}); // { parties: Set<key>, ... }
   const [batchApplied, setBatchApplied] = useState<any | null>(null);
   const [batchApplying, setBatchApplying] = useState(false);
-  /* Recibos de nómina que venían en el lote — se informan, no se importan. */
+  /* Recibos de nómina del lote: se revisan y SE DAN DE ALTA desde aquí.
+   *
+   * Antes sólo se informaba de ellos y se mandaba a abrir cada recibo por
+   * separado. Con cinco archivos eso ya era absurdo, y el resultado del lote
+   * salía "creados 0, omitidos 0, errores 0" sin explicar por qué: los
+   * trabajadores no entraban en ninguna de las listas de arriba, y no había
+   * dónde marcarlos. */
   const [batchNominas, setBatchNominas] = useState<Array<{ rfc?: string; nombre?: string; archivo: string }>>([]);
+  const [nominaRevision, setNominaRevision] = useState<any | null>(null);
+  const [nominaSel, setNominaSel] = useState<Record<string, boolean>>({});
+  const [nominaError, setNominaError] = useState('');
 
   // Decisiones del usuario en la fase de preview
   const [decisions, setDecisions] = useState({
@@ -155,6 +164,8 @@ export function SuperXMLImportPage() {
     /* Los recibos de nómina del lote no crean terceros: se listan aparte para
      * decir cuántos venían y a dónde hay que ir a darlos de alta. */
     const nominasDelLote: Array<{ rfc?: string; nombre?: string; archivo: string }> = [];
+    /* El texto de los recibos, para pedir la revisión de expedientes en bloque. */
+    const xmlsDeNomina: Array<{ nombre: string; xml: string }> = [];
 
     const norm = (s: string) => String(s || '').toUpperCase().trim().replace(/\s+/g, ' ');
 
@@ -177,6 +188,7 @@ export function SuperXMLImportPage() {
           nominasDelLote.push({
             rfc: d.receptor?.rfc, nombre: d.receptor?.nombre, archivo: q[i].file.name,
           });
+          xmlsDeNomina.push({ nombre: q[i].file.name, xml: xmlText });
         }
         // parties
         if (!dEsNomina && d.emisor?.rfc && !parties.has(d.emisor.rfc)) {
@@ -281,6 +293,32 @@ export function SuperXMLImportPage() {
      * dónde ir. Meterlos en `preview` los volvería a convertir en casillas
      * marcables, que es el error que se está corrigiendo. */
     setBatchNominas(nominasDelLote);
+
+    /* Lo que trae cada recibo, listo para revisar y dar de alta sin salir de
+     * aquí. Sólo LEE: agrupa por persona, se queda con el recibo más reciente y
+     * reparte números de empleado sin que choquen. */
+    if (xmlsDeNomina.length > 0) {
+      try {
+        const rev = await api.revisarEmpleadosDeNomina(xmlsDeNomina);
+        const d: any = rev.data;
+        setNominaRevision(d);
+        const m: Record<string, boolean> = {};
+        for (const t of d.trabajadores) if (t.estado === 'nuevo') m[t.archivo] = true;
+        setNominaSel(m);
+        setNominaError('');
+      } catch (e: any) {
+        setNominaRevision(null);
+        setNominaError(
+          e?.response?.data?.message ||
+          'No se pudieron leer los expedientes de los recibos de nómina.'
+        );
+      }
+    } else {
+      setNominaRevision(null);
+      setNominaSel({});
+      setNominaError('');
+    }
+
     setBatchPreview(preview);
     setBatchSel(initSel);
     setBatchRunning(false);
@@ -310,7 +348,32 @@ export function SuperXMLImportPage() {
         operadores:   pick('operadores'),
       };
       const res = await api.xmlSuperApplySelected(payload);
-      setBatchApplied(res);
+
+      /* Los trabajadores marcados se dan de alta en la misma pasada y su
+       * resultado se suma al del lote. Si se reportaran aparte, el resumen
+       * volvería a decir "creados 0" con cinco expedientes recién creados. */
+      const elegidos = (nominaRevision?.trabajadores || [])
+        .filter((t: any) => t.estado === 'nuevo' && nominaSel[t.archivo]);
+      let altaNomina: any = null;
+      if (elegidos.length > 0) {
+        try {
+          const r = await api.altaDeEmpleadosEnBloque(
+            elegidos.map((t: any) => ({ archivo: t.archivo, datos: t.propuesta.datos }))
+          );
+          altaNomina = r.data;
+        } catch (e: any) {
+          altaNomina = {
+            creados: 0, fallidos: elegidos.length,
+            altas: elegidos.map((t: any) => ({
+              ok: false,
+              nombre: [t.propuesta.datos.nombre, t.propuesta.datos.apellido_pat].filter(Boolean).join(' '),
+              rfc: t.propuesta.datos.rfc,
+              motivo: e?.response?.data?.message || 'No se pudo dar de alta',
+            })),
+          };
+        }
+      }
+      setBatchApplied({ ...res, altaNomina });
     } catch (e: any) {
       setErr(e?.response?.data?.message || e?.message || 'Error al importar');
     } finally {
@@ -408,31 +471,129 @@ export function SuperXMLImportPage() {
             <b>Preview consolidado</b> — los ítems marcados en verde <span className="text-emerald-700">✓ ya existen</span> en tu BD y NO se re-importan por default. Marca/desmarca los checkboxes para elegir qué subir.
           </div>
 
-          {/* Recibos de nómina del lote: se informan, no se importan como
-              terceros. Antes caían en la lista de arriba y se daban de alta
-              como clientes con un clic. */}
-          {batchNominas.length > 0 && (
-            <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-sm text-violet-900">
-              <p className="font-semibold flex items-center gap-2">
-                <UserCog size={15} /> {batchNominas.length} recibo(s) de nómina en el lote
+          {/* ── TRABAJADORES DE LOS RECIBOS DE NÓMINA ──
+              Se revisan y se dan de alta AQUÍ. No entran en las listas de
+              abajo: el receptor de un recibo de nómina es el trabajador, no un
+              cliente, y el emisor es esta misma empresa. */}
+          {nominaError && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">
+              <p className="font-semibold">
+                Se leyeron {batchNominas.length} recibo(s) de nómina, pero no se pudo armar el expediente:
               </p>
-              <p className="text-xs mt-1">
-                No entran en las listas de arriba: el receptor de un recibo de nómina es el
-                <b> trabajador</b>, no un cliente, y el emisor es esta misma empresa. Para darlos
-                de alta, abre cada recibo por separado y usa
-                <b> “Importar al expediente del personal”</b>, que muestra lo que rescató y
-                pregunta antes de crear a nadie.
-              </p>
-              <ul className="mt-2 space-y-0.5 text-xs">
-                {batchNominas.map((n, i) => (
-                  <li key={i} className="font-mono">
-                    {n.nombre || '—'} <span className="text-violet-600">{n.rfc}</span>
-                    <span className="text-violet-400"> · {n.archivo}</span>
-                  </li>
-                ))}
-              </ul>
+              <p className="mt-1">{nominaError}</p>
             </div>
           )}
+
+          {nominaRevision && nominaRevision.trabajadores.length > 0 && (
+            <div className="bg-white border border-violet-200 rounded-lg overflow-hidden">
+              <div className="bg-violet-50 px-4 py-2.5 border-b border-violet-200">
+                <p className="font-semibold text-sm text-violet-900 flex items-center gap-2">
+                  <UserCog size={16} /> Trabajadores de los recibos de nómina
+                  <span className="ml-auto font-normal text-xs">
+                    {nominaRevision.resumen.archivos} recibo(s) ·{' '}
+                    {nominaRevision.resumen.personas} persona(s) ·{' '}
+                    {nominaRevision.resumen.nuevos} por dar de alta
+                    {nominaRevision.resumen.yaExisten > 0 && ` · ${nominaRevision.resumen.yaExisten} ya estaban`}
+                  </span>
+                </p>
+                <p className="text-[11px] text-violet-700 mt-0.5">
+                  Si la misma persona viene en varios recibos se cuenta una vez, con los datos
+                  del más reciente. Nada se guarda hasta que le des a importar.
+                </p>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b">
+                  <tr className="text-left text-xs text-slate-500">
+                    <th className="px-3 py-1.5 w-8"></th>
+                    <th className="px-3 py-1.5">Trabajador</th>
+                    <th className="px-3 py-1.5">Núm.</th>
+                    <th className="px-3 py-1.5">Puesto</th>
+                    <th className="px-3 py-1.5 text-right">Salario diario</th>
+                    <th className="px-3 py-1.5 text-right">SDI</th>
+                    <th className="px-3 py-1.5">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {nominaRevision.trabajadores.map((t: any) => {
+                    const d = t.propuesta?.datos || {};
+                    const nombre = [d.nombre, d.apellido_pat, d.apellido_mat].filter(Boolean).join(' ');
+                    const dedujo = t.propuesta?.origen?.apellido_pat === 'deducido';
+                    const dinero = (v: any) =>
+                      v === undefined || v === null || v === ''
+                        ? '—'
+                        : Number(v).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+                    return (
+                      <tr key={t.archivo} className={
+                        t.estado === 'error' ? 'bg-amber-50/50'
+                          : t.estado === 'existe' ? 'bg-slate-50/60 text-slate-500'
+                          : nominaSel[t.archivo] ? 'bg-emerald-50/40' : ''
+                      }>
+                        <td className="px-3 py-1.5">
+                          {t.estado === 'nuevo' && (
+                            <input type="checkbox" checked={!!nominaSel[t.archivo]}
+                              onChange={(e) => setNominaSel({ ...nominaSel, [t.archivo]: e.target.checked })}
+                              className="rounded border-slate-300" />
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          {t.estado === 'error' ? (
+                            <span className="text-slate-500 italic text-xs">{t.archivo}</span>
+                          ) : (
+                            <>
+                              <p className="font-medium text-slate-900">
+                                {nombre || t.propuesta?.yaExiste?.nombre_completo}
+                              </p>
+                              <p className="text-[11px] text-slate-500 font-mono">{d.rfc || ''}</p>
+                              {dedujo && (
+                                <p className="text-[11px] text-amber-700">
+                                  el reparto del nombre se dedujo — revísalo después
+                                </p>
+                              )}
+                              {t.recibos > 1 && (
+                                <p className="text-[11px] text-slate-400">
+                                  {t.recibos} recibos · se usa el más reciente
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 font-mono text-xs">{d.num_empleado || '—'}</td>
+                        <td className="px-3 py-1.5 text-xs">{d.puesto || '—'}</td>
+                        <td className="px-3 py-1.5 text-right text-xs">{dinero(d.salario_diario)}</td>
+                        <td className="px-3 py-1.5 text-right text-xs">{dinero(d.salario_diario_integrado)}</td>
+                        <td className="px-3 py-1.5 text-xs">
+                          {t.estado === 'nuevo' && (
+                            t.propuesta?.faltantes?.length
+                              ? <span className="text-amber-700">falta: {t.propuesta.faltantes.join(', ')}</span>
+                              : <span className="text-emerald-700">completo</span>
+                          )}
+                          {t.estado === 'existe' && <span>ya estaba en la plantilla</span>}
+                          {t.estado === 'error' && <span className="text-amber-800">{t.motivo}</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {(() => {
+                const todos = new Set<string>();
+                for (const t of nominaRevision.trabajadores) {
+                  for (const a of t.propuesta?.avisos || []) todos.add(a);
+                }
+                if (todos.size === 0) return null;
+                return (
+                  <div className="px-4 py-2 bg-amber-50 border-t border-amber-200 space-y-1">
+                    {[...todos].map((a, i2) => (
+                      <p key={i2} className="text-[11px] text-amber-900 flex items-start gap-1.5">
+                        <AlertTriangle size={12} className="mt-0.5 shrink-0" /> {a}
+                      </p>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
           <BatchSection title="👥 Emisores / Receptores → clientes/proveedores" items={batchPreview.parties} sel={batchSel.parties} onToggle={(k) => toggleSel('parties', k)} renderItem={(p: any) => (
             <>
               <div className="text-sm"><b>{p.nombre || '—'}</b> <span className="text-xs font-mono text-slate-500">{p.rfc}</span></div>
@@ -494,8 +655,63 @@ export function SuperXMLImportPage() {
             <div className="p-3 bg-red-50 rounded border border-red-200"><div className="text-xs text-red-600">ERRORES</div><div className="text-2xl font-bold text-red-700">{batchApplied.summary.errores}</div></div>
           </div>
           {(batchApplied.errors || []).map((e: string, i: number) => <p key={i} className="text-xs text-red-600">⚠ {e}</p>)}
+
+          {/* LOS TRABAJADORES, UNO POR UNO.
+              Los contadores de arriba son de catálogos; sin este bloque, un lote
+              de puros recibos de nómina terminaba en "creados 0, omitidos 0,
+              errores 0" aunque se hubieran dado de alta cinco expedientes — o
+              aunque hubieran fallado los cinco, sin decir por qué. */}
+          {batchApplied.altaNomina && (
+            <div className="mt-4 border border-violet-200 rounded-lg overflow-hidden">
+              <div className="bg-violet-50 px-4 py-2 border-b border-violet-200">
+                <p className="text-sm font-semibold text-violet-900 flex items-center gap-2">
+                  <UserCog size={15} />
+                  {batchApplied.altaNomina.creados} trabajador(es) dados de alta
+                  {batchApplied.altaNomina.fallidos > 0 &&
+                    ` · ${batchApplied.altaNomina.fallidos} no se pudieron`}
+                </p>
+              </div>
+              <table className="w-full text-sm">
+                <tbody className="divide-y">
+                  {batchApplied.altaNomina.altas.map((a: any, i: number) => (
+                    <tr key={i} className={a.ok ? '' : 'bg-rose-50/50'}>
+                      <td className="px-3 py-1.5 w-8">
+                        {a.ok
+                          ? <Check size={15} className="text-emerald-600" />
+                          : <AlertTriangle size={15} className="text-rose-600" />}
+                      </td>
+                      <td className="px-3 py-1.5 font-medium">{a.nombre || '—'}</td>
+                      <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{a.rfc}</td>
+                      <td className="px-3 py-1.5 text-xs">
+                        {a.ok
+                          ? <span className="text-emerald-700">empleado {a.num_empleado}</span>
+                          : <span className="text-rose-700">{a.motivo}</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {batchApplied.altaNomina.creados > 0 && (
+                <div className="px-4 py-2 bg-slate-50 border-t text-xs text-slate-600">
+                  Quedan en <button onClick={() => navigate('/nomina/empleados')}
+                    className="text-primary underline">Nómina → Empleados</button>.
+                  Ahí se completa lo que el recibo no traía.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Cuando el lote era de puros recibos y no se marcó a nadie, decirlo:
+              un resumen en ceros sin explicación es lo que hubo antes. */}
+          {!batchApplied.altaNomina && batchNominas.length > 0 && (
+            <p className="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              El lote traía {batchNominas.length} recibo(s) de nómina y no se marcó a ningún
+              trabajador, así que no se dio de alta a nadie.
+            </p>
+          )}
+
           <div className="mt-4 flex justify-end">
-            <button onClick={() => { setBatchQueue([]); setBatchPreview(null); setBatchSel({}); setBatchApplied(null); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">
+            <button onClick={() => { setBatchQueue([]); setBatchPreview(null); setBatchSel({}); setBatchApplied(null); setNominaRevision(null); setNominaSel({}); setBatchNominas([]); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">
               Nuevo lote
             </button>
           </div>

@@ -214,36 +214,46 @@ export async function proponerDesdeXml(
   del('entidad_federativa', t.claveEntFed);
   del('banco_clave', t.banco);
   del('cuenta_clabe', t.cuentaBancaria ? String(t.cuentaBancaria).replace(/\s/g, '') : undefined);
-  del('salario_diario_integrado', t.salarioDiarioIntegrado);
   del('tipo_nomina', det.nomina.tipoNomina);
   /* El CP fiscal del receptor sí viene en el CFDI 4.0, en el comprobante y no
    * en el complemento. Es justo el dato que el SAT valida al timbrar. */
   del('codigo_postal', det.receptor?.domicilioFiscal);
 
-  /* El SBC (SalarioBaseCotApor) es lo que se le reportó al IMSS. NO es el
-   * salario diario del contrato: puede traer ya la integración y viene topado
-   * a 25 UMA. Se propone como SBC, no como salario, y se dice por qué. */
-  if (t.salarioBaseCotApor !== undefined) {
-    del('sbc', t.salarioBaseCotApor);
-    avisos.push(
-      'El XML trae el salario base de cotización que se le reportó al IMSS, no el ' +
-      'salario diario del contrato. El salario diario hay que capturarlo: el SBC ' +
-      'viene topado a 25 UMA y en sueldos altos no coincide.'
-    );
-  }
+  /* ── LOS DOS SUELDOS ─────────────────────────────────────────────────────
+   *
+   * El complemento trae dos y sólo estos dos importan para el expediente:
+   *
+   *   SalarioBaseCotApor     → salario diario
+   *   SalarioDiarioIntegrado → salario diario integrado
+   *
+   * Antes el primero se guardaba en un campo `sbc` aparte y el salario diario
+   * quedaba vacío, así que TODOS los expedientes importados nacían señalados
+   * como incompletos por un dato que el recibo sí traía. Se hablaba además de
+   * un tercer concepto —el SBC— que sólo servía para confundir la pantalla.
+   *
+   * Cuando el recibo trae uno solo, sirve para los dos campos: es lo que el
+   * patrón reportó y es con lo que se le viene calculando. Se marca `deducido`
+   * el que se copió, para que se vea que no venía por separado. */
+  const sd = t.salarioBaseCotApor;
+  const sdi = t.salarioDiarioIntegrado;
+  if (sd !== undefined && sd !== null) del('salario_diario', sd);
+  else if (sdi !== undefined && sdi !== null) del('salario_diario', sdi, 'deducido');
+
+  if (sdi !== undefined && sdi !== null) del('salario_diario_integrado', sdi);
+  else if (sd !== undefined && sd !== null) del('salario_diario_integrado', sd, 'deducido');
 
   del('regimen_fiscal', '605', 'omision');
   del('uso_cfdi', det.receptor?.usoCfdi || 'CN01', det.receptor?.usoCfdi ? 'xml' : 'omision');
 
-  /* La zona salarial NO viene en el CFDI y cambia la exención de ISR e IMSS.
-   * Se deja en 'general' y se avisa, en vez de deducirla del estado: hay
-   * municipios de frontera y municipios que no lo son en el mismo estado. */
+  /* ZONA SALARIAL: SIEMPRE GENERAL (centro del país).
+   *
+   * No viene en el CFDI y no se puede deducir del estado —hay municipios de
+   * frontera y municipios que no lo son dentro del mismo estado—. La empresa
+   * confirmó que toda su plantilla es de zona general, así que se fija y se
+   * deja de preguntar. Si algún día contrata en la franja fronteriza norte, se
+   * cambia en el expediente: mueve el salario mínimo aplicable y con él la
+   * exención de ISR y la cuota obrera del IMSS. */
   del('zona_geografica', 'general', 'omision');
-  avisos.push(
-    'La zona salarial no viene en el XML y se dejó en "general". Si el trabajador ' +
-    'está en la franja fronteriza norte hay que cambiarla: mueve el salario mínimo ' +
-    'aplicable y con él la exención de ISR y la cuota obrera del IMSS.'
-  );
 
   /* Si el XML trae descuento de INFONAVIT (D004/D005 del c_TipoDeduccion) se
    * dice, pero NO se llena solo: el importe de un recibo es de ESE periodo, y
@@ -268,12 +278,19 @@ export async function proponerDesdeXml(
     );
   }
 
+  /* Lo que de verdad falta, no lo que "convendría revisar".
+   *
+   * El salario diario estaba aquí SIEMPRE, aunque el recibo lo trajera: con eso
+   * todos los expedientes importados nacían marcados como incompletos y la
+   * señal dejaba de significar nada. Ahora sólo se lista lo que en efecto no
+   * llegó. */
   const faltantes: string[] = [];
   if (!datos.nss) faltantes.push('NSS');
   if (!datos.codigo_postal) faltantes.push('código postal fiscal');
   if (!datos.entidad_federativa) faltantes.push('entidad federativa');
   if (!datos.tipo_jornada) faltantes.push('tipo de jornada');
-  faltantes.push('salario diario del contrato');
+  if (!datos.salario_diario) faltantes.push('salario diario');
+  if (!datos.salario_diario_integrado) faltantes.push('salario diario integrado');
 
   if (!datos.num_empleado) {
     datos.num_empleado = await empleados.siguienteNumero(companyId);

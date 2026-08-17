@@ -50,7 +50,7 @@ const VACIO: Record<string, any> = {
   tipo_contrato: '01', tipo_regimen: '02', tipo_jornada: '',
   periodicidad_pago: '04', tipo_nomina: 'O',
   entidad_federativa: '', zona_geografica: 'general',
-  salario_diario: '', salario_diario_integrado: '', sbc: '',
+  salario_diario: '', salario_diario_integrado: '',
   banco_clave: '', cuenta_clabe: '',
   tiene_infonavit: false, infonavit_num_credito: '',
   infonavit_tipo_descuento: '', infonavit_descuento: '', infonavit_seguro_danos: '',
@@ -258,9 +258,14 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                   Cambia el salario mínimo aplicable, y con él la exención de ISR y la cuota obrera.
                 </p>
               </div>
+              {/* Sólo estos dos sueldos. El "salario base de cotización" existía
+                  aquí como un tercer campo y no servía más que para confundir:
+                  el complemento de nómina trae SalarioBaseCotApor —que es el
+                  diario— y SalarioDiarioIntegrado, y con esos dos se calcula
+                  todo. La columna sigue en la base para no perder lo que ya se
+                  hubiera capturado. */}
               <Campo k="salario_diario" label="Salario diario *" tipo="number" step="0.01" />
-              <Campo k="salario_diario_integrado" label="Salario diario integrado" tipo="number" step="0.01" />
-              <Campo k="sbc" label="Salario base de cotización" tipo="number" step="0.01" />
+              <Campo k="salario_diario_integrado" label="Salario diario integrado *" tipo="number" step="0.01" />
               <Campo k="banco_clave" label="Banco (clave SAT)" maxLength={3} />
               <Campo k="cuenta_clabe" label="CLABE (18 dígitos)" maxLength={18} ancho="sm:col-span-2" />
             </div>
