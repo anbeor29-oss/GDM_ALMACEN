@@ -155,13 +155,6 @@ export function PropuestaDeExpediente({
           </div>
         )}
 
-        {propuesta.registroPatronalSugerido && (
-          <div className="mt-3 bg-sky-50 border border-sky-200 text-sky-900 px-3 py-2 rounded-lg text-xs">
-            El recibo trae el registro patronal <b>{propuesta.registroPatronalSugerido}</b> y la
-            empresa todavía no lo tiene capturado. Se puede copiar en Nómina → Parámetros.
-          </div>
-        )}
-
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onCerrar} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
             No dar de alta

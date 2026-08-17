@@ -12,5 +12,7 @@ module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>/src'],
   testMatch: ['**/*.test.ts'],
+  /* Variables postizas: una prueba no debe depender del .env de cada máquina. */
+  setupFiles: ['<rootDir>/jest.setup.js'],
   clearMocks: true,
 };

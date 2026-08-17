@@ -9,7 +9,9 @@
  * Quien corta el acceso de verdad es el backend (requireModule / capacidades).
  */
 
-export type WorkGroup = 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA' | 'PUNTO_VENTA';
+export type WorkGroup =
+  | 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA' | 'PUNTO_VENTA'
+  | 'RECURSOS_HUMANOS';
 
 /**
  * Una clave por bloque del menú. 'dashboard' es común a todos los grupos y se
@@ -27,8 +29,9 @@ const ALL_MODULES: ModuleKey[] = [
   'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
   'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos',
   'treasury', 'reports', 'exchange_rates', 'auditoria', 'mensajes',
-  /* Nómina sólo la alcanza ADMIN_ALL: sueldos, CURP, cuentas bancarias y
-   * órdenes de pensión alimenticia no son "un módulo más". */
+  /* Nómina sólo la alcanzan ADMIN_ALL y RECURSOS_HUMANOS: sueldos, CURP,
+   * cuentas bancarias y órdenes de pensión alimenticia no son "un módulo
+   * más". */
   'nomina',
 ];
 
@@ -61,6 +64,9 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
    * es la caja y nada más — salvo los mensajes: "se acabó el rollo de la
    * impresora" tiene que poder salir de ahí. */
   PUNTO_VENTA: ['dashboard', 'pos', 'mensajes'],
+  /* Recursos Humanos: la nómina y nada más. Lleva 'xml_reader' porque el
+   * expediente del personal se rescata de los recibos ya timbrados. */
+  RECURSOS_HUMANOS: ['dashboard', 'nomina', 'xml_reader', 'reports', 'mensajes'],
 };
 
 /** Etiquetas legibles de cada grupo (para selectores). */
@@ -71,6 +77,7 @@ export const WORK_GROUP_LABELS: Record<WorkGroup, string> = {
   COMPRAS:   'Compras (órdenes, recepción XML, proveedores)',
   TESORERIA: 'Tesorería (pagos a proveedores, tipos de cambio)',
   PUNTO_VENTA: 'Punto de venta (sólo caja)',
+  RECURSOS_HUMANOS: 'Recursos Humanos (sólo nómina)',
 };
 
 /** Detalle de lo que ve cada grupo — se muestra bajo el selector al dar de alta. */
@@ -85,6 +92,9 @@ export const WORK_GROUP_DETAIL: Record<WorkGroup, string> = {
   TESORERIA: 'Tesorería, Proveedores, Monedas y Reportes. No ve facturación ni almacén.',
   PUNTO_VENTA: 'Únicamente el Punto de Venta. No ve facturación, catálogos, ' +
                'almacén, compras ni reportes. Pensado para el cajero de mostrador.',
+  RECURSOS_HUMANOS: 'Nómina completa (expediente del personal, cálculo, ' +
+               'parámetros y reportes), Lector de XML y Reportes. No ve ' +
+               'facturación, clientes, almacén ni tesorería.',
 };
 
 export function canAccess(group: string | undefined, mod: ModuleKey): boolean {

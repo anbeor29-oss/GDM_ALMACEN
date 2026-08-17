@@ -2180,3 +2180,83 @@ propósito. Dependen de cuatro decisiones que no me tocaba tomar solo: de dónde
 salen las tarifas y la UMA, si el recibo se timbra con el PAC que ya usa la
 facturación, qué periodicidades hacen falta el primer día y qué reportes se usan
 de verdad. Un cálculo de nómina equivocado no se ve roto: se ve como un número.
+
+---
+
+## 2026-08-17 — Nómina, fase 2: parámetros por ejercicio, motor y calendario
+
+### Las cuatro decisiones que faltaban, ya tomadas
+1. Las tarifas **cambian cada año** → salen del código y entran a la base.
+2. El timbrado **se queda en pre-timbre simulado**, para ver los errores del
+   comprobante sin gastar timbres.
+3. **Las tres periodicidades** conviven: semanal, quincenal y mensual.
+4. **Todo entra** — préstamos, FONACOT, vacaciones, movimientos IMSS y
+   acumulados — porque un mismo trabajador puede tener varios a la vez.
+
+### El motor salió del navegador
+En el sistema anterior `calcISPT`, `calcIMSS` y `calcINFONAVIT` vivían dentro de
+`nomina.html`. Eso significa que cualquiera puede cambiar su propio ISR desde la
+consola del navegador, y que dos personas con distinta versión del archivo en
+caché calculan distinto. Ahora está en `backend/src/modules/nomina/motor.ts`,
+sin tocar la base: recibe los parámetros del ejercicio y devuelve el recibo, de
+modo que se puede probar contra casos derivados a mano.
+
+### Las tarifas se versionan por año
+`nomina_ejercicios`, `nomina_tarifa_isr` y `nomina_subsidio`. Son **globales**:
+la UMA y la tarifa del Art. 96 son del país, no de la empresa — si cada empresa
+tuviera la suya, dos empresas del mismo NEXO calcularían distinto el mismo
+impuesto. Las edita SUPER_ADMIN.
+
+La semilla de 2026 se copió tal cual del sistema anterior y nace
+**`confirmado = false`**. Copiar no es verificar, y estos números deciden cuánto
+se le retiene a cada persona: hasta que alguien los coteje contra el DOF y firme
+—queda escrito quién y cuándo— la pantalla lo advierte.
+
+`revisar()` detecta huecos entre renglones: una tarifa con un salto no truena,
+simplemente deja de subir de renglón, y por eso hay que verlo antes.
+
+### El calendario
+`nomina_periodos` por (empresa, año, tipo, número). Semanal 1–53 —hay años con
+53 semanas y truncar en 52 dejaría una sin poder pagarse—, quincenal 1–24,
+mensual 1–12. Los días son los **del calendario**: la segunda quincena de
+febrero tiene 13, no 15. Regenerar respeta los periodos ya cerrados.
+
+### Grupo RECURSOS_HUMANOS
+Ve nómina, el lector de XML —de ahí se rescata el expediente—, reportes y
+mensajes. No ve facturación, clientes, almacén ni tesorería.
+
+### El candado del registro patronal
+Ya no basta con que el RFC del emisor sea el de la empresa: también tiene que
+coincidir el **registro patronal** del complemento. Una misma razón social puede
+tener varios registros ante el IMSS y el trabajador pertenece a uno; importarlo
+bajo otro lo pondría a cotizar donde no está dado de alta. Si la empresa aún no
+capturó el suyo, no hay contra qué comparar y la importación se detiene pidiendo
+ese dato — que de todas formas se necesita para timbrar.
+
+### Verificación
+`npm test` — **73 pruebas verdes**. Las del ISR están derivadas a mano renglón
+por renglón, no copiadas de la salida del código:
+
+* base semanal 3,000 → mensualizada 13,028.571429 → renglón 5 →
+  1,182.88 + 92.741429 × 17.92 % = 1,199.499264 → al periodo **276.20**
+* base semanal 400 → el subsidio (407.02) se come el impuesto (77.749943) →
+  ISR **0** y subsidio aplicado **17.90**, no los 407.02 completos
+
+Contra el servidor en vivo: el ejercicio 2026 carga con 11+11 renglones y sin
+avisos de coherencia; el calendario quincenal da 24 periodos con la segunda
+quincena de febrero en 13 días; y los tres caminos del registro patronal —sin
+capturar, distinto y coincidente— responden lo que deben. En el caso bueno, el
+nombre "JUAN PEREZ LOPEZ" se partió contrastado contra la CURP (origen `xml`,
+no `deducido`) y salieron los cuatro avisos correctos.
+
+### Lo que encontró una prueba
+`new Date('2026-02-30')` **no falla**: JavaScript lo desborda al 2 de marzo sin
+decir nada. Un arranque de nómina capturado con un día inexistente se habría
+corrido dos días y con él el corte de toda la plantilla. Ahora `aFecha()`
+comprueba de ida y vuelta que la fecha reconstruida sea la que entró.
+
+### Pendiente
+Las pantallas: rejilla de prenómina, vista previa del CFDI, pre-timbre simulado,
+cierre de periodo y los cuatro reportes (prenómina, vista previa de CFDI, ISR
+por nómina, IMSS por nómina) con rango de periodos. Más préstamos, FONACOT,
+vacaciones, movimientos IMSS y acumulados.

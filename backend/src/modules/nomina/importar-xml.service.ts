@@ -16,9 +16,11 @@
  * y con qué datos.
  *
  * SÓLO SE IMPORTA LO QUE ESTA EMPRESA EMITIÓ
- * Si el emisor del recibo no es el RFC de la empresa activa, el trabajador es
- * de OTRO patrón: meterlo en esta plantilla lo pondría en una nómina donde no
- * trabaja. Se rechaza con el motivo escrito, no en silencio.
+ * Se comprueban DOS cosas antes de leer nada: que el RFC del emisor sea el de
+ * la empresa activa, y que el REGISTRO PATRONAL del complemento sea el suyo.
+ * Lo segundo no sobra: una misma razón social puede tener varios registros ante
+ * el IMSS, y el trabajador pertenece a uno solo. Cualquiera de los dos que no
+ * cuadre detiene la importación con el motivo escrito, no en silencio.
  *
  * EL NOMBRE NO SE PARTE A OJO
  * El CFDI trae el nombre en una sola cadena ("MARIA DE LOS ANGELES DE LA TORRE
@@ -63,8 +65,6 @@ export interface PropuestaExpediente {
     totalDeducciones?: number;
     neto?: number;
   };
-  /** El registro patronal del emisor, si la empresa todavía no lo tiene. */
-  registroPatronalSugerido?: string;
 }
 
 /**
@@ -78,7 +78,21 @@ export async function proponerDesdeXml(
     throw new ValidationError('Ese XML no trae complemento de nómina');
   }
 
-  /* ── El emisor tiene que ser esta empresa ── */
+  /* ── El emisor tiene que ser esta empresa ──
+   *
+   * Dos candados, y los dos son necesarios:
+   *
+   *   1. El RFC del emisor contra el de la empresa activa. Sin esto, cargar el
+   *      recibo de otra empresa metería a su trabajador en esta plantilla.
+   *   2. El REGISTRO PATRONAL del complemento contra el de la empresa. Una
+   *      misma razón social puede tener varios registros ante el IMSS, y el
+   *      trabajador pertenece a UNO. Importarlo bajo otro lo pondría a cotizar
+   *      donde no está dado de alta.
+   *
+   * Si la empresa todavía no tiene capturado su registro patronal, no hay
+   * contra qué comparar y el importe se detiene: es preferible pedir un dato
+   * que ya se necesita para timbrar, que dejar entrar un expediente que después
+   * nadie sabría de dónde salió. */
   const emp = await query<any>(
     `SELECT rfc, business_name, registro_patronal FROM companies WHERE id = $1`,
     [companyId]
@@ -91,6 +105,32 @@ export async function proponerDesdeXml(
       `Ese recibo lo emitió ${det.emisor?.nombre || rfcEmisor} (${rfcEmisor}), no ` +
       `${empresa.business_name} (${empresa.rfc}). El trabajador es de otro patrón y ` +
       'no puede entrar a esta plantilla.'
+    );
+  }
+
+  const normalizarRp = (v: any) => String(v || '').toUpperCase().replace(/[\s-]/g, '').trim();
+  const rpDelRecibo = normalizarRp(det.nomina.registroPatronal);
+  const rpDeLaEmpresa = normalizarRp(empresa.registro_patronal);
+
+  if (!rpDeLaEmpresa) {
+    throw new ValidationError(
+      'Esta empresa todavía no tiene capturado su registro patronal del IMSS, así ' +
+      'que no hay contra qué comparar el del recibo' +
+      (rpDelRecibo ? ` (el XML trae ${rpDelRecibo})` : '') +
+      '. Captúralo en Nómina → Parámetros y vuelve a intentarlo.'
+    );
+  }
+  if (!rpDelRecibo) {
+    throw new ValidationError(
+      'El recibo no trae registro patronal en el complemento de nómina, así que no ' +
+      'se puede comprobar que el trabajador sea de esta empresa. No se importa.'
+    );
+  }
+  if (rpDelRecibo !== rpDeLaEmpresa) {
+    throw new ValidationError(
+      `El recibo viene del registro patronal ${rpDelRecibo} y esta empresa opera con ` +
+      `el ${rpDeLaEmpresa}. Ese trabajador cotiza en otro registro: importarlo aquí lo ` +
+      'pondría en una nómina que no le corresponde.'
     );
   }
 
@@ -221,8 +261,6 @@ export async function proponerDesdeXml(
     origen.num_empleado = 'deducido';
   }
 
-  const rp = det.nomina.registroPatronal;
-
   return {
     yaExiste: null,
     datos,
@@ -230,7 +268,6 @@ export async function proponerDesdeXml(
     faltantes,
     avisos,
     recibo: contextoDelRecibo(det),
-    registroPatronalSugerido: rp && !empresa.registro_patronal ? String(rp) : undefined,
   };
 }
 

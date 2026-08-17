@@ -18,6 +18,9 @@ import { requireModule } from '../../middleware/permissions';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as empleados from './empleados.service';
 import * as parametros from './parametros.service';
+import * as ejercicios from './ejercicios.service';
+import * as periodos from './periodos.service';
+import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
 const router = Router();
 
@@ -48,8 +51,117 @@ router.get(
         riesgosPuesto: empleados.RIESGOS_PUESTO,
         zonas: empleados.ZONAS,
         tiposNomina: empleados.TIPOS_NOMINA,
+        /* Conceptos de percepción y deducción con su regla de exención — los
+         * necesita la prenómina para ofrecer el catálogo y explicar por qué un
+         * concepto gravó lo que gravó. */
+        percepciones: PERCEPCIONES,
+        deducciones: DEDUCCIONES,
+        clavesSatPeriodicidad: periodos.CLAVE_SAT,
       },
     });
+  })
+);
+
+
+/* ═════════════════ EJERCICIOS FISCALES ═════════════════
+ *
+ * Son GLOBALES: la UMA y la tarifa del ISR son del país, no de la empresa. Por
+ * eso las escribe SUPER_ADMIN, que es quien opera la plataforma — si las
+ * editara cada ADMIN, dos empresas del mismo NEXO calcularían distinto el mismo
+ * impuesto. Leerlas sí puede cualquiera que tenga nómina.
+ */
+
+const soloPlataforma = authorize('SUPER_ADMIN');
+
+router.get(
+  '/ejercicios',
+  asyncHandler(async (_req: Request, res: Response) => {
+    res.json({ success: true, data: { ejercicios: await ejercicios.listar() } });
+  })
+);
+
+router.get(
+  '/ejercicios/:anio',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await ejercicios.detalle(Number(req.params.anio)) });
+  })
+);
+
+router.put(
+  '/ejercicios/:anio',
+  soloPlataforma,
+  asyncHandler(async (req: Request, res: Response) => {
+    await ejercicios.guardar(
+      { ...(req.body || {}), anio: Number(req.params.anio) },
+      req.user?.userId
+    );
+    res.json({ success: true, data: await ejercicios.detalle(Number(req.params.anio)) });
+  })
+);
+
+/** Firma de que alguien cotejó los números contra el DOF. */
+router.post(
+  '/ejercicios/:anio/confirmar',
+  soloPlataforma,
+  asyncHandler(async (req: Request, res: Response) => {
+    const d = await ejercicios.confirmar(Number(req.params.anio), req.user!.userId);
+    res.json({ success: true, data: d });
+  })
+);
+
+
+/* ═════════════════ PERIODOS ═════════════════ */
+
+router.get(
+  '/periodos',
+  asyncHandler(async (req: Request, res: Response) => {
+    const lista = await periodos.listar(companyId(req), {
+      anio: req.query.anio ? Number(req.query.anio) : undefined,
+      tipo: req.query.tipo as periodos.TipoPeriodo | undefined,
+      desde: req.query.desde ? Number(req.query.desde) : undefined,
+      hasta: req.query.hasta ? Number(req.query.hasta) : undefined,
+    });
+    res.json({ success: true, data: { periodos: lista, maximos: periodos.MAXIMO_POR_TIPO } });
+  })
+);
+
+/** Vista previa del calendario SIN escribirlo — para poder revisarlo antes. */
+router.post(
+  '/periodos/previsualizar',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { tipo, anio, fechaArranque } = req.body || {};
+    res.json({
+      success: true,
+      data: { periodos: periodos.calendario(tipo, Number(anio), fechaArranque) },
+    });
+  })
+);
+
+router.post(
+  '/periodos/generar',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { tipo, anio, fechaArranque } = req.body || {};
+    const r = await periodos.generar(companyId(req), tipo, Number(anio), fechaArranque);
+    res.status(201).json({ success: true, data: r });
+  })
+);
+
+router.put(
+  '/periodos/:id/fecha-pago',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const p = await periodos.fijarFechaDePago(companyId(req), req.params.id, req.body?.fecha_pago);
+    res.json({ success: true, data: p });
+  })
+);
+
+router.post(
+  '/periodos/:id/cerrar',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const p = await periodos.cerrar(companyId(req), req.params.id, req.user!.userId);
+    res.json({ success: true, data: p });
   })
 );
 

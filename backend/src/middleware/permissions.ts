@@ -15,7 +15,9 @@
 
 import { Request, Response, NextFunction } from 'express';
 
-export type WorkGroup = 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA' | 'PUNTO_VENTA';
+export type WorkGroup =
+  | 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA' | 'PUNTO_VENTA'
+  | 'RECURSOS_HUMANOS';
 
 /**
  * Claves de módulo protegibles — una por bloque del menú.
@@ -51,10 +53,10 @@ const ALL_MODULES: ModuleKey[] = [
  * de capacidades (requireCapability), no este mapa.
  */
 export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
-  /* 'nomina' NO aparece en ningún otro grupo, y es deliberado: los sueldos, la
+  /* 'nomina' sólo la alcanzan ADMIN_ALL y RECURSOS_HUMANOS: los sueldos, la
    * CURP, las cuentas bancarias y las órdenes de pensión alimenticia son el
-   * dato más sensible del sistema. Abrirlo después a un grupo de Recursos
-   * Humanos es agregar un renglón; recoger sueldos que ya se vieron, no. */
+   * dato más sensible del sistema, y no es un módulo que se le encienda a quien
+   * captura facturas. */
   ADMIN_ALL: ALL_MODULES,
   VENTAS: [
     'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
@@ -76,6 +78,13 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   /* El cajero recibe recados como cualquiera: 'se acabó el rollo de la
    * impresora' tiene que poder salir de la caja. */
   PUNTO_VENTA: ['pos', 'mensajes'],
+  /* Recursos Humanos: la nómina completa y nada más.
+   *
+   * Ve 'nomina' y 'xml_reader' —lo segundo porque el expediente del personal se
+   * puede rescatar de los recibos ya timbrados, y ese es justamente su trabajo—
+   * más reportes y mensajes. NO ve facturas, clientes, inventarios ni tesorería:
+   * quien maneja sueldos no necesita ver las ventas, y al revés tampoco. */
+  RECURSOS_HUMANOS: ['nomina', 'xml_reader', 'reports', 'mensajes'],
 };
 
 export function groupCanAccess(group: WorkGroup | undefined, mod: ModuleKey): boolean {

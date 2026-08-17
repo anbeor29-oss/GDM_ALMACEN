@@ -1,50 +1,64 @@
 /**
- * Pantallas de Nómina y Reportes — todavía sin construir, y dicho de frente.
+ * Pantallas de Nómina y Reportes — el fondo todavía se está construyendo.
  *
- * POR QUÉ ESTÁN VACÍAS A PROPÓSITO
- * El cálculo de la nómina (periodos, ISR, cuotas del IMSS, subsidio al empleo)
- * y el CFDI de nómina dependen de decisiones que no me tocaba tomar solo:
- * de dónde salen las tarifas y la UMA, si el timbrado va por el PAC que ya usa
- * la facturación, y qué reportes hacen falta. Inventar esas respuestas habría
- * sido peor que dejar la pantalla en blanco: un cálculo de nómina equivocado no
- * se ve roto, se ve como un número.
+ * QUÉ CAMBIÓ RESPECTO A LA PRIMERA ENTREGA
+ * Estas pantallas nacieron en blanco porque el motor dependía de decisiones sin
+ * tomar. Ya están tomadas, y aquí se listan: así, quien entre sabe con qué se
+ * va a calcular su nómina antes de que exista la pantalla, y puede corregirlo
+ * a tiempo en vez de descubrirlo en el primer recibo.
  *
- * El menú, el gateo por grupo de trabajo y la navegación sí están completos,
- * para que se pueda recorrer y confirmar el camino antes de construir el fondo.
+ * Lo que ya funciona por debajo —tarifas por ejercicio, motor de cálculo y
+ * calendario de periodos— se dice también, porque es lo que se puede ir
+ * revisando mientras tanto.
  */
-import { Construction, HelpCircle } from 'lucide-react';
+import { Construction, CheckCircle2, Clock } from 'lucide-react';
 
-function Pendiente({
-  titulo, porQue, preguntas,
+function Pantalla({
+  titulo, porQue, listo, enCamino,
 }: {
   titulo: string;
   porQue: string;
-  preguntas: string[];
+  listo: string[];
+  enCamino: string[];
 }) {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="bg-white rounded-lg shadow border p-8">
-        <div className="w-14 h-14 mb-4 bg-amber-50 rounded-2xl flex items-center justify-center">
-          <Construction className="text-amber-500" size={28} />
+        <div className="w-14 h-14 mb-4 bg-violet-50 rounded-2xl flex items-center justify-center">
+          <Construction className="text-violet-500" size={28} />
         </div>
         <h1 className="text-2xl font-bold text-gray-900">{titulo}</h1>
         <p className="text-gray-600 mt-3">{porQue}</p>
 
         <div className="mt-6 border-t pt-5">
           <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-            <HelpCircle size={16} className="text-primary" /> Lo que falta decidir
+            <CheckCircle2 size={16} className="text-emerald-600" /> Ya funciona por debajo
           </p>
           <ul className="mt-2 space-y-1.5">
-            {preguntas.map((p) => (
-              <li key={p} className="flex items-start gap-2 text-sm text-gray-700">
-                <span className="text-amber-500 mt-0.5">▸</span> {p}
+            {listo.map((x) => (
+              <li key={x} className="flex items-start gap-2 text-sm text-gray-700">
+                <span className="text-emerald-500 mt-0.5">✓</span> {x}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="mt-5">
+          <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <Clock size={16} className="text-amber-500" /> Falta la pantalla
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {enCamino.map((x) => (
+              <li key={x} className="flex items-start gap-2 text-sm text-gray-700">
+                <span className="text-amber-500 mt-0.5">▸</span> {x}
               </li>
             ))}
           </ul>
         </div>
 
         <p className="text-xs text-slate-400 mt-6">
-          Mientras tanto, el expediente del personal y los parámetros del patrón ya funcionan.
+          Mientras tanto, el expediente del personal y los parámetros del patrón ya se
+          pueden capturar completos.
         </p>
       </div>
     </div>
@@ -53,18 +67,25 @@ function Pendiente({
 
 export function NominaCalculoPage() {
   return (
-    <Pendiente
+    <Pantalla
       titulo="Cálculo de nómina"
       porQue={
-        'Aquí van los periodos, el cálculo del ISR y de las cuotas del IMSS, el subsidio ' +
-        'al empleo y el timbrado del recibo. Está sin construir porque el motor depende de ' +
-        'decisiones que hay que tomar antes de escribir la primera fórmula.'
+        'Aquí van los periodos, la prenómina y la vista previa del CFDI. El motor y el ' +
+        'calendario ya están construidos y probados; lo que falta es la pantalla que los ' +
+        'usa.'
       }
-      preguntas={[
-        'Las tarifas del Art. 96, el subsidio, la UMA y los salarios mínimos: ¿se capturan en una pantalla de parámetros por año, o van fijos en el código como en el sistema anterior?',
-        '¿El recibo se timbra con el mismo PAC de la facturación, o se queda en pre-timbre como hasta ahora?',
-        '¿Qué periodicidades hacen falta el primer día: semanal, quincenal, mensual?',
-        '¿Entran en esta etapa préstamos, FONACOT, vacaciones y acumulados, o van después?',
+      listo={[
+        'Tarifa del Art. 96, subsidio, UMA y salarios mínimos guardados POR AÑO — se actualizan sin tocar el código.',
+        'ISR con mensualización, subsidio al empleo que nunca deja el impuesto en negativo, y cuotas obrero-patronales del IMSS.',
+        'Exenciones del Art. 93 por concepto: aguinaldo, prima vacacional, PTU, despensa, alimentación, premios.',
+        'INFONAVIT por porcentaje, cuota fija o VSM; pensión alimenticia por orden judicial.',
+        'Calendario de periodos semanal (1 a 53), quincenal (1 a 24) y mensual (1 a 12), los tres a la vez.',
+      ]}
+      enCamino={[
+        'La rejilla de prenómina: un renglón por trabajador, con los días y los conceptos editables.',
+        'La vista previa del CFDI de nómina antes de generarlo.',
+        'El pre-timbre simulado, para ver los errores del comprobante sin gastar timbres.',
+        'El cierre del periodo.',
       ]}
     />
   );
@@ -72,17 +93,22 @@ export function NominaCalculoPage() {
 
 export function NominaReportesPage() {
   return (
-    <Pendiente
+    <Pantalla
       titulo="Reportes de nómina"
       porQue={
-        'El sistema anterior no tenía una pantalla de reportes, así que no hay nada que ' +
-        'portar: lo que vaya aquí hay que definirlo desde cero, y prefiero preguntarlo a ' +
-        'inventarlo.'
+        'Cuatro reportes, todos con rango de periodos: de la 1 a la 53 en semanal, de la ' +
+        '1 a la 24 en quincenal. Los datos que necesitan ya se calculan; falta armar las ' +
+        'pantallas y la exportación.'
       }
-      preguntas={[
-        '¿Qué reportes se usan hoy de verdad: lista de raya, dispersión bancaria, acumulados por trabajador, resumen de cuotas obrero-patronales?',
-        '¿Alguno tiene que salir en un formato que otro sistema lea (el SUA, el banco)?',
-        '¿Se necesitan por periodo, por mes o por ejercicio?',
+      listo={[
+        'El cálculo por trabajador y por periodo, con el desglose completo de cada renglón.',
+        'El rango de periodos por tipo, para pedir "de la semana 1 a la 53".',
+      ]}
+      enCamino={[
+        'Prenómina — lo que se va a pagar, antes de pagarlo.',
+        'Vista previa de los CFDI del periodo.',
+        'ISR por nómina, acumulable por rango de periodos.',
+        'IMSS por nómina, acumulable por rango de periodos.',
       ]}
     />
   );
