@@ -264,6 +264,20 @@ export function sufijoMoneda(currency = 'MXN'): string {
 }
 
 /**
+ * Monedas que NO se dividen en centésimos.
+ *
+ * El yen es la que importa aquí: el sen se abolió en 1953 y desde entonces los
+ * importes en yenes son enteros. Escribir "MIL YENES 00/100" es decir que hay
+ * una fracción que no existe — el c_Moneda del SAT le asigna 0 decimales, así
+ * que el papel diría una cosa y el XML otra.
+ *
+ * El peso chileno está en el mismo caso (ISO 4217, cero decimales). La lista es
+ * corta y explícita a propósito: se agrega una moneda cuando se vaya a usar y
+ * se haya comprobado, no "por si acaso".
+ */
+const SIN_CENTAVOS = new Set(['JPY', 'CLP']);
+
+/**
  * Importe con letra: "<LETRAS> <MONEDA> 00/100 <SUFIJO>".
  *
  * VIVE AQUÍ Y EN NINGÚN OTRO LADO. Había dos copias —una para la factura y
@@ -271,18 +285,27 @@ export function sufijoMoneda(currency = 'MXN'): string {
  * de moneda sólo se arregló una: las facturas en euros quedaron bien y los
  * complementos siguieron diciendo "M.N.". Una función duplicada no se arregla
  * dos veces, se arregla una y se olvida la otra.
+ *
+ * En una moneda sin fracción se omite el "/100" y queda
+ * "MIL DOSCIENTOS YENES JPY", que es como se escribe de verdad.
  */
 export function montoEnLetra(total: number, currency = 'MXN'): string {
-  const entero = Math.floor(total);
-  const cent = Math.round((total - entero) * 100);
-  const centStr = String(cent).padStart(2, '0');
+  const c = String(currency || 'MXN').toUpperCase();
+  const sinFraccion = SIN_CENTAVOS.has(c);
+
+  /* En una moneda sin fracción se REDONDEA al entero, no se trunca: un importe
+   * fraccionario en yenes viene de un tipo de cambio, no de un precio, y
+   * truncarlo perdería hasta un yen contra el total del comprobante. */
+  const entero = sinFraccion ? Math.round(total) : Math.floor(total);
+  const centStr = String(Math.round((total - Math.floor(total)) * 100)).padStart(2, '0');
 
   /* "UN MILLÓN DE PESOS", no "UN MILLÓN PESOS". Sólo en millones exactos:
-   * "UN MILLÓN DOSCIENTOS MIL PESOS" no lleva la preposición. */
+   * "UN MILLÓN DOSCIENTOS MIL PESOS" no lleva la preposición. Se mira el
+   * entero YA redondeado, o 999,999.6 yenes diría "UN MILLÓN YENES". */
   const de = entero >= 1_000_000 && entero % 1_000_000 === 0 ? ' DE' : '';
 
-  return `${numeroALetras(entero)}${de} ${palabraMoneda(currency)} ` +
-         `${centStr}/100 ${sufijoMoneda(currency)}`;
+  return `${numeroALetras(entero)}${de} ${palabraMoneda(c)} ` +
+         `${sinFraccion ? '' : `${centStr}/100 `}${sufijoMoneda(c)}`;
 }
 
 /* ─────────────── catálogos de presentación ─────────────── */

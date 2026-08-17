@@ -88,6 +88,28 @@ export function BanderaMoneda({ moneda, size = 18 }: Props) {
             <rect x={(size * 2) / 3} y="0" width={size / 3} height={size} fill="#CE1126" />
           </>
         );
+      case 'JPY':
+        /* Hinomaru: campo blanco y disco rojo centrado.
+         *
+         * Es la única del grupo que se dibuja COMPLETA a este tamaño — no hay
+         * detalle que sacrificar—, así que el icono no es una aproximación de
+         * la bandera: es la bandera.
+         *
+         * El disco va a 0.30 del lado. En la bandera oficial mide 3/5 del alto;
+         * como aquí el cuadro se recorta en círculo, ese mismo 3/5 deja el aro
+         * blanco que hace reconocible el dibujo. Más grande, el rojo toca el
+         * borde y parece un punto sin bandera.
+         *
+         * El rojo es el #BC002D de la especificación y no un rojo cualquiera:
+         * junto a la franja del peso (#CE1126) la diferencia se nota, y
+         * distinguir pesos de yenes de un vistazo es justo el trabajo de este
+         * icono. */
+        return (
+          <>
+            <rect x="0" y="0" width={size} height={size} fill="#FFFFFF" />
+            <circle cx={r} cy={r} r={size * 0.30} fill="#BC002D" />
+          </>
+        );
       default:
         /* CUALQUIER OTRA MONEDA: la clave, no una bandera.
          *
