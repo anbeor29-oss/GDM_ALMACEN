@@ -118,8 +118,31 @@ router.post('/apply', asyncHandler(async (req: Request, res: Response) => {
       }
     }
   };
-  if (b.emisorAs) await savePartyAs(det.emisor, b.emisorAs, `Emisor ${det.emisor.rfc}`);
-  if (b.receptorAs) await savePartyAs(det.receptor, b.receptorAs, `Receptor ${det.receptor.rfc}`);
+  /* UN RECIBO DE NÓMINA NO CREA TERCEROS.
+   *
+   * El receptor de un CFDI de nómina es el TRABAJADOR y el emisor es esta misma
+   * empresa. La pantalla venía preseleccionando "receptor → cliente" para
+   * cualquier XML, así que cargar los recibos de la plantilla la daba de alta
+   * completa en el catálogo de clientes: nombres y RFC de los empleados
+   * mezclados con quien de verdad compra, y cada uno con su saldo en cero
+   * ensuciando el panel.
+   *
+   * El arreglo de la pantalla no basta: esto se rechaza aquí porque el catálogo
+   * de clientes no debe aceptar un trabajador venga de donde venga la petición.
+   * Lo que sí procede con un recibo de nómina es el expediente de personal, y
+   * ése tiene su propio camino —que pregunta antes de crear a nadie. */
+  if (det.type === 'CFDI_NOMINA' && (b.emisorAs || b.receptorAs)) {
+    skipped.push({
+      kind: 'tercero',
+      reason:
+        'es un recibo de nómina: el receptor es el trabajador y el emisor es esta ' +
+        'empresa. Para darlo de alta usa "Importar al expediente del personal".',
+      label: `${det.receptor?.nombre || det.receptor?.rfc || ''}`.trim(),
+    });
+  } else {
+    if (b.emisorAs) await savePartyAs(det.emisor, b.emisorAs, `Emisor ${det.emisor.rfc}`);
+    if (b.receptorAs) await savePartyAs(det.receptor, b.receptorAs, `Receptor ${det.receptor.rfc}`);
+  }
 
   // ─── Conceptos → productos como "viaje" con impuestos ────────────────
   if (b.saveConceptsAsViajes && det.conceptos) {

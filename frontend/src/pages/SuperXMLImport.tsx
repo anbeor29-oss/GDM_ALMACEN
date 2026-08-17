@@ -46,6 +46,8 @@ export function SuperXMLImportPage() {
   const [batchSel, setBatchSel] = useState<any>({}); // { parties: Set<key>, ... }
   const [batchApplied, setBatchApplied] = useState<any | null>(null);
   const [batchApplying, setBatchApplying] = useState(false);
+  /* Recibos de nómina que venían en el lote — se informan, no se importan. */
+  const [batchNominas, setBatchNominas] = useState<Array<{ rfc?: string; nombre?: string; archivo: string }>>([]);
 
   // Decisiones del usuario en la fase de preview
   const [decisions, setDecisions] = useState({
@@ -72,14 +74,24 @@ export function SuperXMLImportPage() {
     onSuccess: (data) => {
       setDetection(data.detection);
       setDups(data.duplicates);
-      // Preselecciones sensatas por regla 2:
-      // · Si emisor NO existe → sugerir SUPPLIER (compra) por default
-      // · Si receptor NO existe → sugerir CUSTOMER (venta) por default
+      /* Preselecciones sensatas por regla 2:
+       *   · Si el emisor NO existe → sugerir SUPPLIER (compra)
+       *   · Si el receptor NO existe → sugerir CUSTOMER (venta)
+       *
+       * SALVO EN UN RECIBO DE NÓMINA. Ahí el receptor es el TRABAJADOR, y esta
+       * preselección lo estaba dando de alta como cliente: la plantilla entera
+       * terminaba en el catálogo de clientes, con su RFC y su nombre, mezclada
+       * con quien de verdad compra. El emisor tampoco es un proveedor: es la
+       * propia empresa.
+       *
+       * Un recibo de nómina no crea terceros. Lo que crea —si alguien lo
+       * confirma— es un expediente de personal, y eso va por su propio camino. */
+      const esNomina = data.detection.type === 'CFDI_NOMINA';
       setDecisions((d) => ({
         ...d,
-        emisorAs:   data.duplicates.emisor?.exists   ? '' : 'SUPPLIER',
-        receptorAs: data.duplicates.receptor?.exists ? '' : 'CUSTOMER',
-        saveNomina: data.detection.type === 'CFDI_NOMINA',
+        emisorAs:   esNomina || data.duplicates.emisor?.exists   ? '' : 'SUPPLIER',
+        receptorAs: esNomina || data.duplicates.receptor?.exists ? '' : 'CUSTOMER',
+        saveNomina: esNomina,
         saveCartaPorte: data.detection.hasCartaPorte,
       }));
       setErr('');
@@ -140,6 +152,9 @@ export function SuperXMLImportPage() {
     const vehiculos    = new Map<string, any>();  // key: placa
     const aseguradoras = new Map<string, any>();  // key: numPoliza
     const operadores   = new Map<string, any>();  // key: RFC
+    /* Los recibos de nómina del lote no crean terceros: se listan aparte para
+     * decir cuántos venían y a dónde hay que ir a darlos de alta. */
+    const nominasDelLote: Array<{ rfc?: string; nombre?: string; archivo: string }> = [];
 
     const norm = (s: string) => String(s || '').toUpperCase().trim().replace(/\s+/g, ' ');
 
@@ -150,13 +165,26 @@ export function SuperXMLImportPage() {
         const xmlText = await q[i].file.text();
         const res = await api.xmlSuperDetect(xmlText);
         const d = res.detection;
+        /* parties — SALVO en recibos de nómina.
+         *
+         * Aquí es donde de verdad entraron los empleados al catálogo de
+         * clientes: al soltar varios recibos de nómina juntos, el lote metía a
+         * cada receptor como cliente sugerido sin mirar el tipo de comprobante.
+         * En un recibo de nómina el receptor es el trabajador y el emisor es
+         * esta misma empresa: ninguno de los dos es un tercero. */
+        const dEsNomina = d.type === 'CFDI_NOMINA';
+        if (dEsNomina) {
+          nominasDelLote.push({
+            rfc: d.receptor?.rfc, nombre: d.receptor?.nombre, archivo: q[i].file.name,
+          });
+        }
         // parties
-        if (d.emisor?.rfc && !parties.has(d.emisor.rfc)) {
+        if (!dEsNomina && d.emisor?.rfc && !parties.has(d.emisor.rfc)) {
           parties.set(d.emisor.rfc, { rfc: d.emisor.rfc, nombre: d.emisor.nombre, role: 'emisor', suggestedAs: 'SUPPLIER', sourceXmls: [q[i].file.name] });
-        } else if (d.emisor?.rfc) { parties.get(d.emisor.rfc).sourceXmls.push(q[i].file.name); }
-        if (d.receptor?.rfc && !parties.has(d.receptor.rfc)) {
+        } else if (!dEsNomina && d.emisor?.rfc && parties.has(d.emisor.rfc)) { parties.get(d.emisor.rfc).sourceXmls.push(q[i].file.name); }
+        if (!dEsNomina && d.receptor?.rfc && !parties.has(d.receptor.rfc)) {
           parties.set(d.receptor.rfc, { rfc: d.receptor.rfc, nombre: d.receptor.nombre, role: 'receptor', suggestedAs: 'CUSTOMER', sourceXmls: [q[i].file.name] });
-        } else if (d.receptor?.rfc) { parties.get(d.receptor.rfc).sourceXmls.push(q[i].file.name); }
+        } else if (!dEsNomina && d.receptor?.rfc && parties.has(d.receptor.rfc)) { parties.get(d.receptor.rfc).sourceXmls.push(q[i].file.name); }
         // productos (conceptos)
         for (const c of d.conceptos || []) {
           const k = `${c.claveSat}|${norm(c.descripcion).slice(0, 200)}`;
@@ -248,6 +276,11 @@ export function SuperXMLImportPage() {
     for (const k of Object.keys(preview)) {
       initSel[k] = new Set(preview[k as keyof typeof preview].filter((x: any) => !x.existsInDb).map((x: any) => x._key));
     }
+    /* Los recibos de nómina viajan aparte del preview: no hay nada que
+     * seleccionar ni que crear desde aquí, sólo hay que decir que venían y a
+     * dónde ir. Meterlos en `preview` los volvería a convertir en casillas
+     * marcables, que es el error que se está corrigiendo. */
+    setBatchNominas(nominasDelLote);
     setBatchPreview(preview);
     setBatchSel(initSel);
     setBatchRunning(false);
@@ -374,6 +407,32 @@ export function SuperXMLImportPage() {
           <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-sm text-indigo-900">
             <b>Preview consolidado</b> — los ítems marcados en verde <span className="text-emerald-700">✓ ya existen</span> en tu BD y NO se re-importan por default. Marca/desmarca los checkboxes para elegir qué subir.
           </div>
+
+          {/* Recibos de nómina del lote: se informan, no se importan como
+              terceros. Antes caían en la lista de arriba y se daban de alta
+              como clientes con un clic. */}
+          {batchNominas.length > 0 && (
+            <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-sm text-violet-900">
+              <p className="font-semibold flex items-center gap-2">
+                <UserCog size={15} /> {batchNominas.length} recibo(s) de nómina en el lote
+              </p>
+              <p className="text-xs mt-1">
+                No entran en las listas de arriba: el receptor de un recibo de nómina es el
+                <b> trabajador</b>, no un cliente, y el emisor es esta misma empresa. Para darlos
+                de alta, abre cada recibo por separado y usa
+                <b> “Importar al expediente del personal”</b>, que muestra lo que rescató y
+                pregunta antes de crear a nadie.
+              </p>
+              <ul className="mt-2 space-y-0.5 text-xs">
+                {batchNominas.map((n, i) => (
+                  <li key={i} className="font-mono">
+                    {n.nombre || '—'} <span className="text-violet-600">{n.rfc}</span>
+                    <span className="text-violet-400"> · {n.archivo}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <BatchSection title="👥 Emisores / Receptores → clientes/proveedores" items={batchPreview.parties} sel={batchSel.parties} onToggle={(k) => toggleSel('parties', k)} renderItem={(p: any) => (
             <>
               <div className="text-sm"><b>{p.nombre || '—'}</b> <span className="text-xs font-mono text-slate-500">{p.rfc}</span></div>
@@ -468,7 +527,11 @@ export function SuperXMLImportPage() {
             </div>
           </div>
 
-          {/* Emisor + Receptor con dedup y decisión */}
+          {/* Emisor + Receptor con dedup y decisión.
+              En un recibo de nómina NO se ofrecen: el receptor es el trabajador
+              y el emisor es esta misma empresa. Ofrecer la opción es invitar al
+              error que ya ocurrió — la plantilla dada de alta como clientes. */}
+          {detection.type !== 'CFDI_NOMINA' && (
           <div className="grid grid-cols-2 gap-4">
             <PartyCard
               title="Emisor"
@@ -487,6 +550,7 @@ export function SuperXMLImportPage() {
               onDecision={(v) => setDecisions({ ...decisions, receptorAs: v })}
             />
           </div>
+          )}
 
           {/* Conceptos → productos */}
           {detection.conceptos && detection.conceptos.length > 0 && (
