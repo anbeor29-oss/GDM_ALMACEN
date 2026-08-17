@@ -1120,6 +1120,26 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/nomina/empleados/${id}/reingreso`, { fecha_reingreso });
     return r.data;
   }
+  /** Varios recibos de golpe. SÓLO LEE: devuelve lo rescatado de cada quien. */
+  async revisarEmpleadosDeNomina(archivos: Array<{ nombre: string; xml: string }>) {
+    const r = await this.client.post<APIResponse<any>>(
+      '/xml-super-import/nomina/revisar-empleados', { archivos },
+      /* Doscientos XML se leen y se cruzan contra la base uno por uno: el tiempo
+       * de espera por omisión se queda corto y la pantalla mostraría un error de
+       * red sobre una lectura que en realidad iba bien. */
+      { timeout: 240_000 }
+    );
+    return r.data;
+  }
+
+  /** Da de alta los expedientes ya confirmados en pantalla. */
+  async altaDeEmpleadosEnBloque(expedientes: Array<{ archivo?: string; datos: any }>) {
+    const r = await this.client.post<APIResponse<any>>(
+      '/xml-super-import/nomina/alta-en-bloque', { expedientes }, { timeout: 240_000 }
+    );
+    return r.data;
+  }
+
   /**
    * Lector de XML → expediente. Lee y propone; NO da de alta a nadie: el alta
    * va por crearEmpleado(), con lo que la persona confirmó en pantalla.

@@ -16,11 +16,12 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Users, Plus, Search, AlertTriangle, UserMinus, UserPlus, Pencil, X,
+  Users, Plus, Search, AlertTriangle, UserMinus, UserPlus, Pencil, X, Upload,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { EmpleadoModal } from './EmpleadoModal';
+import { ImportarNominaEnBloque } from './ImportarNominaEnBloque';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -35,6 +36,7 @@ export function EmpleadosPage() {
   const [editando, setEditando] = useState<any | null>(null);
   const [abriendoAlta, setAbriendoAlta] = useState(false);
   const [bajaDe, setBajaDe] = useState<any | null>(null);
+  const [importando, setImportando] = useState(false);
   const [error, setError] = useState('');
 
   const q = useQuery({
@@ -76,12 +78,22 @@ export function EmpleadosPage() {
           </p>
         </div>
         {esAdmin && (
-          <button
-            onClick={() => setAbriendoAlta(true)}
-            className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600 text-sm"
-          >
-            <Plus size={16} /> Nuevo trabajador
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {/* Primero el que sirve para arrancar: quien llega con la plantilla
+                en XML no quiere teclear cincuenta expedientes. */}
+            <button
+              onClick={() => setImportando(true)}
+              className="flex items-center gap-2 bg-violet-600 text-white px-4 py-2 rounded-lg hover:bg-violet-700 text-sm"
+            >
+              <Upload size={16} /> Importar de recibos de nómina
+            </button>
+            <button
+              onClick={() => setAbriendoAlta(true)}
+              className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600 text-sm"
+            >
+              <Plus size={16} /> Nuevo trabajador
+            </button>
+          </div>
         )}
       </div>
 
@@ -224,6 +236,13 @@ export function EmpleadosPage() {
           empleado={editando}
           onClose={() => { setAbriendoAlta(false); setEditando(null); }}
           onGuardado={() => { setAbriendoAlta(false); setEditando(null); refrescar(); }}
+        />
+      )}
+
+      {importando && (
+        <ImportarNominaEnBloque
+          onClose={() => setImportando(false)}
+          onListo={refrescar}
         />
       )}
 

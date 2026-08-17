@@ -27,6 +27,15 @@ interface Props {
   inicial?: Record<string, any>;
   /** Qué campos vienen del XML y cuáles se dedujeron — se marca en pantalla. */
   origen?: Record<string, string>;
+  /**
+   * No guarda: devuelve lo capturado a quien abrió el modal.
+   *
+   * Lo usa el alta en bloque, donde corregir un renglón NO debe crear a esa
+   * persona por su cuenta: el alta de toda la tanda ocurre después, junta, y en
+   * un solo lugar. Guardar aquí haría que corregir el nombre de alguien lo
+   * diera de alta antes de que se confirme el resto.
+   */
+  soloDevolver?: boolean;
   onClose: () => void;
   onGuardado: (e: any) => void;
 }
@@ -49,7 +58,7 @@ const VACIO: Record<string, any> = {
   pension_beneficiario: '', pension_num_oficio: '',
 };
 
-export function EmpleadoModal({ empleado, inicial, origen, onClose, onGuardado }: Props) {
+export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose, onGuardado }: Props) {
   const esEdicion = !!empleado?.id;
   const [bloque, setBloque] = useState<'id' | 'domicilio' | 'laboral' | 'descuentos'>('id');
   const [f, setF] = useState<Record<string, any>>({ ...VACIO, ...(inicial || {}) });
@@ -87,6 +96,9 @@ export function EmpleadoModal({ empleado, inicial, origen, onClose, onGuardado }
      * tengo" de "lo borré", y "" haría fallar los CHECK de formato. */
     const payload: Record<string, any> = {};
     for (const [k, v] of Object.entries(f)) payload[k] = v === '' ? null : v;
+
+    if (soloDevolver) { setGuardando(false); onGuardado(payload); return; }
+
     try {
       const r = esEdicion
         ? await api.actualizarEmpleado(empleado.id, payload)
@@ -328,7 +340,7 @@ export function EmpleadoModal({ empleado, inicial, origen, onClose, onGuardado }
             disabled={guardando}
             className="flex items-center gap-2 px-5 py-2 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
           >
-            <Save size={15} /> {guardando ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Dar de alta'}
+            <Save size={15} /> {guardando ? 'Guardando…' : soloDevolver ? 'Usar estos datos' : esEdicion ? 'Guardar cambios' : 'Dar de alta'}
           </button>
         </div>
       </div>

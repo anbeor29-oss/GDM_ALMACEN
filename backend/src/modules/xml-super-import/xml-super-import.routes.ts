@@ -19,6 +19,8 @@ import * as aseguradorasSvc from '../carta-porte/aseguradoras.service';
 import * as operadoresSvc from '../carta-porte/operadores.service';
 import * as mercanciasSvc from '../carta-porte/mercancias.service';
 import * as nominaImport from '../nomina/importar-xml.service';
+import * as nominaBloque from '../nomina/alta-en-bloque.service';
+import { authorize } from '../../middleware/authentication';
 import { requireModule } from '../../middleware/permissions';
 import { pool } from '../../config/database';
 
@@ -52,6 +54,51 @@ router.post('/detect', asyncHandler(async (req: Request, res: Response) => {
  * El acceso va cerrado con requireModule('nomina') aunque cuelgue del lector de
  * XML: quien puede leer facturas no por eso puede ver sueldos.
  */
+/**
+ * POST /nomina/revisar-empleados — varios recibos de golpe. SÓLO LEE.
+ *
+ * Body: { archivos: [{ nombre, xml }, …] }
+ *
+ * Agrupa por persona (doce quincenas del mismo trabajador son un expediente,
+ * no doce), conserva el recibo más reciente de cada quien y reparte números de
+ * empleado sin que choquen entre ellos.
+ */
+router.post(
+  '/nomina/revisar-empleados',
+  requireModule('nomina'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const archivos = req.body?.archivos;
+    if (!Array.isArray(archivos)) {
+      throw new ValidationError('Debe enviar { archivos: [{ nombre, xml }, …] }');
+    }
+    const r = await nominaBloque.revisar(companyId(req), archivos);
+    res.json({ success: true, data: r });
+  })
+);
+
+/**
+ * POST /nomina/alta-en-bloque — da de alta los expedientes CONFIRMADOS.
+ *
+ * Body: { expedientes: [{ archivo?, datos }, …] }
+ *
+ * Recibe lo que quedó en la pantalla, no los XML: releerlos aquí borraría las
+ * correcciones que la persona hizo. Cada alta va por su cuenta y se reporta una
+ * por una — que uno falle por un RFC repetido no debe tumbar a los demás.
+ */
+router.post(
+  '/nomina/alta-en-bloque',
+  requireModule('nomina'),
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const expedientes = req.body?.expedientes;
+    if (!Array.isArray(expedientes)) {
+      throw new ValidationError('Debe enviar { expedientes: [{ datos }, …] }');
+    }
+    const r = await nominaBloque.crear(companyId(req), expedientes);
+    res.json({ success: true, data: r });
+  })
+);
+
 router.post(
   '/nomina/proponer-empleado',
   requireModule('nomina'),

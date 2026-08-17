@@ -16,11 +16,14 @@
  * y con qué datos.
  *
  * SÓLO SE IMPORTA LO QUE ESTA EMPRESA EMITIÓ
- * Se comprueban DOS cosas antes de leer nada: que el RFC del emisor sea el de
- * la empresa activa, y que el REGISTRO PATRONAL del complemento sea el suyo.
- * Lo segundo no sobra: una misma razón social puede tener varios registros ante
- * el IMSS, y el trabajador pertenece a uno solo. Cualquiera de los dos que no
- * cuadre detiene la importación con el motivo escrito, no en silencio.
+ * El RFC del emisor tiene que ser el de la empresa activa: sin eso, cargar el
+ * recibo de otra empresa metería a su trabajador en esta plantilla.
+ *
+ * El REGISTRO PATRONAL se compara además, porque una misma razón social puede
+ * tener varios registros ante el IMSS y el trabajador pertenece a uno solo.
+ * Pero sólo DETIENE cuando hay dos y son distintos: si la empresa todavía no lo
+ * tiene capturado no hay contra qué comparar, y bloquear ahí dejaba sin importar
+ * nada a quien apenas empieza. En ese caso se avisa y se ofrece el del recibo.
  *
  * EL NOMBRE NO SE PARTE A OJO
  * El CFDI trae el nombre en una sola cadena ("MARIA DE LOS ANGELES DE LA TORRE
@@ -55,6 +58,8 @@ export interface PropuestaExpediente {
   faltantes: string[];
   /** Avisos que la pantalla debe enseñar antes de que alguien confirme. */
   avisos: string[];
+  /** El registro patronal del recibo, cuando la empresa todavía no tiene uno. */
+  registroPatronalSugerido?: string;
   /** Contexto del recibo, para que se vea de qué XML se está hablando. */
   recibo: {
     uuid?: string;
@@ -112,21 +117,19 @@ export async function proponerDesdeXml(
   const rpDelRecibo = normalizarRp(det.nomina.registroPatronal);
   const rpDeLaEmpresa = normalizarRp(empresa.registro_patronal);
 
-  if (!rpDeLaEmpresa) {
-    throw new ValidationError(
-      'Esta empresa todavía no tiene capturado su registro patronal del IMSS, así ' +
-      'que no hay contra qué comparar el del recibo' +
-      (rpDelRecibo ? ` (el XML trae ${rpDelRecibo})` : '') +
-      '. Captúralo en Nómina → Parámetros y vuelve a intentarlo.'
-    );
-  }
-  if (!rpDelRecibo) {
-    throw new ValidationError(
-      'El recibo no trae registro patronal en el complemento de nómina, así que no ' +
-      'se puede comprobar que el trabajador sea de esta empresa. No se importa.'
-    );
-  }
-  if (rpDelRecibo !== rpDeLaEmpresa) {
+  /* SÓLO SE DETIENE CUANDO DE VERDAD NO COINCIDEN.
+   *
+   * La primera versión también bloqueaba cuando la empresa todavía no tenía
+   * capturado su registro patronal, y eso resultó peor que el problema que
+   * evitaba: una empresa que apenas empieza no lo tiene, así que TODAS sus
+   * importaciones fallaban con un mensaje que además no se alcanzaba a ver
+   * desde el lote. El resultado práctico era que el lector "reconocía" a los
+   * trabajadores y no daba de alta a ninguno.
+   *
+   * No tener con qué comparar no es lo mismo que no coincidir. Cuando falta, se
+   * avisa fuerte y se ofrece el del recibo para capturarlo; cuando hay dos y son
+   * distintos, ahí sí no pasa. */
+  if (rpDeLaEmpresa && rpDelRecibo && rpDelRecibo !== rpDeLaEmpresa) {
     throw new ValidationError(
       `El recibo viene del registro patronal ${rpDelRecibo} y esta empresa opera con ` +
       `el ${rpDeLaEmpresa}. Ese trabajador cotiza en otro registro: importarlo aquí lo ` +
@@ -136,6 +139,22 @@ export async function proponerDesdeXml(
 
   const t = det.nomina.trabajador || {};
   const avisos: string[] = [];
+
+  if (!rpDeLaEmpresa) {
+    avisos.push(
+      'Esta empresa todavía no tiene capturado su registro patronal del IMSS' +
+      (rpDelRecibo ? `; el recibo trae el ${rpDelRecibo}` : '') +
+      '. Sin él no se puede timbrar nómina y no hay contra qué comparar los ' +
+      'recibos que se importen. Captúralo en Nómina → Parámetros.'
+    );
+  } else if (!rpDelRecibo) {
+    avisos.push(
+      'El recibo no trae registro patronal en el complemento, así que no se pudo ' +
+      `comprobar contra el de la empresa (${rpDeLaEmpresa}). Revisa que el trabajador ` +
+      'sea de esta nómina antes de darlo de alta.'
+    );
+  }
+
   const origen: Record<string, Origen> = {};
 
   const rfc = String(det.receptor?.rfc || '').toUpperCase().trim();
@@ -268,6 +287,8 @@ export async function proponerDesdeXml(
     faltantes,
     avisos,
     recibo: contextoDelRecibo(det),
+    registroPatronalSugerido:
+      rpDelRecibo && !rpDeLaEmpresa ? rpDelRecibo : undefined,
   };
 }
 
