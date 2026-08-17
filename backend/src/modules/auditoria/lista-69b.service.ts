@@ -20,7 +20,7 @@
  * llegan por caminos distintos y una puede detectar lo que la otra no.
  */
 
-import { query } from '../../config/database';
+import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 
@@ -47,33 +47,88 @@ export function normalizarSituacion(texto: string): Situacion | null {
   return null;
 }
 
-/** Fecha de la publicación: viene como dd/mm/aaaa o aaaa-mm-dd según el corte. */
+/**
+ * Fecha de la publicación.
+ *
+ * Una celda puede traer VARIAS fechas: "26/10/2023 - 26/04/2022 - 14/12/2020",
+ * porque al mismo contribuyente lo publicaron más de una vez. La versión
+ * anterior exigía que la celda entera fuera una sola fecha, así que en esos
+ * casos devolvía null y la fecha se perdía en silencio — justo en los
+ * contribuyentes con más historia, que son los que más importan.
+ *
+ * Se conserva la MÁS RECIENTE: es la que fija la situación actual.
+ */
 function fecha(v: string): string | null {
   const s = String(v || '').trim();
   if (!s) return null;
-  const dmy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(s);
-  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
-  const ymd = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
-  if (ymd) return `${ymd[1]}-${ymd[2].padStart(2, '0')}-${ymd[3].padStart(2, '0')}`;
-  return null;
+
+  const encontradas: string[] = [];
+  const re = /(\d{1,2})[/-](\d{1,2})[/-](\d{4})|(\d{4})-(\d{1,2})-(\d{1,2})/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    const iso = m[3]
+      ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+      : `${m[4]}-${m[5].padStart(2, '0')}-${m[6].padStart(2, '0')}`;
+    /* Una fecha con mes 13 o día 40 es basura del archivo, no una fecha: se
+     * descarta en vez de dejar que Postgres reviente la carga entera. */
+    const d = new Date(`${iso}T00:00:00Z`);
+    if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso) {
+      encontradas.push(iso);
+    }
+  }
+  if (encontradas.length === 0) return null;
+  encontradas.sort();
+  return encontradas[encontradas.length - 1];
 }
 
-/** Parte una línea de CSV respetando las comillas: los nombres traen comas. */
-function columnas(linea: string): string[] {
-  const out: string[] = [];
+/**
+ * Parte el CSV COMPLETO en renglones y columnas.
+ *
+ * POR QUÉ NO SE PUEDE PARTIR POR SALTOS DE LÍNEA PRIMERO
+ * El archivo del SAT trae razones sociales y textos de oficio con saltos de
+ * linea DENTRO de las comillas. Partir por saltos de linea y luego por comas
+ * que hacía antes— corta esos renglones a la mitad: el pedazo de arriba pierde
+ * columnas y el de abajo aparece como un renglón nuevo cuyo "RFC" es un trozo
+ * de frase. En la publicación real eso salía como un RFC llamado "en el
+ * expediente".
+ *
+ * Aquí se recorre el texto UNA vez, carácter por carácter, y el salto de línea
+ * sólo termina el renglón cuando NO estamos dentro de comillas. Es la misma
+ * regla del RFC 4180, que es la que el SAT respeta.
+ */
+function renglones(texto: string): string[][] {
+  const filas: string[][] = [];
+  let fila: string[] = [];
   let actual = '';
   let entreComillas = false;
-  for (let i = 0; i < linea.length; i++) {
-    const c = linea[i];
+
+  const cerrarCampo = () => { fila.push(actual.trim()); actual = ''; };
+  const cerrarFila = () => {
+    cerrarCampo();
+    /* Renglones completamente vacíos —los que deja un 
+
+ final— no cuentan. */
+    if (fila.some((c) => c !== '')) filas.push(fila);
+    fila = [];
+  };
+
+  for (let i = 0; i < texto.length; i++) {
+    const c = texto[i];
     if (c === '"') {
-      if (entreComillas && linea[i + 1] === '"') { actual += '"'; i++; }
+      if (entreComillas && texto[i + 1] === '"') { actual += '"'; i++; }
       else entreComillas = !entreComillas;
     } else if ((c === ',' || c === ';') && !entreComillas) {
-      out.push(actual); actual = '';
-    } else actual += c;
+      cerrarCampo();
+    } else if ((c === '\n' || c === '\r') && !entreComillas) {
+      /* CRLF cuenta como UN solo fin de renglon. */
+      if (c === '\r' && texto[i + 1] === '\n') i++;
+      cerrarFila();
+    } else {
+      actual += c;
+    }
   }
-  out.push(actual);
-  return out.map((x) => x.trim());
+  if (actual !== '' || fila.length > 0) cerrarFila();
+  return filas;
 }
 
 /**
@@ -89,25 +144,26 @@ export async function importarLista(
   archivo: string,
   userId?: string
 ): Promise<{ renglones: number; nuevos: number; actualizados: number; ignorados: number }> {
-  const lineas = String(csv || '')
-    .split(/\r?\n/)
-    .filter((l) => l.trim().length > 0);
-  if (lineas.length < 2) {
-    throw new ValidationError('El archivo viene vacío o no trae encabezados.');
+  const filas = renglones(String(csv || ''));
+  if (filas.length < 2) {
+    throw new ValidationError('El archivo viene vacio o no trae encabezados.');
   }
 
-  /* El SAT antepone renglones de título antes del encabezado real. Se busca la
-   * primera línea que contenga una columna llamada RFC. */
-  let iEncabezado = lineas.findIndex((l) =>
-    columnas(l).some((c) => /^rfc$/i.test(c.replace(/\s+/g, ''))));
+  /* El SAT antepone renglones de titulo antes del encabezado real (en la
+   * publicacion de mayo de 2026 son dos). Se busca el primero que traiga una
+   * columna llamada RFC, en vez de saltar un numero fijo de lineas: ese numero
+   * ha cambiado entre publicaciones. */
+  const iEncabezado = filas.findIndex((f) =>
+    f.some((c) => /^rfc$/i.test(c.replace(/\s+/g, ''))));
   if (iEncabezado < 0) {
     throw new ValidationError(
-      'No se encontró una columna llamada RFC. ¿Es el archivo que publica el SAT?'
+      'No se encontro una columna llamada RFC. Es el archivo que publica el SAT?'
     );
   }
 
-  const enc = columnas(lineas[iEncabezado]).map((c) =>
-    c.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim());
+  const enc = filas[iEncabezado].map((c) =>
+    c.normalize('NFD').replace(/[̀-ͯ]/g, '')
+     .toUpperCase().replace(/\s+/g, ' ').trim());
 
   const buscar = (...nombres: string[]) => {
     for (const n of nombres) {
@@ -120,57 +176,135 @@ export async function importarLista(
   const iRfc       = buscar('RFC');
   const iNombre    = buscar('NOMBRE DEL CONTRIBUYENTE', 'NOMBRE', 'RAZON SOCIAL');
   const iSituacion = buscar('SITUACION DEL CONTRIBUYENTE', 'SITUACION', 'SUPUESTO');
-  const iOfPres    = buscar('NUMERO Y FECHA DE OFICIO GLOBAL DE PRESUNCION', 'OFICIO GLOBAL DE PRESUNCION', 'PRESUNCION');
-  const iOfDef     = buscar('NUMERO Y FECHA DE OFICIO GLOBAL DE DEFINITIVOS', 'OFICIO GLOBAL DE DEFINITIVOS', 'DEFINITIVOS');
-  const iDof       = buscar('PUBLICACION DOF PRESUNTOS', 'PUBLICACION DOF', 'DOF');
+  const iOfPres    = buscar('NUMERO Y FECHA DE OFICIO GLOBAL DE PRESUNCION SAT',
+                            'NUMERO Y FECHA DE OFICIO GLOBAL DE PRESUNCION');
+  const iOfDef     = buscar('NUMERO Y FECHA DE OFICIO GLOBAL DE DEFINITIVOS SAT',
+                            'NUMERO Y FECHA DE OFICIO GLOBAL DE DEFINITIVOS');
+  const iOfSent    = buscar('NUMERO Y FECHA DE OFICIO GLOBAL DE SENTENCIA FAVORABLE');
+
+  /* UNA FECHA DE DOF POR ETAPA, y se usa la que corresponde a la situacion.
+   *
+   * Antes se guardaba siempre la de "presuntos". A un contribuyente DEFINITIVO
+   * la pantalla le ensenaba entonces la fecha en que fue presunto -a veces anos
+   * antes-, que es precisamente la que no importa: lo que hay que saber es
+   * desde cuando sus comprobantes no producen efecto fiscal. */
+  const iDofPres = buscar('PUBLICACION DOF PRESUNTOS');
+  const iDofDesv = buscar('PUBLICACION DOF DESVIRTUADOS');
+  const iDofDef  = buscar('PUBLICACION DOF DEFINITIVOS');
+  const iDofSent = buscar('PUBLICACION DOF SENTENCIA FAVORABLE');
 
   if (iRfc < 0 || iSituacion < 0) {
     throw new ValidationError(
-      'El archivo no trae las columnas de RFC y situación del contribuyente.'
+      'El archivo no trae las columnas de RFC y situacion del contribuyente.'
     );
   }
 
-  let nuevos = 0, actualizados = 0, ignorados = 0, renglones = 0;
+  const col = (f: string[], i: number) => (i >= 0 ? (f[i] || '').trim() || null : null);
 
-  for (const linea of lineas.slice(iEncabezado + 1)) {
-    const c = columnas(linea);
-    const rfc = String(c[iRfc] || '').toUpperCase().replace(/\s+/g, '');
+  /* Se arma todo en memoria y se escribe en UNA transaccion, por lotes.
+   *
+   * La version anterior hacia un INSERT por renglon: 14,540 viajes a la base
+   * para un solo archivo, y sin transaccion. Si reventaba a la mitad -que es
+   * exactamente lo que paso con el archivo real- la lista quedaba a medias, con
+   * unos contribuyentes al corte nuevo y otros al viejo, y nada que lo dijera. */
+  type Fila = [string, string | null, string, string | null, string | null, string | null, string | null];
+  const listos: Fila[] = [];
+  const vistos = new Set<string>();
+  let ignorados = 0;
+  let repetidosEnArchivo = 0;
+
+  for (const f of filas.slice(iEncabezado + 1)) {
+    const rfc = String(f[iRfc] || '').toUpperCase().replace(/\s+/g, '');
+    /* La Ñ es parte del alfabeto de los RFC —"PEÑA…" existe— y dejarla fuera
+     * descartaría contribuyentes reales de la lista sin decir nada. */
     if (!/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(rfc)) { ignorados++; continue; }
 
-    const situacion = normalizarSituacion(c[iSituacion]);
+    const situacion = normalizarSituacion(col(f, iSituacion) || '');
     if (!situacion) { ignorados++; continue; }
 
-    renglones++;
-    const r = await query<{ nuevo: boolean }>(
-      `INSERT INTO sat_69b
-         (rfc, nombre, situacion, oficio_presuncion, oficio_definitivo, publicacion_dof, actualizado_at)
-       VALUES ($1,$2,$3,$4,$5,$6, NOW())
-       ON CONFLICT (rfc) DO UPDATE SET
-         nombre            = COALESCE(EXCLUDED.nombre, sat_69b.nombre),
-         situacion         = EXCLUDED.situacion,
-         oficio_presuncion = COALESCE(EXCLUDED.oficio_presuncion, sat_69b.oficio_presuncion),
-         oficio_definitivo = COALESCE(EXCLUDED.oficio_definitivo, sat_69b.oficio_definitivo),
-         publicacion_dof   = COALESCE(EXCLUDED.publicacion_dof, sat_69b.publicacion_dof),
-         actualizado_at    = NOW()
-       RETURNING (xmax = 0) AS nuevo`,
-      [rfc,
-       iNombre >= 0 ? (c[iNombre] || null) : null,
-       situacion,
-       iOfPres >= 0 ? (c[iOfPres] || null) : null,
-       iOfDef  >= 0 ? (c[iOfDef]  || null) : null,
-       iDof    >= 0 ? fecha(c[iDof]) : null]
+    if (vistos.has(rfc)) repetidosEnArchivo++;
+    vistos.add(rfc);
+
+    const dof =
+      situacion === 'DEFINITIVO'          ? fecha(col(f, iDofDef)  || '') :
+      situacion === 'DESVIRTUADO'         ? fecha(col(f, iDofDesv) || '') :
+      situacion === 'SENTENCIA_FAVORABLE' ? fecha(col(f, iDofSent) || '') :
+                                            fecha(col(f, iDofPres) || '');
+
+    listos.push([
+      rfc,
+      col(f, iNombre),
+      situacion,
+      col(f, iOfPres),
+      col(f, iOfDef),
+      col(f, iOfSent),
+      /* Si la etapa no trae fecha, se cae a la de presuntos, que siempre esta:
+       * vale mas una fecha vieja que ninguna. */
+      dof || fecha(col(f, iDofPres) || ''),
+    ]);
+  }
+
+  if (listos.length === 0) {
+    throw new ValidationError(
+      'El archivo no trajo ningun renglon con RFC y situacion validos. ' +
+      'Es el listado completo del 69-B?'
     );
-    if (r.rows[0]?.nuevo) nuevos++; else actualizados++;
+  }
+
+  /* El propio archivo trae RFC repetidos, y con ON CONFLICT eso truena al
+   * insertar por lotes ("cannot affect row a second time"). Gana el ULTIMO: la
+   * publicacion los lista en orden y el ultimo es el estado mas avanzado. */
+  const porRfc = new Map<string, Fila>();
+  for (const f of listos) porRfc.set(f[0], f);
+  const unicos = [...porRfc.values()];
+
+  let nuevos = 0;
+  let actualizados = 0;
+
+  await transaction(async (client) => {
+    const LOTE = 500;
+    for (let i = 0; i < unicos.length; i += LOTE) {
+      const parte = unicos.slice(i, i + LOTE);
+      const marcas = parte.map((_, k) => {
+        const b = k * 7;
+        return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7}::date, NOW())`;
+      });
+      const r = await transactionQuery<{ nuevo: boolean }>(
+        client,
+        `INSERT INTO sat_69b
+           (rfc, nombre, situacion, oficio_presuncion, oficio_definitivo,
+            oficio_sentencia, publicacion_dof, actualizado_at)
+         VALUES ${marcas.join(',')}
+         ON CONFLICT (rfc) DO UPDATE SET
+           nombre            = COALESCE(EXCLUDED.nombre, sat_69b.nombre),
+           situacion         = EXCLUDED.situacion,
+           oficio_presuncion = COALESCE(EXCLUDED.oficio_presuncion, sat_69b.oficio_presuncion),
+           oficio_definitivo = COALESCE(EXCLUDED.oficio_definitivo, sat_69b.oficio_definitivo),
+           oficio_sentencia  = COALESCE(EXCLUDED.oficio_sentencia,  sat_69b.oficio_sentencia),
+           publicacion_dof   = COALESCE(EXCLUDED.publicacion_dof,   sat_69b.publicacion_dof),
+           actualizado_at    = NOW()
+         RETURNING (xmax = 0) AS nuevo`,
+        parte.flat()
+      );
+      for (const x of r.rows) { if (x.nuevo) nuevos++; else actualizados++; }
+    }
+  });
+
+  const renglonesCargados = unicos.length;
+  if (repetidosEnArchivo > 0) {
+    logger.warn(
+      `[69-B] el archivo traia ${repetidosEnArchivo} RFC repetidos; se conservo el ultimo de cada uno`
+    );
   }
 
   await query(
     `INSERT INTO sat_69b_cargas (archivo, renglones, nuevos, actualizados, cargado_por)
      VALUES ($1,$2,$3,$4,$5)`,
-    [archivo.slice(0, 300), renglones, nuevos, actualizados, userId || null]
+    [archivo.slice(0, 300), renglonesCargados, nuevos, actualizados, userId || null]
   );
 
-  logger.info(`[69-B] carga "${archivo}": ${renglones} renglones (${nuevos} nuevos, ${ignorados} ignorados)`);
-  return { renglones, nuevos, actualizados, ignorados };
+  logger.info(`[69-B] carga "${archivo}": ${renglonesCargados} renglones (${nuevos} nuevos, ${ignorados} ignorados)`);
+  return { renglones: renglonesCargados, nuevos, actualizados, ignorados };
 }
 
 /**

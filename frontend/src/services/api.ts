@@ -1054,6 +1054,17 @@ class APIClient {
     return r.data;
   }
 
+  /** Baja la lista del 69-B del portal del SAT y la carga. Sólo ADMIN. */
+  async actualizar69BDesdeElSat() {
+    const r = await this.client.post<APIResponse<any>>('/auditoria/69b/actualizar', {}, {
+      /* Son 4.7 MB y catorce mil renglones: el tiempo de espera por omisión se
+       * queda corto y la pantalla mostraría un error de red sobre una carga que
+       * en realidad terminó bien. */
+      timeout: 180_000,
+    });
+    return r.data;
+  }
+
   /* ───────────── Nómina ───────────── */
   async getNominaCatalogos() {
     const r = await this.client.get<APIResponse<any>>('/nomina/catalogos');

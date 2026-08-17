@@ -21,7 +21,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Scale, Upload, AlertOctagon, Clock, CheckCircle2 } from 'lucide-react';
+import { Scale, Upload, AlertOctagon, Clock, CheckCircle2, DownloadCloud } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 
@@ -48,6 +48,32 @@ export function Lista69B() {
   const d = q.data?.data;
   const coincidencias: any[] = d?.coincidencias || [];
   const definitivos = coincidencias.filter((c) => c.situacion === 'DEFINITIVO');
+
+  const [bajando, setBajando] = useState(false);
+
+  /* Baja el archivo del portal del SAT sin que nadie tenga que ir por él.
+   * Sigue existiendo la carga a mano: si el SAT mueve el archivo, esto falla y
+   * el botón de subir es la salida que no depende de nadie. */
+  const bajarDelSat = async () => {
+    setBajando(true); setError(''); setAviso('');
+    try {
+      const r = await api.actualizar69BDesdeElSat();
+      const x: any = r.data;
+      setAviso(
+        `Padrón actualizado desde el SAT: ${Number(x.renglones).toLocaleString('es-MX')} ` +
+        `contribuyentes (${x.nuevos} nuevos, ${x.actualizados} actualizados) en ${x.segundos}s.` +
+        (x.ultimaModificacion
+          ? ` El archivo del SAT es del ${new Date(x.ultimaModificacion).toLocaleDateString('es-MX')}.`
+          : '')
+      );
+      qc.invalidateQueries({ queryKey: ['lista-69b'] });
+    } catch (e: any) {
+      setError(
+        (e?.response?.data?.message || 'No se pudo bajar la lista del portal del SAT') +
+        ' — la lista que ya tenías no se tocó.'
+      );
+    } finally { setBajando(false); }
+  };
 
   const subir = async (archivo: File) => {
     setSubiendo(true); setError(''); setAviso('');
@@ -92,17 +118,30 @@ export function Lista69B() {
             )}
           </div>
           {esAdmin && (
-            <label className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600 cursor-pointer text-sm">
-              <Upload size={16} /> {subiendo ? 'Cargando…' : 'Cargar lista del SAT'}
-              <input type="file" accept=".csv,.txt" className="hidden" disabled={subiendo}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.target.value = ''; }} />
-            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={bajarDelSat}
+                disabled={bajando || subiendo}
+                className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm"
+              >
+                <DownloadCloud size={16} />
+                {bajando ? 'Bajando del SAT…' : 'Actualizar desde el SAT'}
+              </button>
+              <label className="flex items-center gap-2 border px-4 py-2 rounded-lg hover:bg-gray-50 cursor-pointer text-sm">
+                <Upload size={16} /> {subiendo ? 'Cargando…' : 'Subir archivo'}
+                <input type="file" accept=".csv,.txt" className="hidden" disabled={subiendo || bajando}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.target.value = ''; }} />
+              </label>
+            </div>
           )}
         </div>
         <p className="text-xs text-gray-500 mt-3">
-          El archivo se descarga del portal del SAT (Listado completo de contribuyentes del
-          69-B, en CSV). El sistema no lo inventa ni lo deduce: un señalamiento del 69-B
-          tiene consecuencias fiscales y sólo puede venir de la publicación oficial.
+          <strong>Actualizar desde el SAT</strong> baja el Listado completo de contribuyentes
+          del 69-B directamente del portal de datos abiertos. Si el SAT mueve el archivo,
+          la descarga falla sin tocar el padrón que ya tienes, y queda el botón de
+          <strong> subir archivo</strong> para cargarlo a mano. El sistema no lo inventa ni lo
+          deduce: un señalamiento del 69-B tiene consecuencias fiscales y sólo puede venir
+          de la publicación oficial.
         </p>
       </div>
 

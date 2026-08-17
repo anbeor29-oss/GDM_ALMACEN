@@ -13,6 +13,7 @@ import { query } from '../../config/database';
 import * as service from './auditoria.service';
 import multer from 'multer';
 import * as lista69b from './lista-69b.service';
+import * as descarga69b from './descarga-69b.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -135,6 +136,22 @@ router.post(
     const texto = f.buffer.toString('latin1');
     const r = await lista69b.importarLista(texto, f.originalname, req.user?.userId);
     res.status(201).json({ success: true, data: r });
+  })
+);
+
+/**
+ * POST /auditoria/69b/actualizar — la baja del portal del SAT.
+ *
+ * Sólo ADMIN, igual que la carga a mano: la lista es global y afecta a todas
+ * las empresas de la plataforma. Puede tardar unos segundos —son 4.7 MB y
+ * catorce mil renglones— y por eso la pantalla avisa mientras corre.
+ */
+router.post(
+  '/69b/actualizar',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await descarga69b.actualizarDesdeElSat(req.user?.userId);
+    res.json({ success: true, data: r });
   })
 );
 

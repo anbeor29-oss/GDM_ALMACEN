@@ -96,6 +96,16 @@ services:
       # aquí cuando alguien lo decide. Ver sat-descarga-cron.ts.
       - key: ENABLE_SAT_DESCARGA_CRON
         value: "false"
+      # Padron del 69-B: lo baja del portal del SAT cada domingo 03:30.
+      # Apagado por omision porque REEMPLAZA el padron con el que se juzga a los
+      # proveedores. Encenderlo cuando se quiera que corra solo.
+      - key: ENABLE_69B_CRON
+        value: "false"
+      # Direccion del Listado completo del 69-B en datos abiertos del SAT.
+      # Se deja configurable porque vive en un almacenamiento ajeno y puede
+      # cambiar sin aviso: cuando cambie se ajusta aqui, sin volver a desplegar.
+      - key: SAT_69B_URL
+        value: "https://wu1agsprosta001.blob.core.windows.net/agsc-publicaciones/Datos_abiertos/Documents_AGAFF/Listado_completo_69-B.csv"
       - key: JWT_EXPIRATION
         value: 1h
       - key: JWT_REFRESH_EXPIRATION

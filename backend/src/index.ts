@@ -78,6 +78,16 @@ async function bootstrap() {
       logger.warn(`No se pudo registrar auditoria-cron: ${e.message}`);
     }
 
+    // Padrón del 69-B: se baja del portal del SAT cada domingo
+    // (solo si ENABLE_69B_CRON=true — reemplaza el padrón con el que se juzga
+    //  a los proveedores, así que se enciende a conciencia)
+    try {
+      const { registerLista69BCron } = await import('./jobs/lista-69b-cron');
+      registerLista69BCron();
+    } catch (e: any) {
+      logger.warn(`No se pudo registrar 69b-cron: ${e.message}`);
+    }
+
     // Descarga masiva del SAT: avanza los trabajos abiertos
     // (solo si ENABLE_SAT_DESCARGA_CRON=true — usa la e.firma de la empresa)
     try {
