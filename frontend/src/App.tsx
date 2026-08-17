@@ -170,7 +170,7 @@ export function App() {
             <Route path="team" element={<CompanyOnlyRoute><CompanyAdminRoute><TeamPage /></CompanyAdminRoute></CompanyOnlyRoute>} />
             {/* Contrato: lo lee cualquier usuario de empresa; firmarlo exige ADMIN
                 (el guard real está en el backend). */}
-            <Route path="contract" element={<CompanyOnlyRoute><ContractPage /></CompanyOnlyRoute>} />
+            <Route path="contract" element={<CompanyOnlyRoute><CompanyAdminRoute><ContractPage /></CompanyAdminRoute></CompanyOnlyRoute>} />
             {/* Carta Porte 3.1 + Super Lector XML — módulos V2.
                 Cada pantalla va con el módulo al que pertenece: esconderla del
                 menú y dejarla abierta por URL no sirve de nada. */}

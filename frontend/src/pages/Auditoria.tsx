@@ -15,6 +15,7 @@ import { ShieldCheck, AlertTriangle, RefreshCw, Clock, HelpCircle } from 'lucide
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { XmlRecibidos } from '@/components/XmlRecibidos';
+import { Lista69B } from '@/components/Lista69B';
 
 const fechaHora = (d: any) =>
   d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—';
@@ -38,7 +39,7 @@ export function AuditoriaPage() {
 
   /* Dos caras del mismo módulo: lo que emitimos —y hay que vigilar— y lo que
    * nos emitieron, que hay que ir a buscar al SAT. */
-  const [tab, setTab] = useState<'emitidos' | 'recibidos'>('emitidos');
+  const [tab, setTab] = useState<'emitidos' | 'recibidos' | 'lista69b'>('emitidos');
   const [soloDiferencias, setSoloDiferencias] = useState(false);
   const [revisando, setRevisando] = useState(false);
   const [aviso, setAviso] = useState('');
@@ -105,7 +106,8 @@ export function AuditoriaPage() {
       </div>
 
       <div className="flex gap-1 border-b">
-        {([['emitidos', 'Nuestros comprobantes'], ['recibidos', 'XML recibidos del SAT']] as const).map(([k, label]) => (
+        {([['emitidos', 'Nuestros comprobantes'], ['recibidos', 'XML recibidos del SAT'],
+          ['lista69b', 'Listas 69-B']] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
               tab === k
@@ -117,6 +119,8 @@ export function AuditoriaPage() {
       </div>
 
       {tab === 'recibidos' && <XmlRecibidos />}
+
+      {tab === 'lista69b' && <Lista69B />}
 
       {tab === 'emitidos' && (<>
       {aviso && <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">{aviso}</div>}

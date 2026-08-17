@@ -161,13 +161,13 @@ export function InvoicesPage() {
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Folio</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Cliente</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Fecha</th>
-              <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Total</th>
-              <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Saldo</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Estado</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Acciones</th>
+              <th className="px-6 py-2 text-left text-sm font-semibold text-gray-900">Folio</th>
+              <th className="px-6 py-2 text-left text-sm font-semibold text-gray-900">Cliente</th>
+              <th className="px-6 py-2 text-left text-sm font-semibold text-gray-900">Fecha</th>
+              <th className="px-6 py-2 text-right text-sm font-semibold text-gray-900">Total</th>
+              <th className="px-6 py-2 text-right text-sm font-semibold text-gray-900">Saldo</th>
+              <th className="px-6 py-2 text-left text-sm font-semibold text-gray-900">Estado</th>
+              <th className="px-6 py-2 text-left text-sm font-semibold text-gray-900">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -200,14 +200,14 @@ export function InvoicesPage() {
                   !liquidada;
                 return (
                   <tr key={invoice.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                    <td className="px-6 py-2 text-sm font-medium text-gray-900">
                       {invoice.serie}-{String(invoice.folio).padStart(6, '0')}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{invoice.customer_name}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
+                    <td className="px-6 py-2 text-sm text-gray-600">{invoice.customer_name}</td>
+                    <td className="px-6 py-2 text-sm text-gray-600">
                       {new Date(invoice.date_issued).toLocaleDateString('es-MX')}
                     </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">
+                    <td className="px-6 py-2 text-sm font-semibold text-gray-900 text-right">
                       {/* La bandera va PEGADA al importe, no en su propia
                           columna: la moneda no es un dato suelto, es lo que
                           define qué significa ese número. Separarla obliga a
@@ -217,7 +217,7 @@ export function InvoicesPage() {
                         $ {Number(invoice.total).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-right">
+                    <td className="px-6 py-2 text-sm text-right">
                       {(() => {
                         const bal = Number((invoice as any).balance ?? invoice.total);
                         const paid = Number((invoice as any).paid_total || 0);
@@ -239,10 +239,10 @@ export function InvoicesPage() {
                         );
                       })()}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-2">
                       <StatusBadge status={invoice.status} />
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-2">
                       <div className="flex items-center gap-1">
                         <IconBtn color="red"    title="Descargar PDF"     onClick={() => handleDownloadPDF(invoice)}><FileDown size={18} /></IconBtn>
                         <IconBtn color="green"  title="Descargar XML"     onClick={() => handleDownloadXML(invoice)}><Download size={18} /></IconBtn>

@@ -123,14 +123,14 @@ export default function Payments() {
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr className="text-left text-sm font-semibold text-slate-700">
-                <th className="px-6 py-3">Folio</th>
-                <th className="px-6 py-3">Cliente</th>
-                <th className="px-6 py-3">Factura</th>
-                <th className="px-6 py-3">Fecha</th>
-                <th className="px-6 py-3">Folio fiscal</th>
-                <th className="px-6 py-3 text-right">Monto</th>
-                <th className="px-6 py-3">Estado</th>
-                <th className="px-6 py-3">Acciones</th>
+                <th className="px-6 py-2">Folio</th>
+                <th className="px-6 py-2">Cliente</th>
+                <th className="px-6 py-2">Factura</th>
+                <th className="px-6 py-2">Fecha</th>
+                <th className="px-6 py-2">Folio fiscal</th>
+                <th className="px-6 py-2 text-right">Monto</th>
+                <th className="px-6 py-2">Estado</th>
+                <th className="px-6 py-2">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -138,26 +138,26 @@ export default function Payments() {
                 const cancelado = p.document_status === 'CANCELLED';
                 return (
                   <tr key={p.id} className="text-sm hover:bg-slate-50">
-                    <td className="px-6 py-4 font-semibold text-slate-900">{etiqueta(p)}</td>
-                    <td className="px-6 py-4 text-blue-700">{p.customer_name || '—'}</td>
-                    <td className="px-6 py-4 font-mono text-xs">
+                    <td className="px-6 py-2 font-semibold text-slate-900">{etiqueta(p)}</td>
+                    <td className="px-6 py-2 text-blue-700">{p.customer_name || '—'}</td>
+                    <td className="px-6 py-2 font-mono text-xs">
                       {p.invoice_serie || ''}{p.invoice_folio ? `-${String(p.invoice_folio).padStart(6, '0')}` : '—'}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-2">
                       {p.payment_date ? new Date(p.payment_date).toLocaleDateString('es-MX') : '—'}
                     </td>
-                    <td className="px-6 py-4 font-mono text-[11px] text-slate-500">{p.uuid || '—'}</td>
-                    <td className={`px-6 py-4 text-right font-semibold ${cancelado ? 'line-through text-slate-400' : 'text-emerald-700'}`}>
+                    <td className="px-6 py-2 font-mono text-[11px] text-slate-500">{p.uuid || '—'}</td>
+                    <td className={`px-6 py-2 text-right font-semibold ${cancelado ? 'line-through text-slate-400' : 'text-emerald-700'}`}>
                       ${Number(p.payment_amount || 0).toFixed(2)}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-2">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
                         cancelado ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
                       }`}>
                         {cancelado ? 'Cancelado' : 'Timbrado'}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-2">
                       <div className="flex items-center gap-1">
                         <button onClick={() => handlePDF(p)} title="Descargar PDF"
                           className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"><FileDown size={18} /></button>

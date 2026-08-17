@@ -5,6 +5,84 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-13 — Seis correcciones: moneda, saldo, complemento, 69-B, filas y contrato
+
+### 1 · El importe con letra decía "M.N." en euros
+Había **dos** copias de `montoEnLetra`: una en `pdf.service` (facturas) y otra en
+`pdf-helpers` (notas de crédito y complementos de pago). Al corregir el sufijo de
+moneda se arregló una sola, así que las facturas en euros quedaron bien y los
+complementos siguieron diciendo "M.N.". Ahora hay **una**, en `pdf-helpers`, que
+usan los tres; se borraron 76 líneas duplicadas. *Una función duplicada no se
+arregla dos veces: se arregla una y se olvida la otra.*
+
+### 2 · El saldo del cliente no se actualizaba
+El listado leía `customers.balance`, columna que sólo cambia si alguien llama
+`updateCustomerBalance()`. Basta un pago o una nota de crédito que no la llame
+para que muestre un saldo viejo. Ahora se **calcula** en la consulta, restando
+pagos (desde `payment_invoices`) y notas de crédito timbradas. Se aliasa como
+`saldo_calculado` y no como `balance`, porque `c.*` ya trae la columna vieja y
+dos columnas con el mismo nombre dejan al driver decidir cuál gana.
+
+**Verificado con datos reales**: la columna decía 14,566.00 y el saldo real era
+14,616.00.
+
+### 3 · El complemento de pago con varias facturas reportaba una
+El XML timbrado ya declaraba todos los `DoctoRelacionado`; el **PDF** leía
+`payments.invoice_id` —una sola— y se imprimía como si el depósito cubriera una
+factura. El comprobante estaba bien y el papel mentía: el cliente no podía
+cuadrar su estado de cuenta con lo que recibió.
+
+Ahora el PDF lee `payment_invoices` y pinta una fila por documento, con renglón
+de total cuando son varias. Los saldos y la parcialidad se toman **tal como se
+timbraron**, no se recalculan: hacerlo hoy daría cifras distintas a las del XML
+que el cliente ya tiene.
+
+**Verificado** generando el PDF de verdad y leyendo su texto: con dos facturas
+aparecen los dos folios, el renglón "2 facturas" y la suma de importes.
+
+### 4 · Tercera pestaña: listas del 69-B del CFF
+Padrón nacional en `sat_69b` (global, no por empresa: el mismo RFC está en la
+lista para todos) y bitácora de cargas, para que "la lista está al día" sea una
+fecha y no una creencia.
+
+**Las cuatro situaciones no significan lo mismo** y la pantalla las separa:
+DEFINITIVO quita efectos fiscales a los comprobantes —30 días para corregir o
+acreditar materialidad—; PRESUNTO sigue en plazo de aclarar; DESVIRTUADO y
+SENTENCIA FAVORABLE ya salieron. Pintar todo de rojo "por si acaso" habría hecho
+inservible la pantalla.
+
+**La lista se carga, no se adivina**: del archivo que publica el SAT. Las
+columnas se localizan por NOMBRE de encabezado y no por posición —el SAT ha
+cambiado el orden entre publicaciones y un importador atado a la posición carga
+los datos corridos sin avisar—. Se lee en latin1 porque el SAT publica en
+Windows-1252 y los acentos llegaban con rombos.
+
+El cruce muestra cuánto se ha operado con cada uno: saber que un proveedor está
+en la lista no dice si el problema son mil pesos o un millón.
+
+**Verificado** con un archivo que imita el real —títulos antes del encabezado,
+nombres con comas entre comillas, situaciones escritas de varias formas y
+renglones basura—: 4 válidos, 3 ignorados, el nombre con coma íntegro,
+reimportar no duplica, el cruce encuentra al tercero sembrado, y un archivo
+ajeno se rechaza con su motivo.
+
+### 5 · Filas más delgadas
+`py-4`/`py-3` → `py-2` en las celdas de Facturas, Notas de Crédito, Complementos
+y Productos. Sólo dentro de `<td>`/`<th>`: los mensajes de "no hay registros"
+conservan su altura, porque un aviso centrado en un renglón delgado se ve como
+un error de maquetación.
+
+### 6 · El contrato, sólo para el ADMIN
+El menú ya lo escondía, pero esconder no es impedir: cualquiera llegaba
+tecleando `/contract`. Firmarlo ya estaba cerrado en el backend
+(`requireCompanyAdmin`); ahora también verlo. Se reutilizó el guard
+`CompanyAdminRoute` que ya existía para Equipo — al escribir uno nuevo me di
+cuenta de que estaba duplicando el que ya había.
+
+Los puntos 1, 5 y 6 se aplicaron también a GDM Facturación.
+
+---
+
 ## 2026-08-12 (tarde) — Control de edición: el segundo ya no borra al primero
 
 ### Contexto

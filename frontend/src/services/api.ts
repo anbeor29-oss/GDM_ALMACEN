@@ -1039,6 +1039,21 @@ class APIClient {
     return r.data;
   }
 
+  /** Cruce de nuestros terceros contra el padrón del 69-B. */
+  async get69B() {
+    const r = await this.client.get<APIResponse<any>>('/auditoria/69b');
+    return r.data;
+  }
+  /** Carga el archivo que publica el SAT. Sólo ADMIN. */
+  async importar69B(archivo: File) {
+    const fd = new FormData();
+    fd.append('archivo', archivo);
+    const r = await this.client.post<APIResponse<any>>('/auditoria/69b/importar', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return r.data;
+  }
+
   /* ───────────── Descarga masiva del SAT ───────────── */
   async getSatCredencial() {
     const r = await this.client.get<APIResponse<any>>('/sat-descarga/credencial');

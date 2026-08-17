@@ -11,6 +11,8 @@ import { authenticateToken, authorize } from '../../middleware/authentication';
 import { asyncHandler, ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import * as service from './auditoria.service';
+import multer from 'multer';
+import * as lista69b from './lista-69b.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -93,6 +95,46 @@ router.post(
 
     const result = await service.revisarComprobante(companyId(req), r.rows[0]);
     res.json({ success: true, data: result });
+  })
+);
+
+
+/* ═════════════ LISTAS DEL 69-B DEL CFF ═════════════ */
+
+/* El archivo del SAT se lee en memoria: es una lista pública que se procesa y
+ * se descarta, no hay razón para dejarla en el disco de un servidor efímero. */
+const subidaLista = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024, files: 1 },
+});
+
+/** GET /auditoria/69b — nuestros terceros que aparecen en la lista */
+router.get(
+  '/69b',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await lista69b.cruzar(companyId(req));
+    res.json({ success: true, data });
+  })
+);
+
+/**
+ * POST /auditoria/69b/importar — carga el archivo publicado por el SAT.
+ *
+ * Sólo ADMIN: la lista es global y afecta a todas las empresas de la
+ * plataforma, así que no la actualiza cualquiera desde su pantalla.
+ */
+router.post(
+  '/69b/importar',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  subidaLista.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = req.file;
+    if (!f) throw new ValidationError('Falta el archivo de la lista');
+    /* latin1 y no utf8: el SAT publica en Windows-1252 y los nombres con
+     * acentos llegaban con rombos. */
+    const texto = f.buffer.toString('latin1');
+    const r = await lista69b.importarLista(texto, f.originalname, req.user?.userId);
+    res.status(201).json({ success: true, data: r });
   })
 );
 

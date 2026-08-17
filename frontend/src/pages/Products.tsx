@@ -86,17 +86,17 @@ export function ProductsPage() {
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 uppercase tracking-wide">SKU</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 uppercase tracking-wide">Nombre</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 uppercase tracking-wide">Clave SAT</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 uppercase tracking-wide">Unidad</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-900 uppercase tracking-wide">Precio</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-900 uppercase tracking-wide" title="Precio de mayoreo (Punto de Venta)">Mayoreo</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-900 uppercase tracking-wide" title="Existencias en almacén">Stock</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-900 uppercase tracking-wide" title="IVA trasladado">IVA</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-900 uppercase tracking-wide" title="Retención IVA">Ret. IVA</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-900 uppercase tracking-wide" title="Retención ISR">Ret. ISR</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-900 uppercase tracking-wide">Acciones</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-900 uppercase tracking-wide">SKU</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-900 uppercase tracking-wide">Nombre</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-900 uppercase tracking-wide">Clave SAT</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-900 uppercase tracking-wide">Unidad</th>
+              <th className="px-4 py-2 text-right text-xs font-semibold text-gray-900 uppercase tracking-wide">Precio</th>
+              <th className="px-4 py-2 text-right text-xs font-semibold text-gray-900 uppercase tracking-wide" title="Precio de mayoreo (Punto de Venta)">Mayoreo</th>
+              <th className="px-4 py-2 text-right text-xs font-semibold text-gray-900 uppercase tracking-wide" title="Existencias en almacén">Stock</th>
+              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-900 uppercase tracking-wide" title="IVA trasladado">IVA</th>
+              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-900 uppercase tracking-wide" title="Retención IVA">Ret. IVA</th>
+              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-900 uppercase tracking-wide" title="Retención ISR">Ret. ISR</th>
+              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-900 uppercase tracking-wide">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -109,24 +109,24 @@ export function ProductsPage() {
                 const rates = ratesFor(p.tax_preset_id, p.tax_type, Number(p.tax_rate));
                 return (
                 <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-mono text-gray-700">{p.sku}</td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900 uppercase">{p.name}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2 text-sm font-mono text-gray-700">{p.sku}</td>
+                  <td className="px-4 py-2 text-sm font-medium text-gray-900 uppercase">{p.name}</td>
+                  <td className="px-4 py-2">
                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-green-50 text-green-700 text-xs font-mono">
                       <CheckCircle size={12} />
                       {p.clave_sat}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 font-mono">{p.unit_code}</td>
-                  <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
+                  <td className="px-4 py-2 text-sm text-gray-600 font-mono">{p.unit_code}</td>
+                  <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
                     ${Number(p.base_price || 0).toFixed(2)}
                   </td>
-                  <td className="px-4 py-3 text-sm text-right">
+                  <td className="px-4 py-2 text-sm text-right">
                     {p.wholesale_price != null && Number(p.wholesale_price) > 0
                       ? <span className="font-semibold text-emerald-700">${Number(p.wholesale_price).toFixed(2)}</span>
                       : <span className="text-gray-300">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-sm text-right">
+                  <td className="px-4 py-2 text-sm text-right">
                     {(() => {
                       const s = Number(p.stock_quantity || 0);
                       const min = Number(p.stock_minimum || 0);
@@ -138,26 +138,26 @@ export function ProductsPage() {
                       );
                     })()}
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-2 text-center">
                     <span className="inline-block min-w-[3rem] px-2 py-1 rounded bg-sky-50 text-sky-700 text-xs font-semibold border border-sky-100">
                       {rates.iva}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-2 text-center">
                     {rates.retIva ? (
                       <span className="inline-block min-w-[3rem] px-2 py-1 rounded bg-amber-50 text-amber-800 text-xs font-semibold border border-amber-200">
                         {rates.retIva}
                       </span>
                     ) : <span className="text-gray-300">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-2 text-center">
                     {rates.retIsr ? (
                       <span className="inline-block min-w-[3rem] px-2 py-1 rounded bg-rose-50 text-rose-700 text-xs font-semibold border border-rose-200">
                         {rates.retIsr}
                       </span>
                     ) : <span className="text-gray-300">—</span>}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2">
                     <div className="flex items-center justify-center gap-1">
                       <button
                         onClick={() => setEditingId(p.id)}
