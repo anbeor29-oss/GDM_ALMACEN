@@ -152,17 +152,20 @@ export function EmpleadosPage() {
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Trabajador</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Puesto</th>
               <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Ingreso</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Salario diario</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">SDI</th>
+              {/* Una sola columna con los dos importes, uno debajo del otro y
+                  rotulados. Dos encabezados sueltos —"Salario diario" y "SDI"—
+                  se confunden en cuanto la tabla se estrecha, y confundirlos
+                  cambia la cuota del IMSS de toda la plantilla. */}
+              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Sueldo diario / integrado</th>
               <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600"></th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {q.isLoading && (
-              <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>
             )}
             {!q.isLoading && lista.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-500 italic">
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-500 italic">
                 {buscar
                   ? 'Nadie coincide con esa búsqueda.'
                   : 'Todavía no hay nadie en la plantilla. Da de alta al primer trabajador, o impórtalo desde un recibo de nómina ya timbrado en el Lector de XML.'}
@@ -188,11 +191,26 @@ export function EmpleadosPage() {
                   {e.departamento && <p className="text-[11px] text-gray-500">{e.departamento}</p>}
                 </td>
                 <td className="px-3 py-1.5 text-center text-xs text-gray-600">{e.fecha_ingreso}</td>
-                <td className="px-3 py-1.5 text-right text-sm">{money(e.salario_diario)}</td>
-                <td className="px-3 py-1.5 text-right text-sm">
-                  {Number(e.salario_diario_integrado) > 0
-                    ? money(e.salario_diario_integrado)
-                    : <span className="text-amber-600">—</span>}
+                <td className="px-3 py-1.5 text-right text-sm whitespace-nowrap">
+                  <span className="block">
+                    <span className="text-[10px] text-gray-400 mr-1">diario</span>
+                    {money(e.salario_diario)}
+                  </span>
+                  <span className="block">
+                    <span className="text-[10px] text-gray-400 mr-1">SDI</span>
+                    {Number(e.salario_diario_integrado) > 0
+                      ? money(e.salario_diario_integrado)
+                      : <span className="text-amber-600">—</span>}
+                  </span>
+                  {/* El integrado por debajo del diario es imposible: el factor
+                      nunca baja de 1. Casi siempre significa que se capturaron
+                      al revés. */}
+                  {Number(e.salario_diario_integrado) > 0 &&
+                   Number(e.salario_diario_integrado) < Number(e.salario_diario) && (
+                    <span className="block text-[10px] text-amber-700">
+                      el SDI no puede ser menor que el diario
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-1.5 text-center whitespace-nowrap">
                   <button

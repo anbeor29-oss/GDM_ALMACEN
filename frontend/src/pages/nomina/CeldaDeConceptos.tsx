@@ -37,6 +37,11 @@ export function CeldaDeConceptos({
 }: Props) {
   const [abierto, setAbierto] = useState(false);
 
+  /* Los subtotales salen del mismo desglose que se está enseñando, no de otra
+   * fuente: si vinieran aparte podrían no cuadrar con los renglones de arriba. */
+  const sumaGravado = detalle.reduce((a, d) => a + (Number(d.gravado) || 0), 0);
+  const sumaExento  = detalle.reduce((a, d) => a + (Number(d.exento)  || 0), 0);
+
   return (
     <td
       className={`px-2 py-1 text-right relative whitespace-nowrap select-none
@@ -65,12 +70,13 @@ export function CeldaDeConceptos({
                   <td className="py-0.5 pr-1 font-mono text-slate-400">{d.clave}</td>
                   <td className="py-0.5 pr-1 text-slate-700">
                     {d.concepto}
-                    {/* El reparto gravado/exento sólo tiene sentido en las
-                        percepciones, y sólo cuando de verdad hay exención: en un
-                        sueldo normal repetir "gravado 3,500 · exento 0" es ruido. */}
-                    {d.exento !== undefined && Number(d.exento) > 0 && (
+                    {/* El reparto gravado/exento va en TODAS las percepciones y
+                        no sólo donde hay exención: quien revisa un recibo busca
+                        justo esas dos cifras, y un renglón sin ellas obliga a
+                        preguntarse si es que no aplica o si es que falta. */}
+                    {d.gravado !== undefined && (
                       <span className="block text-slate-400">
-                        gravado {money(d.gravado)} · exento {money(d.exento)}
+                        gravado {money(d.gravado)} · exento {money(d.exento || 0)}
                       </span>
                     )}
                   </td>
@@ -81,6 +87,17 @@ export function CeldaDeConceptos({
               ))}
             </tbody>
             <tfoot>
+              {/* Los subtotales de gravado y exento ANTES de la suma: es el
+                  orden en que se lee un recibo y en que se cuadra contra el
+                  CFDI, donde TotalGravado y TotalExento van por separado. */}
+              {sumaGravado + sumaExento > 0 && (
+                <tr className="border-t border-slate-200 text-slate-500">
+                  <td colSpan={2} className="pt-1">Gravado · Exento</td>
+                  <td className="pt-1 text-right tabular-nums">
+                    {money(sumaGravado)}<br />{money(sumaExento)}
+                  </td>
+                </tr>
+              )}
               <tr className="border-t-2 border-slate-200 font-semibold">
                 <td colSpan={2} className="pt-1 text-slate-600">Total</td>
                 <td className="pt-1 text-right tabular-nums">{money(importe)}</td>

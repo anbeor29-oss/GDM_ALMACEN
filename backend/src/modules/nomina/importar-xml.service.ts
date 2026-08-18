@@ -239,26 +239,58 @@ export async function proponerDesdeXml(
 
   /* ── LOS DOS SUELDOS ─────────────────────────────────────────────────────
    *
-   * El complemento trae dos y sólo estos dos importan para el expediente:
+   * El complemento trae dos importes y sólo estos dos importan para el
+   * expediente: el salario diario del contrato y el integrado.
    *
-   *   SalarioBaseCotApor     → salario diario
-   *   SalarioDiarioIntegrado → salario diario integrado
+   * QUÉ SALIÓ MAL ANTES
+   * Se mapeaba `SalarioBaseCotApor` al salario diario, y eso está equivocado por
+   * definición: el salario base de cotización ES el salario YA INTEGRADO que se
+   * le reporta al IMSS (Art. 27 LSS). Con ese mapeo, el expediente mostraba
+   * $336.29 como "salario diario" y $320.49 como "SDI" — un integrado MENOR que
+   * el diario, que es imposible: el factor de integración nunca baja de 1.
    *
-   * Antes el primero se guardaba en un campo `sbc` aparte y el salario diario
-   * quedaba vacío, así que TODOS los expedientes importados nacían señalados
-   * como incompletos por un dato que el recibo sí traía. Se hablaba además de
-   * un tercer concepto —el SBC— que sólo servía para confundir la pantalla.
+   * CÓMO SE DECIDE AHORA, SIN ADIVINAR
+   * No se mira de qué atributo viene cada número, sino cuál es mayor:
+   *
+   *     salario diario  = el MENOR de los dos
+   *     integrado (SDI) = el MAYOR de los dos
+   *
+   * Porque el integrado es el diario multiplicado por un factor que siempre es
+   * mayor o igual a uno. La regla acierta venga como venga el XML — y los
+   * sistemas de nómina no se ponen de acuerdo en cuál atributo usar para cuál.
    *
    * Cuando el recibo trae uno solo, sirve para los dos campos: es lo que el
    * patrón reportó y es con lo que se le viene calculando. Se marca `deducido`
    * el que se copió, para que se vea que no venía por separado. */
-  const sd = t.salarioBaseCotApor;
-  const sdi = t.salarioDiarioIntegrado;
-  if (sd !== undefined && sd !== null) del('salario_diario', sd);
-  else if (sdi !== undefined && sdi !== null) del('salario_diario', sdi, 'deducido');
+  const sueldoA = t.salarioBaseCotApor;
+  const sueldoB = t.salarioDiarioIntegrado;
+  const traidos = [sueldoA, sueldoB]
+    .filter((v) => v !== undefined && v !== null && Number.isFinite(Number(v)))
+    .map(Number);
 
-  if (sdi !== undefined && sdi !== null) del('salario_diario_integrado', sdi);
-  else if (sd !== undefined && sd !== null) del('salario_diario_integrado', sd, 'deducido');
+  if (traidos.length === 2) {
+    const menor = Math.min(...traidos);
+    const mayor = Math.max(...traidos);
+    del('salario_diario', menor);
+    del('salario_diario_integrado', mayor);
+    if (menor === mayor) {
+      avisos.push(
+        `El recibo trae el mismo importe (${menor}) como salario base de cotización y como ` +
+        'salario diario integrado. Se usó para los dos campos; revisa el integrado, que ' +
+        'normalmente es mayor que el diario.'
+      );
+    }
+  } else if (traidos.length === 1) {
+    /* Con un solo importe no se puede saber si es el diario o el integrado. Se
+     * usa para los dos y se dice, en vez de dejar uno vacío y marcar el
+     * expediente como incompleto por un dato que el recibo sí traía. */
+    del('salario_diario', traidos[0]);
+    del('salario_diario_integrado', traidos[0], 'deducido');
+    avisos.push(
+      'El recibo sólo trae un importe de salario, así que se usó para el diario y para el ' +
+      'integrado. Captura el integrado real: de él dependen las cuotas del IMSS.'
+    );
+  }
 
   del('regimen_fiscal', '605', 'omision');
   del('uso_cfdi', det.receptor?.usoCfdi || 'CN01', det.receptor?.usoCfdi ? 'xml' : 'omision');

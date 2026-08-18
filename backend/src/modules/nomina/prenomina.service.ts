@@ -65,12 +65,25 @@ export interface RenglonPrenomina {
   diasDelPeriodo: number;
   salario_diario: number;
   sdi: number;
+  /* Los bloques de la rejilla, ya separados. Se calculan aquí y no en la
+   * pantalla: partir el total en la vista garantizaría que un día la suma de
+   * las columnas no cuadre con el neto que se va a pagar. */
+  sueldo: number;
+  otrosIngresos: number;
+  totalPercepciones: number;
+  imss: number;
+  isr: number;
+  prestamos: number;
+  otrasDeducciones: number;
+  totalDeducciones: number;
+  /* Gravado y exento del periodo, antes de sumar. */
+  gravado: number;
+  exento: number;
+  neto: number;
+  subsidio: number;
+  /* Se conservan por compatibilidad con lo que ya consume la pantalla. */
   ingresos: number;
   egresos: number;
-  neto: number;
-  isr: number;
-  imss: number;
-  subsidio: number;
   /** El desglose completo, para el recibo y la vista previa del CFDI. */
   percepciones: any[];
   deducciones: any[];
@@ -294,7 +307,10 @@ export async function calcular(
         puesto: e.puesto, departamento: e.departamento,
         dias, diasDelPeriodo: periodo.dias,
         salario_diario: sd, sdi,
-        ingresos: 0, egresos: 0, neto: 0, isr: 0, imss: 0, subsidio: 0,
+        sueldo: 0, otrosIngresos: 0, totalPercepciones: 0,
+        imss: 0, isr: 0, prestamos: 0, otrasDeducciones: 0, totalDeducciones: 0,
+        gravado: 0, exento: 0,
+        ingresos: 0, egresos: 0, neto: 0, subsidio: 0,
         percepciones: [], deducciones: [],
         faltantes: ['no se pudo calcular'],
         avisos: [err.message],
@@ -315,6 +331,30 @@ export async function calcular(
       avisos.push('Sin SDI capturado: se usó el salario diario, y eso deja la cuota del IMSS corta.');
     }
 
+    /* Los bloques de la rejilla. El sueldo es la clave 001; todo lo demás que
+     * venga en percepciones son "otros ingresos". Los préstamos y el FONACOT se
+     * separan del resto de deducciones porque son los que el cierre va a
+     * abonar, y verlos aparte es lo que permite cuadrarlos. */
+    const sueldo = recibo.percepciones
+      .filter((p) => p.clave === '001')
+      .reduce((a, p) => a + p.importe, 0);
+    const otrosIngresos = pesos(recibo.totalPercepciones - sueldo);
+
+    const CLAVES_CREDITO = ['011', '012'];
+    const prestamos = recibo.deducciones
+      .filter((d) => CLAVES_CREDITO.includes(d.clave))
+      .reduce((a, d) => a + d.importe, 0);
+    /* Todo lo que no es IMSS, ISR ni crédito: faltas, pensión alimenticia,
+     * INFONAVIT, cuotas sindicales. Se llama distinto de la variable de entrada
+     * al motor —`otrasDeducciones` es el arreglo que se le manda— para no
+     * confundir el importe con la lista. */
+    const importeOtrasDeducciones = pesos(
+      recibo.totalDeducciones - recibo.imss - recibo.isr - prestamos
+    );
+
+    const gravado = pesos(recibo.percepciones.reduce((a, p) => a + (p.gravado || 0), 0));
+    const exento  = pesos(recibo.percepciones.reduce((a, p) => a + (p.exento  || 0), 0));
+
     renglones.push({
       empleado_id: e.id,
       num_empleado: e.num_empleado,
@@ -325,11 +365,19 @@ export async function calcular(
       diasDelPeriodo: periodo.dias,
       salario_diario: sd,
       sdi,
+      sueldo: pesos(sueldo),
+      otrosIngresos,
+      totalPercepciones: recibo.totalPercepciones,
+      imss: recibo.imss,
+      isr: recibo.isr,
+      prestamos: pesos(prestamos),
+      otrasDeducciones: importeOtrasDeducciones,
+      totalDeducciones: recibo.totalDeducciones,
+      gravado,
+      exento,
       ingresos: recibo.totalPercepciones,
       egresos: recibo.totalDeducciones,
       neto: recibo.neto,
-      isr: recibo.isr,
-      imss: recibo.imss,
       subsidio: recibo.subsidio,
       percepciones: recibo.percepciones,
       deducciones: recibo.deducciones,
@@ -348,6 +396,14 @@ export async function calcular(
     renglones,
     totales: {
       trabajadores: renglones.length,
+      sueldo: suma((x) => x.sueldo),
+      otrosIngresos: suma((x) => x.otrosIngresos),
+      totalPercepciones: suma((x) => x.totalPercepciones),
+      prestamos: suma((x) => x.prestamos),
+      otrasDeducciones: suma((x) => x.otrasDeducciones),
+      totalDeducciones: suma((x) => x.totalDeducciones),
+      gravado: suma((x) => x.gravado),
+      exento: suma((x) => x.exento),
       ingresos: suma((x) => x.ingresos),
       egresos: suma((x) => x.egresos),
       neto: suma((x) => x.neto),

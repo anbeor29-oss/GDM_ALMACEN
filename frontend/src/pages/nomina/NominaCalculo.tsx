@@ -20,7 +20,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  CalendarPlus, Users, AlertTriangle, RefreshCw, Plus, X, Info,
+  CalendarPlus, Users, AlertTriangle, RefreshCw, Plus, X, Info, FileSpreadsheet, Lock,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -56,6 +56,8 @@ export function NominaCalculoPage() {
   const [captura, setCaptura] = useState<Record<string, { otrosIngresos: Linea[]; otrasDeducciones: Linea[] }>>({});
   const [capturando, setCapturando] = useState<{ lado: 'ingresos' | 'egresos'; renglon: any } | null>(null);
   const [pre, setPre] = useState<any>(null);
+  const [exportando, setExportando] = useState(false);
+  const [cerrando, setCerrando] = useState(false);
 
   const plantillaQ = useQuery({
     queryKey: ['plantilla-por-tipo'],
@@ -119,6 +121,68 @@ export function NominaCalculoPage() {
     }
   };
 
+  /* El cuerpo de la captura, tal como lo espera el servidor. Se arma en un solo
+   * lugar porque lo usan el recálculo, el Excel y el cierre: si cada uno lo
+   * armara por su cuenta, el Excel podría salir con conceptos distintos de los
+   * que se cerraron. */
+  const cuerpoDeCaptura = () =>
+    Object.entries(captura).map(([id, c]) => ({
+      empleadoId: id,
+      otrosIngresos: c.otrosIngresos.map((l) => ({
+        clave: l.clave,
+        importe: Number(l.importe),
+        gravadoManual: l.gravadoManual === '' || l.gravadoManual === undefined
+          ? undefined : Number(l.gravadoManual),
+      })),
+      otrasDeducciones: c.otrasDeducciones.map((l) => ({
+        clave: l.clave, importe: Number(l.importe),
+      })),
+    }));
+
+  const exportarExcel = async () => {
+    setExportando(true); setError('');
+    try {
+      const p = pre.periodo;
+      await api.descargarPrenominaExcel(
+        periodoId, cuerpoDeCaptura(),
+        `prenomina-${p.tipo.toLowerCase()}-${p.anio}-${String(p.numero).padStart(2, '0')}.xlsx`
+      );
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo generar el Excel');
+    } finally { setExportando(false); }
+  };
+
+  /* Cerrar es lo único de esta pantalla que ESCRIBE. Por eso pregunta: después
+   * del cierre el periodo ya no se recalcula, y sus recibos quedan como están. */
+  const cerrarPeriodo = async () => {
+    const t = pre.totales;
+    const ok = window.confirm(
+      `Se van a generar ${t.trabajadores} recibo(s) por ${money(t.neto)}.
+
+` +
+      (t.sinPoderTimbrar > 0
+        ? `OJO: ${t.sinPoderTimbrar} trabajador(es) no se pueden timbrar todavía.
+
+`
+        : '') +
+      'Después del cierre el periodo ya no se recalcula. ¿Continuar?'
+    );
+    if (!ok) return;
+    setCerrando(true); setError('');
+    try {
+      const r = await api.cerrarPeriodoNomina(periodoId, cuerpoDeCaptura());
+      const d: any = r.data;
+      setAviso(
+        `Periodo cerrado: ${d.recibos} recibo(s) generados. ` +
+        'Ya están en Nómina → CFDI, listos para revisar antes de timbrar.'
+      );
+      periodosQ.refetch();
+      prenominaQ.refetch();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo cerrar el periodo');
+    } finally { setCerrando(false); }
+  };
+
   const generar = async () => {
     setGenerando(true); setError(''); setAviso('');
     try {
@@ -169,19 +233,24 @@ export function NominaCalculoPage() {
               <button
                 key={t.id}
                 onClick={() => cambiarTipo(t.id)}
-                className={`rounded-lg border-2 px-3 py-3 text-center transition ${
+                /* Compactos: cuatro botones que sólo eligen un modo no necesitan
+                   ocupar un tercio de la pantalla. Lo que importa está en una
+                   línea — el nombre y cuánta gente le toca. */
+                className={`rounded-lg border px-3 py-2 text-left transition flex items-center gap-2 ${
                   tipo === t.id
                     ? 'border-violet-500 bg-violet-50 text-violet-900'
                     : 'border-gray-200 hover:border-violet-300 text-gray-700'
                 }`}
               >
-                <span className="text-xl block">{t.emoji}</span>
-                <span className="text-sm font-medium block mt-1">{t.label}</span>
-                {gente !== undefined && (
-                  <span className={`text-[11px] block mt-0.5 ${gente === 0 ? 'text-amber-600' : 'text-gray-500'}`}>
-                    {gente} trabajador{gente === 1 ? '' : 'es'}
-                  </span>
-                )}
+                <span className="text-base">{t.emoji}</span>
+                <span className="min-w-0">
+                  <span className="text-sm font-medium block leading-tight">{t.label}</span>
+                  {gente !== undefined && (
+                    <span className={`text-[11px] block leading-tight ${gente === 0 ? 'text-amber-600' : 'text-gray-500'}`}>
+                      {gente} trabajador{gente === 1 ? '' : 'es'}
+                    </span>
+                  )}
+                </span>
               </button>
             );
           })}
@@ -282,11 +351,32 @@ export function NominaCalculoPage() {
                 </span>
               )}
             </p>
-            <button onClick={() => prenominaQ.refetch()} disabled={prenominaQ.isFetching}
-              className="text-sm text-primary hover:underline flex items-center gap-1">
-              <RefreshCw size={14} className={prenominaQ.isFetching ? 'animate-spin' : ''} />
-              Recalcular
-            </button>
+            <div className="flex items-center gap-3">
+              <button onClick={() => prenominaQ.refetch()} disabled={prenominaQ.isFetching}
+                className="text-sm text-primary hover:underline flex items-center gap-1">
+                <RefreshCw size={14} className={prenominaQ.isFetching ? 'animate-spin' : ''} />
+                Recalcular
+              </button>
+              {/* La prenómina se REVISA, y eso se hace en Excel: se ordena por
+                  departamento, se filtra a quien tiene faltas, se compara contra
+                  la semana pasada. Va con lo capturado en la rejilla, no con un
+                  recálculo sin los conceptos recién tecleados. */}
+              <button onClick={exportarExcel} disabled={exportando || !pre}
+                className="text-sm text-emerald-700 hover:underline flex items-center gap-1 disabled:opacity-50">
+                <FileSpreadsheet size={14} /> {exportando ? 'Generando…' : 'Excel'}
+              </button>
+              {esAdmin && pre?.periodo?.estatus !== 'CERRADO' && (
+                <button onClick={cerrarPeriodo} disabled={cerrando || !pre?.renglones?.length}
+                  className="text-sm bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 flex items-center gap-1.5 disabled:opacity-50">
+                  <Lock size={14} /> {cerrando ? 'Cerrando…' : 'Cerrar periodo'}
+                </button>
+              )}
+              {pre?.periodo?.estatus === 'CERRADO' && (
+                <span className="text-sm text-slate-500 flex items-center gap-1.5">
+                  <Lock size={14} /> Periodo cerrado
+                </span>
+              )}
+            </div>
           </div>
 
           {prenominaQ.isLoading && <p className="px-5 py-8 text-sm text-gray-500">Calculando…</p>}
@@ -313,20 +403,25 @@ export function NominaCalculoPage() {
                   renglones y sólo robaba ancho: el tipo ya está en el encabezado
                   del bloque. Lo que sí cambia renglón a renglón es el número
                   consecutivo, y eso es lo que va en esa columna. */}
-              <table className="w-full text-sm tabular-nums">
+              <table className="w-full text-xs tabular-nums">
                 <thead className="bg-gray-50 border-b">
-                  <tr className="text-xs text-gray-600">
-                    <th className="px-2 py-1.5 text-right w-10">#</th>
-                    <th className="px-2 py-1.5 text-left">Nombre</th>
-                    <th className="px-2 py-1.5 text-center w-16">Días</th>
-                    <th className="px-2 py-1.5 text-right w-28">Ingresos</th>
-                    <th className="px-2 py-1.5 text-right w-28">Egresos</th>
-                    <th className="px-2 py-1.5 text-right w-28">A cobrar</th>
+                  <tr className="text-[11px] text-gray-600">
+                    <th className="px-1.5 py-1.5 text-right w-8">#</th>
+                    <th className="px-1.5 py-1.5 text-left">Nombre</th>
+                    <th className="px-1.5 py-1.5 text-center w-12">Días</th>
+                    <th className="px-1.5 py-1.5 text-right w-24">Ingresos</th>
+                    <th className="px-1.5 py-1.5 text-right w-24">Otros ing.</th>
+                    <th className="px-1.5 py-1.5 text-right w-24 border-r">Percepciones</th>
+                    <th className="px-1.5 py-1.5 text-right w-20">IMSS</th>
+                    <th className="px-1.5 py-1.5 text-right w-20">ISR</th>
+                    <th className="px-1.5 py-1.5 text-right w-20">Préstamos</th>
+                    <th className="px-1.5 py-1.5 text-right w-24 border-r">Otras ded.</th>
+                    <th className="px-1.5 py-1.5 text-right w-24">Neto a cobrar</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {pre.renglones.length === 0 && (
-                    <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500 italic">
+                    <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-500 italic">
                       Ningún trabajador con esa periodicidad estuvo activo en este periodo.
                     </td></tr>
                   )}
@@ -334,48 +429,72 @@ export function NominaCalculoPage() {
                     const cap = captura[r.empleado_id];
                     return (
                       <tr key={r.empleado_id} className="hover:bg-gray-50">
-                        <td className="px-2 py-1 text-right text-gray-400">{i + 1}</td>
-                        <td className="px-2 py-1">
+                        <td className="px-1.5 py-1 text-right text-gray-400">{i + 1}</td>
+                        <td className="px-1.5 py-1">
                           <span className="text-gray-900">{r.nombre}</span>
-                          <span className="text-[11px] text-gray-400 ml-1.5">
+                          <span className="text-[10px] text-gray-400 ml-1.5">
                             {r.num_empleado}{r.puesto ? ` · ${r.puesto}` : ''}
                           </span>
                           {r.faltantes?.length > 0 && (
-                            <span className="block text-[11px] text-amber-700">
-                              <AlertTriangle size={10} className="inline mr-0.5" />
+                            <span className="block text-[10px] text-amber-700">
+                              <AlertTriangle size={9} className="inline mr-0.5" />
                               falta {r.faltantes.join(', ')}
                             </span>
                           )}
                           {r.avisos?.map((a: string, k: number) => (
-                            <span key={k} className="block text-[11px] text-amber-700">{a}</span>
+                            <span key={k} className="block text-[10px] text-amber-700">{a}</span>
                           ))}
                         </td>
-                        <td className="px-2 py-1 text-center">
+                        <td className="px-1.5 py-1 text-center">
                           {r.dias}
                           {r.dias !== r.diasDelPeriodo && (
-                            <span className="text-[11px] text-gray-400">/{r.diasDelPeriodo}</span>
+                            <span className="text-[10px] text-gray-400">/{r.diasDelPeriodo}</span>
                           )}
                         </td>
 
-                        {/* Ingresos y egresos: el desglose al pasar el mouse, la
-                            captura con doble clic. */}
+                        {/* Ingresos = el sueldo del periodo (clave 001). */}
+                        <td className="px-1.5 py-1 text-right">{money(r.sueldo)}</td>
+
+                        {/* Otros ingresos: doble clic para capturar, mouse encima
+                            para ver el desglose con su gravado y su exento. */}
                         <CeldaDeConceptos
-                          importe={r.ingresos}
-                          detalle={r.percepciones}
+                          importe={r.otrosIngresos}
+                          detalle={r.percepciones.filter((p: any) => p.clave !== '001')}
                           capturados={cap?.otrosIngresos?.length || 0}
-                          titulo="Percepciones del periodo"
+                          titulo="Otros ingresos"
                           onDobleClic={esAdmin ? () => setCapturando({ lado: 'ingresos', renglon: r }) : undefined}
                         />
+
                         <CeldaDeConceptos
-                          importe={r.egresos}
-                          detalle={r.deducciones}
+                          importe={r.totalPercepciones}
+                          detalle={r.percepciones}
+                          titulo="Total de percepciones"
+                        />
+
+                        <td className="px-1.5 py-1 text-right text-rose-700">
+                          {r.imss > 0 ? money(r.imss) : '—'}
+                        </td>
+                        <td className="px-1.5 py-1 text-right text-rose-700">
+                          {r.isr > 0 ? money(r.isr) : '—'}
+                        </td>
+                        <td className="px-1.5 py-1 text-right text-rose-700">
+                          {r.prestamos > 0 ? money(r.prestamos) : '—'}
+                        </td>
+
+                        {/* Otras deducciones: faltas, pensión, INFONAVIT. También
+                            se capturan con doble clic. */}
+                        <CeldaDeConceptos
+                          importe={r.otrasDeducciones}
+                          detalle={r.deducciones.filter(
+                            (d: any) => !['001', '002', '011', '012'].includes(d.clave)
+                          )}
                           capturados={cap?.otrasDeducciones?.length || 0}
-                          titulo="Deducciones del periodo"
+                          titulo="Otras deducciones"
                           color="rojo"
                           onDobleClic={esAdmin ? () => setCapturando({ lado: 'egresos', renglon: r }) : undefined}
                         />
 
-                        <td className="px-2 py-1 text-right font-semibold whitespace-nowrap">
+                        <td className="px-1.5 py-1 text-right font-semibold whitespace-nowrap">
                           {money(r.neto)}
                         </td>
                       </tr>
@@ -385,25 +504,32 @@ export function NominaCalculoPage() {
                 {pre.renglones.length > 0 && (
                   <tfoot className="bg-gray-50 border-t-2">
                     <tr className="font-semibold">
-                      <td className="px-2 py-1.5" colSpan={2}>
+                      <td className="px-1.5 py-1.5" colSpan={2}>
                         {pre.totales.trabajadores} trabajador(es)
                         {pre.totales.sinPoderTimbrar > 0 && (
-                          <span className="font-normal text-amber-700 text-xs">
+                          <span className="font-normal text-amber-700 text-[11px]">
                             {' '}· {pre.totales.sinPoderTimbrar} sin poder timbrar
                           </span>
                         )}
                       </td>
                       <td></td>
-                      <td className="px-2 py-1.5 text-right whitespace-nowrap">{money(pre.totales.ingresos)}</td>
-                      <td className="px-2 py-1.5 text-right text-rose-700 whitespace-nowrap">{money(pre.totales.egresos)}</td>
-                      <td className="px-2 py-1.5 text-right whitespace-nowrap">{money(pre.totales.neto)}</td>
+                      <td className="px-1.5 py-1.5 text-right">{money(pre.totales.sueldo)}</td>
+                      <td className="px-1.5 py-1.5 text-right">{money(pre.totales.otrosIngresos)}</td>
+                      <td className="px-1.5 py-1.5 text-right border-r">{money(pre.totales.totalPercepciones)}</td>
+                      <td className="px-1.5 py-1.5 text-right text-rose-700">{money(pre.totales.imss)}</td>
+                      <td className="px-1.5 py-1.5 text-right text-rose-700">{money(pre.totales.isr)}</td>
+                      <td className="px-1.5 py-1.5 text-right text-rose-700">{money(pre.totales.prestamos)}</td>
+                      <td className="px-1.5 py-1.5 text-right text-rose-700 border-r">{money(pre.totales.otrasDeducciones)}</td>
+                      <td className="px-1.5 py-1.5 text-right">{money(pre.totales.neto)}</td>
                     </tr>
-                    <tr className="text-xs text-gray-600">
-                      <td className="px-2 pb-1.5" colSpan={6}>
-                        ISR {money(pre.totales.isr)} · IMSS obrero {money(pre.totales.imss)}
+                    {/* Gravado y exento del periodo, antes de la suma: es lo que
+                        el CFDI reporta por separado y contra lo que se cuadra. */}
+                    <tr className="text-[11px] text-gray-600">
+                      <td className="px-1.5 pb-1.5" colSpan={11}>
+                        Gravado {money(pre.totales.gravado)} · Exento {money(pre.totales.exento)}
                         {pre.totales.subsidio > 0 && ` · subsidio al empleo ${money(pre.totales.subsidio)}`}
                         <span className="text-gray-400">
-                          {'  '}· doble clic en Ingresos o Egresos para capturar conceptos;
+                          {'  '}· doble clic en Otros ingresos u Otras deducciones para capturar;
                           pasa el mouse para ver cómo se integran
                         </span>
                       </td>

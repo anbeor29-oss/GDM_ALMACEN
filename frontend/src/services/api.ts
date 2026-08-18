@@ -1140,6 +1140,43 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/nomina/periodos/especial', datos);
     return r.data;
   }
+  /** Baja la prenómina como Excel, con lo capturado en la rejilla. */
+  async descargarPrenominaExcel(periodoId: string, captura: any[], nombre: string) {
+    const r = await this.client.post(
+      `/nomina/prenomina/${periodoId}/excel`, { captura },
+      { responseType: 'blob', timeout: 120_000 }
+    );
+    await this.downloadFile(r.data as Blob, nombre);
+  }
+
+  /** Cierra el periodo: congela los recibos y genera los XML. ESCRIBE. */
+  async cerrarPeriodoNomina(periodoId: string, captura: any[]) {
+    const r = await this.client.post<APIResponse<any>>(
+      `/nomina/prenomina/${periodoId}/cerrar`, { captura }, { timeout: 180_000 }
+    );
+    return r.data;
+  }
+
+  /* ── CFDI de nómina ── */
+  async getRecibosNomina(params: { estatus?: string; periodoId?: string } = {}) {
+    const r = await this.client.get<APIResponse<any>>('/nomina/recibos', { params });
+    return r.data;
+  }
+  async getXmlRecibo(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/recibos/${id}/xml`);
+    return r.data;
+  }
+  async descargarXmlRecibo(id: string, nombre: string) {
+    const r = await this.client.get(`/nomina/recibos/${id}/xml`, {
+      params: { descargar: 'true' }, responseType: 'blob',
+    });
+    await this.downloadFile(r.data as Blob, nombre);
+  }
+  async marcarEnvioPorCorreo(ids: string[], enviar: boolean) {
+    const r = await this.client.put<APIResponse<any>>('/nomina/recibos/envio-por-correo', { ids, enviar });
+    return r.data;
+  }
+
   /** Recalcula con lo capturado en la rejilla. NO guarda: sigue siendo cálculo. */
   async recalcularPrenomina(periodoId: string, captura: any[]) {
     const r = await this.client.post<APIResponse<any>>(

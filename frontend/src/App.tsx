@@ -51,6 +51,7 @@ import { NominaDashboardPage }        from '@/pages/nomina/NominaDashboard';
 import { EmpleadosPage }              from '@/pages/nomina/Empleados';
 import { NominaParametrosPage }       from '@/pages/nomina/NominaParametros';
 import { NominaCalculoPage } from '@/pages/nomina/NominaCalculo';
+import { NominaCFDIPage } from '@/pages/nomina/NominaCFDI';
 import { NominaReportesPage } from '@/pages/nomina/NominaPendiente';
 import { PhysicalCountPage }          from '@/pages/PhysicalCount';
 import { KardexPage }                 from '@/pages/Kardex';
@@ -211,6 +212,7 @@ export function App() {
             <Route path="nomina"                          element={<ModuleRoute module="nomina"><NominaDashboardPage /></ModuleRoute>} />
             <Route path="nomina/empleados"                element={<ModuleRoute module="nomina"><EmpleadosPage /></ModuleRoute>} />
             <Route path="nomina/calculo"                  element={<ModuleRoute module="nomina"><NominaCalculoPage /></ModuleRoute>} />
+            <Route path="nomina/cfdi"                     element={<ModuleRoute module="nomina"><NominaCFDIPage /></ModuleRoute>} />
             <Route path="nomina/parametros"               element={<ModuleRoute module="nomina"><NominaParametrosPage /></ModuleRoute>} />
             <Route path="nomina/reportes"                 element={<ModuleRoute module="nomina"><NominaReportesPage /></ModuleRoute>} />
             <Route path="company"                         element={<CompanyOnlyRoute><CompanyProfilePage /></CompanyOnlyRoute>} />

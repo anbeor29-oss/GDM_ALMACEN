@@ -23,6 +23,8 @@ import * as periodos from './periodos.service';
 import * as creditos from './creditos.service';
 import * as expediente from './expediente.service';
 import * as prenomina from './prenomina.service';
+import { generarExcel } from './prenomina-excel.service';
+import * as cierre from './cierre.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -181,6 +183,91 @@ router.post(
     res.json({ success: true, data: r });
   })
 );
+
+/**
+ * POST /prenomina/:periodoId/excel — la prenómina como hoja de cálculo.
+ *
+ * Es POST porque lleva la captura de la rejilla en el cuerpo: lo que se exporta
+ * tiene que ser lo que se está viendo, no un recálculo sin los conceptos que
+ * alguien acaba de teclear.
+ */
+router.post(
+  '/prenomina/:periodoId/excel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await generarExcel(
+      companyId(req), req.params.periodoId,
+      Array.isArray(req.body?.captura) ? req.body.captura : []
+    );
+    res.setHeader('Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
+/**
+ * POST /prenomina/:periodoId/cerrar — congela los recibos y genera los XML.
+ *
+ * Es lo ÚNICO de la nómina que escribe de verdad, y por eso sólo ADMIN. Va todo
+ * en una transacción: recibos, abonos de créditos y el cambio de estatus del
+ * periodo. Un cierre a medias —recibos sin abonar los préstamos— haría que al
+ * trabajador se le descuente dos veces el periodo siguiente.
+ */
+router.post(
+  '/prenomina/:periodoId/cerrar',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await cierre.cerrarPeriodo(
+      companyId(req), req.params.periodoId,
+      Array.isArray(req.body?.captura) ? req.body.captura : [],
+      req.user?.userId
+    );
+    res.json({ success: true, data: r });
+  })
+);
+
+
+/* ═════════════════ CFDI DE NÓMINA ═════════════════ */
+
+router.get(
+  '/recibos',
+  asyncHandler(async (req: Request, res: Response) => {
+    const recibos = await cierre.listarRecibos(companyId(req), {
+      estatus: req.query.estatus as string | undefined,
+      periodoId: req.query.periodoId as string | undefined,
+    });
+    res.json({ success: true, data: { recibos } });
+  })
+);
+
+/** El XML del recibo — el timbrado si ya lo está, el pre-timbre si no. */
+router.get(
+  '/recibos/:id/xml',
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await cierre.xmlDelRecibo(companyId(req), req.params.id);
+    if (req.query.descargar === 'true') {
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      res.setHeader('Content-Disposition',
+        `attachment; filename="nomina-${r.num_empleado}.xml"`);
+      res.send(r.xml);
+      return;
+    }
+    res.json({ success: true, data: r });
+  })
+);
+
+/** Marca a quién se le manda el recibo por correo. Es decisión, no envío. */
+router.put(
+  '/recibos/envio-por-correo',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await cierre.marcarEnvioPorCorreo(
+      companyId(req), req.body?.ids || [], !!req.body?.enviar
+    );
+    res.json({ success: true, data: r });
+  })
+);
+
 
 /** Cuántos trabajadores le tocan a cada tipo — antes de generar nada. */
 router.get(
