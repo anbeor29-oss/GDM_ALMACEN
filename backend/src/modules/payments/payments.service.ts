@@ -727,8 +727,16 @@ export async function listPayments(companyId: string, opts: { limit?: number; of
     `SELECT p.*, i.serie AS invoice_serie, i.folio AS invoice_folio,
             c.business_name AS customer_name, c.rfc AS customer_rfc
        FROM payments p
-       LEFT JOIN invoices  i ON i.id = p.invoice_id
-       LEFT JOIN customers c ON c.id = p.customer_id
+       /* Los JOIN también llevan la empresa.
+        *
+        * El WHERE de abajo ya impide que se cuele un pago ajeno, así que esto
+        * no tapa una fuga: tapa una MEZCLA. Si por una carga mal hecha un pago
+        * apuntara a una factura de otra empresa, sin esta condición la lista
+        * mostraría el folio y el cliente de la otra junto al pago propio, y
+        * nadie lo notaría. Con ella, la columna sale vacía —que es visible— en
+        * vez de salir con el dato equivocado. */
+       LEFT JOIN invoices  i ON i.id = p.invoice_id  AND i.company_id = p.company_id
+       LEFT JOIN customers c ON c.id = p.customer_id AND c.company_id = p.company_id
       WHERE p.company_id = $1 AND p.deleted_at IS NULL
       /* Por fecha y, dentro del mismo día, por folio descendente.
        *
