@@ -31,6 +31,8 @@ import { ValidationError, ConflictError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import { calcular, CapturaPorTrabajador } from './prenomina.service';
 import { CLAVE_SAT } from './calendario';
+import * as pacService from '../pac/pac.service';
+import { NotFoundError } from '../../middleware/errorHandler';
 
 /** Escapa lo que va dentro de un atributo XML. */
 const x = (v: any): string =>
@@ -292,6 +294,14 @@ export async function cerrarPeriodo(
       [periodoId, companyId, userId || null]
     );
 
+    /* El borrador ya no sirve: los importes quedaron congelados en los recibos.
+     * Dejarlo invitaría a editarlo y a preguntarse por qué no cambia nada. */
+    await transactionQuery(
+      client,
+      `DELETE FROM nomina_captura WHERE company_id = $1 AND periodo_id = $2`,
+      [companyId, periodoId]
+    );
+
     logger.info(
       `[nómina] periodo ${pre.periodo.tipo} #${pre.periodo.numero} cerrado: ` +
       `${recibos} recibos, ${abonados} abonos de crédito`
@@ -384,4 +394,90 @@ export async function marcarEnvioPorCorreo(
   );
 
   return { marcados: r.rowCount, sinCorreo: sinCorreo.rows };
+}
+
+/**
+ * Timbra un recibo de nómina ante el PAC.
+ *
+ * POR QUÉ ES UN PASO APARTE Y NO PARTE DEL CIERRE
+ * Timbrar gasta un timbre y deshacerlo exige una cancelación ante el SAT. El
+ * cierre congela los importes y arma el XML —dos cosas reversibles— y aquí se
+ * da el paso que no lo es. Separarlos permite revisar cincuenta recibos y
+ * timbrar cuarenta y nueve.
+ *
+ * NO SE TIMBRA DOS VECES
+ * Un recibo con UUID ya está en el SAT. Volver a mandarlo generaría un segundo
+ * CFDI por el mismo pago, que para el SAT es ingreso duplicado del trabajador y
+ * sólo se arregla cancelando. El candado está aquí y no sólo en la pantalla:
+ * un doble clic no puede costar una cancelación.
+ */
+export async function timbrarRecibo(companyId: string, reciboId: string) {
+  const r = await query<any>(
+    `SELECT id, num_empleado, nombre, estatus, uuid, xml_pretimbre
+       FROM nomina_recibos WHERE id = $1 AND company_id = $2`,
+    [reciboId, companyId]
+  );
+  const recibo = r.rows[0];
+  if (!recibo) throw new NotFoundError('No encontré ese recibo');
+
+  if (recibo.uuid) {
+    throw new ConflictError(
+      `El recibo de ${recibo.nombre} ya está timbrado (UUID ${recibo.uuid}). ` +
+      'Para rehacerlo hay que cancelarlo ante el SAT primero.'
+    );
+  }
+  if (!recibo.xml_pretimbre) {
+    throw new ValidationError('Ese recibo no tiene XML: vuelve a cerrar el periodo.');
+  }
+
+  const timbre = await pacService.timbrarXml(companyId, recibo.xml_pretimbre);
+  if (!timbre.success || !timbre.uuid) {
+    throw new ValidationError(
+      `El PAC no timbró el recibo de ${recibo.nombre}` +
+      (timbre.errors?.length ? `: ${timbre.errors.join('; ')}` : '.')
+    );
+  }
+
+  await query(
+    `UPDATE nomina_recibos
+        SET estatus      = 'TIMBRADO',
+            uuid         = $2,
+            xml_timbrado = $3,
+            timbrado_at  = NOW()
+      WHERE id = $1 AND company_id = $4`,
+    [reciboId, timbre.uuid, timbre.xml_stamped || recibo.xml_pretimbre, companyId]
+  );
+
+  logger.info(`[nómina] recibo de ${recibo.nombre} timbrado — UUID ${timbre.uuid}`);
+  return { id: reciboId, uuid: timbre.uuid, nombre: recibo.nombre };
+}
+
+/**
+ * Timbra varios. Sigue aunque alguno falle.
+ *
+ * Con cincuenta recibos, que el número doce truene no puede dejar sin timbrar a
+ * los treinta y ocho de atrás: cada uno va por su cuenta y al final se dice
+ * cuáles pasaron y cuáles no, con su motivo. Lo contrario obligaría a adivinar
+ * dónde se quedó y a arriesgar timbrar dos veces los primeros.
+ */
+export async function timbrarVarios(companyId: string, ids: string[]) {
+  const hechos: any[] = [];
+  const fallidos: any[] = [];
+
+  for (const id of ids || []) {
+    try {
+      hechos.push(await timbrarRecibo(companyId, id));
+    } catch (e: any) {
+      const r = await query<any>(
+        `SELECT nombre FROM nomina_recibos WHERE id = $1 AND company_id = $2`,
+        [id, companyId]
+      );
+      fallidos.push({
+        id,
+        nombre: r.rows[0]?.nombre || id,
+        motivo: e?.message || 'Error al timbrar',
+      });
+    }
+  }
+  return { timbrados: hechos.length, fallaron: fallidos.length, hechos, fallidos };
 }

@@ -247,7 +247,16 @@ export async function calcular(
   /* La captura llega indexada por trabajador: buscarla en un arreglo dentro
    * del bucle sería recorrerlo cincuenta veces por cada cincuenta renglones. */
   const capturaDe = new Map<string, CapturaPorTrabajador>();
-  for (const c of opciones.captura || []) capturaDe.set(c.empleadoId, c);
+  /* Sin captura explícita se toma la GUARDADA.
+   *
+   * Es lo que hace que abrir la pantalla al día siguiente muestre lo que se
+   * tecleó ayer. Cuando la pantalla manda su propia captura —un recálculo con
+   * lo que se acaba de escribir— esa manda, porque es más reciente que la
+   * guardada; el guardado ocurre en el mismo POST, justo después. */
+  const capturaEfectiva = opciones.captura?.length
+    ? opciones.captura
+    : await leerCaptura(companyId, periodoId);
+  for (const c of capturaEfectiva) capturaDe.set(c.empleadoId, c);
 
   /* ── Los conceptos del finiquito ──
    *
@@ -567,4 +576,174 @@ export async function partirConceptos(
     lineas: detalle,
     totales: { importe: suma('importe'), gravado: suma('gravado'), exento: suma('exento') },
   };
+}
+
+/* ═════════════════ LA CAPTURA QUE SE QUEDA ═════════════════ */
+
+/**
+ * Guarda el borrador de la prenómina.
+ *
+ * Se llama en cada recálculo, así que tiene que ser barato y ser idempotente:
+ * veinte recálculos dejan una fila por trabajador, no veinte. El ON CONFLICT se
+ * apoya en el índice único (periodo, empleado).
+ *
+ * Un trabajador al que se le borran todos los conceptos pierde su fila en vez de
+ * quedarse con una vacía: así "no hay captura" y "hay captura vacía" son el
+ * mismo estado, que es como lo piensa quien usa la pantalla.
+ */
+export async function guardarCaptura(
+  companyId: string,
+  periodoId: string,
+  captura: CapturaPorTrabajador[],
+  userId?: string
+) {
+  const p = await periodosSvc.obtener(companyId, periodoId);
+  if (p.estatus === 'CERRADO') {
+    throw new ValidationError(
+      'Ese periodo ya está cerrado: sus importes quedaron congelados en los recibos.'
+    );
+  }
+
+  let guardados = 0;
+  for (const c of captura || []) {
+    if (!c?.empleadoId) continue;
+    const ingresos = (c.otrosIngresos || []).filter((x: any) => x?.clave && Number(x.importe) > 0);
+    const egresos  = (c.otrasDeducciones || []).filter((x: any) => x?.clave && Number(x.importe) > 0);
+    const dias = c.dias === undefined || c.dias === null || c.dias === ('' as any)
+      ? null : Number(c.dias);
+
+    if (ingresos.length === 0 && egresos.length === 0 && dias === null) {
+      await query(
+        `DELETE FROM nomina_captura WHERE periodo_id = $1 AND empleado_id = $2 AND company_id = $3`,
+        [periodoId, c.empleadoId, companyId]
+      );
+      continue;
+    }
+
+    await query(
+      `INSERT INTO nomina_captura
+         (company_id, periodo_id, empleado_id, dias, otros_ingresos, otras_deducciones, capturado_por)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7)
+       ON CONFLICT (periodo_id, empleado_id) DO UPDATE
+         SET dias              = EXCLUDED.dias,
+             otros_ingresos    = EXCLUDED.otros_ingresos,
+             otras_deducciones = EXCLUDED.otras_deducciones,
+             capturado_por     = EXCLUDED.capturado_por,
+             updated_at        = NOW()`,
+      [companyId, periodoId, c.empleadoId, dias,
+       JSON.stringify(ingresos), JSON.stringify(egresos), userId || null]
+    );
+    guardados++;
+  }
+  return { guardados };
+}
+
+/** Lo capturado que sigue vivo en un periodo. */
+export async function leerCaptura(
+  companyId: string,
+  periodoId: string
+): Promise<CapturaPorTrabajador[]> {
+  const r = await query<any>(
+    `SELECT empleado_id, dias, otros_ingresos, otras_deducciones
+       FROM nomina_captura
+      WHERE company_id = $1 AND periodo_id = $2`,
+    [companyId, periodoId]
+  );
+  return r.rows.map((x) => ({
+    empleadoId: x.empleado_id,
+    dias: x.dias === null ? undefined : Number(x.dias),
+    otrosIngresos: x.otros_ingresos || [],
+    otrasDeducciones: x.otras_deducciones || [],
+  }));
+}
+
+/** Al cerrar, el borrador ya no sirve: los importes viven en el recibo. */
+export async function borrarCaptura(companyId: string, periodoId: string) {
+  await query(
+    `DELETE FROM nomina_captura WHERE company_id = $1 AND periodo_id = $2`,
+    [companyId, periodoId]
+  );
+}
+
+/**
+ * Aplica un concepto a VARIOS trabajadores de un jalón.
+ *
+ * POR QUÉ EXISTE
+ * Un bono de fin de mes o el día del 16 de septiembre le toca a toda la
+ * plantilla. Capturarlo de uno en uno en cien renglones no sólo es lento: es
+ * donde se cuelan los errores, porque a la mitad uno pierde la cuenta de a
+ * quién ya le tocó.
+ *
+ * SUMA, NO PISA
+ * Si el trabajador ya tenía ese concepto capturado, el importe se REEMPLAZA en
+ * lugar de sumarse. Aplicar dos veces el mismo bono por error dejaría el doble
+ * sin que se note; reemplazar es idempotente y se ve en pantalla. Lo demás que
+ * tuviera capturado se respeta.
+ *
+ * NO CALCULA NADA
+ * Sólo escribe el borrador. El recálculo va después y por su camino de siempre,
+ * con las exenciones del Art. 93 que correspondan a la clave.
+ */
+export async function aplicarAVarios(
+  companyId: string,
+  periodoId: string,
+  d: {
+    lado: 'ingresos' | 'egresos';
+    clave: string;
+    importe: number;
+    empleadoIds: string[];
+    gravadoManual?: number;
+  },
+  userId?: string
+) {
+  const p = await periodosSvc.obtener(companyId, periodoId);
+  if (p.estatus === 'CERRADO') {
+    throw new ValidationError('Ese periodo ya está cerrado: sus importes no se mueven.');
+  }
+  if (!d.clave) throw new ValidationError('Falta el concepto');
+  const importe = Number(d.importe);
+  if (!Number.isFinite(importe) || importe <= 0) {
+    throw new ValidationError('El importe tiene que ser mayor que cero');
+  }
+  const ids = (d.empleadoIds || []).filter(Boolean);
+  if (ids.length === 0) throw new ValidationError('No elegiste a ningún trabajador');
+
+  /* Que todos sean de ESTA empresa. Sin esta comprobación, un id ajeno pegado a
+   * mano escribiría en el borrador de otra. */
+  const suyos = await query<any>(
+    `SELECT id FROM nomina_empleados
+      WHERE company_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL`,
+    [companyId, ids]
+  );
+  if (suyos.rows.length !== ids.length) {
+    throw new ValidationError('Alguno de los trabajadores no es de esta empresa');
+  }
+
+  const previas = await leerCaptura(companyId, periodoId);
+  const porEmpleado = new Map(previas.map((c) => [c.empleadoId, c]));
+
+  const campo = d.lado === 'ingresos' ? 'otrosIngresos' : 'otrasDeducciones';
+  const nuevas: CapturaPorTrabajador[] = [];
+
+  for (const id of ids) {
+    const previa = porEmpleado.get(id) || {
+      empleadoId: id, otrosIngresos: [], otrasDeducciones: [],
+    } as CapturaPorTrabajador;
+
+    const lista = [...((previa as any)[campo] || [])].filter(
+      (x: any) => x.clave !== d.clave
+    );
+    lista.push({
+      clave: d.clave,
+      importe,
+      ...(d.gravadoManual !== undefined && d.gravadoManual !== null
+        ? { gravadoManual: Number(d.gravadoManual) }
+        : {}),
+    });
+
+    nuevas.push({ ...previa, [campo]: lista } as CapturaPorTrabajador);
+  }
+
+  await guardarCaptura(companyId, periodoId, nuevas, userId);
+  return { aplicados: nuevas.length, clave: d.clave, importe };
 }

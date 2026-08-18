@@ -24,6 +24,7 @@ import * as creditos from './creditos.service';
 import * as expediente from './expediente.service';
 import * as prenomina from './prenomina.service';
 import { generarExcel } from './prenomina-excel.service';
+import { generarListaDeRaya } from './lista-de-raya.service';
 import * as finiquito from './finiquito.service';
 import * as cierre from './cierre.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
@@ -178,6 +179,14 @@ router.get(
 router.post(
   '/prenomina/:periodoId',
   asyncHandler(async (req: Request, res: Response) => {
+    /* Se guarda ANTES de calcular: si el cálculo truena por un dato del
+     * expediente, lo que la persona tecleó ya quedó a salvo. Perder media hora
+     * de captura por un RFC mal escrito sería el peor de los dos males. */
+    if (Array.isArray(req.body?.captura)) {
+      await prenomina.guardarCaptura(
+        companyId(req), req.params.periodoId, req.body.captura, req.user?.userId
+      );
+    }
     const r = await prenomina.calcular(companyId(req), req.params.periodoId, {
       captura: Array.isArray(req.body?.captura) ? req.body.captura : [],
     });
@@ -195,7 +204,12 @@ router.post(
 router.post(
   '/prenomina/:periodoId/excel',
   asyncHandler(async (req: Request, res: Response) => {
-    const { buffer, nombre } = await generarExcel(
+    /* Por omisión sale la LISTA DE RAYA —el formato de la casa, con una columna
+     * por concepto—. El desglose de dos hojas sigue disponible con
+     * ?detalle=true: sirve cuando un número no cuadra y hay que ver el gravado
+     * y el exento de cada percepción. */
+    const armar = req.query.detalle === 'true' ? generarExcel : generarListaDeRaya;
+    const { buffer, nombre } = await armar(
       companyId(req), req.params.periodoId,
       Array.isArray(req.body?.captura) ? req.body.captura : []
     );
@@ -241,6 +255,24 @@ router.get(
   })
 );
 
+/**
+ * POST /recibos/timbrar — el paso que no se deshace.
+ *
+ * Va aparte del cierre a propósito: timbrar gasta timbres y deshacerlo exige
+ * una cancelación ante el SAT.
+ */
+router.post(
+  '/recibos/timbrar',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    if (ids.length === 0) throw new ValidationError('No elegiste ningún recibo');
+    const r = await cierre.timbrarVarios(companyId(req), ids);
+    res.json({ success: true, data: r });
+  })
+);
+
+
 /** El XML del recibo — el timbrado si ya lo está, el pre-timbre si no. */
 router.get(
   '/recibos/:id/xml',
@@ -264,6 +296,32 @@ router.put(
   asyncHandler(async (req: Request, res: Response) => {
     const r = await cierre.marcarEnvioPorCorreo(
       companyId(req), req.body?.ids || [], !!req.body?.enviar
+    );
+    res.json({ success: true, data: r });
+  })
+);
+
+
+/**
+ * POST /prenomina/:periodoId/aplicar-a-varios — el mismo concepto a muchos.
+ *
+ * Un bono de fin de mes o el día festivo le toca a la plantilla entera.
+ * Capturarlo cien veces es donde se cuelan los errores.
+ */
+router.post(
+  '/prenomina/:periodoId/aplicar-a-varios',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await prenomina.aplicarAVarios(
+      companyId(req), req.params.periodoId,
+      {
+        lado: req.body?.lado === 'egresos' ? 'egresos' : 'ingresos',
+        clave: String(req.body?.clave || ''),
+        importe: Number(req.body?.importe),
+        empleadoIds: Array.isArray(req.body?.empleadoIds) ? req.body.empleadoIds : [],
+        gravadoManual: req.body?.gravadoManual,
+      },
+      req.user?.userId
     );
     res.json({ success: true, data: r });
   })
