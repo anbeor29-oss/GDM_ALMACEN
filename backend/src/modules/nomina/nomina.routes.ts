@@ -163,6 +163,25 @@ router.get(
   })
 );
 
+/**
+ * POST /prenomina/:periodoId — recalcula con lo capturado en la rejilla.
+ *
+ * Body: { captura: [{ empleadoId, dias?, otrosIngresos?, otrasDeducciones? }] }
+ *
+ * Es POST y no GET porque la captura puede ser larga —cincuenta trabajadores
+ * con sus conceptos no caben en una URL— pero NO escribe nada: el resultado se
+ * calcula al vuelo, igual que el GET. Lo que se persiste es el cierre.
+ */
+router.post(
+  '/prenomina/:periodoId',
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await prenomina.calcular(companyId(req), req.params.periodoId, {
+      captura: Array.isArray(req.body?.captura) ? req.body.captura : [],
+    });
+    res.json({ success: true, data: r });
+  })
+);
+
 /** Cuántos trabajadores le tocan a cada tipo — antes de generar nada. */
 router.get(
   '/plantilla-por-tipo',

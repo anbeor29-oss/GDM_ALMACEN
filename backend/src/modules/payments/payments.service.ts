@@ -730,7 +730,16 @@ export async function listPayments(companyId: string, opts: { limit?: number; of
        LEFT JOIN invoices  i ON i.id = p.invoice_id
        LEFT JOIN customers c ON c.id = p.customer_id
       WHERE p.company_id = $1 AND p.deleted_at IS NULL
-      ORDER BY p.payment_date DESC
+      /* Por fecha y, dentro del mismo día, por folio descendente.
+       *
+       * Sin el segundo criterio, los complementos del mismo día salían en el
+       * orden en que Postgres los devolviera —P-000005, P-000006, P-000004— y
+       * la lista parecía desordenada justo donde el folio es consecutivo. El
+       * folio se ordena como NÚMERO y no como texto: "P-000010" iría antes que
+       * "P-000009" en orden alfabético. */
+      ORDER BY p.payment_date DESC,
+               NULLIF(regexp_replace(COALESCE(p.folio, ''), '\D', '', 'g'), '')::bigint DESC NULLS LAST,
+               p.created_at DESC
       LIMIT $2 OFFSET $3`,
     [companyId, limit, offset]
   );

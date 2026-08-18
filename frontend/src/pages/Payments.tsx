@@ -13,7 +13,7 @@
  * aprender dos pantallas para el mismo trabajo.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Wallet, FileDown, Eye, Ban } from 'lucide-react';
+import { Wallet, FileDown, Eye, Ban, Download } from 'lucide-react';
 import { api } from '@/services/api';
 
 export default function Payments() {
@@ -158,17 +158,23 @@ export default function Payments() {
                       </span>
                     </td>
                     <td className="px-6 py-2">
+                      {/* Los MISMOS iconos y colores que el panel de facturas: rojo
+                          para el PDF, verde para el XML, azul para la vista previa
+                          y naranja para cancelar. Un complemento de pago es un CFDI
+                          igual que una factura; que sus acciones se vieran distintas
+                          obligaba a volver a aprenderlas en cada pantalla. El XML
+                          era un botón con la palabra "XML" y ahora es su icono. */}
                       <div className="flex items-center gap-1">
                         <button onClick={() => handlePDF(p)} title="Descargar PDF"
                           className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"><FileDown size={18} /></button>
-                        {p.uuid && (
+                        <button onClick={() => handleXML(p)} title="Descargar XML"
+                          className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"><Download size={18} /></button>
+                        <button onClick={() => handlePDF(p, true)} title="Vista previa"
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Eye size={18} /></button>
+                        {p.uuid && !cancelado && (
                           <button onClick={() => handleCancelar(p)} title="Cancelar ante el SAT"
                             className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg"><Ban size={18} /></button>
                         )}
-                        <button onClick={() => handleXML(p)} title="Descargar XML timbrado"
-                          className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-bold">XML</button>
-                        <button onClick={() => handlePDF(p, true)} title="Vista previa"
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Eye size={18} /></button>
                       </div>
                     </td>
                   </tr>

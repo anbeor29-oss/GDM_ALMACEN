@@ -106,12 +106,27 @@ export function diasQueLeTocan(
 }
 
 /**
+ * Lo que se captura a mano sobre un renglón de la rejilla.
+ *
+ * Son los conceptos del Anexo 20 que NO salen del expediente: las horas extra
+ * de esta semana, el bono de este mes, la falta del martes. Viajan con la
+ * petición y se recalculan al vuelo — no se guardan hasta cerrar el periodo.
+ */
+export interface CapturaPorTrabajador {
+  empleadoId: string;
+  /** Días a pagar, cuando se corrigen a mano (faltas, permisos). */
+  dias?: number;
+  otrosIngresos?: Array<{ clave: string; importe: number; gravadoManual?: number }>;
+  otrasDeducciones?: Array<{ clave: string; concepto?: string; importe: number }>;
+}
+
+/**
  * Arma la prenómina de un periodo. NO escribe nada.
  */
 export async function calcular(
   companyId: string,
   periodoId: string,
-  opciones: { empleadoIds?: string[] } = {}
+  opciones: { empleadoIds?: string[]; captura?: CapturaPorTrabajador[] } = {}
 ) {
   const periodo = await periodosSvc.obtener(companyId, periodoId);
 
@@ -204,11 +219,26 @@ export async function calcular(
     porEmpleado.set(c.empleado_id, l);
   }
 
+  /* La captura llega indexada por trabajador: buscarla en un arreglo dentro
+   * del bucle sería recorrerlo cincuenta veces por cada cincuenta renglones. */
+  const capturaDe = new Map<string, CapturaPorTrabajador>();
+  for (const c of opciones.captura || []) capturaDe.set(c.empleadoId, c);
+
   const periodicidad = PERIODICIDAD_MOTOR[periodo.tipo];
   const renglones: RenglonPrenomina[] = [];
 
   for (const e of r.rows) {
-    const dias = diasQueLeTocan(periodo, e);
+    const cap = capturaDe.get(e.id);
+    let dias = diasQueLeTocan(periodo, e);
+
+    /* Los días capturados a mano mandan sobre los del calendario: son las
+     * faltas y los permisos, que el sistema no puede saber. Nunca más de los
+     * que le tocan — pagarle 10 días de una semana de 7 no es una corrección,
+     * es un error de dedo. */
+    if (cap?.dias !== undefined && cap.dias !== null) {
+      const d = Number(cap.dias);
+      if (Number.isFinite(d) && d >= 0) dias = Math.min(d, diasQueLeTocan(periodo, e));
+    }
     /* Cero días: estuvo de baja todo el periodo. No se calcula ni se enseña con
      * ceros, que se confundiría con "no se le pagó por error". */
     if (dias <= 0) continue;
@@ -218,13 +248,17 @@ export async function calcular(
 
     /* Los créditos entran como deducciones, sin pasarse del saldo: el último
      * abono casi nunca es completo. */
-    const otrasDeducciones = (porEmpleado.get(e.id) || []).map((c) => ({
-      clave: c.origen === 'FONACOT' ? '011' : '012',
-      concepto: c.origen === 'FONACOT'
-        ? `FONACOT ${c.numero || ''}`.trim()
-        : 'Préstamo de la empresa',
-      importe: Math.min(Number(c.descuento_por_periodo), Number(c.saldo)),
-    }));
+    const otrasDeducciones = [
+      ...(porEmpleado.get(e.id) || []).map((c) => ({
+        clave: c.origen === 'FONACOT' ? '011' : '012',
+        concepto: c.origen === 'FONACOT'
+          ? `FONACOT ${c.numero || ''}`.trim()
+          : 'Préstamo de la empresa',
+        importe: Math.min(Number(c.descuento_por_periodo), Number(c.saldo)),
+      })),
+      /* Y lo capturado a mano: faltas, cuotas sindicales, lo que sea. */
+      ...(cap?.otrasDeducciones || []).filter((d) => Number(d.importe) > 0),
+    ];
 
     const entrada: EntradaCalculo = {
       salarioDiario: sd,
@@ -232,6 +266,9 @@ export async function calcular(
       dias,
       zona: (e.zona_geografica as Zona) || 'general',
       periodicidad,
+      /* Horas extra, bonos, despensa: cada uno con su exención del Art. 93,
+       * que la calcula el motor según el concepto. */
+      otrosIngresos: (cap?.otrosIngresos || []).filter((x) => Number(x.importe) > 0),
       otrasDeducciones,
       infonavit: {
         tiene: !!e.tiene_infonavit,

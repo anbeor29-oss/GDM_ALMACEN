@@ -1140,6 +1140,13 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/nomina/periodos/especial', datos);
     return r.data;
   }
+  /** Recalcula con lo capturado en la rejilla. NO guarda: sigue siendo cálculo. */
+  async recalcularPrenomina(periodoId: string, captura: any[]) {
+    const r = await this.client.post<APIResponse<any>>(
+      `/nomina/prenomina/${periodoId}`, { captura }, { timeout: 120_000 }
+    );
+    return r.data;
+  }
   async getPrenomina(periodoId: string) {
     const r = await this.client.get<APIResponse<any>>(`/nomina/prenomina/${periodoId}`, {
       /* Cincuenta trabajadores se calculan al vuelo cada vez: el tiempo de

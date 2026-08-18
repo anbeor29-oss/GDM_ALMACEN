@@ -17,13 +17,15 @@
  * significa que la periodicidad quedó mal capturada, y verlo antes ahorra
  * generar 53 periodos que nadie va a usar.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   CalendarPlus, Users, AlertTriangle, RefreshCw, Plus, X, Info,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { CeldaDeConceptos } from './CeldaDeConceptos';
+import { CapturaDeConceptos, type Linea } from './CapturaDeConceptos';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -47,6 +49,14 @@ export function NominaCalculoPage() {
   const [error, setError] = useState('');
   const [aviso, setAviso] = useState('');
 
+  /* Lo capturado a mano sobre la rejilla, por trabajador. Vive en la pantalla y
+   * NO en la base: la prenómina se recalcula al vuelo y sólo el cierre del
+   * periodo persiste algo. Al cambiar de periodo se limpia — los conceptos son
+   * de esa corrida, no del trabajador. */
+  const [captura, setCaptura] = useState<Record<string, { otrosIngresos: Linea[]; otrasDeducciones: Linea[] }>>({});
+  const [capturando, setCapturando] = useState<{ lado: 'ingresos' | 'egresos'; renglon: any } | null>(null);
+  const [pre, setPre] = useState<any>(null);
+
   const plantillaQ = useQuery({
     queryKey: ['plantilla-por-tipo'],
     queryFn: () => api.getPlantillaPorTipo(),
@@ -64,9 +74,50 @@ export function NominaCalculoPage() {
     queryFn: () => api.getPrenomina(periodoId),
     enabled: !!periodoId,
   });
-  const pre: any = prenominaQ.data?.data;
 
-  const cambiarTipo = (t: string) => { setTipo(t); setPeriodoId(''); setError(''); setAviso(''); };
+  /* El resultado del GET alimenta la pantalla la primera vez; después manda lo
+   * que devuelve el recálculo con la captura. */
+  useEffect(() => {
+    if (prenominaQ.data?.data) setPre(prenominaQ.data.data);
+  }, [prenominaQ.data]);
+
+  const cambiarTipo = (t: string) => {
+    setTipo(t); setPeriodoId(''); setError(''); setAviso(''); setCaptura({}); setPre(null);
+  };
+
+  /* Guarda lo capturado y pide el recálculo. El servidor devuelve la rejilla
+   * completa, con el ISR y las cuotas ya movidos por los conceptos nuevos —
+   * recalcular en la pantalla daría un número distinto del que se va a timbrar. */
+  const aplicarCaptura = async (empleadoId: string, lado: 'ingresos' | 'egresos', lineas: Linea[]) => {
+    const nueva = {
+      ...captura,
+      [empleadoId]: {
+        otrosIngresos: lado === 'ingresos' ? lineas : (captura[empleadoId]?.otrosIngresos || []),
+        otrasDeducciones: lado === 'egresos' ? lineas : (captura[empleadoId]?.otrasDeducciones || []),
+      },
+    };
+    setCaptura(nueva);
+    setCapturando(null);
+    setError('');
+    try {
+      const cuerpo = Object.entries(nueva).map(([id, c]) => ({
+        empleadoId: id,
+        otrosIngresos: c.otrosIngresos.map((l) => ({
+          clave: l.clave,
+          importe: Number(l.importe),
+          gravadoManual: l.gravadoManual === '' || l.gravadoManual === undefined
+            ? undefined : Number(l.gravadoManual),
+        })),
+        otrasDeducciones: c.otrasDeducciones.map((l) => ({
+          clave: l.clave, importe: Number(l.importe),
+        })),
+      }));
+      const r = await api.recalcularPrenomina(periodoId, cuerpo);
+      setPre(r.data);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo recalcular');
+    }
+  };
 
   const generar = async () => {
     setGenerando(true); setError(''); setAviso('');
@@ -203,7 +254,7 @@ export function NominaCalculoPage() {
         )}
 
         {periodos.length > 0 && (
-          <select value={periodoId} onChange={(e) => setPeriodoId(e.target.value)}
+          <select value={periodoId} onChange={(e) => { setPeriodoId(e.target.value); setCaptura({}); setPre(null); }}
             className="w-full border rounded-lg px-3 py-2 text-sm">
             <option value="">— Elige el periodo —</option>
             {periodos.map((p) => (
@@ -257,15 +308,20 @@ export function NominaCalculoPage() {
 
           {pre && (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              {/* COLUMNAS ANGOSTAS Y NÚMERO EN LUGAR DEL TIPO.
+                  La palabra "SEMANAL" se repetía idéntica en los cincuenta
+                  renglones y sólo robaba ancho: el tipo ya está en el encabezado
+                  del bloque. Lo que sí cambia renglón a renglón es el número
+                  consecutivo, y eso es lo que va en esa columna. */}
+              <table className="w-full text-sm tabular-nums">
                 <thead className="bg-gray-50 border-b">
                   <tr className="text-xs text-gray-600">
-                    <th className="px-3 py-2 text-left">Nómina</th>
-                    <th className="px-3 py-2 text-left">Nombre</th>
-                    <th className="px-3 py-2 text-center">Días trab.</th>
-                    <th className="px-3 py-2 text-right">Ingresos</th>
-                    <th className="px-3 py-2 text-right">Egresos</th>
-                    <th className="px-3 py-2 text-right">Total a cobrar</th>
+                    <th className="px-2 py-1.5 text-right w-10">#</th>
+                    <th className="px-2 py-1.5 text-left">Nombre</th>
+                    <th className="px-2 py-1.5 text-center w-16">Días</th>
+                    <th className="px-2 py-1.5 text-right w-28">Ingresos</th>
+                    <th className="px-2 py-1.5 text-right w-28">Egresos</th>
+                    <th className="px-2 py-1.5 text-right w-28">A cobrar</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -274,41 +330,62 @@ export function NominaCalculoPage() {
                       Ningún trabajador con esa periodicidad estuvo activo en este periodo.
                     </td></tr>
                   )}
-                  {pre.renglones.map((r: any) => (
-                    <tr key={r.empleado_id} className="hover:bg-gray-50">
-                      <td className="px-3 py-1.5 text-xs text-gray-500">{pre.periodo.tipo}</td>
-                      <td className="px-3 py-1.5">
-                        <p className="font-medium text-gray-900">{r.nombre}</p>
-                        <p className="text-[11px] text-gray-500">
-                          {r.num_empleado}{r.puesto ? ` · ${r.puesto}` : ''}
-                        </p>
-                        {r.faltantes?.length > 0 && (
-                          <p className="text-[11px] text-amber-700 flex items-center gap-1">
-                            <AlertTriangle size={11} /> no se puede timbrar: falta {r.faltantes.join(', ')}
-                          </p>
-                        )}
-                        {r.avisos?.map((a: string, i: number) => (
-                          <p key={i} className="text-[11px] text-amber-700">{a}</p>
-                        ))}
-                      </td>
-                      <td className="px-3 py-1.5 text-center">
-                        {r.dias}
-                        {r.dias !== r.diasDelPeriodo && (
-                          <span className="text-[11px] text-gray-400"> / {r.diasDelPeriodo}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-1.5 text-right">{money(r.ingresos)}</td>
-                      <td className="px-3 py-1.5 text-right text-rose-700">
-                        {r.egresos > 0 ? money(r.egresos) : '—'}
-                      </td>
-                      <td className="px-3 py-1.5 text-right font-semibold">{money(r.neto)}</td>
-                    </tr>
-                  ))}
+                  {pre.renglones.map((r: any, i: number) => {
+                    const cap = captura[r.empleado_id];
+                    return (
+                      <tr key={r.empleado_id} className="hover:bg-gray-50">
+                        <td className="px-2 py-1 text-right text-gray-400">{i + 1}</td>
+                        <td className="px-2 py-1">
+                          <span className="text-gray-900">{r.nombre}</span>
+                          <span className="text-[11px] text-gray-400 ml-1.5">
+                            {r.num_empleado}{r.puesto ? ` · ${r.puesto}` : ''}
+                          </span>
+                          {r.faltantes?.length > 0 && (
+                            <span className="block text-[11px] text-amber-700">
+                              <AlertTriangle size={10} className="inline mr-0.5" />
+                              falta {r.faltantes.join(', ')}
+                            </span>
+                          )}
+                          {r.avisos?.map((a: string, k: number) => (
+                            <span key={k} className="block text-[11px] text-amber-700">{a}</span>
+                          ))}
+                        </td>
+                        <td className="px-2 py-1 text-center">
+                          {r.dias}
+                          {r.dias !== r.diasDelPeriodo && (
+                            <span className="text-[11px] text-gray-400">/{r.diasDelPeriodo}</span>
+                          )}
+                        </td>
+
+                        {/* Ingresos y egresos: el desglose al pasar el mouse, la
+                            captura con doble clic. */}
+                        <CeldaDeConceptos
+                          importe={r.ingresos}
+                          detalle={r.percepciones}
+                          capturados={cap?.otrosIngresos?.length || 0}
+                          titulo="Percepciones del periodo"
+                          onDobleClic={esAdmin ? () => setCapturando({ lado: 'ingresos', renglon: r }) : undefined}
+                        />
+                        <CeldaDeConceptos
+                          importe={r.egresos}
+                          detalle={r.deducciones}
+                          capturados={cap?.otrasDeducciones?.length || 0}
+                          titulo="Deducciones del periodo"
+                          color="rojo"
+                          onDobleClic={esAdmin ? () => setCapturando({ lado: 'egresos', renglon: r }) : undefined}
+                        />
+
+                        <td className="px-2 py-1 text-right font-semibold whitespace-nowrap">
+                          {money(r.neto)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
                 {pre.renglones.length > 0 && (
                   <tfoot className="bg-gray-50 border-t-2">
                     <tr className="font-semibold">
-                      <td className="px-3 py-2" colSpan={2}>
+                      <td className="px-2 py-1.5" colSpan={2}>
                         {pre.totales.trabajadores} trabajador(es)
                         {pre.totales.sinPoderTimbrar > 0 && (
                           <span className="font-normal text-amber-700 text-xs">
@@ -317,20 +394,38 @@ export function NominaCalculoPage() {
                         )}
                       </td>
                       <td></td>
-                      <td className="px-3 py-2 text-right">{money(pre.totales.ingresos)}</td>
-                      <td className="px-3 py-2 text-right text-rose-700">{money(pre.totales.egresos)}</td>
-                      <td className="px-3 py-2 text-right">{money(pre.totales.neto)}</td>
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap">{money(pre.totales.ingresos)}</td>
+                      <td className="px-2 py-1.5 text-right text-rose-700 whitespace-nowrap">{money(pre.totales.egresos)}</td>
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap">{money(pre.totales.neto)}</td>
                     </tr>
                     <tr className="text-xs text-gray-600">
-                      <td className="px-3 pb-2" colSpan={6}>
+                      <td className="px-2 pb-1.5" colSpan={6}>
                         ISR {money(pre.totales.isr)} · IMSS obrero {money(pre.totales.imss)}
                         {pre.totales.subsidio > 0 && ` · subsidio al empleo ${money(pre.totales.subsidio)}`}
+                        <span className="text-gray-400">
+                          {'  '}· doble clic en Ingresos o Egresos para capturar conceptos;
+                          pasa el mouse para ver cómo se integran
+                        </span>
                       </td>
                     </tr>
                   </tfoot>
                 )}
               </table>
             </div>
+          )}
+
+          {capturando && (
+            <CapturaDeConceptos
+              lado={capturando.lado}
+              nombreTrabajador={capturando.renglon.nombre}
+              lineas={
+                capturando.lado === 'ingresos'
+                  ? (captura[capturando.renglon.empleado_id]?.otrosIngresos || [])
+                  : (captura[capturando.renglon.empleado_id]?.otrasDeducciones || [])
+              }
+              onCerrar={() => setCapturando(null)}
+              onGuardar={(l) => aplicarCaptura(capturando.renglon.empleado_id, capturando.lado, l)}
+            />
           )}
 
           <p className="px-5 py-3 text-xs text-gray-500 border-t">

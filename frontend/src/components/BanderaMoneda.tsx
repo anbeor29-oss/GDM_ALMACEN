@@ -1,17 +1,36 @@
 /**
  * BanderaMoneda — círculo con la bandera del país de la moneda del CFDI.
  *
- * POR QUÉ SVG Y NO EMOJI NI IMÁGENES
+ * POR QUÉ SVG Y NO EMOJI
  * El emoji 🇲🇽 no se dibuja en Windows —el sistema no trae las banderas de
  * región y sale "MX" en letras—, así que en las máquinas donde se factura no
- * serviría de nada. Y una imagen externa mete una petición por renglón y se
- * rompe el día que cambie la URL. Un SVG de tres franjas pesa nada, siempre se
- * ve igual y no depende de nadie.
+ * serviría de nada. Un SVG pesa nada, siempre se ve igual y no depende de
+ * nadie.
+ *
+ * LA ÚNICA IMAGEN ES EL ESCUDO NACIONAL
+ * Y va servida por el propio sitio, no traída de fuera. El águila, la
+ * serpiente, el nopal y el listón tienen una forma oficial: dibujarlos
+ * "parecido" en SVG sería inventar un escudo que no es el escudo. Si el archivo
+ * no está, la bandera sale con sus tres franjas y nada se ve roto.
  *
  * SE MUESTRA LA MONEDA, NO EL PAÍS DEL CLIENTE. Un cliente mexicano puede
  * facturarse en dólares; lo que hay que distinguir de un vistazo es en qué
  * moneda está el comprobante, que es lo que cambia el importe.
  */
+import { useState } from 'react';
+
+/**
+ * Dónde vive el escudo nacional.
+ *
+ * Es un archivo del sitio, no un dibujo del código: se deja caer en
+ * `frontend/public/escudo-mx.png` y aparece solo. Mientras no esté, la bandera
+ * sale con sus tres franjas y nada se ve roto.
+ *
+ * Un archivo del propio sitio y no una URL externa: una imagen de fuera mete
+ * una petición a un tercero por cada renglón de la tabla y se rompe el día que
+ * esa dirección cambie.
+ */
+const ESCUDO_MX = `${import.meta.env.BASE_URL}escudo-mx.png`;
 
 interface Props {
   /** Clave ISO del CFDI: MXN, USD, EUR… */
@@ -20,6 +39,9 @@ interface Props {
 }
 
 export function BanderaMoneda({ moneda, size = 18 }: Props) {
+  /* Si el archivo del escudo no está, se deja de intentar: sin esto, cada
+   * renglón de la tabla pediría una imagen que no existe. */
+  const [escudoFallo, setEscudoFallo] = useState(false);
   const m = String(moneda || 'MXN').toUpperCase();
   const r = size / 2;
 
@@ -79,13 +101,30 @@ export function BanderaMoneda({ moneda, size = 18 }: Props) {
           </>
         );
       case 'MXN':
-        /* Verde, blanco y rojo. El escudo no se dibuja: a 18 px sería un
-         * borrón, y las tres franjas ya identifican la bandera sin ambigüedad. */
+        /* Verde, blanco y rojo, con el escudo ENCIMA si el archivo está puesto.
+         *
+         * El escudo no se dibuja a mano: el águila, la serpiente, el nopal y el
+         * listón tricolor son un dibujo con forma oficial, y trazarlo "parecido"
+         * en SVG sería inventar un escudo que no es el escudo. Lo que sí se
+         * puede es USAR el de verdad.
+         *
+         * Se busca en /escudo-mx.png (o .svg, ver abajo). Si no está, se cae a
+         * las tres franjas —que ya identifican la bandera sin ambigüedad— en vez
+         * de dejar el hueco de una imagen rota. Por eso el onError. */
         return (
           <>
             <rect x="0" y="0" width={size / 3} height={size} fill="#006847" />
             <rect x={size / 3} y="0" width={size / 3} height={size} fill="#FFFFFF" />
             <rect x={(size * 2) / 3} y="0" width={size / 3} height={size} fill="#CE1126" />
+            {!escudoFallo && (
+              <image
+                href={ESCUDO_MX}
+                x={size * 0.28} y={size * 0.20}
+                width={size * 0.44} height={size * 0.60}
+                preserveAspectRatio="xMidYMid meet"
+                onError={() => setEscudoFallo(true)}
+              />
+            )}
           </>
         );
       case 'JPY':
