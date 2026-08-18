@@ -449,6 +449,15 @@ export interface EntradaCalculo {
 
 export interface Percepcion {
   clave: string; concepto: string; gravado: number; exento: number; importe: number;
+  /* Marca el sueldo del periodo — el que sale de salario × días.
+   *
+   * No basta con mirar la clave: la 001 también la usan las vacaciones no
+   * disfrutadas de un finiquito y cualquier retroactivo de sueldo capturado a
+   * mano, porque para el SAT todos son salario. Distinguirlos por clave hacía
+   * que la columna "Ingresos" de la rejilla los sumara al sueldo y
+   * desaparecieran de "Otros ingresos": el total quedaba bien y el desglose
+   * mentía. */
+  esSueldoDelPeriodo?: boolean;
 }
 export interface Deduccion {
   clave: string; concepto: string; importe: number;
@@ -528,6 +537,7 @@ export function calcularRecibo(entrada: EntradaCalculo, e: Ejercicio): Recibo {
     gravado: sueldoGravable,
     exento: pesos(sueldo - sueldoGravable),
     importe: sueldo,
+    esSueldoDelPeriodo: true,
   });
 
   const baseGravable = pesos(sueldoGravable + gravadoOtros);

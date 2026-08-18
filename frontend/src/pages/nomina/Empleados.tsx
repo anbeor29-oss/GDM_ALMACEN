@@ -290,16 +290,29 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
-  const [diasPendientes, setDiasPendientes] = useState('0');
   const [vacTomadas, setVacTomadas] = useState('0');
+  /* Desde qué día se le debe el sueldo. Es el inicio del periodo especial, y de
+   * ahí sale "su semana": el motor cobra los días del periodo como en cualquier
+   * nómina. Vacío = sólo el día de la baja, que es lo conservador. */
+  const [desdeDias, setDesdeDias] = useState('');
+
+  /* Los días que se le deben salen del RANGO, no se teclean: capturar "5 días"
+   * y "del 10 al 15" por separado invita a que no coincidan, y el periodo
+   * especial se genera con el rango. */
+  const diasDelTramo = (() => {
+    if (!desdeDias || desdeDias > fecha) return 0;
+    const a = new Date(`${desdeDias}T12:00:00`).getTime();
+    const b = new Date(`${fecha}T12:00:00`).getTime();
+    return Math.round((b - a) / 86400000) + 1;
+  })();
 
   /* El finiquito se recalcula con cada cambio de fecha o de captura. Es una
    * consulta barata y sin efectos: no escribe nada. */
   const fin = useQuery({
-    queryKey: ['finiquito', empleado.id, fecha, diasPendientes, vacTomadas],
+    queryKey: ['finiquito', empleado.id, fecha, desdeDias, vacTomadas],
     queryFn: () => api.getFiniquito(empleado.id, {
       fechaBaja: fecha,
-      diasPendientesDePagar: Number(diasPendientes) || 0,
+      diasPendientesDePagar: diasDelTramo,
       vacacionesYaDisfrutadas: Number(vacTomadas) || 0,
     }),
     enabled: /^\d{4}-\d{2}-\d{2}$/.test(fecha),
@@ -307,13 +320,34 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
   });
   const calc: any = fin.data?.data;
 
-  const confirmar = async () => {
+  /* Dar de baja y dejar el pago listo son DOS cosas.
+   *
+   * La baja es el aviso al IMSS; el periodo especial es el pago. Se hacen en ese
+   * orden y en la misma acción porque en la práctica van juntas, pero si la
+   * segunda falla la primera queda hecha — y hay que decirlo, no callarlo. */
+  const confirmar = async (pasar: 'FINIQUITO' | 'LIQUIDACION' | null) => {
     setGuardando(true); setError('');
     try {
       await api.darDeBajaEmpleado(empleado.id, fecha, motivo);
+      if (pasar) {
+        const r = await api.finiquitoANominaEspecial(empleado.id, {
+          fechaBaja: fecha,
+          tipo: pasar,
+          desde: desdeDias || undefined,
+          vacacionesYaDisfrutadas: Number(vacTomadas) || 0,
+          motivo: motivo || undefined,
+        });
+        window.alert(r?.data?.aviso || 'Periodo especial creado.');
+      }
       onHecho();
     } catch (e: any) {
-      setError(e?.response?.data?.message || 'No se pudo registrar la baja');
+      const m = e?.response?.data?.message || 'No se pudo completar';
+      setError(
+        pasar
+          ? `${m} — La baja SÍ quedó registrada; lo que falló fue crear el periodo especial. `
+            + 'Puedes generarlo a mano en Nómina, tipo Especial.'
+          : m
+      );
     } finally {
       setGuardando(false);
     }
@@ -346,12 +380,13 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
             firmar es justo el punto. */}
         <div className="grid sm:grid-cols-2 gap-3 mt-4">
           <div>
-            <label className="block text-xs text-gray-600 mb-1">Días pendientes de pagar</label>
-            <input type="number" min={0} step="0.5" value={diasPendientes}
-              onChange={(e) => setDiasPendientes(e.target.value)}
+            <label className="block text-xs text-gray-600 mb-1">Se le debe el sueldo desde</label>
+            <input type="date" value={desdeDias} max={fecha}
+              onChange={(e) => setDesdeDias(e.target.value)}
               className="w-full border rounded-lg px-3 py-2 text-sm" />
             <p className="text-[10px] text-gray-500 mt-0.5">
-              Los del último periodo que ya trabajó y no se le ha cubierto.
+              El primer día no pagado{diasDelTramo > 0 ? ` — ${diasDelTramo} día(s)` : ''}.
+              Vacío = sólo el día de la baja.
             </p>
           </div>
           <div>
@@ -408,10 +443,10 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
               <b className="text-lg">{money(calc.totalConIndemnizacion)}</b>
             </p>
             <p className="text-[11px] text-gray-500">
-              Esto es la cuenta de lo que se debe, no el recibo. Para pagarlo se genera un
-              periodo <b>ESPECIAL</b> en Nómina, que es donde se le aplican las exenciones
-              del Art. 93 y se timbra. Cuál de las dos columnas se paga es decisión de
-              quien liquida: el sistema no la toma.
+              Al elegir uno de los dos botones de abajo se crea un periodo <b>ESPECIAL con
+              sólo esta persona</b> —no con la plantilla— que trae los días que se le deben
+              más estos conceptos. Ahí se le aplican las exenciones del Art. 93 y se timbra.
+              Cuál de las dos columnas se paga es decisión de quien liquida.
             </p>
           </div>
         )}
@@ -426,12 +461,28 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
             Cancelar
           </button>
+          {/* Tres caminos explícitos. Cuál se paga es decisión jurídica y el
+              sistema no la toma por nadie: cada botón dice qué va a hacer. */}
           <button
-            onClick={confirmar}
+            onClick={() => confirmar(null)}
             disabled={guardando}
+            className="px-4 py-2 text-sm border border-rose-300 text-rose-700 rounded-lg hover:bg-rose-50 disabled:opacity-50"
+          >
+            {guardando ? 'Registrando…' : 'Sólo dar de baja'}
+          </button>
+          <button
+            onClick={() => confirmar('FINIQUITO')}
+            disabled={guardando || !calc}
+            className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+          >
+            Baja + finiquito a nómina
+          </button>
+          <button
+            onClick={() => confirmar('LIQUIDACION')}
+            disabled={guardando || !calc}
             className="px-4 py-2 text-sm bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-50"
           >
-            {guardando ? 'Registrando…' : 'Registrar baja'}
+            Baja + liquidación a nómina
           </button>
         </div>
       </div>

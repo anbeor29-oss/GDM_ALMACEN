@@ -482,7 +482,11 @@ export function NominaCalculoPage() {
                             para ver el desglose con su gravado y su exento. */}
                         <CeldaDeConceptos
                           importe={r.otrosIngresos}
-                          detalle={r.percepciones.filter((p: any) => p.clave !== '001')}
+                          /* Todo lo que NO sea el sueldo del periodo. Se filtra por la
+                             marca y no por la clave 001: las vacaciones de un finiquito
+                             y los retroactivos también la llevan, y por clave se
+                             habrían escondido de esta columna. */
+                          detalle={r.percepciones.filter((p: any) => !p.esSueldoDelPeriodo)}
                           capturados={cap?.otrosIngresos?.length || 0}
                           titulo="Otros ingresos"
                           onDobleClic={esAdmin ? () => setCapturando({ lado: 'ingresos', renglon: r }) : undefined}

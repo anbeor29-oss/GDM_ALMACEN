@@ -8,8 +8,10 @@
  * —renuncia, término de contrato, despido justificado—.
  *
  * La LIQUIDACIÓN es la indemnización que se suma cuando el despido es
- * injustificado: tres meses de salario (Art. 48 LFT), veinte días por año
- * (Art. 50 Fr. II) y la prima de antigüedad (Art. 162).
+ * injustificado: tres meses de salario (Art. 48 LFT) y la prima de antigüedad
+ * (Art. 162), doce días por año. Los veinte días del Art. 50 Fr. II NO se
+ * calculan aquí, por decisión del despacho: sólo proceden cuando un tribunal
+ * exime al patrón de reinstalar, y no son parte de una liquidación ordinaria.
  *
  * Aquí se calculan LOS DOS y se devuelven por separado, porque quién paga qué
  * es una decisión jurídica que el sistema no debe tomar por nadie. La pantalla
@@ -27,7 +29,6 @@
  *   · Indemnización  Art. 48 — tres meses de salario DIARIO INTEGRADO, no del
  *                    diario a secas (Art. 89: las indemnizaciones se calculan
  *                    con el salario que incluye las prestaciones).
- *   · 20 días/año    Art. 50 Fr. II, también sobre el integrado.
  *   · Prima antig.   Art. 162 — 12 días por año, con el salario TOPADO a dos
  *                    veces el mínimo (Fr. II, en relación con el Art. 485).
  *
@@ -39,8 +40,10 @@
  */
 
 import { query } from '../../config/database';
-import { NotFoundError } from '../../middleware/errorHandler';
+import { NotFoundError, ValidationError } from '../../middleware/errorHandler';
+import logger from '../../middleware/logger';
 import * as ejercicios from './ejercicios.service';
+import * as periodosSvc from './periodos.service';
 import { pesos, diasDeVacaciones, smgDeZona, Zona } from './motor';
 
 /** Días completos entre dos fechas, sin que la zona horaria mueva el día. */
@@ -79,7 +82,7 @@ function fechaDeAniversario(ingreso: string, n: number): string {
 
 /**
  * Antigüedad en años: los aniversarios cumplidos más la fracción corrida desde
- * el último. Es lo que multiplica los 20 días del Art. 50 y los 12 del 162.
+ * el último. Es lo que multiplica los 12 días de la prima de antigüedad (162).
  */
 function antiguedadEnAnos(ingreso: string, salida: string): number {
   const n = aniversariosCumplidos(ingreso, salida);
@@ -225,13 +228,16 @@ export async function calcular(
     fundamento: 'Art. 48 LFT — tres meses de salario integrado (Art. 89)',
   });
 
-  const diasVeinte = 20 * anos;
-  liquidacion.push({
-    clave: '025', concepto: 'Veinte días por año',
-    dias: Math.round(diasVeinte * 100) / 100, base: integrado,
-    importe: pesos(integrado * diasVeinte),
-    fundamento: `Art. 50 Fr. II LFT — 20 días por cada uno de los ${anos.toFixed(2)} años`,
-  });
+  /* Los VEINTE DÍAS POR AÑO del Art. 50 Fr. II no se calculan.
+   *
+   * Decisión del despacho, 2026-08-18. Ese concepto sólo procede cuando el
+   * trabajador demanda la reinstalación y un tribunal exime al patrón de
+   * reinstalarlo; no es parte de una liquidación ordinaria. Calcularlo "por si
+   * acaso" inflaba la cifra que se ve en pantalla y con ella la expectativa de
+   * lo que hay que pagar.
+   *
+   * Si algún día hace falta —una liquidación por laudo—, se captura a mano como
+   * otro ingreso en el periodo especial. */
 
   /* Prima de antigüedad: 12 días por año, pero con el salario TOPADO a dos
    * veces el mínimo. El tope es del Art. 162 Fr. II en relación con el 485, y
@@ -280,4 +286,124 @@ export async function calcular(
     totalConIndemnizacion: pesos(totalFiniquito + totalLiquidacion),
     avisos,
   };
+}
+
+/**
+ * Pasa el finiquito a un periodo ESPECIAL de una sola persona.
+ *
+ * QUÉ CREA
+ * Un periodo ESPECIAL con `empleado_id`, así que la prenómina traerá ese único
+ * renglón en vez de la plantilla completa. Sus fechas son el tramo que se le
+ * debe —de ahí sale el sueldo de la semana, con el motor de siempre— y sus
+ * conceptos extra los deriva `calcular()` cada vez, no se copian aquí.
+ *
+ * POR QUÉ NO SE GUARDAN LOS IMPORTES
+ * Si se guardaran y luego alguien corrige la fecha de baja o el sueldo, la
+ * cuenta quedaría con números que ya no corresponden a los datos. Derivándola
+ * se corrige con ellos. Al CERRAR el periodo sí se congela, en nomina_recibos,
+ * y de ahí en adelante no se mueve — que es exactamente cuando debe dejar de
+ * moverse.
+ *
+ * NO DA DE BAJA AL TRABAJADOR
+ * Eso lo hace `empleados.darDeBaja`. Aquí sólo se prepara el pago: separar las
+ * dos cosas permite recalcular el finiquito sin volver a dar de baja a nadie.
+ */
+export async function pasarANominaEspecial(
+  companyId: string,
+  empleadoId: string,
+  d: {
+    fechaBaja: string;
+    tipo: 'FINIQUITO' | 'LIQUIDACION';
+    /** Desde cuándo se le debe el sueldo. Es el inicio del periodo. */
+    desde?: string;
+    vacacionesYaDisfrutadas?: number;
+    motivo?: string;
+    fechaPago?: string;
+  }
+) {
+  /* Se calcula primero: si el expediente está incompleto o la fecha no cuadra,
+   * mejor tronar antes de crear un periodo que habría que borrar. */
+  const cuenta = await calcular(companyId, empleadoId, d.fechaBaja, {
+    vacacionesYaDisfrutadas: d.vacacionesYaDisfrutadas,
+  });
+
+  /* El tramo que se le debe. Por omisión el mismo día de la baja —un solo día—,
+   * porque suponer una semana completa le pagaría de más a quien renunció a
+   * media semana. Quien liquida ajusta el inicio si le deben más días. */
+  const desde = d.desde && /^\d{4}-\d{2}-\d{2}$/.test(d.desde) ? d.desde : d.fechaBaja;
+  if (desde > d.fechaBaja) {
+    throw new ValidationError('El inicio del tramo no puede ser posterior a la fecha de baja');
+  }
+
+  const nombre = cuenta.empleado.nombre;
+  const etiqueta = d.tipo === 'LIQUIDACION' ? 'Liquidación' : 'Finiquito';
+
+  const periodo = await periodosSvc.crearEspecial(companyId, {
+    anio: Number(d.fechaBaja.slice(0, 4)),
+    concepto: `${etiqueta} de ${nombre}`.slice(0, 200),
+    fecha_inicio: desde,
+    fecha_fin: d.fechaBaja,
+    fecha_pago: d.fechaPago || d.fechaBaja,
+  });
+
+  await query(
+    `UPDATE nomina_periodos
+        SET empleado_id = $2, finiquito_tipo = $3, finiquito_datos = $4::jsonb
+      WHERE id = $1 AND company_id = $5`,
+    [
+      periodo.id, empleadoId, d.tipo,
+      JSON.stringify({
+        vacacionesYaDisfrutadas: Number(d.vacacionesYaDisfrutadas) || 0,
+        motivo: d.motivo || null,
+        fechaBaja: d.fechaBaja,
+      }),
+      companyId,
+    ]
+  );
+
+  logger.info(
+    `[nómina] ${etiqueta} de ${nombre} en el periodo especial #${periodo.numero} ` +
+    `de ${periodo.anio} — sólo ese trabajador`
+  );
+
+  return {
+    periodo: { ...periodo, empleado_id: empleadoId, finiquito_tipo: d.tipo },
+    cuenta,
+    /* Lo que el usuario necesita saber para no buscarlo: a dónde ir. */
+    aviso:
+      `Se creó el periodo ESPECIAL #${periodo.numero} con ${etiqueta.toLowerCase()} de ` +
+      `${nombre}. Ábrelo en Nómina → Especial: trae sólo a esa persona, con los días ` +
+      'que se le deben y sus conceptos. Revísalo y ciérralo para generar el CFDI.',
+  };
+}
+
+/**
+ * Los conceptos del finiquito como "otros ingresos" del periodo especial.
+ *
+ * Los llama la prenómina cuando el periodo trae `finiquito_tipo`. El sueldo de
+ * los días que se le deben NO va aquí: sale del motor con las fechas del
+ * periodo, igual que en cualquier nómina. Duplicarlo lo pagaría dos veces.
+ */
+export async function conceptosParaPrenomina(
+  companyId: string,
+  periodo: { empleado_id: string; finiquito_tipo: string; finiquito_datos: any; fecha_fin: string }
+): Promise<Array<{ clave: string; importe: number }>> {
+  const datos = periodo.finiquito_datos || {};
+  const cuenta = await calcular(
+    companyId, periodo.empleado_id,
+    datos.fechaBaja || periodo.fecha_fin,
+    { vacacionesYaDisfrutadas: Number(datos.vacacionesYaDisfrutadas) || 0 }
+  );
+
+  const conceptos = [...cuenta.finiquito.conceptos];
+  if (periodo.finiquito_tipo === 'LIQUIDACION') {
+    conceptos.push(...cuenta.liquidacion.conceptos);
+  }
+
+  /* "Sueldos pendientes de pago" se descarta: el motor ya cobra los días del
+   * periodo con la clave 001. Es el único concepto que se solaparía. */
+  return conceptos
+    .filter((c) => !c.concepto.startsWith('Sueldos pendientes'))
+    .filter((c) => c.importe > 0)
+    .map((c) => ({ clave: c.clave, importe: c.importe }));
 }

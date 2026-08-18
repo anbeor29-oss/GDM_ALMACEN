@@ -1183,6 +1183,17 @@ class APIClient {
     return r.data;
   }
 
+  /** Deja el finiquito listo en un periodo especial de UNA persona. ESCRIBE. */
+  async finiquitoANominaEspecial(empleadoId: string, body: {
+    fechaBaja: string; tipo: 'FINIQUITO' | 'LIQUIDACION';
+    desde?: string; vacacionesYaDisfrutadas?: number; motivo?: string; fechaPago?: string;
+  }) {
+    const r = await this.client.post<APIResponse<any>>(
+      `/nomina/empleados/${empleadoId}/finiquito/a-nomina-especial`, body
+    );
+    return r.data;
+  }
+
   /** Colonias, municipio y estado de un código postal (catálogo SAT). */
   async resolverCodigoPostal(cp: string) {
     const r = await this.client.get<APIResponse<any>>(`/carta-porte/cp/${cp}`);

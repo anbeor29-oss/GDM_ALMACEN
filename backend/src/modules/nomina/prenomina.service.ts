@@ -33,6 +33,7 @@ import { query } from '../../config/database';
 import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import * as ejercicios from './ejercicios.service';
 import * as periodosSvc from './periodos.service';
+import * as finiquitoSvc from './finiquito.service';
 import {
   calcularRecibo, EntradaCalculo, Periodicidad, Zona, pesos, partirGravadoExento,
 } from './motor';
@@ -198,6 +199,17 @@ export async function calcular(
     cond.push(`e.id = ANY($${args.length}::uuid[])`);
   }
 
+  /* Un periodo de UNA persona trae UNA persona.
+   *
+   * Los especiales se pensaron para el aguinaldo y la PTU, que alcanzan a
+   * todos, y el finiquito heredó ese comportamiento: al liquidar a alguien la
+   * rejilla mostraba la plantilla completa. Quien liquida tenía que confiar en
+   * no cerrar por error un periodo que no era el suyo. */
+  if (periodo.empleado_id) {
+    args.push(periodo.empleado_id);
+    cond.push(`e.id = $${args.length}`);
+  }
+
   const r = await query<any>(
     `SELECT e.id, e.num_empleado, e.puesto, e.departamento,
             TRIM(e.nombre || ' ' || e.apellido_pat || ' ' || COALESCE(e.apellido_mat,'')) AS nombre,
@@ -236,6 +248,35 @@ export async function calcular(
    * del bucle sería recorrerlo cincuenta veces por cada cincuenta renglones. */
   const capturaDe = new Map<string, CapturaPorTrabajador>();
   for (const c of opciones.captura || []) capturaDe.set(c.empleadoId, c);
+
+  /* ── Los conceptos del finiquito ──
+   *
+   * Se DERIVAN del expediente y de la fecha de baja cada vez que se calcula, no
+   * se copiaron al crear el periodo: así, si se corrige la fecha o el sueldo, la
+   * cuenta se corrige con ellos en vez de quedar congelada en un número que ya
+   * no corresponde. Al cerrar el periodo sí se congelan, en nomina_recibos.
+   *
+   * Se AGREGAN a lo que el usuario haya capturado a mano, no lo reemplazan: en
+   * una liquidación real casi siempre hay algo más —un bono pendiente, un
+   * descuento acordado— y perderlo al recalcular sería peor que no derivar
+   * nada. */
+  if (periodo.finiquito_tipo && periodo.empleado_id) {
+    const delFiniquito = await finiquitoSvc.conceptosParaPrenomina(companyId, periodo);
+    const previo = capturaDe.get(periodo.empleado_id);
+    capturaDe.set(periodo.empleado_id, {
+      empleadoId: periodo.empleado_id,
+      dias: previo?.dias,
+      otrosIngresos: [...delFiniquito, ...(previo?.otrosIngresos || [])],
+      otrasDeducciones: previo?.otrasDeducciones || [],
+    });
+    avisosDelPeriodo.push(
+      periodo.finiquito_tipo === 'LIQUIDACION'
+        ? 'Liquidación: además de los proporcionales trae la indemnización de tres meses ' +
+          'y la prima de antigüedad. Los 20 días del Art. 50 no se incluyen.'
+        : 'Finiquito: sólo las partes proporcionales —aguinaldo, vacaciones y su prima—. ' +
+          'Si el despido fue injustificado, se pasa como LIQUIDACIÓN.'
+    );
+  }
 
   const periodicidad = PERIODICIDAD_MOTOR[periodo.tipo];
   const renglones: RenglonPrenomina[] = [];
@@ -344,8 +385,10 @@ export async function calcular(
      * venga en percepciones son "otros ingresos". Los préstamos y el FONACOT se
      * separan del resto de deducciones porque son los que el cierre va a
      * abonar, y verlos aparte es lo que permite cuadrarlos. */
+    /* El sueldo es el que el motor MARCÓ, no todo lo que traiga clave 001: las
+     * vacaciones de un finiquito y los retroactivos también la usan. */
     const sueldo = recibo.percepciones
-      .filter((p) => p.clave === '001')
+      .filter((p) => p.esSueldoDelPeriodo)
       .reduce((a, p) => a + p.importe, 0);
     const otrosIngresos = pesos(recibo.totalPercepciones - sueldo);
 

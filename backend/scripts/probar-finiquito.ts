@@ -90,7 +90,6 @@ async function main() {
   /* ── LIQUIDACIÓN ── */
   const c2 = r.liquidacion.conceptos;
   const tresMeses = c2.find((x) => x.concepto.includes('constitucional'))!;
-  const veinte    = c2.find((x) => x.concepto.includes('Veinte'))!;
   const antig     = c2.find((x) => x.concepto.includes('antigüedad'))!;
 
   cerca(tresMeses.importe, 420 * 90)
@@ -101,9 +100,16 @@ async function main() {
     ? bien('la indemnización usa el INTEGRADO, no el diario (Art. 89)')
     : mal('la indemnización se calculó con el salario equivocado', tresMeses.base);
 
-  cerca(veinte.importe, 420 * 20 * anos, 1)
-    ? bien(`20 días por año: ${veinte.dias} días x $420 (Art. 50 Fr. II)`)
-    : mal('20 días por año', `${veinte.importe} vs ${(420 * 20 * anos).toFixed(2)}`);
+  /* Los 20 días del Art. 50 Fr. II se quitaron por decisión del despacho: sólo
+   * proceden cuando un tribunal exime al patrón de reinstalar. La prueba ahora
+   * verifica que NO estén — si alguien los vuelve a meter, esto lo caza. */
+  c2.every((x) => !/veinte|20 d/i.test(x.concepto))
+    ? bien('la liquidación NO trae los 20 días del Art. 50 Fr. II')
+    : mal('reaparecieron los 20 días por año');
+
+  c2.length === 2
+    ? bien('la liquidación son dos conceptos: tres meses y prima de antigüedad')
+    : mal('la liquidación trae otro número de conceptos', c2.map((x) => x.concepto).join(' | '));
 
   /* Prima de antigüedad: el tope de dos mínimos es 315.04 x 2 = 630.08.
    * El diario de ANA (400) está POR DEBAJO, así que NO se topa. */

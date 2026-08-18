@@ -318,6 +318,34 @@ router.get(
 );
 
 
+/**
+ * POST /empleados/:id/finiquito/a-nomina-especial — deja el pago listo.
+ *
+ * Crea un periodo ESPECIAL de UNA sola persona con sus días pendientes y los
+ * conceptos del finiquito o de la liquidación. No da de baja al trabajador: eso
+ * es otra acción, y separarlas permite recalcular sin volver a darla.
+ */
+router.post(
+  '/empleados/:id/finiquito/a-nomina-especial',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await finiquito.pasarANominaEspecial(
+      companyId(req),
+      req.params.id,
+      {
+        fechaBaja: String(req.body?.fechaBaja || ''),
+        tipo: req.body?.tipo === 'LIQUIDACION' ? 'LIQUIDACION' : 'FINIQUITO',
+        desde: req.body?.desde,
+        vacacionesYaDisfrutadas: Number(req.body?.vacacionesYaDisfrutadas) || 0,
+        motivo: req.body?.motivo,
+        fechaPago: req.body?.fechaPago,
+      }
+    );
+    res.json({ success: true, data: r });
+  })
+);
+
+
 /** Cuántos trabajadores le tocan a cada tipo — antes de generar nada. */
 router.get(
   '/plantilla-por-tipo',

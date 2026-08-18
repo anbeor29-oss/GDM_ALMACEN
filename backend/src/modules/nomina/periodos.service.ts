@@ -172,7 +172,10 @@ const CAMPOS = `
   TO_CHAR(p.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
   TO_CHAR(p.fecha_fin,    'YYYY-MM-DD') AS fecha_fin,
   TO_CHAR(p.fecha_pago,   'YYYY-MM-DD') AS fecha_pago,
-  p.cerrado_at, p.concepto
+  p.cerrado_at, p.concepto,
+  /* Un especial de finiquito apunta a UNA persona. La prenómina lo necesita
+   * para no traer a la plantilla completa. */
+  p.empleado_id, p.finiquito_tipo, p.finiquito_datos
 `;
 
 export async function listar(
