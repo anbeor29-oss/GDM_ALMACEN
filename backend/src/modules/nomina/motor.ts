@@ -44,6 +44,14 @@ export interface RenglonSubsidio {
   limite_inferior: number;
   limite_superior: number | null;
   subsidio: number;
+  /* Desde 2026 el decreto trae un porcentaje distinto para enero, así que un
+   * ejercicio puede tener dos renglones con el mismo rango y distinta vigencia.
+   * El cálculo no las mira —quien carga el ejercicio ya eligió el renglón que
+   * toca—, pero la revisión sí las necesita para no leer dos vigencias como si
+   * fueran dos escalones de una misma escalera. */
+  vigente_desde?: string | null;
+  vigente_hasta?: string | null;
+  porcentaje_uma?: number | null;
 }
 
 export interface Ejercicio {

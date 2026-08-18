@@ -31,9 +31,16 @@ import { Ejercicio, RenglonTarifa, RenglonSubsidio } from './motor';
  * Si el año no existe NO cae al anterior: retener con la tarifa del año pasado
  * es un error silencioso que se descubre en la declaración anual.
  */
-export async function cargar(anio: number): Promise<Ejercicio> {
+export async function cargar(anio: number, alDia?: string | null): Promise<Ejercicio> {
   const a = Number(anio);
   if (!Number.isInteger(a)) throw new ValidationError('El ejercicio debe ser un año');
+
+  /* `alDia` es el último día del periodo que se está calculando. Importa para
+   * el subsidio al empleo: desde 2026 el decreto trae un transitorio que manda
+   * un porcentaje distinto en enero, porque la UMA se actualiza hasta febrero.
+   * Sin fecha se toma el renglón sin vigencia, que es como estaban los años
+   * anteriores. */
+  const dia = alDia && /^\d{4}-\d{2}-\d{2}$/.test(alDia) ? alDia : null;
 
   const e = await query<any>(
     `SELECT anio, uma_diaria, uma_mensual, smg_general, smg_frontera, confirmado
@@ -58,11 +65,17 @@ export async function cargar(anio: number): Promise<Ejercicio> {
       [a]
     ),
     query<any>(
-      `SELECT limite_inferior, limite_superior, subsidio
+      `SELECT limite_inferior, limite_superior, subsidio, porcentaje_uma,
+              TO_CHAR(vigente_desde, 'YYYY-MM-DD') AS vigente_desde,
+              TO_CHAR(vigente_hasta, 'YYYY-MM-DD') AS vigente_hasta
          FROM nomina_subsidio
         WHERE anio = $1 AND periodicidad = 'MENSUAL'
+          AND ($2::date IS NULL
+               OR (vigente_desde IS NULL AND vigente_hasta IS NULL)
+               OR ($2::date >= COALESCE(vigente_desde, $2::date)
+                   AND $2::date <= COALESCE(vigente_hasta, $2::date)))
         ORDER BY renglon`,
-      [a]
+      [a, dia]
     ),
   ]);
 
@@ -84,6 +97,9 @@ export async function cargar(anio: number): Promise<Ejercicio> {
       limite_inferior: Number(s.limite_inferior),
       limite_superior: num(s.limite_superior),
       subsidio: Number(s.subsidio),
+      porcentaje_uma: num(s.porcentaje_uma),
+      vigente_desde: s.vigente_desde ?? null,
+      vigente_hasta: s.vigente_hasta ?? null,
     })),
   };
 }
@@ -154,7 +170,45 @@ export function revisar(e: Ejercicio): string[] {
   };
 
   revisarEscalones(e.tarifaIsr, 'Tarifa del ISR');
-  revisarEscalones(e.subsidio, 'Subsidio al empleo');
+
+  /* El subsidio YA NO ES UNA ESCALERA.
+   *
+   * Hasta 2023 era una tabla de once renglones y revisarla con la misma regla
+   * que la tarifa tenía sentido. Desde el decreto de 2024 es un solo importe
+   * para quien gana hasta cierto tope: que el último renglón TENGA techo es lo
+   * correcto —arriba del tope simplemente no hay subsidio—, y exigirle que
+   * termine abierto levantaba un aviso falso.
+   *
+   * Además, desde 2026 un mismo ejercicio puede traer dos renglones con el
+   * mismo rango de ingresos y distinta vigencia (el transitorio de enero). Leer
+   * esos dos como escalones consecutivos daba un "salto" absurdo de -11,492.65.
+   * Por eso se agrupan por vigencia y cada grupo se revisa por su cuenta. */
+  const porVigencia = new Map<string, typeof e.subsidio>();
+  for (const s of e.subsidio) {
+    const k = `${s.vigente_desde || 'inicio'}..${s.vigente_hasta || 'fin'}`;
+    if (!porVigencia.has(k)) porVigencia.set(k, []);
+    porVigencia.get(k)!.push(s);
+  }
+  for (const [vigencia, filas] of porVigencia) {
+    const cual = porVigencia.size > 1 ? `Subsidio al empleo (${vigencia})` : 'Subsidio al empleo';
+    if (filas[0].limite_inferior !== 0.01) {
+      avisos.push(`${cual}: no empieza en 0.01, sino en ${filas[0].limite_inferior}.`);
+    }
+    for (let i = 0; i < filas.length - 1; i++) {
+      const a = filas[i], b = filas[i + 1];
+      if (a.limite_superior === null) {
+        avisos.push(`${cual}: el renglón ${i + 1} no tiene techo pero no es el último.`);
+        continue;
+      }
+      const salto = Math.round((b.limite_inferior - a.limite_superior) * 100) / 100;
+      if (salto !== 0.01) {
+        avisos.push(
+          `${cual}: entre el renglón ${i + 1} (hasta ${a.limite_superior}) y el ` +
+          `${i + 2} (desde ${b.limite_inferior}) hay un salto de ${salto}, no de un centavo.`
+        );
+      }
+    }
+  }
 
   if (e.smgFrontera < e.smgGeneral) {
     avisos.push('El salario mínimo de frontera es menor que el general: revisa si están invertidos.');

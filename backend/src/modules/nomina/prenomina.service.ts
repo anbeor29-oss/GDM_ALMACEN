@@ -148,7 +148,7 @@ export async function calcular(
    * a la vista, que es más útil que un error suelto. */
   let ej;
   try {
-    ej = await ejercicios.cargar(periodo.anio);
+    ej = await ejercicios.cargar(periodo.anio, periodo.fecha_fin);
   } catch (e: any) {
     throw new ValidationError(
       `No se puede calcular el periodo ${periodo.numero} de ${periodo.anio}: ${e.message}`
