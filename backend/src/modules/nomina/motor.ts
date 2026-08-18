@@ -58,6 +58,11 @@ export interface Ejercicio {
   anio: number;
   umaDiaria: number;
   umaMensual: number;
+  /* Unidad Mixta Infonavit. Base de los créditos en VSM desde la reforma de
+   * 2016 — no el salario mínimo. Opcional porque los ejercicios anteriores a
+   * esta migración no la traen; si falta, el descuento en VSM se detiene en vez
+   * de calcularse con el número equivocado. */
+  umiDiaria?: number | null;
   smgGeneral: number;
   smgFrontera: number;
   tarifaIsr: RenglonTarifa[];
@@ -347,7 +352,29 @@ export function calcularInfonavit(
   switch (d.tipo) {
     case 'porcentaje': credito = sdi * (v / 100) * dias; break;
     case 'cuota_fija': credito = v * (dias / 30.4); break;
-    case 'vsm':        credito = smgDeZona(e, zona) * v * (dias / 30.4); break;
+    /* VSM va con la UMI, NO con el salario mínimo.
+     *
+     * La reforma de 2016 a la Ley del INFONAVIT desligó los créditos en Veces
+     * Salario Mínimo del mínimo justamente para que sus alzas no inflaran la
+     * deuda; para eso se creó la Unidad Mixta Infonavit. Con los valores de
+     * 2026 —mínimo $315.04 contra UMI $100.81— usar el mínimo le descontaría
+     * al trabajador más del triple, y la brecha crece cada año porque el
+     * mínimo sube y la UMI lleva tres ejercicios congelada.
+     *
+     * Si el ejercicio no trae UMI cargada no se adivina: se truena. Descontar
+     * de más el crédito de una casa no es un error que se arregle después. */
+    case 'vsm': {
+      const umi = Number(e.umiDiaria) || 0;
+      if (umi <= 0) {
+        throw new Error(
+          `No hay UMI cargada para ${e.anio}. Los créditos del INFONAVIT en VSM ` +
+          'se calculan con la Unidad Mixta Infonavit, no con el salario mínimo. ' +
+          'Captúrala en Nómina → Parámetros.'
+        );
+      }
+      credito = umi * v * (dias / 30.4);
+      break;
+    }
   }
 
   const seguroDanos = (Number(d.seguroDanosDiario) || 0) * dias;

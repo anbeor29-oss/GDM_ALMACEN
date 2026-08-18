@@ -18,7 +18,7 @@
  * automática y hay que decir cuánto grava. El campo aparece SÓLO en esos, en
  * vez de estar siempre y que alguien lo llene donde no debe.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Plus, Trash2 } from 'lucide-react';
 import api from '@/services/api';
@@ -38,11 +38,16 @@ interface Props {
   lado: 'ingresos' | 'egresos';
   nombreTrabajador: string;
   lineas: Linea[];
+  /* Para preguntarle al motor cuánto grava lo capturado. Sin esto la pantalla
+   * tendría que calcular la exención por su cuenta, y entonces la regla del
+   * Art. 93 viviría en dos lugares. */
+  periodoId?: string;
+  empleadoId?: string;
   onGuardar: (l: Linea[]) => void;
   onCerrar: () => void;
 }
 
-export function CapturaDeConceptos({ lado, nombreTrabajador, lineas, onGuardar, onCerrar }: Props) {
+export function CapturaDeConceptos({ lado, nombreTrabajador, lineas, periodoId, empleadoId, onGuardar, onCerrar }: Props) {
   const [filas, setFilas] = useState<Linea[]>(lineas.length ? lineas : [{ clave: '', importe: '' }]);
 
   const cat = useQuery({ queryKey: ['nomina-catalogos'], queryFn: () => api.getNominaCatalogos() });
@@ -59,6 +64,52 @@ export function CapturaDeConceptos({ lado, nombreTrabajador, lineas, onGuardar, 
   };
 
   const total = filas.reduce((a, f) => a + (Number(f.importe) || 0), 0);
+
+  /* ── Cuánto de esto grava, según el Anexo 20 ──
+   *
+   * Se le pregunta al motor cada vez que cambia la captura, con medio segundo
+   * de espera para no disparar una consulta por cada tecla. Mientras responde
+   * se conserva el desglose anterior: parpadear en cada dígito se lee peor que
+   * ir medio segundo atrás. */
+  const [desglose, setDesglose] = useState<any>(null);
+  const [partiendo, setPartiendo] = useState(false);
+
+  const listasParaPartir = filas.filter((f) => f.clave && Number(f.importe) > 0);
+  const huella = JSON.stringify(
+    listasParaPartir.map((f) => [f.clave, f.importe, f.gravadoManual])
+  );
+
+  useEffect(() => {
+    if (!periodoId || !empleadoId || listasParaPartir.length === 0) {
+      setDesglose(null);
+      return;
+    }
+    let vivo = true;
+    setPartiendo(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await api.partirConceptos({
+          periodoId, empleadoId, lado,
+          lineas: listasParaPartir.map((f) => ({
+            clave: f.clave,
+            importe: Number(f.importe),
+            gravadoManual:
+              f.gravadoManual === undefined || f.gravadoManual === ''
+                ? undefined
+                : Number(f.gravadoManual),
+          })),
+        });
+        if (vivo) setDesglose(r.data);
+      } catch {
+        /* Que no se pueda partir no debe impedir capturar: el recálculo del
+         * periodo lo vuelve a hacer, y ahí sí con todo. */
+        if (vivo) setDesglose(null);
+      } finally {
+        if (vivo) setPartiendo(false);
+      }
+    }, 500);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [huella, periodoId, empleadoId, lado]);
 
   /* Cómo se explica la exención de cada concepto, sin repetir la fórmula del
    * motor: se dice la REGLA, no el resultado — el resultado sale al recalcular. */
@@ -156,6 +207,52 @@ export function CapturaDeConceptos({ lado, nombreTrabajador, lineas, onGuardar, 
           >
             <Plus size={15} /> Agregar concepto
           </button>
+
+          {/* Gravado y exento ANTES de la suma: es como el CFDI los reporta por
+              separado, y es contra lo que se cuadra la declaración. Sale del
+              motor, no de una fórmula repetida aquí. */}
+          {lado === 'ingresos' && (
+            <div className="border-t pt-3 space-y-1">
+              {desglose?.lineas?.length > 0 ? (
+                <>
+                  {desglose.lineas.map((l: any, i: number) => {
+                    const c = conceptoDe(l.clave);
+                    return (
+                      <div key={i} className="flex items-center justify-between text-xs">
+                        <span className="text-gray-600 truncate mr-3">
+                          <span className="text-gray-400 font-mono mr-1">{l.clave}</span>
+                          {c?.nombre || 'Concepto'}
+                        </span>
+                        <span className="shrink-0 tabular-nums">
+                          <span className="text-gray-500">grava </span>
+                          <b className="text-gray-800">{money(l.gravado)}</b>
+                          <span className="text-gray-400 mx-1">·</span>
+                          <span className="text-gray-500">exento </span>
+                          <b className="text-emerald-700">{money(l.exento)}</b>
+                        </span>
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-center justify-between text-xs font-semibold border-t pt-1.5">
+                    <span className="text-gray-700">
+                      Según el Anexo 20 {partiendo && <span className="font-normal text-gray-400">· recalculando…</span>}
+                    </span>
+                    <span className="tabular-nums">
+                      <span className="text-gray-500 font-normal">gravado </span>
+                      {money(desglose.totales.gravado)}
+                      <span className="text-gray-400 mx-1">·</span>
+                      <span className="text-gray-500 font-normal">exento </span>
+                      <span className="text-emerald-700">{money(desglose.totales.exento)}</span>
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-gray-400 italic">
+                  Captura un concepto con importe para ver cuánto grava y cuánto queda exento.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center justify-between border-t pt-3">
             <span className="text-sm text-gray-600">

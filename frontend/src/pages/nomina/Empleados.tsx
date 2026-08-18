@@ -290,6 +290,22 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [diasPendientes, setDiasPendientes] = useState('0');
+  const [vacTomadas, setVacTomadas] = useState('0');
+
+  /* El finiquito se recalcula con cada cambio de fecha o de captura. Es una
+   * consulta barata y sin efectos: no escribe nada. */
+  const fin = useQuery({
+    queryKey: ['finiquito', empleado.id, fecha, diasPendientes, vacTomadas],
+    queryFn: () => api.getFiniquito(empleado.id, {
+      fechaBaja: fecha,
+      diasPendientesDePagar: Number(diasPendientes) || 0,
+      vacacionesYaDisfrutadas: Number(vacTomadas) || 0,
+    }),
+    enabled: /^\d{4}-\d{2}-\d{2}$/.test(fecha),
+    retry: false,
+  });
+  const calc: any = fin.data?.data;
 
   const confirmar = async () => {
     setGuardando(true); setError('');
@@ -305,7 +321,7 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5">
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full p-5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between">
           <h2 className="font-semibold text-lg">Dar de baja a {empleado.nombre_completo}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
@@ -323,6 +339,82 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
           onChange={(e) => setFecha(e.target.value)}
         />
         <p className="text-xs text-gray-500 mt-1">Es la fecha que va en el aviso al IMSS.</p>
+
+        {/* ── Lo que se le debe ──
+            Se calcula al vuelo con la fecha que esté puesta, y NO se guarda:
+            cambiar el día cambia los proporcionales, así que verlo antes de
+            firmar es justo el punto. */}
+        <div className="grid sm:grid-cols-2 gap-3 mt-4">
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Días pendientes de pagar</label>
+            <input type="number" min={0} step="0.5" value={diasPendientes}
+              onChange={(e) => setDiasPendientes(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <p className="text-[10px] text-gray-500 mt-0.5">
+              Los del último periodo que ya trabajó y no se le ha cubierto.
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Vacaciones ya disfrutadas</label>
+            <input type="number" min={0} step="0.5" value={vacTomadas}
+              onChange={(e) => setVacTomadas(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <p className="text-[10px] text-gray-500 mt-0.5">
+              Días que ya tomó en este año de servicio; se restan de lo proporcional.
+            </p>
+          </div>
+        </div>
+
+        {fin.isFetching && <p className="text-sm text-gray-500 mt-3">Calculando…</p>}
+        {fin.isError && (
+          <p className="text-sm text-rose-600 mt-3">
+            {(fin.error as any)?.response?.data?.message || 'No se pudo calcular el finiquito'}
+          </p>
+        )}
+
+        {calc && (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs text-gray-600">
+              Antigüedad al {calc.fechaBaja}: <b>{calc.antiguedad.texto}</b>
+              {' · '}diario {money(calc.empleado.salario_diario)}
+              {' · '}SDI {money(calc.empleado.salario_diario_integrado)}
+            </p>
+
+            {calc.avisos?.map((a: string, i: number) => (
+              <p key={i} className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1 flex items-start gap-1.5">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0" /> {a}
+              </p>
+            ))}
+
+            <div className="grid md:grid-cols-2 gap-3">
+              <Cuenta
+                titulo="Finiquito"
+                subtitulo="Se paga SIEMPRE, se vaya como se vaya"
+                conceptos={calc.finiquito.conceptos}
+                total={calc.finiquito.total}
+                tono="emerald"
+              />
+              <Cuenta
+                titulo="Liquidación"
+                subtitulo="SÓLO si el despido es injustificado"
+                conceptos={calc.liquidacion.conceptos}
+                total={calc.liquidacion.total}
+                tono="rose"
+              />
+            </div>
+
+            <p className="text-sm text-right">
+              Finiquito más indemnización:{' '}
+              <b className="text-lg">{money(calc.totalConIndemnizacion)}</b>
+            </p>
+            <p className="text-[11px] text-gray-500">
+              Esto es la cuenta de lo que se debe, no el recibo. Para pagarlo se genera un
+              periodo <b>ESPECIAL</b> en Nómina, que es donde se le aplican las exenciones
+              del Art. 93 y se timbra. Cuál de las dos columnas se paga es decisión de
+              quien liquida: el sistema no la toma.
+            </p>
+          </div>
+        )}
         <label className="block text-sm font-medium text-gray-700 mt-3 mb-1">Motivo (opcional)</label>
         <input
           className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -343,6 +435,48 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Una de las dos columnas de la cuenta. Cada renglón trae su fundamento legal:
+ * quien firma un finiquito tiene que poder decir de dónde salió cada número, y
+ * ponerlo aquí evita la hoja de Excel paralela.
+ */
+function Cuenta({ titulo, subtitulo, conceptos, total, tono }: any) {
+  const colores: any = {
+    emerald: 'border-emerald-200 bg-emerald-50',
+    rose: 'border-rose-200 bg-rose-50',
+  };
+  return (
+    <div className={`rounded-lg border p-3 ${colores[tono]}`}>
+      <p className="font-semibold text-sm">{titulo}</p>
+      <p className="text-[11px] text-gray-600 mb-2">{subtitulo}</p>
+      <table className="w-full text-xs tabular-nums">
+        <tbody className="divide-y divide-black/5">
+          {conceptos.map((c: any, i: number) => (
+            <tr key={i}>
+              <td className="py-1 pr-2">
+                <span className="text-gray-800">{c.concepto}</span>
+                <span className="block text-[10px] text-gray-500">{c.fundamento}</span>
+              </td>
+              <td className="py-1 text-right whitespace-nowrap align-top">
+                <span className="block">{money(c.importe)}</span>
+                <span className="block text-[10px] text-gray-500">
+                  {c.dias} d × {money(c.base)}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot className="border-t-2 border-black/10">
+          <tr className="font-semibold">
+            <td className="pt-1.5">Total</td>
+            <td className="pt-1.5 text-right">{money(total)}</td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 }

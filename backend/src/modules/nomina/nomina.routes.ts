@@ -24,6 +24,7 @@ import * as creditos from './creditos.service';
 import * as expediente from './expediente.service';
 import * as prenomina from './prenomina.service';
 import { generarExcel } from './prenomina-excel.service';
+import * as finiquito from './finiquito.service';
 import * as cierre from './cierre.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
@@ -263,6 +264,54 @@ router.put(
   asyncHandler(async (req: Request, res: Response) => {
     const r = await cierre.marcarEnvioPorCorreo(
       companyId(req), req.body?.ids || [], !!req.body?.enviar
+    );
+    res.json({ success: true, data: r });
+  })
+);
+
+
+/**
+ * POST /conceptos/partir — cuánto grava y cuánto exenta lo que se está
+ * capturando, antes de aplicarlo.
+ *
+ * La pantalla podría hacer esta cuenta sola, pero entonces habría DOS copias de
+ * las exenciones del Art. 93 y sólo una se arreglaría el día que cambien.
+ */
+router.post(
+  '/conceptos/partir',
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await prenomina.partirConceptos(
+      companyId(req),
+      String(req.body?.periodoId || ''),
+      String(req.body?.empleadoId || ''),
+      req.body?.lado === 'egresos' ? 'egresos' : 'ingresos',
+      Array.isArray(req.body?.lineas) ? req.body.lineas : []
+    );
+    res.json({ success: true, data: r });
+  })
+);
+
+
+/**
+ * GET /empleados/:id/finiquito — qué se le debe a quien se va.
+ *
+ * Devuelve el finiquito y la liquidación POR SEPARADO. Cuál se paga es una
+ * decisión jurídica —depende de si la salida fue renuncia o despido— y el
+ * sistema no la toma: la muestra y quien liquida elige.
+ *
+ * No escribe nada. El pago se hace generando un periodo ESPECIAL.
+ */
+router.get(
+  '/empleados/:id/finiquito',
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await finiquito.calcular(
+      companyId(req),
+      req.params.id,
+      String(req.query.fechaBaja || new Date().toISOString().slice(0, 10)),
+      {
+        vacacionesYaDisfrutadas: Number(req.query.vacacionesYaDisfrutadas) || 0,
+        diasPendientesDePagar:   Number(req.query.diasPendientesDePagar) || 0,
+      }
     );
     res.json({ success: true, data: r });
   })

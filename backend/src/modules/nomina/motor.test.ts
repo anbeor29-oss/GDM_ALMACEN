@@ -16,10 +16,20 @@ import {
   factorDeIntegracion, pesos, smgDeZona, Ejercicio,
 } from './motor';
 
+/* OJO: este ejercicio es un BANCO DE PRUEBAS, no la tarifa vigente.
+ *
+ * Sus renglones son los que el sistema anterior traía sembrados, y los valores
+ * esperados de todas las pruebas de ISR de este archivo se derivaron a mano
+ * contra ellos. Cambiarlos por los del DOF rompería cuarenta aserciones sin
+ * probar nada nuevo: lo que aquí se verifica es la MECÁNICA del motor —que
+ * mensualice, que encuentre el renglón, que reste el subsidio—, no que la tabla
+ * sea la correcta. De eso se encarga `scripts/probar-tarifas-2026.ts`, que
+ * corre contra la base real y coteja renglón por renglón contra el Anexo 8. */
 const E2026: Ejercicio = {
   anio: 2026,
   umaDiaria: 113.14,
   umaMensual: 3300.72,
+  umiDiaria: 100.81,
   smgGeneral: 315.04,
   smgFrontera: 440.87,
   tarifaIsr: [
@@ -286,13 +296,31 @@ describe('calcularInfonavit', () => {
     expect(r.credito).toBeCloseTo(493.42, 2);
   });
 
-  it('VSM usa el salario mínimo de la zona', () => {
-    // general: 315.04 × 2 × 15/30.4 = 310.89
+  /* Esta prueba afirmaba lo contrario —"VSM usa el salario mínimo de la zona"—
+   * y por eso el error sobrevivió: consagraba el comportamiento equivocado. La
+   * reforma de 2016 a la Ley del INFONAVIT desligó los créditos en VSM del
+   * salario mínimo y creó la UMI justamente para que sus alzas no inflaran la
+   * deuda del trabajador. */
+  it('VSM usa la UMI, no el salario mínimo (reforma 2016)', () => {
+    // 100.81 × 2 × 15/30.4 = 99.48
+    const r = calcularInfonavit({ tiene: true, tipo: 'vsm', valor: 2 }, 527.40, 15, 'general', E2026);
+    expect(r.credito).toBeCloseTo(99.48, 2);
+
+    // Con el salario mínimo habrían salido 310.89: más del TRIPLE.
+    expect(r.credito).toBeLessThan(310.89 / 3 + 1);
+  });
+
+  it('la UMI no depende de la zona: el mismo crédito en frontera', () => {
     const g = calcularInfonavit({ tiene: true, tipo: 'vsm', valor: 2 }, 527.40, 15, 'general', E2026);
-    expect(g.credito).toBeCloseTo(310.89, 2);
-    // frontera: 440.87 × 2 × 15/30.4 = 435.07
     const f = calcularInfonavit({ tiene: true, tipo: 'vsm', valor: 2 }, 527.40, 15, 'frontera_norte', E2026);
-    expect(f.credito).toBeCloseTo(435.07, 2);
+    expect(f.credito).toBeCloseTo(g.credito, 2);
+  });
+
+  it('sin UMI cargada se detiene en vez de usar el salario mínimo', () => {
+    const sinUmi = { ...E2026, umiDiaria: null };
+    expect(() =>
+      calcularInfonavit({ tiene: true, tipo: 'vsm', valor: 2 }, 527.40, 15, 'general', sinUmi)
+    ).toThrow(/UMI/);
   });
 
   it('el seguro de daños es diario y se suma aparte', () => {

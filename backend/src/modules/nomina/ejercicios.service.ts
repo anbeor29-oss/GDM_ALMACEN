@@ -43,7 +43,7 @@ export async function cargar(anio: number, alDia?: string | null): Promise<Ejerc
   const dia = alDia && /^\d{4}-\d{2}-\d{2}$/.test(alDia) ? alDia : null;
 
   const e = await query<any>(
-    `SELECT anio, uma_diaria, uma_mensual, smg_general, smg_frontera, confirmado
+    `SELECT anio, uma_diaria, uma_mensual, umi_diaria, smg_general, smg_frontera, confirmado
        FROM nomina_ejercicios WHERE anio = $1`,
     [a]
   );
@@ -85,6 +85,7 @@ export async function cargar(anio: number, alDia?: string | null): Promise<Ejerc
     anio: r.anio,
     umaDiaria: Number(r.uma_diaria),
     umaMensual: Number(r.uma_mensual),
+    umiDiaria: r.umi_diaria === null ? null : Number(r.umi_diaria),
     smgGeneral: Number(r.smg_general),
     smgFrontera: Number(r.smg_frontera),
     tarifaIsr: tarifa.rows.map((t): RenglonTarifa => ({
@@ -120,7 +121,7 @@ export async function detalle(anio: number) {
 
 export async function listar() {
   const r = await query<any>(
-    `SELECT e.anio, e.uma_diaria, e.uma_mensual, e.smg_general, e.smg_frontera,
+    `SELECT e.anio, e.uma_diaria, e.uma_mensual, e.umi_diaria, e.smg_general, e.smg_frontera,
             e.confirmado, e.fuente,
             (SELECT COUNT(*) FROM nomina_tarifa_isr t WHERE t.anio = e.anio) AS renglones_isr,
             (SELECT COUNT(*) FROM nomina_subsidio  s WHERE s.anio = e.anio) AS renglones_subsidio

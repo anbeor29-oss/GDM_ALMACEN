@@ -34,7 +34,7 @@ import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import * as ejercicios from './ejercicios.service';
 import * as periodosSvc from './periodos.service';
 import {
-  calcularRecibo, EntradaCalculo, Periodicidad, Zona, pesos,
+  calcularRecibo, EntradaCalculo, Periodicidad, Zona, pesos, partirGravadoExento,
 } from './motor';
 
 /** Del tipo de periodo a la clave del expediente (c_PeriodicidadPago). */
@@ -445,5 +445,74 @@ export async function plantillaPorTipo(companyId: string) {
      * hay que decirlo en vez de dejarlos fuera en silencio. */
     sinTipo: total - (porClave['02'] || 0) - (porClave['04'] || 0) - (porClave['05'] || 0),
     total,
+  };
+}
+
+/**
+ * Parte en gravado y exento lo que se está capturando, ANTES de aplicarlo.
+ *
+ * POR QUÉ ESTO VIVE EN EL SERVIDOR
+ * La pantalla necesita mostrar cuánto de lo tecleado grava y cuánto no, y la
+ * tentación es calcularlo en el navegador con la misma fórmula. Ya nos costó
+ * caro una vez: el importe con letra estaba duplicado en dos archivos y el
+ * arreglo llegó a uno solo, así que las facturas quedaron bien y los
+ * complementos siguieron mal durante meses. Las exenciones del Art. 93 son
+ * exactamente el tipo de regla que no puede tener dos copias.
+ *
+ * Así que la pantalla pregunta y el motor —el único— responde.
+ *
+ * Las deducciones no se parten: la ley grava ingresos, no descuentos. Se
+ * devuelven con su importe para que la pantalla sume, y ya.
+ */
+export async function partirConceptos(
+  companyId: string,
+  periodoId: string,
+  empleadoId: string,
+  lado: 'ingresos' | 'egresos',
+  lineas: Array<{ clave: string; importe: number; gravadoManual?: number }>
+) {
+  const p = await periodosSvc.obtener(companyId, periodoId);
+  const ej = await ejercicios.cargar(p.anio, p.fecha_fin);
+
+  const e = await query<any>(
+    `SELECT salario_diario, zona_geografica
+       FROM nomina_empleados
+      WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
+    [empleadoId, companyId]
+  );
+  if (e.rows.length === 0) throw new ValidationError('No encontré a ese trabajador');
+
+  const zona: Zona =
+    e.rows[0].zona_geografica === 'frontera_norte' ? 'frontera_norte' : 'general';
+  const ctx = {
+    ejercicio: ej,
+    zona,
+    salarioDiario: Number(e.rows[0].salario_diario) || 0,
+    dias: Number(p.dias) || 0,
+  };
+
+  const detalle = (lineas || [])
+    .filter((l) => l && l.clave && Number(l.importe) > 0)
+    .map((l) => {
+      const importe = Number(l.importe);
+      if (lado === 'egresos') {
+        return { clave: l.clave, importe, gravado: 0, exento: 0, aplica: false };
+      }
+      const { gravado, exento } = partirGravadoExento(
+        l.clave, importe, ctx,
+        l.gravadoManual === undefined || l.gravadoManual === null
+          ? undefined
+          : Number(l.gravadoManual)
+      );
+      return { clave: l.clave, importe, gravado, exento, aplica: true };
+    });
+
+  const suma = (k: 'importe' | 'gravado' | 'exento') =>
+    Math.round(detalle.reduce((a, d) => a + (d as any)[k], 0) * 100) / 100;
+
+  return {
+    lado,
+    lineas: detalle,
+    totales: { importe: suma('importe'), gravado: suma('gravado'), exento: suma('exento') },
   };
 }

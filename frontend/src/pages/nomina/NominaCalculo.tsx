@@ -77,6 +77,25 @@ export function NominaCalculoPage() {
     enabled: !!periodoId,
   });
 
+  /* Se abre en el periodo que se está pagando, no en "elige el periodo".
+   *
+   * Quien entra a esta pantalla viene a ver la nómina de ESTA semana, y tener
+   * que buscarla en una lista de 53 cada vez es trabajo que la máquina puede
+   * hacer. Se elige el primer periodo ABIERTO cuyo rango contiene el día de hoy;
+   * si hoy no cae en ninguno —porque ya se cerraron todos hasta la fecha— se
+   * toma el primer abierto que venga. Y se queda ahí: en cuanto el periodo se
+   * cierra deja de ser candidato y el default salta solo al siguiente.
+   *
+   * No pisa una elección del usuario: sólo actúa cuando no hay ninguna. */
+  useEffect(() => {
+    if (periodoId || periodos.length === 0) return;
+    const hoy = new Date().toISOString().slice(0, 10);
+    const abiertos = periodos.filter((p) => p.estatus !== 'CERRADO');
+    const deHoy = abiertos.find((p) => p.fecha_inicio <= hoy && hoy <= p.fecha_fin);
+    const elegido = deHoy || abiertos[0];
+    if (elegido) setPeriodoId(elegido.id);
+  }, [periodos, periodoId]);
+
   /* El resultado del GET alimenta la pantalla la primera vez; después manda lo
    * que devuelve el recálculo con la captura. */
   useEffect(() => {
@@ -351,7 +370,10 @@ export function NominaCalculoPage() {
                 </span>
               )}
             </p>
-            <div className="flex items-center gap-3">
+            {/* Pegados al título y no en la otra orilla: son las tres acciones
+                de esta pantalla y buscarlas al final de una línea ancha cuesta
+                un viaje de ojos cada vez. */}
+            <div className="flex items-center gap-3 ml-4 mr-auto">
               <button onClick={() => prenominaQ.refetch()} disabled={prenominaQ.isFetching}
                 className="text-sm text-primary hover:underline flex items-center gap-1">
                 <RefreshCw size={14} className={prenominaQ.isFetching ? 'animate-spin' : ''} />
@@ -407,7 +429,7 @@ export function NominaCalculoPage() {
                 <thead className="bg-gray-50 border-b">
                   <tr className="text-[11px] text-gray-600">
                     <th className="px-1.5 py-1.5 text-right w-8">#</th>
-                    <th className="px-1.5 py-1.5 text-left">Nombre</th>
+                    <th className="px-1.5 py-1.5 text-left w-0">Nombre</th>
                     <th className="px-1.5 py-1.5 text-center w-12">Días</th>
                     <th className="px-1.5 py-1.5 text-right w-24">Ingresos</th>
                     <th className="px-1.5 py-1.5 text-right w-24">Otros ing.</th>
@@ -430,11 +452,12 @@ export function NominaCalculoPage() {
                     return (
                       <tr key={r.empleado_id} className="hover:bg-gray-50">
                         <td className="px-1.5 py-1 text-right text-gray-400">{i + 1}</td>
-                        <td className="px-1.5 py-1">
+                        {/* Sin el puesto: se repite en toda la columna —"Ayudante
+                            General" diez veces— y empuja los días a la derecha. Está
+                            en el expediente, que es donde se consulta. */}
+                        <td className="px-1.5 py-1 w-0 whitespace-nowrap">
                           <span className="text-gray-900">{r.nombre}</span>
-                          <span className="text-[10px] text-gray-400 ml-1.5">
-                            {r.num_empleado}{r.puesto ? ` · ${r.puesto}` : ''}
-                          </span>
+                          <span className="text-[10px] text-gray-400 ml-1.5">{r.num_empleado}</span>
                           {r.faltantes?.length > 0 && (
                             <span className="block text-[10px] text-amber-700">
                               <AlertTriangle size={9} className="inline mr-0.5" />
@@ -549,6 +572,8 @@ export function NominaCalculoPage() {
                   ? (captura[capturando.renglon.empleado_id]?.otrosIngresos || [])
                   : (captura[capturando.renglon.empleado_id]?.otrasDeducciones || [])
               }
+              periodoId={periodoId}
+              empleadoId={capturando.renglon.empleado_id}
               onCerrar={() => setCapturando(null)}
               onGuardar={(l) => aplicarCaptura(capturando.renglon.empleado_id, capturando.lado, l)}
             />

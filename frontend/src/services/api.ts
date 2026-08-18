@@ -1157,6 +1157,38 @@ class APIClient {
     return r.data;
   }
 
+  /** El ejercicio fiscal con sus tablas: tarifa del Art. 96, subsidio, UMA, UMI. */
+  async getEjercicioNomina(anio: number) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/ejercicios/${anio}`);
+    return r.data;
+  }
+
+  /** Cuánto grava y cuánto exenta lo capturado. NO guarda. */
+  async partirConceptos(body: {
+    periodoId: string; empleadoId: string;
+    lado: 'ingresos' | 'egresos';
+    lineas: Array<{ clave: string; importe: number; gravadoManual?: number }>;
+  }) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/conceptos/partir', body);
+    return r.data;
+  }
+
+  /** Finiquito y liquidación de quien se va. NO escribe. */
+  async getFiniquito(empleadoId: string, params: {
+    fechaBaja: string; vacacionesYaDisfrutadas?: number; diasPendientesDePagar?: number;
+  }) {
+    const r = await this.client.get<APIResponse<any>>(
+      `/nomina/empleados/${empleadoId}/finiquito`, { params }
+    );
+    return r.data;
+  }
+
+  /** Colonias, municipio y estado de un código postal (catálogo SAT). */
+  async resolverCodigoPostal(cp: string) {
+    const r = await this.client.get<APIResponse<any>>(`/carta-porte/cp/${cp}`);
+    return r.data;
+  }
+
   /* ── CFDI de nómina ── */
   async getRecibosNomina(params: { estatus?: string; periodoId?: string } = {}) {
     const r = await this.client.get<APIResponse<any>>('/nomina/recibos', { params });

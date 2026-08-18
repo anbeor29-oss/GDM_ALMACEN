@@ -167,15 +167,46 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
     </div>
   );
 
+  /* Un color por bloque.
+   *
+   * Cinco pestañas iguales obligan a leer el rótulo cada vez para saber dónde
+   * estás. Con un color de fondo distinto en cada una, la pantalla se reconoce
+   * de reojo: el ojo aprende "el azul es identificación" en dos usos. El tono
+   * es bajo a propósito —fondo de 50, borde de 200— para que no compita con lo
+   * que sí importa, que son los campos. */
+  /* El catálogo del SAT para el CP capturado. Sólo pregunta con cinco dígitos
+   * completos: con tres no hay nada que resolver y sería una consulta por cada
+   * tecla. El municipio y el estado se rellenan solos la primera vez y luego se
+   * dejan en paz, por si el usuario los corrigió a mano. */
+  const cpQ = useQuery({
+    queryKey: ['cp-sat', f.codigo_postal],
+    queryFn: () => api.resolverCodigoPostal(f.codigo_postal),
+    enabled: /^\d{5}$/.test(f.codigo_postal || ''),
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
+  const colonias: any[] = cpQ.data?.data?.colonias || [];
+  const estadoDelCp: string = cpQ.data?.data?.estado || '';
+
+  useEffect(() => {
+    if (!estadoDelCp || f.estado) return;
+    set('estado', estadoDelCp);
+  }, [estadoDelCp]);
+
   const BLOQUES = [
-    { id: 'id', label: 'Identificación' },
-    { id: 'domicilio', label: 'Domicilio fiscal' },
-    { id: 'laboral', label: 'Relación laboral' },
-    { id: 'descuentos', label: 'Descuentos' },
+    { id: 'id', label: 'Identificación',
+      tono: 'bg-sky-50 border-sky-200', activa: 'border-sky-500 text-sky-700 bg-sky-50' },
+    { id: 'domicilio', label: 'Domicilio fiscal',
+      tono: 'bg-emerald-50 border-emerald-200', activa: 'border-emerald-500 text-emerald-700 bg-emerald-50' },
+    { id: 'laboral', label: 'Relación laboral',
+      tono: 'bg-violet-50 border-violet-200', activa: 'border-violet-500 text-violet-700 bg-violet-50' },
+    { id: 'descuentos', label: 'Descuentos',
+      tono: 'bg-amber-50 border-amber-200', activa: 'border-amber-500 text-amber-700 bg-amber-50' },
     /* La bitácora y las entregas van al final: se consultan, no se capturan al
      * dar de alta. Poner primero lo que se llena el primer día y al final lo que
      * se acumula con los años. */
-    { id: 'expediente', label: 'Bitácora y entregas' },
+    { id: 'expediente', label: 'Bitácora y entregas',
+      tono: 'bg-slate-50 border-slate-200', activa: 'border-slate-500 text-slate-700 bg-slate-50' },
   ] as const;
 
   return (
@@ -205,9 +236,9 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
             <button
               key={b.id}
               onClick={() => setBloque(b.id)}
-              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${
+              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px rounded-t transition ${
                 bloque === b.id
-                  ? 'border-primary text-primary'
+                  ? b.activa
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -216,7 +247,9 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
           ))}
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className={`p-5 space-y-4 border-t-0 border ${
+          BLOQUES.find((b) => b.id === bloque)?.tono || ''
+        }`}>
           {error && (
             <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded-lg text-sm">
               {error}
@@ -270,8 +303,37 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                 <Campo k="calle" label="Calle" ancho="sm:col-span-2" />
                 <Campo k="num_exterior" label="Número exterior" />
                 <Campo k="num_interior" label="Número interior" />
-                <Campo k="colonia" label="Colonia" />
-                <Campo k="municipio" label="Municipio / alcaldía" ancho="sm:col-span-2" />
+
+                {/* Colonia, municipio y estado salen del catálogo del SAT, no de
+                    lo que se teclee: es el MISMO catálogo contra el que el PAC
+                    valida. Una colonia escrita a mano con una letra distinta
+                    rebota el timbrado, y el error llega días después. */}
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Colonia
+                    {cpQ.isFetching && <span className="text-gray-400"> · buscando…</span>}
+                  </label>
+                  {colonias.length > 0 ? (
+                    <select
+                      value={f.colonia}
+                      onChange={(e) => set('colonia', e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    >
+                      <option value="">— Elige la colonia —</option>
+                      {colonias.map((c: any) => (
+                        <option key={c.clave} value={c.descripcion}>{c.descripcion}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Campo k="colonia" label="" />
+                  )}
+                  {colonias.length > 0 && (
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {colonias.length} colonia(s) en el CP {f.codigo_postal}
+                    </p>
+                  )}
+                </div>
+                <Campo k="municipio" label="Municipio / alcaldía" />
                 <Campo k="estado" label="Estado" />
                 <Campo k="regimen_fiscal" label="Régimen fiscal" maxLength={3} />
                 <Campo k="uso_cfdi" label="Uso del CFDI" maxLength={5} />
@@ -324,8 +386,34 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                   diario— y SalarioDiarioIntegrado, y con esos dos se calcula
                   todo. La columna sigue en la base para no perder lo que ya se
                   hubiera capturado. */}
-              <Campo k="salario_diario" label="Salario diario *" tipo="number" step="0.01" />
-              <Campo k="salario_diario_integrado" label="Salario diario integrado *" tipo="number" step="0.01" />
+              {/* Los dos importes juntos y explicados. "Salario diario" y "SDI"
+                  a secas se confunden —y confundirlos mueve la cuota del IMSS de
+                  toda la plantilla—, así que cada uno dice qué es y cuál debe ser
+                  mayor. El aviso salta solo si quedaron al revés: el factor de
+                  integración nunca baja de 1. */}
+              <div className="sm:col-span-3 grid sm:grid-cols-2 gap-3 p-3 rounded-lg bg-white/70 border">
+                <div>
+                  <Campo k="salario_diario" label="Salario diario — el del contrato *"
+                    tipo="number" step="0.01" />
+                  <p className="text-[10px] text-gray-500 mt-0.5">
+                    Lo que gana al día, sin prestaciones. Es el MENOR de los dos.
+                  </p>
+                </div>
+                <div>
+                  <Campo k="salario_diario_integrado" label="SDI — base de cotización *"
+                    tipo="number" step="0.01" />
+                  <p className="text-[10px] text-gray-500 mt-0.5">
+                    Diario + aguinaldo y prima vacacional (Art. 84 LSS). Siempre el MAYOR.
+                  </p>
+                </div>
+                {Number(f.salario_diario_integrado) > 0 &&
+                 Number(f.salario_diario_integrado) < Number(f.salario_diario) && (
+                  <p className="sm:col-span-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                    El SDI quedó por debajo del salario diario, y eso es imposible: el factor
+                    de integración nunca baja de 1. Lo más probable es que estén invertidos.
+                  </p>
+                )}
+              </div>
               <div>
                 <label className={etiqueta}>Banco</label>
                 <select
