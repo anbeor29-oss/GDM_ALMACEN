@@ -100,8 +100,24 @@ export function NominaCalculoPage() {
     if (periodoId || periodos.length === 0) return;
     const hoy = new Date().toISOString().slice(0, 10);
     const abiertos = periodos.filter((p) => p.estatus !== 'CERRADO');
+    if (abiertos.length === 0) return;
+
+    /* El que CONTIENE hoy. Es el caso normal. */
     const deHoy = abiertos.find((p) => p.fecha_inicio <= hoy && hoy <= p.fecha_fin);
-    const elegido = deHoy || abiertos[0];
+
+    /* Si hoy no cae en ninguno —porque los de esta fecha ya se cerraron, o
+     * porque se está mirando otro año— se toma el MÁS CERCANO a hoy, no el
+     * primero de la lista. Abrir en la semana 1 de enero cuando estamos en
+     * agosto obliga a buscar cada vez, que es justo lo que este default
+     * venía a evitar. */
+    const distancia = (p: any) => {
+      if (p.fecha_fin < hoy) return Date.parse(hoy) - Date.parse(p.fecha_fin);
+      if (p.fecha_inicio > hoy) return Date.parse(p.fecha_inicio) - Date.parse(hoy);
+      return 0;
+    };
+    const masCercano = [...abiertos].sort((a, b) => distancia(a) - distancia(b))[0];
+
+    const elegido = deHoy || masCercano;
     if (elegido) setPeriodoId(elegido.id);
   }, [periodos, periodoId]);
 

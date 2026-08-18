@@ -161,6 +161,20 @@ export async function calcular(
     );
   }
 
+  /* Un finiquito de UNA persona que NO trae a quién.
+   *
+   * Los periodos especiales creados antes de que el finiquito se acotara a un
+   * trabajador quedaron sin `empleado_id`, así que la rejilla los llenaba con
+   * la plantilla ENTERA y con los días completos del rango: un finiquito de una
+   * persona salía con diez trabajadores y un millón de pesos de ingresos. Son
+   * cifras que nadie debe creer y que además se pueden cerrar.
+   *
+   * No se adivina a quién se refería: no se trae a nadie y se explica. */
+  const huerfano =
+    periodo.tipo === 'ESPECIAL' &&
+    !periodo.empleado_id &&
+    /finiquito|liquidaci/i.test(String(periodo.concepto || ''));
+
   const avisosDelPeriodo: string[] = [];
   const meta = await query<any>(
     `SELECT registro_patronal, prima_riesgo, fi_aguinaldo_dias, fi_prima_vac_pct
@@ -174,6 +188,19 @@ export async function calcular(
       'pero no timbrar. Está en Nómina → Parámetros.'
     );
   }
+  if (huerfano) {
+    avisosDelPeriodo.push(
+      `Este periodo dice "${periodo.concepto}" pero no tiene guardado a quién se ` +
+      'liquida: se creó antes de que el finiquito se acotara a una persona. No se ' +
+      'calcula nada a propósito — con toda la plantilla y los días completos del ' +
+      'rango daría cifras que no son reales.'
+    );
+    avisosDelPeriodo.push(
+      'Vuelve a generarlo desde el expediente del trabajador, con el icono de baja: ' +
+      'ese queda ligado a la persona. Este se puede borrar.'
+    );
+  }
+
   const confirmado = await query<any>(
     `SELECT confirmado FROM nomina_ejercicios WHERE anio = $1`, [periodo.anio]
   );
@@ -210,6 +237,10 @@ export async function calcular(
    * todos, y el finiquito heredó ese comportamiento: al liquidar a alguien la
    * rejilla mostraba la plantilla completa. Quien liquida tenía que confiar en
    * no cerrar por error un periodo que no era el suyo. */
+  if (huerfano) {
+    cond.push('FALSE');
+  }
+
   if (periodo.empleado_id) {
     args.push(periodo.empleado_id);
     cond.push(`e.id = $${args.length}`);

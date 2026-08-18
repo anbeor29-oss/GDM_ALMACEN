@@ -253,7 +253,7 @@ export function NominaParametrosPage() {
 function PanelFiscal() {
   const anioActual = new Date().getFullYear();
   const [anio, setAnio] = useState(anioActual);
-  const [verTarifa, setVerTarifa] = useState(false);
+  const [verTarifa, setVerTarifa] = useState(true);
 
   const q = useQuery({
     queryKey: ['ejercicio-nomina', anio],
@@ -309,14 +309,19 @@ function PanelFiscal() {
         {e && (
           <>
             <div className="grid grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
-              <Dato titulo="UMA diaria"      valor={mxn(e.uma_diaria)} />
-              <Dato titulo="UMA mensual"     valor={mxn(e.uma_mensual)} />
-              <Dato titulo="UMI diaria"      valor={mxn(e.umi_diaria)}
+              {/* El servidor manda estos campos en camelCase —umaDiaria, no
+                  uma_diaria— porque vienen del objeto Ejercicio que usa el
+                  motor, no de la fila de la tabla. Leerlos con el nombre de la
+                  columna dejaba todo en "—" y el tope en NaN. */}
+              <Dato titulo="UMA diaria"      valor={mxn(e.umaDiaria)} />
+              <Dato titulo="UMA mensual"     valor={mxn(e.umaMensual)} />
+              <Dato titulo="UMI diaria"      valor={mxn(e.umiDiaria)}
                     nota="Créditos INFONAVIT en VSM" />
-              <Dato titulo="Salario mínimo"  valor={mxn(e.smg_general)} nota="Zona general" />
-              <Dato titulo="Mínimo frontera" valor={mxn(e.smg_frontera)}
+              <Dato titulo="Salario mínimo"  valor={mxn(e.smgGeneral)} nota="Zona general" />
+              <Dato titulo="Mínimo frontera" valor={mxn(e.smgFrontera)}
                     nota="Zona Libre de la Frontera Norte" />
-              <Dato titulo="Tope de 25 UMA"  valor={mxn(Number(e.uma_diaria) * 25)}
+              <Dato titulo="Tope de 25 UMA"
+                    valor={e.umaDiaria ? mxn(Number(e.umaDiaria) * 25) : '—'}
                     nota="Art. 28 LSS — SBC máximo" />
             </div>
 
@@ -385,20 +390,38 @@ function PanelFiscal() {
             </div>
           )}
 
+          {/* El subsidio va FUERA del desplegable: desde 2024 son uno o dos
+              renglones —no una escalera de once— y caben a la vista. Esconderlo
+              obligaba a abrir la tarifa para ver un dato que se consulta más. */}
           {e.subsidio?.length > 0 && (
             <div className="mt-4 border-t pt-3">
-              <p className="text-sm font-medium text-slate-700 mb-1">Subsidio al empleo</p>
-              {e.subsidio.map((sb: any, i: number) => (
-                <p key={i} className="text-xs text-gray-600">
-                  {mxn(sb.subsidio)} para ingresos de hasta {mxn(sb.limite_superior)}
-                  {sb.porcentaje_uma
-                    ? ` · ${Number(sb.porcentaje_uma).toFixed(2)} % de la UMA mensual`
-                    : ''}
-                  {sb.vigente_desde || sb.vigente_hasta
-                    ? ` · del ${sb.vigente_desde || 'inicio del año'} al ${sb.vigente_hasta || 'fin del año'}`
-                    : ''}
-                </p>
-              ))}
+              <p className="text-sm font-medium text-slate-700 mb-2">Subsidio al empleo</p>
+              <table className="w-full text-xs tabular-nums">
+                <thead className="bg-gray-50 text-gray-600">
+                  <tr>
+                    <th className="px-2 py-1 text-left">Vigencia</th>
+                    <th className="px-2 py-1 text-right">Hasta ingresos de</th>
+                    <th className="px-2 py-1 text-right">% de la UMA</th>
+                    <th className="px-2 py-1 text-right">Subsidio</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {e.subsidio.map((sb: any, i: number) => (
+                    <tr key={i}>
+                      <td className="px-2 py-1">
+                        {sb.vigente_desde || sb.vigente_hasta
+                          ? `${sb.vigente_desde || 'inicio'} al ${sb.vigente_hasta || 'fin de año'}`
+                          : 'todo el ejercicio'}
+                      </td>
+                      <td className="px-2 py-1 text-right">{mxn(sb.limite_superior)}</td>
+                      <td className="px-2 py-1 text-right">
+                        {sb.porcentaje_uma ? `${Number(sb.porcentaje_uma).toFixed(2)} %` : '—'}
+                      </td>
+                      <td className="px-2 py-1 text-right font-semibold">{mxn(sb.subsidio)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

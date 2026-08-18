@@ -143,6 +143,8 @@ export function NominaCFDIPage() {
 
   const pendientes = recibos.filter((r) => r.estatus === 'PENDIENTE');
   const marcados = recibos.filter((r) => r.enviar_por_correo);
+  /* Sólo lo timbrado se puede mandar: un pre-timbre no ampara ningún pago. */
+  const timbrados = recibos.filter((r) => r.uuid);
 
   return (
     <div className="space-y-4">
@@ -187,9 +189,14 @@ export function NominaCFDIPage() {
               </button>
             )}
             <Mail size={15} className="text-gray-500" />
-            <span className="text-gray-600">{marcados.length} de {recibos.length} para correo</span>
-            <button onClick={() => marcarCorreo(recibos.map((r) => r.id), true)}
-              className="text-primary hover:underline">marcar todos</button>
+            <span className="text-gray-600">
+              {marcados.length} de {timbrados.length} timbrado(s) para correo
+            </span>
+            <button onClick={() => marcarCorreo(timbrados.map((r) => r.id), true)}
+              disabled={timbrados.length === 0}
+              className="text-primary hover:underline disabled:text-gray-300 disabled:no-underline">
+              marcar todos
+            </button>
             <span className="text-gray-300">·</span>
             <button onClick={() => marcarCorreo(recibos.map((r) => r.id), false)}
               className="text-gray-500 hover:underline">ninguno</button>
@@ -247,11 +254,23 @@ export function NominaCFDIPage() {
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-center">
-                    {esAdmin && r.estatus === 'PENDIENTE' && (
-                      <input type="checkbox" checked={!!r.enviar_por_correo}
+                    {/* La casilla del correo se habilita con el recibo TIMBRADO.
+                        Estaba al revés: sólo aparecía en los PENDIENTES, que es
+                        justo cuando no hay nada que mandar — un pre-timbre no
+                        ampara ningún pago ante el SAT. */}
+                    {esAdmin && (
+                      <input
+                        type="checkbox"
+                        checked={!!r.enviar_por_correo}
+                        disabled={!r.uuid}
+                        title={
+                          !r.uuid
+                            ? 'Primero hay que timbrarlo: sin folio fiscal no ampara el pago'
+                            : (r.correo || 'Sin correo en el expediente')
+                        }
                         onChange={(ev) => marcarCorreo([r.id], ev.target.checked)}
-                        title={r.correo || 'Sin correo en el expediente'}
-                        className="rounded border-gray-300" />
+                        className="rounded border-gray-300 disabled:opacity-30"
+                      />
                     )}
                     {r.enviado_at && <CheckCircle2 size={14} className="inline text-emerald-600" />}
                   </td>
