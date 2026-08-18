@@ -18,6 +18,32 @@ const bien = (q: string) => { ok++; console.log(`  OK  ${q}`); };
 const mal  = (q: string, d?: any) => { fallos++; console.log(`  MAL ${q}${d ? ` -- ${d}` : ''}`); };
 
 async function main() {
+  /* ── Primero: ¿hay catálogo? ──
+   *
+   * Hay DOS fallas distintas que se ven IGUAL desde la pantalla —el combo sale
+   * vacío— y piden remedios opuestos:
+   *
+   *   · la tabla VACÍA     → el seed de catálogos nunca corrió en esta base
+   *   · la tabla CRUZADA   → el seed corrió pero con las columnas al revés, y
+   *                          falta la migración 2026-08-18e
+   *
+   * Distinguirlas aquí evita perseguir la equivocada, que es lo que costó la
+   * última vuelta: se buscó el cruce donde el problema era que no había datos. */
+  const cuantas = await query<any>(`SELECT COUNT(*)::int n FROM sat_cp_colonia`);
+  const total = cuantas.rows[0].n;
+  console.log(`\nsat_cp_colonia: ${total.toLocaleString('es-MX')} filas\n`);
+
+  if (total === 0) {
+    mal('la tabla de colonias está VACÍA — el seed nunca corrió en esta base');
+    console.log(
+      '\n  No es un problema de columnas cruzadas: no hay nada que cruzar.\n' +
+      '  Siembra los catálogos y vuelve a correr esta prueba:\n\n' +
+      '      npm run cp:seed\n'
+    );
+    await pool.end();
+    process.exit(1);
+  }
+
   /* CPs de estados distintos, para que no pase una carga parcial. */
   const casos: Array<[string, string]> = [
     ['20900', 'Aguascalientes'],
@@ -90,6 +116,15 @@ async function main() {
     ? bien(`el camino completo resuelve: colonia "${completo.rows[0].colonia}", ` +
            `municipio "${completo.rows[0].municipio}"`)
     : mal('el camino completo no resuelve un domicilio');
+
+  if (fallos > 0) {
+    console.log(
+      '\n  Hay catálogo, pero con las columnas cruzadas: el código postal vive\n' +
+      '  en la columna del nombre y al revés. Lo corrige la migración\n' +
+      '  2026-08-18e — si no se ha aplicado, córrela:\n\n' +
+      '      npm run migrate:up\n'
+    );
+  }
 
   console.log(`\n${ok} bien, ${fallos} mal\n`);
   await pool.end();
