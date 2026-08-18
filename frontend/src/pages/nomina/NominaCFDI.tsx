@@ -40,6 +40,11 @@ export function NominaCFDIPage() {
 
   const [estatus, setEstatus] = useState('PENDIENTE');
   const [viendo, setViendo] = useState<any | null>(null);
+  /* La vista previa es el PDF, no el XML: es lo que el trabajador recibe y lo
+   * que se revisa antes de timbrar. El XML sigue a un clic, para quien necesita
+   * ver la estructura. */
+  const [pdfUrl, setPdfUrl] = useState('');
+  const [modoXml, setModoXml] = useState(false);
   const [error, setError] = useState('');
   const [aviso, setAviso] = useState('');
   /* Los recibos marcados para timbrar. Es una selección aparte del check de
@@ -97,6 +102,13 @@ export function NominaCFDIPage() {
 
   const porTimbrar = Object.values(elegidos).filter(Boolean).length;
 
+  /* El blob del PDF se libera al cerrar: cada uno que no se revoca se queda en
+   * memoria hasta que se recargue la página. */
+  const cerrarVista = () => {
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    setPdfUrl(''); setViendo(null); setModoXml(false);
+  };
+
   const marcarCorreo = async (ids: string[], enviar: boolean) => {
     setError(''); setAviso('');
     try {
@@ -115,13 +127,17 @@ export function NominaCFDIPage() {
     }
   };
 
-  const verXml = async (r: any) => {
-    setError('');
+  /* Se traen los dos de una vez: el XML para el modo estructura y el PDF para
+   * la vista previa. Pedir el XML sólo al cambiar de pestaña haría que ese clic
+   * esperara, y el XML es texto — no pesa. */
+  const verRecibo = async (r: any) => {
+    setError(''); setModoXml(false); setPdfUrl('');
     try {
       const d = await api.getXmlRecibo(r.id);
       setViendo({ ...r, xml: d.data.xml });
+      setPdfUrl(await api.getReciboPdfBlob(r.id));
     } catch (e: any) {
-      setError(e?.response?.data?.message || 'No se pudo leer el XML');
+      setError(e?.response?.data?.message || 'No se pudo abrir el recibo');
     }
   };
 
@@ -269,8 +285,10 @@ export function NominaCFDIPage() {
                   </td>
                   <td className="px-2 py-1.5 text-center whitespace-nowrap">
                     {/* Los mismos iconos del panel de facturas. */}
-                    <button onClick={() => verXml(r)} title="Ver el XML"
-                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><Eye size={16} /></button>
+                    <button onClick={() => verRecibo(r)} title="Vista previa del recibo"
+                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg">
+                      <Eye size={16} />
+                    </button>
                     <button onClick={() => api.descargarXmlRecibo(r.id, `nomina-${r.num_empleado}.xml`)}
                       title="Descargar XML"
                       className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"><Download size={16} /></button>
@@ -315,17 +333,53 @@ export function NominaCFDIPage() {
               <div>
                 <h2 className="font-semibold">{viendo.nombre}</h2>
                 <p className="text-xs text-gray-500">
-                  {viendo.estatus === 'TIMBRADO' ? 'XML timbrado' : 'XML pre-timbre'} ·
-                  {' '}{viendo.tipo} #{viendo.periodo_numero}
+                  {viendo.uuid ? 'Timbrado' : 'Sin timbrar — vista previa'} ·
+                  {' '}{viendo.tipo} #{viendo.periodo_numero} de {viendo.anio}
                 </p>
               </div>
-              <button onClick={() => setViendo(null)} className="text-gray-400 hover:text-gray-600">
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Dos vistas del mismo recibo: el papel que recibe el
+                    trabajador y la estructura que recibe el SAT. */}
+                <button
+                  onClick={() => setModoXml(!modoXml)}
+                  className="text-sm text-primary hover:underline flex items-center gap-1"
+                >
+                  <FileCode2 size={14} /> {modoXml ? 'Ver el PDF' : 'Ver el XML'}
+                </button>
+                <button
+                  onClick={() => api.descargarReciboPdf(
+                    viendo.id, `recibo-${viendo.num_empleado}.pdf`)}
+                  className="text-sm text-rose-700 hover:underline flex items-center gap-1"
+                >
+                  <Download size={14} /> PDF
+                </button>
+                <button
+                  onClick={() => api.descargarXmlRecibo(
+                    viendo.id, `nomina-${viendo.num_empleado}.xml`)}
+                  className="text-sm text-emerald-700 hover:underline flex items-center gap-1"
+                >
+                  <Download size={14} /> XML
+                </button>
+                <button onClick={cerrarVista} className="text-gray-400 hover:text-gray-600 ml-2">
+                  <X size={20} />
+                </button>
+              </div>
             </div>
-            <pre className="p-4 text-[11px] font-mono overflow-x-auto max-h-[70vh] whitespace-pre-wrap break-all bg-slate-50">
-              {viendo.xml}
-            </pre>
+
+            {modoXml ? (
+              <pre className="p-4 text-[11px] font-mono overflow-x-auto max-h-[70vh] whitespace-pre-wrap break-all bg-slate-50">
+                {viendo.xml}
+              </pre>
+            ) : pdfUrl ? (
+              <iframe
+                src={pdfUrl}
+                title={`Recibo de ${viendo.nombre}`}
+                className="w-full bg-slate-100"
+                style={{ height: '75vh', border: 0 }}
+              />
+            ) : (
+              <p className="p-8 text-center text-sm text-gray-500">Generando el PDF…</p>
+            )}
           </div>
         </div>
       )}

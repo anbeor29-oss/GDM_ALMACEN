@@ -26,6 +26,7 @@ import * as prenomina from './prenomina.service';
 import { generarExcel } from './prenomina-excel.service';
 import { generarListaDeRaya } from './lista-de-raya.service';
 import * as finiquito from './finiquito.service';
+import { generarReciboPDF } from './pdf-recibo.service';
 import * as cierre from './cierre.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
@@ -269,6 +270,27 @@ router.post(
     if (ids.length === 0) throw new ValidationError('No elegiste ningún recibo');
     const r = await cierre.timbrarVarios(companyId(req), ids);
     res.json({ success: true, data: r });
+  })
+);
+
+
+/**
+ * GET /recibos/:id/pdf — el recibo en papel.
+ *
+ * Sale del XML y no de la base: el XML es lo que se le mandó al SAT y lo que el
+ * trabajador puede verificar. Armarlo con las columnas de la tabla haría que
+ * una corrección al expediente cambiara el papel sin cambiar el comprobante.
+ *
+ * Sirve antes y después de timbrar; sin timbre lleva su sello de agua.
+ */
+router.get(
+  '/recibos/:id/pdf',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await generarReciboPDF(companyId(req), req.params.id);
+    const disp = req.query.descargar === 'true' ? 'attachment' : 'inline';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `${disp}; filename="${nombre}"`);
+    res.send(buffer);
   })
 );
 

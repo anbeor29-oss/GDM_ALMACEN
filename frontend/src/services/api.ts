@@ -1183,6 +1183,20 @@ class APIClient {
     return r.data;
   }
 
+  /** El recibo en PDF, para verlo en pantalla (blob URL). */
+  async getReciboPdfBlob(id: string): Promise<string> {
+    const r = await this.client.get(`/nomina/recibos/${id}/pdf`, { responseType: 'blob' });
+    return URL.createObjectURL(r.data as Blob);
+  }
+
+  /** El recibo en PDF, para guardarlo. */
+  async descargarReciboPdf(id: string, nombre: string) {
+    const r = await this.client.get(`/nomina/recibos/${id}/pdf`, {
+      params: { descargar: 'true' }, responseType: 'blob',
+    });
+    await this.downloadFile(r.data as Blob, nombre);
+  }
+
   /** El mismo concepto a varios trabajadores. ESCRIBE el borrador. */
   async aplicarConceptoAVarios(periodoId: string, body: {
     lado: 'ingresos' | 'egresos'; clave: string; importe: number;

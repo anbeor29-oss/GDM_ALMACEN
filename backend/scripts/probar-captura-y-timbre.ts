@@ -217,8 +217,14 @@ async function main() {
     ? bien('en lote: el ya timbrado falla y el otro sí pasa — no se detiene')
     : mal('el lote no siguió tras el fallo', JSON.stringify(t3));
 
-  await limpiar(companyId);
-  if (!rpPrevio) await query(`UPDATE companies SET registro_patronal=NULL WHERE id=$1`, [companyId]);
+  /* Con --dejar los datos se quedan, para poder mirar el PDF del recibo o
+   * abrir la pantalla con algo dentro. Sin la bandera, limpia como siempre. */
+  if (process.argv.includes('--dejar')) {
+    console.log('(datos de prueba CONSERVADOS por --dejar)');
+  } else {
+    await limpiar(companyId);
+    if (!rpPrevio) await query(`UPDATE companies SET registro_patronal=NULL WHERE id=$1`, [companyId]);
+  }
   console.log('\n(base limpia)');
   console.log(`\n${ok} bien, ${fallos} mal\n`);
   await pool.end();
