@@ -554,10 +554,11 @@ export function NominaCalculoPage() {
             />
           )}
 
+          {/* Lo único que queda fuera de esta pantalla es el timbrado ante el
+              PAC: se hace desde CFDI, ya con el XML generado. */}
           <p className="px-5 py-3 text-xs text-gray-500 border-t">
-            Falta la captura de conceptos por trabajador —horas extra, faltas, bonos—, la
-            vista previa del CFDI y el cierre del periodo, que es el que aplicará los abonos
-            de préstamos y FONACOT.
+            Al cerrar el periodo se congelan los recibos, se aplican los abonos de préstamos
+            y FONACOT, y los XML pasan a la pantalla de CFDI. Timbrar es un paso aparte.
           </p>
         </div>
       )}
