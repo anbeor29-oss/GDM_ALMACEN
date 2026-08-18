@@ -117,7 +117,13 @@ async function main() {
   /* El tope SÍ debe morder con un sueldo alto. Es el error más caro al
    * liquidar: sin tope, a un sueldo de $2,000 se le pagarían $168,000 de prima
    * de antigüedad en vez de $52,927. */
-  await query(`UPDATE nomina_empleados SET salario_diario = 2000 WHERE id = $1`, [id]);
+  /* Los dos suben juntos: desde la migración 2026-08-18b el CHECK impide dejar
+   * el integrado por debajo del diario, que es exactamente lo que queremos que
+   * impida. Subir sólo uno truena, y bien que truene. */
+  await query(
+    `UPDATE nomina_empleados SET salario_diario = 2000, salario_diario_integrado = 2100
+      WHERE id = $1`, [id]
+  );
   const alto = await finiquito.calcular(companyId, id, '2026-12-31');
   const antigAlto = alto.liquidacion.conceptos.find((x) => x.concepto.includes('antigüedad'))!;
   cerca(antigAlto.base, 630.08)

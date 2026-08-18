@@ -375,6 +375,33 @@ function normalizar(d: DatosEmpleado, parcial: boolean): Record<string, any> {
     if (v < 0) throw new ValidationError('El salario diario integrado no puede ser negativo');
     r.salario_diario_integrado = v;
   }
+
+  /* El integrado NUNCA puede quedar por debajo del diario.
+   *
+   * El SDI es el diario más aguinaldo y prima vacacional (Art. 84 LSS): su
+   * factor de integración no baja de 1. Que quede menor sólo pasa cuando se
+   * capturan al revés, y el error no se nota en pantalla —dos números
+   * parecidos— pero mueve la cuota obrera del IMSS de toda la plantilla. Se
+   * rechaza aquí, además del CHECK de la base, para poder decir qué hacer en
+   * vez de devolver una violación de restricción. */
+  {
+    const diario = r.salario_diario !== undefined
+      ? Number(r.salario_diario)
+      : (parcial ? undefined : 0);
+    const integrado = r.salario_diario_integrado !== undefined
+      ? Number(r.salario_diario_integrado)
+      : undefined;
+
+    if (diario !== undefined && integrado !== undefined &&
+        diario > 0 && integrado > 0 && integrado < diario) {
+      throw new ValidationError(
+        `El salario diario integrado (${integrado}) no puede ser menor que el salario ` +
+        `diario (${diario}): el factor de integración del Art. 84 LSS nunca baja de 1. ` +
+        'Lo más probable es que estén invertidos — el MENOR es el del contrato y el ' +
+        'MAYOR es el integrado.'
+      );
+    }
+  }
   if (d.sbc !== undefined) r.sbc = numero(d.sbc);
   if (d.banco_clave !== undefined) r.banco_clave = texto(d.banco_clave, 3);
   if (d.cuenta_clabe !== undefined) {

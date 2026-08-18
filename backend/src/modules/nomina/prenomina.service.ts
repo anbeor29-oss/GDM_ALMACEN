@@ -330,6 +330,15 @@ export async function calcular(
     if (Number(e.salario_diario_integrado) <= 0 && sd > 0) {
       avisos.push('Sin SDI capturado: se usó el salario diario, y eso deja la cuota del IMSS corta.');
     }
+    /* Los volteados ya no deberían existir —la migración los enderezó y hay un
+     * CHECK—, pero el aviso se queda: si alguno se cuela por una carga vieja,
+     * más vale verlo ANTES de cerrar el periodo que después de timbrar. */
+    if (Number(e.salario_diario_integrado) > 0 && Number(e.salario_diario_integrado) < sd) {
+      avisos.push(
+        'El SDI está por debajo del salario diario, cosa imposible (Art. 84 LSS). ' +
+        'Parecen invertidos: la cuota del IMSS de este trabajador sale mal.'
+      );
+    }
 
     /* Los bloques de la rejilla. El sueldo es la clave 001; todo lo demás que
      * venga en percepciones son "otros ingresos". Los préstamos y el FONACOT se

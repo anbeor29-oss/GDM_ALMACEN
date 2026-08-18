@@ -308,10 +308,21 @@ export function calcularImssObrero(
   if (salarioDiario <= smgDeZona(e, zona)) return cero;
   if (sdi <= 0 || dias <= 0) return cero;
 
+  /* El SBC se topa a 25 UMA (Art. 28 LSS).
+   *
+   * `calcularSdi` ya lo topa cuando el sistema propone un SDI, pero aquí llega
+   * el que está CAPTURADO en el expediente —a mano o traído de un XML—, y ese
+   * puede venir por encima del tope. Cotizar sobre él le retiene de más al
+   * trabajador y descuadra la liquidación mensual contra el IMSS, que sí topa.
+   * Sólo muerde en sueldos altos: con la UMA de 2026 el tope son $2,932.75
+   * diarios. */
+  const topeSbc = e.umaDiaria * 25;
+  const base = Math.min(sdi, topeSbc);
+
   const tresUma = e.umaDiaria * 3;
-  const excedente     = sdi > tresUma ? (sdi - tresUma) * 0.004 * dias : 0;
-  const invalidezVida = sdi * 0.00625 * dias;
-  const cesantiaVejez = sdi * 0.01125 * dias;
+  const excedente     = base > tresUma ? (base - tresUma) * 0.004 * dias : 0;
+  const invalidezVida = base * 0.00625 * dias;
+  const cesantiaVejez = base * 0.01125 * dias;
 
   return {
     excedente: pesos(excedente),
