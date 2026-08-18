@@ -99,11 +99,27 @@ export function createApp(): Express {
   });
 
   // Routes: Health check
+  /* /health dice QUÉ VERSIÓN está viva, no sólo que responde.
+   *
+   * Sin esto no había forma de saber si el backend traía un cambio o no. Se
+   * perdieron días diagnosticando "no veo los cambios" cuando el frontend nuevo
+   * hablaba con un backend viejo: la pantalla se veía actualizada y el endpoint
+   * devolvía 404, y las dos cosas eran ciertas.
+   *
+   * Render expone el commit desplegado en RENDER_GIT_COMMIT. En local no
+   * existe, así que se dice "local" — que también es información. */
+  const versionViva = {
+    commit: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || 'local',
+    rama: process.env.RENDER_GIT_BRANCH || '(local)',
+    arrancado: new Date().toISOString(),
+  };
+
   app.get('/health', (req: Request, res: Response) => {
     res.json({
       status: 'OK',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
+      ...versionViva,
     });
   });
 

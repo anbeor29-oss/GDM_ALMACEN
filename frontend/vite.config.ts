@@ -7,6 +7,15 @@ import { fileURLToPath, URL } from 'node:url'
  * si el servidor anuncia otro. Ver src/utils/version-guard.ts. */
 const BUILD_ID = Date.now().toString(36);
 
+/* El COMMIT con el que se compiló esta pantalla.
+ *
+ * Es distinto de BUILD_ID —que sólo dice "cuándo"— y sirve para lo que BUILD_ID
+ * no puede: compararse contra el commit que reporta el backend en /health. Si
+ * no coinciden, uno de los dos servicios se quedó atrás, y eso explica una
+ * pantalla nueva que recibe 404. Render lo expone al construir; en local no
+ * existe y se dice "dev". */
+const COMMIT = (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || 'dev';
+
 /** Deja `version.json` junto al index.html en cada build. */
 function pluginVersion() {
   return {
@@ -24,6 +33,7 @@ function pluginVersion() {
 export default defineConfig({
   define: {
     'import.meta.env.VITE_BUILD_ID': JSON.stringify(BUILD_ID),
+    'import.meta.env.VITE_COMMIT': JSON.stringify(COMMIT),
   },
   // Base path del deploy:
   //   · Render (raíz):            sin env → '/'

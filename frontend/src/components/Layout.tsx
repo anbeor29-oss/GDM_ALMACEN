@@ -23,6 +23,7 @@ import api from '@/services/api';
 import { IssuerModal } from './IssuerModal';
 import { ForcePasswordChange } from './ForcePasswordChange';
 import { ImpersonationBanner } from './ImpersonationBanner';
+import { QueVersionEstoyViendo } from './QueVersionEstoyViendo';
 
 /** Minutos de inactividad tras los cuales se cierra la sesión. */
 const IDLE_MINUTES = 10;
@@ -341,6 +342,11 @@ export function Layout() {
               {sidebarOpen && <span className="text-sm font-medium">Cerrar sesión</span>}
             </button>
           </div>
+
+          {/* Qué código está corriendo. Chico y gris porque es diagnóstico, pero
+              siempre visible: sin esto, "pedí un cambio y no lo veo" se
+              diagnostica a ciegas. */}
+          <QueVersionEstoyViendo abierto={sidebarOpen} />
         </div>
       </aside>
 

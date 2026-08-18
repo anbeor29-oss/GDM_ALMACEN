@@ -284,7 +284,7 @@ export function NominaCalculoPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Cálculo de nómina</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Nada se guarda aquí: la prenómina se calcula cada vez que se abre.
+          Lo que captures se guarda solo. Al cerrar el periodo, los importes quedan congelados en los recibos.
         </p>
       </div>
 

@@ -1183,6 +1183,13 @@ class APIClient {
     return r.data;
   }
 
+  /** Qué versión del backend está viva. Va fuera de /api: es del servidor. */
+  async getSalud(): Promise<any> {
+    const base = (this.client.defaults.baseURL || '').replace(/\/api\/v\d+\/?$/, '');
+    const r = await this.client.get('/health', { baseURL: base || undefined });
+    return r.data;
+  }
+
   /** El recibo en PDF, para verlo en pantalla (blob URL). */
   async getReciboPdfBlob(id: string): Promise<string> {
     const r = await this.client.get(`/nomina/recibos/${id}/pdf`, { responseType: 'blob' });
