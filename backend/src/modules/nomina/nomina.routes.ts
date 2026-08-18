@@ -21,6 +21,8 @@ import * as parametros from './parametros.service';
 import * as ejercicios from './ejercicios.service';
 import * as periodos from './periodos.service';
 import * as creditos from './creditos.service';
+import * as expediente from './expediente.service';
+import * as prenomina from './prenomina.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -65,8 +67,107 @@ router.get(
          * digan cosas distintas. */
         bancos: BANKS_MX,
         origenesCredito: creditos.ORIGENES,
+        tiposBitacora: expediente.TIPOS_BITACORA,
+        tiposEntrega: expediente.TIPOS_ENTREGA,
+        estadosDevolucion: expediente.ESTADOS_DEVOLUCION,
       },
     });
+  })
+);
+
+
+/* ═════════════════ BITÁCORA Y ENTREGAS ═════════════════
+ *
+ * Lo confidencial se filtra en el SERVIDOR, no en la pantalla: lo que no se
+ * manda no se puede mirar en el inspector del navegador. Sólo ADMIN lo ve.
+ */
+
+router.get(
+  '/empleados/:id/bitacora',
+  asyncHandler(async (req: Request, res: Response) => {
+    const esAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(req.user?.role || '');
+    const notas = await expediente.listarBitacora(companyId(req), req.params.id, {
+      verConfidenciales: esAdmin,
+    });
+    res.json({ success: true, data: { notas, veConfidenciales: esAdmin } });
+  })
+);
+
+router.post(
+  '/bitacora',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const n = await expediente.crearNota(companyId(req), req.body || {}, req.user?.userId);
+    res.status(201).json({ success: true, data: n });
+  })
+);
+
+/** Se cancela con su motivo. No hay borrado: el rastro es parte del historial. */
+router.post(
+  '/bitacora/:id/cancelar',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const n = await expediente.cancelarNota(companyId(req), req.params.id, req.body?.motivo);
+    res.json({ success: true, data: n });
+  })
+);
+
+router.get(
+  '/empleados/:id/entregas',
+  asyncHandler(async (req: Request, res: Response) => {
+    const entregas = await expediente.listarEntregas(companyId(req), req.params.id);
+    res.json({ success: true, data: { entregas } });
+  })
+);
+
+router.post(
+  '/entregas',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const e = await expediente.registrarEntrega(companyId(req), req.body || {}, req.user?.userId);
+    res.status(201).json({ success: true, data: e });
+  })
+);
+
+router.post(
+  '/entregas/:id/devolucion',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const e = await expediente.registrarDevolucion(companyId(req), req.params.id, req.body || {});
+    res.json({ success: true, data: e });
+  })
+);
+
+/** Lo que el trabajador todavía tiene: es la consulta del finiquito. */
+router.get(
+  '/empleados/:id/en-su-poder',
+  asyncHandler(async (req: Request, res: Response) => {
+    const articulos = await expediente.enSuPoder(companyId(req), req.params.id);
+    res.json({ success: true, data: { articulos } });
+  })
+);
+
+
+/* ═════════════════ PRENÓMINA ═════════════════
+ *
+ * SÓLO CALCULA. La prenómina se corre veinte veces mientras se ajustan días y
+ * conceptos; si escribiera, una corrida interrumpida dejaría medio periodo
+ * pagado y medio no. Se persiste al cerrar el periodo, no antes.
+ */
+
+router.get(
+  '/prenomina/:periodoId',
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await prenomina.calcular(companyId(req), req.params.periodoId);
+    res.json({ success: true, data: r });
+  })
+);
+
+/** Cuántos trabajadores le tocan a cada tipo — antes de generar nada. */
+router.get(
+  '/plantilla-por-tipo',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await prenomina.plantillaPorTipo(companyId(req)) });
   })
 );
 
@@ -236,6 +337,22 @@ router.post(
     const { tipo, anio, fechaArranque } = req.body || {};
     const r = await periodos.generar(companyId(req), tipo, Number(anio), fechaArranque);
     res.status(201).json({ success: true, data: r });
+  })
+);
+
+/**
+ * POST /periodos/especial — un finiquito, un aguinaldo, una PTU.
+ *
+ * No salen de un calendario: cada uno empieza y termina donde diga el caso, y
+ * por eso se capturan de uno en uno con su concepto. El número se asigna solo,
+ * siguiendo al último especial del año.
+ */
+router.post(
+  '/periodos/especial',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const p = await periodos.crearEspecial(companyId(req), req.body || {});
+    res.status(201).json({ success: true, data: p });
   })
 );
 

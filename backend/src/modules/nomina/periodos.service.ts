@@ -89,6 +89,82 @@ export async function generar(
   });
 }
 
+/**
+ * Crea un periodo ESPECIAL: un finiquito, el aguinaldo, la PTU.
+ *
+ * No se generan por calendario porque cada uno empieza y termina donde diga el
+ * caso — un finiquito cubre del 1 al 12, un aguinaldo el año entero. Por eso se
+ * capturan de uno en uno, con su concepto: sin él, una lista de "especial 1,
+ * especial 2, especial 3" no le dice nada a nadie tres meses después.
+ */
+export async function crearEspecial(
+  companyId: string,
+  d: { anio?: number; concepto?: string; fecha_inicio?: string; fecha_fin?: string; fecha_pago?: string }
+) {
+  const concepto = String(d.concepto || '').trim().slice(0, 200);
+  if (!concepto) {
+    throw new ValidationError(
+      'Un periodo especial necesita su concepto: "Aguinaldo 2026", "Finiquito de Juan Pérez", "PTU 2025".'
+    );
+  }
+  const ini = aTexto(aFecha(String(d.fecha_inicio || '')));
+  const fin = aTexto(aFecha(String(d.fecha_fin || '')));
+  if (fin < ini) throw new ValidationError('La fecha final no puede ser anterior a la inicial');
+
+  const pago = d.fecha_pago ? aTexto(aFecha(String(d.fecha_pago))) : null;
+  const anio = Number(d.anio) || Number(ini.slice(0, 4));
+
+  const dias = Math.round(
+    (new Date(`${fin}T00:00:00Z`).getTime() - new Date(`${ini}T00:00:00Z`).getTime()) / 86400000
+  ) + 1;
+
+  return transaction(async (client: PoolClient) => {
+    /* El número sigue al último especial del año. Se toma dentro de la
+     * transacción para que dos capturas simultáneas no se lleven el mismo. */
+    /* NO se puede usar `SELECT MAX(...) FOR UPDATE`: Postgres no admite bloqueo
+     * de filas junto a una funcion de agregacion —el MAX no corresponde a una
+     * fila concreta que bloquear—. Se usa un bloqueo de aviso sobre la pareja
+     * (empresa, ano), que serializa exactamente lo que hay que serializar: la
+     * asignacion del numero. Se libera solo al terminar la transaccion. */
+    await transactionQuery(
+      client,
+      `SELECT pg_advisory_xact_lock(hashtext($1::text), $2::int)`,
+      [`nomina_especial:${companyId}`, anio]
+    );
+    const ultimo = await transactionQuery<{ n: number }>(
+      client,
+      `SELECT COALESCE(MAX(numero), 0) AS n FROM nomina_periodos
+        WHERE company_id = $1 AND anio = $2 AND tipo = 'ESPECIAL'`,
+      [companyId, anio]
+    );
+    const numero = Number(ultimo.rows[0]?.n || 0) + 1;
+    if (numero > MAXIMO_POR_TIPO.ESPECIAL) {
+      throw new ValidationError(
+        `Ya hay ${MAXIMO_POR_TIPO.ESPECIAL} periodos especiales en ${anio}. Revisa si alguno sobra.`
+      );
+    }
+
+    const r = await transactionQuery<{ id: string }>(
+      client,
+      `INSERT INTO nomina_periodos
+         (company_id, anio, tipo, numero, fecha_inicio, fecha_fin, fecha_pago, dias, concepto)
+       VALUES ($1,$2,'ESPECIAL',$3,$4::date,$5::date,$6::date,$7,$8)
+       RETURNING id`,
+      [companyId, anio, numero, ini, fin, pago, dias, concepto]
+    );
+    return obtenerEnTransaccion(client, companyId, r.rows[0].id);
+  });
+}
+
+async function obtenerEnTransaccion(client: PoolClient, companyId: string, id: string) {
+  const r = await transactionQuery<any>(
+    client,
+    `SELECT ${CAMPOS} FROM nomina_periodos p WHERE p.id = $1 AND p.company_id = $2`,
+    [id, companyId]
+  );
+  return r.rows[0];
+}
+
 /* ═══════════════════ CONSULTA ═══════════════════ */
 
 const CAMPOS = `
@@ -96,7 +172,7 @@ const CAMPOS = `
   TO_CHAR(p.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
   TO_CHAR(p.fecha_fin,    'YYYY-MM-DD') AS fecha_fin,
   TO_CHAR(p.fecha_pago,   'YYYY-MM-DD') AS fecha_pago,
-  p.cerrado_at
+  p.cerrado_at, p.concepto
 `;
 
 export async function listar(

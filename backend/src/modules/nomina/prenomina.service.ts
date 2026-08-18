@@ -1,0 +1,356 @@
+/**
+ * prenomina.service — lo que se va a pagar, antes de pagarlo.
+ *
+ * QUÉ HACE
+ * Toma un periodo, junta a los trabajadores que le tocan, y calcula el recibo
+ * de cada uno con el motor. Devuelve la rejilla: tipo de nómina, nombre, días
+ * trabajados, ingresos, egresos y total a cobrar.
+ *
+ * NO GUARDA NADA
+ * La prenómina se corre veinte veces mientras se ajustan días y conceptos. Si
+ * cada corrida escribiera, habría que borrar antes de volver a calcular y una
+ * corrida interrumpida dejaría medio periodo pagado y medio no. Se calcula al
+ * vuelo y se persiste sólo al cerrar el periodo.
+ *
+ * A QUIÉN LE TOCA EL PERIODO
+ * A quien tenga esa periodicidad en su expediente: el semanal es para los de
+ * `periodicidad_pago = 02`, el quincenal para los de `04`, el mensual para los
+ * de `05`. Una misma empresa corre las tres, y por eso el filtro es por
+ * trabajador y no por empresa.
+ *
+ * LA NÓMINA ESPECIAL VA A TODOS
+ * Un aguinaldo, un reparto de utilidades o un finiquito no siguen la
+ * periodicidad de nadie: se decide a quién se le paga. Por eso el especial
+ * arranca con la plantilla completa y se desmarca.
+ *
+ * QUIEN NO TRABAJÓ EL PERIODO NO ENTRA
+ * Alguien que ingresó a media quincena, o que causó baja, sólo cobra los días
+ * que efectivamente estuvo. Se calculan de la intersección entre el periodo y
+ * su relación laboral, no de los días del periodo.
+ */
+
+import { query } from '../../config/database';
+import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
+import * as ejercicios from './ejercicios.service';
+import * as periodosSvc from './periodos.service';
+import {
+  calcularRecibo, EntradaCalculo, Periodicidad, Zona, pesos,
+} from './motor';
+
+/** Del tipo de periodo a la clave del expediente (c_PeriodicidadPago). */
+const PERIODICIDAD_DE_TIPO: Record<string, string> = {
+  SEMANAL: '02',
+  QUINCENAL: '04',
+  MENSUAL: '05',
+};
+
+/** Del tipo de periodo al factor de mensualización que usa el motor. */
+const PERIODICIDAD_MOTOR: Record<string, Periodicidad> = {
+  SEMANAL: 'SEMANAL',
+  QUINCENAL: 'QUINCENAL',
+  MENSUAL: 'MENSUAL',
+  /* Un finiquito o un aguinaldo se calculan sobre base mensual: no tienen una
+   * periodicidad propia con la que mensualizar. */
+  ESPECIAL: 'MENSUAL',
+};
+
+export interface RenglonPrenomina {
+  empleado_id: string;
+  num_empleado: string;
+  nombre: string;
+  puesto: string | null;
+  departamento: string | null;
+  /** Días que le tocan del periodo, ya recortados por ingreso y baja. */
+  dias: number;
+  diasDelPeriodo: number;
+  salario_diario: number;
+  sdi: number;
+  ingresos: number;
+  egresos: number;
+  neto: number;
+  isr: number;
+  imss: number;
+  subsidio: number;
+  /** El desglose completo, para el recibo y la vista previa del CFDI. */
+  percepciones: any[];
+  deducciones: any[];
+  /** Lo que impide timbrarle. Vacío = listo. */
+  faltantes: string[];
+  avisos: string[];
+}
+
+/**
+ * Días que le corresponden a un trabajador dentro del periodo.
+ *
+ * Se cruza el periodo con su relación laboral: quien entró el día 10 de una
+ * quincena que empieza el 1 cobra 6 días, no 15. Lo mismo al revés con la baja.
+ */
+export function diasQueLeTocan(
+  periodo: { fecha_inicio: string; fecha_fin: string; dias: number },
+  empleado: { fecha_ingreso: string; fecha_baja?: string | null; fecha_reingreso?: string | null }
+): number {
+  const dia = (s: string) => new Date(`${s}T00:00:00Z`).getTime();
+  const DIA_MS = 86400000;
+
+  const iniP = dia(periodo.fecha_inicio);
+  const finP = dia(periodo.fecha_fin);
+
+  /* El reingreso, cuando existe, es la fecha desde la que vuelve a contar: su
+   * ingreso original puede ser de hace años pero estuvo fuera en medio. */
+  const desde = Math.max(iniP, dia(empleado.fecha_reingreso || empleado.fecha_ingreso));
+  const hasta = empleado.fecha_baja ? Math.min(finP, dia(empleado.fecha_baja)) : finP;
+
+  if (hasta < desde) return 0;
+  const dias = Math.round((hasta - desde) / DIA_MS) + 1;
+  return Math.min(dias, periodo.dias);
+}
+
+/**
+ * Arma la prenómina de un periodo. NO escribe nada.
+ */
+export async function calcular(
+  companyId: string,
+  periodoId: string,
+  opciones: { empleadoIds?: string[] } = {}
+) {
+  const periodo = await periodosSvc.obtener(companyId, periodoId);
+
+  /* El ejercicio del año del periodo. Si no está cargado, el motor se niega a
+   * calcular en vez de usar el del año pasado — y aquí se dice con el periodo
+   * a la vista, que es más útil que un error suelto. */
+  let ej;
+  try {
+    ej = await ejercicios.cargar(periodo.anio);
+  } catch (e: any) {
+    throw new ValidationError(
+      `No se puede calcular el periodo ${periodo.numero} de ${periodo.anio}: ${e.message}`
+    );
+  }
+
+  const avisosDelPeriodo: string[] = [];
+  const meta = await query<any>(
+    `SELECT registro_patronal, prima_riesgo, fi_aguinaldo_dias, fi_prima_vac_pct
+       FROM companies WHERE id = $1`,
+    [companyId]
+  );
+  const emp = meta.rows[0] || {};
+  if (!emp.registro_patronal) {
+    avisosDelPeriodo.push(
+      'La empresa no tiene capturado su registro patronal del IMSS. Se puede calcular, ' +
+      'pero no timbrar. Está en Nómina → Parámetros.'
+    );
+  }
+  const confirmado = await query<any>(
+    `SELECT confirmado FROM nomina_ejercicios WHERE anio = $1`, [periodo.anio]
+  );
+  if (confirmado.rows[0] && !confirmado.rows[0].confirmado) {
+    avisosDelPeriodo.push(
+      `Las tarifas de ${periodo.anio} todavía no están confirmadas contra el DOF. ` +
+      'Los importes de ISR de abajo salen de números que nadie ha cotejado.'
+    );
+  }
+
+  /* ── A quién le toca ── */
+  const cond = ['e.company_id = $1', 'e.deleted_at IS NULL'];
+  const args: any[] = [companyId];
+
+  /* Sólo quien estuvo activo en algún momento del periodo: alguien que causó
+   * baja el año pasado no tiene por qué aparecer en la rejilla de hoy. */
+  args.push(periodo.fecha_fin);
+  cond.push(`COALESCE(e.fecha_reingreso, e.fecha_ingreso) <= $${args.length}::date`);
+  args.push(periodo.fecha_inicio);
+  cond.push(`(e.fecha_baja IS NULL OR e.fecha_baja >= $${args.length}::date)`);
+
+  if (periodo.tipo !== 'ESPECIAL') {
+    args.push(PERIODICIDAD_DE_TIPO[periodo.tipo]);
+    cond.push(`e.periodicidad_pago = $${args.length}`);
+  }
+  if (opciones.empleadoIds?.length) {
+    args.push(opciones.empleadoIds);
+    cond.push(`e.id = ANY($${args.length}::uuid[])`);
+  }
+
+  const r = await query<any>(
+    `SELECT e.id, e.num_empleado, e.puesto, e.departamento,
+            TRIM(e.nombre || ' ' || e.apellido_pat || ' ' || COALESCE(e.apellido_mat,'')) AS nombre,
+            e.salario_diario, e.salario_diario_integrado, e.zona_geografica,
+            e.nss, e.codigo_postal, e.entidad_federativa, e.tipo_jornada,
+            TO_CHAR(e.fecha_ingreso, 'YYYY-MM-DD')   AS fecha_ingreso,
+            TO_CHAR(e.fecha_baja, 'YYYY-MM-DD')      AS fecha_baja,
+            TO_CHAR(e.fecha_reingreso, 'YYYY-MM-DD') AS fecha_reingreso,
+            e.tiene_infonavit, e.infonavit_tipo_descuento, e.infonavit_descuento,
+            e.infonavit_seguro_danos,
+            e.tiene_pension_alimenticia, e.pension_tipo, e.pension_monto
+       FROM nomina_empleados e
+      WHERE ${cond.join(' AND ')}
+      ORDER BY e.apellido_pat, e.apellido_mat NULLS FIRST, e.nombre`,
+    args
+  );
+
+  /* Los créditos activos de todos, en UNA consulta.
+   *
+   * Pedirlos uno por uno dentro del bucle serían cincuenta viajes a la base
+   * cada vez que alguien ajusta un día en la rejilla. */
+  const creditos = await query<any>(
+    `SELECT c.empleado_id, c.id, c.origen, c.descuento_por_periodo, c.saldo, c.numero
+       FROM nomina_creditos c
+      WHERE c.company_id = $1 AND c.estatus = 'ACTIVO' AND c.saldo > 0`,
+    [companyId]
+  );
+  const porEmpleado = new Map<string, any[]>();
+  for (const c of creditos.rows) {
+    const l = porEmpleado.get(c.empleado_id) || [];
+    l.push(c);
+    porEmpleado.set(c.empleado_id, l);
+  }
+
+  const periodicidad = PERIODICIDAD_MOTOR[periodo.tipo];
+  const renglones: RenglonPrenomina[] = [];
+
+  for (const e of r.rows) {
+    const dias = diasQueLeTocan(periodo, e);
+    /* Cero días: estuvo de baja todo el periodo. No se calcula ni se enseña con
+     * ceros, que se confundiría con "no se le pagó por error". */
+    if (dias <= 0) continue;
+
+    const sd = Number(e.salario_diario) || 0;
+    const sdi = Number(e.salario_diario_integrado) || sd;
+
+    /* Los créditos entran como deducciones, sin pasarse del saldo: el último
+     * abono casi nunca es completo. */
+    const otrasDeducciones = (porEmpleado.get(e.id) || []).map((c) => ({
+      clave: c.origen === 'FONACOT' ? '011' : '012',
+      concepto: c.origen === 'FONACOT'
+        ? `FONACOT ${c.numero || ''}`.trim()
+        : 'Préstamo de la empresa',
+      importe: Math.min(Number(c.descuento_por_periodo), Number(c.saldo)),
+    }));
+
+    const entrada: EntradaCalculo = {
+      salarioDiario: sd,
+      sdi,
+      dias,
+      zona: (e.zona_geografica as Zona) || 'general',
+      periodicidad,
+      otrasDeducciones,
+      infonavit: {
+        tiene: !!e.tiene_infonavit,
+        tipo: e.infonavit_tipo_descuento,
+        valor: e.infonavit_descuento === null ? null : Number(e.infonavit_descuento),
+        seguroDanosDiario: e.infonavit_seguro_danos === null ? null : Number(e.infonavit_seguro_danos),
+      },
+      pension: {
+        tiene: !!e.tiene_pension_alimenticia,
+        tipo: e.pension_tipo,
+        monto: e.pension_monto === null ? null : Number(e.pension_monto),
+      },
+    };
+
+    let recibo;
+    try {
+      recibo = calcularRecibo(entrada, ej);
+    } catch (err: any) {
+      /* Un trabajador que no se puede calcular no debe tumbar la rejilla
+       * entera: se enseña con el motivo y los demás siguen. */
+      renglones.push({
+        empleado_id: e.id, num_empleado: e.num_empleado, nombre: e.nombre,
+        puesto: e.puesto, departamento: e.departamento,
+        dias, diasDelPeriodo: periodo.dias,
+        salario_diario: sd, sdi,
+        ingresos: 0, egresos: 0, neto: 0, isr: 0, imss: 0, subsidio: 0,
+        percepciones: [], deducciones: [],
+        faltantes: ['no se pudo calcular'],
+        avisos: [err.message],
+      });
+      continue;
+    }
+
+    /* Lo que impide TIMBRARLE, que no es lo mismo que lo que impide calcular. */
+    const faltantes: string[] = [];
+    if (!e.nss) faltantes.push('NSS');
+    if (!e.codigo_postal) faltantes.push('CP fiscal');
+    if (!e.entidad_federativa) faltantes.push('entidad federativa');
+    if (!e.tipo_jornada) faltantes.push('tipo de jornada');
+    if (sd <= 0) faltantes.push('salario diario');
+
+    const avisos: string[] = [];
+    if (Number(e.salario_diario_integrado) <= 0 && sd > 0) {
+      avisos.push('Sin SDI capturado: se usó el salario diario, y eso deja la cuota del IMSS corta.');
+    }
+
+    renglones.push({
+      empleado_id: e.id,
+      num_empleado: e.num_empleado,
+      nombre: e.nombre,
+      puesto: e.puesto,
+      departamento: e.departamento,
+      dias,
+      diasDelPeriodo: periodo.dias,
+      salario_diario: sd,
+      sdi,
+      ingresos: recibo.totalPercepciones,
+      egresos: recibo.totalDeducciones,
+      neto: recibo.neto,
+      isr: recibo.isr,
+      imss: recibo.imss,
+      subsidio: recibo.subsidio,
+      percepciones: recibo.percepciones,
+      deducciones: recibo.deducciones,
+      faltantes,
+      avisos,
+    });
+  }
+
+  const suma = (f: (x: RenglonPrenomina) => number) =>
+    pesos(renglones.reduce((a, x) => a + f(x), 0));
+
+  return {
+    periodo,
+    ejercicio: { anio: ej.anio, umaDiaria: ej.umaDiaria, smgGeneral: ej.smgGeneral },
+    avisos: avisosDelPeriodo,
+    renglones,
+    totales: {
+      trabajadores: renglones.length,
+      ingresos: suma((x) => x.ingresos),
+      egresos: suma((x) => x.egresos),
+      neto: suma((x) => x.neto),
+      isr: suma((x) => x.isr),
+      imss: suma((x) => x.imss),
+      subsidio: suma((x) => x.subsidio),
+      sinPoderTimbrar: renglones.filter((x) => x.faltantes.length > 0).length,
+    },
+  };
+}
+
+/**
+ * Cuántos trabajadores le tocan a cada tipo de nómina.
+ *
+ * Lo usa la pantalla para decir "semanal: 12 personas" antes de generar nada:
+ * un tipo con cero trabajadores casi siempre significa que la periodicidad del
+ * expediente quedó mal, y verlo antes ahorra generar 53 periodos vacíos.
+ */
+export async function plantillaPorTipo(companyId: string) {
+  const r = await query<any>(
+    `SELECT periodicidad_pago, COUNT(*) AS n
+       FROM nomina_empleados
+      WHERE company_id = $1 AND deleted_at IS NULL AND activo
+      GROUP BY periodicidad_pago`,
+    [companyId]
+  );
+  const porClave: Record<string, number> = {};
+  for (const x of r.rows) porClave[x.periodicidad_pago] = Number(x.n);
+
+  const total = Object.values(porClave).reduce((a, b) => a + b, 0);
+  return {
+    SEMANAL: porClave['02'] || 0,
+    QUINCENAL: porClave['04'] || 0,
+    MENSUAL: porClave['05'] || 0,
+    /* El especial alcanza a todos: no sigue la periodicidad de nadie. */
+    ESPECIAL: total,
+    /* Los que tienen una periodicidad que no corresponde a ningún tipo de
+     * periodo —diario, catorcenal, decenal—: no entrarían en ninguna corrida y
+     * hay que decirlo en vez de dejarlos fuera en silencio. */
+    sinTipo: total - (porClave['02'] || 0) - (porClave['04'] || 0) - (porClave['05'] || 0),
+    total,
+  };
+}

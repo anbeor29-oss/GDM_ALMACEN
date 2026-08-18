@@ -21,6 +21,8 @@ import { X, Save, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
 import { ComboConAlta } from './ComboConAlta';
 import { CreditosDelTrabajador } from './CreditosDelTrabajador';
+import { ExpedienteDelTrabajador } from './ExpedienteDelTrabajador';
+import { FotoDelTrabajador } from './FotoDelTrabajador';
 
 interface Props {
   /** null = alta. Con expediente = edición. */
@@ -44,7 +46,7 @@ interface Props {
 
 const VACIO: Record<string, any> = {
   num_empleado: '', nombre: '', apellido_pat: '', apellido_mat: '',
-  rfc: '', curp: '', nss: '', fecha_nacimiento: '', email: '', telefono: '',
+  rfc: '', curp: '', nss: '', fecha_nacimiento: '', email: '', telefono: '', foto: null,
   codigo_postal: '', calle: '', num_exterior: '', num_interior: '',
   colonia: '', municipio: '', estado: '',
   regimen_fiscal: '605', uso_cfdi: 'CN01',
@@ -62,7 +64,7 @@ const VACIO: Record<string, any> = {
 
 export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose, onGuardado }: Props) {
   const esEdicion = !!empleado?.id;
-  const [bloque, setBloque] = useState<'id' | 'domicilio' | 'laboral' | 'descuentos'>('id');
+  const [bloque, setBloque] = useState<'id' | 'domicilio' | 'laboral' | 'descuentos' | 'expediente'>('id');
   const [f, setF] = useState<Record<string, any>>({ ...VACIO, ...(inicial || {}) });
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -170,11 +172,17 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
     { id: 'domicilio', label: 'Domicilio fiscal' },
     { id: 'laboral', label: 'Relación laboral' },
     { id: 'descuentos', label: 'Descuentos' },
+    /* La bitácora y las entregas van al final: se consultan, no se capturan al
+     * dar de alta. Poner primero lo que se llena el primer día y al final lo que
+     * se acumula con los años. */
+    { id: 'expediente', label: 'Bitácora y entregas' },
   ] as const;
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-start justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full my-8">
+      <div className={`bg-white rounded-lg shadow-xl w-full my-8 ${
+          bloque === 'expediente' ? 'max-w-6xl' : 'max-w-3xl'
+        }`}>
         <div className="flex items-center justify-between border-b px-5 py-3">
           <h2 className="font-semibold text-lg">
             {esEdicion
@@ -216,7 +224,18 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
           )}
 
           {bloque === 'id' && (
-            <div className="grid sm:grid-cols-3 gap-3">
+            <div className="flex flex-col sm:flex-row gap-5">
+              {/* La foto a la izquierda, junto a los datos que la identifican:
+                  es el orden de una credencial y el de cualquier expediente en
+                  papel. */}
+              <div className="shrink-0 sm:pt-5">
+                <FotoDelTrabajador
+                  valor={f.foto}
+                  onChange={(v) => set('foto', v)}
+                  disabled={false}
+                />
+              </div>
+              <div className="grid sm:grid-cols-3 gap-3 flex-1">
               <Campo k="num_empleado" label="Número de empleado *" />
               <Campo k="nombre" label="Nombre(s) *" ancho="sm:col-span-2" />
               <Campo k="apellido_pat" label="Apellido paterno *" />
@@ -229,7 +248,15 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
               <div />
               <Campo k="email" label="Correo" tipo="email" ancho="sm:col-span-2" />
               <Campo k="telefono" label="Teléfono" />
+              </div>
             </div>
+          )}
+
+          {bloque === 'expediente' && (
+            <ExpedienteDelTrabajador
+              empleadoId={empleado?.id}
+              puedeEditar={!soloDevolver}
+            />
           )}
 
           {bloque === 'domicilio' && (

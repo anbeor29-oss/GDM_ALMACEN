@@ -1095,6 +1095,60 @@ class APIClient {
     return r.data;
   }
 
+  /* ── Bitácora y entregas del expediente ── */
+  async getBitacora(empleadoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/empleados/${empleadoId}/bitacora`);
+    return r.data;
+  }
+  async crearNotaBitacora(datos: any) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/bitacora', datos);
+    return r.data;
+  }
+  async cancelarNotaBitacora(id: string, motivo: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/bitacora/${id}/cancelar`, { motivo });
+    return r.data;
+  }
+  async getEntregas(empleadoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/empleados/${empleadoId}/entregas`);
+    return r.data;
+  }
+  async registrarEntrega(datos: any) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/entregas', datos);
+    return r.data;
+  }
+  async registrarDevolucion(id: string, datos: any) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/entregas/${id}/devolucion`, datos);
+    return r.data;
+  }
+
+  /* ── Periodos y prenómina ── */
+  async getPlantillaPorTipo() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/plantilla-por-tipo');
+    return r.data;
+  }
+  async getPeriodosNomina(params: { anio?: number; tipo?: string } = {}) {
+    const r = await this.client.get<APIResponse<any>>('/nomina/periodos', { params });
+    return r.data;
+  }
+  async generarPeriodosNomina(tipo: string, anio: number, fechaArranque?: string) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/periodos/generar', {
+      tipo, anio, fechaArranque,
+    });
+    return r.data;
+  }
+  async crearPeriodoEspecial(datos: any) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/periodos/especial', datos);
+    return r.data;
+  }
+  async getPrenomina(periodoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/prenomina/${periodoId}`, {
+      /* Cincuenta trabajadores se calculan al vuelo cada vez: el tiempo de
+       * espera por omisión se queda corto en una plantilla grande. */
+      timeout: 120_000,
+    });
+    return r.data;
+  }
+
   /* ── Préstamos de la empresa y créditos FONACOT ── */
   async getCreditosNomina(params: { empleadoId?: string; origen?: string; incluirCerrados?: boolean } = {}) {
     const r = await this.client.get<APIResponse<any>>('/nomina/creditos', {
