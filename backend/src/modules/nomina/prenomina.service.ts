@@ -66,6 +66,11 @@ export interface RenglonPrenomina {
   diasDelPeriodo: number;
   salario_diario: number;
   sdi: number;
+  /* El borrador de este trabajador, para que la pantalla lo reponga al volver. */
+  capturado?: {
+    otrosIngresos: Array<{ clave: string; importe: number; gravadoManual?: number }>;
+    otrasDeducciones: Array<{ clave: string; importe: number }>;
+  };
   /* Los bloques de la rejilla, ya separados. Se calculan aquí y no en la
    * pantalla: partir el total en la vista garantizaría que un día la suma de
    * las columnas no cuadre con el neto que se va a pagar. */
@@ -247,16 +252,19 @@ export async function calcular(
   /* La captura llega indexada por trabajador: buscarla en un arreglo dentro
    * del bucle sería recorrerlo cincuenta veces por cada cincuenta renglones. */
   const capturaDe = new Map<string, CapturaPorTrabajador>();
-  /* Sin captura explícita se toma la GUARDADA.
+  /* Lo guardado es la BASE; lo que manda la pantalla va encima, por trabajador.
    *
-   * Es lo que hace que abrir la pantalla al día siguiente muestre lo que se
-   * tecleó ayer. Cuando la pantalla manda su propia captura —un recálculo con
-   * lo que se acaba de escribir— esa manda, porque es más reciente que la
-   * guardada; el guardado ocurre en el mismo POST, justo después. */
-  const capturaEfectiva = opciones.captura?.length
-    ? opciones.captura
-    : await leerCaptura(companyId, periodoId);
-  for (const c of capturaEfectiva) capturaDe.set(c.empleadoId, c);
+   * Preferir una sobre otra estaba mal, y costó una tarde. La pantalla manda
+   * sólo a quien se acaba de teclear —si abro el diálogo de JUAN, el POST lleva
+   * a JUAN y a nadie más—, así que quedarse con esa lista descartaba lo de los
+   * otros cuarenta y nueve. En pantalla se veían desaparecer; y al cerrar, los
+   * recibos se congelaban sin sus conceptos.
+   *
+   * Fusionar por empleado resuelve los dos casos: el que viene en el POST se
+   * actualiza y el resto conserva lo suyo. */
+  const guardada = await leerCaptura(companyId, periodoId);
+  for (const c of guardada) capturaDe.set(c.empleadoId, c);
+  for (const c of opciones.captura || []) capturaDe.set(c.empleadoId, c);
 
   /* ── Los conceptos del finiquito ──
    *
@@ -424,6 +432,13 @@ export async function calcular(
       departamento: e.departamento,
       dias,
       diasDelPeriodo: periodo.dias,
+      /* Lo que este trabajador tiene capturado, para que la pantalla lo reponga
+       * al volver a entrar en vez de arrancar en blanco — y no mande después un
+       * recálculo incompleto. */
+      capturado: {
+        otrosIngresos: cap?.otrosIngresos || [],
+        otrasDeducciones: cap?.otrasDeducciones || [],
+      },
       salario_diario: sd,
       sdi,
       sueldo: pesos(sueldo),

@@ -20,7 +20,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  FileCode2, Download, Eye, Mail, AlertTriangle, X, CheckCircle2, Stamp, Check,
+  FileCode2, FileDown, Download, Eye, Mail, AlertTriangle, X, CheckCircle2, Stamp, Check,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -285,13 +285,20 @@ export function NominaCFDIPage() {
                   </td>
                   <td className="px-2 py-1.5 text-center whitespace-nowrap">
                     {/* Los mismos iconos del panel de facturas. */}
-                    <button onClick={() => verRecibo(r)} title="Vista previa del recibo"
-                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg">
-                      <Eye size={16} />
+                    {/* Los mismos tres del panel de facturas y en el mismo
+                        orden: PDF en rojo, XML en verde, vista previa en azul.
+                        Que cambien de lugar entre pantallas obliga a leer los
+                        tooltips cada vez. */}
+                    <button onClick={() => api.descargarReciboPdf(r.id, `recibo-${r.num_empleado}.pdf`)}
+                      title="Descargar PDF"
+                      className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg">
+                      <FileDown size={16} />
                     </button>
                     <button onClick={() => api.descargarXmlRecibo(r.id, `nomina-${r.num_empleado}.xml`)}
                       title="Descargar XML"
                       className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"><Download size={16} /></button>
+                    <button onClick={() => verRecibo(r)} title="Vista previa"
+                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><Eye size={16} /></button>
                   </td>
                 </tr>
               );

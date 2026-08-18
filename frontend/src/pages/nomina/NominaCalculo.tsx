@@ -108,7 +108,34 @@ export function NominaCalculoPage() {
   /* El resultado del GET alimenta la pantalla la primera vez; después manda lo
    * que devuelve el recálculo con la captura. */
   useEffect(() => {
-    if (prenominaQ.data?.data) setPre(prenominaQ.data.data);
+    if (!prenominaQ.data?.data) return;
+    const d = prenominaQ.data.data;
+    setPre(d);
+
+    /* Se repone lo que ya estaba capturado.
+     *
+     * Sin esto, volver a la pantalla dejaba el estado local en blanco: la
+     * rejilla mostraba los importes —porque vienen calculados del servidor—
+     * pero al abrir el diálogo de un trabajador aparecía vacío, y el siguiente
+     * recálculo mandaba una captura incompleta. Se veía como si el sistema
+     * hubiera borrado lo tecleado. */
+    const repuesta: Record<string, any> = {};
+    for (const r of d.renglones || []) {
+      const c = r.capturado;
+      if (!c) continue;
+      if ((c.otrosIngresos?.length || 0) === 0 && (c.otrasDeducciones?.length || 0) === 0) continue;
+      repuesta[r.empleado_id] = {
+        otrosIngresos: (c.otrosIngresos || []).map((l: any) => ({
+          clave: l.clave, importe: String(l.importe),
+          gravadoManual: l.gravadoManual === undefined || l.gravadoManual === null
+            ? '' : String(l.gravadoManual),
+        })),
+        otrasDeducciones: (c.otrasDeducciones || []).map((l: any) => ({
+          clave: l.clave, importe: String(l.importe),
+        })),
+      };
+    }
+    setCaptura(repuesta);
   }, [prenominaQ.data]);
 
   /* Un menú contextual que no se cierra al hacer clic fuera se queda flotando
@@ -644,7 +671,10 @@ export function NominaCalculoPage() {
               empleadoInicial={masivo.renglon?.empleado_id}
               lado={masivo.lado}
               onCerrar={() => setMasivo(null)}
-              onAplicado={() => { setCaptura({}); prenominaQ.refetch(); }}
+              /* No se limpia la captura: el refetch trae la lista completa y
+                 el efecto de arriba la repone. Limpiarla aquí dejaba la
+                 pantalla en blanco medio segundo y perdía lo no guardado. */
+              onAplicado={() => prenominaQ.refetch()}
             />
           )}
 

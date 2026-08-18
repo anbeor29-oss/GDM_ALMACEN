@@ -115,6 +115,49 @@ async function main() {
     ? bien('quitar todos los conceptos borra la fila en vez de dejarla vacía')
     : mal('quedó una captura vacía');
 
+  /* ── 3b. Capturar a UNO no borra a los demás ──
+   *
+   * Es el bug que reportó el usuario. La pantalla manda en el POST sólo al
+   * trabajador que se acaba de teclear —si abro el diálogo de IVAN, va IVAN y
+   * nadie más—, y el servidor prefería esa lista sobre la guardada: los otros
+   * cuarenta y nueve desaparecían de la rejilla y, al cerrar, sus recibos se
+   * congelaban sin conceptos. */
+  await prenomina.guardarCaptura(companyId, periodoId, [
+    { empleadoId: ids[0], otrosIngresos: [{ clave: '019', importe: 700 }], otrasDeducciones: [] },
+    { empleadoId: ids[2], otrosIngresos: [{ clave: '019', importe: 900 }], otrasDeducciones: [] },
+  ] as any);
+
+  /* Ahora llega un recálculo que SÓLO trae a SARA, como haría la pantalla. */
+  const soloSara = await prenomina.calcular(companyId, periodoId, {
+    captura: [
+      { empleadoId: ids[1], otrosIngresos: [{ clave: '019', importe: 400 }], otrasDeducciones: [] },
+    ] as any,
+  });
+  const i2: any = soloSara.renglones.find((r: any) => r.num_empleado === 'ZZ60');
+  const o2: any = soloSara.renglones.find((r: any) => r.num_empleado === 'ZZ62');
+  const s2: any = soloSara.renglones.find((r: any) => r.num_empleado === 'ZZ61');
+
+  cerca(i2.otrosIngresos, 700) && cerca(o2.otrosIngresos, 900)
+    ? bien('capturar a UNO no borra lo de los otros dos')
+    : mal('se perdió la captura de los demás',
+          `IVAN ${i2.otrosIngresos} (esperaba 700), OMAR ${o2.otrosIngresos} (esperaba 900)`);
+
+  cerca(s2.otrosIngresos, 400)
+    ? bien('y lo que manda la pantalla sí manda sobre lo guardado de ESE trabajador')
+    : mal('lo tecleado no se aplicó', s2.otrosIngresos);
+
+  /* Cada renglón trae su borrador, para que la pantalla lo reponga. */
+  (i2.capturado?.otrosIngresos?.length || 0) === 1
+    ? bien('cada renglón devuelve su captura, para reponerla al volver a entrar')
+    : mal('el renglón no trae lo capturado', JSON.stringify(i2.capturado));
+
+  /* Se deja limpio para lo que sigue. */
+  await prenomina.guardarCaptura(companyId, periodoId, [
+    { empleadoId: ids[0], otrosIngresos: [], otrasDeducciones: [] },
+    { empleadoId: ids[1], otrosIngresos: [], otrasDeducciones: [] },
+    { empleadoId: ids[2], otrosIngresos: [], otrasDeducciones: [] },
+  ] as any);
+
   /* ── 4. El masivo: un bono a los tres de un jalón ── */
   const masivo = await prenomina.aplicarAVarios(companyId, periodoId, {
     lado: 'ingresos', clave: '029', importe: 1500, empleadoIds: ids,
