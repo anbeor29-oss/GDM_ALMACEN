@@ -20,7 +20,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  FileCode2, Download, Eye, Mail, AlertTriangle, X, CheckCircle2,
+  FileCode2, Download, Eye, Mail, AlertTriangle, X, CheckCircle2, Stamp, Check,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -42,6 +42,11 @@ export function NominaCFDIPage() {
   const [viendo, setViendo] = useState<any | null>(null);
   const [error, setError] = useState('');
   const [aviso, setAviso] = useState('');
+  /* Los recibos marcados para timbrar. Es una selección aparte del check de
+   * envío por correo: una cosa es a quién se le manda el recibo y otra cuáles
+   * se mandan al SAT. */
+  const [elegidos, setElegidos] = useState<Record<string, boolean>>({});
+  const [timbrando, setTimbrando] = useState(false);
 
   const q = useQuery({
     queryKey: ['nomina-recibos', estatus],
@@ -57,6 +62,40 @@ export function NominaCFDIPage() {
     }),
     { percepciones: 0, deducciones: 0, neto: 0 }
   );
+
+  /* Timbrar es el paso que NO se deshace: pide confirmación con el número a la
+   * vista. Deshacerlo exige una cancelación ante el SAT, así que un clic de más
+   * cuesta trabajo real. */
+  const timbrar = async () => {
+    const ids = Object.entries(elegidos).filter(([, v]) => v).map(([k]) => k);
+    if (ids.length === 0) { setError('No marcaste ningún recibo'); return; }
+    const sinTimbrar = recibos.filter((r) => ids.includes(r.id) && !r.uuid).length;
+    if (!window.confirm(
+      `Se van a timbrar ${sinTimbrar} recibo(s) ante el PAC.\n\n` +
+      'Timbrar gasta timbres y deshacerlo exige una cancelación ante el SAT. ¿Sigo?'
+    )) return;
+
+    setError(''); setAviso(''); setTimbrando(true);
+    try {
+      const r = await api.timbrarRecibosNomina(ids);
+      const d: any = r.data;
+      setAviso(
+        `${d.timbrados} recibo(s) timbrado(s).` +
+        (d.fallaron > 0
+          ? ` ${d.fallaron} no pasaron: ` +
+            d.fallidos.map((x: any) => `${x.nombre} (${x.motivo})`).join(' · ')
+          : '')
+      );
+      setElegidos({});
+      q.refetch();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo timbrar');
+    } finally {
+      setTimbrando(false);
+    }
+  };
+
+  const porTimbrar = Object.values(elegidos).filter(Boolean).length;
 
   const marcarCorreo = async (ids: string[], enviar: boolean) => {
     setError(''); setAviso('');
@@ -120,7 +159,17 @@ export function NominaCFDIPage() {
         </div>
 
         {esAdmin && recibos.length > 0 && (
-          <div className="ml-auto flex items-center gap-2 text-sm">
+          <div className="ml-auto flex items-center gap-3 text-sm">
+            {porTimbrar > 0 && (
+              <button
+                onClick={timbrar}
+                disabled={timbrando}
+                className="bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Stamp size={14} />
+                {timbrando ? 'Timbrando…' : `Timbrar ${porTimbrar}`}
+              </button>
+            )}
             <Mail size={15} className="text-gray-500" />
             <span className="text-gray-600">{marcados.length} de {recibos.length} para correo</span>
             <button onClick={() => marcarCorreo(recibos.map((r) => r.id), true)}
@@ -136,6 +185,12 @@ export function NominaCFDIPage() {
         <table className="w-full text-sm tabular-nums">
           <thead className="bg-gray-50 border-b">
             <tr className="text-xs text-gray-600">
+              {/* Dos columnas de marca distintas y a propósito: una decide a
+                  quién se le MANDA el recibo, la otra cuáles se mandan al SAT.
+                  Juntarlas haría que marcar para correo timbrara sin querer. */}
+              <th className="px-2 py-2 text-center w-10" title="Timbrar ante el PAC">
+                <Stamp size={13} className="inline" />
+              </th>
               <th className="px-2 py-2 text-center w-10" title="Enviar por correo">
                 <Mail size={13} className="inline" />
               </th>
@@ -163,6 +218,18 @@ export function NominaCFDIPage() {
               const e = ESTATUS[r.estatus] || ESTATUS.PENDIENTE;
               return (
                 <tr key={r.id} className="hover:bg-gray-50">
+                  {/* Ya timbrado: no se puede volver a marcar. El candado también
+                      está en el servidor — un doble clic no puede costar una
+                      cancelación ante el SAT. */}
+                  <td className="px-2 py-1.5 text-center">
+                    {r.uuid ? (
+                      <Check size={14} className="inline text-emerald-600" />
+                    ) : (
+                      <input type="checkbox" checked={!!elegidos[r.id]}
+                        onChange={(e) => setElegidos({ ...elegidos, [r.id]: e.target.checked })}
+                        className="rounded" />
+                    )}
+                  </td>
                   <td className="px-2 py-1.5 text-center">
                     {esAdmin && r.estatus === 'PENDIENTE' && (
                       <input type="checkbox" checked={!!r.enviar_por_correo}
@@ -234,10 +301,11 @@ export function NominaCFDIPage() {
       </div>
 
       <p className="text-xs text-gray-500">
-        El timbrado ante el PAC todavía no está conectado: los XML de arriba son el
-        pre-timbre, con la estructura completa del CFDI 4.0 y su complemento de nómina
-        1.2, listos para revisarse. Es a propósito que sea un paso aparte — timbrar gasta
-        timbres y deshacerlo exige una cancelación ante el SAT.
+        Timbrar es un paso <b>aparte del cierre</b>, a propósito: el cierre congela los
+        importes y arma el XML —las dos cosas se pueden rehacer—, mientras que timbrar
+        gasta un timbre y deshacerlo exige una cancelación ante el SAT. Separarlos permite
+        revisar cincuenta recibos y timbrar cuarenta y nueve. Un recibo que ya tiene UUID
+        no se vuelve a timbrar: sería un segundo CFDI por el mismo pago.
       </p>
 
       {viendo && (

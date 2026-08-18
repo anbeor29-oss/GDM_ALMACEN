@@ -1183,6 +1183,25 @@ class APIClient {
     return r.data;
   }
 
+  /** El mismo concepto a varios trabajadores. ESCRIBE el borrador. */
+  async aplicarConceptoAVarios(periodoId: string, body: {
+    lado: 'ingresos' | 'egresos'; clave: string; importe: number;
+    empleadoIds: string[]; gravadoManual?: number;
+  }) {
+    const r = await this.client.post<APIResponse<any>>(
+      `/nomina/prenomina/${periodoId}/aplicar-a-varios`, body
+    );
+    return r.data;
+  }
+
+  /** Timbra recibos de nómina ante el PAC. NO se deshace sin cancelar. */
+  async timbrarRecibosNomina(ids: string[]) {
+    const r = await this.client.post<APIResponse<any>>(
+      '/nomina/recibos/timbrar', { ids }, { timeout: 180_000 }
+    );
+    return r.data;
+  }
+
   /** Deja el finiquito listo en un periodo especial de UNA persona. ESCRIBE. */
   async finiquitoANominaEspecial(empleadoId: string, body: {
     fechaBaja: string; tipo: 'FINIQUITO' | 'LIQUIDACION';

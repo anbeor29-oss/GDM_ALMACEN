@@ -185,9 +185,15 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
     staleTime: 60 * 60 * 1000,
     retry: false,
   });
-  const colonias: any[] = cpQ.data?.data?.colonias || [];
-  const estadoDelCp: string = cpQ.data?.data?.estado || '';
+  const cpDatos: any = cpQ.data?.data || {};
+  const colonias: any[]   = cpDatos.colonias || [];
+  const municipios: any[] = cpDatos.municipios || [];
+  const estadoDelCp: string = cpDatos.estado || '';
+  const estadoNombre: string = cpDatos.estadoDescripcion || '';
 
+  /* El estado se rellena solo la primera vez y luego se deja en paz, por si
+   * alguien lo corrigió a mano. Los dos digitos del CP determinan el estado sin
+   * ambigüedad (Anexo 20), así que no hay nada que elegir. */
   useEffect(() => {
     if (!estadoDelCp || f.estado) return;
     set('estado', estadoDelCp);
@@ -333,8 +339,41 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                     </p>
                   )}
                 </div>
-                <Campo k="municipio" label="Municipio / alcaldía" />
-                <Campo k="estado" label="Estado" />
+                {/* Municipio: la lista del estado que resolvió el CP. Es el mismo
+                    catálogo contra el que valida el PAC, y tecleado a mano una
+                    letra distinta rebota el timbrado días después. */}
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Municipio / alcaldía</label>
+                  {municipios.length > 0 ? (
+                    <select
+                      value={f.municipio}
+                      onChange={(e) => set('municipio', e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    >
+                      <option value="">— Elige el municipio —</option>
+                      {municipios.map((m: any) => (
+                        <option key={m.clave} value={m.descripcion}>{m.descripcion}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Campo k="municipio" label="" />
+                  )}
+                </div>
+
+                {/* El estado NO se elige: los dos primeros dígitos del CP lo
+                    determinan sin ambigüedad. Se muestra para confirmar, no para
+                    capturar — poder cambiarlo sólo permitiría contradecir al CP. */}
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Estado</label>
+                  <input
+                    value={estadoNombre ? `${f.estado} · ${estadoNombre}` : f.estado}
+                    readOnly
+                    className="w-full border rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    Lo determina el código postal.
+                  </p>
+                </div>
                 <Campo k="regimen_fiscal" label="Régimen fiscal" maxLength={3} />
                 <Campo k="uso_cfdi" label="Uso del CFDI" maxLength={5} />
               </div>

@@ -26,6 +26,7 @@ import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { CeldaDeConceptos } from './CeldaDeConceptos';
 import { CapturaDeConceptos, type Linea } from './CapturaDeConceptos';
+import { AplicarAVarios } from './AplicarAVarios';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -58,6 +59,14 @@ export function NominaCalculoPage() {
   const [pre, setPre] = useState<any>(null);
   const [exportando, setExportando] = useState(false);
   const [cerrando, setCerrando] = useState(false);
+
+  /* El menú del clic derecho y el diálogo de aplicación masiva.
+   *
+   * El menú se abre donde se soltó el clic, no en una esquina fija: buscar con
+   * la vista un menú que apareció lejos del cursor cuesta más que el clic que
+   * se ahorró. */
+  const [menu, setMenu] = useState<{ x: number; y: number; renglon: any } | null>(null);
+  const [masivo, setMasivo] = useState<{ lado: 'ingresos' | 'egresos'; renglon: any } | null>(null);
 
   const plantillaQ = useQuery({
     queryKey: ['plantilla-por-tipo'],
@@ -101,6 +110,19 @@ export function NominaCalculoPage() {
   useEffect(() => {
     if (prenominaQ.data?.data) setPre(prenominaQ.data.data);
   }, [prenominaQ.data]);
+
+  /* Un menú contextual que no se cierra al hacer clic fuera se queda flotando
+   * encima de todo y hay que perseguirlo. */
+  useEffect(() => {
+    if (!menu) return;
+    const cerrar = () => setMenu(null);
+    window.addEventListener('click', cerrar);
+    window.addEventListener('scroll', cerrar, true);
+    return () => {
+      window.removeEventListener('click', cerrar);
+      window.removeEventListener('scroll', cerrar, true);
+    };
+  }, [menu]);
 
   const cambiarTipo = (t: string) => {
     setTipo(t); setPeriodoId(''); setError(''); setAviso(''); setCaptura({}); setPre(null);
@@ -450,7 +472,15 @@ export function NominaCalculoPage() {
                   {pre.renglones.map((r: any, i: number) => {
                     const cap = captura[r.empleado_id];
                     return (
-                      <tr key={r.empleado_id} className="hover:bg-gray-50">
+                      <tr
+                        key={r.empleado_id}
+                        className="hover:bg-gray-50"
+                        onContextMenu={(ev) => {
+                          if (!esAdmin || pre?.periodo?.estatus === 'CERRADO') return;
+                          ev.preventDefault();
+                          setMenu({ x: ev.clientX, y: ev.clientY, renglon: r });
+                        }}
+                      >
                         <td className="px-1.5 py-1 text-right text-gray-400">{i + 1}</td>
                         {/* Sin el puesto: se repite en toda la columna —"Ayudante
                             General" diez veces— y empuja los días a la derecha. Está
@@ -557,7 +587,8 @@ export function NominaCalculoPage() {
                         {pre.totales.subsidio > 0 && ` · subsidio al empleo ${money(pre.totales.subsidio)}`}
                         <span className="text-gray-400">
                           {'  '}· doble clic en Otros ingresos u Otras deducciones para capturar;
-                          pasa el mouse para ver cómo se integran
+                          CLIC DERECHO para aplicar a varios de un jalón; pasa el mouse
+                          para ver cómo se integran
                         </span>
                       </td>
                     </tr>
@@ -565,6 +596,56 @@ export function NominaCalculoPage() {
                 )}
               </table>
             </div>
+          )}
+
+          {/* El menú del clic derecho. Va en position:fixed y con las coordenadas
+              del evento para caer bajo el cursor. */}
+          {menu && (
+            <div
+              className="fixed z-50 bg-white border rounded-lg shadow-lg py-1 text-sm min-w-[15rem]"
+              style={{ left: Math.min(menu.x, window.innerWidth - 260), top: menu.y }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="px-3 py-1.5 text-xs text-gray-500 border-b truncate">
+                {menu.renglon.nombre}
+              </p>
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-emerald-50 text-emerald-800 flex items-center gap-2"
+                onClick={() => { setMasivo({ lado: 'ingresos', renglon: menu.renglon }); setMenu(null); }}
+              >
+                <Users size={14} /> Aplicar un ingreso a varios…
+              </button>
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-rose-50 text-rose-800 flex items-center gap-2"
+                onClick={() => { setMasivo({ lado: 'egresos', renglon: menu.renglon }); setMenu(null); }}
+              >
+                <Users size={14} /> Aplicar un descuento o falta a varios…
+              </button>
+              <div className="border-t my-1" />
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700"
+                onClick={() => { setCapturando({ lado: 'ingresos', renglon: menu.renglon }); setMenu(null); }}
+              >
+                Capturar ingresos sólo a {String(menu.renglon.nombre).split(' ')[0]}
+              </button>
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700"
+                onClick={() => { setCapturando({ lado: 'egresos', renglon: menu.renglon }); setMenu(null); }}
+              >
+                Capturar descuentos sólo a {String(menu.renglon.nombre).split(' ')[0]}
+              </button>
+            </div>
+          )}
+
+          {masivo && (
+            <AplicarAVarios
+              periodoId={periodoId}
+              renglones={pre?.renglones || []}
+              empleadoInicial={masivo.renglon?.empleado_id}
+              lado={masivo.lado}
+              onCerrar={() => setMasivo(null)}
+              onAplicado={() => { setCaptura({}); prenominaQ.refetch(); }}
+            />
           )}
 
           {capturando && (
