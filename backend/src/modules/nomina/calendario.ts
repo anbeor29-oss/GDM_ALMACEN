@@ -13,15 +13,23 @@
 
 import { ValidationError } from '../../middleware/errorHandler';
 
-export type TipoPeriodo = 'SEMANAL' | 'QUINCENAL' | 'MENSUAL';
+export type TipoPeriodo = 'SEMANAL' | 'QUINCENAL' | 'MENSUAL' | 'ESPECIAL';
 
 export const MAXIMO_POR_TIPO: Record<TipoPeriodo, number> = {
   SEMANAL: 53, QUINCENAL: 24, MENSUAL: 12,
+  /* Los especiales no salen de un calendario: se crean cuando hacen falta —un
+   * finiquito, el aguinaldo, el reparto de utilidades— y por eso no tienen un
+   * número fijo al año. El tope de 99 es sólo para que la numeración no crezca
+   * sin límite por un error de captura. */
+  ESPECIAL: 99,
 };
 
 /** Periodicidad del CFDI (c_PeriodicidadPago) que corresponde a cada tipo. */
 export const CLAVE_SAT: Record<TipoPeriodo, string> = {
   SEMANAL: '02', QUINCENAL: '04', MENSUAL: '05',
+  /* 99 "Otra periodicidad" del c_PeriodicidadPago: un finiquito o un aguinaldo
+   * no caen en ninguna de las periodicidades del catálogo. */
+  ESPECIAL: '99',
 };
 
 /* ── Fechas sin husos ──────────────────────────────────────────────────────
@@ -116,6 +124,16 @@ export function calendario(
       );
     }
     return out;
+  }
+
+  /* Los especiales NO se generan por calendario: cada uno se captura con sus
+   * fechas y su concepto, porque un finiquito empieza y termina donde diga el
+   * caso. Generarlos en serie no significaría nada. */
+  if (tipo === 'ESPECIAL') {
+    throw new ValidationError(
+      'Los periodos especiales —finiquitos, aguinaldo, PTU— no se generan por ' +
+      'calendario: cada uno se captura con sus propias fechas y su concepto.'
+    );
   }
 
   if (tipo === 'QUINCENAL') {

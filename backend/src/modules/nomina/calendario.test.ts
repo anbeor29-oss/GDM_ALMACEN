@@ -86,14 +86,22 @@ describe('calendario semanal', () => {
 });
 
 describe('reglas generales', () => {
-  it('los topes por tipo son 53, 24 y 12', () => {
-    expect(MAXIMO_POR_TIPO).toEqual({ SEMANAL: 53, QUINCENAL: 24, MENSUAL: 12 });
+  it('los topes por tipo son 53, 24, 12 y 99', () => {
+    expect(MAXIMO_POR_TIPO).toEqual({ SEMANAL: 53, QUINCENAL: 24, MENSUAL: 12, ESPECIAL: 99 });
   });
 
   it('cada tipo trae su clave del c_PeriodicidadPago', () => {
     expect(CLAVE_SAT.SEMANAL).toBe('02');
     expect(CLAVE_SAT.QUINCENAL).toBe('04');
     expect(CLAVE_SAT.MENSUAL).toBe('05');
+    // 99 "Otra periodicidad": un finiquito no cae en ninguna del catálogo.
+    expect(CLAVE_SAT.ESPECIAL).toBe('99');
+  });
+
+  it('los especiales NO se generan por calendario', () => {
+    // Un finiquito empieza y termina donde diga el caso; generarlos en serie
+    // no significaría nada.
+    expect(() => calendario('ESPECIAL', 2026)).toThrow(/no se generan por/);
   });
 
   it('los periodos no se traslapan ni dejan huecos (quincenal y mensual)', () => {

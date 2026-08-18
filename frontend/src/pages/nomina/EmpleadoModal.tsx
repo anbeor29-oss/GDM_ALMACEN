@@ -19,6 +19,8 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Save, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
+import { ComboConAlta } from './ComboConAlta';
+import { CreditosDelTrabajador } from './CreditosDelTrabajador';
 
 interface Props {
   /** null = alta. Con expediente = edición. */
@@ -67,6 +69,25 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
 
   const cat = useQuery({ queryKey: ['nomina-catalogos'], queryFn: () => api.getNominaCatalogos() });
   const c: any = cat.data?.data;
+
+  /* Puestos y departamentos son catálogos de la empresa: se eligen de la lista
+   * y lo que falte se agrega desde el mismo combo. Escribirlos a mano es como
+   * nacen "PRODUCCION" y "Producción" como dos departamentos distintos. */
+  const puestosQ = useQuery({ queryKey: ['nomina-puestos'], queryFn: () => api.getNominaPuestos() });
+  const deptosQ = useQuery({ queryKey: ['nomina-departamentos'], queryFn: () => api.getNominaDepartamentos() });
+  const puestos: any[] = puestosQ.data?.data?.puestos || [];
+  const departamentos: any[] = deptosQ.data?.data?.departamentos || [];
+
+  const agregarPuesto = async (nombre: string) => {
+    await api.crearNominaPuesto(nombre);
+    await puestosQ.refetch();
+    return nombre;
+  };
+  const agregarDepto = async (nombre: string) => {
+    await api.crearNominaDepartamento(nombre);
+    await deptosQ.refetch();
+    return nombre;
+  };
 
   useEffect(() => {
     if (empleado) {
@@ -233,8 +254,20 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
 
           {bloque === 'laboral' && (
             <div className="grid sm:grid-cols-3 gap-3">
-              <Campo k="puesto" label="Puesto" />
-              <Campo k="departamento" label="Departamento" />
+              <ComboConAlta
+                label="Puesto"
+                opciones={puestos}
+                valor={f.puesto}
+                onChange={(v) => set('puesto', v)}
+                onAgregar={agregarPuesto}
+              />
+              <ComboConAlta
+                label="Departamento"
+                opciones={departamentos}
+                valor={f.departamento}
+                onChange={(v) => set('departamento', v)}
+                onAgregar={agregarDepto}
+              />
               <Campo k="fecha_ingreso" label="Fecha de ingreso *" tipo="date" />
               <Selector k="tipo_contrato" label="Tipo de contrato" opciones={c?.tiposContrato} ancho="sm:col-span-3" />
               <Selector k="tipo_regimen" label="Tipo de régimen" opciones={c?.tiposRegimen} ancho="sm:col-span-3" />
@@ -266,7 +299,32 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                   hubiera capturado. */}
               <Campo k="salario_diario" label="Salario diario *" tipo="number" step="0.01" />
               <Campo k="salario_diario_integrado" label="Salario diario integrado *" tipo="number" step="0.01" />
-              <Campo k="banco_clave" label="Banco (clave SAT)" maxLength={3} />
+              <div>
+                <label className={etiqueta}>Banco</label>
+                <select
+                  className={`${campo} ${marca('banco_clave')}`}
+                  value={f.banco_clave ?? ''}
+                  onChange={(e) => set('banco_clave', e.target.value)}
+                >
+                  <option value="">— sin especificar —</option>
+                  {(c?.bancos || []).map((b: any) => (
+                    <option key={b.code} value={b.code}>{b.name}</option>
+                  ))}
+                </select>
+                {/* La clave del SAT, visible. Es la que viaja en el CFDI
+                    (nomina12:Receptor/@Banco) y la que forma los tres primeros
+                    dígitos de la CLABE: si no cuadra con la cuenta, la
+                    dispersión rebota. */}
+                {f.banco_clave ? (
+                  <p className="text-[11px] text-rose-600 font-mono mt-1">
+                    Clave SAT: {f.banco_clave}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    La clave aparece aquí al elegir el banco.
+                  </p>
+                )}
+              </div>
               <Campo k="cuenta_clabe" label="CLABE (18 dígitos)" maxLength={18} ancho="sm:col-span-2" />
             </div>
           )}
@@ -331,6 +389,16 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                     </p>
                   </div>
                 )}
+              </div>
+
+              {/* Préstamos y FONACOT van DEBAJO de las dos casillas y no como
+                  una tercera: no son un atributo del trabajador sino eventos con
+                  saldo, y una misma persona puede tener varios a la vez. */}
+              <div className="border-t pt-4">
+                <CreditosDelTrabajador
+                  empleadoId={empleado?.id}
+                  puedeEditar={!soloDevolver}
+                />
               </div>
             </div>
           )}

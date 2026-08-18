@@ -1086,6 +1086,42 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/nomina/puestos', { nombre, riesgo_puesto });
     return r.data;
   }
+  async getNominaDepartamentos() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/departamentos');
+    return r.data;
+  }
+  async crearNominaDepartamento(nombre: string) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/departamentos', { nombre });
+    return r.data;
+  }
+
+  /* ── Préstamos de la empresa y créditos FONACOT ── */
+  async getCreditosNomina(params: { empleadoId?: string; origen?: string; incluirCerrados?: boolean } = {}) {
+    const r = await this.client.get<APIResponse<any>>('/nomina/creditos', {
+      params: {
+        empleadoId: params.empleadoId || undefined,
+        origen: params.origen || undefined,
+        incluirCerrados: params.incluirCerrados || undefined,
+      },
+    });
+    return r.data;
+  }
+  async getCreditoNomina(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/creditos/${id}`);
+    return r.data;
+  }
+  async crearCreditoNomina(datos: any) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/creditos', datos);
+    return r.data;
+  }
+  async abonarCreditoNomina(id: string, datos: any = {}) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/creditos/${id}/abonar`, datos);
+    return r.data;
+  }
+  async cambiarEstatusCreditoNomina(id: string, estatus: string, motivo?: string) {
+    const r = await this.client.put<APIResponse<any>>(`/nomina/creditos/${id}/estatus`, { estatus, motivo });
+    return r.data;
+  }
   async getEmpleados(params: { buscar?: string; incluirBajas?: boolean } = {}) {
     const r = await this.client.get<APIResponse<any>>('/nomina/empleados', {
       params: { buscar: params.buscar || undefined, incluirBajas: params.incluirBajas || undefined },

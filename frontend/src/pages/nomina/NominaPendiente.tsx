@@ -11,6 +11,7 @@
  * calendario de periodos— se dice también, porque es lo que se puede ir
  * revisando mientras tanto.
  */
+import { useState } from 'react';
 import { Construction, CheckCircle2, Clock } from 'lucide-react';
 
 function Pantalla({
@@ -65,9 +66,65 @@ function Pantalla({
   );
 }
 
+/**
+ * Los cuatro tipos de nómina, como en el sistema anterior.
+ *
+ * Ahí se elegía por la URL (?tipo=semanal) y cada tipo llevaba su propio
+ * calendario de periodos. Aquí son botones porque es lo primero que se decide
+ * al entrar: la planta se paga semanal, la oficina quincenal y la dirección
+ * mensual, y las tres conviven — el tipo elegido manda sobre todo lo demás.
+ *
+ * ESPECIAL no es una cuarta periodicidad: es lo que no cae en el calendario —un
+ * finiquito, el aguinaldo, el reparto de utilidades—. Por eso sus periodos no
+ * se generan en serie, se capturan uno por uno con su concepto.
+ */
+const TIPOS = [
+  { id: 'SEMANAL',   label: 'Semanal',   emoji: '📅', detalle: 'Hasta 53 periodos al año' },
+  { id: 'QUINCENAL', label: 'Quincenal', emoji: '📆', detalle: '24 periodos al año' },
+  { id: 'MENSUAL',   label: 'Mensual',   emoji: '📋', detalle: '12 periodos al año' },
+  { id: 'ESPECIAL',  label: 'Especial',  emoji: '⚡', detalle: 'Finiquitos, aguinaldo, PTU' },
+] as const;
+
+function SelectorDeTipo() {
+  const [tipo, setTipo] = useState<string>('SEMANAL');
+  const elegido = TIPOS.find((t) => t.id === tipo)!;
+
+  return (
+    <div className="max-w-2xl mx-auto mb-4">
+      <div className="bg-white rounded-lg shadow border p-5">
+        <p className="text-sm font-semibold text-gray-700 mb-3">Tipo de nómina</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {TIPOS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTipo(t.id)}
+              className={`rounded-lg border-2 px-3 py-3 text-center transition ${
+                tipo === t.id
+                  ? 'border-violet-500 bg-violet-50 text-violet-900'
+                  : 'border-gray-200 hover:border-violet-300 text-gray-700'
+              }`}
+            >
+              <span className="text-xl block">{t.emoji}</span>
+              <span className="text-sm font-medium block mt-1">{t.label}</span>
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 mt-3">
+          <strong>{elegido.label}</strong> — {elegido.detalle}.
+          {tipo === 'ESPECIAL'
+            ? ' No se genera calendario: cada periodo se captura con sus fechas y su concepto.'
+            : ' Los tres tipos ordinarios conviven: la planta puede ser semanal y la oficina quincenal.'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function NominaCalculoPage() {
   return (
-    <Pantalla
+    <>
+      <SelectorDeTipo />
+      <Pantalla
       titulo="Cálculo de nómina"
       porQue={
         'Aquí van los periodos, la prenómina y la vista previa del CFDI. El motor y el ' +
@@ -79,15 +136,17 @@ export function NominaCalculoPage() {
         'ISR con mensualización, subsidio al empleo que nunca deja el impuesto en negativo, y cuotas obrero-patronales del IMSS.',
         'Exenciones del Art. 93 por concepto: aguinaldo, prima vacacional, PTU, despensa, alimentación, premios.',
         'INFONAVIT por porcentaje, cuota fija o VSM; pensión alimenticia por orden judicial.',
-        'Calendario de periodos semanal (1 a 53), quincenal (1 a 24) y mensual (1 a 12), los tres a la vez.',
+        'Calendario de periodos semanal (1 a 53), quincenal (1 a 24), mensual (1 a 12) y especial, todos a la vez.',
+        'Préstamos de la empresa y créditos FONACOT con su saldo, sus abonos y los periodos que faltan.',
       ]}
       enCamino={[
         'La rejilla de prenómina: un renglón por trabajador, con los días y los conceptos editables.',
         'La vista previa del CFDI de nómina antes de generarlo.',
         'El pre-timbre simulado, para ver los errores del comprobante sin gastar timbres.',
-        'El cierre del periodo.',
+        'El cierre del periodo, que aplica los abonos de préstamos y FONACOT.',
       ]}
-    />
+      />
+    </>
   );
 }
 

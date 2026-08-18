@@ -38,6 +38,7 @@ import { query } from '../../config/database';
 import { ValidationError } from '../../middleware/errorHandler';
 import * as empleados from './empleados.service';
 import { partirNombre } from './nombre-mexicano';
+import * as nacimiento from './fecha-de-nacimiento';
 
 /* El reparto del nombre vive aparte (nombre-mexicano.ts): es una función pura
  * y así se puede probar sin levantar la base de datos. */
@@ -202,6 +203,23 @@ export async function proponerDesdeXml(
   del('apellido_mat', partes.apellido_mat, partes.incierto ? 'deducido' : 'xml');
   del('rfc', rfc);
   del('curp', curp);
+
+  /* La fecha de nacimiento no viene en el complemento, pero SÍ está dentro del
+   * RFC y de la CURP —posiciones 5 a 10, AAMMDD— y no cambia nunca. Se deriva y
+   * se marca como deducida, para que se vea de dónde salió. */
+  const nac = nacimiento.derivar({ rfc, curp });
+  if (nac.fecha) {
+    del('fecha_nacimiento', nac.fecha, 'deducido');
+    if (nac.discrepan) {
+      avisos.push(
+        `El RFC y la CURP de ${det.receptor?.nombre || rfc} no codifican la misma fecha de ` +
+        `nacimiento. Se tomó la de la CURP (${nac.fecha}), que asigna RENAPO del acta, ` +
+        'pero conviene revisar cuál de los dos trae el dedazo.'
+      );
+    }
+    const avisoEdad = nacimiento.avisoDeEdad(nac.fecha);
+    if (avisoEdad) avisos.push(avisoEdad);
+  }
   del('nss', t.numSeguridadSocial ? String(t.numSeguridadSocial).replace(/[\s-]/g, '') : undefined);
   del('num_empleado', t.numEmpleado);
   del('puesto', t.puesto);

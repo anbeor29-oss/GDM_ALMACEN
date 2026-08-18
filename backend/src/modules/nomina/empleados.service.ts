@@ -25,6 +25,7 @@ import { PoolClient } from 'pg';
 import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError, NotFoundError, ConflictError } from '../../middleware/errorHandler';
 import { tomarEdicion } from '../../utils/edicion';
+import * as nacimiento from './fecha-de-nacimiento';
 
 /* ═══════════════════ CATÁLOGOS CERRADOS DEL ANEXO 20 ═══════════════════
  *
@@ -255,6 +256,15 @@ function normalizar(d: DatosEmpleado, parcial: boolean): Record<string, any> {
   }
 
   if (d.fecha_nacimiento !== undefined) r.fecha_nacimiento = fecha(d.fecha_nacimiento, 'La fecha de nacimiento');
+
+  /* Si no la capturaron, se saca del RFC o de la CURP: los dos la llevan en las
+   * posiciones 5 a 10 y NO cambia. Pedirla a mano por tercera vez sólo abre la
+   * puerta a que alguien teclee otra cosa. La captura manual siempre gana: esto
+   * sólo rellena el hueco. */
+  if (!r.fecha_nacimiento && (r.rfc || r.curp)) {
+    const der = nacimiento.derivar({ rfc: r.rfc, curp: r.curp });
+    if (der.fecha) r.fecha_nacimiento = der.fecha;
+  }
   if (d.email !== undefined) {
     const v = texto(d.email, 255);
     if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {

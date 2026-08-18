@@ -20,6 +20,8 @@ import * as empleados from './empleados.service';
 import * as parametros from './parametros.service';
 import * as ejercicios from './ejercicios.service';
 import * as periodos from './periodos.service';
+import * as creditos from './creditos.service';
+import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
 const router = Router();
@@ -57,8 +59,98 @@ router.get(
         percepciones: PERCEPCIONES,
         deducciones: DEDUCCIONES,
         clavesSatPeriodicidad: periodos.CLAVE_SAT,
+        /* Bancos con su clave de 3 dígitos — la misma que forma los primeros
+         * tres de la CLABE y la que va en nomina12:Receptor/@Banco. Se reusa el
+         * catálogo que ya usa Proveedores en vez de tener dos listas que un día
+         * digan cosas distintas. */
+        bancos: BANKS_MX,
+        origenesCredito: creditos.ORIGENES,
       },
     });
+  })
+);
+
+
+/* ═════════════════ DEPARTAMENTOS ═════════════════ */
+
+router.get(
+  '/departamentos',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: { departamentos: await creditos.listarDepartamentos(companyId(req)) } });
+  })
+);
+
+router.post(
+  '/departamentos',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const d = await creditos.crearDepartamento(companyId(req), req.body?.nombre);
+    res.status(201).json({ success: true, data: d });
+  })
+);
+
+
+/* ═════════════════ PRÉSTAMOS Y FONACOT ═════════════════
+ *
+ * No son atributos del trabajador como el INFONAVIT: empiezan, se descuentan y
+ * se acaban. Por eso viven aparte y una persona puede tener varios a la vez.
+ */
+
+router.get(
+  '/creditos',
+  asyncHandler(async (req: Request, res: Response) => {
+    const lista = await creditos.listar(companyId(req), {
+      empleadoId: req.query.empleadoId as string | undefined,
+      origen: req.query.origen as any,
+      soloActivos: req.query.incluirCerrados === 'true' ? false : true,
+    });
+    res.json({ success: true, data: { creditos: lista } });
+  })
+);
+
+router.get(
+  '/creditos/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await creditos.obtener(companyId(req), req.params.id) });
+  })
+);
+
+/** Lo que hay que descontarle a alguien en el siguiente periodo. */
+router.get(
+  '/empleados/:id/creditos-por-descontar',
+  asyncHandler(async (req: Request, res: Response) => {
+    const l = await creditos.porDescontar(companyId(req), req.params.id);
+    res.json({ success: true, data: { creditos: l } });
+  })
+);
+
+router.post(
+  '/creditos',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const c = await creditos.crear(companyId(req), req.body || {});
+    res.status(201).json({ success: true, data: c });
+  })
+);
+
+/** Aplica el descuento de un periodo: baja el saldo y deja el abono escrito. */
+router.post(
+  '/creditos/:id/abonar',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await creditos.abonar(companyId(req), req.params.id, req.body || {});
+    res.json({ success: true, data: r });
+  })
+);
+
+router.put(
+  '/creditos/:id/estatus',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const c = await creditos.cambiarEstatus(
+      companyId(req), req.params.id, req.body?.estatus, req.body?.motivo
+    );
+    res.json({ success: true, data: c });
   })
 );
 
