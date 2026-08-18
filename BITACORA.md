@@ -2260,3 +2260,175 @@ Las pantallas: rejilla de prenómina, vista previa del CFDI, pre-timbre simulado
 cierre de periodo y los cuatro reportes (prenómina, vista previa de CFDI, ISR
 por nómina, IMSS por nómina) con rango de periodos. Más préstamos, FONACOT,
 vacaciones, movimientos IMSS y acumulados.
+
+---
+
+## 2026-08-17 (noche) — Nómina, fase 3: prenómina, cierre, CFDI y las tarifas del DOF
+
+Cierra el ciclo que la fase 2 dejó abierto: ya se puede calcular un periodo,
+revisarlo, cerrarlo y quedarse con los XML. Y los números por fin salen de
+tarifas cotejadas, no copiadas.
+
+### 1 · La rejilla dejó de resumir de más
+
+Tenía cuatro columnas —días, ingresos, egresos, a cobrar— y con eso no se revisa
+una nómina: para saber por qué a alguien le tocaron $2,096.65 había que abrir su
+recibo. Ahora hay **columna permanente** para días, ingresos, otros ingresos,
+total de percepciones, IMSS, ISR, préstamos, otras deducciones y neto.
+
+El gravado y el exento se anotan **antes de sumarlos**, tanto en cada renglón
+del desglose como en el pie. No es decoración: el CFDI los reporta por separado
+y es contra eso que se cuadra la declaración.
+
+Los cuatro botones de tipo de nómina pasaron de cajas altas a una línea. Cuatro
+botones que sólo eligen un modo no necesitan un tercio de la pantalla.
+
+### 2 · La prenómina se revisa en Excel
+
+Dos hojas: la rejilla y los conceptos. Va con **lo capturado en pantalla**, no
+con un recálculo que ignore lo que se acaba de teclear. Es como se revisa de
+verdad: se ordena por departamento, se filtra a quien tuvo faltas, se compara
+contra la semana pasada.
+
+### 3 · El cierre, todo o nada
+
+Congela los recibos con sus importes, abona préstamos y FONACOT, genera el XML
+pre-timbre y marca el periodo — **en una sola transacción**. Un cierre a medias
+es el peor estado posible: recibos guardados sin abonar los créditos, y el
+trabajador pagando dos veces el periodo siguiente.
+
+Los importes quedan **congelados**. Recalcularlos con los datos de hoy daría
+otro número y dejaría sin explicación lo ya pagado.
+
+Un índice único `(periodo, empleado)` impide dos recibos del mismo periodo: para
+el SAT serían dos CFDI por el mismo pago, o sea ingreso duplicado.
+
+### 4 · Pantalla CFDI
+
+Los XML del cierre aterrizan ahí. Filtro por estatus, vista previa, descarga y
+check de envío por correo, con los iconos del panel de facturas. **Sin timbrar**:
+el PAC es un paso aparte porque cuesta timbres y deshacerlo exige cancelación
+ante el SAT.
+
+### 5 · El salario diario y el integrado venían al revés
+
+Se mapeaba `SalarioBaseCotApor` al salario diario. Está mal **por definición**:
+el SBC *es* el integrado (Art. 27 LSS). Mapear por nombre de atributo nunca iba
+a salir bien. Ahora se asigna por el menor y el mayor, que es lo único que no se
+puede confundir, y en la lista de empleados los dos importes van juntos y
+rotulados, con aviso si el integrado quedó por debajo del diario —imposible: el
+factor de integración nunca baja de 1—.
+
+*Lo detectó el usuario mirando la pantalla, no una prueba.*
+
+### 6 · Un ON CONFLICT sin índice detrás
+
+El abono de créditos al cerrar usaba `ON CONFLICT (credito_id, periodo_id) DO
+NOTHING` para que reintentar un cierre caído no descontara dos veces. **Ese
+índice no existía.** Postgres rechazaba la sentencia con 42P10 y, peor, la
+protección que el comentario prometía era ficción.
+
+Migración `2026-08-17g`: índice único **parcial** —`WHERE periodo_id IS NOT
+NULL`— para no estorbar a los abonos capturados a mano desde la pantalla de
+créditos, que no cuelgan de ningún periodo y sí pueden ser varios.
+
+*Un comentario que describe una garantía no es la garantía. Lo encontró la
+primera prueba que ejecutó el cierre de verdad.*
+
+### 7 · Las tarifas de 2026, cotejadas contra el DOF
+
+Lo sembrado venía del sistema anterior marcado "PENDIENTE de cotejar", y **no
+eran las de 2026**: la tabla mensual empezaba en `0.01 a 746.04` con cuota
+`14.32` —la del ejercicio 2023— y la UMA venía revuelta, diaria `113.14` (2025)
+con mensual `3,300.72` (2024). Como `113.14 x 30.4` no daba la mensual guardada,
+las exenciones del Art. 93 y el tope de 25 UMA del Art. 28 LSS salían de dos
+años distintos al mismo tiempo.
+
+Se bajó el PDF oficial del SAT y se leyó. Ahora, con su fuente:
+
+| Parámetro | Valor | Fuente |
+|---|---|---|
+| Tarifa Art. 96 — mensual, semanal (7 d), quincenal (15 d) | 11 renglones c/u | Anexo 8 RMF 2026, **DOF 28/12/2025**, apartado B fracc. II, IV y V (factor 1.1321) |
+| Subsidio al empleo | **15.02%** de la UMA mensual, tope **$11,492.66** | **DOF 31/12/2025** |
+| UMA | $117.31 diaria · $3,566.22 mensual | INEGI, **DOF 09/01/2026** |
+| Salario mínimo | general **$315.04** · frontera norte **$440.87** | CONASAMI, 01/01/2026 |
+
+**El subsidio ya no es una escalera.** Desde el decreto de 2024 es un importe
+único hasta un tope; la revisión de coherencia seguía tratándolo como tabla de
+once renglones, le exigía terminar sin techo —cuando el techo **es** el tope de
+ingresos— y levantaba un aviso falso.
+
+**Enero de 2026 no calcula igual.** El transitorio segundo manda **15.59%**
+durante enero, porque la UMA se actualiza hasta febrero. Un renglón por año no
+puede representar eso: el subsidio ganó vigencia por fechas y `cargar()` toma el
+último día del periodo para elegir el renglón. Sin esto, un finiquito de enero
+se calcularía con el subsidio de febrero. La revisión ahora agrupa por vigencia
+—antes leía las dos como escalones consecutivos y reportaba un salto de
+−11,492.65—.
+
+**$535.65, no $536.22.** Los considerandos del decreto dicen 536.22, pero se
+publicaron el 31 de diciembre, antes de que el INEGI diera la UMA el 9 de enero:
+ese número sale de una UMA estimada de 117.43 y la real quedó en 117.31. Lo que
+obliga el artículo es el **porcentaje** —"la cantidad que resulte de multiplicar
+el valor mensual de la UMA por 15.02%"—, no la cifra de la exposición de
+motivos. Se guarda el porcentaje junto al importe para poder rederivarlo cuando
+la UMA se mueva, en vez de dejarlo congelado. Son 57 centavos al mes por
+trabajador; **queda a decisión del despacho** y se cambia con un UPDATE de una
+fila.
+
+**Consecuencia real**: para los 10 trabajadores de la prueba el ISR bajó de
+**$1,796.20 a $466.32**. No es redondeo: con el tope del subsidio en $11,492.66
+los diez caen dentro y les toca subsidio, cosa que con la tabla de 2023 casi
+nadie alcanzaba.
+
+### Verificación
+
+Todo contra Postgres real, dejando la base como estaba.
+
+* `npm test` — **108 unitarias**
+* `scripts/probar-nomina.ts` — **19** (expediente, índices, concurrencia)
+* `scripts/probar-cierre.ts` — **25** (el préstamo baja una sola vez, no se
+  cierra dos veces, el XML declara CFDI 4.0 + nomina12 1.2 sin
+  `TimbreFiscalDigital`, `Total` = neto y `Descuento` = deducciones)
+* `scripts/probar-tarifas-2026.ts` — **15**
+
+De esas 15, la que importa: **cada cuota fija debe ser el impuesto acumulado del
+renglón anterior**. Es la prueba que caza un dígito volteado al transcribir 33
+renglones a mano. Y el ISR se compara contra la aritmética del Art. 96 hecha
+aparte:
+
+```
+420.95 + (10,223.22 - 7,168.52) x 10.88% = 753.30 mensual
+menos subsidio 535.65 = 217.65 ; entre 4.342857 = 50.12 semanal
+motor: 50.12  OK
+```
+
+La exención del salario mínimo se prueba por los **dos** lados: al mínimo no
+retiene, y con cualquier otro ingreso gravado la pierde (Art. 93 Fr. XIV exime
+al trabajador, no al concepto). La primera versión de esa prueba llamaba a
+`calcularIsr` —aritmética pura del Art. 96— y por eso "fallaba": la exención
+vive en `calcularRecibo`.
+
+### Lo que costó una vuelta completa
+
+El usuario reportó tres veces "no veo los cambios" con la pantalla vieja
+enfrente. Ninguna era del código:
+
+1. **El backend local llevaba una hora corriendo** y no tenía las rutas nuevas.
+2. **`.claude/launch.json` decía puerto 5174** y `vite.config.ts` usa 5173.
+3. **Se empujó a `origin/erp-unificado`, y Render construye `GDM_ALMACEN/main`.**
+   Producción llevaba tres commits de retraso. El push de despliegue es
+   `git push gdmalmacen erp-unificado:main` y **corre en la PC, no en el shell
+   de Render** —allá el checkout sólo tiene `main` y responde
+   `src refspec erp-unificado does not match any`—.
+
+*Antes de dudar del código, comprobar que lo que el usuario mira sea el código.*
+
+### Pendiente
+
+**Reportes** es lo único del menú de Nómina sin construir: prenómina, vista
+previa de CFDI, ISR por nómina e IMSS por nómina, con rango 1 a 53 / 1 a 24.
+
+Y dos cosas que bloquean operar de verdad: la empresa **no tiene capturado su
+registro patronal del IMSS** —sin él se calcula pero no se timbra— y el
+**timbrado ante el PAC** sigue desconectado por decisión.

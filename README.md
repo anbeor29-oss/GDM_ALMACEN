@@ -534,6 +534,25 @@ curl -si -X OPTIONS https://gdmfac-backend.onrender.com/api/v1/auth/login \
 > inventarios; un merge se los borraría a este entorno. Para llevar un fix
 > puntual: `git checkout almacen && git cherry-pick <sha>`.
 
+> 🚩 **Empujar a `origin` NO despliega nada.** Render construye el repo
+> **`anbeor29-oss/GDM_ALMACEN`, rama `main`** — así lo dice el `render.yaml` de
+> este proyecto. El trabajo se hace en `origin` (`GDM_FACT`), rama
+> `erp-unificado`, y para que llegue a producción hace falta un segundo push:
+>
+> ```bash
+> git push gdmalmacen erp-unificado:main
+> ```
+>
+> Corre en **tu PC**, no en el shell de Render: allá el checkout sólo tiene
+> `main` y responde `src refspec erp-unificado does not match any`. Antes de
+> empujar conviene ver que sea fast-forward limpio:
+> `git log --oneline erp-unificado..gdmalmacen/main` debe salir **vacío**.
+>
+> Tampoco hay que correr `migrate:up` a mano: el `startCommand` es
+> `npm run start:prod`, que encadena `migrate-up && … && server` y **aborta el
+> arranque si una migración falla**. Que `/health` responda significa que las
+> migraciones pasaron.
+
 `GDM_ALMACEN` es un **entorno independiente** del mismo código, pensado para
 demostrar/operar el flujo completo (POS + inventarios + grupos de trabajo) sin
 tocar la producción `gdmfac`. Vive en su **propia base de datos** y sus propios
@@ -589,6 +608,33 @@ restringido a sus módulos.
 | **Manual de usuario** | ✅ | `frontend/public/manual-usuario.pdf`, abierto desde el botón "Manual" de la landing (`import.meta.env.BASE_URL` → sirve en Render y en `/erp`). Se regenera con el script del scratchpad; documenta los **9 iconos** del panel de facturas |
 | **Resumen mensual (PDF)** | ✅ | Reportes → Resumen mensual. Por mes y año: venta, cobrada, no cobrada y **adeudo acumulado**, con subtotal por año. `GET /reports/sales-summary/pdf` (inline) |
 | **Facturas no pagadas (PDF)** | ✅ | Reportes → No pagadas. TODAS las facturas con saldo, lista plana cronológica, sin importar antigüedad y **sin el umbral de $0.20** (solo descarta el redondeo, >= $0.01). Días de antigüedad: ámbar > 30, rojo > 90. `GET /reports/unpaid/pdf` |
+
+### 🟩 Nómina (grupo RECURSOS_HUMANOS + ADMIN_ALL)
+
+Módulo propio de NEXO — **GDM Facturación no lo tiene**. Portado del sistema
+anterior (`NOM_COM_1`), con el motor de cálculo sacado del navegador al backend.
+
+| Pantalla | Estado | Descripción |
+|----------|--------|-------------|
+| Dashboard | ✅ | Plantilla activa, periodos abiertos, avisos del ejercicio |
+| Empleados | ✅ | Expediente CFDI 4.0 completo en 5 pestañas + foto. Puesto/departamento con alta al vuelo; bancos del catálogo SAT con la clave en rojo. `faltantesParaTimbrar` dice qué campo impide timbrar **antes** de intentarlo |
+| Créditos | ✅ | Préstamos de la empresa y FONACOT con saldo y abono por periodo. El abono se aplica **al cerrar**, no al calcular |
+| Expediente | ✅ | Bitácora (logros, sanciones, incidencias, notas — las confidenciales se filtran **en el servidor**, no en el front) y control de entrega de uniformes/EPP con devolución |
+| Parámetros | ✅ | UMA, salarios mínimos, tarifa del Art. 96 y subsidio, **por ejercicio**. Globales: la tarifa es del país, no de la empresa. Los edita SUPER_ADMIN |
+| **Nómina (prenómina)** | ✅ | Rejilla con columna fija para Días · Ingresos · Otros ing. · Percepciones ‖ IMSS · ISR · Préstamos · Otras ded. ‖ Neto. Gravado y exento **anotados aparte antes de sumarlos**, que es como los reporta el CFDI. Doble clic en las columnas de "otros" para capturar; el mouse encima desglosa. Exporta a Excel (2 hojas) y cierra el periodo |
+| **CFDI** | ✅ | Recibe los XML pre-timbre del cierre. Filtro por estatus, vista previa, descarga y check de envío por correo. **El timbrado ante el PAC no está conectado** — es un paso aparte, por decisión |
+| Reportes | ⬜ | Prenómina, vista previa de CFDI, ISR por nómina e IMSS por nómina, con rango 1–53 (semanal) / 1–24 (quincenal) |
+
+**Importar trabajadores desde XML de nómina**: el Super Lector detecta el
+complemento 1.2, propone el expediente y **pregunta antes de crear a cada
+persona**. Dos candados: el receptor de un CFDI de nómina jamás entra como
+cliente, y el **registro patronal** del complemento debe coincidir con el de la
+empresa — una misma razón social puede tener varios ante el IMSS y meter al
+trabajador bajo otro lo pondría a cotizar donde no está dado de alta.
+
+**Cierre de periodo**: congela los recibos con sus importes, abona los créditos
+y genera los XML, **todo en una transacción**. Un cierre a medias —recibos sin
+abonar los préstamos— le cobraría dos veces al trabajador el periodo siguiente.
 
 ### 🟣 Solo el ADMIN de la empresa (por ROL, no por grupo de trabajo)
 
