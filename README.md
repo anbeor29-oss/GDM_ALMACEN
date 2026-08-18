@@ -636,6 +636,17 @@ trabajador bajo otro lo pondría a cotizar donde no está dado de alta.
 y genera los XML, **todo en una transacción**. Un cierre a medias —recibos sin
 abonar los préstamos— le cobraría dos veces al trabajador el periodo siguiente.
 
+> ℹ️ **El registro patronal se pide por empresa, no de entrada.** `GHC1707275Y0`
+> y `BEOA730829LJ0` no tienen trabajadores y no usan nómina, así que no hace
+> falta capturárselo. La prenómina lo pide —como aviso, no como bloqueo— sólo
+> cuando la empresa que se está calculando va a timbrar: se puede calcular sin
+> él, pero no timbrar. Una misma razón social puede tener varios ante el IMSS.
+
+> ℹ️ **Subsidio al empleo: $535.65.** Es el 15.02% de la UMA mensual real que
+> manda el decreto (DOF 31/12/2025). Los considerandos dicen $536.22, pero esa
+> cifra salió de una UMA estimada antes de que el INEGI publicara la de 2026.
+> Decidido el 2026-08-17.
+
 ### 🟣 Solo el ADMIN de la empresa (por ROL, no por grupo de trabajo)
 
 | Módulo | Estado | Descripción |

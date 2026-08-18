@@ -2372,9 +2372,10 @@ ese número sale de una UMA estimada de 117.43 y la real quedó en 117.31. Lo qu
 obliga el artículo es el **porcentaje** —"la cantidad que resulte de multiplicar
 el valor mensual de la UMA por 15.02%"—, no la cifra de la exposición de
 motivos. Se guarda el porcentaje junto al importe para poder rederivarlo cuando
-la UMA se mueva, en vez de dejarlo congelado. Son 57 centavos al mes por
-trabajador; **queda a decisión del despacho** y se cambia con un UPDATE de una
-fila.
+la UMA se mueva, en vez de dejarlo congelado.
+
+**Confirmado por el usuario el 2026-08-17**: se queda **$535.65**, "el que marca
+la ley". Los 57 centavos de diferencia contra los considerandos no se adoptan.
 
 **Consecuencia real**: para los 10 trabajadores de la prueba el ISR bajó de
 **$1,796.20 a $466.32**. No es redondeo: con el tope del subsidio en $11,492.66
