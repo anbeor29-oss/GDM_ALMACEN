@@ -367,6 +367,7 @@ function TablaIsr({ d }: any) {
 
 function TablaImss({ d }: any) {
   const t = d.totales;
+  const p = d.patronal;
   return (
     <>
       <Caja>
@@ -378,6 +379,7 @@ function TablaImss({ d }: any) {
               <th className="px-2 py-2 text-center w-16">Periodos</th>
               <th className="px-2 py-2 text-center w-16">Días</th>
               <th className="px-2 py-2 text-right w-28">Cuota obrera</th>
+              <th className="px-2 py-2 text-right w-32">Cuota patronal</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -394,6 +396,14 @@ function TablaImss({ d }: any) {
                     ? money(r.imss)
                     : <span className="text-gray-400 font-normal">exento</span>}
                 </td>
+                {/* La patronal se paga SIEMPRE, incluso por quien está exento de
+                    cuota obrera: es justo lo que el Art. 36 LSS le traslada al
+                    patrón. Por eso esta columna nunca dice "exento". */}
+                <td className="px-2 py-1 text-right text-amber-800 font-semibold">
+                  {r.patronal === null
+                    ? <span className="text-gray-400 font-normal">—</span>
+                    : money(r.patronal)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -402,19 +412,91 @@ function TablaImss({ d }: any) {
               <td className="px-2 py-2" colSpan={3}>{t.trabajadores} trabajador(es)</td>
               <td className="px-2 py-2 text-center">{t.dias}</td>
               <td className="px-2 py-2 text-right text-rose-700">{money(t.imss)}</td>
+              <td className="px-2 py-2 text-right text-amber-800">{money(t.patronal)}</td>
             </tr>
           </tfoot>
         </table>
       </Caja>
 
+      {/* ── El desglose por rama ──
+          Va desglosado y no como un solo importe porque así se captura la
+          provisión en contabilidad: una cuenta por rama. */}
+      {p && p.total > 0 && (
+        <Caja>
+          <div className="px-3 py-2 border-b bg-amber-50 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-amber-900">
+              Cuota patronal — para provisionar
+            </h3>
+            <span className="text-lg font-bold text-amber-800 tabular-nums">
+              {money(p.total)}
+            </span>
+          </div>
+          <table className="w-full text-xs tabular-nums">
+            <tbody className="divide-y">
+              {([
+                ['emCuotaFija',    'Enfermedad y maternidad · cuota fija', 'Art. 106 Fr. I'],
+                ['emExcedente',    'Enfermedad · excedente de 3 UMA',      'Art. 106 Fr. II'],
+                ['emDinero',       'Prestaciones en dinero',               'Art. 107'],
+                ['emPensionados',  'Gastos médicos de pensionados',        'Art. 25'],
+                ['invalidezVida',  'Invalidez y vida',                     'Art. 147'],
+                ['riesgosTrabajo', 'Riesgos de trabajo',                   'Art. 71-73'],
+                ['guarderias',     'Guarderías y prestaciones sociales',   'Art. 211'],
+                ['retiro',         'Retiro',                               'Art. 168 Fr. I'],
+                ['cesantiaVejez',  'Cesantía en edad avanzada y vejez',    'Art. 168 Fr. II'],
+              ] as Array<[string, string, string]>).map(([k, nombre, art]) => (
+                <tr key={k} className="hover:bg-gray-50">
+                  <td className="px-3 py-1.5">{nombre}</td>
+                  <td className="px-2 py-1.5 text-gray-400 text-[11px] w-28">{art}</td>
+                  <td className="px-3 py-1.5 text-right w-32">
+                    {Number(p[k]) === 0
+                      ? <span className="text-gray-300">0.00</span>
+                      : money(p[k])}
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-gray-50 font-semibold border-t-2">
+                <td className="px-3 py-2" colSpan={2}>Total IMSS</td>
+                <td className="px-3 py-2 text-right">{money(p.totalImss)}</td>
+              </tr>
+              <tr className="hover:bg-gray-50">
+                <td className="px-3 py-1.5">INFONAVIT (aportación patronal 5%)</td>
+                <td className="px-2 py-1.5 text-gray-400 text-[11px]">
+                  Art. 29 Fr. II Ley INFONAVIT
+                </td>
+                <td className="px-3 py-1.5 text-right">{money(p.infonavit)}</td>
+              </tr>
+              <tr className="bg-amber-50 font-bold border-t-2 text-amber-900">
+                <td className="px-3 py-2.5" colSpan={2}>TOTAL A PROVISIONAR</td>
+                <td className="px-3 py-2.5 text-right text-sm">{money(p.total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </Caja>
+      )}
+
       <p className="text-xs text-gray-500">
-        Es la cuota <b>obrera</b>: sólo la parte del trabajador. La patronal no la calcula
-        este sistema, y por eso no aparece — ponerla en cero haría creer que es cero.
+        La <b>cuota obrera</b> se le retiene al trabajador; la <b>patronal</b> sale de la
+        empresa y se paga al IMSS al mes siguiente — es la que hay que provisionar.
         {t.sinCuota > 0 && (
           <> Los <b>{t.sinCuota}</b> marcados como exentos ganan el salario mínimo: el
-          Art. 36 LSS pone su cuota en cero y la absorbe el patrón.</>
+          Art. 36 LSS pone su cuota obrera en cero <i>y la absorbe el patrón</i>, así que
+          sí generan cuota patronal.</>
         )}
       </p>
+
+      {/* Es una estimación y hay que decirlo: quien pague por este número sin
+          cotejar contra el SUA va a descuadrar. */}
+      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+        <b>Es una estimación para provisionar.</b> El IMSS liquida con SUS registros
+        —sus movimientos de alta y baja, sus días cotizados y la prima de riesgo que
+        tiene autorizada—. Lo que se paga es lo que emita el SUA, no esta cifra.
+      </p>
+
+      {d.avisos?.map((a: string, i: number) => (
+        <p key={i} className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+          {a}
+        </p>
+      ))}
 
       <PorPeriodo filas={d.porPeriodo} columnas={[['dias', 'Días'], ['imss', 'Cuota obrera']]} />
     </>

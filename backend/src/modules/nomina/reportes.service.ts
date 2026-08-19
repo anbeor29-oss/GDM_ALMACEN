@@ -25,6 +25,8 @@
 import { query } from '../../config/database';
 import { ValidationError } from '../../middleware/errorHandler';
 import { MAXIMO_POR_TIPO, TipoPeriodo } from './calendario';
+import * as patronal from './imss-patronal.service';
+import * as ejercicios from './ejercicios.service';
 
 export type TipoReporte = 'prenomina' | 'cfdi' | 'isr' | 'imss';
 
@@ -235,14 +237,88 @@ export async function imss(companyId: string, f: Filtro) {
    * alguien lo reporte como un error del sistema. */
   const sinCuota = r.rows.filter((x: any) => Number(x.imss) === 0).length;
 
+  /* ── La cuota PATRONAL, para provisionar ──
+   *
+   * Es lo que la nómina le cuesta a la empresa ADEMÁS del sueldo: la obrera se
+   * retiene, la patronal sale del bolsillo del patrón y se paga al mes
+   * siguiente. Sin este número contabilidad provisiona a ojo.
+   *
+   * Se calcula aquí y no se guarda en el recibo: el recibo es lo que se le
+   * entregó al trabajador, y la cuota patronal no es suya. Además la prima de
+   * riesgo puede corregirse después y la provisión debe seguirla. */
+  const cuota = await patronal.cargarTasas(f.anio);
+  const avisos: string[] = [];
+  let porTrabajador = new Map<string, any>();
+  let sumaPatronal = {
+    emCuotaFija: 0, emExcedente: 0, emDinero: 0, emPensionados: 0,
+    invalidezVida: 0, riesgosTrabajo: 0, guarderias: 0, retiro: 0,
+    cesantiaVejez: 0, totalImss: 0, infonavit: 0, total: 0,
+  };
+
+  if (!cuota) {
+    avisos.push(
+      `No hay tasas del IMSS cargadas para ${f.anio}, así que no se puede calcular ` +
+      'la cuota patronal. Se capturan en Parámetros.'
+    );
+  } else {
+    /* El SBC y los días salen de los recibos: son los que se pagaron. */
+    const detalle = await query<any>(
+      `SELECT r.num_empleado, e.salario_diario_integrado AS sbc, SUM(r.dias) AS dias
+         FROM nomina_recibos r
+         JOIN nomina_periodos p ON p.id = r.periodo_id
+         LEFT JOIN nomina_empleados e ON e.id = r.empleado_id
+        WHERE ${cond}
+        GROUP BY r.num_empleado, e.salario_diario_integrado`,
+      args
+    );
+
+    const ej = await ejercicios.cargar(f.anio).catch(() => null);
+    const emp = await query<any>(
+      `SELECT prima_riesgo FROM companies WHERE id = $1`, [companyId]
+    );
+    const prima = emp.rows[0]?.prima_riesgo ?? null;
+
+    if (ej) {
+      for (const x of detalle.rows) {
+        const c = patronal.calcularPatronal({
+          sbc: Number(x.sbc) || 0,
+          dias: Number(x.dias) || 0,
+          umaDiaria: ej.umaDiaria,
+          salarioMinimo: ej.smgGeneral,
+          primaRiesgo: prima === null ? null : Number(prima),
+          tasas: cuota,
+        });
+        porTrabajador.set(x.num_empleado, c);
+        for (const k of Object.keys(sumaPatronal) as Array<keyof typeof sumaPatronal>) {
+          sumaPatronal[k] += (c as any)[k];
+        }
+        for (const a of c.avisos) if (!avisos.includes(a)) avisos.push(a);
+      }
+      for (const k of Object.keys(sumaPatronal) as Array<keyof typeof sumaPatronal>) {
+        sumaPatronal[k] = redondear(sumaPatronal[k]);
+      }
+    }
+  }
+
+  const renglones = r.rows.map((x: any) => ({
+    ...x,
+    patronal: porTrabajador.get(x.num_empleado)?.total ?? null,
+    cvPorcentaje: porTrabajador.get(x.num_empleado)?.cvPorcentaje ?? null,
+  }));
+
   return {
-    renglones: r.rows,
+    renglones,
     porPeriodo: porPeriodo.rows,
+    /* El desglose por rama: es como se captura la provisión en contabilidad,
+     * una cuenta por rama y no un solo importe. */
+    patronal: { ...sumaPatronal, tasas: cuota?.fuente || null },
+    avisos,
     totales: {
       trabajadores: r.rows.length,
       sinCuota,
       dias: suma(r.rows, 'dias'),
       imss: redondear(suma(r.rows, 'imss')),
+      patronal: sumaPatronal.total,
     },
   };
 }
@@ -313,7 +389,10 @@ export async function generarExcel(
   que: TipoReporte,
   f: Filtro
 ): Promise<{ buffer: Buffer; nombre: string }> {
-  const XLSX = await import('xlsx');
+  const {
+    ExcelJS, C, titulo, dato, encabezado, celda, totales, anchos, aBuffer,
+  } = await import('./estilo-excel');
+
   const d: any = await generar(companyId, que, f);
 
   const emp = await query<any>(
@@ -326,77 +405,177 @@ export async function generarExcel(
     prenomina: 'Prenómina — detalle de lo pagado',
     cfdi:      'CFDI de nómina — timbrado',
     isr:       'ISR retenido por nómina',
-    imss:      'IMSS — cuota obrera',
+    imss:      'IMSS — cuota obrera y patronal',
   };
 
-  const aoa: any[][] = [
-    [`GDM NEXO · ${TITULOS[que]}`],
-    [],
-    ['Empresa:', e.business_name || '', '', 'RFC:', e.rfc || ''],
-    ['Registro patronal:', e.registro_patronal || '(sin capturar)', '',
-     'Generado:', new Date().toLocaleString('es-MX')],
-    ['Periodos:', `${f.tipo} del ${f.desde} al ${f.hasta} de ${f.anio}`],
-    ['', 'Sólo periodos CERRADOS, con los importes tal como se pagaron.'],
-    [],
-  ];
+  /* Las columnas de cada reporte, con su color: el mismo criterio de la Lista
+   * de Raya —azul lo que entra, rojo lo que se descuenta, verde el neto— para
+   * que las cinco hojas se lean igual y se archiven juntas. */
+  type Col = {
+    k: string; t: string; color: string;
+    tinta?: 'base' | 'rojo' | 'verde' | 'gris'; ancho?: number;
+  };
 
-  /* Cada reporte tiene sus columnas; se declaran en un solo lugar para que la
-   * hoja y la pantalla no se separen. */
-  const COLUMNAS: Record<TipoReporte, Array<[string, string]>> = {
+  const COLUMNAS: Record<TipoReporte, Col[]> = {
     prenomina: [
-      ['periodo', 'Periodo'], ['num_empleado', 'Núm.'], ['nombre', 'Trabajador'],
-      ['rfc', 'RFC'], ['dias', 'Días'],
-      ['total_percepciones', 'Percepciones'], ['total_gravado', 'Gravado'],
-      ['total_exento', 'Exento'], ['imss', 'IMSS'], ['isr', 'ISR'],
-      ['total_deducciones', 'Deducciones'], ['neto', 'Neto'],
+      { k: 'periodo', t: 'PERIODO', color: C.identidad, ancho: 9 },
+      { k: 'num_empleado', t: 'NÚM.', color: C.identidad, ancho: 8 },
+      { k: 'nombre', t: 'TRABAJADOR', color: C.identidad, ancho: 30 },
+      { k: 'dias', t: 'DÍAS', color: C.ingresos, ancho: 7 },
+      { k: 'total_percepciones', t: 'TOTAL@PERCEPCIONES', color: C.totalIngresos, ancho: 15 },
+      { k: 'total_gravado', t: 'GRAVADO', color: C.ingresos, ancho: 14 },
+      { k: 'total_exento', t: 'EXENTO', color: C.ingresos, tinta: 'verde', ancho: 14 },
+      { k: 'imss', t: 'IMSS@OBRERO', color: C.descuentos, tinta: 'rojo', ancho: 13 },
+      { k: 'isr', t: 'ISR@(ISPT)', color: C.descuentos, tinta: 'rojo', ancho: 13 },
+      { k: 'total_deducciones', t: 'TOTAL@DESCUENTOS', color: C.totalDescuentos, tinta: 'rojo', ancho: 15 },
+      { k: 'neto', t: 'NETO@A RECIBIR', color: C.neto, tinta: 'verde', ancho: 15 },
     ],
     cfdi: [
-      ['periodo', 'Periodo'], ['num_empleado', 'Núm.'], ['nombre', 'Trabajador'],
-      ['rfc', 'RFC'], ['uuid', 'Folio fiscal (UUID)'],
-      ['timbrado_at', 'Timbrado'], ['enviado_at', 'Enviado'], ['neto', 'Neto'],
+      { k: 'periodo', t: 'PERIODO', color: C.identidad, ancho: 9 },
+      { k: 'num_empleado', t: 'NÚM.', color: C.identidad, ancho: 8 },
+      { k: 'nombre', t: 'TRABAJADOR', color: C.identidad, ancho: 30 },
+      { k: 'rfc', t: 'RFC', color: C.identidad, ancho: 15 },
+      { k: 'uuid', t: 'FOLIO FISCAL (UUID)', color: C.ingresos, ancho: 40 },
+      { k: 'timbrado_at', t: 'TIMBRADO', color: C.ingresos, ancho: 18 },
+      { k: 'enviado_at', t: 'ENVIADO', color: C.ingresos, ancho: 18 },
+      { k: 'neto', t: 'NETO', color: C.neto, tinta: 'verde', ancho: 15 },
     ],
     isr: [
-      ['num_empleado', 'Núm.'], ['nombre', 'Trabajador'], ['rfc', 'RFC'],
-      ['periodos', 'Periodos'], ['gravado', 'Gravado'], ['exento', 'Exento'],
-      ['isr', 'ISR retenido'], ['subsidio', 'Subsidio al empleo'],
+      { k: 'num_empleado', t: 'NÚM.', color: C.identidad, ancho: 8 },
+      { k: 'nombre', t: 'TRABAJADOR', color: C.identidad, ancho: 30 },
+      { k: 'rfc', t: 'RFC', color: C.identidad, ancho: 15 },
+      { k: 'periodos', t: 'PERIODOS', color: C.ingresos, ancho: 10 },
+      { k: 'gravado', t: 'GRAVADO', color: C.ingresos, ancho: 15 },
+      { k: 'exento', t: 'EXENTO', color: C.ingresos, tinta: 'verde', ancho: 15 },
+      { k: 'isr', t: 'ISR@RETENIDO', color: C.totalDescuentos, tinta: 'rojo', ancho: 15 },
+      { k: 'subsidio', t: 'SUBSIDIO@AL EMPLEO', color: C.ingresos, ancho: 15 },
     ],
     imss: [
-      ['num_empleado', 'Núm.'], ['nombre', 'Trabajador'], ['nss', 'NSS'],
-      ['periodos', 'Periodos'], ['dias', 'Días'], ['imss', 'Cuota obrera'],
+      { k: 'num_empleado', t: 'NÚM.', color: C.identidad, ancho: 8 },
+      { k: 'nombre', t: 'TRABAJADOR', color: C.identidad, ancho: 30 },
+      { k: 'nss', t: 'NSS', color: C.identidad, ancho: 16 },
+      { k: 'periodos', t: 'PERIODOS', color: C.ingresos, ancho: 10 },
+      { k: 'dias', t: 'DÍAS', color: C.ingresos, ancho: 8 },
+      { k: 'imss', t: 'CUOTA@OBRERA', color: C.descuentos, tinta: 'rojo', ancho: 15 },
+      { k: 'patronal', t: 'CUOTA@PATRONAL', color: C.totalDescuentos, ancho: 16 },
     ],
   };
 
   const cols = COLUMNAS[que];
-  aoa.push(cols.map(([, t]) => t));
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'GDM NEXO';
+  const ws = wb.addWorksheet(TITULOS[que].slice(0, 28), {
+    views: [{ state: 'frozen', ySplit: 8 }],
+  });
+
+  titulo(ws, `GDM NEXO · ${TITULOS[que]}`, cols.length);
+  dato(ws, 3, 1, `Empresa:   ${e.business_name || ''}`, true);
+  dato(ws, 3, 5, `RFC:   ${e.rfc || ''}`);
+  dato(ws, 4, 1, `Reg. Patronal:   ${e.registro_patronal || '(sin capturar)'}`);
+  dato(ws, 4, 5, `Generado:   ${new Date().toLocaleString('es-MX')}`);
+  dato(ws, 5, 1, `Períodos:   ${f.tipo} del ${f.desde} al ${f.hasta} de ${f.anio}`);
+  dato(ws, 6, 1, 'Sólo periodos CERRADOS, con los importes tal como se pagaron.');
+
+  encabezado(ws, 8, cols.map((c) => ({ texto: c.t.replace('@', '\n'), color: c.color })));
+
+  let fila = 9;
   for (const r of d.renglones) {
-    aoa.push(cols.map(([k]) => {
-      const v = r[k];
-      return v === null || v === undefined ? '' : (typeof v === 'number' ? v : v);
-    }));
+    cols.forEach((c, i) => {
+      const v = r[c.k];
+      /* Los conteos y los días son cantidades, no dinero: sin formato de pesos
+       * para que no salgan como "14.00 días". */
+      const esConteo = ['periodos', 'dias', 'periodo'].includes(c.k);
+      celda(ws, fila, i + 1,
+        v === null || v === undefined ? '' : (esConteo ? Number(v) : v), {
+          tinta: c.tinta, pesos: !esConteo, centrado: esConteo,
+          negrita: c.k === 'neto',
+        });
+    });
+    fila++;
   }
 
-  /* Los totales, con su etiqueta pegada al primer renglón para que se lea. */
-  aoa.push([]);
-  aoa.push(['TOTALES', ...Object.entries(d.totales).map(([k, v]) => `${k}: ${v}`)]);
+  totales(ws, fila, cols.map((c) => {
+    const t = d.totales || {};
+    const mapa: Record<string, any> = {
+      nombre: `${d.renglones.length} renglón(es)`,
+      total_percepciones: t.percepciones, total_gravado: t.gravado, total_exento: t.exento,
+      imss: t.imss, isr: t.isr, total_deducciones: t.deducciones, neto: t.neto,
+      gravado: t.gravado, exento: t.exento, subsidio: t.subsidio,
+      dias: t.dias, patronal: t.patronal,
+    };
+    const rojo = ['imss', 'isr', 'total_deducciones'].includes(c.k);
+    return {
+      valor: mapa[c.k] ?? '',
+      fondo: c.k === 'neto' ? C.totalVerde : rojo ? C.totalRojo : C.totalAzul,
+      tinta: (c.k === 'neto' ? 'verde' : rojo ? 'rojo' : 'base') as any,
+    };
+  }));
+  fila += 2;
 
-  /* El corte por periodo, cuando el reporte lo trae. */
+  /* ── El desglose de la cuota patronal, por rama ──
+   *
+   * Va aparte y desglosado porque así se captura la provisión en contabilidad:
+   * una cuenta por rama y no un solo importe. */
+  if (que === 'imss' && d.patronal) {
+    dato(ws, fila, 1, 'CUOTA PATRONAL — PARA PROVISIONAR', true);
+    fila++;
+    const RAMAS: Array<[string, string]> = [
+      ['emCuotaFija',    'Enfermedad y maternidad · cuota fija (Art. 106-I)'],
+      ['emExcedente',    'Enfermedad · excedente de 3 UMA (Art. 106-II)'],
+      ['emDinero',       'Prestaciones en dinero (Art. 107)'],
+      ['emPensionados',  'Gastos médicos de pensionados (Art. 25)'],
+      ['invalidezVida',  'Invalidez y vida (Art. 147)'],
+      ['riesgosTrabajo', 'Riesgos de trabajo (Art. 71-73)'],
+      ['guarderias',     'Guarderías (Art. 211)'],
+      ['retiro',         'Retiro (Art. 168-I)'],
+      ['cesantiaVejez',  'Cesantía y vejez (Art. 168-II)'],
+      ['totalImss',      'TOTAL IMSS'],
+      ['infonavit',      'INFONAVIT 5% (Art. 29-II Ley INFONAVIT)'],
+      ['total',          'TOTAL A PROVISIONAR'],
+    ];
+    for (const [k, etiqueta] of RAMAS) {
+      const fuerte = k === 'total' || k === 'totalImss';
+      celda(ws, fila, 1, etiqueta, { negrita: fuerte });
+      celda(ws, fila, 2, Number(d.patronal[k] || 0), {
+        negrita: fuerte, tinta: 'rojo',
+        fondo: fuerte ? C.totalRojo : undefined,
+      });
+      fila++;
+    }
+    fila++;
+    dato(ws, fila, 1,
+      'Es una ESTIMACIÓN para provisionar: el IMSS liquida con SUS registros de ' +
+      'días cotizados y su prima autorizada. Lo que se paga es lo que emita el SUA.');
+    fila += 2;
+  }
+
+  if (d.avisos?.length) {
+    for (const a of d.avisos) { dato(ws, fila, 1, a); fila++; }
+    fila++;
+  }
+
   if (d.porPeriodo?.length) {
-    aoa.push([]);
-    aoa.push(['POR PERIODO']);
+    dato(ws, fila, 1, 'POR PERIODO', true);
+    fila++;
     const claves = Object.keys(d.porPeriodo[0]);
-    aoa.push(claves);
-    for (const r of d.porPeriodo) aoa.push(claves.map((k) => r[k]));
+    encabezado(ws, fila, claves.map((k) => ({
+      texto: k.toUpperCase().replace(/_/g, ' '), color: C.identidad,
+    })));
+    fila++;
+    for (const r of d.porPeriodo) {
+      claves.forEach((k, i) => {
+        const esConteo = ['periodo', 'trabajadores', 'dias'].includes(k);
+        celda(ws, fila, i + 1, r[k], { pesos: !esConteo, centrado: esConteo });
+      });
+      fila++;
+    }
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = cols.map(([k]) =>
-    ({ wch: k === 'nombre' ? 30 : k === 'uuid' ? 38 : 14 }));
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, TITULOS[que].slice(0, 28));
+  anchos(ws, cols.map((c) => c.ancho || 14));
 
   return {
-    buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+    buffer: await aBuffer(wb),
     nombre: `${que}-${f.tipo.toLowerCase()}-${f.desde}a${f.hasta}-${f.anio}.xlsx`,
   };
 }

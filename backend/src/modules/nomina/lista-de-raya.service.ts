@@ -22,8 +22,10 @@
  * las movería de lugar cada semana.
  */
 
-import * as XLSX from 'xlsx';
 import { query } from '../../config/database';
+import {
+  ExcelJS, C, FUENTE, titulo, dato, banda, encabezado, celda, totales, anchos, aBuffer,
+} from './estilo-excel';
 import { calcular, CapturaPorTrabajador } from './prenomina.service';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -89,111 +91,120 @@ export async function generarListaDeRaya(
   const iTotalDesc = iImss + 3 + deduc.length;
   const iNeto      = iTotalDesc + 1;
 
-  const aoa: any[][] = [];
+  /* ── La hoja, con los colores del formato de la casa ──
+   *
+   * Se arma con ExcelJS y no con SheetJS porque la versión libre de SheetJS
+   * IGNORA los estilos al guardar: la hoja salía correcta en datos y en blanco
+   * y negro. Los colores no son adorno aquí — separan de un vistazo ingresos,
+   * descuentos y neto en una tabla de veinte columnas. */
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'GDM NEXO';
+  const ws = wb.addWorksheet('Lista de Raya', {
+    views: [{ state: 'frozen', ySplit: 9, xSplit: 2 }],
+  });
 
-  /* ── Encabezado, igual que el formato de la casa ── */
-  aoa.push(['GDM NEXO · Lista de Raya (Forma Tabular)']);
-  aoa.push([]);
-  aoa.push(['', '', empresa.business_name || '', '', '', '',
-            `Fecha:   ${new Date().toLocaleDateString('es-MX')}`]);
-  aoa.push(['', '', `Período:   ${etiquetaDelPeriodo(p)}`, '', '', '',
-            `Hora:   ${new Date().toLocaleTimeString('es-MX')}`]);
-  aoa.push(['', '', `RFC:   ${empresa.rfc || ''}`]);
-  aoa.push(['', '', `Reg. Patronal:   ${empresa.registro_patronal || '(sin capturar)'}`]);
-  aoa.push([]);
+  titulo(ws, 'GDM NEXO · Lista de Raya (Forma Tabular)', cols.length);
 
-  /* Banda de grupos. Las flechas son del formato original: marcan de un
-   * vistazo dónde termina un bloque y empieza el otro. */
-  const banda: any[] = new Array(cols.length).fill('');
-  banda[0] = '◀  INGRESOS  ▶';
-  banda[iImss] = '◀  DESCUENTOS  ▶';
-  banda[iNeto] = '◀  NETO  ▶';
-  aoa.push(banda);
+  dato(ws, 3, 3, empresa.business_name || '', true);
+  dato(ws, 3, 7, `Fecha:   ${new Date().toLocaleDateString('es-MX')}`);
+  dato(ws, 4, 3, `Período:   ${etiquetaDelPeriodo(p)}`);
+  dato(ws, 4, 7, `Hora:   ${new Date().toLocaleTimeString('es-MX')}`);
+  dato(ws, 5, 3, `RFC:   ${empresa.rfc || ''}`);
+  dato(ws, 6, 3, `Reg. Patronal:   ${empresa.registro_patronal || '(sin capturar)'}`);
 
-  aoa.push(cols);
+  /* Las tres bandas, en la fila 8. */
+  banda(ws, 8, 1, iTotalPerc + 1, '◀  INGRESOS  ▶', C.ingresos);
+  banda(ws, 8, iImss + 1, iTotalDesc + 1, '◀  DESCUENTOS  ▶', C.descuentos);
+  banda(ws, 8, iNeto + 1, iNeto + 1, '◀  NETO  ▶', C.neto);
+
+  /* Cada encabezado con el color de su bloque. */
+  encabezado(ws, 9, cols.map((texto, i) => {
+    if (i <= 1) return { texto, color: C.identidad };
+    if (i === iTotalPerc) return { texto, color: C.totalIngresos };
+    if (i < iTotalPerc) return { texto, color: C.ingresos };
+    if (i === iTotalDesc) return { texto, color: C.totalDescuentos };
+    if (i === iNeto) return { texto, color: C.neto };
+    return { texto, color: C.descuentos };
+  }));
 
   /* ── Un renglón por trabajador ── */
   const suma: Record<string, number> = {};
   const acumula = (k: string, v: number) => { suma[k] = (suma[k] || 0) + (Number(v) || 0); };
 
+  let fila = 10;
   pre.renglones.forEach((r, i) => {
-    const fila: any[] = [i + 1, r.nombre, n2(r.sueldo)];
+    let col = 1;
+    celda(ws, fila, col++, i + 1, { tinta: 'gris', centrado: true, pesos: false });
+    celda(ws, fila, col++, r.nombre);
+    celda(ws, fila, col++, n2(r.sueldo));
     acumula('sueldo', r.sueldo);
 
     for (const c of percep) {
       const v = r.percepciones
         .filter((x: any) => x.clave === c && !x.esSueldoDelPeriodo)
         .reduce((a: number, x: any) => a + x.importe, 0);
-      fila.push(v ? n2(v) : '');
+      celda(ws, fila, col++, v ? n2(v) : '');
       acumula(`P${c}`, v);
     }
 
-    fila.push(n2(r.totalPercepciones)); acumula('totalPerc', r.totalPercepciones);
-    fila.push(n2(r.imss));              acumula('imss', r.imss);
-    fila.push(n2(r.isr));               acumula('isr', r.isr);
+    celda(ws, fila, col++, n2(r.totalPercepciones), { negrita: true });
+    acumula('totalPerc', r.totalPercepciones);
+
+    celda(ws, fila, col++, n2(r.imss), { tinta: 'rojo' }); acumula('imss', r.imss);
+    celda(ws, fila, col++, n2(r.isr),  { tinta: 'rojo' }); acumula('isr', r.isr);
 
     const infonavit = r.deducciones
       .filter((x: any) => x.clave === '012')
       .reduce((a: number, x: any) => a + x.importe, 0);
-    fila.push(infonavit ? n2(infonavit) : ''); acumula('infonavit', infonavit);
+    celda(ws, fila, col++, infonavit ? n2(infonavit) : '', { tinta: 'rojo' });
+    acumula('infonavit', infonavit);
 
     for (const c of deduc) {
       const v = r.deducciones
         .filter((x: any) => x.clave === c)
         .reduce((a: number, x: any) => a + x.importe, 0);
-      fila.push(v ? n2(v) : '');
+      celda(ws, fila, col++, v ? n2(v) : '', { tinta: 'rojo' });
       acumula(`D${c}`, v);
     }
 
-    fila.push(n2(r.totalDeducciones)); acumula('totalDed', r.totalDeducciones);
-    fila.push(n2(r.neto));             acumula('neto', r.neto);
-    aoa.push(fila);
+    celda(ws, fila, col++, n2(r.totalDeducciones), { tinta: 'rojo', negrita: true });
+    acumula('totalDed', r.totalDeducciones);
+    celda(ws, fila, col++, n2(r.neto), { tinta: 'verde', negrita: true });
+    acumula('neto', r.neto);
+    fila++;
   });
 
   /* ── Totales del período ── */
-  const tot: any[] = ['', 'TOTALES DEL PERÍODO', n2(suma.sueldo || 0)];
-  for (const c of percep) tot.push(n2(suma[`P${c}`] || 0));
-  tot.push(n2(suma.totalPerc || 0), n2(suma.imss || 0), n2(suma.isr || 0), n2(suma.infonavit || 0));
-  for (const c of deduc) tot.push(n2(suma[`D${c}`] || 0));
-  tot.push(n2(suma.totalDed || 0), n2(suma.neto || 0));
-  aoa.push(tot);
+  const pie: Array<{ valor: any; fondo?: string; tinta?: any; centrado?: boolean }> = [
+    { valor: '' },
+    { valor: 'TOTALES DEL PERÍODO', centrado: true },
+    { valor: n2(suma.sueldo || 0), fondo: C.totalAzul },
+  ];
+  for (const c of percep) pie.push({ valor: n2(suma[`P${c}`] || 0), fondo: C.totalAzul });
+  pie.push({ valor: n2(suma.totalPerc || 0), fondo: C.totalAzul });
+  pie.push({ valor: n2(suma.imss || 0),      fondo: C.totalRojo, tinta: 'rojo' });
+  pie.push({ valor: n2(suma.isr || 0),       fondo: C.totalRojo, tinta: 'rojo' });
+  pie.push({ valor: n2(suma.infonavit || 0), fondo: C.totalRojo, tinta: 'rojo' });
+  for (const c of deduc) pie.push({ valor: n2(suma[`D${c}`] || 0), fondo: C.totalRojo, tinta: 'rojo' });
+  pie.push({ valor: n2(suma.totalDed || 0),  fondo: C.totalRojo, tinta: 'rojo' });
+  pie.push({ valor: n2(suma.neto || 0),      fondo: C.totalVerde, tinta: 'verde' });
+  totales(ws, fila, pie);
+  fila += 2;
 
-  /* El gravado y el exento del periodo, debajo: es lo que el CFDI reporta por
-   * separado y contra lo que se cuadra la declaración. */
-  aoa.push([]);
-  aoa.push(['', `Gravado del período: ${n2(pre.totales.gravado)}`, '',
-            `Exento: ${n2(pre.totales.exento)}`, '',
-            `Subsidio al empleo: ${n2(pre.totales.subsidio || 0)}`]);
+  /* El gravado y el exento del periodo: lo que el CFDI reporta por separado. */
+  dato(ws, fila, 2,
+    `Gravado del período: ${n2(pre.totales.gravado).toLocaleString('es-MX')}   ·   ` +
+    `Exento: ${n2(pre.totales.exento).toLocaleString('es-MX')}   ·   ` +
+    `Subsidio al empleo: ${n2(pre.totales.subsidio || 0).toLocaleString('es-MX')}`);
+  fila += 2;
 
   if (pre.avisos?.length) {
-    aoa.push([]);
-    for (const a of pre.avisos) aoa.push(['', a]);
+    for (const a of pre.avisos) { dato(ws, fila, 2, a); fila++; }
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  anchos(ws, cols.map((c, i) => (i === 0 ? 6 : i === 1 ? 32 : Math.max(13, Math.min(22, c.length + 2)))));
 
-  /* Las combinaciones del formato original. */
-  ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: Math.max(cols.length - 1, 5) } },  // título
-    { s: { r: 2, c: 2 }, e: { r: 2, c: 5 } },                             // razón social
-    { s: { r: 3, c: 2 }, e: { r: 3, c: 5 } },                             // periodo
-    { s: { r: 4, c: 2 }, e: { r: 4, c: 5 } },                             // RFC
-    { s: { r: 5, c: 2 }, e: { r: 5, c: 5 } },                             // registro patronal
-    { s: { r: 7, c: 0 }, e: { r: 7, c: iTotalPerc } },                    // INGRESOS
-    { s: { r: 7, c: iImss }, e: { r: 7, c: iTotalDesc } },                // DESCUENTOS
-  ];
-
-  /* Anchos: el nombre necesita espacio y los importes no. */
-  ws['!cols'] = cols.map((c, i) => {
-    if (i === 0) return { wch: 6 };
-    if (i === 1) return { wch: 32 };
-    return { wch: Math.max(13, Math.min(22, c.length + 2)) };
-  });
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Lista de Raya');
-
-  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  const buffer = await aBuffer(wb);
   const nombre =
     `lista-de-raya-${p.tipo.toLowerCase()}-${String(p.numero).padStart(2, '0')}-${p.anio}.xlsx`;
   return { buffer, nombre };

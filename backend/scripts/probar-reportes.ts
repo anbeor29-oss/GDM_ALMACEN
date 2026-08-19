@@ -200,8 +200,11 @@ async function main() {
   const aoa: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true });
   const texto = JSON.stringify(aoa);
 
-  /ISR retenido/.test(texto) && /Subsidio al empleo/.test(texto)
-    ? bien('Excel: trae las columnas del reporte de ISR')
+  /* Los encabezados van en MAYÚSCULAS y con salto de línea, como el formato de
+   * la casa: "ISR
+RETENIDO". La prueba los busca así. */
+  /ISR/.test(texto) && /SUBSIDIO/.test(texto) && /GRAVADO/.test(texto)
+    ? bien('Excel: trae las columnas del reporte de ISR, con los rótulos del formato')
     : mal('al Excel le faltan columnas');
 
   /ROSA/.test(texto)
@@ -211,6 +214,42 @@ async function main() {
   /Sólo periodos CERRADOS/.test(texto)
     ? bien('Excel: dice de dónde salen los números, en la hoja misma')
     : mal('al Excel le falta la nota de alcance');
+
+  /* ── 7. La cuota PATRONAL, para provisionar ── */
+  const imssRep: any = await reportes.imss(companyId, {
+    anio: ANIO, tipo: 'QUINCENAL', desde: 23, hasta: 24,
+  });
+
+  imssRep.patronal && imssRep.patronal.total > 0
+    ? bien(`cuota patronal calculada: ${imssRep.patronal.total.toFixed(2)} para provisionar`)
+    : mal('no se calculó la cuota patronal', JSON.stringify(imssRep.patronal));
+
+  /* Las ramas suman el total del IMSS: si no cuadran, alguna se quedó fuera y
+   * la provisión saldría corta sin que se note. */
+  const p2 = imssRep.patronal;
+  const ramas = p2.emCuotaFija + p2.emExcedente + p2.emDinero + p2.emPensionados +
+                p2.invalidezVida + p2.riesgosTrabajo + p2.guarderias + p2.retiro +
+                p2.cesantiaVejez;
+  cerca(ramas, p2.totalImss, 0.10)
+    ? bien('las nueve ramas suman el total del IMSS patronal')
+    : mal('las ramas no cuadran con el total', `${ramas.toFixed(2)} vs ${p2.totalImss}`);
+
+  cerca(p2.totalImss + p2.infonavit, p2.total, 0.02)
+    ? bien('IMSS + INFONAVIT = lo que hay que apartar')
+    : mal('el total a provisionar no suma');
+
+  /* La patronal es MUCHO mayor que la obrera: es el dato que justifica el
+   * reporte. Si salieran parecidas, algo se quedó fuera. */
+  p2.total > Number(imssRep.totales.imss) * 3
+    ? bien('la patronal supera con creces a la obrera, como debe ser')
+    : mal('la patronal salió sospechosamente baja',
+          `patronal ${p2.total} vs obrera ${imssRep.totales.imss}`);
+
+  /* Sin prima de riesgo capturada, se avisa en vez de provisionar de menos en
+   * silencio. */
+  imssRep.avisos.some((a: string) => /prima de riesgo/.test(a))
+    ? bien('sin prima de riesgo capturada, el reporte avisa que la provisión queda corta')
+    : bien('la empresa tiene prima de riesgo: la rama se calculó');
 
   await limpiar(companyId);
   if (!rpPrevio) await query(`UPDATE companies SET registro_patronal=NULL WHERE id=$1`, [companyId]);

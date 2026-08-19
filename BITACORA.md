@@ -5,6 +5,58 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-18 — El formato de la casa en todos los reportes, y la cuota patronal
+
+### 1 · Los reportes salían en blanco y negro
+La prenómina ya usaba el formato "Lista de Raya" —el que la gente sabe leer— y
+los cuatro reportes salían con la hoja pelona de SheetJS. Se leyeron las celdas
+del archivo que entregó Antonio (`FORMATO A USAR PARA PRENOMINA.xlsx`) una por
+una —fondos, tipografía, tamaños y formato de número— y se pusieron en un solo
+lugar: `estilo-excel.ts`. Los colores no son adorno: en una tabla de veinte
+columnas separan de un vistazo lo que entra, lo que se descuenta y el neto.
+
+**Y el detalle que casi cuesta el trabajo dos veces:** SheetJS en su versión
+libre *acepta* los estilos, no marca error y los **tira al guardar**. La hoja
+salía perfecta en datos y en blanco y negro. Por eso se cambió a **ExcelJS** y
+por eso `probar-estilo-reportes.ts` vuelve a **abrir** el archivo generado y
+comprueba el color celda por celda: un estilo que se ignora en silencio no lo
+detecta ningún `tsc`.
+
+### 2 · La cuota patronal, para provisionar
+El reporte del IMSS traía sólo la cuota **obrera** —la que se le retiene al
+trabajador— y decía que la patronal "no la calcula este sistema". Contabilidad
+provisionaba a ojo. Ahora se calcula rama por rama, que es como se captura la
+provisión: una cuenta por rama y no un solo importe.
+
+  Cuota fija (106-I) · Excedente de 3 UMA (106-II) · Prestaciones en dinero
+  (107) · Pensionados (25) · Invalidez y vida (147) · Riesgos de trabajo
+  (71-73) · Guarderías (211) · Retiro (168-I) · Cesantía y vejez (168-II)
+  · INFONAVIT 5%
+
+Tres decisiones que valen más que el código:
+
+- **Cesantía y vejez no es una tasa: es una escala.** Depende de cuántas UMA
+  gana cada quien y **sube cada año hasta 2030** por la reforma de pensiones
+  (Art. Décimo Noveno Transitorio, DOF 16/12/2020). 2026 es el cuarto escalón:
+  3.150% al mínimo, 7.513% arriba de 4 UMA. Está en tabla, con su fuente.
+- **Sin prima de riesgo capturada, esa rama va en CERO y se avisa.** No se
+  inventa una prima "típica": la autoriza el IMSS con la siniestralidad de
+  *esta* empresa. Una provisión corta a sabiendas es mejor que una corta sin
+  saberlo.
+- **Quien está exento de cuota obrera SÍ genera patronal.** El Art. 36 LSS no
+  perdona la cuota: se la **traslada al patrón**. Por eso esa columna nunca
+  dice "exento".
+
+Y va dicho en la pantalla y en el Excel: **es una estimación**. El IMSS liquida
+con SUS registros y SU prima autorizada. Lo que se paga es lo que emita el SUA.
+
+*Verificado:* 23 comprobaciones de estilo leyendo los archivos de vuelta, 22 de
+reportes —incluidas las que checan que las nueve ramas sumen el total y que
+IMSS + INFONAVIT sea el total a provisionar—, 127 de nómina en total y las 115
+unitarias.
+
+---
+
 ## 2026-08-13 — Seis correcciones: moneda, saldo, complemento, 69-B, filas y contrato
 
 ### 1 · El importe con letra decía "M.N." en euros
