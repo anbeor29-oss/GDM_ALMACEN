@@ -83,11 +83,19 @@ sidebar.includes("label: 'XML recibidos'") && sidebar.includes("label: 'XML emit
   ? bien('con sus dos submenús: recibidos y emitidos')
   : mal('faltan los submenús de recibidos/emitidos');
 
-/* El de Tesorería sigue siendo un ATAJO: si tomara el resaltado de activo, se
- * marcarían dos renglones del menú a la vez y ninguno diría dónde está uno. */
-/atajo:\s*true/.test(sidebar)
-  ? bien('el acceso desde Tesorería sigue marcado como atajo')
-  : mal('el atajo de Tesorería perdió su marca');
+/* Una sola puerta.
+ *
+ * El acceso duplicado desde Tesorería se quitó al darle menú propio a los XML
+ * del SAT: con la entrada de primer nivel ya no aportaba, y dos renglones que
+ * llevan al mismo lado obligan a preguntarse si son lo mismo. */
+const puertas = (sidebar.match(/to: '\/xml-sat\/recibidos'/g) || []).length;
+puertas === 1
+  ? bien('hay UNA sola entrada a los XML recibidos, sin caminos duplicados')
+  : mal('el enlace está repetido en el menú', `${puertas} veces`);
+
+!/atajo/.test(sidebar)
+  ? bien('y no quedó maquinaria de atajos sin usar')
+  : mal('el soporte de atajos sigue ahí sin nadie que lo use');
 
 console.log(`\n${ok} bien, ${fallos} mal`);
 process.exit(fallos ? 1 : 0);

@@ -249,27 +249,7 @@ export function Layout() {
                     ]}
                   />
                 )}
-                {show('treasury') && (
-                  <NavGroup
-                    to="/treasury"
-                    icon={emoji3D('🏦')}
-                    label="Tesorería"
-                    accent="sky"
-                    open={sidebarOpen}
-                    pathPrefix="/treasury"
-                    children={[
-                      { to: '/treasury', icon: emoji3D('🏦'), label: 'Cuentas y remesas' },
-                      /* Los XML del SAT, desde aquí también. Cuadrar lo que se
-                         pagó contra lo que el proveedor declaró es trabajo de
-                         tesorería, y hacerlo obligaba a salirse del módulo. Es
-                         un atajo: su casa es el menú de XML del SAT. */
-                      ...(show('auditoria')
-                        ? [{ to: '/xml-sat/recibidos', icon: emoji3D('📥'),
-                             label: 'XML del SAT', atajo: true }]
-                        : []),
-                    ]}
-                  />
-                )}
+                {show('treasury')     && <NavItem to="/treasury"     icon={emoji3D('🏦')} accent="sky"     label="Tesorería"        open={sidebarOpen} />}
                 {/* Auditoría vive junto a Tesorería: las dos miran hacia afuera
                     —una al banco, la otra al SAT— y las dos las revisa la misma
                     persona antes del cierre del mes. */}
@@ -437,24 +417,7 @@ const ACCENT_MAP: Record<AccentColor, { activeBg: string; activeText: string; ic
   violet:  { activeBg: 'bg-violet-50',  activeText: 'text-violet-700',  iconActive: 'text-violet-600',  iconIdle: 'text-slate-400 group-hover:text-violet-600',  bar: 'bg-violet-500' },
 };
 
-interface NavChild {
-  to: string;
-  icon: React.ReactNode;
-  label: string;
-  /**
-   * Un ATAJO: lleva a una pantalla que vive en OTRO módulo.
-   *
-   * Existe porque la misma pantalla se necesita desde dos lados —los XML del
-   * SAT se consultan desde Auditoría, que es su casa, y desde Tesorería, que
-   * es donde se cuadran los pagos contra lo que el SAT dice—.
-   *
-   * No toma el resaltado de activo aunque la ruta coincida. Si lo tomara,
-   * estando en esa pantalla se marcarían DOS renglones del menú a la vez y
-   * ninguno de los dos diría dónde está uno realmente. Va con una flecha para
-   * que se lea como lo que es: una puerta a otro cuarto, no un cuarto.
-   */
-  atajo?: boolean;
-}
+interface NavChild { to: string; icon: React.ReactNode; label: string; }
 
 /** NavGroup — item con submenú expandible; el header linkea al padre y a la vez
  *  hace toggle. Se autoexpande si la ruta activa cae bajo pathPrefix. */
@@ -498,18 +461,16 @@ function NavGroup({
             <NavLink
               key={ch.to}
               to={ch.to}
-              title={ch.atajo ? `${ch.label} — vive en otro módulo` : undefined}
               className={({ isActive }) =>
                 `flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors ${
-                  isActive && !ch.atajo
+                  isActive
                     ? `${c.activeBg} ${c.activeText} font-medium`
                     : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
                 }`
               }
             >
               <span className="text-slate-400">{ch.icon}</span>
-              <span className={ch.atajo ? 'italic' : ''}>{ch.label}</span>
-              {ch.atajo && <span className="ml-auto text-slate-300 text-[10px]">↗</span>}
+              <span>{ch.label}</span>
             </NavLink>
           ))}
         </div>

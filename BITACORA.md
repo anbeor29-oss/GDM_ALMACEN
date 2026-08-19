@@ -23,9 +23,10 @@ adentro para quien llegue por ese camino — y es el **mismo componente**, no un
 copia. Dos copias de una pantalla que habla con el SAT terminan divergiendo
 justo en el manejo de errores, que es lo último que alguien revisa.
 
-El acceso desde **Tesorería** se conserva como **atajo**, con su flecha y en
-cursiva, sin tomar el resaltado de activo: si lo tomara, estando en esa pantalla
-se marcarían dos renglones del menú a la vez y ninguno diría dónde está uno.
+El acceso duplicado desde **Tesorería** se quitó: con la entrada de primer nivel
+ya no aportaba nada, y dos renglones del menú que llevan al mismo lado obligan a
+preguntarse si son lo mismo. Con él se fue la maquinaria de "atajos" del
+`NavGroup` —quince líneas para un caso que dejó de existir—.
 
 **Y el guardián.** Son cuatro piezas en cuatro archivos —la ruta, la lectura de
 la dirección en la página, el prop que la recibe en el componente, y el destino
