@@ -24,6 +24,7 @@ import { EmpleadoModal } from './EmpleadoModal';
 import { ImportarNominaEnBloque } from './ImportarNominaEnBloque';
 import { CampoFecha } from '@/components/CampoFecha';
 import { aTextoMx } from '@/components/CampoFecha';
+import { puedeMoverNomina } from '@/utils/permissions';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -31,7 +32,10 @@ const money = (n: any) =>
 export function EmpleadosPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
-  const esAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(user?.role || '');
+  /* No es el rol lo que decide, es la capacidad de mover nómina: Recursos
+   * Humanos la tiene sin ser administrador de la empresa. Ver
+   * puedeMoverNomina en utils/permissions. */
+  const esAdmin = puedeMoverNomina(user);
 
   const [buscar, setBuscar] = useState('');
   const [incluirBajas, setIncluirBajas] = useState(false);

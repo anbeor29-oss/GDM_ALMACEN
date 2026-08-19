@@ -24,12 +24,30 @@ export const CAPABILITIES: Record<string, string> = {
   'physical:authorize':  'Autorizar y cerrar conteos',
   'pos:sell':            'Vender en punto de venta',
   'treasury:pay':        'Autorizar pagos a proveedores',
+  'nomina:manage':       'Capturar, calcular y cerrar la nómina',
   'reports:view':        'Consultar y exportar reportes',
 };
 
 export type Capability = keyof typeof CAPABILITIES;
 
 const ALL_CAPS = Object.keys(CAPABILITIES);
+
+/**
+ * Capacidades que NO se heredan por ser MANAGER.
+ *
+ * ── POR QUÉ EXISTE ESTA EXCEPCIÓN ──
+ * Antes, la nómina estaba cerrada con `authorize('ADMIN','SUPER_ADMIN')`, que
+ * deja fuera a los MANAGER. Al pasarla a capacidades habría quedado abierta a
+ * todos ellos sin que nadie lo pidiera —MANAGER recibe el juego completo—, y
+ * eso es exactamente lo que no puede pasar: sueldos, CURP, cuentas bancarias y
+ * órdenes de pensión alimenticia son el dato más sensible del sistema, y el
+ * gerente del almacén no tiene por qué verlos por el hecho de ser gerente.
+ *
+ * Un MANAGER que sí deba manejar nómina la recibe: por su grupo de trabajo
+ * (RECURSOS_HUMANOS) o por otorgamiento individual. Lo que no hay es herencia
+ * automática.
+ */
+const NO_HEREDA_MANAGER = ['nomina:manage'];
 
 /** Capacidades base que un USER tiene sin necesidad de otorgamiento. */
 const USER_BASELINE = ['inventory:view', 'reports:view', 'pos:sell'];
@@ -72,10 +90,16 @@ export const GROUP_CAPABILITIES: Record<string, string[]> = {
    * pasos del trabajo, y los tres piden esta capacidad. */
   TESORERIA:   ['treasury:pay', 'reports:view'],
   PUNTO_VENTA: ['pos:sell'],
-  /* Nómina no se protege con capacidades sino con el rol (authorize ADMIN),
-   * así que aquí sólo van los reportes. Un usuario de RH que deba capturar
-   * nómina necesita rol ADMIN —su grupo ya le limita las pantallas a nómina—. */
-  RECURSOS_HUMANOS: ['reports:view'],
+  /* Recursos Humanos maneja la nómina completa: capturar, calcular y cerrar.
+   *
+   * No se partió en "captura" y "cierre" como en compras porque aquí no habría
+   * a quién darle una sin la otra: el grupo entero es el departamento de
+   * nómina, y una nómina capturada y sin cerrar no le paga a nadie. Quien deba
+   * revisar antes de cerrar lo hace mirando la prenómina, que para eso existe.
+   *
+   * Si algún día hace falta un auxiliar que capture sin cerrar, será una
+   * capacidad nueva y un grupo nuevo — no una que se pueda restar de éste. */
+  RECURSOS_HUMANOS: ['nomina:manage', 'reports:view'],
 };
 
 /**
@@ -120,9 +144,13 @@ export async function getEffectiveCapabilities(
   userId: string,
   role: string
 ): Promise<string[]> {
-  if (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER') {
-    // ADMIN/SUPER: todo. MANAGER: todo lo operativo (= todo en este set).
-    return [...ALL_CAPS];
+  if (role === 'SUPER_ADMIN' || role === 'ADMIN') return [...ALL_CAPS];
+  if (role === 'MANAGER') {
+    /* Todo lo operativo, menos lo que no se hereda por rango. Ver
+     * NO_HEREDA_MANAGER: la nómina no se abre por ser gerente. */
+    const base = ALL_CAPS.filter((c) => !NO_HEREDA_MANAGER.includes(c));
+    const extra = await capacidadesDeGrupoYOtorgadas(userId);
+    return Array.from(new Set([...base, ...extra]));
   }
   const r = await query<{ capability: string | null; work_group: string | null }>(
     `SELECT uc.capability, u.work_group
@@ -143,7 +171,10 @@ export async function userHasCapability(
   role: string,
   cap: string
 ): Promise<boolean> {
-  if (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER') return true;
+  if (role === 'SUPER_ADMIN' || role === 'ADMIN') return true;
+  /* El MANAGER hereda todo MENOS lo sensible; para eso cae al camino normal y
+   * se resuelve por su grupo o por otorgamiento. */
+  if (role === 'MANAGER' && !NO_HEREDA_MANAGER.includes(cap)) return true;
   if (USER_BASELINE.includes(cap)) return true;
 
   /* Una sola consulta para las dos fuentes que faltan: el grupo del usuario y
@@ -165,4 +196,25 @@ export async function userHasCapability(
 /** Valida que una capacidad exista en el catálogo. */
 export function isValidCapability(cap: string): boolean {
   return ALL_CAPS.includes(cap);
+}
+
+
+/**
+ * Lo que le dan a un usuario su grupo de trabajo y sus otorgamientos.
+ *
+ * Vive aparte porque lo usan los dos caminos —el conjunto efectivo y la
+ * pregunta puntual— y tenerlo duplicado garantizaba que un día uno de los dos
+ * dejara de mirar el grupo.
+ */
+async function capacidadesDeGrupoYOtorgadas(userId: string): Promise<string[]> {
+  const r = await query<{ capability: string | null; work_group: string | null }>(
+    `SELECT uc.capability, u.work_group
+       FROM users u
+       LEFT JOIN user_capabilities uc ON uc.user_id = u.id
+      WHERE u.id = $1`,
+    [userId]
+  );
+  const otorgadas = r.rows.map((x) => x.capability).filter(Boolean) as string[];
+  const delGrupo = GROUP_CAPABILITIES[r.rows[0]?.work_group || ''] || [];
+  return [...delGrupo, ...otorgadas];
 }

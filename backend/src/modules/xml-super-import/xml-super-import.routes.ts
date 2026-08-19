@@ -7,7 +7,7 @@
  * Body: { xml: "…" }  — el XML como string.
  */
 import { Router, Request, Response } from 'express';
-import { authenticateToken } from '../../middleware/authentication';
+import { authenticateToken, requireCapability } from '../../middleware/authentication';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as svc from './xml-super-import.service';
 import * as customersService from '../customers/customers.service';
@@ -88,7 +88,10 @@ router.post(
 router.post(
   '/nomina/alta-en-bloque',
   requireModule('nomina'),
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  /* La misma capacidad que el resto de la nómina: dar de alta trabajadores en
+   * bloque desde los XML es trabajo de Recursos Humanos, y antes exigía ser
+   * administrador de toda la empresa. */
+  requireCapability('nomina:manage'),
   asyncHandler(async (req: Request, res: Response) => {
     const expedientes = req.body?.expedientes;
     if (!Array.isArray(expedientes)) {

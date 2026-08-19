@@ -5,6 +5,50 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-19 (nómina) — De rol a capacidad, sin abrirle la puerta a nadie
+
+La nómina estaba cerrada con `authorize('ADMIN','SUPER_ADMIN')`. Consecuencia:
+**Recursos Humanos —el departamento cuyo trabajo ES la nómina— veía las
+pantallas en sólo lectura**, y para que capturaran una quincena había que
+hacerlos administradores de la empresa entera. Es decir: para darles nómina
+había que darles todo.
+
+Ahora es la capacidad **`nomina:manage`**, que trae el grupo RECURSOS_HUMANOS y
+que cualquier administrador puede otorgar sin cambiar a nadie de grupo. 25 rutas
+de nómina más el alta en bloque desde XML.
+
+### Lo que el cambio pudo abrir sin querer, y no abrió
+Un MANAGER hereda **todas** las capacidades operativas. Pasar la nómina de rol a
+capacidad la habría abierto de golpe a **todos los gerentes** sin que nadie lo
+pidiera: el gerente del almacén viendo sueldos, CURP, cuentas bancarias y
+órdenes de pensión alimenticia. Antes no podía —`authorize` lo dejaba fuera—, y
+ese candado no se podía perder al mover la cerradura.
+
+Por eso existe `NO_HEREDA_MANAGER`: una lista corta de capacidades que **no se
+heredan por rango**. Un MANAGER que sí deba manejar nómina la recibe por su
+grupo o por otorgamiento — por decisión, no por jerarquía. Hay una prueba
+dedicada a esto, y es la que más vale del lote.
+
+### El candado que se había movido, no quitado
+Las cuatro pantallas de nómina escondían sus botones con `role === 'ADMIN'`. Con
+el servidor ya dejando pasar a RH, la pantalla les habría seguido sin mostrar un
+solo botón: el problema cambiaba de lugar en vez de resolverse.
+
+Ahora preguntan por `puedeMoverNomina`, que aplica la misma regla. **No es el
+candado** —quien manda es el servidor, y quien llegue por URL igual recibe un
+rechazo—: es la cortesía de no ofrecer lo que va a ser negado.
+
+No se partió en "capturar" y "cerrar" como en compras: aquí no habría a quién
+darle una sin la otra —el grupo entero es el departamento de nómina, y una
+nómina capturada y sin cerrar no le paga a nadie—. Quien deba revisar antes de
+cerrar lo hace mirando la prenómina, que para eso existe.
+
+*Verificado:* 29 comprobaciones de grupos —siete nuevas de nómina, incluidas que
+el gerente de almacén NO entre y que el de RH sí— más 17 de rutas y pantallas, y
+la suite completa.
+
+---
+
 ## 2026-08-19 (super admin) — Grupos que ven sin poder, y uno que ni existía
 
 ### 1 · "workGroup inválido" — el grupo existía; la lista no se enteró

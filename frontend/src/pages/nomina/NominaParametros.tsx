@@ -21,11 +21,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Building2, ShieldCheck, AlertTriangle, Save, Info, ExternalLink } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { puedeMoverNomina } from '@/utils/permissions';
 
 export function NominaParametrosPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
-  const esAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(user?.role || '');
+  /* No es el rol lo que decide, es la capacidad de mover nómina: Recursos
+   * Humanos la tiene sin ser administrador de la empresa. Ver
+   * puedeMoverNomina en utils/permissions. */
+  const esAdmin = puedeMoverNomina(user);
 
   const q = useQuery({ queryKey: ['nomina-parametros'], queryFn: () => api.getNominaParametros() });
   const d: any = q.data?.data;

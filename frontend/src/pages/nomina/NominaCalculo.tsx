@@ -29,6 +29,7 @@ import { CapturaDeConceptos, type Linea } from './CapturaDeConceptos';
 import { AplicarAVarios } from './AplicarAVarios';
 import { CampoFecha } from '@/components/CampoFecha';
 import { aTextoMx } from '@/components/CampoFecha';
+import { puedeMoverNomina } from '@/utils/permissions';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -42,7 +43,10 @@ const TIPOS = [
 
 export function NominaCalculoPage() {
   const { user } = useAuthStore();
-  const esAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(user?.role || '');
+  /* No es el rol lo que decide, es la capacidad de mover nómina: Recursos
+   * Humanos la tiene sin ser administrador de la empresa. Ver
+   * puedeMoverNomina en utils/permissions. */
+  const esAdmin = puedeMoverNomina(user);
 
   const [tipo, setTipo] = useState<string>('SEMANAL');
   const [anio, setAnio] = useState(new Date().getFullYear());

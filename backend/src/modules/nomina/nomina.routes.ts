@@ -13,7 +13,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { authenticateToken, authorize } from '../../middleware/authentication';
+import { authenticateToken, authorize, requireCapability } from '../../middleware/authentication';
 import { requireModule } from '../../middleware/permissions';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as empleados from './empleados.service';
@@ -38,7 +38,24 @@ router.use(authenticateToken);
 router.use(requireModule('nomina'));
 
 /** Sólo ADMIN escribe. MANAGER no: puede ver la plantilla, no cambiar sueldos. */
-const soloAdmin = authorize('ADMIN', 'SUPER_ADMIN');
+/**
+ * Quién puede MOVER la nómina.
+ *
+ * Antes era `authorize('ADMIN','SUPER_ADMIN')`: sólo administradores. Eso dejaba
+ * a Recursos Humanos —el departamento cuyo trabajo ES la nómina— viendo las
+ * pantallas en sólo lectura, y obligaba a darles rol de administrador de la
+ * empresa entera para que pudieran capturar una quincena.
+ *
+ * Ahora es una capacidad. La trae el grupo RECURSOS_HUMANOS, y cualquier
+ * administrador puede otorgarla a alguien más sin cambiarlo de grupo.
+ *
+ * OJO CON LO QUE **NO** CAMBIÓ
+ * Un MANAGER no la hereda por su rango, aunque herede todas las demás. Sueldos,
+ * CURP, cuentas bancarias y órdenes de pensión alimenticia son el dato más
+ * sensible del sistema, y el gerente del almacén no tiene por qué verlos por el
+ * hecho de ser gerente. Ver NO_HEREDA_MANAGER en capabilities.ts.
+ */
+const soloAdmin = requireCapability('nomina:manage');
 
 function companyId(req: Request): string {
   if (!req.user?.companyId) throw new ValidationError('Falta la empresa activa');

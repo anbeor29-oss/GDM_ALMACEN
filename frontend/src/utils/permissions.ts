@@ -106,3 +106,32 @@ export function canAccess(group: string | undefined, mod: ModuleKey): boolean {
   const g = (group as WorkGroup) || 'ADMIN_ALL';
   return (GROUP_MODULES[g] || GROUP_MODULES.ADMIN_ALL).includes(mod);
 }
+
+
+/**
+ * ¿Este usuario puede MOVER la nómina, o sólo mirarla?
+ *
+ * En el servidor esto es la capacidad `nomina:manage`. Aquí no se pregunta por
+ * capacidades —el token no las trae— sino por la misma regla que las produce:
+ * la traen los administradores y quien pertenece a un grupo que la incluye.
+ *
+ * POR QUÉ ESTA FUNCIÓN EXISTE
+ * Las pantallas de nómina escondían sus botones con `role === 'ADMIN'`. Cuando
+ * la nómina pasó de rol a capacidad, el servidor empezó a dejar pasar a
+ * Recursos Humanos y la pantalla siguió sin mostrarles un solo botón: el
+ * candado se había movido de lugar, no quitado.
+ *
+ * ESTO NO ES EL CANDADO
+ * Es la cortesía de no ofrecer lo que va a ser rechazado. Quien manda es el
+ * servidor: aunque alguien llegue a la pantalla escribiendo la URL, sus
+ * peticiones se rechazan igual.
+ *
+ * OJO CON EL MANAGER: no la hereda por su rango —sueldos, CURP y cuentas
+ * bancarias no se abren por ser gerente—. La tiene si su grupo se la da.
+ */
+export function puedeMoverNomina(user: any): boolean {
+  const rol = user?.role || '';
+  if (rol === 'ADMIN' || rol === 'SUPER_ADMIN') return true;
+  const grupo = user?.workGroup || user?.work_group || '';
+  return grupo === 'ADMIN_ALL' || grupo === 'RECURSOS_HUMANOS';
+}

@@ -143,6 +143,59 @@ async function main() {
     ? bien('lo otorgado a mano se SUMA al grupo: se conservan las dos')
     : mal('el otorgamiento individual pisó las del grupo');
 
+  /* ── 4-bis. La nómina, ahora por capacidad ──
+   *
+   * Estaba cerrada con el ROL de administrador, así que Recursos Humanos —el
+   * departamento cuyo trabajo ES la nómina— veía las pantallas en sólo lectura.
+   * Para que capturaran una quincena había que hacerlos administradores de la
+   * empresa entera. */
+  await query(`UPDATE users SET work_group = 'RECURSOS_HUMANOS' WHERE id = $1`, [userId]);
+
+  await userHasCapability(userId, 'USER', 'nomina:manage')
+    ? bien('RECURSOS_HUMANOS puede mover la nómina sin ser administrador')
+    : mal('RH sigue sin poder capturar nómina');
+
+  !(await userHasCapability(userId, 'USER', 'treasury:pay'))
+    ? bien('y no alcanza los pagos a proveedores: sólo su nómina')
+    : mal('RH alcanzó tesorería');
+
+  /* ── LO QUE NO PUEDE ABRIRSE AL PASAR A CAPACIDADES ──
+   *
+   * Un MANAGER hereda todas las capacidades operativas. Si la nómina se
+   * heredara igual, pasarla de rol a capacidad habría abierto los sueldos a
+   * TODOS los gerentes sin que nadie lo pidiera — el gerente del almacén
+   * viendo CURP, cuentas bancarias y órdenes de pensión alimenticia.
+   *
+   * Antes no podía: `authorize('ADMIN','SUPER_ADMIN')` lo dejaba fuera. Esta
+   * comprobación es la que garantiza que el cambio no aflojó nada. */
+  await query(`UPDATE users SET work_group = 'ALMACEN' WHERE id = $1`, [userId]);
+
+  !(await userHasCapability(userId, 'MANAGER', 'nomina:manage'))
+    ? bien('un MANAGER de almacén NO entra a la nómina por su rango')
+    : mal('la nómina quedó abierta a todos los gerentes');
+
+  await userHasCapability(userId, 'MANAGER', 'inventory:adjust')
+    ? bien('pero sigue heredando lo demás: sólo la nómina es la excepción')
+    : mal('el MANAGER perdió capacidades que sí tenía');
+
+  const capsGerente = await getEffectiveCapabilities(userId, 'MANAGER');
+  !capsGerente.includes('nomina:manage')
+    ? bien('y su conjunto efectivo tampoco la incluye')
+    : mal('el conjunto efectivo del MANAGER trae la nómina');
+
+  /* Un MANAGER que SÍ deba manejar nómina la recibe por su grupo. Es la puerta
+   * que queda abierta a propósito: por decisión, no por rango. */
+  await query(`UPDATE users SET work_group = 'RECURSOS_HUMANOS' WHERE id = $1`, [userId]);
+  await userHasCapability(userId, 'MANAGER', 'nomina:manage')
+    ? bien('un MANAGER de RH sí la tiene: por su grupo, no por su rango')
+    : mal('un MANAGER de RH no puede manejar nómina');
+
+  /* Y el ADMIN de siempre no perdió nada: el cambio no rompe a quien ya
+   * trabajaba. */
+  await userHasCapability(userId, 'ADMIN', 'nomina:manage')
+    ? bien('el ADMIN sigue entrando, como antes del cambio')
+    : mal('el cambio dejó fuera a los administradores');
+
   /* ── 5. Cada grupo tiene capacidades declaradas ──
    * Un grupo sin capacidades es una pantalla que se abre y no hace nada. */
   const sinCaps = grupos.filter((g) => !(GROUP_CAPABILITIES[g]?.length));

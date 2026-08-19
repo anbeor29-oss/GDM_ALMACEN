@@ -97,5 +97,29 @@ puertas === 1
   ? bien('y no quedó maquinaria de atajos sin usar')
   : mal('el soporte de atajos sigue ahí sin nadie que lo use');
 
+/* ── 6. La nómina: el candado y la cortesía ──
+ *
+ * El servidor la protege con la capacidad `nomina:manage`. La pantalla esconde
+ * sus botones con la MISMA regla. Si una de las dos se queda con el rol, pasa
+ * una de dos cosas y las dos son malas: Recursos Humanos ve las pantallas sin
+ * un solo botón, o ve los botones y cada clic le responde "no tienes permiso".
+ */
+const utilPerm = readFileSync('src/utils/permissions.ts', 'utf8');
+utilPerm.includes('export function puedeMoverNomina')
+  ? bien('la regla de quién mueve la nómina vive en un solo lugar')
+  : mal('falta puedeMoverNomina en utils/permissions');
+
+const pantallasNomina = [
+  'src/pages/nomina/Empleados.tsx',
+  'src/pages/nomina/NominaCFDI.tsx',
+  'src/pages/nomina/NominaCalculo.tsx',
+  'src/pages/nomina/NominaParametros.tsx',
+];
+const porRol = pantallasNomina.filter((f) =>
+  readFileSync(f, 'utf8').includes("esAdmin = ['ADMIN'"));
+porRol.length === 0
+  ? bien('las cuatro pantallas de nómina preguntan por la capacidad, no por el rol')
+  : mal('estas pantallas siguen escondiendo botones por rol', porRol.join(', '));
+
 console.log(`\n${ok} bien, ${fallos} mal`);
 process.exit(fallos ? 1 : 0);

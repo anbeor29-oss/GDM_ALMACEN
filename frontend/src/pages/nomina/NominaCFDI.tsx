@@ -25,6 +25,7 @@ import {
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { aTextoMx } from '@/components/CampoFecha';
+import { puedeMoverNomina } from '@/utils/permissions';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -37,7 +38,10 @@ const ESTATUS: Record<string, { label: string; cls: string }> = {
 
 export function NominaCFDIPage() {
   const { user } = useAuthStore();
-  const esAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(user?.role || '');
+  /* No es el rol lo que decide, es la capacidad de mover nómina: Recursos
+   * Humanos la tiene sin ser administrador de la empresa. Ver
+   * puedeMoverNomina en utils/permissions. */
+  const esAdmin = puedeMoverNomina(user);
 
   const [estatus, setEstatus] = useState('PENDIENTE');
   const [viendo, setViendo] = useState<any | null>(null);
