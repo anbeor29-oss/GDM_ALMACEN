@@ -184,6 +184,36 @@ export function AdminCompaniesPage() {
 
 /* ─────────────── Modal: editar empresa (datos + domicilio + contacto) ─────────────── */
 
+/**
+ * Un campo del alta de empresa.
+ *
+ * Vive AQUÍ, fuera del modal, y no dentro como estaba. Definido adentro, cada
+ * render creaba un tipo de componente nuevo: React desmontaba el <input> y lo
+ * volvía a montar, y un input recién montado no tiene el foco. Se escribía una
+ * letra y el cursor se salía del campo.
+ *
+ * Es el mismo defecto que tenía el alta de trabajador. Por eso hay un guardián
+ * —`scripts/revisar-componentes-anidados.mjs`— que lo detecta: no rompe la
+ * compilación ni avisa en consola, y sólo se descubre escribiendo.
+ */
+function F({ label, k, ph, span2 = false, form, set }: {
+  label: string; k: string; ph?: string; span2?: boolean;
+  form: any; set: (k: any) => (e: any) => void;
+}) {
+  return (
+    <label className={`block ${span2 ? 'col-span-2' : ''}`}>
+      <span className="text-xs font-medium text-gray-600 block mb-1">{label}</span>
+      <input
+        value={form[k]}
+        onChange={set(k)}
+        placeholder={ph}
+        className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+      />
+    </label>
+  );
+}
+
+
 function EditCompanyModal({
   company, onClose, onDone, onOpenCsd,
 }: {
@@ -230,17 +260,6 @@ function EditCompanyModal({
     }
   };
 
-  const F = ({ label, k, ph, span2 = false }: { label: string; k: keyof typeof form; ph?: string; span2?: boolean }) => (
-    <label className={`block ${span2 ? 'col-span-2' : ''}`}>
-      <span className="text-xs font-medium text-gray-600 block mb-1">{label}</span>
-      <input
-        value={form[k]}
-        onChange={set(k)}
-        placeholder={ph}
-        className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-      />
-    </label>
-  );
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -269,9 +288,9 @@ function EditCompanyModal({
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-sky-700 mb-2">Datos generales</p>
             <div className="grid grid-cols-2 gap-3">
-              <F label="Razón social *" k="businessName" span2 />
-              <F label="Régimen fiscal (c_RegimenFiscal)" k="fiscalRegime" ph="601" />
-              <F label="Código postal fiscal" k="postalCode" ph="20000" />
+              <F form={form} set={set} label="Razón social *" k="businessName" span2 />
+              <F form={form} set={set} label="Régimen fiscal (c_RegimenFiscal)" k="fiscalRegime" ph="601" />
+              <F form={form} set={set} label="Código postal fiscal" k="postalCode" ph="20000" />
             </div>
           </div>
 
@@ -279,12 +298,12 @@ function EditCompanyModal({
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-sky-700 mb-2">Domicilio</p>
             <div className="grid grid-cols-2 gap-3">
-              <F label="Calle" k="street" />
-              <F label="Número exterior" k="extNumber" />
-              <F label="Colonia" k="neighborhood" />
-              <F label="Ciudad / Localidad" k="city" />
-              <F label="Municipio" k="municipality" />
-              <F label="Estado" k="state" />
+              <F form={form} set={set} label="Calle" k="street" />
+              <F form={form} set={set} label="Número exterior" k="extNumber" />
+              <F form={form} set={set} label="Colonia" k="neighborhood" />
+              <F form={form} set={set} label="Ciudad / Localidad" k="city" />
+              <F form={form} set={set} label="Municipio" k="municipality" />
+              <F form={form} set={set} label="Estado" k="state" />
             </div>
           </div>
 
@@ -292,9 +311,9 @@ function EditCompanyModal({
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-sky-700 mb-2">Contacto</p>
             <div className="grid grid-cols-2 gap-3">
-              <F label="Email de contacto (correos del sistema)" k="contactEmail" ph="facturas@empresa.mx" />
-              <F label="Teléfono" k="phone" />
-              <F label="Sitio web" k="website" ph="https://…" span2 />
+              <F form={form} set={set} label="Email de contacto (correos del sistema)" k="contactEmail" ph="facturas@empresa.mx" />
+              <F form={form} set={set} label="Teléfono" k="phone" />
+              <F form={form} set={set} label="Sitio web" k="website" ph="https://…" span2 />
             </div>
           </div>
 

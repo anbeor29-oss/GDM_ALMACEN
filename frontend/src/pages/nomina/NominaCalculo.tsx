@@ -379,8 +379,9 @@ export function NominaCalculoPage() {
           <p className="text-xs text-gray-600 mb-3 flex items-start gap-1.5">
             <Info size={13} className="mt-0.5 shrink-0" />
             Los especiales no salen de un calendario: cada uno se captura con sus fechas y
-            su concepto — <b>PTU</b>, <b>finiquito</b>, <b>aguinaldo</b> u otra cosa. Alcanzan
-            a toda la plantilla, sin importar su periodicidad.
+            su concepto — <b>PTU</b>, <b>finiquito</b>, <b>aguinaldo</b> u otra cosa. Al
+            crearlo se elige <b>quiénes entran</b>: toda la plantilla para un aguinaldo,
+            o sólo unos cuantos para un bono.
           </p>
         )}
 
@@ -622,17 +623,21 @@ export function NominaCalculoPage() {
                       <td className="px-1.5 py-1.5 text-right text-rose-700 border-r">{money(pre.totales.otrasDeducciones)}</td>
                       <td className="px-1.5 py-1.5 text-right">{money(pre.totales.neto)}</td>
                     </tr>
-                    {/* Gravado y exento del periodo, antes de la suma: es lo que
-                        el CFDI reporta por separado y contra lo que se cuadra. */}
-                    <tr className="text-[11px] text-gray-600">
-                      <td className="px-1.5 pb-1.5" colSpan={11}>
-                        Gravado {money(pre.totales.gravado)} · Exento {money(pre.totales.exento)}
-                        {pre.totales.subsidio > 0 && ` · subsidio al empleo ${money(pre.totales.subsidio)}`}
-                        <span className="text-gray-400">
-                          {'  '}· doble clic en Otros ingresos u Otras deducciones para capturar;
-                          CLIC DERECHO para aplicar a varios de un jalón; pasa el mouse
-                          para ver cómo se integran
-                        </span>
+                    {/* ── Gravado, exento y subsidio ──
+                        Van con su etiqueta arriba y el importe abajo, no en un
+                        renglón corrido: son tres cifras contra las que se
+                        cuadra el CFDI, y en una sola línea con los consejos de
+                        uso se leían como parte del texto de ayuda. */}
+                    <tr className="text-[11px]">
+                      <td className="px-1.5 pb-2 pt-1" colSpan={11}>
+                        <div className="flex flex-wrap gap-x-8 gap-y-1">
+                          <Cifra rotulo="Gravado" valor={money(pre.totales.gravado)} />
+                          <Cifra rotulo="Exento" valor={money(pre.totales.exento)} />
+                          {pre.totales.subsidio > 0 && (
+                            <Cifra rotulo="Subsidio al empleo"
+                              valor={money(pre.totales.subsidio)} />
+                          )}
+                        </div>
                       </td>
                     </tr>
                   </tfoot>
@@ -710,21 +715,64 @@ export function NominaCalculoPage() {
             />
           )}
 
-          {/* Lo único que queda fuera de esta pantalla es el timbrado ante el
-              PAC: se hace desde CFDI, ya con el XML generado. */}
-          <p className="px-5 py-3 text-xs text-gray-500 border-t">
-            Al cerrar el periodo se congelan los recibos, se aplican los abonos de préstamos
-            y FONACOT, y los XML pasan a la pantalla de CFDI. Timbrar es un paso aparte.
-          </p>
+          {/* ── Cómo se captura, y qué pasa al cerrar ──
+              Eran dos párrafos corridos con cinco ideas dentro. Separados en
+              pistas cortas se leen de reojo la primera vez y se dejan de leer
+              después, que es lo que se quiere de un texto de ayuda. */}
+          <div className="px-5 py-3 border-t space-y-2">
+            <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-[11px] text-gray-500">
+              <Pista><b>Doble clic</b> en Otros ingresos u Otras deducciones para capturar</Pista>
+              <Pista><b>Clic derecho</b> para aplicar un concepto a varios de un jalón</Pista>
+              <Pista><b>Mouse encima</b> de un importe para ver cómo se integra</Pista>
+            </div>
+            <p className="text-xs text-gray-500">
+              Al cerrar se congelan los recibos, se aplican los abonos de préstamos y
+              FONACOT, y los XML pasan a CFDI. <b>Timbrar es un paso aparte.</b>
+            </p>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-/** Alta de un periodo especial: PTU, finiquito, aguinaldo u otra cosa. */
+/** Una cifra del pie: el rótulo chico arriba y el importe legible abajo. */
+function Cifra({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <span className="inline-flex flex-col leading-tight">
+      <span className="text-gray-400 uppercase tracking-wide text-[10px]">{rotulo}</span>
+      <span className="text-gray-800 font-semibold tabular-nums text-xs">{valor}</span>
+    </span>
+  );
+}
+
+/** Una pista de uso, con su viñeta. */
+function Pista({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="w-1 h-1 rounded-full bg-gray-300 shrink-0" />
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Alta de un periodo especial, en dos pasos: qué es, y a quién alcanza.
+ *
+ * POR QUÉ EL SEGUNDO PASO
+ * Antes alcanzaba a toda la plantilla sin preguntar, porque los especiales se
+ * pensaron para el aguinaldo y la PTU. Pero un especial también es un bono a un
+ * turno o una gratificación a tres personas, y ahí la rejilla traía a los
+ * ochenta: quien lo cerrara generaba setenta y siete recibos de más, y deshacer
+ * eso es borrar CFDI.
+ *
+ * Se elige DESPUÉS del concepto y no antes porque el concepto es lo que dice a
+ * quién hay que marcar: nadie sabe a quién elegir hasta que sabe si es el
+ * aguinaldo o el bono de agosto.
+ */
 function FormaEspecial({ anio, onCancelar, onCreado }: any) {
   const HOY = new Date().toISOString().slice(0, 10);
+  const [paso, setPaso] = useState<1 | 2>(1);
   const [f, setF] = useState<any>({
     concepto: '', fecha_inicio: `${anio}-01-01`, fecha_fin: `${anio}-12-31`, fecha_pago: HOY,
   });
@@ -739,63 +787,189 @@ function FormaEspecial({ anio, onCancelar, onCreado }: any) {
     { label: 'Finiquito', concepto: 'Finiquito de ',     ini: HOY, fin: HOY },
   ];
 
+  /* La plantilla activa. Se pide sólo al llegar al paso 2: en el 1 no se usa y
+   * traerla antes es una consulta que casi siempre se tira. */
+  const plantillaQ = useQuery({
+    queryKey: ['empleados-para-especial'],
+    queryFn: () => api.getEmpleados({}),
+    enabled: paso === 2,
+  });
+  const trabajadores: any[] = (plantillaQ.data?.data?.empleados || plantillaQ.data?.data || [])
+    .filter((e: any) => e.activo);
+
+  const [elegidos, setElegidos] = useState<Record<string, boolean>>({});
+  const [busca, setBusca] = useState('');
+
+  /* Arrancan TODOS marcados: el caso común es el aguinaldo, y en el otro es
+   * más rápido quitar tres que marcar ochenta. */
+  useEffect(() => {
+    if (paso !== 2 || trabajadores.length === 0) return;
+    setElegidos((v) =>
+      Object.keys(v).length > 0
+        ? v
+        : Object.fromEntries(trabajadores.map((e: any) => [e.id, true])));
+  }, [paso, trabajadores.length]);
+
+  const visibles = trabajadores.filter((e: any) => {
+    const t = busca.trim().toLowerCase();
+    if (!t) return true;
+    return `${e.nombre} ${e.apellido_pat || ''} ${e.apellido_mat || ''} ${e.num_empleado}`
+      .toLowerCase().includes(t);
+  });
+  const marcados = trabajadores.filter((e: any) => elegidos[e.id]).length;
+  const todos = marcados === trabajadores.length && trabajadores.length > 0;
+
+  const crear = async () => {
+    setGuardando(true); setError('');
+    try {
+      /* Si están TODOS marcados se manda la lista vacía, que es la convención
+       * de "toda la plantilla". No es lo mismo que mandar los ochenta ids:
+       * quien entre a la empresa mañana debe caer en el aguinaldo, y con la
+       * lista fija se quedaría fuera sin que nadie lo notara. */
+      const empleadoIds = todos
+        ? []
+        : trabajadores.filter((e: any) => elegidos[e.id]).map((e: any) => e.id);
+
+      if (!todos && empleadoIds.length === 0) {
+        setError('Hay que elegir al menos a un trabajador.');
+        return;
+      }
+      const r = await api.crearPeriodoEspecial({ anio, ...f, empleadoIds });
+      onCreado(r.data.id);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo crear');
+    } finally { setGuardando(false); }
+  };
+
   return (
     <div className="border border-violet-200 bg-violet-50/40 rounded-lg p-4 space-y-3 mb-3">
       <div className="flex items-center justify-between">
-        <p className="font-medium text-sm">Nuevo periodo especial</p>
+        <p className="font-medium text-sm flex items-center gap-2">
+          Nuevo periodo especial
+          <span className="text-xs font-normal text-gray-500">
+            paso {paso} de 2 · {paso === 1 ? 'qué es' : 'quiénes entran'}
+          </span>
+        </p>
         <button onClick={onCancelar} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
       </div>
       {error && <p className="text-xs text-rose-600">{error}</p>}
 
-      <div className="flex flex-wrap gap-2">
-        {plantillas.map((p) => (
-          <button key={p.label} type="button"
-            onClick={() => setF({ ...f, concepto: p.concepto, fecha_inicio: p.ini, fecha_fin: p.fin })}
-            className="text-xs border rounded-lg px-3 py-1.5 bg-white hover:border-violet-400">
-            {p.label}
-          </button>
-        ))}
-        <span className="text-xs text-gray-500 self-center">o escribe el concepto que necesites</span>
-      </div>
+      {paso === 1 && (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {plantillas.map((p) => (
+              <button key={p.label} type="button"
+                onClick={() => setF({ ...f, concepto: p.concepto, fecha_inicio: p.ini, fecha_fin: p.fin })}
+                className="text-xs border rounded-lg px-3 py-1.5 bg-white hover:border-violet-400">
+                {p.label}
+              </button>
+            ))}
+            <span className="text-xs text-gray-500 self-center">o escribe el concepto que necesites</span>
+          </div>
 
-      <input className={campo} placeholder='Concepto — "Aguinaldo 2026", "Finiquito de Juan Pérez"…'
-        value={f.concepto} onChange={(e) => setF({ ...f, concepto: e.target.value })} />
+          <input className={campo} placeholder='Concepto — "Aguinaldo 2026", "Bono de agosto"…'
+            value={f.concepto} onChange={(e) => setF({ ...f, concepto: e.target.value })} />
 
-      <div className="grid sm:grid-cols-3 gap-3">
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">Desde</label>
-          <input type="date" className={campo} value={f.fecha_inicio}
-            onChange={(e) => setF({ ...f, fecha_inicio: e.target.value })} />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">Hasta</label>
-          <input type="date" className={campo} value={f.fecha_fin}
-            onChange={(e) => setF({ ...f, fecha_fin: e.target.value })} />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">Fecha de pago</label>
-          <input type="date" className={campo} value={f.fecha_pago}
-            onChange={(e) => setF({ ...f, fecha_pago: e.target.value })} />
-        </div>
-      </div>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Desde</label>
+              <input type="date" className={campo} value={f.fecha_inicio}
+                onChange={(e) => setF({ ...f, fecha_inicio: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Hasta</label>
+              <input type="date" className={campo} value={f.fecha_fin}
+                onChange={(e) => setF({ ...f, fecha_fin: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Fecha de pago</label>
+              <input type="date" className={campo} value={f.fecha_pago}
+                onChange={(e) => setF({ ...f, fecha_pago: e.target.value })} />
+            </div>
+          </div>
 
-      <div className="flex justify-end gap-2">
-        <button onClick={onCancelar}
-          className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
-        <button disabled={guardando}
-          onClick={async () => {
-            setGuardando(true); setError('');
-            try {
-              const r = await api.crearPeriodoEspecial({ anio, ...f });
-              onCreado(r.data.id);
-            } catch (e: any) {
-              setError(e?.response?.data?.message || 'No se pudo crear');
-            } finally { setGuardando(false); }
-          }}
-          className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 disabled:opacity-50">
-          {guardando ? 'Creando…' : 'Crear periodo'}
-        </button>
-      </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={onCancelar}
+              className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+            <button
+              onClick={() => {
+                if (!f.concepto.trim()) {
+                  setError('Un especial necesita su concepto: en tres meses, "especial 2" no le dice nada a nadie.');
+                  return;
+                }
+                setError(''); setPaso(2);
+              }}
+              className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-blue-600">
+              Siguiente: quiénes entran →
+            </button>
+          </div>
+        </>
+      )}
+
+      {paso === 2 && (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              className="border rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[180px]"
+              placeholder="Buscar por nombre o número…"
+              value={busca} onChange={(e) => setBusca(e.target.value)}
+            />
+            <button type="button"
+              onClick={() => setElegidos(Object.fromEntries(trabajadores.map((e: any) => [e.id, true])))}
+              className="text-xs border rounded-lg px-3 py-1.5 bg-white hover:border-violet-400">
+              Todos
+            </button>
+            <button type="button"
+              onClick={() => setElegidos({})}
+              className="text-xs border rounded-lg px-3 py-1.5 bg-white hover:border-violet-400">
+              Ninguno
+            </button>
+          </div>
+
+          <div className="bg-white border rounded-lg max-h-64 overflow-y-auto divide-y">
+            {plantillaQ.isLoading && (
+              <p className="text-sm text-gray-500 px-3 py-4">Cargando la plantilla…</p>
+            )}
+            {!plantillaQ.isLoading && visibles.length === 0 && (
+              <p className="text-sm text-gray-500 italic px-3 py-4">
+                {busca ? 'Nadie coincide con esa búsqueda.' : 'No hay trabajadores activos.'}
+              </p>
+            )}
+            {visibles.map((e: any) => (
+              <label key={e.id}
+                className="flex items-center gap-2.5 px-3 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+                <input type="checkbox" className="rounded"
+                  checked={!!elegidos[e.id]}
+                  onChange={(ev) => setElegidos({ ...elegidos, [e.id]: ev.target.checked })} />
+                <span className="text-gray-400 text-xs w-10">{e.num_empleado}</span>
+                <span className="flex-1">
+                  {e.nombre} {e.apellido_pat} {e.apellido_mat || ''}
+                </span>
+                <span className="text-xs text-gray-400">{e.puesto || ''}</span>
+              </label>
+            ))}
+          </div>
+
+          <p className="text-xs text-gray-600">
+            {todos ? (
+              <>Entran <b>los {trabajadores.length}</b>. Quien se dé de alta después
+              también entrará: así debe comportarse un aguinaldo.</>
+            ) : (
+              <>Entran <b>{marcados}</b> de {trabajadores.length}. El resto no aparecerá
+              en la rejilla ni generará recibo al cerrar.</>
+            )}
+          </p>
+
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setPaso(1)}
+              className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">← Atrás</button>
+            <button disabled={guardando} onClick={crear}
+              className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 disabled:opacity-50">
+              {guardando ? 'Creando…' : 'Crear periodo'}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

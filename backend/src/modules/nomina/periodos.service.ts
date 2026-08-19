@@ -99,7 +99,12 @@ export async function generar(
  */
 export async function crearEspecial(
   companyId: string,
-  d: { anio?: number; concepto?: string; fecha_inicio?: string; fecha_fin?: string; fecha_pago?: string }
+  d: {
+    anio?: number; concepto?: string;
+    fecha_inicio?: string; fecha_fin?: string; fecha_pago?: string;
+    /** Quiénes entran. Vacío o ausente = toda la plantilla. */
+    empleadoIds?: string[];
+  }
 ) {
   const concepto = String(d.concepto || '').trim().slice(0, 200);
   if (!concepto) {
@@ -152,6 +157,24 @@ export async function crearEspecial(
        RETURNING id`,
       [companyId, anio, numero, ini, fin, pago, dias, concepto]
     );
+
+    /* Los participantes, si se eligieron.
+     *
+     * Se filtran contra la plantilla de ESTA empresa antes de guardarlos: un
+     * id que venga de fuera no debe poder colarse a un periodo ajeno sólo por
+     * llegar en el cuerpo de la petición. */
+    const ids = (d.empleadoIds || []).filter(Boolean);
+    if (ids.length > 0) {
+      await transactionQuery(
+        client,
+        `INSERT INTO nomina_periodo_empleados (periodo_id, empleado_id)
+         SELECT $1, e.id FROM nomina_empleados e
+          WHERE e.company_id = $2 AND e.deleted_at IS NULL AND e.id = ANY($3::uuid[])
+         ON CONFLICT DO NOTHING`,
+        [r.rows[0].id, companyId, ids]
+      );
+    }
+
     return obtenerEnTransaccion(client, companyId, r.rows[0].id);
   });
 }
@@ -270,4 +293,75 @@ export async function marcarCalculado(companyId: string, id: string) {
   );
   if (r.rowCount === 0) throw new ConflictError('El periodo no existe o ya no está abierto');
   return obtener(companyId, id);
+}
+
+
+/* ═══════════════ QUIÉNES ENTRAN A UN ESPECIAL ═══════════════ */
+
+/**
+ * Los participantes de un periodo especial.
+ *
+ * Devuelve la lista vacía cuando alcanza a todos. Es la MISMA convención que
+ * usa la tabla: sin renglones, sin restricción. Traducirlo aquí a "todos los
+ * ids" haría que agregar a alguien a la plantilla después ya no lo incluyera,
+ * que es justo lo que nadie espera de un aguinaldo.
+ */
+export async function participantes(companyId: string, periodoId: string): Promise<string[]> {
+  const r = await query<any>(
+    `SELECT pe.empleado_id
+       FROM nomina_periodo_empleados pe
+       JOIN nomina_periodos p ON p.id = pe.periodo_id
+      WHERE pe.periodo_id = $1 AND p.company_id = $2`,
+    [periodoId, companyId]
+  );
+  return r.rows.map((x: any) => x.empleado_id);
+}
+
+/**
+ * Cambia quiénes entran. Sólo mientras el periodo esté ABIERTO: uno cerrado ya
+ * generó recibos, y cambiarle la lista dejaría recibos de gente que "ya no
+ * participa" —o peor, prometería recibos que no existen—.
+ */
+export async function fijarParticipantes(
+  companyId: string, periodoId: string, empleadoIds: string[]
+) {
+  return transaction(async (client: PoolClient) => {
+    const p = await transactionQuery<any>(
+      client,
+      `SELECT tipo, estatus FROM nomina_periodos
+        WHERE id = $1 AND company_id = $2 FOR UPDATE`,
+      [periodoId, companyId]
+    );
+    const periodo = p.rows[0];
+    if (!periodo) throw new ValidationError('No existe ese periodo');
+    if (periodo.tipo !== 'ESPECIAL') {
+      throw new ValidationError(
+        'Sólo los periodos especiales llevan lista de participantes. Los de ' +
+        'calendario los define la periodicidad de pago de cada trabajador.'
+      );
+    }
+    if (periodo.estatus !== 'ABIERTO') {
+      throw new ValidationError(
+        'El periodo ya está cerrado: cambiar quién participa dejaría recibos ' +
+        'sin dueño. Si hay que corregirlo, se reabre primero.'
+      );
+    }
+
+    await transactionQuery(
+      client, `DELETE FROM nomina_periodo_empleados WHERE periodo_id = $1`, [periodoId]
+    );
+
+    const ids = (empleadoIds || []).filter(Boolean);
+    if (ids.length > 0) {
+      await transactionQuery(
+        client,
+        `INSERT INTO nomina_periodo_empleados (periodo_id, empleado_id)
+         SELECT $1, e.id FROM nomina_empleados e
+          WHERE e.company_id = $2 AND e.deleted_at IS NULL AND e.id = ANY($3::uuid[])
+         ON CONFLICT DO NOTHING`,
+        [periodoId, companyId, ids]
+      );
+    }
+    return { participantes: ids.length };
+  });
 }

@@ -1140,6 +1140,18 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/nomina/periodos/especial', datos);
     return r.data;
   }
+  /** Quiénes entran a un periodo especial. Lista vacía = toda la plantilla. */
+  async getParticipantes(periodoId: string) {
+    const r = await this.client.get<APIResponse<any>>(
+      `/nomina/periodos/${periodoId}/participantes`);
+    return r.data;
+  }
+  async fijarParticipantes(periodoId: string, empleadoIds: string[]) {
+    const r = await this.client.put<APIResponse<any>>(
+      `/nomina/periodos/${periodoId}/participantes`, { empleadoIds });
+    return r.data;
+  }
+
   /** Baja la prenómina como Excel, con lo capturado en la rejilla. */
   async descargarPrenominaExcel(periodoId: string, captura: any[], nombre: string) {
     const r = await this.client.post(

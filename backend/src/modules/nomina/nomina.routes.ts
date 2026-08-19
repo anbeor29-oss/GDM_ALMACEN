@@ -689,6 +689,31 @@ router.post(
   })
 );
 
+/**
+ * GET/PUT /periodos/:id/participantes — quiénes entran a un especial.
+ *
+ * La lista vacía significa "toda la plantilla", y así se devuelve: traducirla
+ * aquí a todos los ids haría que un alta posterior ya no entrara al aguinaldo.
+ */
+router.get(
+  '/periodos/:id/participantes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const ids = await periodos.participantes(companyId(req), req.params.id);
+    res.json({ success: true, data: { empleadoIds: ids, todos: ids.length === 0 } });
+  })
+);
+
+router.put(
+  '/periodos/:id/participantes',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await periodos.fijarParticipantes(
+      companyId(req), req.params.id, req.body?.empleadoIds || []
+    );
+    res.json({ success: true, data: r });
+  })
+);
+
 router.put(
   '/periodos/:id/fecha-pago',
   soloAdmin,

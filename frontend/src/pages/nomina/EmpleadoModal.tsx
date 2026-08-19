@@ -17,7 +17,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Save, AlertTriangle } from 'lucide-react';
+import { X, Save, AlertTriangle, FileText } from 'lucide-react';
 import api from '@/services/api';
 import { ComboConAlta } from './ComboConAlta';
 import { CreditosDelTrabajador } from './CreditosDelTrabajador';
@@ -61,6 +61,55 @@ const VACIO: Record<string, any> = {
   tiene_pension_alimenticia: false, pension_tipo: '', pension_monto: '',
   pension_beneficiario: '', pension_num_oficio: '',
 };
+
+const CAMPO =
+  'w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary';
+const ETIQUETA = 'block text-xs font-medium text-gray-600 mb-1';
+
+/**
+ * ── POR QUÉ ESTOS DOS VIVEN AQUÍ Y NO DENTRO DEL MODAL ──
+ *
+ * Estaban definidos dentro de `EmpleadoModal`. Eso creaba un **tipo de
+ * componente nuevo en cada render**, y React no tiene forma de saber que el
+ * `<input>` de este render es el mismo del anterior: lo desmonta y lo vuelve a
+ * montar. Un input recién montado no tiene el foco.
+ *
+ * El resultado era que se escribía una letra, el estado cambiaba, el modal se
+ * volvía a dibujar y el cursor se salía del campo. Había que hacer clic para
+ * cada letra. Definidos aquí afuera, el tipo es siempre el mismo, React
+ * reutiliza el nodo y el foco se queda donde está.
+ *
+ * Es la razón por la que un componente NUNCA se define dentro de otro.
+ */
+function Campo({ k, label, tipo = 'text', ancho = '', f, set, marca, ...rest }: any) {
+  return (
+    <div className={ancho}>
+      <label className={ETIQUETA}>{label}</label>
+      <input
+        type={tipo}
+        className={`${CAMPO} ${marca(k)}`}
+        value={f[k] ?? ''}
+        onChange={(e) => set(k, e.target.value)}
+        {...rest}
+      />
+    </div>
+  );
+}
+
+function Selector({ k, label, opciones, incluirVacio, ancho = '', f, set, marca }: any) {
+  return (
+    <div className={ancho}>
+      <label className={ETIQUETA}>{label}</label>
+      <select className={`${CAMPO} ${marca(k)}`} value={f[k] ?? ''}
+        onChange={(e) => set(k, e.target.value)}>
+        {incluirVacio && <option value="">— sin especificar —</option>}
+        {Object.entries(opciones || {}).map(([clave, texto]) => (
+          <option key={clave} value={clave}>{clave} · {String(texto)}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose, onGuardado }: Props) {
   const esEdicion = !!empleado?.id;
@@ -113,6 +162,89 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
 
   const set = (k: string, v: any) => setF((s) => ({ ...s, [k]: v }));
 
+  /* ── Leer la CIF ──
+   *
+   * El mismo extractor que ya usan los clientes (`/csf/extract`). Aquí sólo
+   * sirve la rama de PERSONA FÍSICA: un trabajador no puede ser una moral, y
+   * si alguien sube la constancia de la empresa hay que decírselo en vez de
+   * llenar el expediente con la razón social.
+   *
+   * Lo leído se marca en ámbar igual que lo que deduce el importador de XML:
+   * el SAT pega las palabras en el PDF —"PROLONGACIONADORATRICES"— y hay
+   * campos que salen sin espacios. Se ven de un vistazo y se corrigen. */
+  const [leyendoCif, setLeyendoCif] = useState(false);
+  const [cifAviso, setCifAviso] = useState('');
+  const [deCif, setDeCif] = useState<Record<string, true>>({});
+
+  const leerCif = async (archivo: File) => {
+    setLeyendoCif(true); setCifAviso(''); setError('');
+    try {
+      const r = await api.extractCSF(archivo);
+      const m: any = r.data || {};
+      const raw: any = m.raw || {};
+
+      if (raw.tipo === 'PM') {
+        setCifAviso(
+          `Esa constancia es de una persona MORAL (${m.businessName || raw.denominacion || ''}). ` +
+          'El expediente de un trabajador necesita la constancia de la persona física.'
+        );
+        return;
+      }
+
+      /* Sólo se pisa lo que la CIF trae. Un campo vacío en el PDF no debe
+       * borrar lo que ya estaba capturado a mano. */
+      const traer: Array<[string, any]> = [
+        ['rfc', raw.rfc], ['curp', raw.curp],
+        ['nombre', raw.nombre],
+        ['apellido_pat', raw.apellido_paterno],
+        ['apellido_mat', raw.apellido_materno],
+        ['codigo_postal', raw.codigo_postal || m.postalCode],
+        ['calle', raw.nombre_vialidad || m.street],
+        ['num_exterior', raw.numero_exterior || m.extNumber],
+        ['num_interior', raw.numero_interior],
+        ['colonia', raw.colonia || m.neighborhood],
+        ['municipio', raw.municipio || m.municipality],
+        ['estado', m.state || ''],
+        ['regimen_fiscal', m.fiscalRegime || ''],
+      ];
+
+      const marcados: Record<string, true> = {};
+      setF((v) => {
+        const n = { ...v };
+        for (const [k, valor] of traer) {
+          const t = String(valor ?? '').trim();
+          if (!t) continue;
+          n[k] = t;
+          marcados[k] = true;
+        }
+        return n;
+      });
+      setDeCif(marcados);
+
+      const faltan: string[] = [];
+      if (!raw.rfc) faltan.push('RFC');
+      if (!raw.curp) faltan.push('CURP');
+      if (m.unresolvedRegimen) faltan.push('régimen fiscal');
+      if (m.unresolvedState) faltan.push('estado');
+
+      setCifAviso(
+        `Se llenaron ${Object.keys(marcados).length} campos desde la constancia` +
+        (faltan.length
+          ? `. No se pudo sacar: ${faltan.join(', ')} — captúralo a mano.`
+          : '. Revisa los marcados en ámbar: el SAT pega las palabras en el PDF ' +
+            'y a veces salen sin espacios.')
+      );
+    } catch (e: any) {
+      setCifAviso('');
+      setError(
+        e?.response?.data?.message ||
+        'No se pudo leer la constancia. ¿Es el PDF original del SAT, sin escanear?'
+      );
+    } finally {
+      setLeyendoCif(false);
+    }
+  };
+
   const guardar = async () => {
     setGuardando(true); setError('');
     /* Los vacíos se mandan como null y no como "": el servidor distingue "no lo
@@ -134,38 +266,17 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
     }
   };
 
-  const campo = 'w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary';
-  const etiqueta = 'block text-xs font-medium text-gray-600 mb-1';
 
   /* Marca visual de los campos que el importador DEDUJO: son los que hay que
    * mirar dos veces antes de guardar. */
   const marca = (k: string) =>
-    origen?.[k] === 'deducido' ? 'ring-1 ring-amber-300 bg-amber-50/40' : '';
+    origen?.[k] === 'deducido' || deCif[k]
+      ? 'ring-1 ring-amber-300 bg-amber-50/40' : '';
 
-  const Campo = ({ k, label, tipo = 'text', ancho = '', ...rest }: any) => (
-    <div className={ancho}>
-      <label className={etiqueta}>{label}</label>
-      <input
-        type={tipo}
-        className={`${campo} ${marca(k)}`}
-        value={f[k] ?? ''}
-        onChange={(e) => set(k, e.target.value)}
-        {...rest}
-      />
-    </div>
-  );
-
-  const Selector = ({ k, label, opciones, incluirVacio, ancho = '' }: any) => (
-    <div className={ancho}>
-      <label className={etiqueta}>{label}</label>
-      <select className={`${campo} ${marca(k)}`} value={f[k] ?? ''} onChange={(e) => set(k, e.target.value)}>
-        {incluirVacio && <option value="">— sin especificar —</option>}
-        {Object.entries(opciones || {}).map(([clave, texto]) => (
-          <option key={clave} value={clave}>{clave} · {String(texto)}</option>
-        ))}
-      </select>
-    </div>
-  );
+  /* Lo que Campo y Selector necesitan del formulario. Va por props y no por
+   * cierre porque los dos viven FUERA de este componente — ver el comentario
+   * de arriba: definirlos aquí adentro era lo que borraba el foco. */
+  const cc = { f, set, marca };
 
   /* Un color por bloque.
    *
@@ -273,26 +384,59 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
               {/* La foto a la izquierda, junto a los datos que la identifican:
                   es el orden de una credencial y el de cualquier expediente en
                   papel. */}
-              <div className="shrink-0 sm:pt-5">
+              <div className="shrink-0 sm:pt-5 space-y-2">
                 <FotoDelTrabajador
                   valor={f.foto}
                   onChange={(v) => set('foto', v)}
                   disabled={false}
                 />
+
+                {/* Leer la CIF: doce campos de un jalón en vez de teclearlos.
+                    Va junto a la foto porque es lo PRIMERO que se hace en un
+                    alta —antes de capturar nada— y ahí lo encuentra el ojo. */}
+                <label className={`flex items-center justify-center gap-1.5 w-[120px] text-xs
+                  border rounded-lg py-1.5 cursor-pointer transition ${
+                    leyendoCif
+                      ? 'bg-gray-100 text-gray-400 cursor-wait'
+                      : 'border-sky-300 text-sky-700 hover:bg-sky-50'
+                  }`}>
+                  <FileText size={13} />
+                  {leyendoCif ? 'Leyendo…' : 'Leer CIF'}
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="hidden"
+                    disabled={leyendoCif}
+                    onChange={(e) => {
+                      const a = e.target.files?.[0];
+                      /* Se limpia el input para que subir el MISMO archivo dos
+                         veces vuelva a disparar el evento. */
+                      e.target.value = '';
+                      if (a) leerCif(a);
+                    }}
+                  />
+                </label>
               </div>
-              <div className="grid sm:grid-cols-3 gap-3 flex-1">
-              <Campo k="num_empleado" label="Número de empleado *" />
-              <Campo k="nombre" label="Nombre(s) *" ancho="sm:col-span-2" />
-              <Campo k="apellido_pat" label="Apellido paterno *" />
-              <Campo k="apellido_mat" label="Apellido materno" />
+              <div className="flex-1">
+              {cifAviso && (
+                <p className="text-xs text-sky-800 bg-sky-50 border border-sky-200 rounded px-3 py-2 mb-3">
+                  {cifAviso}
+                </p>
+              )}
+              <div className="grid sm:grid-cols-3 gap-3">
+              <Campo {...cc} k="num_empleado" label="Número de empleado *" />
+              <Campo {...cc} k="nombre" label="Nombre(s) *" ancho="sm:col-span-2" />
+              <Campo {...cc} k="apellido_pat" label="Apellido paterno *" />
+              <Campo {...cc} k="apellido_mat" label="Apellido materno" />
               <div />
-              <Campo k="rfc" label="RFC *" maxLength={13} style={{ textTransform: 'uppercase' }} />
-              <Campo k="curp" label="CURP *" maxLength={18} ancho="sm:col-span-2" style={{ textTransform: 'uppercase' }} />
-              <Campo k="nss" label="NSS (11 dígitos)" maxLength={13} />
-              <Campo k="fecha_nacimiento" label="Fecha de nacimiento" tipo="date" />
+              <Campo {...cc} k="rfc" label="RFC *" maxLength={13} style={{ textTransform: 'uppercase' }} />
+              <Campo {...cc} k="curp" label="CURP *" maxLength={18} ancho="sm:col-span-2" style={{ textTransform: 'uppercase' }} />
+              <Campo {...cc} k="nss" label="NSS (11 dígitos)" maxLength={13} />
+              <Campo {...cc} k="fecha_nacimiento" label="Fecha de nacimiento" tipo="date" />
               <div />
-              <Campo k="email" label="Correo" tipo="email" ancho="sm:col-span-2" />
-              <Campo k="telefono" label="Teléfono" />
+              <Campo {...cc} k="email" label="Correo" tipo="email" ancho="sm:col-span-2" />
+              <Campo {...cc} k="telefono" label="Teléfono" />
+              </div>
               </div>
             </div>
           )}
@@ -311,10 +455,10 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                 si no coincide, el timbrado se rechaza con el error CFDI40147.
               </p>
               <div className="grid sm:grid-cols-3 gap-3">
-                <Campo k="codigo_postal" label="Código postal" maxLength={5} />
-                <Campo k="calle" label="Calle" ancho="sm:col-span-2" />
-                <Campo k="num_exterior" label="Número exterior" />
-                <Campo k="num_interior" label="Número interior" />
+                <Campo {...cc} k="codigo_postal" label="Código postal" maxLength={5} />
+                <Campo {...cc} k="calle" label="Calle" ancho="sm:col-span-2" />
+                <Campo {...cc} k="num_exterior" label="Número exterior" />
+                <Campo {...cc} k="num_interior" label="Número interior" />
 
                 {/* Colonia, municipio y estado salen del catálogo del SAT, no de
                     lo que se teclee: es el MISMO catálogo contra el que el PAC
@@ -337,7 +481,7 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                       ))}
                     </select>
                   ) : (
-                    <Campo k="colonia" label="" />
+                    <Campo {...cc} k="colonia" label="" />
                   )}
 
                   {/* Sin combo hay TRES motivos distintos y desde la pantalla se
@@ -383,7 +527,7 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                       ))}
                     </select>
                   ) : (
-                    <Campo k="municipio" label="" />
+                    <Campo {...cc} k="municipio" label="" />
                   )}
                   {municipios.length > 0 && (
                     <p className="text-[10px] text-gray-400 mt-0.5">
@@ -406,8 +550,8 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                     Lo determina el código postal.
                   </p>
                 </div>
-                <Campo k="regimen_fiscal" label="Régimen fiscal" maxLength={3} />
-                <Campo k="uso_cfdi" label="Uso del CFDI" maxLength={5} />
+                <Campo {...cc} k="regimen_fiscal" label="Régimen fiscal" maxLength={3} />
+                <Campo {...cc} k="uso_cfdi" label="Uso del CFDI" maxLength={5} />
               </div>
             </>
           )}
@@ -428,22 +572,22 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                 onChange={(v) => set('departamento', v)}
                 onAgregar={agregarDepto}
               />
-              <Campo k="fecha_ingreso" label="Fecha de ingreso *" tipo="date" />
-              <Selector k="tipo_contrato" label="Tipo de contrato" opciones={c?.tiposContrato} ancho="sm:col-span-3" />
-              <Selector k="tipo_regimen" label="Tipo de régimen" opciones={c?.tiposRegimen} ancho="sm:col-span-3" />
-              <Selector k="tipo_jornada" label="Tipo de jornada" opciones={c?.tiposJornada} incluirVacio ancho="sm:col-span-3" />
-              <Selector k="periodicidad_pago" label="Periodicidad de pago" opciones={c?.periodicidades} ancho="sm:col-span-2" />
+              <Campo {...cc} k="fecha_ingreso" label="Fecha de ingreso *" tipo="date" />
+              <Selector {...cc} k="tipo_contrato" label="Tipo de contrato" opciones={c?.tiposContrato} ancho="sm:col-span-3" />
+              <Selector {...cc} k="tipo_regimen" label="Tipo de régimen" opciones={c?.tiposRegimen} ancho="sm:col-span-3" />
+              <Selector {...cc} k="tipo_jornada" label="Tipo de jornada" opciones={c?.tiposJornada} incluirVacio ancho="sm:col-span-3" />
+              <Selector {...cc} k="periodicidad_pago" label="Periodicidad de pago" opciones={c?.periodicidades} ancho="sm:col-span-2" />
               <div>
-                <label className={etiqueta}>Tipo de nómina</label>
-                <select className={campo} value={f.tipo_nomina} onChange={(e) => set('tipo_nomina', e.target.value)}>
+                <label className={ETIQUETA}>Tipo de nómina</label>
+                <select className={CAMPO} value={f.tipo_nomina} onChange={(e) => set('tipo_nomina', e.target.value)}>
                   <option value="O">O · Ordinaria</option>
                   <option value="E">E · Extraordinaria</option>
                 </select>
               </div>
-              <Campo k="entidad_federativa" label="Entidad federativa (c_Estado)" maxLength={3} />
+              <Campo {...cc} k="entidad_federativa" label="Entidad federativa (c_Estado)" maxLength={3} />
               <div className="sm:col-span-2">
-                <label className={etiqueta}>Zona salarial</label>
-                <select className={`${campo} ${marca('zona_geografica')}`} value={f.zona_geografica} onChange={(e) => set('zona_geografica', e.target.value)}>
+                <label className={ETIQUETA}>Zona salarial</label>
+                <select className={`${CAMPO} ${marca('zona_geografica')}`} value={f.zona_geografica} onChange={(e) => set('zona_geografica', e.target.value)}>
                   <option value="general">General</option>
                   <option value="frontera_norte">Frontera norte</option>
                 </select>
@@ -464,14 +608,14 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                   integración nunca baja de 1. */}
               <div className="sm:col-span-3 grid sm:grid-cols-2 gap-3 p-3 rounded-lg bg-white/70 border">
                 <div>
-                  <Campo k="salario_diario" label="Salario diario — el del contrato *"
+                  <Campo {...cc} k="salario_diario" label="Salario diario — el del contrato *"
                     tipo="number" step="0.01" />
                   <p className="text-[10px] text-gray-500 mt-0.5">
                     Lo que gana al día, sin prestaciones. Es el MENOR de los dos.
                   </p>
                 </div>
                 <div>
-                  <Campo k="salario_diario_integrado" label="SDI — base de cotización *"
+                  <Campo {...cc} k="salario_diario_integrado" label="SDI — base de cotización *"
                     tipo="number" step="0.01" />
                   <p className="text-[10px] text-gray-500 mt-0.5">
                     Diario + aguinaldo y prima vacacional (Art. 84 LSS). Siempre el MAYOR.
@@ -486,9 +630,9 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                 )}
               </div>
               <div>
-                <label className={etiqueta}>Banco</label>
+                <label className={ETIQUETA}>Banco</label>
                 <select
-                  className={`${campo} ${marca('banco_clave')}`}
+                  className={`${CAMPO} ${marca('banco_clave')}`}
                   value={f.banco_clave ?? ''}
                   onChange={(e) => set('banco_clave', e.target.value)}
                 >
@@ -511,7 +655,7 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                   </p>
                 )}
               </div>
-              <Campo k="cuenta_clabe" label="CLABE (18 dígitos)" maxLength={18} ancho="sm:col-span-2" />
+              <Campo {...cc} k="cuenta_clabe" label="CLABE (18 dígitos)" maxLength={18} ancho="sm:col-span-2" />
             </div>
           )}
 
@@ -528,18 +672,18 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                 </label>
                 {f.tiene_infonavit && (
                   <div className="grid sm:grid-cols-2 gap-3 mt-3">
-                    <Campo k="infonavit_num_credito" label="Número de crédito" />
+                    <Campo {...cc} k="infonavit_num_credito" label="Número de crédito" />
                     <div>
-                      <label className={etiqueta}>Forma del descuento</label>
-                      <select className={campo} value={f.infonavit_tipo_descuento} onChange={(e) => set('infonavit_tipo_descuento', e.target.value)}>
+                      <label className={ETIQUETA}>Forma del descuento</label>
+                      <select className={CAMPO} value={f.infonavit_tipo_descuento} onChange={(e) => set('infonavit_tipo_descuento', e.target.value)}>
                         <option value="">— elegir —</option>
                         <option value="porcentaje">Porcentaje sobre el SDI</option>
                         <option value="cuota_fija">Cuota fija mensual</option>
                         <option value="vsm">Veces salario mínimo</option>
                       </select>
                     </div>
-                    <Campo k="infonavit_descuento" label="Valor del descuento" tipo="number" step="0.0001" />
-                    <Campo k="infonavit_seguro_danos" label="Seguro de daños (diario)" tipo="number" step="0.01" />
+                    <Campo {...cc} k="infonavit_descuento" label="Valor del descuento" tipo="number" step="0.0001" />
+                    <Campo {...cc} k="infonavit_seguro_danos" label="Seguro de daños (diario)" tipo="number" step="0.01" />
                     <p className="sm:col-span-2 text-[11px] text-gray-500">
                       Se guarda la REGLA del descuento tal como viene en la carta del INFONAVIT,
                       no el importe de un periodo.
@@ -560,16 +704,16 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                 {f.tiene_pension_alimenticia && (
                   <div className="grid sm:grid-cols-2 gap-3 mt-3">
                     <div>
-                      <label className={etiqueta}>Forma del descuento</label>
-                      <select className={campo} value={f.pension_tipo} onChange={(e) => set('pension_tipo', e.target.value)}>
+                      <label className={ETIQUETA}>Forma del descuento</label>
+                      <select className={CAMPO} value={f.pension_tipo} onChange={(e) => set('pension_tipo', e.target.value)}>
                         <option value="">— elegir —</option>
                         <option value="porcentaje">Porcentaje de percepciones</option>
                         <option value="cuota_fija">Cuota fija mensual</option>
                       </select>
                     </div>
-                    <Campo k="pension_monto" label="Valor" tipo="number" step="0.0001" />
-                    <Campo k="pension_beneficiario" label="Beneficiario" />
-                    <Campo k="pension_num_oficio" label="Número de oficio judicial" />
+                    <Campo {...cc} k="pension_monto" label="Valor" tipo="number" step="0.0001" />
+                    <Campo {...cc} k="pension_beneficiario" label="Beneficiario" />
+                    <Campo {...cc} k="pension_num_oficio" label="Número de oficio judicial" />
                     <p className="sm:col-span-2 text-[11px] text-gray-500">
                       Viene de una orden judicial: se captura exactamente como la diga el oficio.
                     </p>

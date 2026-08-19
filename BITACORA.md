@@ -5,6 +5,72 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-19 — El foco que se perdía, la CIF, y a quién alcanza un especial
+
+### 1 · No se podía escribir una palabra completa
+`Campo` y `Selector` estaban definidos **dentro** de `EmpleadoModal`. Cada
+render creaba un **tipo de componente nuevo**, así que React no tenía forma de
+saber que el `<input>` de este render era el mismo del anterior: lo desmontaba
+y lo volvía a montar. Un input recién montado no tiene el foco. Se escribía una
+letra, el estado cambiaba, y el cursor se salía del campo.
+
+Sacados al nivel del módulo, el tipo es siempre el mismo, React reutiliza el
+nodo y el foco se queda donde está. El orden del tabulador ya era el de la
+pantalla —lo da el orden del DOM—; lo que lo rompía era el remonte.
+
+**Y había un segundo caso, en otra pantalla.** El guardián nuevo
+—`revisar-componentes-anidados.mjs`— encontró el mismo defecto en el alta de
+empresas. Lo interesante es lo que NO marcó: en `CompanyProfile` hay un helper
+igualito, pero se llama como función (`{F('RFC','rfc')}`) en vez de como
+etiqueta (`<F />`), y así el JSX se inserta en el árbol del padre sin crear tipo
+nuevo. No tiene el problema. El guardián distingue los dos usos, porque mandar
+a "arreglar" lo que ya está bien es su propia forma de hacer daño.
+
+Existe como script y no sólo como comentario porque este error **no rompe la
+compilación, no avisa en consola y sólo se descubre escribiendo**.
+
+### 2 · Leer la CIF en el alta de trabajador
+Se reusó el extractor que ya tenían los clientes (`/csf/extract`), en su rama de
+**persona física**: RFC, CURP, nombre, apellidos y domicilio completo, doce
+campos de un jalón. Si alguien sube la constancia de la empresa se le dice que
+es una moral en vez de llenar el expediente con la razón social.
+
+Lo leído queda marcado en ámbar, igual que lo que deduce el importador de XML:
+el SAT genera el PDF con los valores como un solo bloque de texto
+—"PROLONGACIONADORATRICES"— y hay campos que salen sin espacios. Marcados se
+ven de un vistazo; sin marcar se guardan así.
+
+### 3 · Quiénes entran a una nómina especial
+Los especiales se pensaron para el aguinaldo y la PTU, que alcanzan a todos. Un
+bono a un turno también es un especial, y ahí la rejilla traía a los ochenta:
+quien lo cerrara generaba setenta y siete recibos de más, y deshacer eso es
+borrar CFDI.
+
+Ahora se eligen al crearlo, en un segundo paso —después del concepto, porque el
+concepto es lo que dice a quién marcar—. **Sin lista, alcanza a todos**: es la
+misma convención de antes, así que los especiales que ya existen no cambian, y
+es lo que debe seguir haciendo el aguinaldo. Si están todos marcados se guarda
+la lista *vacía* y no los ochenta ids: quien entre mañana debe caer en el
+aguinaldo, y con la lista fija se quedaría fuera sin que nadie lo notara.
+
+Cerrado el periodo ya no se puede cambiar: dejaría recibos sin dueño.
+
+### 4 · Tres cosas más
+- **El tablero** dice cuánto se descuenta por fuera del ISR y el IMSS: FONACOT y
+  préstamos con su saldo y su abono por periodo, y la pensión alimenticia
+  separando la de cuota fija de la de porcentaje —esta última se calcula sobre
+  el neto de cada periodo, así que sumarla aquí sería inventar un número—.
+- **Seleccionar todos para timbrar**, en el icono del sello del encabezado.
+  "Todos" son los que NO tienen folio: uno ya timbrado no se vuelve a mandar.
+- **El pie de la prenómina**, desahogado. Gravado, exento y subsidio eran parte
+  de un renglón corrido junto a tres consejos de uso; ahora son tres cifras con
+  su rótulo, y los consejos son pistas cortas aparte.
+
+*Verificado:* 11 comprobaciones nuevas de participantes —incluida que un id de
+otra empresa no se cuele—, 170 en total de nómina y las 115 unitarias.
+
+---
+
 ## 2026-08-18 — La prenómina acumulada por trabajador
 
 Pedir "de la semana 32 a la 34" y recibir **tres renglones de cada quien**

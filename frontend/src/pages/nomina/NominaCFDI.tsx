@@ -102,6 +102,22 @@ export function NominaCFDIPage() {
 
   const porTimbrar = Object.values(elegidos).filter(Boolean).length;
 
+  /* ── Marcar todos los que se pueden timbrar ──
+   *
+   * "Todos" son los que NO tienen folio fiscal: uno ya timbrado no se vuelve a
+   * mandar —eso sería un duplicado ante el SAT— y por eso ni siquiera tiene
+   * casilla. Con cincuenta recibos, marcarlos de uno en uno es medio minuto de
+   * clics y una oportunidad de saltarse justo el que faltaba. */
+  const timbrables = recibos.filter((r) => !r.uuid);
+  const todosMarcados =
+    timbrables.length > 0 && timbrables.every((r) => elegidos[r.id]);
+
+  const marcarTodosParaTimbrar = () => {
+    const n: Record<string, boolean> = { ...elegidos };
+    for (const r of timbrables) n[r.id] = !todosMarcados;
+    setElegidos(n);
+  };
+
   /* El blob del PDF se libera al cerrar: cada uno que no se revoca se queda en
    * memoria hasta que se recargue la página. */
   const cerrarVista = () => {
@@ -211,8 +227,26 @@ export function NominaCFDIPage() {
               {/* Dos columnas de marca distintas y a propósito: una decide a
                   quién se le MANDA el recibo, la otra cuáles se mandan al SAT.
                   Juntarlas haría que marcar para correo timbrara sin querer. */}
-              <th className="px-2 py-2 text-center w-10" title="Timbrar ante el PAC">
-                <Stamp size={13} className="inline" />
+              <th className="px-2 py-2 text-center w-10">
+                {timbrables.length > 0 ? (
+                  <button
+                    onClick={marcarTodosParaTimbrar}
+                    title={todosMarcados
+                      ? 'Quitar la marca a todos'
+                      : `Marcar los ${timbrables.length} sin timbrar`}
+                    className={`p-1 rounded transition ${
+                      todosMarcados
+                        ? 'bg-violet-600 text-white'
+                        : 'text-gray-500 hover:bg-violet-100 hover:text-violet-700'
+                    }`}
+                  >
+                    <Stamp size={13} />
+                  </button>
+                ) : (
+                  <span title="No hay recibos sin timbrar">
+                    <Stamp size={13} className="inline text-gray-300" />
+                  </span>
+                )}
               </th>
               <th className="px-2 py-2 text-center w-10" title="Enviar por correo">
                 <Mail size={13} className="inline" />

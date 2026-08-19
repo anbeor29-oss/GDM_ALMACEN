@@ -590,7 +590,16 @@ export async function obtener(companyId: string, id: string) {
   return { ...e, faltantes: faltantesParaTimbrar(e) };
 }
 
-/** Resumen de la plantilla — lo que necesita el tablero. */
+/**
+ * Resumen de la plantilla — lo que necesita el tablero.
+ *
+ * Además de contar cabezas, dice **cuánto se le está descontando a la nómina
+ * por fuera del ISR y el IMSS**: FONACOT, préstamos de la empresa, INFONAVIT y
+ * pensiones alimenticias. Son cuatro compromisos con cuatro dueños distintos
+ * —el instituto, la empresa, el INFONAVIT y un juzgado— y cada uno reclama por
+ * su lado. Verlos juntos es lo que evita descubrir en la revisión que un
+ * crédito llevaba tres periodos sin descontarse.
+ */
 export async function resumen(companyId: string) {
   const r = await query<any>(
     `SELECT
@@ -599,6 +608,13 @@ export async function resumen(companyId: string) {
         COALESCE(SUM(salario_diario) FILTER (WHERE activo), 0)  AS suma_salario_diario,
         COUNT(*) FILTER (WHERE activo AND tiene_infonavit)      AS con_infonavit,
         COUNT(*) FILTER (WHERE activo AND tiene_pension_alimenticia) AS con_pension,
+        /* Sólo se suma la pensión de CUOTA FIJA: la de porcentaje se calcula
+         * sobre el neto de cada periodo y aquí saldría un número inventado. */
+        COALESCE(SUM(pension_monto) FILTER (
+          WHERE activo AND tiene_pension_alimenticia AND pension_tipo = 'cuota_fija'), 0)
+          AS pension_fija,
+        COUNT(*) FILTER (WHERE activo AND tiene_pension_alimenticia
+                           AND pension_tipo = 'porcentaje')       AS pension_porcentaje,
         COUNT(*) FILTER (WHERE activo AND (nss IS NULL OR codigo_postal IS NULL
                                            OR entidad_federativa IS NULL
                                            OR salario_diario_integrado <= 0)) AS incompletos
@@ -607,12 +623,43 @@ export async function resumen(companyId: string) {
     [companyId]
   );
   const d = r.rows[0] || {};
+
+  /* Los créditos vivos, por origen. Sólo los ACTIVOS con saldo: un crédito
+   * liquidado no compromete nada y sumarlo abultaría el tablero. */
+  const cr = await query<any>(
+    `SELECT c.origen,
+            COUNT(DISTINCT c.empleado_id)::int AS trabajadores,
+            COUNT(*)::int                      AS creditos,
+            COALESCE(SUM(c.saldo), 0)                 AS saldo,
+            COALESCE(SUM(c.descuento_por_periodo), 0) AS por_periodo
+       FROM nomina_creditos c
+       JOIN nomina_empleados e ON e.id = c.empleado_id
+      WHERE c.company_id = $1 AND c.estatus = 'ACTIVO' AND c.saldo > 0
+        AND e.activo AND e.deleted_at IS NULL
+      GROUP BY c.origen`,
+    [companyId]
+  );
+
+  const porOrigen = (o: string) => {
+    const x = cr.rows.find((y: any) => y.origen === o);
+    return {
+      trabajadores: Number(x?.trabajadores || 0),
+      creditos: Number(x?.creditos || 0),
+      saldo: Number(x?.saldo || 0),
+      porPeriodo: Number(x?.por_periodo || 0),
+    };
+  };
+
   return {
     activos: Number(d.activos || 0),
     bajas: Number(d.bajas || 0),
     sumaSalarioDiario: Number(d.suma_salario_diario || 0),
     conInfonavit: Number(d.con_infonavit || 0),
     conPension: Number(d.con_pension || 0),
+    pensionFija: Number(d.pension_fija || 0),
+    pensionPorcentaje: Number(d.pension_porcentaje || 0),
+    fonacot: porOrigen('FONACOT'),
+    prestamos: porOrigen('PRESTAMO'),
     incompletos: Number(d.incompletos || 0),
   };
 }

@@ -250,6 +250,22 @@ export async function calcular(
     cond.push(`e.id = $${args.length}`);
   }
 
+  /* ── Quiénes entran a un especial ──
+   *
+   * Un especial no siempre alcanza a todos: puede ser un bono a un turno o una
+   * gratificación a tres personas. Si el periodo tiene lista, se respeta; sin
+   * lista alcanza a todos, que es como se comportaban antes de que existiera
+   * —y como debe seguir comportándose el aguinaldo—. */
+  if (periodo.tipo === 'ESPECIAL' && !periodo.empleado_id) {
+    args.push(periodo.id);
+    cond.push(
+      `(NOT EXISTS (SELECT 1 FROM nomina_periodo_empleados pe
+                     WHERE pe.periodo_id = $${args.length})
+        OR EXISTS (SELECT 1 FROM nomina_periodo_empleados pe
+                    WHERE pe.periodo_id = $${args.length} AND pe.empleado_id = e.id))`
+    );
+  }
+
   const r = await query<any>(
     `SELECT e.id, e.num_empleado, e.puesto, e.departamento,
             TRIM(e.nombre || ' ' || e.apellido_pat || ' ' || COALESCE(e.apellido_mat,'')) AS nombre,
