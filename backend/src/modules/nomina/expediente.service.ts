@@ -167,6 +167,12 @@ export async function listarEntregas(companyId: string, empleadoId: string) {
             e.devuelto,
             TO_CHAR(e.fecha_devolucion, 'YYYY-MM-DD') AS fecha_devolucion,
             e.estado_devolucion, e.costo, e.notas, e.created_at,
+            TO_CHAR(e.descontar_desde, 'YYYY-MM-DD') AS descontar_desde,
+            e.descontado_periodo_id,
+            /* En qué periodo se cobró, en palabras. Sin esto, cuando alguien
+             * reclama "me lo descontaron dos veces" no hay qué enseñarle. */
+            CASE WHEN p.id IS NOT NULL
+                 THEN p.tipo || ' #' || p.numero || ' · ' || p.anio END AS descontado_en,
             NULLIF(TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')), '') AS entregado_por,
             /* Cuándo toca reponerlo, mirado desde hoy: unas botas de seguridad
              * llevan tres años puestas y nadie se entera si no se dice. */
@@ -174,6 +180,7 @@ export async function listarEntregas(companyId: string, empleadoId: string) {
              AND e.fecha_reposicion <= CURRENT_DATE) AS vencido
        FROM nomina_entregas e
        LEFT JOIN users u ON u.id = e.entregado_por
+       LEFT JOIN nomina_periodos p ON p.id = e.descontado_periodo_id
       WHERE e.company_id = $1 AND e.empleado_id = $2
       ORDER BY e.devuelto, e.fecha_entrega DESC`,
     [companyId, empleadoId]
@@ -186,7 +193,7 @@ export async function registrarEntrega(
   datos: {
     empleado_id?: string; tipo?: string; articulo?: string; talla?: string;
     cantidad?: number; fecha_entrega?: string; fecha_reposicion?: string;
-    costo?: number; notas?: string;
+    costo?: number; notas?: string; descontar_desde?: string;
   },
   userId?: string
 ) {
@@ -218,14 +225,32 @@ export async function registrarEntrega(
     throw new ValidationError('El costo no puede ser negativo');
   }
 
+  /* ── Desde cuándo se cobra ──
+   *
+   * Con costo, se cobra: por omisión desde el día de la entrega, así que cae
+   * en el primer periodo que cierre después. Sin costo —o con cero— no hay
+   * nada que cobrar y la fecha se deja en NULL: el uniforme lo pone la
+   * empresa, que es el caso normal.
+   *
+   * Se guarda la fecha y no un "sí/no" porque el descuento tiene que saber a
+   * partir de qué periodo aplica; con un booleano, una entrega capturada tarde
+   * caería en el periodo equivocado. */
+  const cobrable = costo !== null && costo > 0;
+  const desde = cobrable
+    ? (fecha(datos.descontar_desde, 'La fecha desde la que se descuenta') || f)
+    : null;
+  if (desde && desde < f) {
+    throw new ValidationError('No se puede empezar a descontar antes de haberlo entregado');
+  }
+
   const r = await query<any>(
     `INSERT INTO nomina_entregas
        (company_id, empleado_id, tipo, articulo, talla, cantidad,
-        fecha_entrega, fecha_reposicion, costo, notas, entregado_por)
-     VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8::date,$9,$10,$11)
+        fecha_entrega, fecha_reposicion, costo, notas, entregado_por, descontar_desde)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8::date,$9,$10,$11,$12::date)
      RETURNING id`,
     [companyId, datos.empleado_id, tipo, articulo, texto(datos.talla, 20), cant,
-     f, rep, costo, texto(datos.notas, 2000), userId || null]
+     f, rep, costo, texto(datos.notas, 2000), userId || null, desde]
   );
   return { id: r.rows[0].id };
 }
@@ -281,4 +306,80 @@ export async function enSuPoder(companyId: string, empleadoId: string) {
     [companyId, empleadoId]
   );
   return r.rows;
+}
+
+
+/* ═══════════════ LO ENTREGADO QUE FALTA POR COBRAR ═══════════════ */
+
+export interface EntregaPorCobrar {
+  id: string;
+  empleado_id: string;
+  articulo: string;
+  cantidad: number;
+  /** El costo TOTAL de la entrega, que es lo que se descuenta de una vez. */
+  importe: number;
+}
+
+/**
+ * Las entregas con costo que todavía no se han cobrado y ya les toca.
+ *
+ * "Ya les toca" es que `descontar_desde` haya llegado antes de que termine el
+ * periodo. Así una entrega del 20 de agosto cae en la quincena que cierra el
+ * 31 y no en la que cerró el 15 —que ya se pagó—.
+ *
+ * Se cobra el costo COMPLETO de una vez y no en parcialidades: quien quiera
+ * repartirlo lo captura como préstamo de la empresa, que para eso existe y
+ * lleva su saldo. Un uniforme de doscientos pesos en cuatro pagos de cincuenta
+ * es más trabajo de seguimiento que el dinero que representa.
+ */
+export async function entregasPorCobrar(
+  companyId: string,
+  hasta: string,
+  empleadoIds?: string[]
+): Promise<EntregaPorCobrar[]> {
+  const args: any[] = [companyId, hasta];
+  let filtro = '';
+  if (empleadoIds?.length) {
+    args.push(empleadoIds);
+    filtro = ` AND e.empleado_id = ANY($${args.length}::uuid[])`;
+  }
+  const r = await query<any>(
+    `SELECT e.id, e.empleado_id, e.articulo, e.cantidad, e.costo
+       FROM nomina_entregas e
+      WHERE e.company_id = $1
+        AND e.descontado_periodo_id IS NULL
+        AND e.costo > 0
+        AND e.descontar_desde IS NOT NULL
+        AND e.descontar_desde <= $2::date${filtro}
+      ORDER BY e.descontar_desde, e.created_at`,
+    args
+  );
+  return r.rows.map((x: any) => ({
+    id: x.id,
+    empleado_id: x.empleado_id,
+    articulo: x.articulo,
+    cantidad: Number(x.cantidad),
+    importe: Number(x.costo),
+  }));
+}
+
+/**
+ * Marca como cobradas las entregas que entraron a un periodo.
+ *
+ * Se guarda EN QUÉ periodo y no un simple "ya se cobró": es lo único que
+ * permite enseñarle el recibo a quien reclame, y si el periodo se reabre el
+ * descuento vuelve a quedar pendiente solo.
+ */
+export async function marcarEntregasCobradas(
+  client: any, companyId: string, periodoId: string, ids: string[]
+) {
+  if (!ids.length) return 0;
+  const r = await client.query(
+    `UPDATE nomina_entregas
+        SET descontado_periodo_id = $1, descontado_at = NOW()
+      WHERE company_id = $2 AND id = ANY($3::uuid[])
+        AND descontado_periodo_id IS NULL`,
+    [periodoId, companyId, ids]
+  );
+  return r.rowCount || 0;
 }

@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { aTextoMx } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -325,7 +326,7 @@ export function NominaCFDIPage() {
                   <td className="px-2 py-1.5 text-xs text-gray-600">
                     {r.tipo} #{r.periodo_numero}
                     {r.concepto && <span className="block text-gray-400">{r.concepto}</span>}
-                    <span className="block text-gray-400">{r.fecha_inicio} a {r.fecha_fin}</span>
+                    <span className="block text-gray-400">{aTextoMx(r.fecha_inicio)} a {aTextoMx(r.fecha_fin)}</span>
                   </td>
                   {/* El UUID completo y seleccionable: se copia para buscarlo en
                       el portal del SAT o para responderle al trabajador. Cortarlo

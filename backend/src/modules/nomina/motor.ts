@@ -507,6 +507,16 @@ export interface Percepcion {
 }
 export interface Deduccion {
   clave: string; concepto: string; importe: number;
+  /**
+   * De qué entrega salió este descuento, cuando lo generó un uniforme o equipo
+   * con costo.
+   *
+   * No es un dato fiscal y no viaja al CFDI: sirve para que el cierre pueda
+   * marcar EXACTAMENTE lo que se cobró. Sin él habría que volver a deducir qué
+   * entregas entraron, y esa segunda deducción es justo donde se cuela el
+   * cobro doble.
+   */
+  entregaId?: string;
 }
 
 export interface Recibo {
@@ -611,7 +621,14 @@ export function calcularRecibo(entrada: EntradaCalculo, e: Ejercicio): Recibo {
     const imp = pesos(Number(od.importe) || 0);
     if (imp <= 0) continue;
     const cat = DEDUCCIONES.find((d) => d.clave === od.clave);
-    deducciones.push({ clave: od.clave, concepto: od.concepto || cat?.nombre || 'Otro descuento', importe: imp });
+    deducciones.push({
+      clave: od.clave,
+      concepto: od.concepto || cat?.nombre || 'Otro descuento',
+      importe: imp,
+      /* El origen viaja con el descuento: es lo que deja al cierre marcar la
+       * entrega sin volver a adivinar cuál era. */
+      ...((od as any).entregaId ? { entregaId: (od as any).entregaId } : {}),
+    });
   }
 
   const totalDeducciones = pesos(deducciones.reduce((s, d) => s + d.importe, 0));

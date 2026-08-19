@@ -21,6 +21,8 @@ import {
   BookText, Shirt, Plus, X, Lock, Award, AlertTriangle, Info, FileText, Undo2,
 } from 'lucide-react';
 import api from '@/services/api';
+import { CampoFecha } from '@/components/CampoFecha';
+import { aTextoMx } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   n === null || n === undefined ? '—'
@@ -147,7 +149,7 @@ function Bitacora({ empleadoId, puedeEditar }: { empleadoId: string; puedeEditar
                     </p>
                   )}
                 </div>
-                <span className="text-xs text-gray-400 shrink-0">{n.fecha}</span>
+                <span className="text-xs text-gray-400 shrink-0">{aTextoMx(n.fecha)}</span>
               </div>
               <p className="text-[11px] text-gray-400 mt-1.5">
                 capturó {n.creada_por || n.creada_por_correo || 'alguien'}
@@ -199,7 +201,7 @@ function FormaDeNota({ empleadoId, onCancelar, onGuardado }: any) {
           <option value="INCIDENCIA">Incidencia</option>
           <option value="NOTA">Nota</option>
         </select>
-        <input type="date" className={campo} value={f.fecha} onChange={(e) => set('fecha', e.target.value)} />
+        <CampoFecha value={f.fecha} onChange={(v) => set('fecha', v)} />
       </div>
       <input className={campo} placeholder="Título" value={f.titulo}
         onChange={(e) => set('titulo', e.target.value)} />
@@ -304,12 +306,23 @@ function Entregas({ empleadoId, puedeEditar }: { empleadoId: string; puedeEditar
                   {e.talla && <span className="text-gray-500 font-normal"> · talla {e.talla}</span>}
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  entregado el {e.fecha_entrega}
+                  entregado el {aTextoMx(e.fecha_entrega)}
                   {e.costo !== null && ` · ${money(e.costo)}`}
+                  {/* Que se vea si eso ya se cobró y dónde: es lo que se
+                      necesita cuando alguien reclama el descuento. */}
+                  {e.descontado_en ? (
+                    <span className="block text-[11px] text-gray-500">
+                      Descontado en {e.descontado_en}
+                    </span>
+                  ) : e.descontar_desde ? (
+                    <span className="block text-[11px] text-amber-700">
+                      Se descuenta a partir del {aTextoMx(e.descontar_desde)}
+                    </span>
+                  ) : null}
                 </p>
                 {e.vencido && (
                   <p className="text-xs text-amber-700 mt-0.5">
-                    Tocaba reponerlo el {e.fecha_reposicion}
+                    Tocaba reponerlo el {aTextoMx(e.fecha_reposicion)}
                   </p>
                 )}
                 {e.devuelto && (
@@ -350,7 +363,7 @@ function FormaDeEntrega({ empleadoId, onCancelar, onGuardado }: any) {
   const [f, setF] = useState<any>({
     tipo: 'EPP', articulo: '', talla: '', cantidad: 1,
     fecha_entrega: new Date().toISOString().slice(0, 10),
-    fecha_reposicion: '', costo: '',
+    fecha_reposicion: '', costo: '', descontar_desde: '',
   });
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -373,8 +386,7 @@ function FormaDeEntrega({ empleadoId, onCancelar, onGuardado }: any) {
           <option value="HERRAMIENTA">Herramienta</option>
           <option value="OTRO">Otro</option>
         </select>
-        <input type="date" className={campo} value={f.fecha_entrega}
-          onChange={(e) => set('fecha_entrega', e.target.value)} />
+        <CampoFecha value={f.fecha_entrega} onChange={(v) => set('fecha_entrega', v)} />
       </div>
       <input className={campo} placeholder="Qué se entregó (botas, casco, camisola…)"
         value={f.articulo} onChange={(e) => set('articulo', e.target.value)} />
@@ -388,9 +400,45 @@ function FormaDeEntrega({ empleadoId, onCancelar, onGuardado }: any) {
       </div>
       <div>
         <label className="block text-xs text-gray-600 mb-1">Cuándo toca reponerlo (opcional)</label>
-        <input type="date" className={campo} value={f.fecha_reposicion}
-          onChange={(e) => set('fecha_reposicion', e.target.value)} />
+        <CampoFecha value={f.fecha_reposicion} onChange={(v) => set('fecha_reposicion', v)} />
       </div>
+
+      {/* ── El cobro ──
+          Aparece SÓLO cuando hay costo, porque sólo entonces hay algo que
+          decidir. Con costo cero —el caso normal, el uniforme lo pone la
+          empresa— no hay descuento y no hay nada que preguntar.
+
+          Se dice en voz alta lo que va a pasar y en qué periodo, porque un
+          descuento automático que aparece sin avisar en el recibo es el que
+          termina en reclamo. */}
+      {Number(f.costo) > 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+          <p className="text-xs text-amber-900">
+            <b>Se le va a descontar {money(Number(f.costo))}</b> en el primer periodo que
+            cierre a partir de la fecha de abajo. Se cobra completo y una sola vez.
+          </p>
+          <div>
+            <label className="block text-xs text-amber-900 mb-1">Se descuenta a partir de</label>
+            <CampoFecha value={f.descontar_desde || f.fecha_entrega}
+              min={f.fecha_entrega}
+              onChange={(v) => set('descontar_desde', v)} />
+            <p className="text-[11px] text-amber-800 mt-1">
+              Por omisión, el día de la entrega. Si se pactó cobrarlo más adelante,
+              se pone esa fecha.
+            </p>
+          </div>
+          <p className="text-[11px] text-amber-800">
+            ¿Prefieres repartirlo en varios pagos? Captúralo como préstamo de la
+            empresa en la pestaña de Descuentos: ahí lleva saldo y se abona cada
+            periodo.
+          </p>
+        </div>
+      ) : (
+        <p className="text-[11px] text-gray-500">
+          Sin costo no hay descuento: se registra como entrega y ya. El costo sólo
+          se pone cuando el artículo se le vende o se le cobra por extravío.
+        </p>
+      )}
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onCancelar}
           className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
@@ -404,6 +452,7 @@ function FormaDeEntrega({ empleadoId, onCancelar, onGuardado }: any) {
                 fecha_entrega: f.fecha_entrega,
                 fecha_reposicion: f.fecha_reposicion || null,
                 costo: f.costo === '' ? null : Number(f.costo),
+                descontar_desde: f.descontar_desde || undefined,
               });
               onGuardado();
             } catch (e: any) {

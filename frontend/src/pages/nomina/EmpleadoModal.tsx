@@ -17,12 +17,16 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Save, AlertTriangle, FileText } from 'lucide-react';
+import {
+  X, Save, AlertTriangle, FileText,
+  Briefcase, FileSignature, CalendarClock, Banknote, Landmark,
+} from 'lucide-react';
 import api from '@/services/api';
 import { ComboConAlta } from './ComboConAlta';
 import { CreditosDelTrabajador } from './CreditosDelTrabajador';
 import { ExpedienteDelTrabajador } from './ExpedienteDelTrabajador';
 import { FotoDelTrabajador } from './FotoDelTrabajador';
+import { CampoFecha } from '@/components/CampoFecha';
 
 interface Props {
   /** null = alta. Con expediente = edición. */
@@ -60,6 +64,7 @@ const VACIO: Record<string, any> = {
   infonavit_tipo_descuento: '', infonavit_descuento: '', infonavit_seguro_danos: '',
   tiene_pension_alimenticia: false, pension_tipo: '', pension_monto: '',
   pension_beneficiario: '', pension_num_oficio: '',
+  infonavit_desde: '', pension_desde: '',
 };
 
 const CAMPO =
@@ -81,17 +86,54 @@ const ETIQUETA = 'block text-xs font-medium text-gray-600 mb-1';
  *
  * Es la razón por la que un componente NUNCA se define dentro de otro.
  */
+/**
+ * Un bloque de la ficha, con su rótulo.
+ *
+ * Existe para que una pantalla de quince campos se lea como cinco preguntas y
+ * no como quince renglones. El rótulo es chico y en versalitas a propósito:
+ * tiene que ordenar sin competir con los campos, que es lo que se viene a
+ * llenar.
+ */
+function Seccion({ titulo, nota, icono, children }: {
+  titulo: string; nota?: string; icono?: React.ReactNode; children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-gray-400">{icono}</span>
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+          {titulo}
+        </h3>
+        <span className="flex-1 border-t border-gray-200/80" />
+      </div>
+      {nota && <p className="text-[11px] text-gray-500 -mt-1 mb-2">{nota}</p>}
+      {children}
+    </section>
+  );
+}
+
 function Campo({ k, label, tipo = 'text', ancho = '', f, set, marca, ...rest }: any) {
   return (
     <div className={ancho}>
       <label className={ETIQUETA}>{label}</label>
-      <input
-        type={tipo}
-        className={`${CAMPO} ${marca(k)}`}
-        value={f[k] ?? ''}
-        onChange={(e) => set(k, e.target.value)}
-        {...rest}
-      />
+      {/* Las fechas van por CampoFecha y no por <input type="date">: ese
+          control lo dibuja el NAVEGADOR con el formato del sistema, y en una
+          máquina en inglés pide mm/dd/aaaa. Aquí siempre es dd/mm/aaaa. */}
+      {tipo === 'date' ? (
+        <CampoFecha
+          value={f[k] ?? ''}
+          onChange={(v: string) => set(k, v)}
+          className={marca(k) ? 'ring-1 ring-amber-300 rounded-lg' : ''}
+        />
+      ) : (
+        <input
+          type={tipo}
+          className={`${CAMPO} ${marca(k)}`}
+          value={f[k] ?? ''}
+          onChange={(e) => set(k, e.target.value)}
+          {...rest}
+        />
+      )}
     </div>
   );
 }
@@ -556,106 +598,151 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
             </>
           )}
 
+          {/* ── Relación laboral ──
+              Antes era una rejilla de tres columnas donde casi todo ocupaba
+              las tres: quedaba una pila de once combos idénticos, del mismo
+              ancho y del mismo color, sin nada que dijera dónde termina un
+              asunto y empieza otro. Para encontrar la CLABE había que leerlos
+              todos.
+
+              Ahora va en cinco bloques, cada uno con la pregunta que responde.
+              El orden es el de una contratación real: qué hace, cómo está
+              contratado, cada cuándo se le paga, cuánto gana y dónde se le
+              deposita. Los combos de texto largo —contrato y régimen— siguen
+              a todo lo ancho porque su contenido lo pide; los cortos van de a
+              dos o tres, que es lo que quita la sensación de lista. */}
           {bloque === 'laboral' && (
-            <div className="grid sm:grid-cols-3 gap-3">
-              <ComboConAlta
-                label="Puesto"
-                opciones={puestos}
-                valor={f.puesto}
-                onChange={(v) => set('puesto', v)}
-                onAgregar={agregarPuesto}
-              />
-              <ComboConAlta
-                label="Departamento"
-                opciones={departamentos}
-                valor={f.departamento}
-                onChange={(v) => set('departamento', v)}
-                onAgregar={agregarDepto}
-              />
-              <Campo {...cc} k="fecha_ingreso" label="Fecha de ingreso *" tipo="date" />
-              <Selector {...cc} k="tipo_contrato" label="Tipo de contrato" opciones={c?.tiposContrato} ancho="sm:col-span-3" />
-              <Selector {...cc} k="tipo_regimen" label="Tipo de régimen" opciones={c?.tiposRegimen} ancho="sm:col-span-3" />
-              <Selector {...cc} k="tipo_jornada" label="Tipo de jornada" opciones={c?.tiposJornada} incluirVacio ancho="sm:col-span-3" />
-              <Selector {...cc} k="periodicidad_pago" label="Periodicidad de pago" opciones={c?.periodicidades} ancho="sm:col-span-2" />
-              <div>
-                <label className={ETIQUETA}>Tipo de nómina</label>
-                <select className={CAMPO} value={f.tipo_nomina} onChange={(e) => set('tipo_nomina', e.target.value)}>
-                  <option value="O">O · Ordinaria</option>
-                  <option value="E">E · Extraordinaria</option>
-                </select>
-              </div>
-              <Campo {...cc} k="entidad_federativa" label="Entidad federativa (c_Estado)" maxLength={3} />
-              <div className="sm:col-span-2">
-                <label className={ETIQUETA}>Zona salarial</label>
-                <select className={`${CAMPO} ${marca('zona_geografica')}`} value={f.zona_geografica} onChange={(e) => set('zona_geografica', e.target.value)}>
-                  <option value="general">General</option>
-                  <option value="frontera_norte">Frontera norte</option>
-                </select>
-                <p className="text-[11px] text-gray-500 mt-1">
-                  Cambia el salario mínimo aplicable, y con él la exención de ISR y la cuota obrera.
-                </p>
-              </div>
+            <div className="space-y-5">
+
+              <Seccion titulo="Qué hace" icono={<Briefcase size={14} />}>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <ComboConAlta
+                    label="Puesto"
+                    opciones={puestos}
+                    valor={f.puesto}
+                    onChange={(v) => set('puesto', v)}
+                    onAgregar={agregarPuesto}
+                  />
+                  <ComboConAlta
+                    label="Departamento"
+                    opciones={departamentos}
+                    valor={f.departamento}
+                    onChange={(v) => set('departamento', v)}
+                    onAgregar={agregarDepto}
+                  />
+                  <Campo {...cc} k="fecha_ingreso" label="Fecha de ingreso *" tipo="date" />
+                </div>
+              </Seccion>
+
+              <Seccion titulo="Cómo está contratado"
+                nota="Los tres van tal cual al CFDI de nómina (Anexo 20)."
+                icono={<FileSignature size={14} />}>
+                <div className="space-y-3">
+                  <Selector {...cc} k="tipo_contrato" label="Tipo de contrato" opciones={c?.tiposContrato} />
+                  <Selector {...cc} k="tipo_regimen" label="Tipo de régimen" opciones={c?.tiposRegimen} />
+                  <Selector {...cc} k="tipo_jornada" label="Tipo de jornada" opciones={c?.tiposJornada} incluirVacio />
+                </div>
+              </Seccion>
+
+              <Seccion titulo="Cada cuándo y bajo qué zona" icono={<CalendarClock size={14} />}>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Selector {...cc} k="periodicidad_pago" label="Periodicidad de pago" opciones={c?.periodicidades} />
+                  <div>
+                    <label className={ETIQUETA}>Tipo de nómina</label>
+                    <select className={CAMPO} value={f.tipo_nomina} onChange={(e) => set('tipo_nomina', e.target.value)}>
+                      <option value="O">O · Ordinaria</option>
+                      <option value="E">E · Extraordinaria</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={ETIQUETA}>Zona salarial</label>
+                    <select className={`${CAMPO} ${marca('zona_geografica')}`} value={f.zona_geografica}
+                      onChange={(e) => set('zona_geografica', e.target.value)}>
+                      <option value="general">General</option>
+                      <option value="frontera_norte">Frontera norte</option>
+                    </select>
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      Cambia el salario mínimo aplicable, y con él la exención de ISR
+                      y la cuota obrera.
+                    </p>
+                  </div>
+                  <Campo {...cc} k="entidad_federativa" label="Entidad federativa (c_Estado)" maxLength={3} />
+                </div>
+              </Seccion>
+
               {/* Sólo estos dos sueldos. El "salario base de cotización" existía
                   aquí como un tercer campo y no servía más que para confundir:
                   el complemento de nómina trae SalarioBaseCotApor —que es el
                   diario— y SalarioDiarioIntegrado, y con esos dos se calcula
                   todo. La columna sigue en la base para no perder lo que ya se
-                  hubiera capturado. */}
-              {/* Los dos importes juntos y explicados. "Salario diario" y "SDI"
-                  a secas se confunden —y confundirlos mueve la cuota del IMSS de
-                  toda la plantilla—, así que cada uno dice qué es y cuál debe ser
-                  mayor. El aviso salta solo si quedaron al revés: el factor de
-                  integración nunca baja de 1. */}
-              <div className="sm:col-span-3 grid sm:grid-cols-2 gap-3 p-3 rounded-lg bg-white/70 border">
-                <div>
-                  <Campo {...cc} k="salario_diario" label="Salario diario — el del contrato *"
-                    tipo="number" step="0.01" />
-                  <p className="text-[10px] text-gray-500 mt-0.5">
-                    Lo que gana al día, sin prestaciones. Es el MENOR de los dos.
-                  </p>
+                  hubiera capturado.
+
+                  "Salario diario" y "SDI" a secas se confunden —y confundirlos
+                  mueve la cuota del IMSS de toda la plantilla—, así que cada uno
+                  dice qué es y cuál debe ser mayor. */}
+              <Seccion titulo="Cuánto gana" icono={<Banknote size={14} />}
+                nota="Confundir estos dos mueve la cuota del IMSS de toda la plantilla.">
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <Campo {...cc} k="salario_diario" label="Salario diario — el del contrato *"
+                      tipo="number" step="0.01" />
+                    <p className="text-[10px] text-gray-500 mt-0.5">
+                      Lo que gana al día, sin prestaciones. Es el <b>menor</b> de los dos.
+                    </p>
+                  </div>
+                  <div>
+                    <Campo {...cc} k="salario_diario_integrado" label="SDI — base de cotización *"
+                      tipo="number" step="0.01" />
+                    <p className="text-[10px] text-gray-500 mt-0.5">
+                      Diario + aguinaldo y prima vacacional (Art. 84 LSS). Siempre el <b>mayor</b>.
+                    </p>
+                  </div>
+                  {/* El aviso salta solo si quedaron al revés: el factor de
+                      integración nunca baja de 1. */}
+                  {Number(f.salario_diario_integrado) > 0 &&
+                   Number(f.salario_diario_integrado) < Number(f.salario_diario) && (
+                    <p className="sm:col-span-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                      El SDI quedó por debajo del salario diario, y eso es imposible: el
+                      factor de integración nunca baja de 1. Lo más probable es que estén
+                      invertidos.
+                    </p>
+                  )}
                 </div>
-                <div>
-                  <Campo {...cc} k="salario_diario_integrado" label="SDI — base de cotización *"
-                    tipo="number" step="0.01" />
-                  <p className="text-[10px] text-gray-500 mt-0.5">
-                    Diario + aguinaldo y prima vacacional (Art. 84 LSS). Siempre el MAYOR.
-                  </p>
+              </Seccion>
+
+              <Seccion titulo="Dónde se le deposita" icono={<Landmark size={14} />}>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className={ETIQUETA}>Banco</label>
+                    <select
+                      className={`${CAMPO} ${marca('banco_clave')}`}
+                      value={f.banco_clave ?? ''}
+                      onChange={(e) => set('banco_clave', e.target.value)}
+                    >
+                      <option value="">— sin especificar —</option>
+                      {(c?.bancos || []).map((b: any) => (
+                        <option key={b.code} value={b.code}>{b.name}</option>
+                      ))}
+                    </select>
+                    {/* La clave del SAT, visible. Es la que viaja en el CFDI
+                        (nomina12:Receptor/@Banco) y la que forma los tres
+                        primeros dígitos de la CLABE: si no cuadra con la
+                        cuenta, la dispersión rebota. */}
+                    {f.banco_clave ? (
+                      <p className="text-[11px] text-rose-600 font-mono mt-1">
+                        Clave SAT: {f.banco_clave}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        La clave aparece aquí al elegir el banco.
+                      </p>
+                    )}
+                  </div>
+                  <Campo {...cc} k="cuenta_clabe" label="CLABE (18 dígitos)" maxLength={18}
+                    ancho="sm:col-span-2" />
                 </div>
-                {Number(f.salario_diario_integrado) > 0 &&
-                 Number(f.salario_diario_integrado) < Number(f.salario_diario) && (
-                  <p className="sm:col-span-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                    El SDI quedó por debajo del salario diario, y eso es imposible: el factor
-                    de integración nunca baja de 1. Lo más probable es que estén invertidos.
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className={ETIQUETA}>Banco</label>
-                <select
-                  className={`${CAMPO} ${marca('banco_clave')}`}
-                  value={f.banco_clave ?? ''}
-                  onChange={(e) => set('banco_clave', e.target.value)}
-                >
-                  <option value="">— sin especificar —</option>
-                  {(c?.bancos || []).map((b: any) => (
-                    <option key={b.code} value={b.code}>{b.name}</option>
-                  ))}
-                </select>
-                {/* La clave del SAT, visible. Es la que viaja en el CFDI
-                    (nomina12:Receptor/@Banco) y la que forma los tres primeros
-                    dígitos de la CLABE: si no cuadra con la cuenta, la
-                    dispersión rebota. */}
-                {f.banco_clave ? (
-                  <p className="text-[11px] text-rose-600 font-mono mt-1">
-                    Clave SAT: {f.banco_clave}
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-gray-400 mt-1">
-                    La clave aparece aquí al elegir el banco.
-                  </p>
-                )}
-              </div>
-              <Campo {...cc} k="cuenta_clabe" label="CLABE (18 dígitos)" maxLength={18} ancho="sm:col-span-2" />
+              </Seccion>
+
             </div>
           )}
 
@@ -684,9 +771,12 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                     </div>
                     <Campo {...cc} k="infonavit_descuento" label="Valor del descuento" tipo="number" step="0.0001" />
                     <Campo {...cc} k="infonavit_seguro_danos" label="Seguro de daños (diario)" tipo="number" step="0.01" />
+                    <Campo {...cc} k="infonavit_desde" label="Se retiene desde" tipo="date"
+                      ancho="sm:col-span-2" />
                     <p className="sm:col-span-2 text-[11px] text-gray-500">
                       Se guarda la REGLA del descuento tal como viene en la carta del INFONAVIT,
-                      no el importe de un periodo.
+                      no el importe de un periodo. La fecha es la de la carta: antes de ella el
+                      crédito existe pero no se retiene. <b>Vacía = desde siempre.</b>
                     </p>
                   </div>
                 )}
@@ -714,8 +804,13 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                     <Campo {...cc} k="pension_monto" label="Valor" tipo="number" step="0.0001" />
                     <Campo {...cc} k="pension_beneficiario" label="Beneficiario" />
                     <Campo {...cc} k="pension_num_oficio" label="Número de oficio judicial" />
+                    <Campo {...cc} k="pension_desde" label="Se retiene desde"
+                      tipo="date" ancho="sm:col-span-2" />
                     <p className="sm:col-span-2 text-[11px] text-gray-500">
                       Viene de una orden judicial: se captura exactamente como la diga el oficio.
+                      La fecha es la de <b>notificación</b> —desde ahí surte efectos para el
+                      patrón—, y un oficio de septiembre no alcanza a la quincena de agosto.
+                      <b> Vacía = desde siempre.</b>
                     </p>
                   </div>
                 )}

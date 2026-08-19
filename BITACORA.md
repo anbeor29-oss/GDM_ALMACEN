@@ -5,6 +5,83 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-19 (tarde) — Los timbres que faltaban, el uniforme que se cobra, y las fechas
+
+### 1 · El contador de timbres ignoraba la nómina
+Contaba facturas, notas de crédito y pagos. Un recibo de nómina timbrado gasta
+un timbre igual, y no estaba: el tablero decía **0 / 200** mientras el mes se
+llevaba ochenta recibos, y el tope se descubría al rebotar el timbrado.
+
+Se cuentan por `timbrado_at` y no por la fecha del periodo: el timbre se gasta
+el día que se manda al PAC. Una nómina de julio timbrada en agosto la paga
+agosto.
+
+### 2 · El uniforme con costo se descuenta solo
+Antes `costo` era un dato suelto "para poder descontarlo", con la nota de que
+había que capturar la deducción a mano. En la práctica eso es acordarse de
+hacerlo **y acordarse de no volver a hacerlo** el periodo siguiente. Lo segundo
+es lo que falla.
+
+Ahora: costo mayor que cero → se descuenta una vez, en el primer periodo que
+cierre a partir de la fecha desde la que aplica, con la clave **017** del Anexo
+20 (adquisición de artículos de la empresa; no la 016, que es para daños).
+Costo cero → no hay descuento, que es el caso normal.
+
+**Lo que hace que no se cobre dos veces** es guardar EN QUÉ periodo se cobró, no
+un "ya se cobró". Un booleano no dice dónde, y cuando alguien reclama no hay qué
+enseñarle; con el periodo se sabe, y si ese periodo se reabre el descuento
+vuelve a quedar pendiente solo. El marcado va dentro de la misma transacción del
+cierre, por el mismo motivo que los abonos de préstamos.
+
+Y hubo un detalle que sólo apareció al probarlo: el origen del descuento se
+perdía en el motor, que reconstruye cada deducción con sólo clave, concepto e
+importe. La prueba lo atrapó —cobraba dos veces— antes que cualquier usuario.
+
+### 3 · Desde cuándo aplican la pensión y el INFONAVIT
+Los dos se guardaban como una regla sin fecha, así que aplicaban desde siempre.
+Un oficio de pensión notificado el 10 de septiembre alcanzaba a la quincena que
+corrió del 1 al 15 de agosto: eso es retener sin orden que lo respalde, y
+devolverlo después ya no es un ajuste de nómina.
+
+Se compara contra el FIN del periodo: si la orden llegó a media quincena, esa
+quincena ya se retiene. Sin fecha capturada aplica desde siempre — los
+expedientes que ya existen no cambian de comportamiento de un día para otro.
+
+### 4 · Todas las fechas en DD/MM/AAAA
+`<input type="date">` lo dibuja el **navegador** con el formato del sistema
+operativo, no el de la página: en una máquina en inglés pide `mm/dd/yyyy` y no
+hay CSS ni atributo que lo cambie. En nómina eso no es estético — capturar 03/07
+como "3 de julio" cuando el control lee "7 de marzo" mueve una fecha de ingreso,
+y con ella la antigüedad, las vacaciones y el finiquito.
+
+Se hizo `CampoFecha`: campo de texto con máscara, siempre dd/mm/aaaa, que hacia
+afuera habla ISO. Valida que la fecha **exista** —"31/02/2026" son ocho dígitos
+correctos y una fecha que no existe—. Doce capturas y ocho lugares donde se
+muestran quedaron convertidos.
+
+### 5 · Relación laboral, rediseñada
+Era una rejilla de tres columnas donde casi todo ocupaba las tres: once combos
+idénticos, del mismo ancho y del mismo color, sin nada que dijera dónde termina
+un asunto y empieza otro. Para encontrar la CLABE había que leerlos todos.
+
+Ahora son cinco bloques con la pregunta que responde cada uno, en el orden de
+una contratación real: qué hace, cómo está contratado, cada cuándo se le paga,
+cuánto gana, dónde se le deposita. Los combos de texto largo siguen a todo lo
+ancho porque su contenido lo pide; los cortos van de a dos o tres.
+
+### 6 · El tablero, con los cuatro descuentos
+FONACOT y préstamos muestran saldo; el INFONAVIT y la pensión **no llevan
+saldo** —no se acaban cuando se paga cierta cantidad, siguen hasta que el
+instituto o el juzgado digan otra cosa— así que muestran la regla. Y sólo se
+suma la parte de cuota fija: el porcentaje sale del SDI y los VSM del valor de
+la UMI por los días, dos cosas que dependen del periodo.
+
+*Verificado:* 15 comprobaciones nuevas del cobro de entregas y las fechas de
+descuento —incluido que en el SEGUNDO periodo no se vuelva a cobrar—, 185 de
+nómina en total y las 115 unitarias.
+
+---
+
 ## 2026-08-19 — El foco que se perdía, la CIF, y a quién alcanza un especial
 
 ### 1 · No se podía escribir una palabra completa

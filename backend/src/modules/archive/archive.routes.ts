@@ -210,12 +210,23 @@ router.get(
               AND date_trunc('month', date_issued) = date_trunc('month', NOW())) AS nc_mes,
          (SELECT COUNT(*)::int FROM payments
             WHERE company_id = $1 AND deleted_at IS NULL
-              AND date_trunc('month', payment_date) = date_trunc('month', NOW())) AS pagos_mes
+              AND date_trunc('month', payment_date) = date_trunc('month', NOW())) AS pagos_mes,
+         /* Los recibos de nómina también gastan timbre, y faltaban en la
+          * cuenta: el tablero decía "0 / 200" mientras el mes se llevaba
+          * ochenta recibos, y el tope se descubría al rebotar el timbrado.
+          *
+          * Se cuentan por timbrado_at y no por la fecha del periodo: el
+          * timbre se gasta el día que se manda al PAC, no el día que cerró la
+          * quincena. Una nómina de julio timbrada en agosto la paga agosto. */
+         (SELECT COUNT(*)::int FROM nomina_recibos
+            WHERE company_id = $1 AND uuid IS NOT NULL
+              AND date_trunc('month', timbrado_at) = date_trunc('month', NOW())) AS nomina_mes
       `,
       [companyId(req)]
     );
     const row = r.rows[0];
-    const total = Number(row.facturas_mes) + Number(row.nc_mes) + Number(row.pagos_mes);
+    const total = Number(row.facturas_mes) + Number(row.nc_mes) +
+                  Number(row.pagos_mes) + Number(row.nomina_mes);
 
     /* El tope sale del PAQUETE CONTRATADO, no de companies.cap_timbres.
      *
@@ -259,6 +270,7 @@ router.get(
           facturas: row.facturas_mes,
           notas_credito: row.nc_mes,
           pagos: row.pagos_mes,
+          nomina: row.nomina_mes,
           total,
         },
         plan: {

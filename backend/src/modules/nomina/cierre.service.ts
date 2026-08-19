@@ -29,6 +29,7 @@ import { PoolClient } from 'pg';
 import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError, ConflictError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
+import * as expediente from './expediente.service';
 import { calcular, CapturaPorTrabajador } from './prenomina.service';
 import { CLAVE_SAT } from './calendario';
 import * as pacService from '../pac/pac.service';
@@ -286,6 +287,25 @@ export async function cerrarPeriodo(
       }
     }
 
+    /* ── Las entregas con costo que se cobraron en este periodo ──
+     *
+     * Va DENTRO de la misma transacción y por el mismo motivo que los abonos:
+     * si el recibo se guarda con el descuento y la entrega no queda marcada,
+     * el siguiente periodo se lo vuelve a cobrar. Un uniforme no se paga dos
+     * veces.
+     *
+     * Se marcan las que la prenómina metió de verdad al recibo —las que traen
+     * `entregaId` en sus deducciones— y no las que "tocaban": si a alguien no
+     * le salió recibo, su entrega sigue pendiente para el próximo. */
+    const entregasCobradas = pre.renglones.flatMap((r: any) =>
+      (r.deducciones || [])
+        .map((d: any) => d.entregaId)
+        .filter(Boolean) as string[]
+    );
+    const cobradas = await expediente.marcarEntregasCobradas(
+      client, companyId, periodoId, entregasCobradas
+    );
+
     await transactionQuery(
       client,
       `UPDATE nomina_periodos
@@ -304,12 +324,14 @@ export async function cerrarPeriodo(
 
     logger.info(
       `[nómina] periodo ${pre.periodo.tipo} #${pre.periodo.numero} cerrado: ` +
-      `${recibos} recibos, ${abonados} abonos de crédito`
+      `${recibos} recibos, ${abonados} abonos de crédito` +
+      (cobradas ? `, ${cobradas} entrega(s) cobrada(s)` : '')
     );
 
     return {
       recibos,
       abonados,
+      entregasCobradas: cobradas,
       periodo: `${pre.periodo.tipo} #${pre.periodo.numero}`,
       neto: pre.totales.neto,
       sinPoderTimbrar: pre.totales.sinPoderTimbrar,

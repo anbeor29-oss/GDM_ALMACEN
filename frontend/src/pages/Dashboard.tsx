@@ -348,10 +348,14 @@ export function DashboardPage() {
               style={{ width: `${Math.min(100, u.plan.consumed_pct)}%` }}
             />
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-3 text-xs text-gray-500">
+          {/* Nómina entra a la cuenta como los demás: un recibo timbrado gasta
+              un timbre. Faltaba, y el tablero anunciaba "0 / 200" mientras el
+              mes se llevaba ochenta recibos. */}
+          <div className="mt-3 grid grid-cols-4 gap-3 text-xs text-gray-500">
             <span>Facturas: <b className="text-gray-800">{u.usage.facturas}</b></span>
             <span>NC: <b className="text-gray-800">{u.usage.notas_credito}</b></span>
             <span>Pagos: <b className="text-gray-800">{u.usage.pagos}</b></span>
+            <span>Nómina: <b className="text-gray-800">{u.usage.nomina ?? 0}</b></span>
           </div>
         </div>
       )}

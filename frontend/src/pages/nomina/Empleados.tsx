@@ -22,6 +22,8 @@ import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { EmpleadoModal } from './EmpleadoModal';
 import { ImportarNominaEnBloque } from './ImportarNominaEnBloque';
+import { CampoFecha } from '@/components/CampoFecha';
+import { aTextoMx } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -183,14 +185,14 @@ export function EmpleadosPage() {
                     </p>
                   )}
                   {!e.activo && (
-                    <p className="text-[11px] text-rose-600">baja el {e.fecha_baja}</p>
+                    <p className="text-[11px] text-rose-600">baja el {aTextoMx(e.fecha_baja)}</p>
                   )}
                 </td>
                 <td className="px-3 py-1.5 text-sm">
                   {e.puesto_catalogo || e.puesto || <span className="text-gray-400">—</span>}
                   {e.departamento && <p className="text-[11px] text-gray-500">{e.departamento}</p>}
                 </td>
-                <td className="px-3 py-1.5 text-center text-xs text-gray-600">{e.fecha_ingreso}</td>
+                <td className="px-3 py-1.5 text-center text-xs text-gray-600">{aTextoMx(e.fecha_ingreso)}</td>
                 <td className="px-3 py-1.5 text-right text-sm whitespace-nowrap">
                   <span className="block">
                     <span className="text-[10px] text-gray-400 mr-1">diario</span>
@@ -366,12 +368,7 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
         </p>
         {error && <p className="text-sm text-rose-600 mt-3">{error}</p>}
         <label className="block text-sm font-medium text-gray-700 mt-4 mb-1">Fecha de baja</label>
-        <input
-          type="date"
-          className="w-full border rounded-lg px-3 py-2 text-sm"
-          value={fecha}
-          onChange={(e) => setFecha(e.target.value)}
-        />
+        <CampoFecha value={fecha} onChange={setFecha} />
         <p className="text-xs text-gray-500 mt-1">Es la fecha que va en el aviso al IMSS.</p>
 
         {/* ── Lo que se le debe ──
@@ -381,9 +378,7 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
         <div className="grid sm:grid-cols-2 gap-3 mt-4">
           <div>
             <label className="block text-xs text-gray-600 mb-1">Se le debe el sueldo desde</label>
-            <input type="date" value={desdeDias} max={fecha}
-              onChange={(e) => setDesdeDias(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <CampoFecha value={desdeDias} max={fecha} onChange={setDesdeDias} />
             <p className="text-[10px] text-gray-500 mt-0.5">
               El primer día no pagado{diasDelTramo > 0 ? ` — ${diasDelTramo} día(s)` : ''}.
               Vacío = sólo el día de la baja.

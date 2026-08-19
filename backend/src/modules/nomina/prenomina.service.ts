@@ -30,6 +30,7 @@
  */
 
 import { query } from '../../config/database';
+import * as expediente from './expediente.service';
 import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import * as ejercicios from './ejercicios.service';
 import * as periodosSvc from './periodos.service';
@@ -146,6 +147,18 @@ export interface CapturaPorTrabajador {
 /**
  * Arma la prenómina de un periodo. NO escribe nada.
  */
+
+/**
+ * Si un descuento con fecha de inicio ya alcanza a este periodo.
+ *
+ * Sin fecha, aplica: es la convención de "desde siempre", la que tenían los
+ * expedientes antes de que la columna existiera.
+ */
+function yaAplica(desde: string | null | undefined, finDelPeriodo: string): boolean {
+  if (!desde) return true;
+  return String(desde) <= String(finDelPeriodo);
+}
+
 export async function calcular(
   companyId: string,
   periodoId: string,
@@ -275,6 +288,8 @@ export async function calcular(
             TO_CHAR(e.fecha_baja, 'YYYY-MM-DD')      AS fecha_baja,
             TO_CHAR(e.fecha_reingreso, 'YYYY-MM-DD') AS fecha_reingreso,
             e.tiene_infonavit, e.infonavit_tipo_descuento, e.infonavit_descuento,
+            TO_CHAR(e.infonavit_desde, 'YYYY-MM-DD') AS infonavit_desde,
+            TO_CHAR(e.pension_desde,   'YYYY-MM-DD') AS pension_desde,
             e.infonavit_seguro_danos,
             e.tiene_pension_alimenticia, e.pension_tipo, e.pension_monto
        FROM nomina_empleados e
@@ -298,6 +313,23 @@ export async function calcular(
     const l = porEmpleado.get(c.empleado_id) || [];
     l.push(c);
     porEmpleado.set(c.empleado_id, l);
+  }
+
+  /* ── Los uniformes y el equipo con costo, que se cobran una sola vez ──
+   *
+   * Si la entrega trae costo, se descuenta en el primer periodo que cierre
+   * después de la fecha desde la que aplica. Si no trae costo —el caso normal,
+   * el uniforme lo pone la empresa— no hay nada que cobrar.
+   *
+   * Se traen aquí, en una consulta, por lo mismo que los créditos: pedirlos
+   * dentro del bucle serían cincuenta viajes cada vez que alguien mueve un día
+   * en la rejilla. */
+  const porCobrar = await expediente.entregasPorCobrar(companyId, periodo.fecha_fin);
+  const entregasDe = new Map<string, typeof porCobrar>();
+  for (const x of porCobrar) {
+    const l = entregasDe.get(x.empleado_id) || [];
+    l.push(x);
+    entregasDe.set(x.empleado_id, l);
   }
 
   /* La captura llega indexada por trabajador: buscarla en un arreglo dentro
@@ -378,6 +410,20 @@ export async function calcular(
           : 'Préstamo de la empresa',
         importe: Math.min(Number(c.descuento_por_periodo), Number(c.saldo)),
       })),
+
+      /* Lo entregado con costo. Clave 017 del Anexo 20 —"adquisición de
+       * artículos que produce la empresa"—, que es lo que es: se le vendió.
+       * No es la de daños (016), que es para lo que se rompe.
+       *
+       * Se cobra completo de una vez. Quien quiera repartirlo lo captura como
+       * préstamo, que para eso lleva saldo: un uniforme de doscientos pesos en
+       * cuatro pagos es más seguimiento que el dinero que representa. */
+      ...(entregasDe.get(e.id) || []).map((x) => ({
+        clave: '017',
+        concepto: x.cantidad > 1 ? `${x.articulo} (${x.cantidad})` : x.articulo,
+        importe: x.importe,
+        entregaId: x.id,
+      })),
       /* Y lo capturado a mano: faltas, cuotas sindicales, lo que sea.
        *
        * Las faltas llegan en DÍAS y se convierten aquí, con el salario de ESTE
@@ -412,14 +458,28 @@ export async function calcular(
        * que la calcula el motor según el concepto. */
       otrosIngresos: (cap?.otrosIngresos || []).filter((x) => Number(x.importe) > 0),
       otrasDeducciones,
+      /* ── Desde cuándo aplica cada descuento ──
+       *
+       * Un oficio de pensión notificado el 10 de septiembre no alcanza a la
+       * quincena que corrió del 1 al 15 de agosto: cobrarla ahí sería retener
+       * sin orden que lo respalde, y devolverlo después ya no es un ajuste de
+       * nómina. Lo mismo con la carta del INFONAVIT.
+       *
+       * Se compara contra el FIN del periodo y no contra el inicio: si la
+       * orden llegó a media quincena, esa quincena ya se retiene —que es como
+       * lo entiende el instituto y como lo entiende el juzgado—.
+       *
+       * Sin fecha capturada, aplica desde siempre: es como se comportaba antes
+       * de que la columna existiera, y así los expedientes viejos no cambian de
+       * un día para otro. */
       infonavit: {
-        tiene: !!e.tiene_infonavit,
+        tiene: !!e.tiene_infonavit && yaAplica(e.infonavit_desde, periodo.fecha_fin),
         tipo: e.infonavit_tipo_descuento,
         valor: e.infonavit_descuento === null ? null : Number(e.infonavit_descuento),
         seguroDanosDiario: e.infonavit_seguro_danos === null ? null : Number(e.infonavit_seguro_danos),
       },
       pension: {
-        tiene: !!e.tiene_pension_alimenticia,
+        tiene: !!e.tiene_pension_alimenticia && yaAplica(e.pension_desde, periodo.fecha_fin),
         tipo: e.pension_tipo,
         monto: e.pension_monto === null ? null : Number(e.pension_monto),
       },

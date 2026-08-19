@@ -22,6 +22,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Coins, Plus, X, AlertTriangle, Ban } from 'lucide-react';
 import api from '@/services/api';
+import { CampoFecha } from '@/components/CampoFecha';
+import { aTextoMx } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -135,7 +137,7 @@ export function CreditosDelTrabajador({
               {c.estatus === 'ACTIVO' && Number(c.saldo) > 0 && (
                 <span>Faltan <b>{c.periodos_restantes}</b> periodo(s)</span>
               )}
-              <span className="text-gray-400">desde {c.fecha_inicio}</span>
+              <span className="text-gray-400">desde {aTextoMx(c.fecha_inicio)}</span>
             </div>
 
             {puedeEditar && c.estatus === 'ACTIVO' && (
@@ -282,13 +284,12 @@ function FormaDeCredito({
         </div>
         <div>
           <label className={etiqueta}>Inicio *</label>
-          <input type="date" className={campo}
-            value={f.fecha_inicio} onChange={(e) => set('fecha_inicio', e.target.value)} />
+          <CampoFecha value={f.fecha_inicio} onChange={(v) => set('fecha_inicio', v)} />
         </div>
         <div>
           <label className={etiqueta}>Término estimado</label>
-          <input type="date" className={campo}
-            value={f.fecha_fin_estimada} onChange={(e) => set('fecha_fin_estimada', e.target.value)} />
+          <CampoFecha value={f.fecha_fin_estimada}
+            onChange={(v) => set('fecha_fin_estimada', v)} />
         </div>
       </div>
 

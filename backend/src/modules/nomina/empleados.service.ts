@@ -188,7 +188,9 @@ export interface DatosEmpleado {
   infonavit_tipo_descuento?: string;
   infonavit_descuento?: number;
   infonavit_seguro_danos?: number;
+  infonavit_desde?: string;
   tiene_pension_alimenticia?: boolean;
+  pension_desde?: string;
   pension_tipo?: string;
   pension_monto?: number;
   pension_beneficiario?: string;
@@ -430,6 +432,16 @@ function normalizar(d: DatosEmpleado, parcial: boolean): Record<string, any> {
   }
   if (d.infonavit_seguro_danos !== undefined) r.infonavit_seguro_danos = numero(d.infonavit_seguro_danos) ?? 0;
 
+  /* Desde cuándo se retiene cada uno. Vacío = desde siempre, que es como se
+   * comportaban antes de que existieran estas columnas: los expedientes viejos
+   * no cambian solos. */
+  if (d.infonavit_desde !== undefined) {
+    r.infonavit_desde = fecha(d.infonavit_desde, 'La fecha de la carta del INFONAVIT');
+  }
+  if (d.pension_desde !== undefined) {
+    r.pension_desde = fecha(d.pension_desde, 'La fecha del oficio de pensión');
+  }
+
   /* Un crédito marcado sin decir cómo se descuenta no se puede aplicar: es
    * mejor negarlo al guardar que descubrirlo con el recibo ya timbrado. */
   if (r.tiene_infonavit === true) {
@@ -531,7 +543,9 @@ const CAMPOS = `
   e.banco_clave, e.cuenta_clabe,
   e.tiene_infonavit, e.infonavit_num_credito, e.infonavit_tipo_descuento,
   e.infonavit_descuento, e.infonavit_seguro_danos,
+  TO_CHAR(e.infonavit_desde, 'YYYY-MM-DD') AS infonavit_desde,
   e.tiene_pension_alimenticia, e.pension_tipo, e.pension_monto,
+  TO_CHAR(e.pension_desde, 'YYYY-MM-DD') AS pension_desde,
   e.pension_beneficiario, e.pension_num_oficio,
   e.activo, e.edicion, e.created_at, e.updated_at,
   p.nombre AS puesto_catalogo, p.riesgo_puesto
@@ -615,6 +629,20 @@ export async function resumen(companyId: string) {
           AS pension_fija,
         COUNT(*) FILTER (WHERE activo AND tiene_pension_alimenticia
                            AND pension_tipo = 'porcentaje')       AS pension_porcentaje,
+        /* El INFONAVIT se descuenta de tres formas distintas y sólo UNA se
+         * puede sumar sin conocer el periodo: la de cuota fija. El porcentaje
+         * sale del SDI y los VSM del valor de la UMI por los días — dos cosas
+         * que dependen del periodo, y sumarlas aquí daría un número que no
+         * corresponde a ningún mes. Se cuentan y se dice de qué tipo son. */
+        COALESCE(SUM(infonavit_descuento) FILTER (
+          WHERE activo AND tiene_infonavit AND infonavit_tipo_descuento = 'cuota_fija'), 0)
+          AS infonavit_fijo,
+        COUNT(*) FILTER (WHERE activo AND tiene_infonavit
+                           AND infonavit_tipo_descuento = 'porcentaje')  AS infonavit_porcentaje,
+        COUNT(*) FILTER (WHERE activo AND tiene_infonavit
+                           AND infonavit_tipo_descuento = 'vsm')         AS infonavit_vsm,
+        COALESCE(SUM(infonavit_seguro_danos) FILTER (
+          WHERE activo AND tiene_infonavit), 0)                          AS infonavit_seguro,
         COUNT(*) FILTER (WHERE activo AND (nss IS NULL OR codigo_postal IS NULL
                                            OR entidad_federativa IS NULL
                                            OR salario_diario_integrado <= 0)) AS incompletos
@@ -658,6 +686,10 @@ export async function resumen(companyId: string) {
     conPension: Number(d.con_pension || 0),
     pensionFija: Number(d.pension_fija || 0),
     pensionPorcentaje: Number(d.pension_porcentaje || 0),
+    infonavitFijo: Number(d.infonavit_fijo || 0),
+    infonavitPorcentaje: Number(d.infonavit_porcentaje || 0),
+    infonavitVsm: Number(d.infonavit_vsm || 0),
+    infonavitSeguro: Number(d.infonavit_seguro || 0),
     fonacot: porOrigen('FONACOT'),
     prestamos: porOrigen('PRESTAMO'),
     incompletos: Number(d.incompletos || 0),

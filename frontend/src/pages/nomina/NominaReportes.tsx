@@ -20,6 +20,7 @@ import {
   Sigma, List,
 } from 'lucide-react';
 import api from '@/services/api';
+import { aTextoMx } from '@/components/CampoFecha';
 
 const money = (v: any) =>
   Number(v || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -597,7 +598,7 @@ function PorPeriodo({ filas, columnas }: { filas: any[]; columnas: Array<[string
           {filas.map((r: any, i: number) => (
             <tr key={i} className="hover:bg-gray-50">
               <td className="px-2 py-1 text-center">#{r.periodo}</td>
-              <td className="px-2 py-1 text-gray-500">{r.fecha_fin}</td>
+              <td className="px-2 py-1 text-gray-500">{aTextoMx(r.fecha_fin)}</td>
               <td className="px-2 py-1 text-center">{r.trabajadores}</td>
               {columnas.map(([k]) => (
                 <td key={k} className="px-2 py-1 text-right">

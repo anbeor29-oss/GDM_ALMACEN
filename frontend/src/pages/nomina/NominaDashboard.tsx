@@ -64,13 +64,15 @@ export function NominaDashboardPage() {
           empresa, el INFONAVIT y un juzgado— y cada uno reclama por su lado.
           Verlos juntos es lo que evita descubrir en la revisión que un crédito
           llevaba tres periodos sin descontarse. */}
-      {(r?.fonacot?.creditos > 0 || r?.prestamos?.creditos > 0) && (
+      {(r?.fonacot?.creditos > 0 || r?.prestamos?.creditos > 0 ||
+        r?.conInfonavit > 0 || r?.conPension > 0) && (
         <div className="bg-white rounded-lg shadow border p-5">
           <h2 className="font-semibold flex items-center gap-2 text-gray-800">
-            <Landmark size={18} className="text-amber-600" /> Créditos vigentes
+            <Landmark size={18} className="text-amber-600" /> Descuentos comprometidos
           </h2>
           <p className="text-xs text-gray-500 mt-0.5">
-            Sólo los activos con saldo. El abono se aplica al cerrar cada periodo.
+            Los cuatro tienen dueño distinto y cada uno reclama por su lado.
+            Se aplican al cerrar cada periodo.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
             <Credito
@@ -84,6 +86,37 @@ export function NominaDashboardPage() {
               nota="Convenio interno: el saldo es dinero de la empresa."
               d={r?.prestamos}
               color="bg-sky-50 border-sky-200 text-sky-900"
+            />
+
+            {/* ── INFONAVIT y pensión: se descuentan, pero NO llevan saldo ──
+                Un crédito de la empresa se acaba cuando se paga; éstos siguen
+                hasta que el instituto o el juzgado digan otra cosa. Por eso
+                muestran la REGLA del descuento y no un saldo que no existe.
+
+                Y sólo se suma lo de CUOTA FIJA: el porcentaje sale del SDI y
+                los VSM del valor de la UMI por los días del periodo. Sumar eso
+                aquí daría un total que no corresponde a ningún mes. */}
+            <Regla
+              titulo="INFONAVIT"
+              nota="La regla viene en la carta del instituto; el importe se calcula cada periodo."
+              trabajadores={r?.conInfonavit || 0}
+              fijo={r?.infonavitFijo || 0}
+              variables={[
+                ['por porcentaje del SDI', r?.infonavitPorcentaje || 0],
+                ['en veces salario mínimo (VSM)', r?.infonavitVsm || 0],
+              ]}
+              extra={r?.infonavitSeguro
+                ? `Seguro de daños: ${money(r.infonavitSeguro)} diarios en total`
+                : undefined}
+              color="bg-rose-50 border-rose-200 text-rose-900"
+            />
+            <Regla
+              titulo="Pensión alimenticia"
+              nota="Viene de una orden judicial: no se suspende ni se ajusta sin otro oficio."
+              trabajadores={r?.conPension || 0}
+              fijo={r?.pensionFija || 0}
+              variables={[['por porcentaje del neto', r?.pensionPorcentaje || 0]]}
+              color="bg-violet-50 border-violet-200 text-violet-900"
             />
           </div>
         </div>
@@ -193,6 +226,57 @@ function Credito({ titulo, nota, d, color }: any) {
             <p className="text-lg font-bold tabular-nums">{money(d.porPeriodo)}</p>
           </div>
         </div>
+      )}
+      <p className="text-[11px] opacity-60 mt-1.5">{nota}</p>
+    </div>
+  );
+}
+
+
+/**
+ * Un descuento que se rige por una REGLA y no por un saldo.
+ *
+ * El INFONAVIT y la pensión alimenticia no se acaban cuando se paga cierta
+ * cantidad: siguen hasta que el instituto o el juzgado digan otra cosa. Poner
+ * un "saldo por descontar" ahí sería inventarlo.
+ *
+ * Lo que sí se puede decir es cuánto pesa la parte de CUOTA FIJA, que es la
+ * única sumable sin conocer el periodo, y cuántos van por una regla variable.
+ */
+function Regla({ titulo, nota, trabajadores, fijo, variables, extra, color }: any) {
+  const hay = Number(trabajadores || 0) > 0;
+  const conRegla = (variables || []).filter(([, n]: any) => Number(n) > 0);
+  return (
+    <div className={`rounded-lg border p-3 ${color}`}>
+      <div className="flex items-baseline justify-between">
+        <span className="font-semibold text-sm">{titulo}</span>
+        <span className="text-xs opacity-70">
+          {hay ? `${trabajadores} trabajador(es)` : 'nadie con este descuento'}
+        </span>
+      </div>
+      {hay && (
+        <>
+          <div className="flex gap-6 mt-2">
+            {Number(fijo) > 0 && (
+              <div>
+                <p className="text-[11px] opacity-70">Cuota fija, cada periodo</p>
+                <p className="text-lg font-bold tabular-nums">{money(fijo)}</p>
+              </div>
+            )}
+            {conRegla.map(([etiqueta, n]: any) => (
+              <div key={etiqueta}>
+                <p className="text-[11px] opacity-70">{etiqueta}</p>
+                <p className="text-lg font-bold tabular-nums">{n}</p>
+              </div>
+            ))}
+          </div>
+          {conRegla.length > 0 && (
+            <p className="text-[11px] opacity-70 mt-1">
+              Esos se calculan en cada periodo: dependen del salario y de los días.
+            </p>
+          )}
+          {extra && <p className="text-[11px] opacity-70 mt-0.5">{extra}</p>}
+        </>
       )}
       <p className="text-[11px] opacity-60 mt-1.5">{nota}</p>
     </div>

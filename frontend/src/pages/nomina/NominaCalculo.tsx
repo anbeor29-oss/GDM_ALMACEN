@@ -27,6 +27,8 @@ import { useAuthStore } from '@/store/auth';
 import { CeldaDeConceptos } from './CeldaDeConceptos';
 import { CapturaDeConceptos, type Linea } from './CapturaDeConceptos';
 import { AplicarAVarios } from './AplicarAVarios';
+import { CampoFecha } from '@/components/CampoFecha';
+import { aTextoMx } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -414,7 +416,7 @@ export function NominaCalculoPage() {
             {periodos.map((p) => (
               <option key={p.id} value={p.id}>
                 #{p.numero} · {p.concepto ? `${p.concepto} · ` : ''}
-                {p.fecha_inicio} al {p.fecha_fin} ({p.dias} días)
+                {aTextoMx(p.fecha_inicio)} al {aTextoMx(p.fecha_fin)} ({p.dias} días)
                 {p.estatus !== 'ABIERTO' ? ` · ${p.estatus.toLowerCase()}` : ''}
               </option>
             ))}
@@ -432,7 +434,7 @@ export function NominaCalculoPage() {
                 <span className="font-normal text-gray-500">
                   — {pre.periodo.tipo} #{pre.periodo.numero}
                   {pre.periodo.concepto ? ` · ${pre.periodo.concepto}` : ''}
-                  {' · '}{pre.periodo.fecha_inicio} al {pre.periodo.fecha_fin}
+                  {' · '}{aTextoMx(pre.periodo.fecha_inicio)} al {aTextoMx(pre.periodo.fecha_fin)}
                 </span>
               )}
             </p>
@@ -873,18 +875,18 @@ function FormaEspecial({ anio, onCancelar, onCreado }: any) {
           <div className="grid sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-gray-600 mb-1">Desde</label>
-              <input type="date" className={campo} value={f.fecha_inicio}
-                onChange={(e) => setF({ ...f, fecha_inicio: e.target.value })} />
+              <CampoFecha value={f.fecha_inicio}
+                onChange={(v) => setF({ ...f, fecha_inicio: v })} />
             </div>
             <div>
               <label className="block text-xs text-gray-600 mb-1">Hasta</label>
-              <input type="date" className={campo} value={f.fecha_fin}
-                onChange={(e) => setF({ ...f, fecha_fin: e.target.value })} />
+              <CampoFecha value={f.fecha_fin}
+                onChange={(v) => setF({ ...f, fecha_fin: v })} />
             </div>
             <div>
               <label className="block text-xs text-gray-600 mb-1">Fecha de pago</label>
-              <input type="date" className={campo} value={f.fecha_pago}
-                onChange={(e) => setF({ ...f, fecha_pago: e.target.value })} />
+              <CampoFecha value={f.fecha_pago}
+                onChange={(v) => setF({ ...f, fecha_pago: v })} />
             </div>
           </div>
 
