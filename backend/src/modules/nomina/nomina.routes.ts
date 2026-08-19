@@ -25,6 +25,7 @@ import * as expediente from './expediente.service';
 import * as prenomina from './prenomina.service';
 import { generarExcel } from './prenomina-excel.service';
 import { generarListaDeRaya } from './lista-de-raya.service';
+import * as reportes from './reportes.service';
 import * as finiquito from './finiquito.service';
 import { generarReciboPDF } from './pdf-recibo.service';
 import * as cierre from './cierre.service';
@@ -419,6 +420,72 @@ router.post(
         vacacionesYaDisfrutadas: Number(req.body?.vacacionesYaDisfrutadas) || 0,
         motivo: req.body?.motivo,
         fechaPago: req.body?.fechaPago,
+      }
+    );
+    res.json({ success: true, data: r });
+  })
+);
+
+
+/* ═════════════════════ REPORTES ═════════════════════ */
+
+/**
+ * GET /reportes/periodos?anio= — qué periodos CERRADOS hay.
+ *
+ * La pantalla lo pide antes de ofrecer un rango: proponer "del 1 al 53" cuando
+ * sólo hay ocho cerrados manda a pedir reportes vacíos.
+ */
+router.get(
+  '/reportes/periodos',
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = Number(req.query.anio) || new Date().getFullYear();
+    const r = await reportes.periodosDisponibles(companyId(req), anio);
+    res.json({ success: true, data: { anio, porTipo: r } });
+  })
+);
+
+/** GET /reportes/:que/excel — el mismo reporte, en hoja de cálculo. */
+router.get(
+  '/reportes/:que/excel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await reportes.generarExcel(
+      companyId(req),
+      req.params.que as reportes.TipoReporte,
+      {
+        anio:  Number(req.query.anio)  || new Date().getFullYear(),
+        tipo:  (req.query.tipo as any) || 'SEMANAL',
+        desde: Number(req.query.desde) || 1,
+        hasta: Number(req.query.hasta) || Number(req.query.desde) || 1,
+        empleadoId: (req.query.empleadoId as string) || undefined,
+      }
+    );
+    res.setHeader('Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
+
+/**
+ * GET /reportes/:que — prenomina | cfdi | isr | imss
+ *
+ * Salen de los periodos CERRADOS, sin recalcular: un reporte que recalcula con
+ * los datos de hoy daría cifras distintas de las que se pagaron y se
+ * declararon, y entonces no sirve para cuadrar.
+ */
+router.get(
+  '/reportes/:que',
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await reportes.generar(
+      companyId(req),
+      req.params.que as reportes.TipoReporte,
+      {
+        anio:  Number(req.query.anio)  || new Date().getFullYear(),
+        tipo:  (req.query.tipo as any) || 'SEMANAL',
+        desde: Number(req.query.desde) || 1,
+        hasta: Number(req.query.hasta) || Number(req.query.desde) || 1,
+        empleadoId: (req.query.empleadoId as string) || undefined,
       }
     );
     res.json({ success: true, data: r });

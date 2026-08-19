@@ -25,6 +25,7 @@ import PDFDocument from 'pdfkit';
 import { query } from '../../config/database';
 import { NotFoundError } from '../../middleware/errorHandler';
 import { fmtMoney, montoEnLetra } from '../cfdi/pdf-helpers';
+import { getCompanyLogo } from '../cfdi/logo-cache';
 
 type Doc = PDFKit.PDFDocument;
 
@@ -208,6 +209,10 @@ export async function generarReciboPDF(
     importe: n2(o.Importe),
   }));
 
+  /* El logo de la empresa, el mismo de las facturas. Va cacheado, así que
+   * pedirlo por recibo no cuesta una consulta por hoja. */
+  const logo = await getCompanyLogo(companyId);
+
   /* ── El papel ── */
   const doc = new PDFDocument({ size: 'LETTER', margin: M, bufferPages: true });
   const trozos: Buffer[] = [];
@@ -218,19 +223,36 @@ export async function generarReciboPDF(
 
   /* Encabezado: emisor a la izquierda, comprobante a la derecha. */
   doc.rect(M, y, ANCHO, 58).fillOpacity(1).fill('#f9fafb');
+
+  /* El logo a la izquierda y el texto corrido a su derecha. Si la empresa no
+   * tiene logo cargado, el bloque arranca pegado al margen y no queda un hueco
+   * en blanco esperando una imagen que no existe. */
+  const LOGO = 46;
+  let tx = M + 6;
+  let anchoTexto = 330;
+  if (logo) {
+    try {
+      doc.image(logo, M + 6, y + 6, { fit: [LOGO, LOGO], align: 'center', valign: 'center' });
+      tx = M + 6 + LOGO + 8;
+      anchoTexto = 330 - LOGO - 8;
+    } catch {
+      /* Un logo corrupto no puede impedir que salga el recibo. */
+    }
+  }
+
   doc.fontSize(10).fillColor('#111827').font('Helvetica-Bold')
-     .text(emisorNom || '', M + 6, y + 6, { width: 330, ellipsis: true });
+     .text(emisorNom || '', tx, y + 6, { width: anchoTexto, ellipsis: true });
   doc.font('Helvetica').fontSize(7).fillColor('#374151');
   doc.text(`RFC: ${emisorRfc}    ·    Registro patronal: ${emin.RegistroPatronal || e.registro_patronal || '—'}`,
-           M + 6, y + 20, { width: 330 });
+           tx, y + 20, { width: anchoTexto });
   const domicilio = [
     [e.street, e.ext_number].filter(Boolean).join(' '),
     e.neighborhood, e.municipality || e.city, e.state,
     e.postal_code ? `C.P. ${e.postal_code}` : '',
   ].filter(Boolean).join(', ');
   doc.fontSize(6.5).fillColor('#6b7280')
-     .text(domicilio, M + 6, y + 30, { width: 330, ellipsis: true });
-  doc.text(`Régimen fiscal: ${emisorReg}`, M + 6, y + 40, { width: 330 });
+     .text(domicilio, tx, y + 30, { width: anchoTexto, ellipsis: true });
+  doc.text(`Régimen fiscal: ${emisorReg}`, tx, y + 40, { width: anchoTexto });
 
   doc.fontSize(11).fillColor('#111827').font('Helvetica-Bold')
      .text('RECIBO DE NÓMINA', M + 350, y + 6, { width: 200, align: 'right' });

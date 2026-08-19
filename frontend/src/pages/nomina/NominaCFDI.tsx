@@ -219,9 +219,11 @@ export function NominaCFDIPage() {
               </th>
               <th className="px-2 py-2 text-left">Trabajador</th>
               <th className="px-2 py-2 text-left w-40">Periodo</th>
-              <th className="px-2 py-2 text-center w-12">Días</th>
-              <th className="px-2 py-2 text-right w-28">Percepciones</th>
-              <th className="px-2 py-2 text-right w-28">Deducciones</th>
+              {/* El folio fiscal en lugar del desglose: lo que se busca en esta
+                  pantalla es el CFDI, y el UUID es con lo que se le busca ante
+                  el SAT y con lo que el trabajador lo reclama. El desglose ya
+                  está en la prenómina y en el propio recibo. */}
+              <th className="px-2 py-2 text-left">Folio fiscal (UUID)</th>
               <th className="px-2 py-2 text-right w-28">Neto</th>
               <th className="px-2 py-2 text-center w-24">Estado</th>
               <th className="px-2 py-2 text-center w-24"></th>
@@ -229,10 +231,10 @@ export function NominaCFDIPage() {
           </thead>
           <tbody className="divide-y">
             {q.isLoading && (
-              <tr><td colSpan={9} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>
+              <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>
             )}
             {!q.isLoading && recibos.length === 0 && (
-              <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-500 italic">
+              <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-500 italic">
                 No hay recibos {estatus === 'PENDIENTE' ? 'sin timbrar' : ''}.
                 Se generan al cerrar un periodo en Nómina → Cálculo.
               </td></tr>
@@ -291,16 +293,21 @@ export function NominaCFDIPage() {
                     {r.concepto && <span className="block text-gray-400">{r.concepto}</span>}
                     <span className="block text-gray-400">{r.fecha_inicio} a {r.fecha_fin}</span>
                   </td>
-                  <td className="px-2 py-1.5 text-center">{r.dias}</td>
-                  <td className="px-2 py-1.5 text-right">{money(r.total_percepciones)}</td>
-                  <td className="px-2 py-1.5 text-right text-rose-700">{money(r.total_deducciones)}</td>
+                  {/* El UUID completo y seleccionable: se copia para buscarlo en
+                      el portal del SAT o para responderle al trabajador. Cortarlo
+                      obligaría a abrir el recibo para leerlo. */}
+                  <td className="px-2 py-1.5">
+                    {r.uuid ? (
+                      <span className="font-mono text-[11px] text-gray-700 select-all break-all">
+                        {r.uuid}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-gray-400 italic">sin timbrar</span>
+                    )}
+                  </td>
                   <td className="px-2 py-1.5 text-right font-semibold">{money(r.neto)}</td>
                   <td className="px-2 py-1.5 text-center">
                     <span className={`text-[11px] px-2 py-0.5 rounded-full ${e.cls}`}>{e.label}</span>
-                    {r.uuid && (
-                      <span className="block text-[10px] text-gray-400 font-mono truncate max-w-[6rem] mx-auto"
-                        title={r.uuid}>{r.uuid.slice(0, 8)}…</span>
-                    )}
                   </td>
                   <td className="px-2 py-1.5 text-center whitespace-nowrap">
                     {/* Los mismos iconos del panel de facturas. */}
@@ -334,8 +341,12 @@ export function NominaCFDIPage() {
                     </span>
                   )}
                 </td>
-                <td className="px-2 py-2 text-right">{money(totales.percepciones)}</td>
-                <td className="px-2 py-2 text-right text-rose-700">{money(totales.deducciones)}</td>
+                {/* Percepciones y deducciones siguen sumándose, pero como una
+                    línea de apoyo: la columna que importa aquí es el neto. */}
+                <td className="px-2 py-2 text-[11px] font-normal text-gray-500">
+                  percepciones {money(totales.percepciones)} · deducciones{' '}
+                  <span className="text-rose-700">{money(totales.deducciones)}</span>
+                </td>
                 <td className="px-2 py-2 text-right">{money(totales.neto)}</td>
                 <td colSpan={2}></td>
               </tr>

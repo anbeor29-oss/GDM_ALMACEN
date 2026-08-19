@@ -52,7 +52,7 @@ import { EmpleadosPage }              from '@/pages/nomina/Empleados';
 import { NominaParametrosPage }       from '@/pages/nomina/NominaParametros';
 import { NominaCalculoPage } from '@/pages/nomina/NominaCalculo';
 import { NominaCFDIPage } from '@/pages/nomina/NominaCFDI';
-import { NominaReportesPage } from '@/pages/nomina/NominaPendiente';
+import { NominaReportesPage } from '@/pages/nomina/NominaReportes';
 import { PhysicalCountPage }          from '@/pages/PhysicalCount';
 import { KardexPage }                 from '@/pages/Kardex';
 import { FaltantesPage }              from '@/pages/Faltantes';
