@@ -28,6 +28,10 @@ const cant = (n: any) =>
 const ETIQUETA: Record<string, { texto: string; clase: string }> = {
   agotado:    { texto: 'Agotado',       clase: 'bg-rose-100 text-rose-800' },
   bajo:       { texto: 'Bajo mínimo',   clase: 'bg-amber-100 text-amber-800' },
+  /* El escalón de aviso: todavía por encima del mínimo, pero ya llegando.
+   * Va en amarillo claro y no en ámbar para que se distinga de un faltante
+   * real de un vistazo — si los dos se ven igual, el aviso deja de avisar. */
+  cerca:      { texto: 'Llegando al mínimo', clase: 'bg-yellow-100 text-yellow-800' },
   proyectado: { texto: 'Se agotará',    clase: 'bg-sky-100 text-sky-800' },
 };
 
@@ -123,7 +127,7 @@ export function FaltantesPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Faltantes</h1>
           <p className="text-sm text-slate-500">
-            Productos agotados o por debajo del mínimo. Marca lo que vas a pedir.
+            Agotados, bajo mínimo, y los que ya están llegando. Marca lo que vas a pedir.
           </p>
         </div>
       </div>
@@ -145,7 +149,9 @@ export function FaltantesPage() {
           {/* Si nadie configuró mínimos, esta pantalla puede verse vacía aunque
               haya productos por acabarse. Decirlo evita la falsa tranquilidad. */}
           <p className="text-xs text-slate-400 mt-2">
-            Sólo se listan productos agotados o con mínimo configurado. Si un producto
+            Se listan los agotados, los que están en o bajo su mínimo, y los que
+            andan hasta 2 unidades arriba — el aviso temprano, porque el proveedor
+            no entrega el mismo día. Si un producto
             debería aparecer, revisa su mínimo en Existencias.
           </p>
         </div>
@@ -215,6 +221,13 @@ export function FaltantesPage() {
                         <span className={`text-[11px] px-2 py-0.5 rounded font-medium ${et.clase}`}>{et.texto}</span>
                         {f.days_to_minimum != null && f.situacion === 'proyectado' && (
                           <span className="ml-2 text-xs text-slate-500">en {Math.round(Number(f.days_to_minimum))} días</span>
+                        )}
+                        {/* Cuánto le falta para tocar el mínimo. "Llegando" sin
+                            número no dice si faltan dos piezas o veinte. */}
+                        {f.situacion === 'cerca' && Number(f.sobre_el_minimo) > 0 && (
+                          <span className="ml-2 text-xs text-slate-500">
+                            {cant(f.sobre_el_minimo)} arriba del mínimo
+                          </span>
                         )}
                       </td>
                       <td className="px-3 py-2 text-right font-mono">{cant(f.quantity)}</td>

@@ -16,6 +16,7 @@ import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { usePresencia } from '@/hooks/usePresencia';
 import { AvisoDeConcurrencia } from '@/components/AvisoDeConcurrencia';
+import { CampoFecha } from '@/components/CampoFecha';
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   PENDING:          { label: 'Pendiente',        cls: 'bg-gray-200 text-gray-700' },
@@ -255,6 +256,19 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
   });
   const suppliers: any[] = supsQ.data?.data?.suppliers || [];
 
+  /* ── El proveedor cuando NO está en el catálogo ──
+   *
+   * Quien recibe tiene la factura en la mano y el proveedor puede no estar
+   * dado de alta. Mandarlo a capturar un proveedor completo —RFC, régimen,
+   * domicilio— es mandarlo a buscar datos que no trae el repartidor, y lo que
+   * pasaba entonces es que la mercancía entraba y la deuda no.
+   *
+   * Con el nombre y los días de crédito alcanza para que la cuenta por pagar
+   * exista y tenga vencimiento. Se completa después. */
+  const [proveedorNuevo, setProveedorNuevo] = useState(false);
+  const [nombreProveedor, setNombreProveedor] = useState('');
+  const [diasCredito, setDiasCredito] = useState('');
+
   const refreshDetail = () => {
     qc.invalidateQueries({ queryKey: ['purchase-order', orderId] });
     onChanged();
@@ -270,6 +284,35 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
     } finally { setBusy(false); }
   };
 
+  const [altaProveedor, setAltaProveedor] = useState(false);
+
+  /* Da de alta el proveedor y lo deja asignado a la orden, en un solo gesto.
+   * Separarlo en dos pasos —crear, y luego buscarlo en el combo— es donde se
+   * pierde el hilo: se crea, se olvida asignarlo, y la orden sigue sin
+   * proveedor. */
+  const altaYAsignar = async () => {
+    setBusy(true); setError(''); setAviso('');
+    try {
+      const r = await api.preregistrarProveedor(
+        nombreProveedor.trim(),
+        diasCredito !== '' ? Number(diasCredito) : undefined
+      );
+      const nuevo = r.data;
+      await api.setPurchaseOrderSupplier(orderId, nuevo.id);
+      setAviso(
+        nuevo.nuevo
+          ? `"${nuevo.business_name}" dado de alta y asignado. Complétalo después con su RFC.`
+          : `"${nuevo.business_name}" ya existía — se asignó ése en vez de crear otro.`
+      );
+      setAltaProveedor(false);
+      setNombreProveedor(''); setDiasCredito('');
+      await supsQ.refetch();
+      refreshDetail();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo dar de alta el proveedor');
+    } finally { setBusy(false); }
+  };
+
   const cambiarProveedor = async (supplierId: string) => {
     setBusy(true); setError('');
     try {
@@ -280,16 +323,28 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
     } finally { setBusy(false); }
   };
 
+  /* Los datos de la factura, armados una vez: los usan la recepción y la
+   * captura posterior, y tenerlos duplicados garantizaba que un día uno de los
+   * dos dejara de mandar los días de crédito. */
+  const datosDeFactura = () => ({
+    invoiceNumber: numFactura.trim() || undefined,
+    /* El TOTAL es lo que dice el papel. El subtotal se deriva en el servidor:
+     * quien tiene la factura en la mano lee el total, no la base. */
+    total: importeFactura ? Number(importeFactura) : undefined,
+    taxRate: Number(tasaIva),
+    invoiceDate: fechaFactura || undefined,
+    creditDays: diasCredito !== '' ? Number(diasCredito) : undefined,
+    supplierId: !proveedorNuevo && proveedorFactura ? proveedorFactura : undefined,
+    supplierName: proveedorNuevo && nombreProveedor.trim() ? nombreProveedor.trim() : undefined,
+  });
+
   const guardarFactura = async () => {
     if (!numFactura.trim()) { setError('Captura el número de la factura'); return; }
     setBusy(true); setError(''); setAviso('');
     try {
       const r = await api.registrarFacturaDeOrden(orderId, {
+        ...datosDeFactura(),
         invoiceNumber: numFactura.trim(),
-        subtotal: importeFactura ? Number(importeFactura) : undefined,
-        taxRate: Number(tasaIva),
-        invoiceDate: fechaFactura || undefined,
-        supplierId: proveedorFactura || undefined,
       });
       const d: any = r.data?.deuda;
       setAviso(
@@ -304,6 +359,7 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
       setCapturandoFactura(false);
       setNumFactura(''); setImporteFactura(''); setTasaIva('16');
       setFechaFactura(''); setProveedorFactura('');
+      setProveedorNuevo(false); setNombreProveedor(''); setDiasCredito('');
       refreshDetail();
     } catch (e: any) {
       setError(e?.response?.data?.message || 'No se pudo registrar la factura');
@@ -326,14 +382,22 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
       '¿Recibir de todas formas?'
     )) return;
 
+    /* Con factura pero sin a quién deberle, el servidor rechaza. Vale más
+     * decirlo aquí, antes de mover existencias, que dejar que reviente a media
+     * recepción. */
+    if (numFactura.trim() && !order.supplier_id &&
+        !proveedorFactura && !nombreProveedor.trim()) {
+      setError(
+        'Capturaste una factura pero la orden no tiene proveedor. Elígelo de la ' +
+        'lista, o marca "no está en la lista" y escribe su nombre.'
+      );
+      return;
+    }
+
     setBusy(true); setError(''); setAviso('');
     try {
-      const r = await api.receivePurchaseOrder(orderId, receipts, costing || undefined, {
-        invoiceNumber: numFactura.trim() || undefined,
-        subtotal: importeFactura ? Number(importeFactura) : undefined,
-        taxRate: Number(tasaIva),
-        invoiceDate: fechaFactura || undefined,
-      });
+      const r = await api.receivePurchaseOrder(
+        orderId, receipts, costing || undefined, datosDeFactura());
       const d: any = r.data || {};
       const partes: string[] = [];
       if (d.deuda) {
@@ -433,18 +497,71 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
               <p className="text-sm font-medium">{order.supplier_name || 'Sin proveedor asignado'}</p>
             ) : (
               <>
-                <select
-                  value={order.supplier_id || ''}
-                  disabled={busy}
-                  onChange={(e) => cambiarProveedor(e.target.value)}
-                  className="input w-full max-w-lg">
-                  <option value="">— Sin asignar —</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.business_name}{s.rfc ? ` · ${s.rfc}` : ''}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={order.supplier_id || ''}
+                    disabled={busy}
+                    onChange={(e) => cambiarProveedor(e.target.value)}
+                    className="input flex-1 min-w-[16rem] max-w-lg">
+                    <option value="">— Sin asignar —</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.business_name}
+                        {s.rfc && !String(s.rfc).startsWith('SINRFC-')
+                          ? ` · ${s.rfc}` : ' · sin RFC'}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setAltaProveedor((v) => !v)}
+                    className="text-sm px-3 py-2 rounded-lg border border-sky-300 text-sky-700
+                      hover:bg-sky-50">
+                    {altaProveedor ? 'Cancelar' : '+ Otro proveedor'}
+                  </button>
+                </div>
+
+                {/* ── Alta al vuelo, aquí también ──
+                    Cambiar de proveedor a media orden es normal: el que surtió
+                    la vez pasada no tiene existencia, tarda tres semanas o
+                    subió el precio. Si el nuevo no está en el catálogo, la
+                    única salida era irse a darlo de alta completo y volver —y
+                    perder lo capturado en la orden—. */}
+                {altaProveedor && (
+                  <div className="mt-2 rounded-lg border border-sky-300 bg-white p-3 space-y-2 max-w-lg">
+                    <p className="text-xs font-medium text-sky-900">
+                      Dar de alta al proveedor con lo mínimo
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        value={nombreProveedor}
+                        onChange={(e) => setNombreProveedor(e.target.value)}
+                        placeholder="Nombre del proveedor"
+                        className="input flex-1 min-w-[12rem]"
+                      />
+                      <input
+                        type="number" min="0" max="365" step="1"
+                        value={diasCredito}
+                        onChange={(e) => setDiasCredito(e.target.value)}
+                        placeholder="Días de crédito"
+                        className="input w-36 text-right"
+                      />
+                      <button
+                        type="button"
+                        disabled={busy || !nombreProveedor.trim()}
+                        onClick={altaYAsignar}
+                        className="px-3 py-2 rounded-lg bg-primary text-white text-sm
+                          hover:bg-blue-600 disabled:opacity-40">
+                        Dar de alta y asignar
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-sky-800">
+                      Queda marcado como <b>pendiente de completar</b>: sin RFC sirve para
+                      la cuenta por pagar, no para nada fiscal.
+                    </p>
+                  </div>
+                )}
+
                 <p className="text-xs text-sky-800 mt-1">
                   El sugerido por el análisis es el del último precio de compra. Puedes
                   cambiarlo por cualquier otro proveedor sin cancelar la orden.
@@ -558,20 +675,54 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
                   : 'Factura del proveedor — genera la deuda en tesorería'}
               </p>
 
-              {/* Orden cerrada sin proveedor: aquí se completa el dato que faltó,
-                  porque una deuda sin acreedor no se le puede pagar a nadie. */}
-              {capturandoFactura && !order.supplier_id && (
-                <div>
-                  <label className="block text-xs text-violet-900 mb-1">Proveedor</label>
-                  <select value={proveedorFactura} onChange={(e) => setProveedorFactura(e.target.value)}
-                    className="input w-full">
-                    <option value="">— Elige a quién se le debe —</option>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.business_name}{s.rfc ? ` · ${s.rfc}` : ''}
-                      </option>
-                    ))}
-                  </select>
+              {/* ── A QUIÉN SE LE DEBE ──
+                  Aparece siempre que la orden no traiga proveedor, tanto al
+                  recibir como al capturar la factura después. Una deuda sin
+                  acreedor no se le puede pagar a nadie, y antes esto sólo se
+                  preguntaba en el segundo caso: al recibir sin proveedor, la
+                  mercancía entraba y la deuda se perdía. */}
+              {!order.supplier_id && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs text-violet-900">Proveedor</label>
+                    <label className="flex items-center gap-1.5 text-xs text-violet-800 cursor-pointer">
+                      <input type="checkbox" checked={proveedorNuevo}
+                        onChange={(e) => setProveedorNuevo(e.target.checked)} />
+                      No está en la lista
+                    </label>
+                  </div>
+
+                  {!proveedorNuevo ? (
+                    <select value={proveedorFactura}
+                      onChange={(e) => setProveedorFactura(e.target.value)}
+                      className="input w-full">
+                      <option value="">— Elige a quién se le debe —</option>
+                      {suppliers.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.business_name}{s.rfc && !String(s.rfc).startsWith('SINRFC-')
+                            ? ` · ${s.rfc}` : ' · sin RFC'}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    /* Nombre y días de crédito, nada más. Es lo que alcanza
+                       para que la cuenta por pagar exista y tenga vencimiento;
+                       el RFC y lo demás se completan después, sin prisa y sin
+                       el repartidor esperando. */
+                    <div className="rounded border border-violet-300 bg-white/70 p-3 space-y-2">
+                      <input
+                        value={nombreProveedor}
+                        onChange={(e) => setNombreProveedor(e.target.value)}
+                        placeholder="Nombre del proveedor, como viene en la factura"
+                        className="input w-full"
+                      />
+                      <p className="text-[11px] text-violet-800">
+                        Se da de alta con esto y los días de crédito de abajo. Queda
+                        marcado como <b>pendiente de completar</b>: sin RFC no se le
+                        puede timbrar un complemento de pago.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -582,10 +733,17 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
                     placeholder="A-12345" className="input w-full" />
                 </div>
                 <div>
-                  <label className="block text-xs text-violet-900 mb-1">Subtotal (sin IVA)</label>
+                  {/* El TOTAL, no el subtotal: es la cifra grande de la factura,
+                      la que se lee sin buscarla y la que se va a transferir. El
+                      subtotal se deriva con la tasa. */}
+                  <label className="block text-xs text-violet-900 mb-1">
+                    Importe total de la factura
+                  </label>
                   <input type="number" min="0" step="0.01" value={importeFactura}
                     onChange={(e) => setImporteFactura(e.target.value)}
-                    placeholder={propuestaImporte > 0 ? propuestaImporte.toFixed(2) : '0.00'}
+                    placeholder={propuestaImporte > 0
+                      ? (propuestaImporte * (1 + Number(tasaIva) / 100)).toFixed(2)
+                      : '0.00'}
                     className="input w-full text-right" />
                 </div>
                 <div>
@@ -599,9 +757,19 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
                 </div>
                 <div>
                   <label className="block text-xs text-violet-900 mb-1">Fecha de la factura</label>
-                  <input type="date" value={fechaFactura}
-                    onChange={(e) => setFechaFactura(e.target.value)}
-                    className="input w-full" />
+                  <CampoFecha value={fechaFactura} onChange={setFechaFactura} />
+                </div>
+                <div>
+                  <label className="block text-xs text-violet-900 mb-1">
+                    Días de crédito
+                  </label>
+                  <input type="number" min="0" max="365" step="1" value={diasCredito}
+                    onChange={(e) => setDiasCredito(e.target.value)}
+                    placeholder={String(order.supplier_credit_days ?? 0)}
+                    className="input w-full text-right" />
+                  <p className="text-[10px] text-violet-700 mt-0.5">
+                    Vacío = los del proveedor. 0 = de contado.
+                  </p>
                 </div>
               </div>
 

@@ -5,6 +5,75 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-19 (compras) — La deuda que se perdía, el aviso temprano
+
+### 1 · La mercancía entraba y la deuda no
+Al recibir sin capturar la factura, el sistema avisaba y seguía. Pero había un
+caso peor y silencioso: **el proveedor no está dado de alta**. Darlo de alta
+completo pide RFC, régimen fiscal y domicilio —datos que no trae el repartidor
+que está esperando— así que en la práctica se recibía sin factura y la cuenta
+por pagar no se capturaba nunca. Nadie la reclama hasta que el proveedor llama,
+y para entonces ya venció.
+
+Ahora existe el **preregistro**: nombre y días de crédito, nada más. Alcanza
+para lo único que urge, que es que la deuda exista, tenga acreedor y tenga
+vencimiento. Se completa después, sin prisa.
+
+**El precio, dicho en voz alta:** un preregistro no sirve para nada fiscal. Le
+falta el RFC, así que no se le puede timbrar un complemento de pago. Va marcado
+con `es_preregistro` y hay un endpoint para perseguirlos —"qué proveedores
+están a medias"— porque si no, uno se queda así un año.
+
+**Por qué el RFC lleva "SINRFC-".** La columna es NOT NULL y su índice único lo
+usa el `ON CONFLICT` de la descarga masiva del SAT; aflojarlo rompería aquello.
+El marcador no se puede confundir con un RFC, es único, y cualquier validación
+lo rechaza — que es justo lo que debe pasar si alguien intenta timbrar con él.
+
+**Y lo que se cuidó al hacerlo:** capturar "Aceros del Norte" en dos recepciones
+distintas crearía dos proveedores con la deuda repartida, y el saldo de ninguno
+sería el real. Se busca por nombre antes de crear —sin acentos ni mayúsculas—
+y entre TODOS los proveedores, no sólo los preregistros: si el de la factura ya
+estaba dado de alta completo, se usa ése.
+
+*Un detalle que sólo apareció al probar:* la comparación sin acentos usaba
+`unaccent`, con un `catch` para cuando la extensión no está. Pero una consulta
+que falla DENTRO de una transacción la aborta entera — no hay "intentar y si no,
+la otra". La recepción se caía por un detalle de comparación de texto. Se
+cambió a `translate`, que siempre está.
+
+### 2 · Se captura el TOTAL, no el subtotal
+Quien tiene la factura en la mano lee la cifra grande, no la base. Ahora se
+captura el total y el subtotal se deriva con la tasa. Y los **días de crédito
+van por factura**: el mismo proveedor da 30 días en la mercancía de siempre y
+contado en un pedido especial.
+
+### 3 · Faltantes: dos unidades de aviso
+Enterarse al TOCAR el mínimo es enterarse tarde — el proveedor no entrega el
+mismo día, y entre que se pide y llega, el producto ya se agotó.
+
+Se agregó un cuarto escalón, **"llegando al mínimo"**, para lo que anda hasta 2
+unidades arriba. Va en amarillo claro y no en ámbar: si el aviso se ve igual que
+el faltante real, deja de avisar. El margen se puede mover con `?margen=`, y con
+0 se comporta exactamente como antes.
+
+De paso, esas sesenta líneas de SQL salieron del handler a `faltantes.service`:
+adentro de la ruta no había forma de probar la regla del margen con números.
+
+### 4 · Cambiar de proveedor sin salirse de la orden
+Cambiar a media orden es normal —el que surtió la vez pasada no tiene
+existencia, tarda tres semanas o subió el precio—. Si el nuevo no estaba en el
+catálogo, la única salida era irse a darlo de alta completo y volver, perdiendo
+lo capturado. Ahora se da de alta y se asigna **en un solo gesto**: separarlo en
+dos pasos es donde se pierde el hilo — se crea, se olvida asignarlo, y la orden
+sigue sin proveedor.
+
+*Verificado:* 18 comprobaciones nuevas —incluidas que el mismo nombre no
+duplique proveedor, que la línea de crédito se consuma, que una factura genere
+una sola deuda, y los cuatro escalones del margen— más las 185 de nómina y las
+115 unitarias.
+
+---
+
 ## 2026-08-19 (tarde) — Los timbres que faltaban, el uniforme que se cobra, y las fechas
 
 ### 1 · El contador de timbres ignoraba la nómina

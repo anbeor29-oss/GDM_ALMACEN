@@ -14,6 +14,7 @@ import { PoolClient } from 'pg';
 import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError, NotFoundError, ConflictError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
+import { preregistrarEnTransaccion } from './preregistro-proveedor.service';
 import { applyMovementTx } from '../inventory/inventory.service';
 
 export type OrderStatus =
@@ -292,14 +293,28 @@ async function generarDeudaProveedor(
     /** 16, 8 o 0. Si no viene, 16. */
     taxRate?: number;
     invoiceDate?: string;
+    /**
+     * El TOTAL de la factura, tal como lo dice el papel. Si viene, manda sobre
+     * el subtotal: quien tiene la factura en la mano lee el total, no la base.
+     */
+    total?: number;
+    /**
+     * Días de crédito de ESTA factura. Si no vienen, los del proveedor.
+     *
+     * Se permite por factura porque el plazo se negocia por compra: el mismo
+     * proveedor da 30 días en la mercancía de siempre y contado en un pedido
+     * especial.
+     */
+    creditDays?: number;
     /** Costo de la mercancía, como propuesta cuando no capturan el subtotal. */
     importePropuesto: number;
   }
 ): Promise<any> {
   if (!d.supplierId) {
     throw new ValidationError(
-      'Elige el proveedor de la orden primero: sin proveedor no hay a quién ' +
-      'deberle y la factura no se puede registrar en tesorería.'
+      'Falta a quién se le debe: elige el proveedor de la lista o captura su ' +
+      'nombre para darlo de alta al vuelo. Sin acreedor, la deuda no se puede ' +
+      'registrar en tesorería.'
     );
   }
 
@@ -328,12 +343,36 @@ async function generarDeudaProveedor(
    * el total, y eso programaba un pago 16% más chico que el que el proveedor
    * iba a cobrar. Aquí el subtotal es el dato que se captura —el costo sirve de
    * propuesta— y el total sale de la tasa elegida. */
-  const base = d.subtotal != null && Number(d.subtotal) > 0
-    ? Number(d.subtotal)
-    : d.importePropuesto;
   const tasa = tasaDeIvaValida(d.taxRate);
-  const importe = redondeaPesos(base * (1 + tasa / 100));
+
+  /* Tres caminos, en orden de qué tan directo es el dato:
+   *
+   *   1. El TOTAL capturado. Es lo que dice la factura y lo que se va a pagar;
+   *      el subtotal se deriva. Quien tiene el papel en la mano lee el total.
+   *   2. El SUBTOTAL capturado, más el IVA de la tasa elegida.
+   *   3. Ninguno de los dos: el costo de la mercancía recibida, como propuesta.
+   *
+   * El orden importa. Antes se guardaba el costo tal cual cuando nadie
+   * capturaba nada, y eso programaba un pago 16% más chico que el que el
+   * proveedor iba a cobrar. */
+  let base: number;
+  let importe: number;
+  if (d.total != null && Number(d.total) > 0) {
+    importe = redondeaPesos(Number(d.total));
+    base = redondeaPesos(importe / (1 + tasa / 100));
+  } else {
+    base = d.subtotal != null && Number(d.subtotal) > 0
+      ? Number(d.subtotal)
+      : d.importePropuesto;
+    importe = redondeaPesos(base * (1 + tasa / 100));
+  }
   if (!(importe > 0)) return null;
+
+  /* Los días de la factura ganan a los del proveedor; si no vienen, se deja
+   * NULL y el SQL cae a los del catálogo. */
+  const dias = Number.isFinite(Number(d.creditDays)) && Number(d.creditDays) >= 0
+    ? Math.trunc(Number(d.creditDays))
+    : null;
 
   const insR = await transactionQuery<any>(
     client,
@@ -342,16 +381,19 @@ async function generarDeudaProveedor(
         subtotal, tax_rate, amount, due_date, notes)
      SELECT $1, $2, $3, $4, $5, $6, $7,
             (COALESCE($8::timestamp, NOW())
-              + make_interval(days => COALESCE(c.credit_days, 0)))::date,
+              + make_interval(days => COALESCE($10::int, c.credit_days, 0)))::date,
             $9
        FROM customers c WHERE c.id = $2
      RETURNING id, amount, subtotal, tax_rate, due_date,
-               (SELECT COALESCE(credit_days, 0) FROM customers WHERE id = $2) AS credit_days`,
+               COALESCE($10::int,
+                        (SELECT COALESCE(credit_days, 0) FROM customers WHERE id = $2)
+               ) AS credit_days`,
     [d.companyId, d.supplierId, d.orderId, d.invoiceNumber,
      redondeaPesos(base), tasa, importe,
      d.invoiceDate || null,
      `Orden de compra #${d.folio} · factura ${d.invoiceNumber} · ` +
-     `subtotal ${redondeaPesos(base)} + IVA ${tasa}%`]
+     `subtotal ${redondeaPesos(base)} + IVA ${tasa}%`,
+     dias]
   );
   if (!insR.rows[0]) return null;
 
@@ -388,14 +430,7 @@ async function generarDeudaProveedor(
 export async function registrarFacturaDeOrden(
   companyId: string,
   orderId: string,
-  datos: {
-    invoiceNumber: string;
-    subtotal?: number;
-    taxRate?: number;
-    invoiceDate?: string;
-    /** Sólo se usa si la orden no tenía proveedor asignado. */
-    supplierId?: string;
-  }
+  datos: DatosDeFactura & { invoiceNumber: string }
 ): Promise<any> {
   const folioFactura = String(datos?.invoiceNumber || '').trim().slice(0, 60);
   if (!folioFactura) throw new ValidationError('Captura el número de la factura');
@@ -417,25 +452,12 @@ export async function registrarFacturaDeOrden(
       );
     }
 
-    /* Si la orden se cerró sin proveedor, aquí se completa. Es llenar un dato
-     * que faltaba, no reescribir historia: si ya tenía proveedor, se le debe a
-     * ese y el que venga en el cuerpo se ignora. */
-    let supplierId = po.supplier_id;
-    if (!supplierId && datos.supplierId) {
-      const sup = await transactionQuery<any>(
-        client,
-        `SELECT id FROM customers
-          WHERE id = $1 AND company_id = $2 AND party_type = 'SUPPLIER' AND deleted_at IS NULL`,
-        [datos.supplierId, companyId]
-      );
-      if (sup.rows.length === 0) throw new NotFoundError('Proveedor no encontrado');
-      await transactionQuery(
-        client,
-        `UPDATE purchase_orders SET supplier_id = $1, updated_at = NOW() WHERE id = $2`,
-        [datos.supplierId, orderId]
-      );
-      supplierId = datos.supplierId;
-    }
+    /* Si la orden se cerró sin proveedor, aquí se completa —de la lista o
+     * capturando su nombre—. Es llenar un dato que faltaba, no reescribir
+     * historia: si ya tenía proveedor, se le debe a ése. */
+    const supplierId = await resolverProveedorDeLaOrden(
+      client, companyId, orderId, po.supplier_id, datos
+    );
 
     /* Propuesta de subtotal: lo que costó lo que YA se recibió. El IVA se le
      * suma después, según la tasa elegida. */
@@ -453,8 +475,10 @@ export async function registrarFacturaDeOrden(
       folio: po.folio,
       invoiceNumber: folioFactura,
       subtotal: datos.subtotal,
+      total: datos.total,
       taxRate: datos.taxRate,
       invoiceDate: datos.invoiceDate,
+      creditDays: datos.creditDays,
       importePropuesto: Number(costoR.rows[0].costo || 0),
     });
 
@@ -533,6 +557,69 @@ export interface DatosDeFactura {
   taxRate?: number;
   /** Fecha de la factura: de ahí cuentan los días de crédito. */
   invoiceDate?: string;
+  /** El TOTAL como lo dice el papel. Si viene, manda sobre el subtotal. */
+  total?: number;
+  /** Días de crédito de ESTA factura. Si no vienen, los del proveedor. */
+  creditDays?: number;
+  /**
+   * Nombre del proveedor cuando NO está en el catálogo.
+   *
+   * Se da de alta al vuelo con esto y los días de crédito —un preregistro— y
+   * la deuda queda con acreedor. Antes, sin proveedor dado de alta, la
+   * mercancía entraba y la deuda no: nadie la reclamaba hasta que el proveedor
+   * llamaba, y para entonces ya había vencido.
+   */
+  supplierName?: string;
+  /** Proveedor ya existente, cuando la orden no traía ninguno. */
+  supplierId?: string;
+}
+
+/**
+ * Deja lista la orden para que la deuda tenga acreedor.
+ *
+ * Devuelve el proveedor a usar, dándolo de alta al vuelo si hace falta. Vive
+ * aquí y no en cada camino porque la factura llega por dos rutas —al recibir y
+ * días después— y las dos necesitan lo mismo.
+ */
+async function resolverProveedorDeLaOrden(
+  client: PoolClient,
+  companyId: string,
+  orderId: string,
+  actual: string | null,
+  factura?: DatosDeFactura
+): Promise<string | null> {
+  /* Si la orden ya tiene proveedor, se le debe a ése. Lo que venga en el
+   * cuerpo se ignora: no es llenar un hueco, sería reescribir a quién se le
+   * compró. */
+  if (actual) return actual;
+
+  let nuevo: string | null = null;
+
+  if (factura?.supplierId) {
+    const sup = await transactionQuery<any>(
+      client,
+      `SELECT id FROM customers
+        WHERE id = $1 AND company_id = $2 AND party_type = 'SUPPLIER' AND deleted_at IS NULL`,
+      [factura.supplierId, companyId]
+    );
+    if (sup.rows.length === 0) throw new NotFoundError('Proveedor no encontrado');
+    nuevo = factura.supplierId;
+  } else if (String(factura?.supplierName || '').trim()) {
+    const pre = await preregistrarEnTransaccion(client, companyId, {
+      nombre: String(factura!.supplierName),
+      creditDays: factura?.creditDays,
+    });
+    nuevo = pre.id;
+  }
+
+  if (nuevo) {
+    await transactionQuery(
+      client,
+      `UPDATE purchase_orders SET supplier_id = $1, updated_at = NOW() WHERE id = $2`,
+      [nuevo, orderId]
+    );
+  }
+  return nuevo;
 }
 
 export async function receiveOrder(
@@ -651,16 +738,25 @@ export async function receiveOrder(
     );
 
     const folioFactura = String(factura?.invoiceNumber || '').trim().slice(0, 60);
+
+    /* El proveedor, antes de la deuda: puede venir de la orden, de la lista, o
+     * capturarse al vuelo con su nombre. */
+    const proveedorDeuda = folioFactura
+      ? await resolverProveedorDeLaOrden(client, companyId, orderId, po.supplier_id, factura)
+      : po.supplier_id;
+
     const deuda = folioFactura
       ? await generarDeudaProveedor(client, {
           companyId,
-          supplierId: po.supplier_id,
+          supplierId: proveedorDeuda,
           orderId,
           folio: po.folio,
           invoiceNumber: folioFactura,
           subtotal: factura?.subtotal,
+          total: factura?.total,
           taxRate: factura?.taxRate,
           invoiceDate: factura?.invoiceDate,
+          creditDays: factura?.creditDays,
           importePropuesto: costoRecibido,
         })
       : null;

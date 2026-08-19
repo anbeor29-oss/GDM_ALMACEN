@@ -485,6 +485,19 @@ class APIClient {
    * Registra la factura que llegó DESPUÉS de haber recibido la mercancía.
    * Genera la deuda en tesorería; no vuelve a mover existencias.
    */
+  /** Da de alta un proveedor con lo mínimo: nombre y días de crédito. */
+  async preregistrarProveedor(nombre: string, creditDays?: number) {
+    const r = await this.client.post<APIResponse<any>>(
+      '/purchase-orders/proveedor-preregistro', { nombre, creditDays });
+    return r.data;
+  }
+
+  /** Los proveedores capturados al vuelo que siguen sin RFC. */
+  async getProveedoresAMedias() {
+    const r = await this.client.get<APIResponse<any>>('/purchase-orders/proveedores-a-medias');
+    return r.data;
+  }
+
   async registrarFacturaDeOrden(id: string, datos: {
     invoiceNumber: string; subtotal?: number; taxRate?: number;
     invoiceDate?: string; supplierId?: string;
