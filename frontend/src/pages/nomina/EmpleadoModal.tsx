@@ -183,7 +183,10 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
     queryFn: () => api.resolverCodigoPostal(f.codigo_postal),
     enabled: /^\d{5}$/.test(f.codigo_postal || ''),
     staleTime: 60 * 60 * 1000,
-    retry: false,
+    /* Un reintento: si la primera llamada cae justo cuando el servidor se
+     * reinicia, sin reintento el combo se queda vacío hasta recargar la página
+     * entera — y parece que la función no existe. */
+    retry: 1,
   });
   const cpDatos: any = cpQ.data?.data || {};
   const colonias: any[]   = cpDatos.colonias || [];
@@ -333,9 +336,30 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                   ) : (
                     <Campo k="colonia" label="" />
                   )}
-                  {colonias.length > 0 && (
+
+                  {/* Sin combo hay TRES motivos distintos y desde la pantalla se
+                      veían iguales: un campo de texto vacío. Decir cuál es
+                      convierte el próximo reporte en un diagnóstico. */}
+                  {colonias.length > 0 ? (
                     <p className="text-[10px] text-gray-400 mt-0.5">
                       {colonias.length} colonia(s) en el CP {f.codigo_postal}
+                    </p>
+                  ) : cpQ.isError ? (
+                    <p className="text-[10px] text-rose-600 mt-0.5">
+                      No se pudo consultar el catálogo:{' '}
+                      {(cpQ.error as any)?.response?.status
+                        ? `error ${(cpQ.error as any).response.status}`
+                        : (cpQ.error as any)?.message || 'sin respuesta'}
+                      . Se puede escribir a mano.
+                    </p>
+                  ) : !/^\d{5}$/.test(f.codigo_postal || '') ? (
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      Captura el código postal completo y aparecen las colonias.
+                    </p>
+                  ) : cpQ.isFetching ? null : (
+                    <p className="text-[10px] text-amber-700 mt-0.5">
+                      El catálogo del SAT no tiene colonias para el CP {f.codigo_postal}.
+                      Se puede escribir a mano.
                     </p>
                   )}
                 </div>
@@ -357,6 +381,11 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                     </select>
                   ) : (
                     <Campo k="municipio" label="" />
+                  )}
+                  {municipios.length > 0 && (
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {municipios.length} municipio(s) de {estadoDelCp}
+                    </p>
                   )}
                 </div>
 
