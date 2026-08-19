@@ -23,6 +23,7 @@ import { asyncHandler, ValidationError, NotFoundError, ConflictError, Unauthoriz
 import { query } from '../../config/database';
 import { requireSuperAdmin, audit } from './admin.middleware';
 import logger from '../../middleware/logger';
+import { GROUP_MODULES } from '../../middleware/permissions';
 
 const router = Router();
 router.use(authenticateToken);
@@ -30,7 +31,22 @@ router.use(requireSuperAdmin);
 
 const VALID_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'USER'] as const;
 type Role = typeof VALID_ROLES[number];
-const VALID_WORK_GROUPS: string[] = ['ADMIN_ALL', 'VENTAS', 'ALMACEN', 'COMPRAS', 'TESORERIA'];
+/**
+ * Los grupos válidos SE DERIVAN del mapa de permisos.
+ *
+ * ── POR QUÉ, Y QUÉ ROMPIÓ ANTES ──
+ * Esta lista estaba escrita a mano y se quedó en cinco cuando el mapa ya tenía
+ * siete. El resultado: la pantalla ofrecía "Recursos Humanos (sólo nómina)" en
+ * su combo, el usuario lo elegía, y el servidor lo rechazaba con "workGroup
+ * inválido". El grupo existía, sus permisos estaban definidos y hasta el CHECK
+ * de la base lo aceptaba — el único que no se había enterado era este renglón.
+ *
+ * Derivarla de GROUP_MODULES cierra esa puerta: agregar un grupo al mapa lo
+ * hace válido aquí solo. Quedan dos lugares que sincronizar a mano —el CHECK de
+ * users.work_group y el mapa del frontend— y los dos avisan cuando faltan: el
+ * primero rechaza el INSERT, el segundo deja el menú vacío.
+ */
+const VALID_WORK_GROUPS: string[] = Object.keys(GROUP_MODULES);
 
 /** Genera password temporal legible: ej. "Lima-9248" — fácil de transmitir al usuario. */
 function generateTemporaryPassword(): string {

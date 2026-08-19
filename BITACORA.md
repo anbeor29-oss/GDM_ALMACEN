@@ -5,6 +5,71 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-19 (super admin) — Grupos que ven sin poder, y uno que ni existía
+
+### 1 · "workGroup inválido" — el grupo existía; la lista no se enteró
+El combo ofrecía **Recursos Humanos (sólo nómina)**, el usuario lo elegía, y el
+servidor lo rechazaba. El grupo estaba definido, sus permisos escritos, y el
+CHECK de la base lo aceptaba. El único que no sabía de él era **un renglón**:
+
+```ts
+const VALID_WORK_GROUPS = ['ADMIN_ALL','VENTAS','ALMACEN','COMPRAS','TESORERIA'];
+```
+
+Una lista escrita a mano que duplicaba otra que ya existía, y que se quedó en
+cinco cuando el mapa llegó a siete. Ahora **se deriva** de `GROUP_MODULES`:
+agregar un grupo al mapa lo hace válido aquí solo. Lo mismo le pasaba a Punto de
+Venta.
+
+### 2 · Ver la pantalla sin poder hacer nada
+Éste es el que de verdad se sufría, y no suena a permisos: **suena a que el
+sistema no sirve**.
+
+Un usuario del grupo TESORERIA veía su pantalla y no podía programar un solo
+pago. Todos los endpoints de escritura piden `treasury:pay`, y esa capacidad no
+está en la base de un USER: había que otorgársela a mano, usuario por usuario, y
+nadie lo sabía. La pantalla se abría, los botones estaban ahí, y al oprimirlos
+salía "no tienes la capacidad requerida". El cajero igual: grupo PUNTO_VENTA sin
+poder cobrar.
+
+La causa de fondo era que **el grupo decidía qué se VE y no qué se PUEDE**. Ahora
+cada grupo declara sus capacidades —`GROUP_CAPABILITIES`— y se suman a las
+individuales, no las reemplazan: un ADMIN puede seguir elevando a alguien con un
+permiso puntual sin cambiarlo de grupo.
+
+El grupo se lee de la **base** y no del token, así que cambiar a alguien de grupo
+surte efecto en la siguiente petición y no cuando expire su sesión. Es el mismo
+criterio que ya seguían los otorgamientos, y se resuelve en **una sola consulta**
+—preguntar por separado sería un viaje más a la base en cada petición
+protegida—.
+
+Cada grupo trae lo que su nombre promete y nada más: **Compras captura órdenes
+pero no las aprueba**. Aprobar es un segundo par de ojos, y si el mismo que
+captura aprueba, deja de serlo.
+
+### 3 · Dos recortes de alcance
+- **Compras** ya no ve el módulo de Almacén: pide y recibe, no administra
+  existencias. Lo que necesita saber —qué falta— lo tiene en Faltantes, que vive
+  en su propio módulo. *Se verificó antes de recortar que no rompiera la
+  recepción de mercancía:* `requireModule` sólo protege nómina, POS y el
+  súper-importador, así que el mapa gobierna el menú, no el API.
+- **Tesorería** ya no ve Auditoría: cotejar lo que el SAT dice de nuestros
+  comprobantes es otro trabajo y otra persona.
+
+### 4 · Alta de usuarios desde la empresa
+Un botón por renglón en el listado de empresas. Antes había que irse a Usuarios
+y buscar la empresa en un combo de cincuenta — que es donde se cuela el usuario
+dado de alta en la empresa equivocada. El modal es el **mismo**, exportado y no
+copiado; con la empresa **fija y bloqueada**, porque entrando desde el renglón
+de una empresa, elegir otra sólo puede ser un error.
+
+*Verificado:* 22 comprobaciones nuevas, incluidas las dos que importan —que
+tesorería SÍ pueda programar pagos y que NO pueda aprobar compras— más que
+cambiar de grupo surta efecto sin volver a entrar, y que lo otorgado a mano se
+sume al grupo en vez de pisarlo. Con las 115 unitarias y el resto de la suite.
+
+---
+
 ## 2026-08-19 (cierre) — "XML del SAT" con menú propio
 
 La descarga de XML era la **segunda pestaña** de Auditoría. Para llegar había

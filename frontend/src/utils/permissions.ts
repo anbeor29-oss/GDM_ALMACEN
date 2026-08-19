@@ -38,8 +38,7 @@ const ALL_MODULES: ModuleKey[] = [
 /**
  * Criterio de reparto: cada grupo alcanza lo que necesita para trabajar, no lo
  * que "le podría servir". Los cruces son deliberados — VENTAS ve tipos de
- * cambio (factura en dólares), COMPRAS ve existencias (para decidir qué
- * reponer), TESORERIA ve proveedores (les programa pagos).
+ * cambio (factura en dólares) y TESORERIA ve proveedores (les programa pagos).
  */
 export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   ADMIN_ALL: ALL_MODULES,
@@ -48,10 +47,14 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
     'products', 'xml_reader', 'pos', 'reports', 'exchange_rates', 'mensajes',
   ],
   ALMACEN:   ['dashboard', 'products', 'inventory', 'reports', 'mensajes'],
-  COMPRAS:   ['dashboard', 'purchasing', 'suppliers', 'products', 'inventory',
+  /* Compras pide y recibe; no administra existencias. Lo que necesita saber
+   * —qué falta— lo tiene en Faltantes, que vive en su propio módulo. */
+  COMPRAS:   ['dashboard', 'purchasing', 'suppliers', 'products',
               'xml_reader', 'reports', 'mensajes'],
+  /* Tesorería paga; cotejar lo que el SAT dice de nuestros comprobantes es
+   * otro trabajo y otra persona. */
   TESORERIA: ['dashboard', 'treasury', 'suppliers', 'exchange_rates', 'reports',
-              'auditoria', 'mensajes'],
+              'mensajes'],
   /* Cajero de mostrador: SÓLO el punto de venta.
    *
    * VENTAS ya existía, pero alcanza facturas, clientes, Carta Porte y el lector
@@ -87,9 +90,11 @@ export const WORK_GROUP_DETAIL: Record<WorkGroup, string> = {
              'Lector de XML, Punto de Venta, Reportes y Monedas.',
   ALMACEN:   'Productos, Almacén (existencias, almacenes, inventario físico) y ' +
              'Reportes. No ve facturación, compras ni tesorería.',
-  COMPRAS:   'Compras (órdenes y recepción de XML), Proveedores, Productos, ' +
-             'existencias de Almacén, Lector de XML y Reportes.',
-  TESORERIA: 'Tesorería, Proveedores, Monedas y Reportes. No ve facturación ni almacén.',
+  COMPRAS:   'Compras (órdenes, faltantes y recepción de XML), Proveedores, ' +
+             'Productos, Lector de XML y Reportes. No ve el módulo de Almacén.',
+  TESORERIA: 'Tesorería completa —cuentas por pagar, remesas y programación de ' +
+             'pagos—, Proveedores, Monedas y Reportes. No ve facturación, ' +
+             'almacén ni auditoría.',
   PUNTO_VENTA: 'Únicamente el Punto de Venta. No ve facturación, catálogos, ' +
                'almacén, compras ni reportes. Pensado para el cajero de mostrador.',
   RECURSOS_HUMANOS: 'Nómina completa (expediente del personal, cálculo, ' +

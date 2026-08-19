@@ -47,8 +47,11 @@ const ALL_MODULES: ModuleKey[] = [
  * Criterio: cada grupo alcanza lo que necesita para trabajar, no lo que "le
  * podría servir". Los cruces son deliberados:
  *   · VENTAS ve exchange_rates porque cotiza y factura en dólares.
- *   · COMPRAS ve inventory (para decidir qué reponer) y products.
- *   · TESORERIA ve suppliers porque les programa pagos.
+ *   · COMPRAS ve products, pero NO el módulo de almacén: pide y recibe, no
+ *     administra existencias. Lo que necesita saber —qué falta— lo tiene en su
+ *     propia pantalla de Faltantes, que vive en compras.
+ *   · TESORERIA ve suppliers porque les programa pagos, y NO auditoría:
+ *     cotejar lo que el SAT dice de nuestros comprobantes es otro trabajo.
  * Lo que cada quien puede HACER dentro de esas pantallas lo decide el sistema
  * de capacidades (requireCapability), no este mapa.
  */
@@ -63,9 +66,9 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
     'xml_reader', 'pos', 'reports', 'exchange_rates', 'mensajes',
   ],
   ALMACEN:   ['products', 'inventory', 'reports', 'mensajes'],
-  COMPRAS:   ['purchasing', 'suppliers', 'products', 'inventory', 'xml_reader', 'reports',
+  COMPRAS:   ['purchasing', 'suppliers', 'products', 'xml_reader', 'reports',
               'mensajes'],
-  TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'reports', 'auditoria', 'mensajes'],
+  TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'reports', 'mensajes'],
   /* Cajero de mostrador: SÓLO la caja.
    *
    * VENTAS ya existía pero alcanza facturas, clientes y Carta Porte, que es

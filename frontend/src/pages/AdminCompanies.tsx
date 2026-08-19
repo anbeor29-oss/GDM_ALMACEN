@@ -6,14 +6,12 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload,
-  AlertTriangle, Loader2, Pencil, Save, LogIn,
-} from 'lucide-react';
+import { Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload, AlertTriangle, Loader2, Pencil, Save, LogIn, UserPlus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { CampoFecha } from '@/components/CampoFecha';
+import { CreateUserModal } from '@/pages/AdminUsers';
 
 export function AdminCompaniesPage() {
   const { user, login: storeLogin } = useAuthStore();
@@ -22,6 +20,7 @@ export function AdminCompaniesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [csdTarget, setCsdTarget] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [userTarget, setUserTarget] = useState<any>(null);
   const [editTarget, setEditTarget] = useState<any>(null);
 
   if (user?.role !== 'SUPER_ADMIN') {
@@ -134,6 +133,15 @@ export function AdminCompaniesPage() {
                       className="p-1.5 text-sky-600 hover:bg-sky-50 rounded"><Pencil size={16}/></button>
                     <button title="Cargar CSD" onClick={() => setCsdTarget(c)}
                       className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded"><FileKey size={16}/></button>
+                    {/* Dar de alta a la gente de ESTA empresa, sin salir del
+                        renglón. Antes había que irse a Usuarios y buscar la
+                        empresa en un combo de cincuenta: es donde se cuela el
+                        usuario dado de alta en la empresa equivocada. */}
+                    <button title={`Dar de alta un usuario de ${c.rfc}`}
+                      onClick={() => setUserTarget(c)}
+                      className="p-1.5 text-violet-600 hover:bg-violet-50 rounded">
+                      <UserPlus size={16}/>
+                    </button>
                     {c.has_csd && (
                       <button title="Revocar CSD" onClick={() => { if (confirm(`Revocar el CSD de ${c.rfc}?`)) delCsd.mutate(c.id); }}
                         className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
@@ -164,6 +172,15 @@ export function AdminCompaniesPage() {
         <CSDUploadModal company={csdTarget} onClose={()=>setCsdTarget(null)}
           onDone={()=>{ setCsdTarget(null); qc.invalidateQueries({ queryKey: ['admin-companies'] }); }}/>
       )}
+      {userTarget && (
+        <CreateUserModal
+          companies={rows}
+          companyFija={userTarget.id}
+          onClose={() => setUserTarget(null)}
+          onDone={() => { setUserTarget(null); qc.invalidateQueries({ queryKey: ['admin-companies'] }); }}
+        />
+      )}
+
       {deleteTarget && (
         <DangerDeleteModal
           company={deleteTarget}

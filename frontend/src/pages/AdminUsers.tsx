@@ -384,8 +384,24 @@ function IconBtn({ color, title, onClick, children }: any) {
   return <button type="button" title={title} onClick={onClick} className={`p-1.5 rounded ${map[color]}`}>{children}</button>;
 }
 
-function CreateUserModal({ companies, onClose, onDone }: any) {
-  const [form, setForm] = useState({ email:'', firstName:'', lastName:'', role:'USER', companyId:'', workGroup:'ADMIN_ALL' });
+/**
+ * Alta de usuario.
+ *
+ * Se EXPORTA para que el listado de empresas pueda abrirla sin duplicarla: dar
+ * de alta a la gente de una empresa se hace mirando la empresa, no buscándola
+ * en un combo de cincuenta. Dos copias de este formulario divergirían justo en
+ * la validación del grupo de trabajo, que ya rompió una vez.
+ *
+ * `companyFija` preselecciona y BLOQUEA la empresa. Cuando se entra desde el
+ * renglón de una empresa, elegir otra en el combo sólo puede ser un error: el
+ * usuario quedaría en la empresa equivocada y nadie lo notaría hasta que
+ * entrara y viera datos ajenos.
+ */
+export function CreateUserModal({ companies, onClose, onDone, companyFija }: any) {
+  const [form, setForm] = useState({
+    email:'', firstName:'', lastName:'', role:'USER',
+    companyId: companyFija || '', workGroup:'ADMIN_ALL',
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -437,7 +453,7 @@ function CreateUserModal({ companies, onClose, onDone }: any) {
             </select></label>
           {form.role !== 'SUPER_ADMIN' && (
             <label className="block"><span className="text-sm font-medium block mb-1">Empresa *</span>
-              <select required className="input w-full" value={form.companyId}
+              <select disabled={!!companyFija} required className="input w-full" value={form.companyId}
                 onChange={(e)=>setForm({...form,companyId:e.target.value})}>
                 <option value="">— seleccionar —</option>
                 {companies.map((c: any) => <option key={c.id} value={c.id}>{c.rfc} · {c.business_name}</option>)}
