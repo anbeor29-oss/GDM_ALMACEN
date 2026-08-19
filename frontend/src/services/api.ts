@@ -879,6 +879,28 @@ class APIClient {
     return r.data;
   }
 
+  /**
+   * La remesa en una hoja. `inline` la abre en el navegador para imprimirla;
+   * sin él, se descarga. Los dos usan el MISMO PDF: si fueran dos, tarde o
+   * temprano dirían cosas distintas.
+   */
+  async abrirRemesaPdf(runId: string, inline = true) {
+    const r = await this.client.get(
+      `/treasury/payment-runs/${runId}/pdf`,
+      { params: { inline: inline ? 1 : 0 }, responseType: 'blob' }
+    );
+    const url = URL.createObjectURL(new Blob([r.data as Blob], { type: 'application/pdf' }));
+    if (inline) {
+      const w = window.open(url, '_blank');
+      /* Si el navegador bloquea la ventana, se descarga: peor es no dar nada
+       * y que parezca que el botón no hace nada. */
+      if (!w) await this.downloadFile(new Blob([r.data as Blob]), `remesa-${runId.slice(0, 8)}.pdf`);
+      else setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } else {
+      await this.downloadFile(new Blob([r.data as Blob]), `remesa-${runId.slice(0, 8)}.pdf`);
+    }
+  }
+
   async listPayments() {
     const r = await this.client.get('/payments');
     return r.data;

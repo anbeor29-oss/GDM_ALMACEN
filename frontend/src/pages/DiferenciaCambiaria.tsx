@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { TrendingUp, TrendingDown, Download, Scale } from 'lucide-react';
 import api from '@/services/api';
+import { CampoFecha } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -90,11 +91,11 @@ export function DiferenciaCambiariaPage() {
       <div className="bg-white rounded-lg border border-slate-200 p-4 mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
         <label className="block">
           <span className="text-xs text-slate-500">Desde</span>
-          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="input mt-1" />
+          <CampoFecha value={desde} onChange={setDesde} className="input mt-1" />
         </label>
         <label className="block">
           <span className="text-xs text-slate-500">Hasta</span>
-          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="input mt-1" />
+          <CampoFecha value={hasta} onChange={setHasta} className="input mt-1" />
         </label>
         <label className="block">
           <span className="text-xs text-slate-500">Moneda</span>

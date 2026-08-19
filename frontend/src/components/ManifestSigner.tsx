@@ -14,6 +14,7 @@ import {
   FileSignature, ShieldCheck, Download, ChevronDown, Loader2, AlertTriangle,
 } from 'lucide-react';
 import api from '@/services/api';
+import { fechaHoraMx } from '@/utils/fecha';
 
 function fileToB64(f: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -97,7 +98,7 @@ export function ManifestSigner() {
         <div className="text-xs text-emerald-900 space-y-0.5">
           <p><b>Firmante:</b> {manifest.signer_name || '—'} ({manifest.signer_rfc})</p>
           <p><b>No. serie e.firma:</b> <span className="font-mono">{manifest.cert_serial}</span></p>
-          <p><b>Fecha de firma:</b> {new Date(manifest.signed_at).toLocaleString('es-MX')}</p>
+          <p><b>Fecha de firma:</b> {fechaHoraMx(manifest.signed_at)}</p>
         </div>
         <button
           type="button"

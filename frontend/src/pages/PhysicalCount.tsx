@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { fechaHoraMx } from '@/utils/fecha';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -266,7 +267,7 @@ function CountDetailModal({ countId, canManage, onClose, onChanged, onError }: {
               Conteo #{count.folio} · {count.warehouse_code} — {count.warehouse_name}
             </h2>
             <p className="text-xs text-gray-500">
-              {count.category || 'Todas las categorías'} · abierto {new Date(count.started_at).toLocaleString('es-MX')}
+              {count.category || 'Todas las categorías'} · abierto {fechaHoraMx(count.started_at)}
               {count.authorized_by_email && ` · autorizó ${count.authorized_by_email}`}
             </p>
           </div>

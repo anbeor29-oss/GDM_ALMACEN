@@ -15,6 +15,8 @@ import {
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { RemesasDePago } from '@/components/RemesasDePago';
+import { fechaMx } from '@/utils/fecha';
+import { CampoFecha } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -156,7 +158,7 @@ export function TreasuryPage() {
               return (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-4 py-2 text-sm whitespace-nowrap">
-                    {new Date(p.due_date).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {fechaMx(p.due_date)}
                     {p.status === 'PENDING' && p.days_to_due < 0 && (
                       <span className="ml-1 text-xs text-rose-600">({Math.abs(p.days_to_due)}d)</span>
                     )}
@@ -183,7 +185,7 @@ export function TreasuryPage() {
                     )}
                     {p.status === 'PAID' && p.paid_at && (
                       <span className="text-xs text-gray-500">
-                        {new Date(p.paid_at).toLocaleDateString('es-MX')}
+                        {fechaMx(p.paid_at)}
                       </span>
                     )}
                   </td>
@@ -285,7 +287,7 @@ function ManualPaymentModal({ onClose, onSaved }: { onClose: () => void; onSaved
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Vence *</label>
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="input" />
+              <CampoFecha value={dueDate} onChange={(v) => setDueDate(v)} className="input" />
             </div>
           </div>
           <div>

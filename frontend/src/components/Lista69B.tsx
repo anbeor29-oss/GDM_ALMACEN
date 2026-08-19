@@ -24,10 +24,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Scale, Upload, AlertOctagon, Clock, CheckCircle2, DownloadCloud } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { fechaMx } from '@/utils/fecha';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
-const fecha = (d: any) => (d ? new Date(d).toLocaleDateString('es-MX') : '—');
+const fecha = (d: any) => (d ? fechaMx(d) : '—');
 
 const SITUACION: Record<string, { label: string; cls: string; icono: any }> = {
   DEFINITIVO:          { label: 'Definitivo',  cls: 'bg-rose-100 text-rose-800 border-rose-300', icono: AlertOctagon },
@@ -63,7 +64,7 @@ export function Lista69B() {
         `Padrón actualizado desde el SAT: ${Number(x.renglones).toLocaleString('es-MX')} ` +
         `contribuyentes (${x.nuevos} nuevos, ${x.actualizados} actualizados) en ${x.segundos}s.` +
         (x.ultimaModificacion
-          ? ` El archivo del SAT es del ${new Date(x.ultimaModificacion).toLocaleDateString('es-MX')}.`
+          ? ` El archivo del SAT es del ${fechaMx(x.ultimaModificacion)}.`
           : '')
       );
       qc.invalidateQueries({ queryKey: ['lista-69b'] });

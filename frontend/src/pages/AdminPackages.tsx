@@ -16,6 +16,7 @@ import { Download, Building2, Calendar, Check, Coins } from 'lucide-react';
 import { Emoji3D } from '@/components/Emoji3D';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { CampoFecha } from '@/components/CampoFecha';
 
 /* ─────────────── Catálogo de planes (espejo de stamp_packages) ─────────────── */
 
@@ -330,13 +331,13 @@ function SectionDownloadZip() {
             <span className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-1">
               <Calendar size={16} /> Desde
             </span>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="input" />
+            <CampoFecha value={from} onChange={(v) => setFrom(v)} className="input" />
           </label>
           <label className="block">
             <span className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-1">
               <Calendar size={16} /> Hasta
             </span>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="input" />
+            <CampoFecha value={to} onChange={(v) => setTo(v)} className="input" />
           </label>
         </div>
 

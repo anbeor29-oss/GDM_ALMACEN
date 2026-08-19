@@ -15,6 +15,8 @@ import {
   ClipboardCheck, TrendingUp, FileSpreadsheet, FileText, Download, Gauge } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { fechaMx, fechaHoraMx } from '@/utils/fecha';
+import { CampoFecha } from '@/components/CampoFecha';
 
 interface StockRow {
   id: string;
@@ -338,7 +340,7 @@ function KardexTab() {
               return (
                 <tr key={m.id} className="hover:bg-gray-50">
                   <td className="px-4 py-2 text-sm whitespace-nowrap">
-                    {new Date(m.created_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}
+                    {fechaHoraMx(m.created_at)}
                   </td>
                   <td className="px-4 py-2">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${mt.cls}`}>
@@ -414,10 +416,10 @@ function ExportCatalog() {
         </div>
         <div className="flex items-center gap-2 text-sm">
           <span className="text-xs text-gray-500">Periodo (kardex):</span>
-          <input type="date" value={period.from} onChange={(e) => setPeriod({ ...period, from: e.target.value })}
+          <CampoFecha value={period.from} onChange={(v) => setPeriod({ ...period, from: v })}
             className="input w-auto py-1" />
           <span className="text-gray-400">→</span>
-          <input type="date" value={period.to} onChange={(e) => setPeriod({ ...period, to: e.target.value })}
+          <CampoFecha value={period.to} onChange={(v) => setPeriod({ ...period, to: v })}
             className="input w-auto py-1" />
         </div>
       </div>
@@ -558,7 +560,7 @@ function ReportsTab() {
                   return (
                     <tr key={h.snapshot_month}>
                       <td className="py-1.5 pr-4">
-                        {new Date(h.snapshot_month).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}
+                        {fechaMx(h.snapshot_month)}
                         {h.source === 'MANUAL' && <span className="ml-1 text-xs text-gray-400">(manual)</span>}
                       </td>
                       <td className="py-1.5 pr-4 text-right">{num(h.total_units)}</td>

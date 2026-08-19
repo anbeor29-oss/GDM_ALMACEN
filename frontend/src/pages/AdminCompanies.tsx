@@ -13,6 +13,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { CampoFecha } from '@/components/CampoFecha';
 
 export function AdminCompaniesPage() {
   const { user, login: storeLogin } = useAuthStore();
@@ -928,11 +929,11 @@ function CSDUploadModal({ company, onClose, onDone }: any) {
               value={form.noCertificado} onChange={(e)=>setForm({...form,noCertificado:e.target.value})}/></label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block"><span className="text-sm block mb-1">Vigente desde</span>
-              <input type="date" className="input w-full bg-slate-50" value={form.validFrom}
-                onChange={(e)=>setForm({...form,validFrom:e.target.value})}/></label>
+              <CampoFecha value={form.validFrom}
+                onChange={(v)=>setForm({...form,validFrom:v})} /></label>
             <label className="block"><span className="text-sm block mb-1">Vigente hasta</span>
-              <input type="date" className="input w-full bg-slate-50" value={form.validTo}
-                onChange={(e)=>setForm({...form,validTo:e.target.value})}/></label>
+              <CampoFecha value={form.validTo}
+                onChange={(v)=>setForm({...form,validTo:v})} /></label>
           </div>
           <p className="text-[11px] text-gray-500">
             Estos tres campos se llenan solos al leer el .cer. Se dejan editables por si

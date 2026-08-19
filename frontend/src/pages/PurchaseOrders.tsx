@@ -17,6 +17,7 @@ import { useAuthStore } from '@/store/auth';
 import { usePresencia } from '@/hooks/usePresencia';
 import { AvisoDeConcurrencia } from '@/components/AvisoDeConcurrencia';
 import { CampoFecha } from '@/components/CampoFecha';
+import { fechaMx } from '@/utils/fecha';
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   PENDING:          { label: 'Pendiente',        cls: 'bg-gray-200 text-gray-700' },
@@ -352,7 +353,7 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
           ? `Esa factura ya estaba registrada por ${money(d.amount)} — no se duplicó la deuda.`
           : d
             ? `Deuda registrada en tesorería: ${money(d.subtotal)} + IVA ${d.taxRate}% = ` +
-              `${money(d.amount)}, vence el ${new Date(d.dueDate).toLocaleDateString('es-MX')}` +
+              `${money(d.amount)}, vence el ${fechaMx(d.dueDate)}` +
               (d.creditDays ? ` (${d.creditDays} días de crédito).` : '.')
             : 'La factura se registró.'
       );
@@ -406,7 +407,7 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
             ? `Esa factura ya estaba registrada en tesorería por ${money(d.deuda.amount)} — no se duplicó la deuda.`
             : `Deuda registrada en tesorería: ${money(d.deuda.subtotal)} + IVA ` +
               `${d.deuda.taxRate}% = ${money(d.deuda.amount)}, vence el ` +
-              `${new Date(d.deuda.dueDate).toLocaleDateString('es-MX')}` +
+              `${fechaMx(d.deuda.dueDate)}` +
               (d.deuda.creditDays ? ` (${d.deuda.creditDays} días de crédito).` : '.')
         );
       }
@@ -467,8 +468,8 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
             <div>
               <h2 className="font-bold">Orden #{order.folio} · {order.warehouse_code} — {order.warehouse_name}</h2>
               <p className="text-xs text-gray-500">
-                creada {new Date(order.created_at).toLocaleDateString('es-MX')} ·
-                necesidad {order.needed_by_date ? new Date(order.needed_by_date).toLocaleDateString('es-MX') : '—'}
+                creada {fechaMx(order.created_at)} ·
+                necesidad {order.needed_by_date ? fechaMx(order.needed_by_date) : '—'}
               </p>
             </div>
           </div>
@@ -653,7 +654,7 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
                       </span>
                     )}
                     <span className="text-gray-500">
-                      · vence {new Date(f.due_date).toLocaleDateString('es-MX')}
+                      · vence {fechaMx(f.due_date)}
                     </span>
                     <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                       f.status === 'PAID' ? 'bg-emerald-100 text-emerald-700'

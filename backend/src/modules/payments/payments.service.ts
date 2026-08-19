@@ -740,13 +740,22 @@ export async function listPayments(companyId: string, opts: { limit?: number; of
       WHERE p.company_id = $1 AND p.deleted_at IS NULL
       /* Por fecha y, dentro del mismo día, por folio descendente.
        *
-       * Sin el segundo criterio, los complementos del mismo día salían en el
-       * orden en que Postgres los devolviera —P-000005, P-000006, P-000004— y
-       * la lista parecía desordenada justo donde el folio es consecutivo. El
-       * folio se ordena como NÚMERO y no como texto: "P-000010" iría antes que
-       * "P-000009" en orden alfabético. */
+       * ── AQUÍ ESTUVO UN ERROR QUE VACIÓ LA PANTALLA ──
+       * Este ORDER BY sacaba los dígitos del folio con "regexp_replace" para
+       * ordenarlo como número, dando por hecho que "folio" era texto tipo
+       * "P-000005". No lo es: "payments.folio" es **integer**. Con eso,
+       * "COALESCE(p.folio, '')" obligaba a Postgres a convertir '' a entero y
+       * la consulta reventaba con "sintaxis de entrada no válida para tipo
+       * integer" — SIEMPRE, hubiera o no complementos.
+       *
+       * La pantalla no mostraba el error: la consulta fallaba, "data" quedaba
+       * indefinido y la lista salía vacía con el mensaje "Todavía no hay
+       * complementos de pago". Un 500 disfrazado de "no hay nada" es peor que
+       * un 500 a secas, porque nadie lo reporta.
+       *
+       * Siendo entero, ordenarlo es ordenarlo. Sin conversiones. */
       ORDER BY p.payment_date DESC,
-               NULLIF(regexp_replace(COALESCE(p.folio, ''), '\D', '', 'g'), '')::bigint DESC NULLS LAST,
+               p.folio DESC NULLS LAST,
                p.created_at DESC
       LIMIT $2 OFFSET $3`,
     [companyId, limit, offset]

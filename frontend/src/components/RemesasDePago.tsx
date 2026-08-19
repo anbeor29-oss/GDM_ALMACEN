@@ -15,12 +15,15 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarCheck, Printer, Check, XCircle, FileSignature, Building2, Trash2, Search,
+  FileDown,
 } from 'lucide-react';
 import api from '@/services/api';
+import { fechaMx } from '@/utils/fecha';
+import { CampoFecha } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
-const fecha = (d: any) => (d ? new Date(d).toLocaleDateString('es-MX') : '—');
+const fecha = (d: any) => (d ? fechaMx(d) : '—');
 
 const ESTADO: Record<string, { label: string; cls: string }> = {
   DRAFT:      { label: 'Borrador',   cls: 'bg-gray-200 text-gray-700' },
@@ -154,8 +157,7 @@ export function RemesasDePago({ canManage }: { canManage: boolean }) {
             </div>
             <div>
               <label className="block text-xs text-gray-600 mb-1">3 · Fecha en que se paga</label>
-              <input type="date" value={fechaPago} onChange={(e) => setFechaPago(e.target.value)}
-                className="input w-full" />
+              <CampoFecha value={fechaPago} onChange={(v) => setFechaPago(v)} className="input w-full" />
               <p className="text-[11px] text-gray-500 mt-1">
                 Por omisión, el próximo lunes. No cambia el vencimiento de las facturas.
               </p>
@@ -311,8 +313,23 @@ export function RemesasDePago({ canManage }: { canManage: boolean }) {
                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${e.cls}`}>{e.label}</span>
                   </td>
                   <td className="px-4 py-2 text-center">
-                    <button onClick={() => setDetalleId(r.id)}
-                      className="text-primary hover:underline text-sm">Ver</button>
+                    <div className="flex items-center justify-center gap-3">
+                      <button onClick={() => setDetalleId(r.id)}
+                        className="text-primary hover:underline text-sm">Ver</button>
+                      {/* La hoja: quien autoriza firma un papel, y quien captura
+                          las transferencias necesita las CLABE junto a los
+                          importes. Imprimir la abre; el otro la baja. */}
+                      <button onClick={() => api.abrirRemesaPdf(r.id, true)}
+                        title="Abrir la hoja para imprimir"
+                        className="text-gray-500 hover:text-primary">
+                        <Printer size={15} />
+                      </button>
+                      <button onClick={() => api.abrirRemesaPdf(r.id, false)}
+                        title="Descargar el PDF"
+                        className="text-gray-500 hover:text-rose-600">
+                        <FileDown size={15} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -371,7 +388,7 @@ function DetalleRemesa({ runId, canManage, onClose, onChanged }: {
       <tr>
         <td>${r.supplier_name}<br><small>${r.supplier_rfc || ''}</small></td>
         <td>${r.invoice_number || '—'}</td>
-        <td>${r.due_date ? new Date(r.due_date).toLocaleDateString('es-MX') : '—'}</td>
+        <td>${r.due_date ? fechaMx(r.due_date) : '—'}</td>
         <td>${r.bank_name || '—'}<br><small>${r.bank_clabe || r.bank_account || 'sin CLABE'}</small></td>
         <td class="der">${money(r.amount)}</td>
       </tr>`).join('');
@@ -394,7 +411,7 @@ function DetalleRemesa({ runId, canManage, onClose, onChanged }: {
       </style></head><body>
         <h1>Remesa de pago #${run?.folio}</h1>
         <div class="sub">
-          Se paga el ${run?.payment_date ? new Date(run.payment_date).toLocaleDateString('es-MX') : ''}
+          Se paga el ${run?.payment_date ? fechaMx(run.payment_date) : ''}
           · ${renglones.length} factura(s)
           ${run?.notes ? ' · ' + run.notes : ''}
         </div>
@@ -506,6 +523,18 @@ function DetalleRemesa({ runId, canManage, onClose, onChanged }: {
           })}
 
           <div className="flex items-center justify-end gap-3 text-lg font-bold border-t pt-3">
+            <div className="mr-auto flex items-center gap-2">
+              <button onClick={() => api.abrirRemesaPdf(runId, true)}
+                className="inline-flex items-center gap-1.5 text-sm font-normal px-3 py-1.5
+                  border rounded-lg text-gray-700 hover:bg-gray-50">
+                <Printer size={14} /> Imprimir la hoja
+              </button>
+              <button onClick={() => api.abrirRemesaPdf(runId, false)}
+                className="inline-flex items-center gap-1.5 text-sm font-normal px-3 py-1.5
+                  border rounded-lg text-gray-700 hover:bg-gray-50">
+                <FileDown size={14} /> PDF
+              </button>
+            </div>
             <span className="text-sm font-normal text-gray-600">Total de la remesa</span>
             {money(total)}
           </div>

@@ -16,13 +16,14 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { fechaMx } from '@/utils/fecha';
 
 function fmtMoney(n: any) {
   return Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function fmtDate(d: any) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('es-MX', { year: 'numeric', month: 'long' });
+  return fechaMx(d);
 }
 
 export function AdminBillingPage() {

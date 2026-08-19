@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, Search, Package, ClipboardList } from 'lucide-react';
 import api from '@/services/api';
+import { fechaMx } from '@/utils/fecha';
 
 export function CartaPorteMercanciasPage() {
   const [tab, setTab] = useState<'catalog' | 'bitacora'>('catalog');
@@ -164,7 +165,7 @@ export function CartaPorteMercanciasPage() {
                   {(bitacora.data?.items || []).map((m: any) => (
                     <tr key={m.id} className="border-t border-slate-100 hover:bg-slate-50">
                       <td className="px-4 py-2 text-xs whitespace-nowrap">
-                        {m.fecha_viaje ? new Date(m.fecha_viaje).toLocaleDateString('es-MX') : '—'}
+                        {m.fecha_viaje ? fechaMx(m.fecha_viaje) : '—'}
                       </td>
                       <td className="px-4 py-2 font-mono text-xs">{m.clave_sat}</td>
                       <td className="px-4 py-2 max-w-[280px] truncate" title={m.descripcion}>{m.descripcion}</td>

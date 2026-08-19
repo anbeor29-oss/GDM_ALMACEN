@@ -5,6 +5,92 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-19 (tarde-noche) — El 500 disfrazado, las fechas, y la hoja de remesa
+
+### 1 · Los complementos de pago "no existían" — y sí existían
+La pantalla decía **"Todavía no hay complementos de pago"**. No era cierto: la
+consulta **reventaba en el servidor** y la lista salía vacía.
+
+El `ORDER BY` sacaba los dígitos del folio con `regexp_replace` para ordenarlo
+como número, dando por hecho que `folio` era texto tipo "P-000005". No lo es:
+`payments.folio` es **integer**. Con eso, `COALESCE(p.folio, '')` obligaba a
+Postgres a convertir `''` a entero y la consulta fallaba **siempre**, hubiera o
+no complementos. Siendo entero, ordenarlo es ordenarlo: sin conversiones.
+
+**Lo más grave no era el error, era el disfraz.** Un 500 que se ve como "no hay
+nada" no lo reporta nadie, porque parece la verdad. La pantalla ahora distingue
+las dos cosas y lo dice con todas sus letras: *"esto NO significa que no haya
+complementos: significa que no se pudieron leer"*.
+
+De paso apareció un segundo defecto latente en la misma línea: `'\D'` dentro de
+un template literal de JavaScript pierde la barra y llega a Postgres como `'D'`
+—habría borrado las letras D en vez de los no-dígitos—.
+
+### 2 · Todas las fechas del sistema en DD/MM/AAAA
+Había tres formatos conviviendo: `toLocaleDateString('es-MX')` → "19/8/2026" sin
+ceros, el ISO crudo → "2026-08-19", y `<input type="date">` que lo dibuja el
+**navegador** con el formato del sistema operativo. Tres formatos en la misma
+pantalla obligan a leer cada fecha dos veces para saber cuál es el día.
+
+Se hizo `utils/fecha.ts` con un solo formato, y se barrió todo: **27 lugares
+donde se muestran** en 20 archivos, y **18 campos de captura** convertidos a
+`CampoFecha`. Quedan cero `<input type="date">` sueltos.
+
+**El detalle que importa:** una fecha de calendario como "2026-08-19" se parte a
+mano y NO se pasa por `new Date()`. Ese constructor la lee como medianoche UTC,
+y en México la convierte en el 18. Un vencimiento o una fecha de ingreso se
+recorrerían un día entero.
+
+### 3 · Por qué la descarga del SAT no avanza
+Dos cosas, y sólo una es de código:
+
+**La de configuración:** el motor corre solo cada 15 minutos **únicamente si
+existe `ENABLE_SAT_DESCARGA_CRON=true`**. Sin esa variable en el entorno, los
+trabajos se quedan en "en proceso" para siempre. No es un error; es un
+interruptor que nunca se encendió.
+
+**La de código:** un trabajo con 0 de 3 solicitudes puede ser "nadie lo ha
+empujado" o "el SAT lo está rechazando", y la pantalla los mostraba igual. El
+`mensaje_sat` de cada partición se guardaba desde el primer día y **nunca salía
+de la base**. Ahora sale, junto con los intentos y la hora del próximo.
+
+### 4 · La remesa, en una hoja
+Quien autoriza firma un papel, no una pantalla. Y quien captura las
+transferencias necesita **la CLABE junto al importe**: separarlos obliga a
+cruzar la vista entre dos columnas lejanas, y ahí es donde se transfiere el
+monto de un proveedor a la cuenta de otro.
+
+Lleva el total por proveedor y el de la remesa, marca las vencidas, avisa de los
+proveedores **sin datos bancarios** —esos no se pueden transferir— y trae las
+tres firmas. Y dice que **no es un comprobante fiscal**: un papel que se parece
+a un CFDI sin serlo termina archivado como si lo fuera.
+
+### 5 · Correo: marcar todo de un clic
+Con dos notas de crédito y tres complementos son diez casillas. El atajo marca
+todo lo que se puede mandar: los PDF siempre, y los XML **sólo de lo timbrado**
+—un XML sin timbrar no ampara nada y mandarlo invita a registrarlo—.
+
+Y se dice algo que faltaba: la **Carta Porte no es un adjunto aparte**. Es un
+complemento dentro del CFDI, así que ya viaja en el XML y en el PDF. Sin decirlo,
+alguien la busca en la lista y cree que falta.
+
+### 6 · Carta Porte: dos arreglos de forma
+El botón **Guardar** también al final. Arriba sigue estando —en un formulario
+corto es el que se usa— pero éste tiene diez secciones, y quien termina de
+capturar el último contenedor marítimo está a una pantalla de distancia del
+botón. Subir a buscarlo es donde se pierde la captura. Es el MISMO `save`, no
+una segunda ruta.
+
+Y la **plantilla de aseguradora**, junto a su rótulo en vez de en la otra orilla:
+con la fila completa de por medio, la vista salta de un extremo al otro para
+relacionar "aseguradora" con "cargar plantilla".
+
+*Verificado:* el PDF de remesa generado de verdad y abierto (12.8 KB, cabecera
+%PDF-), `listPayments` devolviendo el complemento que antes reventaba, y las
+217 comprobaciones de nómina y compras más las 115 unitarias.
+
+---
+
 ## 2026-08-19 (compras) — La deuda que se perdía, el aviso temprano
 
 ### 1 · La mercancía entraba y la deuda no

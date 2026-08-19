@@ -14,13 +14,14 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { fechaHoraMx } from '@/utils/fecha';
 
 function fmtMoney(n: any) {
   return Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function fmtDateTime(d: any) {
   if (!d) return '—';
-  return new Date(d).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+  return fechaHoraMx(d);
 }
 
 export function AdminPrepaidPage() {

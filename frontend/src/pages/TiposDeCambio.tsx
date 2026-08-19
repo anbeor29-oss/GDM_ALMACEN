@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Save, Coins, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import api from '@/services/api';
+import { CampoFecha } from '@/components/CampoFecha';
 
 const EXTRANJERAS = ['USD', 'EUR', 'GBP'] as const;
 const NOMBRE: Record<string, string> = {
@@ -143,7 +144,7 @@ export function TiposDeCambioPage() {
             </label>
             <label className="block">
               <span className="text-xs text-slate-500">Fecha en que rige</span>
-              <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="input mt-1" />
+              <CampoFecha value={fecha} onChange={setFecha} className="input mt-1" />
             </label>
             <label className="block">
               <span className="text-xs text-slate-500">Pesos por 1 {moneda}</span>

@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileSignature, ShieldCheck, AlertTriangle, Loader2, CheckCircle2 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { fechaHoraMx } from '@/utils/fecha';
 
 /** Lee un File a base64 (sin el prefijo data:...;base64,). */
 function fileToB64(file: File): Promise<string> {
@@ -79,7 +80,7 @@ export function ContractPage() {
             <p className="font-bold text-emerald-900">Contrato firmado</p>
             <p className="text-emerald-800">
               Versión {firma.version} · firmado por <b>{firma.signer_name || firma.signer_rfc}</b> (RFC {firma.signer_rfc})
-              el {new Date(firma.signed_at).toLocaleString('es-MX')}.
+              el {fechaHoraMx(firma.signed_at)}.
             </p>
             <p className="text-emerald-700 mt-1 font-mono text-xs break-all">
               Huella SHA-256: {firma.contract_sha256}

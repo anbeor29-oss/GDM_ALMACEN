@@ -643,7 +643,26 @@ export async function listarTrabajos(companyId: string): Promise<any[]> {
             (SELECT COUNT(*) FROM sat_particiones p WHERE p.trabajo_id = t.id)::int AS particiones,
             (SELECT COUNT(*) FROM sat_paquetes q
                JOIN sat_particiones p ON p.id = q.particion_id
-              WHERE p.trabajo_id = t.id)::int AS paquetes
+              WHERE p.trabajo_id = t.id)::int AS paquetes,
+            /* ── POR QUÉ NO AVANZA ──
+             *
+             * Un trabajo "en proceso" con 0 de 3 solicitudes puede ser dos
+             * cosas muy distintas: que nadie lo haya empujado todavía, o que el
+             * SAT lo esté rechazando. La pantalla las mostraba igual, y sin
+             * forma de distinguirlas la única salida era esperar.
+             *
+             * mensaje_sat ya se guardaba en cada partición desde el primer
+             * día; simplemente no salía de la base. */
+            (SELECT p.mensaje_sat FROM sat_particiones p
+              WHERE p.trabajo_id = t.id AND p.mensaje_sat IS NOT NULL
+              ORDER BY p.updated_at DESC NULLS LAST LIMIT 1) AS ultimo_mensaje,
+            (SELECT MAX(p.intentos) FROM sat_particiones p
+              WHERE p.trabajo_id = t.id)::int AS intentos,
+            /* Cuándo se volverá a intentar. Sin esto, "en proceso" no dice si
+             * el motor va a hacer algo en cinco minutos o si está detenido. */
+            (SELECT MIN(p.proxima_consulta_at) FROM sat_particiones p
+              WHERE p.trabajo_id = t.id
+                AND p.estado IN ('PENDIENTE','SOLICITADA','EN_PROCESO')) AS proximo_intento
        FROM sat_trabajos t
       WHERE t.company_id = $1
       ORDER BY t.created_at DESC LIMIT 50`,

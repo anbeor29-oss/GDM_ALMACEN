@@ -14,6 +14,7 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
 import api from '@/services/api';
+import { fechaMx } from '@/utils/fecha';
 
 function fmt(n: any) {
   return Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -106,7 +107,7 @@ export function DashboardPage() {
   const inv = invValue?.data;
   const histRows: any[] = invHistory?.data?.history || [];
   const chartData = histRows.map((h) => ({
-    mes: new Date(h.snapshot_month).toLocaleDateString('es-MX', { month: 'short', year: '2-digit' }),
+    mes: fechaMx(h.snapshot_month),
     valor: Number(h.total_value),
   }));
 

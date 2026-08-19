@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, Send, Inbox, CheckCheck, Reply, X } from 'lucide-react';
 import api from '@/services/api';
+import { fechaHoraMx } from '@/utils/fecha';
 
 const cuando = (d: any) => {
   if (!d) return '';
@@ -134,8 +135,8 @@ export function MensajesPage() {
                   <p className="text-xs text-gray-500">
                     De <strong>{abierto.de_nombre || abierto.de_email}</strong> para{' '}
                     <strong>{abierto.para_nombre || abierto.para_email}</strong> ·{' '}
-                    {new Date(abierto.created_at).toLocaleString('es-MX')}
-                    {abierto.leido_at && ` · leído ${new Date(abierto.leido_at).toLocaleString('es-MX')}`}
+                    {fechaHoraMx(abierto.created_at)}
+                    {abierto.leido_at && ` · leído ${fechaHoraMx(abierto.leido_at)}`}
                   </p>
                 </div>
                 <button onClick={() => setAbierto(null)} className="p-1 hover:bg-gray-100 rounded">

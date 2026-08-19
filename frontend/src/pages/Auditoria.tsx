@@ -16,9 +16,10 @@ import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { XmlRecibidos } from '@/components/XmlRecibidos';
 import { Lista69B } from '@/components/Lista69B';
+import { fechaHoraMx } from '@/utils/fecha';
 
 const fechaHora = (d: any) =>
-  d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+  d ? fechaHoraMx(d) : '—';
 
 const TIPO: Record<string, string> = {
   invoice: 'Factura',

@@ -33,6 +33,7 @@ import { Route as RouteIcon, Plus, Trash2, Save, ArrowLeft, MapPin, Package2, Tr
 import api from '@/services/api';
 import { CatalogPicker, type CatalogItem } from '@/components/CatalogPicker';
 import { LugarPicker } from '@/components/LugarPicker';
+import { CampoFecha } from '@/components/CampoFecha';
 
 type Medio = 'auto' | 'maritimo' | 'aereo' | 'ferroviario';
 
@@ -816,12 +817,15 @@ export function CartaPorteFormPage() {
                 </Field>
                 <Field label="Fecha y hora salida-llegada" span={2}>
                   <div className="flex gap-2">
-                    <input
-                      type="date"
+                    {/* Sólo la fecha: la hora va en el campo de al lado. El
+                        CFDI las junta en un solo dato ISO, pero capturarlas
+                        juntas en un control del navegador trae el formato del
+                        sistema —mm/dd/aaaa en una máquina en inglés—. */}
+                    <CampoFecha
                       value={(u.fechaHoraSalidaLlegada || '').slice(0, 10)}
-                      onChange={e => {
+                      onChange={v => {
                         const time = (u.fechaHoraSalidaLlegada || '').slice(11, 16) || '08:00';
-                        updateUbi(i, { fechaHoraSalidaLlegada: e.target.value ? `${e.target.value}T${time}` : '' });
+                        updateUbi(i, { fechaHoraSalidaLlegada: v ? `${v}T${time}` : '' });
                       }}
                       className="input flex-1"
                     />
@@ -1057,7 +1061,10 @@ export function CartaPorteFormPage() {
             </div>
             {/* Aseguradora Resp. Civil — plantilla independiente */}
             <div className="pt-3 border-t border-slate-200">
-              <div className="flex items-center justify-between mb-2">
+              {/* El botón va junto al rótulo, no en la otra orilla: con la fila
+                    completa de por medio, la vista salta de un extremo al otro
+                    para relacionar "aseguradora" con "cargar plantilla". */}
+              <div className="flex items-center gap-3 mb-2">
                 <p className="text-sm font-medium text-slate-700">Aseguradora Responsabilidad Civil</p>
                 <button
                   type="button"
@@ -1222,7 +1229,7 @@ export function CartaPorteFormPage() {
                     <input value={k.placaVmCcp} onChange={e => setContMaritimos(contMaritimos.map((x, j) => j === i ? { ...x, placaVmCcp: e.target.value.toUpperCase() } : x))} maxLength={7} className="input font-mono" />
                   </Field>
                   <Field label="Fecha certificación">
-                    <input type="date" value={k.fechaCertificacionCcp} onChange={e => setContMaritimos(contMaritimos.map((x, j) => j === i ? { ...x, fechaCertificacionCcp: e.target.value } : x))} className="input" />
+                    <CampoFecha value={k.fechaCertificacionCcp} onChange={(v) => setContMaritimos(contMaritimos.map((x, j) => j === i ? { ...x, fechaCertificacionCcp: v } : x))} className="input" />
                   </Field>
                   <div className="flex items-end h-full pb-2">
                     <button onClick={() => setContMaritimos(contMaritimos.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
@@ -1260,7 +1267,10 @@ export function CartaPorteFormPage() {
             </div>
 
             <div className="pt-3 border-t border-slate-200">
-              <div className="flex items-center justify-between mb-2">
+              {/* El botón va junto al rótulo, no en la otra orilla: con la fila
+                    completa de por medio, la vista salta de un extremo al otro
+                    para relacionar "aseguradora" con "cargar plantilla". */}
+              <div className="flex items-center gap-3 mb-2">
                 <p className="text-sm font-medium text-slate-700">Seguro</p>
                 <button
                   type="button"
@@ -1459,6 +1469,40 @@ export function CartaPorteFormPage() {
           ))}
         </div>
       </Section>
+
+      {/* ── Guardar, otra vez, al final ──
+          El de arriba sigue estando: en un formulario corto es el que se usa.
+          Pero éste tiene diez secciones, y quien termina de capturar el último
+          contenedor marítimo está a una pantalla completa de distancia del
+          botón. Subir a buscarlo es donde se pierde la captura: se navega, se
+          hace clic en otra cosa, y lo escrito se va.
+
+          Es el MISMO `save.mutate()`, no una segunda ruta de guardado: dos
+          caminos para lo mismo garantizan que uno se quede atrás. */}
+      <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-slate-200">
+        {save.error && (
+          <p className="text-sm text-rose-600 mr-auto">
+            {(save.error as any)?.response?.data?.message || 'No se pudo guardar'}
+          </p>
+        )}
+        {save.isSuccess && !save.isPending && (
+          <p className="text-sm text-emerald-700 mr-auto">Guardado.</p>
+        )}
+        <button
+          onClick={() => navigate(-1)}
+          className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
+        >
+          Salir sin guardar
+        </button>
+        <button
+          onClick={() => save.mutate()}
+          disabled={save.isPending}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-700
+            disabled:bg-slate-300 text-white rounded-lg text-sm font-medium"
+        >
+          <Save size={16} /> {save.isPending ? 'Guardando…' : 'Guardar carta porte'}
+        </button>
+      </div>
 
       {picker && <CatalogPicker {...picker} open={true} onClose={() => setPicker(null)} />}
       {lugarPicker && (

@@ -16,6 +16,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import api from '@/services/api';
+import { fechaMx } from '@/utils/fecha';
 
 type Tab = 'collections' | 'receivables' | 'sales' | 'tax';
 
@@ -166,7 +167,7 @@ function ReceivablesReport() {
                       {inv.serie ? `${inv.serie}-${inv.folio}` : inv.folio}
                     </td>
                     <td className="px-4 py-2 text-gray-600">
-                      {new Date(inv.date_issued).toLocaleDateString('es-MX')}
+                      {fechaMx(inv.date_issued)}
                     </td>
                     <td className="px-4 py-2 text-right">${Number(inv.total).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                     <td className="px-4 py-2 text-right text-green-700">${Number(inv.paid).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
@@ -177,14 +178,14 @@ function ReceivablesReport() {
                   </tr>
                   {inv.payments.map((p: any) => (
                     <tr key={p.id} className="text-xs text-gray-500 bg-gray-50">
-                      <td className="pl-10 py-1 italic" colSpan={3}>↳ Abono {p.folio || ''} · {new Date(p.date).toLocaleDateString('es-MX')}</td>
+                      <td className="pl-10 py-1 italic" colSpan={3}>↳ Abono {p.folio || ''} · {fechaMx(p.date)}</td>
                       <td className="py-1 text-right text-green-700">−${Number(p.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                       <td colSpan={2}></td>
                     </tr>
                   ))}
                   {inv.credit_notes.map((n: any) => (
                     <tr key={n.id} className="text-xs text-gray-500 bg-gray-50">
-                      <td className="pl-10 py-1 italic" colSpan={4}>↳ NC {n.folio || ''} · {new Date(n.date).toLocaleDateString('es-MX')}</td>
+                      <td className="pl-10 py-1 italic" colSpan={4}>↳ NC {n.folio || ''} · {fechaMx(n.date)}</td>
                       <td className="py-1 text-right text-amber-700">−${Number(n.total).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                       <td></td>
                     </tr>

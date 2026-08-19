@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Receipt, X, FileText, ArrowDownCircle, FileDown, Eye, Ban } from 'lucide-react';
 import api from '@/services/api';
+import { fechaMx } from '@/utils/fecha';
 
 export function CreditNotesPage() {
   const [showCreate, setShowCreate] = useState(false);
@@ -148,7 +149,7 @@ ${e.response?.data?.message || e.message}`);
                     {n.invoice_serie || ''}-{n.invoice_folio ? String(n.invoice_folio).padStart(6, '0') : ''}
                   </td>
                   <td className="px-6 py-2 text-sm text-gray-600">
-                    {new Date(n.date_issued).toLocaleDateString('es-MX')}
+                    {fechaMx(n.date_issued)}
                   </td>
                   <td className="px-6 py-2 text-sm text-gray-600 font-mono">
                     {n.tipo_relacion} {n.motivo ? `— ${String(n.motivo).slice(0, 60)}` : ''}

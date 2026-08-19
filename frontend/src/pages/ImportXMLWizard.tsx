@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Upload, FileText, CheckCircle2, AlertCircle, Building2, User, Boxes, ArrowRight, X, History, Warehouse } from 'lucide-react';
 import api from '@/services/api';
+import { fechaHoraMx } from '@/utils/fecha';
 
 type Party = 'emisor' | 'receptor' | 'none';
 type PartyKind = 'CUSTOMER' | 'SUPPLIER';
@@ -207,7 +208,7 @@ export function ImportXMLWizardPage() {
               <div>
                 <p className="font-semibold">Este XML ya fue importado antes</p>
                 <p className="text-sm">
-                  El {new Date(preview.already_imported.ts!).toLocaleString('es-MX')} por{' '}
+                  El {fechaHoraMx(preview.already_imported.ts!)} por{' '}
                   <span className="font-mono">{preview.already_imported.by_user}</span>{' '}
                   (estado: {preview.already_imported.status}).
                   Puedes confirmar de nuevo si quieres actualizar el catálogo.

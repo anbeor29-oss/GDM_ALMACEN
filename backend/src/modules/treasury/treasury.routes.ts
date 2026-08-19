@@ -10,6 +10,7 @@ import { authenticateToken, requireCapability } from '../../middleware/authentic
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as service from './treasury.service';
 import * as remesas from './remesas.service';
+import { generarPdfRemesa } from './pdf-remesa.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -107,6 +108,27 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const data = await remesas.detalleRemesa(companyId(req), req.params.id);
     res.json({ success: true, data });
+  })
+);
+
+/**
+ * GET /treasury/payment-runs/:id/pdf — la remesa en una hoja.
+ *
+ * Quien autoriza firma un papel, no una pantalla, y quien captura las
+ * transferencias necesita las CLABE junto a los importes. Se abre en el
+ * navegador con ?inline=1 y si no, se descarga.
+ */
+router.get(
+  '/payment-runs/:id/pdf',
+  asyncHandler(async (req: Request, res: Response) => {
+    const buf = await generarPdfRemesa(companyId(req), req.params.id);
+    const inline = req.query.inline === '1' || req.query.inline === 'true';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `${inline ? 'inline' : 'attachment'}; filename="remesa-${req.params.id.slice(0, 8)}.pdf"`
+    );
+    res.send(buf);
   })
 );
 

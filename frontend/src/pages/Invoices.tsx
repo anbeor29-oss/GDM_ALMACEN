@@ -19,6 +19,7 @@ import {
 import api from '@/services/api';
 import { BanderaMoneda } from '@/components/BanderaMoneda';
 import { Invoice } from '@/types';
+import { fechaMx, fechaHoraMx } from '@/utils/fecha';
 
 /* ───────────── Helpers de estado (español) ───────────── */
 
@@ -205,7 +206,7 @@ export function InvoicesPage() {
                     </td>
                     <td className="px-6 py-2 text-sm text-gray-600">{invoice.customer_name}</td>
                     <td className="px-6 py-2 text-sm text-gray-600">
-                      {new Date(invoice.date_issued).toLocaleDateString('es-MX')}
+                      {fechaMx(invoice.date_issued)}
                     </td>
                     <td className="px-6 py-2 text-sm font-semibold text-gray-900 text-right">
                       {/* La bandera va PEGADA al importe, no en su propia
@@ -778,7 +779,7 @@ function BalanceModal({ invoice, onClose }: { invoice: Invoice; onClose: () => v
                   <tbody className="divide-y divide-gray-100">
                     {d.payments.map((p: any) => (
                       <tr key={p.id}>
-                        <td className="px-3 py-2">{new Date(p.payment_date).toLocaleDateString('es-MX')}</td>
+                        <td className="px-3 py-2">{fechaMx(p.payment_date)}</td>
                         <td className="px-3 py-2">{p.payment_form || '—'}</td>
                         <td className="px-3 py-2 text-gray-500">{p.reference || '—'}</td>
                         <td className="px-3 py-2 text-right font-semibold">$ {fmt(p.payment_amount)}</td>
@@ -809,7 +810,7 @@ function BalanceModal({ invoice, onClose }: { invoice: Invoice; onClose: () => v
                     {d.creditNotes.map((n: any) => (
                       <tr key={n.id}>
                         <td className="px-3 py-2 font-medium">{n.serie}-{String(n.folio).padStart(6, '0')}</td>
-                        <td className="px-3 py-2">{new Date(n.date_issued).toLocaleDateString('es-MX')}</td>
+                        <td className="px-3 py-2">{fechaMx(n.date_issued)}</td>
                         <td className="px-3 py-2 text-gray-500">{n.tipo_relacion} — {n.motivo}</td>
                         <td className="px-3 py-2 text-right font-semibold text-rose-700">−$ {fmt(n.total)}</td>
                       </tr>
@@ -897,6 +898,34 @@ function SendMailModal({
   });
   const toggle = (key: string) => setSel((s) => ({ ...s, [key]: !s[key] }));
 
+  const invoiceHasXml = !!invoice.cfdi_uuid;
+
+  /* Todo lo que SE PUEDE mandar de esta factura: sus PDF siempre, y los XML
+   * sólo de lo que esté timbrado —un XML sin timbrar no ampara nada y mandarlo
+   * al cliente invita a que lo registre—. */
+  const disponiblesLista: string[] = [
+    `invoice_pdf:${invoice.id}`,
+    ...(invoiceHasXml ? [`invoice_xml:${invoice.id}`] : []),
+    ...balance.creditNotes.flatMap((n: any) => [
+      `credit_note_pdf:${n.id}`,
+      ...(n.uuid ? [`credit_note_xml:${n.id}`] : []),
+    ]),
+    ...balance.payments.flatMap((p: any) => [
+      `payment_pdf:${p.id}`,
+      ...(p.uuid ? [`payment_xml:${p.id}`] : []),
+    ]),
+  ];
+  /* La Carta Porte viaja DENTRO del CFDI —es un complemento—, así que no es un
+   * adjunto aparte. Se detecta por la bandera de la factura para poder decirlo
+   * y que nadie la busque en la lista creyendo que falta. */
+  const tieneCartaPorte = !!(invoice as any).has_carta_porte ||
+                          !!(invoice as any).carta_porte_id;
+
+  const disponibles = disponiblesLista.length;
+  const marcados = disponiblesLista.filter((k) => sel[k]).length;
+  const marcarTodo = () =>
+    setSel(Object.fromEntries(disponiblesLista.map((k) => [k, true])));
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
@@ -929,7 +958,6 @@ function SendMailModal({
     } finally { setBusy(false); }
   };
 
-  const invoiceHasXml = !!invoice.cfdi_uuid;
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
       <form onSubmit={submit} className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -984,9 +1012,30 @@ function SendMailModal({
               rows={4} className="input w-full font-sans"/>
           </label>
 
-          {/* Selección de adjuntos */}
+          {/* ── Selección de adjuntos ──
+              "Todos los documentos" es lo que se manda casi siempre: el cliente
+              registra la factura con sus notas de crédito y sus complementos, y
+              que le falte uno significa un correo más. Marcarlos de uno en uno
+              con dos NC y tres pagos son diez clics; por eso está el atajo. */}
           <div>
-            <p className="text-sm font-semibold text-gray-700 mb-2">Adjuntos disponibles</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-gray-700">
+                Adjuntos disponibles
+                <span className="ml-2 text-xs font-normal text-gray-500">
+                  {marcados} de {disponibles} seleccionado(s)
+                </span>
+              </p>
+              <div className="flex items-center gap-2 text-xs">
+                <button type="button" onClick={marcarTodo}
+                  className="px-2.5 py-1 border rounded-lg text-primary hover:bg-blue-50">
+                  Marcar todo
+                </button>
+                <button type="button" onClick={() => setSel({})}
+                  className="px-2.5 py-1 border rounded-lg text-gray-600 hover:bg-gray-50">
+                  Ninguno
+                </button>
+              </div>
+            </div>
             <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-[280px] overflow-y-auto">
               {/* Factura */}
               <AttachRow
@@ -1016,7 +1065,7 @@ function SendMailModal({
                 <AttachRow key={p.id}
                   icon={<Wallet size={16} className="text-emerald-600"/>}
                   title={`Complemento de Pago ${p.serie || 'P'}-${String(p.folio || '').padStart(6,'0')}`}
-                  subtitle={`${new Date(p.payment_date).toLocaleDateString('es-MX')} · $${Number(p.payment_amount).toLocaleString('es-MX',{minimumFractionDigits:2})}`}
+                  subtitle={`${fechaMx(p.payment_date)} · $${Number(p.payment_amount).toLocaleString('es-MX',{minimumFractionDigits:2})}`}
                   pdfKey={`payment_pdf:${p.id}`}
                   xmlKey={`payment_xml:${p.id}`}
                   xmlDisabled={!p.uuid}
@@ -1026,10 +1075,21 @@ function SendMailModal({
               ))}
               {balance.payments.length === 0 && balance.creditNotes.length === 0 && (
                 <p className="px-4 py-3 text-xs text-gray-500 italic">
-                  Solo se puede enviar la factura — aún no hay NCs ni complementos de pago asociados.
+                  Esta factura no tiene notas de crédito ni complementos de pago todavía.
+                  Cuando los tenga, aparecerán aquí para mandarlos junto con ella.
                 </p>
               )}
             </div>
+            {/* La Carta Porte no es un archivo aparte: es un complemento DENTRO
+                del CFDI, así que viaja en el XML y en el PDF de la factura.
+                Decirlo evita que alguien la busque en esta lista y crea que
+                falta. */}
+            {tieneCartaPorte && (
+              <p className="mt-2 text-[11px] text-gray-500">
+                La Carta Porte de esta factura va incluida en su XML y en su PDF:
+                es un complemento del CFDI, no un archivo aparte.
+              </p>
+            )}
           </div>
         </div>
 
@@ -1125,7 +1185,7 @@ function TimbresModal({ invoice, onClose }: { invoice: Invoice; onClose: () => v
 
   const fmt = (n: any) =>
     Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const fmtDate = (d: any) => (d ? new Date(d).toLocaleString('es-MX') : '—');
+  const fmtDate = (d: any) => (d ? fechaHoraMx(d) : '—');
 
   // Construye lista cronológica unificada (cada fila con descarga PDF + XML)
   const rows: Array<{

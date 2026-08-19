@@ -15,13 +15,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wallet, FileDown, Eye, Ban, Download } from 'lucide-react';
 import { api } from '@/services/api';
+import { fechaMx } from '@/utils/fecha';
 
 export default function Payments() {
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['payments'],
     queryFn: () => api.listPayments(),
+    retry: false,
   });
   const pagos: any[] = (data as any)?.data?.payments || (data as any)?.data || [];
 
@@ -114,6 +116,25 @@ export default function Payments() {
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         {isLoading ? (
           <div className="p-8 text-center text-slate-500">Cargando…</div>
+        ) : isError ? (
+          /* ── Un error NO se muestra como "no hay nada" ──
+             Es lo que pasó aquí: la consulta reventaba en el servidor, `data`
+             quedaba indefinido, la lista salía vacía y la pantalla decía
+             "Todavía no hay complementos de pago". Nadie reporta eso, porque
+             parece la verdad. Un 500 disfrazado de lista vacía es peor que un
+             500 a secas. */
+          <div className="p-8 text-center">
+            <p className="text-rose-700 font-medium">
+              No se pudo traer la lista de complementos.
+            </p>
+            <p className="text-sm text-slate-500 mt-1">
+              {(error as any)?.response?.data?.message || (error as any)?.message ||
+               'El servidor respondió con un error.'}
+            </p>
+            <p className="text-xs text-slate-400 mt-2">
+              Esto NO significa que no haya complementos: significa que no se pudieron leer.
+            </p>
+          </div>
         ) : !pagos.length ? (
           <div className="p-8 text-center text-slate-500">
             <Wallet size={40} className="mx-auto mb-3 text-slate-300" />
@@ -144,7 +165,7 @@ export default function Payments() {
                       {p.invoice_serie || ''}{p.invoice_folio ? `-${String(p.invoice_folio).padStart(6, '0')}` : '—'}
                     </td>
                     <td className="px-6 py-2">
-                      {p.payment_date ? new Date(p.payment_date).toLocaleDateString('es-MX') : '—'}
+                      {p.payment_date ? fechaMx(p.payment_date) : '—'}
                     </td>
                     <td className="px-6 py-2 font-mono text-[11px] text-slate-500">{p.uuid || '—'}</td>
                     <td className={`px-6 py-2 text-right font-semibold ${cancelado ? 'line-through text-slate-400' : 'text-emerald-700'}`}>

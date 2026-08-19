@@ -19,10 +19,12 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { fechaMx } from '@/utils/fecha';
+import { CampoFecha } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
-const fecha = (d: any) => (d ? new Date(d).toLocaleDateString('es-MX') : '—');
+const fecha = (d: any) => (d ? fechaMx(d) : '—');
 
 /** AAAA-MM-DD en hora local: `toISOString` cambia el día al pasar por UTC. */
 const iso = (d: Date) =>
@@ -238,13 +240,11 @@ export function XmlRecibidos() {
           <div className="flex flex-wrap items-end gap-3">
             <label className="block">
               <span className="block text-xs text-gray-600 mb-1">Desde</span>
-              <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
-                className="input w-44" />
+              <CampoFecha value={desde} onChange={(v) => setDesde(v)} className="input w-44" />
             </label>
             <label className="block">
               <span className="block text-xs text-gray-600 mb-1">Hasta</span>
-              <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
-                className="input w-44" />
+              <CampoFecha value={hasta} onChange={(v) => setHasta(v)} className="input w-44" />
             </label>
             <label className="block">
               <span className="block text-xs text-gray-600 mb-1">Qué traer</span>
