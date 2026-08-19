@@ -17,6 +17,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   FileBarChart, FileSpreadsheet, AlertTriangle, Users, Receipt, Landmark, HeartPulse,
+  Sigma, List,
 } from 'lucide-react';
 import api from '@/services/api';
 
@@ -49,6 +50,9 @@ export function NominaReportesPage() {
   const [desde, setDesde] = useState(1);
   const [hasta, setHasta] = useState(1);
   const [error, setError] = useState('');
+  /* Con un solo periodo acumular y detallar dan lo mismo, así que el modo
+   * sólo se ofrece —y sólo importa— cuando el rango abarca varios. */
+  const [acumulado, setAcumulado] = useState(true);
 
   /* Qué periodos cerrados hay. Sin esto la pantalla ofrecería "del 1 al 53"
    * cuando sólo hay ocho, y mandaría a pedir reportes vacíos. */
@@ -68,8 +72,8 @@ export function NominaReportesPage() {
   }, [tipo, anio, dispQ.data]);
 
   const repQ = useQuery({
-    queryKey: ['reporte-nomina', que, anio, tipo, desde, hasta],
-    queryFn: () => api.getReporteNomina(que, { anio, tipo, desde, hasta }),
+    queryKey: ['reporte-nomina', que, anio, tipo, desde, hasta, acumulado],
+    queryFn: () => api.getReporteNomina(que, { anio, tipo, desde, hasta, acumulado }),
     enabled: cerrados.length > 0,
     retry: false,
   });
@@ -78,13 +82,14 @@ export function NominaReportesPage() {
   const exportar = async () => {
     setError('');
     try {
-      await api.descargarReporteNominaExcel(que, { anio, tipo, desde, hasta });
+      await api.descargarReporteNominaExcel(que, { anio, tipo, desde, hasta, acumulado });
     } catch (e: any) {
       setError(e?.response?.data?.message || 'No se pudo generar el Excel');
     }
   };
 
   const maxDelTipo = TIPOS.find((t) => t.id === tipo)?.max || 53;
+  const varios = hasta > desde;
 
   return (
     <div className="space-y-4">
@@ -162,8 +167,39 @@ export function NominaReportesPage() {
             <p className="text-[10px] text-gray-400 mt-0.5">de 1 a {maxDelTipo}</p>
           </div>
 
+          {/* ── Acumulado o detalle ──
+              Pedir "de la 32 a la 34" y recibir tres renglones de cada quien
+              obliga a sumar a mano lo que el reporte ya sabe. Por eso el
+              acumulado es lo primero que se ve; el detalle sigue a un clic. */}
+          {que === 'prenomina' && varios && (
+            <div className="flex rounded-lg border overflow-hidden text-xs">
+              <button
+                onClick={() => setAcumulado(true)}
+                className={`px-3 py-2 transition ${
+                  acumulado ? 'bg-violet-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+                title={`Un renglón por trabajador, con los ${hasta - desde + 1} periodos sumados`}
+              >
+                <Sigma size={13} className="inline mr-1 -mt-0.5" />
+                Acumulado
+              </button>
+              <button
+                onClick={() => setAcumulado(false)}
+                className={`px-3 py-2 border-l transition ${
+                  !acumulado ? 'bg-violet-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+                title="Un renglón por trabajador y periodo"
+              >
+                <List size={13} className="inline mr-1 -mt-0.5" />
+                Detalle
+              </button>
+            </div>
+          )}
+
           <button onClick={exportar} disabled={!d}
-            className="ml-auto text-sm text-emerald-700 hover:underline flex items-center gap-1 disabled:opacity-40">
+            className={`text-sm text-emerald-700 hover:underline flex items-center gap-1 disabled:opacity-40 ${
+              que === 'prenomina' && varios ? '' : 'ml-auto'
+            }`}>
             <FileSpreadsheet size={15} /> Excel
           </button>
         </div>
@@ -201,53 +237,87 @@ function Caja({ children }: any) {
 
 function TablaPrenomina({ d }: any) {
   const t = d.totales;
+  const acum = !!d.acumulado;
   return (
-    <Caja>
-      <table className="w-full text-xs tabular-nums">
-        <thead className="bg-gray-50 border-b text-gray-600">
-          <tr>
-            <th className="px-2 py-2 text-center w-14">Periodo</th>
-            <th className="px-2 py-2 text-left">Trabajador</th>
-            <th className="px-2 py-2 text-center w-12">Días</th>
-            <th className="px-2 py-2 text-right w-24">Percepciones</th>
-            <th className="px-2 py-2 text-right w-24">Gravado</th>
-            <th className="px-2 py-2 text-right w-24">Exento</th>
-            <th className="px-2 py-2 text-right w-20">IMSS</th>
-            <th className="px-2 py-2 text-right w-20">ISR</th>
-            <th className="px-2 py-2 text-right w-24">Neto</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {d.renglones.map((r: any, i: number) => (
-            <tr key={i} className="hover:bg-gray-50">
-              <td className="px-2 py-1 text-center">#{r.periodo}</td>
-              <td className="px-2 py-1">
-                {r.nombre}
-                <span className="text-gray-400 ml-1.5">{r.num_empleado}</span>
-              </td>
-              <td className="px-2 py-1 text-center">{r.dias}</td>
-              <td className="px-2 py-1 text-right">{money(r.total_percepciones)}</td>
-              <td className="px-2 py-1 text-right">{money(r.total_gravado)}</td>
-              <td className="px-2 py-1 text-right text-emerald-700">{money(r.total_exento)}</td>
-              <td className="px-2 py-1 text-right text-rose-700">{money(r.imss)}</td>
-              <td className="px-2 py-1 text-right text-rose-700">{money(r.isr)}</td>
-              <td className="px-2 py-1 text-right font-semibold">{money(r.neto)}</td>
+    <>
+      <Caja>
+        <table className="w-full text-xs tabular-nums">
+          <thead className="bg-gray-50 border-b text-gray-600">
+            <tr>
+              <th className="px-2 py-2 text-center w-16">
+                {acum ? 'Periodos' : 'Periodo'}
+              </th>
+              <th className="px-2 py-2 text-left">Trabajador</th>
+              <th className="px-2 py-2 text-center w-12">Días</th>
+              <th className="px-2 py-2 text-right w-24">Percepciones</th>
+              <th className="px-2 py-2 text-right w-24">Gravado</th>
+              <th className="px-2 py-2 text-right w-24">Exento</th>
+              <th className="px-2 py-2 text-right w-20">IMSS</th>
+              <th className="px-2 py-2 text-right w-20">ISR</th>
+              <th className="px-2 py-2 text-right w-24">Neto</th>
             </tr>
-          ))}
-        </tbody>
-        <tfoot className="bg-gray-50 border-t-2 font-semibold">
-          <tr>
-            <td className="px-2 py-2" colSpan={3}>{t.renglones} recibo(s)</td>
-            <td className="px-2 py-2 text-right">{money(t.percepciones)}</td>
-            <td className="px-2 py-2 text-right">{money(t.gravado)}</td>
-            <td className="px-2 py-2 text-right text-emerald-700">{money(t.exento)}</td>
-            <td className="px-2 py-2 text-right text-rose-700">{money(t.imss)}</td>
-            <td className="px-2 py-2 text-right text-rose-700">{money(t.isr)}</td>
-            <td className="px-2 py-2 text-right">{money(t.neto)}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </Caja>
+          </thead>
+          <tbody className="divide-y">
+            {d.renglones.map((r: any, i: number) => (
+              <tr key={i} className="hover:bg-gray-50">
+                {/* Acumulado esconde justo lo que más se pregunta al revisar:
+                    que a alguien le falte una semana. Por eso el conteo va
+                    marcado cuando no trae todos los periodos del rango. */}
+                <td className="px-2 py-1 text-center">
+                  {acum ? (
+                    r.completo ? (
+                      <span className="text-gray-500">{r.periodos}</span>
+                    ) : (
+                      <span
+                        className="text-amber-700 font-semibold"
+                        title={`Sólo aparece en ${r.periodos} de los ${d.periodosDelRango} periodos ` +
+                               `(#${r.primer_periodo} al #${r.ultimo_periodo})`}
+                      >
+                        {r.periodos} ⚠
+                      </span>
+                    )
+                  ) : `#${r.periodo}`}
+                </td>
+                <td className="px-2 py-1">
+                  {r.nombre}
+                  <span className="text-gray-400 ml-1.5">{r.num_empleado}</span>
+                </td>
+                <td className="px-2 py-1 text-center">{r.dias}</td>
+                <td className="px-2 py-1 text-right">{money(r.total_percepciones)}</td>
+                <td className="px-2 py-1 text-right">{money(r.total_gravado)}</td>
+                <td className="px-2 py-1 text-right text-emerald-700">{money(r.total_exento)}</td>
+                <td className="px-2 py-1 text-right text-rose-700">{money(r.imss)}</td>
+                <td className="px-2 py-1 text-right text-rose-700">{money(r.isr)}</td>
+                <td className="px-2 py-1 text-right font-semibold">{money(r.neto)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-gray-50 border-t-2 font-semibold">
+            <tr>
+              <td className="px-2 py-2" colSpan={3}>
+                {acum
+                  ? `${d.renglones.length} trabajador(es) · ${t.recibos} recibo(s) de ` +
+                    `${d.periodosDelRango} periodo(s)`
+                  : `${t.recibos} recibo(s)`}
+              </td>
+              <td className="px-2 py-2 text-right">{money(t.percepciones)}</td>
+              <td className="px-2 py-2 text-right">{money(t.gravado)}</td>
+              <td className="px-2 py-2 text-right text-emerald-700">{money(t.exento)}</td>
+              <td className="px-2 py-2 text-right text-rose-700">{money(t.imss)}</td>
+              <td className="px-2 py-2 text-right text-rose-700">{money(t.isr)}</td>
+              <td className="px-2 py-2 text-right">{money(t.neto)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </Caja>
+
+      {d.avisos?.map((a: string, i: number) => (
+        <p key={i}
+          className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+          {a}
+        </p>
+      ))}
+    </>
   );
 }
 

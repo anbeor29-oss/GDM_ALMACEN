@@ -5,6 +5,35 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-18 — La prenómina acumulada por trabajador
+
+Pedir "de la semana 32 a la 34" y recibir **tres renglones de cada quien**
+obliga a sumar a mano lo que el reporte ya sabe. El detalle por periodo estaba
+bien —y sigue estando, a un clic—, pero no es lo que se ocupa cuando se cuadra
+contra el banco o se revisa en la junta.
+
+Ahora la prenómina abre **acumulada**: un renglón por trabajador con sus
+periodos sumados, y un interruptor **Acumulado / Detalle** cuando el rango
+abarca más de uno. Baja igual a Excel, con su columna PERIODOS y el título
+diciendo de qué modo salió.
+
+**Lo que acumular esconde, y por eso va marcado.** Si a alguien le falta una
+semana —un alta a media quincena, una baja, una ausencia—, su acumulado sale
+más chico y *parece* correcto. El renglón trae el conteo de periodos y se marca
+en ámbar a quien no los trae todos, con un aviso arriba para que no dependa de
+que alguien vea la marca.
+
+Se agrupa por `num_empleado`, `nombre` y `rfc`, no sólo por el número: el
+número es un dato capturado, y si dos personas compartieran uno, agrupar por él
+solo las fundiría en un renglón sin que nadie lo notara.
+
+*Verificado:* que cada trabajador sume **campo por campo** lo de sus recibos,
+que el gran total sea idéntico por los dos caminos —si cambiara, uno de los dos
+reportes estaría mintiendo— y que a quien le falta un periodo se le marque.
+29 comprobaciones de reportes, 25 de estilo, 115 unitarias.
+
+---
+
 ## 2026-08-18 — El formato de la casa en todos los reportes, y la cuota patronal
 
 ### 1 · Los reportes salían en blanco y negro

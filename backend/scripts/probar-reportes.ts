@@ -215,6 +215,82 @@ RETENIDO". La prueba los busca así. */
     ? bien('Excel: dice de dónde salen los números, en la hoja misma')
     : mal('al Excel le falta la nota de alcance');
 
+  /* ── 6-bis. El acumulado por trabajador ──
+   *
+   * Un acumulado que no cuadra con su detalle es peor que no tenerlo: se
+   * archiva, se firma y nadie lo vuelve a sumar. Así que se pide el MISMO
+   * rango de las dos formas y se comparan renglón por renglón. */
+  const det: any = await reportes.prenomina(companyId, {
+    anio: ANIO, tipo: 'QUINCENAL', desde: 23, hasta: 24,
+  });
+  const acu: any = await reportes.prenomina(companyId, {
+    anio: ANIO, tipo: 'QUINCENAL', desde: 23, hasta: 24, acumulado: true,
+  });
+
+  const detMios = det.renglones.filter((r: any) => NUMS.includes(r.num_empleado));
+  const acuMios = acu.renglones.filter((r: any) => NUMS.includes(r.num_empleado));
+
+  detMios.length === 4 && acuMios.length === 2
+    ? bien('acumulado: 4 recibos se vuelven 2 renglones, uno por trabajador')
+    : mal('el acumulado no agrupó', `detalle ${detMios.length} / acumulado ${acuMios.length}`);
+
+  /* Cada trabajador: su renglón acumulado contra la suma de SUS recibos. */
+  let cuadran = 0;
+  for (const num of NUMS) {
+    const suyos = detMios.filter((r: any) => r.num_empleado === num);
+    const uno = acuMios.find((r: any) => r.num_empleado === num);
+    if (!uno) { mal(`el acumulado perdió a ${num}`); continue; }
+    const campos = ['dias', 'total_percepciones', 'total_gravado', 'total_exento',
+                    'imss', 'isr', 'total_deducciones', 'neto'];
+    const malos = campos.filter((k) =>
+      !cerca(suyos.reduce((a: number, r: any) => a + Number(r[k]), 0), Number(uno[k])));
+    if (malos.length === 0) cuadran++;
+    else mal(`a ${num} no le cuadra el acumulado`, malos.join(', '));
+    Number(uno.periodos) === suyos.length
+      ? null
+      : mal(`a ${num} le salió mal el conteo de periodos`, uno.periodos);
+  }
+  cuadran === 2
+    ? bien('acumulado: cada trabajador suma EXACTO lo de sus recibos, campo por campo')
+    : mal('algún acumulado no cuadra con su detalle');
+
+  /* Y el gran total tiene que ser el mismo por los dos caminos: si cambiara,
+   * uno de los dos reportes estaría mintiendo. */
+  cerca(Number(acu.totales.neto), Number(det.totales.neto))
+    ? bien(`acumulado y detalle dan el mismo neto — ${Number(acu.totales.neto).toFixed(2)}`)
+    : mal('el total cambia según el modo', `${acu.totales.neto} vs ${det.totales.neto}`);
+
+  acu.totales.recibos === det.totales.recibos
+    ? bien(`acumulado: el pie sigue diciendo cuántos recibos hay (${acu.totales.recibos})`)
+    : mal('el conteo de recibos se perdió al acumular');
+
+  /* Quien no aparece en todos los periodos va MARCADO: acumular esconde justo
+   * eso, y es lo primero que se pregunta al revisar. */
+  acu.periodosDelRango === 2 && acuMios.every((r: any) => r.completo)
+    ? bien('acumulado: los dos trabajadores traen los 2 periodos, ninguno marcado')
+    : mal('el marcado de periodos incompletos falló',
+          JSON.stringify(acuMios.map((r: any) => [r.num_empleado, r.periodos, r.completo])));
+
+  /* Ahora uno al que le FALTA un periodo: se borra un recibo y debe marcarse. */
+  await query(
+    `DELETE FROM nomina_recibos
+      WHERE company_id=$1 AND num_empleado=$2
+        AND periodo_id = (SELECT id FROM nomina_periodos
+                           WHERE company_id=$1 AND anio=$3 AND tipo='QUINCENAL' AND numero=24)`,
+    [companyId, 'ZR02', ANIO]);
+
+  const cojo: any = await reportes.prenomina(companyId, {
+    anio: ANIO, tipo: 'QUINCENAL', desde: 23, hasta: 24, acumulado: true,
+  });
+  const tomasCojo = cojo.renglones.find((r: any) => r.num_empleado === 'ZR02');
+  tomasCojo && tomasCojo.completo === false && Number(tomasCojo.periodos) === 1
+    ? bien('acumulado: a quien le falta un periodo se le marca, no se le disimula')
+    : mal('no se marcó al trabajador incompleto', JSON.stringify(tomasCojo));
+
+  cojo.avisos.some((a: string) => /no aparecen en los 2 periodos/.test(a))
+    ? bien('acumulado: y se avisa arriba, para que no dependa de ver la marca')
+    : mal('falta el aviso de periodos incompletos', JSON.stringify(cojo.avisos));
+
   /* ── 7. La cuota PATRONAL, para provisionar ── */
   const imssRep: any = await reportes.imss(companyId, {
     anio: ANIO, tipo: 'QUINCENAL', desde: 23, hasta: 24,

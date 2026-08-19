@@ -1203,6 +1203,7 @@ class APIClient {
   /** Uno de los cuatro: prenomina | cfdi | isr | imss. */
   async getReporteNomina(que: string, params: {
     anio: number; tipo: string; desde: number; hasta: number; empleadoId?: string;
+    acumulado?: boolean;
   }) {
     const r = await this.client.get<APIResponse<any>>(`/nomina/reportes/${que}`, { params });
     return r.data;
@@ -1210,7 +1211,7 @@ class APIClient {
 
   /** El mismo reporte, en hoja de cálculo. */
   async descargarReporteNominaExcel(que: string, params: {
-    anio: number; tipo: string; desde: number; hasta: number;
+    anio: number; tipo: string; desde: number; hasta: number; acumulado?: boolean;
   }) {
     const r = await this.client.get(`/nomina/reportes/${que}/excel`, {
       params, responseType: 'blob',

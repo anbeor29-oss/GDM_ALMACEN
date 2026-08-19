@@ -458,6 +458,7 @@ router.get(
         desde: Number(req.query.desde) || 1,
         hasta: Number(req.query.hasta) || Number(req.query.desde) || 1,
         empleadoId: (req.query.empleadoId as string) || undefined,
+        acumulado: req.query.acumulado === 'true',
       }
     );
     res.setHeader('Content-Type',
@@ -487,6 +488,7 @@ router.get(
         desde: Number(req.query.desde) || 1,
         hasta: Number(req.query.hasta) || Number(req.query.desde) || 1,
         empleadoId: (req.query.empleadoId as string) || undefined,
+        acumulado: req.query.acumulado === 'true',
       }
     );
     res.json({ success: true, data: r });

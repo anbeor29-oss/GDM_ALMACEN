@@ -37,6 +37,12 @@ export interface Filtro {
   hasta: number;
   /** Para sacar el reporte de una sola persona. */
   empleadoId?: string;
+  /**
+   * Un renglón POR TRABAJADOR con sus periodos sumados, en vez de uno por
+   * trabajador y periodo. Pedir "de la semana 32 a la 34" y recibir tres
+   * renglones de cada quien obliga a sumar a mano lo que el reporte ya sabe.
+   */
+  acumulado?: boolean;
 }
 
 /** Valida el rango contra el máximo de esa periodicidad. */
@@ -83,6 +89,74 @@ export async function prenomina(companyId: string, f: Filtro) {
   revisarRango(f);
   const { cond, args } = alcance(companyId, f);
 
+  /* ── Acumulado por trabajador ──
+   *
+   * Cuando el rango abarca varios periodos, lo que se quiere ver casi siempre
+   * es cuánto llevó cada quien EN TODO EL RANGO —para cuadrar contra el banco,
+   * para la constancia, para la junta—, no tres renglones que hay que sumar a
+   * mano. El detalle sigue estando: es el otro modo.
+   *
+   * Se agrupa por num_empleado, nombre y rfc y no sólo por el número porque el
+   * número es un dato capturado: si dos personas comparten uno, agrupar por él
+   * solo las fundiría en un renglón y nadie lo notaría. */
+  if (f.acumulado) {
+    const r = await query<any>(
+      `SELECT r.num_empleado, r.nombre, r.rfc,
+              COUNT(*)::int        AS periodos,
+              MIN(p.numero)::int   AS primer_periodo,
+              MAX(p.numero)::int   AS ultimo_periodo,
+              SUM(r.dias)               AS dias,
+              SUM(r.total_percepciones) AS total_percepciones,
+              SUM(r.total_gravado)      AS total_gravado,
+              SUM(r.total_exento)       AS total_exento,
+              SUM(r.imss)               AS imss,
+              SUM(r.isr)                AS isr,
+              SUM(r.total_deducciones)  AS total_deducciones,
+              SUM(r.neto)               AS neto
+         FROM nomina_recibos r
+         JOIN nomina_periodos p ON p.id = r.periodo_id
+        WHERE ${cond}
+        GROUP BY r.num_empleado, r.nombre, r.rfc
+        ORDER BY r.num_empleado`,
+      args
+    );
+
+    /* Cuántos periodos cerrados hay de verdad en el rango. Sirve para señalar a
+     * quien no los trae todos: acumular esconde justo eso —que a alguien le
+     * falta una semana— y es lo primero que se pregunta al revisar. */
+    const cuantos = await query<any>(
+      `SELECT COUNT(DISTINCT p.id)::int AS n
+         FROM nomina_recibos r
+         JOIN nomina_periodos p ON p.id = r.periodo_id
+        WHERE ${cond}`,
+      args
+    );
+    const periodosDelRango = cuantos.rows[0]?.n || 0;
+
+    const renglones = r.rows.map((x: any) => ({
+      ...x,
+      completo: Number(x.periodos) === periodosDelRango,
+    }));
+    const incompletos = renglones.filter((x: any) => !x.completo).length;
+
+    const avisos: string[] = [];
+    if (incompletos > 0) {
+      avisos.push(
+        `${incompletos} trabajador(es) no aparecen en los ${periodosDelRango} ` +
+        'periodos del rango —altas, bajas o ausencias—. Van marcados: su ' +
+        'acumulado es de menos periodos que el resto.'
+      );
+    }
+
+    return {
+      renglones,
+      acumulado: true,
+      periodosDelRango,
+      avisos,
+      totales: { ...sumar(renglones), recibos: suma(renglones, 'periodos') },
+    };
+  }
+
   const r = await query<any>(
     `SELECT p.numero AS periodo, p.concepto,
             TO_CHAR(p.fecha_inicio,'YYYY-MM-DD') AS fecha_inicio,
@@ -96,7 +170,11 @@ export async function prenomina(companyId: string, f: Filtro) {
       ORDER BY p.numero, r.num_empleado`,
     args
   );
-  return { renglones: r.rows, totales: sumar(r.rows) };
+  return {
+    renglones: r.rows,
+    acumulado: false,
+    totales: { ...sumar(r.rows), recibos: r.rows.length },
+  };
 }
 
 /**
@@ -402,7 +480,9 @@ export async function generarExcel(
   const e = emp.rows[0] || {};
 
   const TITULOS: Record<TipoReporte, string> = {
-    prenomina: 'Prenómina — detalle de lo pagado',
+    prenomina: f.acumulado
+      ? 'Prenómina — acumulado por trabajador'
+      : 'Prenómina — detalle de lo pagado',
     cfdi:      'CFDI de nómina — timbrado',
     isr:       'ISR retenido por nómina',
     imss:      'IMSS — cuota obrera y patronal',
@@ -418,7 +498,9 @@ export async function generarExcel(
 
   const COLUMNAS: Record<TipoReporte, Col[]> = {
     prenomina: [
-      { k: 'periodo', t: 'PERIODO', color: C.identidad, ancho: 9 },
+      f.acumulado
+        ? { k: 'periodos', t: 'PERIODOS', color: C.identidad, ancho: 10 }
+        : { k: 'periodo', t: 'PERIODO', color: C.identidad, ancho: 9 },
       { k: 'num_empleado', t: 'NÚM.', color: C.identidad, ancho: 8 },
       { k: 'nombre', t: 'TRABAJADOR', color: C.identidad, ancho: 30 },
       { k: 'dias', t: 'DÍAS', color: C.ingresos, ancho: 7 },

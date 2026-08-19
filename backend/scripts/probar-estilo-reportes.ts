@@ -174,6 +174,16 @@ async function main() {
     }
   }
 
+  /* El acumulado también baja a Excel: su columna es PERIODOS, no PERIODO. */
+  const xa = await reportes.generarExcel(companyId, 'prenomina', { ...f, acumulado: true });
+  const wsa = await abrir(xa.buffer);
+  buscar(wsa, /acumulado por trabajador/i)
+    ? bien('prenómina acumulada: el Excel dice de qué modo salió')
+    : mal('el Excel acumulado no se distingue del detallado');
+  String(wsa.getCell(8, 1).value) === 'PERIODOS'
+    ? bien('prenómina acumulada: la primera columna cuenta periodos, no los enumera')
+    : mal('la columna del acumulado quedó mal', wsa.getCell(8, 1).value);
+
   await limpiar(companyId);
   console.log(`\n${ok} bien, ${fallos} mal`);
   await pool.end();
