@@ -206,6 +206,12 @@ export function App() {
             <Route path="pos"                             element={<ModuleRoute module="pos"><PointOfSalePage /></ModuleRoute>} />
             <Route path="treasury"                        element={<ModuleRoute module="treasury"><TreasuryPage /></ModuleRoute>} />
             <Route path="auditoria"                       element={<ModuleRoute module="auditoria"><AuditoriaPage /></ModuleRoute>} />
+            {/* Cada pestaña de Auditoría es una dirección propia: así se puede
+                enlazar la descarga de XML desde el menú sin obligar a entrar a
+                Auditoría y hacer un clic más, y recargar no devuelve siempre a
+                la primera pestaña. Es la MISMA página. */}
+            <Route path="auditoria/xml-sat"               element={<ModuleRoute module="auditoria"><AuditoriaPage /></ModuleRoute>} />
+            <Route path="auditoria/69b"                   element={<ModuleRoute module="auditoria"><AuditoriaPage /></ModuleRoute>} />
             <Route path="mensajes"                        element={<ModuleRoute module="mensajes"><MensajesPage /></ModuleRoute>} />
             {/* Nómina. El gateo real lo hace el backend (requireModule) — esto
                 sólo evita que la URL escrita a mano pinte una pantalla vacía. */}

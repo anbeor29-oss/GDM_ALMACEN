@@ -5,6 +5,40 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-19 (cierre) — Los XML del SAT, a un clic
+
+La descarga de XML era la **segunda pestaña** de Auditoría. Para llegar había
+que entrar a Auditoría y buscar la pestaña: dos clics, varias veces al día, para
+una pantalla de trabajo diario.
+
+**La pestaña se mudó a la URL.** Antes era estado local, y eso tenía dos
+consecuencias que parecían inevitables: no se podía enlazar desde el menú, y
+recargar la página devolvía siempre a la primera pestaña. Ahora cada una es una
+dirección —`/auditoria`, `/auditoria/xml-sat`, `/auditoria/69b`—, es la MISMA
+página, y por eso se enlaza, se marca en el sidebar y sobrevive a la recarga.
+
+**Está en los dos menús**, como se pidió: en Auditoría, que es su casa, con sus
+tres pestañas colgando; y en Tesorería, donde se cuadra lo pagado contra lo que
+el proveedor declaró.
+
+Pero el de Tesorería va marcado como **atajo**, con su flecha y en cursiva, y no
+toma el resaltado de activo. Si lo tomara, estando en esa pantalla se marcarían
+dos renglones del menú a la vez y ninguno de los dos diría dónde está uno. Es la
+misma razón por la que Monedas no se muestra dos veces cuando ya vive dentro de
+Facturación — el motivo ya estaba escrito ahí desde antes.
+
+**Y un guardián.** Son tres piezas en tres archivos —la ruta en `App.tsx`, la
+lectura de la URL en la página, y el destino de los enlaces del sidebar— unidas
+por cadenas de texto. Si una se mueve sin las otras, el enlace lleva a la
+pestaña equivocada o a una página en blanco, y eso **no lo detecta el
+compilador**. `revisar-rutas-auditoria.mjs` sí.
+
+*Verificado:* 10 comprobaciones de rutas y enlaces, más las 115 unitarias. La
+revisión visual del sidebar queda pendiente: la aplicación pide credenciales y
+no las tengo.
+
+---
+
 ## 2026-08-19 (tarde-noche) — El 500 disfrazado, las fechas, y la hoja de remesa
 
 ### 1 · Los complementos de pago "no existían" — y sí existían
