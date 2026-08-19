@@ -109,6 +109,14 @@ utilPerm.includes('export function puedeMoverNomina')
   ? bien('la regla de quién mueve la nómina vive en un solo lugar')
   : mal('falta puedeMoverNomina en utils/permissions');
 
+/* Y que la regla NOMBRE a Recursos Humanos. Si alguien "simplifica" el ayudante
+ * a sólo administradores, RH vuelve a ver sus pantallas sin un botón — y esta
+ * vez sin ningún mensaje de error que lo delate, porque el servidor sí los
+ * dejaría pasar. */
+utilPerm.includes('RECURSOS_HUMANOS') && utilPerm.includes('ADMIN_ALL')
+  ? bien('y esa regla incluye a RECURSOS_HUMANOS, que es quien captura la nómina')
+  : mal('la regla dejó fuera a RH: sus pantallas quedarían sin botones');
+
 const pantallasNomina = [
   'src/pages/nomina/Empleados.tsx',
   'src/pages/nomina/NominaCFDI.tsx',
