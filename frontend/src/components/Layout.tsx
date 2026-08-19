@@ -261,10 +261,10 @@ export function Layout() {
                       { to: '/treasury', icon: emoji3D('🏦'), label: 'Cuentas y remesas' },
                       /* Los XML del SAT, desde aquí también. Cuadrar lo que se
                          pagó contra lo que el proveedor declaró es trabajo de
-                         tesorería, y hacerlo obligaba a salirse a Auditoría. Es
-                         un atajo: su casa sigue siendo Auditoría. */
+                         tesorería, y hacerlo obligaba a salirse del módulo. Es
+                         un atajo: su casa es el menú de XML del SAT. */
                       ...(show('auditoria')
-                        ? [{ to: '/auditoria/xml-sat', icon: emoji3D('📥'),
+                        ? [{ to: '/xml-sat/recibidos', icon: emoji3D('📥'),
                              label: 'XML del SAT', atajo: true }]
                         : []),
                     ]}
@@ -272,24 +272,30 @@ export function Layout() {
                 )}
                 {/* Auditoría vive junto a Tesorería: las dos miran hacia afuera
                     —una al banco, la otra al SAT— y las dos las revisa la misma
-                    persona antes del cierre del mes.
+                    persona antes del cierre del mes. */}
+                {show('auditoria')    && <NavItem to="/auditoria"    icon={emoji3D('🛡️')} accent="emerald" label="Auditoría"        open={sidebarOpen} />}
+                {/* ── XML del SAT, con menú propio ──
+                    Era la segunda pestaña de Auditoría y llegar costaba dos
+                    clics. Para una pantalla que se abre varias veces al día
+                    —se pide, se espera, se vuelve a ver si ya llegó— eso es
+                    fricción diaria.
 
-                    Sus tres pestañas cuelgan del menú porque la descarga de XML
-                    no es un rincón de Auditoría: es una pantalla de trabajo que
-                    se abre varias veces al día, y llegar a ella entrando a
-                    Auditoría y buscando la pestaña son dos clics cada vez. */}
+                    Recibidos y emitidos van separados porque son consultas
+                    distintas al SAT —el servicio las pide por separado— y
+                    responden preguntas distintas: los recibidos son lo que hay
+                    que pagar y deducir; los emitidos, la comprobación de que
+                    todo lo timbrado llegó. */}
                 {show('auditoria') && (
                   <NavGroup
-                    to="/auditoria"
-                    icon={emoji3D('🛡️')}
-                    label="Auditoría"
+                    to="/xml-sat"
+                    icon={emoji3D('📥')}
+                    label="XML del SAT"
                     accent="emerald"
                     open={sidebarOpen}
-                    pathPrefix="/auditoria"
+                    pathPrefix="/xml-sat"
                     children={[
-                      { to: '/auditoria',          icon: emoji3D('🧾'), label: 'Nuestros comprobantes' },
-                      { to: '/auditoria/xml-sat',  icon: emoji3D('📥'), label: 'XML del SAT' },
-                      { to: '/auditoria/69b',      icon: emoji3D('🚫'), label: 'Listas 69-B' },
+                      { to: '/xml-sat/recibidos', icon: emoji3D('📨'), label: 'XML recibidos' },
+                      { to: '/xml-sat/emitidos',  icon: emoji3D('📤'), label: 'XML emitidos' },
                     ]}
                   />
                 )}

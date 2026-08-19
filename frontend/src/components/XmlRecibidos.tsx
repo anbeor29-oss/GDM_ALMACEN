@@ -60,7 +60,21 @@ const ESTADO_TRABAJO: Record<string, { label: string; cls: string }> = {
   CANCELADO:   { label: 'Cancelado',   cls: 'bg-rose-100 text-rose-700' },
 };
 
-export function XmlRecibidos() {
+export function XmlRecibidos({ direccionInicial }: {
+  /**
+   * Con qué dirección abre la pantalla.
+   *
+   * La usan los dos submenús de "XML del SAT": recibidos y emitidos son
+   * consultas distintas al SAT —el servicio las pide por separado— y responden
+   * preguntas distintas. Sin esto, entrar por "emitidos" abría la pantalla en
+   * recibidos y había que cambiarlo a mano cada vez.
+   *
+   * Sigue siendo un valor INICIAL y no una imposición: el selector queda
+   * disponible, porque a veces se entra por un lado y se termina pidiendo el
+   * otro sin querer salirse.
+   */
+  direccionInicial?: 'recibidos' | 'emitidos';
+} = {}) {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const esAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(user?.role || '');
@@ -74,7 +88,7 @@ export function XmlRecibidos() {
    * desperdiciaba esa capacidad y multiplicaba el trabajo de quien la usa. */
   const [desde, setDesde] = useState(primerDiaDelMes(hoy));
   const [hasta, setHasta] = useState(iso(hoy));
-  const [que, setQue] = useState<'recibidos' | 'emitidos' | 'ambos'>('recibidos');
+  const [que, setQue] = useState<'recibidos' | 'emitidos' | 'ambos'>(direccionInicial || 'recibidos');
   const [cargando, setCargando] = useState(false);
   const [aviso, setAviso] = useState('');
   const [error, setError] = useState('');

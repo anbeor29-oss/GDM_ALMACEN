@@ -5,37 +5,37 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
-## 2026-08-19 (cierre) — Los XML del SAT, a un clic
+## 2026-08-19 (cierre) — "XML del SAT" con menú propio
 
 La descarga de XML era la **segunda pestaña** de Auditoría. Para llegar había
-que entrar a Auditoría y buscar la pestaña: dos clics, varias veces al día, para
-una pantalla de trabajo diario.
+que entrar al módulo y buscar la pestaña: dos clics, varias veces al día, para
+una pantalla que se abre, se deja pedida y se vuelve a ver si ya llegó.
 
-**La pestaña se mudó a la URL.** Antes era estado local, y eso tenía dos
-consecuencias que parecían inevitables: no se podía enlazar desde el menú, y
-recargar la página devolvía siempre a la primera pestaña. Ahora cada una es una
-dirección —`/auditoria`, `/auditoria/xml-sat`, `/auditoria/69b`—, es la MISMA
-página, y por eso se enlaza, se marca en el sidebar y sobrevive a la recarga.
+Ahora tiene **menú propio** con dos entradas —**XML recibidos** y **XML
+emitidos**—, porque son consultas distintas al SAT: el servicio las pide por
+separado y responden preguntas distintas. Los recibidos son lo que hay que
+pagar y deducir; los emitidos, la comprobación de que todo lo timbrado llegó
+allá. Cada entrada abre la pantalla en su dirección, y el selector sigue
+disponible: a veces se entra por un lado y se termina pidiendo el otro.
 
-**Está en los dos menús**, como se pidió: en Auditoría, que es su casa, con sus
-tres pestañas colgando; y en Tesorería, donde se cuadra lo pagado contra lo que
-el proveedor declaró.
+**Auditoría quedó como estaba**, con sus tres pestañas. La descarga sigue ahí
+adentro para quien llegue por ese camino — y es el **mismo componente**, no una
+copia. Dos copias de una pantalla que habla con el SAT terminan divergiendo
+justo en el manejo de errores, que es lo último que alguien revisa.
 
-Pero el de Tesorería va marcado como **atajo**, con su flecha y en cursiva, y no
-toma el resaltado de activo. Si lo tomara, estando en esa pantalla se marcarían
-dos renglones del menú a la vez y ninguno de los dos diría dónde está uno. Es la
-misma razón por la que Monedas no se muestra dos veces cuando ya vive dentro de
-Facturación — el motivo ya estaba escrito ahí desde antes.
+El acceso desde **Tesorería** se conserva como **atajo**, con su flecha y en
+cursiva, sin tomar el resaltado de activo: si lo tomara, estando en esa pantalla
+se marcarían dos renglones del menú a la vez y ninguno diría dónde está uno.
 
-**Y un guardián.** Son tres piezas en tres archivos —la ruta en `App.tsx`, la
-lectura de la URL en la página, y el destino de los enlaces del sidebar— unidas
-por cadenas de texto. Si una se mueve sin las otras, el enlace lleva a la
-pestaña equivocada o a una página en blanco, y eso **no lo detecta el
-compilador**. `revisar-rutas-auditoria.mjs` sí.
+**Y el guardián.** Son cuatro piezas en cuatro archivos —la ruta, la lectura de
+la dirección en la página, el prop que la recibe en el componente, y el destino
+de los enlaces— unidas por cadenas de texto. Si una se mueve sin las otras, el
+submenú abre la pantalla equivocada sin que nada falle.
+`revisar-rutas-auditoria.mjs` lo detecta.
 
-*Verificado:* 10 comprobaciones de rutas y enlaces, más las 115 unitarias. La
-revisión visual del sidebar queda pendiente: la aplicación pide credenciales y
-no las tengo.
+*Verificado:* 14 comprobaciones de rutas, enlaces y dirección, más las 115
+unitarias. La revisión visual del sidebar queda pendiente: la aplicación pide
+credenciales y no las tengo.
 
 ---
 

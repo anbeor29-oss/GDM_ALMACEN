@@ -46,6 +46,7 @@ import { PurchaseOrdersPage }         from '@/pages/PurchaseOrders';
 import { PointOfSalePage }            from '@/pages/PointOfSale';
 import { TreasuryPage }               from '@/pages/Treasury';
 import { AuditoriaPage }              from '@/pages/Auditoria';
+import { XmlDelSatPage }             from '@/pages/XmlDelSat';
 import { MensajesPage }               from '@/pages/Mensajes';
 import { NominaDashboardPage }        from '@/pages/nomina/NominaDashboard';
 import { EmpleadosPage }              from '@/pages/nomina/Empleados';
@@ -206,12 +207,13 @@ export function App() {
             <Route path="pos"                             element={<ModuleRoute module="pos"><PointOfSalePage /></ModuleRoute>} />
             <Route path="treasury"                        element={<ModuleRoute module="treasury"><TreasuryPage /></ModuleRoute>} />
             <Route path="auditoria"                       element={<ModuleRoute module="auditoria"><AuditoriaPage /></ModuleRoute>} />
-            {/* Cada pestaña de Auditoría es una dirección propia: así se puede
-                enlazar la descarga de XML desde el menú sin obligar a entrar a
-                Auditoría y hacer un clic más, y recargar no devuelve siempre a
-                la primera pestaña. Es la MISMA página. */}
-            <Route path="auditoria/xml-sat"               element={<ModuleRoute module="auditoria"><AuditoriaPage /></ModuleRoute>} />
-            <Route path="auditoria/69b"                   element={<ModuleRoute module="auditoria"><AuditoriaPage /></ModuleRoute>} />
+            {/* Los XML del SAT tienen su propio menú y sus propias rutas: es
+                una pantalla de trabajo diario, no un rincón de Auditoría.
+                Adentro de Auditoría siguen estando como pestaña, para quien
+                llega por ahí. */}
+            <Route path="xml-sat"                         element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
+            <Route path="xml-sat/recibidos"               element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
+            <Route path="xml-sat/emitidos"                element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
             <Route path="mensajes"                        element={<ModuleRoute module="mensajes"><MensajesPage /></ModuleRoute>} />
             {/* Nómina. El gateo real lo hace el backend (requireModule) — esto
                 sólo evita que la URL escrita a mano pinte una pantalla vacía. */}

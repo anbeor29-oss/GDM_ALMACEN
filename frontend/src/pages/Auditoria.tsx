@@ -17,7 +17,6 @@ import { useAuthStore } from '@/store/auth';
 import { XmlRecibidos } from '@/components/XmlRecibidos';
 import { Lista69B } from '@/components/Lista69B';
 import { fechaHoraMx } from '@/utils/fecha';
-import { useNavigate, useLocation } from 'react-router-dom';
 
 const fechaHora = (d: any) =>
   d ? fechaHoraMx(d) : '—';
@@ -39,27 +38,13 @@ export function AuditoriaPage() {
   const { user } = useAuthStore();
   const puedeRevisar = ['ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(user?.role || '');
 
-  /* ── La pestaña vive en la URL, no en el estado ──
+  /* Dos caras del mismo módulo: lo que emitimos —y hay que vigilar— y lo que
+   * nos emitieron, que hay que ir a buscar al SAT.
    *
-   * Tres caras del mismo módulo: lo que emitimos —y hay que vigilar—, lo que
-   * nos emitieron y hay que ir a buscar al SAT, y el padrón del 69-B.
-   *
-   * Antes la pestaña era estado local, y eso tenía dos consecuencias: no se
-   * podía enlazar la descarga de XML desde el menú —había que entrar a
-   * Auditoría y hacer un clic más— y recargar la página devolvía siempre a la
-   * primera. Con la pestaña en la ruta, cada una es una dirección: se enlaza,
-   * se marca en el sidebar y sobrevive a la recarga. */
-  const navigate = useNavigate();
-  const location = useLocation();
-  const tab: 'emitidos' | 'recibidos' | 'lista69b' =
-    location.pathname.endsWith('/xml-sat') ? 'recibidos'
-    : location.pathname.endsWith('/69b')   ? 'lista69b'
-    : 'emitidos';
-
-  const setTab = (k: 'emitidos' | 'recibidos' | 'lista69b') =>
-    navigate(k === 'recibidos' ? '/auditoria/xml-sat'
-           : k === 'lista69b'  ? '/auditoria/69b'
-           : '/auditoria');
+   * La descarga de XML también vive en su propio menú, "XML del SAT". Aquí se
+   * queda porque es donde se revisa junto con lo demás: la misma persona que
+   * mira los comprobantes propios mira los recibidos. */
+  const [tab, setTab] = useState<'emitidos' | 'recibidos' | 'lista69b'>('emitidos');
   const [soloDiferencias, setSoloDiferencias] = useState(false);
   const [revisando, setRevisando] = useState(false);
   const [aviso, setAviso] = useState('');
