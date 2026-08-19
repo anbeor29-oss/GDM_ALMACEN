@@ -197,6 +197,76 @@ async function main() {
     ? bien('el masivo respeta lo que el trabajador ya tenía capturado')
     : mal('el masivo pisó la captura previa', sara2.otrosIngresos);
 
+  /* ── 4b. Las faltas se capturan en DÍAS ──
+   *
+   * Y el importe sale con el salario de CADA quien más su parte del séptimo
+   * (Art. 69 LFT). Un importe fijo aplicado a varios estaría mal por
+   * definición: el mismo día de ausencia cuesta distinto a cada trabajador. */
+  await query(
+    `UPDATE nomina_empleados SET salario_diario = 600, salario_diario_integrado = 630
+      WHERE id = $1`, [ids[0]]
+  );
+
+  /* Se limpia lo capturado antes: SARA traía un descuento de 200 de la prueba
+   * anterior y se sumaba al de la falta, escondiendo lo que aquí se mide. Una
+   * prueba que arrastra el estado de la anterior mide dos cosas a la vez. */
+  await prenomina.guardarCaptura(companyId, periodoId, [
+    { empleadoId: ids[0], otrosIngresos: [], otrasDeducciones: [] },
+    { empleadoId: ids[1], otrosIngresos: [], otrasDeducciones: [] },
+    { empleadoId: ids[2], otrosIngresos: [], otrasDeducciones: [] },
+  ] as any);
+
+  await prenomina.aplicarAVarios(companyId, periodoId, {
+    lado: 'egresos', clave: '020', dias: 1, empleadoIds: [ids[0], ids[1]],
+  } as any);
+
+  const conFalta = await prenomina.calcular(companyId, periodoId);
+  const caro:  any = conFalta.renglones.find((r: any) => r.num_empleado === 'ZZ60'); // 600
+  const barato: any = conFalta.renglones.find((r: any) => r.num_empleado === 'ZZ61'); // 500
+
+  /* 1 falta = 1 + 1/6 días. Con 600 diarios son 700; con 500, 583.33. */
+  cerca(caro.otrasDeducciones, 700, 0.5)
+    ? bien('una falta con $600 diarios descuenta $700 — el día más 1/6 del séptimo')
+    : mal('el descuento de la falta no cuadra', caro.otrasDeducciones);
+
+  cerca(barato.otrasDeducciones, 583.33, 0.5)
+    ? bien('al de $500 diarios le descuenta $583.33 — el MISMO día, distinto dinero')
+    : mal('el descuento no se ajustó al salario', barato.otrasDeducciones);
+
+  /* Seis faltas = la semana entera, séptimo incluido. */
+  await prenomina.aplicarAVarios(companyId, periodoId, {
+    lado: 'egresos', clave: '020', dias: 6, empleadoIds: [ids[0]],
+  } as any);
+  const semana = await prenomina.calcular(companyId, periodoId);
+  const full: any = semana.renglones.find((r: any) => r.num_empleado === 'ZZ60');
+  cerca(full.otrasDeducciones, 4200, 0.5)
+    ? bien('con SEIS faltas se descuentan 7 días completos: $4,200 — no se paga el séptimo')
+    : mal('las seis faltas no descontaron la semana', full.otrasDeducciones);
+
+  /* Un importe en pesos para las faltas se rechaza. */
+  try {
+    await prenomina.aplicarAVarios(companyId, periodoId, {
+      lado: 'egresos', clave: '020', importe: 500, empleadoIds: [ids[0]],
+    } as any);
+    mal('aceptó las faltas en pesos');
+  } catch (e: any) {
+    /en días/.test(e.message)
+      ? bien('las faltas en pesos se rechazan: se capturan en días')
+      : mal('rechazó con otro mensaje', e.message);
+  }
+
+  /* Se limpia para lo que sigue. */
+  await prenomina.guardarCaptura(companyId, periodoId, [
+    { empleadoId: ids[0], otrosIngresos: [{ clave: '029', importe: 1500 }], otrasDeducciones: [] },
+    { empleadoId: ids[1], otrosIngresos: [{ clave: '029', importe: 1500 },
+                                          { clave: '019', importe: 300 }],
+      otrasDeducciones: [{ clave: '006', importe: 200 }] },
+  ] as any);
+  await query(
+    `UPDATE nomina_empleados SET salario_diario = 500, salario_diario_integrado = 525
+      WHERE id = $1`, [ids[0]]
+  );
+
   /* ── 5. La Lista de Raya trae columna por concepto ── */
   const xls = await generarListaDeRaya(companyId, periodoId);
   const wb = XLSX.read(xls.buffer, { type: 'buffer' });

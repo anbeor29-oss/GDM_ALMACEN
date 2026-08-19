@@ -39,12 +39,22 @@ export function AplicarAVarios({
 }: Props) {
   const [clave, setClave] = useState('');
   const [importe, setImporte] = useState('');
+  const [dias, setDias] = useState('1');
   const [busca, setBusca] = useState('');
   const [elegidos, setElegidos] = useState<Record<string, boolean>>(
     empleadoInicial ? { [empleadoInicial]: true } : {}
   );
   const [aplicando, setAplicando] = useState(false);
   const [error, setError] = useState('');
+
+  /* Las faltas se capturan en DÍAS, no en pesos.
+   *
+   * Es la única forma correcta de aplicarlas a varios: el mismo día de
+   * ausencia le cuesta distinto a cada quien, y un importe fijo le descontaría
+   * lo mismo al de $315 diarios que al de $600. El servidor lo convierte con
+   * el salario de cada trabajador. */
+  const POR_DIAS = new Set(['020']);
+  const enDias = lado === 'egresos' && POR_DIAS.has(clave);
 
   const cat = useQuery({ queryKey: ['nomina-catalogos'], queryFn: () => api.getNominaCatalogos() });
   const catalogo: any[] = lado === 'ingresos'
@@ -74,13 +84,19 @@ export function AplicarAVarios({
     setError('');
     const ids = Object.entries(elegidos).filter(([, v]) => v).map(([k]) => k);
     if (!clave) { setError('Elige el concepto'); return; }
-    if (!(Number(importe) > 0)) { setError('El importe tiene que ser mayor que cero'); return; }
+    if (!enDias && !(Number(importe) > 0)) {
+      setError('El importe tiene que ser mayor que cero'); return;
+    }
+    if (enDias && !(Number(dias) > 0)) {
+      setError('Elige cuántos días faltó'); return;
+    }
     if (ids.length === 0) { setError('No marcaste a nadie'); return; }
 
     setAplicando(true);
     try {
       await api.aplicarConceptoAVarios(periodoId, {
-        lado, clave, importe: Number(importe), empleadoIds: ids,
+        lado, clave, empleadoIds: ids,
+        ...(enDias ? { dias: Number(dias) } : { importe: Number(importe) }),
       });
       onAplicado();
       onCerrar();
@@ -130,12 +146,34 @@ export function AplicarAVarios({
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">Importe por trabajador</label>
-              <input type="number" min="0" step="0.01" value={importe}
-                onChange={(e) => setImporte(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0.00" />
-            </div>
+            {enDias ? (
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">
+                  Días que faltó
+                </label>
+                <select value={dias} onChange={(e) => setDias(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm">
+                  {[1, 2, 3, 4, 5, 6].map((n) => (
+                    <option key={n} value={n}>
+                      {n} día{n > 1 ? 's' : ''}
+                      {n === 6 ? ' — la semana completa' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  Se descuentan {dias} día(s) <b>más {(Number(dias) / 6).toFixed(2)}</b> del
+                  séptimo (Art. 69 LFT): por cada seis de trabajo, uno de descanso.
+                  {Number(dias) === 6 && ' Con las seis, no se paga el séptimo día.'}
+                </p>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Importe por trabajador</label>
+                <input type="number" min="0" step="0.01" value={importe}
+                  onChange={(e) => setImporte(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0.00" />
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -179,9 +217,17 @@ export function AplicarAVarios({
         <div className="flex items-center justify-between p-5 border-t bg-gray-50 rounded-b-lg">
           <span className="text-sm text-gray-700">
             <b>{cuantos}</b> trabajador(es)
-            {Number(importe) > 0 && (
+            {enDias ? (
+              /* El total no se puede anticipar: depende del salario de cada
+                 quien. Decirlo es mejor que enseñar una cifra que va a cambiar. */
+              <> · {dias} día(s) c/u ·{' '}
+                <span className="text-gray-500">
+                  el importe sale con el salario de cada trabajador
+                </span>
+              </>
+            ) : Number(importe) > 0 ? (
               <> · {money(importe)} c/u · <b>{money(total)}</b> en total</>
-            )}
+            ) : null}
           </span>
           <div className="flex gap-2">
             <button onClick={onCerrar}

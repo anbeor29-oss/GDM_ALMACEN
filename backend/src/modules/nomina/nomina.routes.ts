@@ -341,6 +341,7 @@ router.post(
         lado: req.body?.lado === 'egresos' ? 'egresos' : 'ingresos',
         clave: String(req.body?.clave || ''),
         importe: Number(req.body?.importe),
+        dias: req.body?.dias === undefined ? undefined : Number(req.body.dias),
         empleadoIds: Array.isArray(req.body?.empleadoIds) ? req.body.empleadoIds : [],
         gravadoManual: req.body?.gravadoManual,
       },

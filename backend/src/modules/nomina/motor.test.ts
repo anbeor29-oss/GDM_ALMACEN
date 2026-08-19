@@ -11,6 +11,7 @@
  * El ejercicio de prueba usa los valores de 2026 que trae el sistema anterior.
  */
 import {
+  costoDeFaltas,
   calcularIsr, calcularImssObrero, calcularInfonavit, calcularPension,
   partirGravadoExento, calcularRecibo, calcularSdi, diasDeVacaciones,
   factorDeIntegracion, pesos, smgDeZona, Ejercicio,
@@ -399,5 +400,49 @@ describe('utilidades', () => {
     expect(pesos(1.005)).toBe(1.01);
     expect(pesos(2.675)).toBe(2.68);
     expect(pesos(0.1 + 0.2)).toBe(0.3);
+  });
+});
+
+/**
+ * El costo de faltar — Art. 69 LFT.
+ *
+ * Por cada seis días de trabajo corresponde uno de descanso. Quien falta pierde
+ * el día Y la sexta parte del séptimo, y con seis faltas pierde la semana
+ * entera: 6 + 6/6 = 7. Esa es la comprobación que sostiene la fórmula.
+ */
+describe('costoDeFaltas', () => {
+  it('una falta cuesta el día más un sexto del séptimo', () => {
+    const r = costoDeFaltas(1, 600);
+    // 1 + 1/6 = 1.1667 días × 600 = 700.00
+    expect(r.importe).toBeCloseTo(700, 2);
+    expect(r.diasDescontados).toBe(1);
+    expect(r.septimoProporcional).toBeCloseTo(0.1667, 3);
+  });
+
+  it('con SEIS faltas se pierde la semana completa: siete días', () => {
+    const r = costoDeFaltas(6, 600);
+    // 6 + 6/6 = 7 días exactos × 600 = 4,200
+    expect(r.importe).toBeCloseTo(4200, 2);
+    expect(r.septimoProporcional).toBeCloseTo(1, 4);
+  });
+
+  it('tres faltas: medio séptimo', () => {
+    const r = costoDeFaltas(3, 300);
+    // 3 + 0.5 = 3.5 × 300 = 1,050
+    expect(r.importe).toBeCloseTo(1050, 2);
+  });
+
+  it('el costo depende del salario de cada quien', () => {
+    const bajo = costoDeFaltas(2, 315.04);
+    const alto = costoDeFaltas(2, 600);
+    expect(alto.importe).toBeGreaterThan(bajo.importe);
+    // La misma proporción, distinto dinero: por eso se capturan DÍAS.
+    expect(alto.importe / bajo.importe).toBeCloseTo(600 / 315.04, 4);
+  });
+
+  it('sin faltas o sin salario no descuenta nada', () => {
+    expect(costoDeFaltas(0, 600).importe).toBe(0);
+    expect(costoDeFaltas(3, 0).importe).toBe(0);
+    expect(costoDeFaltas(-2, 600).importe).toBe(0);
   });
 });

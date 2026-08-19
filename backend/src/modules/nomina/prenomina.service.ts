@@ -36,6 +36,7 @@ import * as periodosSvc from './periodos.service';
 import * as finiquitoSvc from './finiquito.service';
 import {
   calcularRecibo, EntradaCalculo, Periodicidad, Zona, pesos, partirGravadoExento,
+  costoDeFaltas, DEDUCCIONES_POR_DIAS,
 } from './motor';
 
 /** Del tipo de periodo a la clave del expediente (c_PeriodicidadPago). */
@@ -66,10 +67,11 @@ export interface RenglonPrenomina {
   diasDelPeriodo: number;
   salario_diario: number;
   sdi: number;
-  /* El borrador de este trabajador, para que la pantalla lo reponga al volver. */
+  /* El borrador de este trabajador, para que la pantalla lo reponga al volver.
+   * Las faltas viajan en `dias` y sin importe: lo calcula el servidor. */
   capturado?: {
     otrosIngresos: Array<{ clave: string; importe: number; gravadoManual?: number }>;
-    otrasDeducciones: Array<{ clave: string; importe: number }>;
+    otrasDeducciones: Array<{ clave: string; importe?: number; dias?: number }>;
   };
   /* Los bloques de la rejilla, ya separados. Se calculan aquí y no en la
    * pantalla: partir el total en la vista garantizaría que un día la suma de
@@ -136,7 +138,9 @@ export interface CapturaPorTrabajador {
   /** Días a pagar, cuando se corrigen a mano (faltas, permisos). */
   dias?: number;
   otrosIngresos?: Array<{ clave: string; importe: number; gravadoManual?: number }>;
-  otrasDeducciones?: Array<{ clave: string; concepto?: string; importe: number }>;
+  /* `dias` para los conceptos que se capturan en días —las faltas— y que el
+   * cálculo convierte a pesos con el salario de cada trabajador. */
+  otrasDeducciones?: Array<{ clave: string; concepto?: string; importe?: number; dias?: number }>;
 }
 
 /**
@@ -358,8 +362,28 @@ export async function calcular(
           : 'Préstamo de la empresa',
         importe: Math.min(Number(c.descuento_por_periodo), Number(c.saldo)),
       })),
-      /* Y lo capturado a mano: faltas, cuotas sindicales, lo que sea. */
-      ...(cap?.otrasDeducciones || []).filter((d) => Number(d.importe) > 0),
+      /* Y lo capturado a mano: faltas, cuotas sindicales, lo que sea.
+       *
+       * Las faltas llegan en DÍAS y se convierten aquí, con el salario de ESTE
+       * trabajador: el mismo número de faltas cuesta distinto a cada quien, así
+       * que capturarlas en pesos para varios sería incorrecto por definición.
+       * Y cada día faltado se lleva además su parte del séptimo (Art. 69 LFT). */
+      ...(cap?.otrasDeducciones || [])
+        .map((d: any) => {
+          if (Number(d.dias) > 0 && DEDUCCIONES_POR_DIAS.has(d.clave)) {
+            const c = costoDeFaltas(Number(d.dias), sd);
+            return {
+              clave: d.clave,
+              concepto:
+                `Faltas: ${c.diasDescontados} día(s) + ${c.septimoProporcional.toFixed(2)} ` +
+                'del séptimo (Art. 69 LFT)',
+              importe: c.importe,
+              dias: Number(d.dias),
+            };
+          }
+          return d;
+        })
+        .filter((d: any) => Number(d.importe) > 0),
     ];
 
     const entrada: EntradaCalculo = {
@@ -654,7 +678,12 @@ export async function guardarCaptura(
   for (const c of captura || []) {
     if (!c?.empleadoId) continue;
     const ingresos = (c.otrosIngresos || []).filter((x: any) => x?.clave && Number(x.importe) > 0);
-    const egresos  = (c.otrasDeducciones || []).filter((x: any) => x?.clave && Number(x.importe) > 0);
+    /* Las faltas se guardan en DÍAS y sin importe: el importe depende del
+     * salario de cada quien y se calcula al armar el recibo. Una línea con días
+     * es válida aunque su importe venga en cero. */
+    const egresos = (c.otrasDeducciones || []).filter(
+      (x: any) => x?.clave && (Number(x.importe) > 0 || Number(x.dias) > 0)
+    );
     const dias = c.dias === undefined || c.dias === null || c.dias === ('' as any)
       ? null : Number(c.dias);
 
@@ -736,7 +765,9 @@ export async function aplicarAVarios(
   d: {
     lado: 'ingresos' | 'egresos';
     clave: string;
-    importe: number;
+    importe?: number;
+    /** Para las faltas, que se capturan en días. */
+    dias?: number;
     empleadoIds: string[];
     gravadoManual?: number;
   },
@@ -747,8 +778,24 @@ export async function aplicarAVarios(
     throw new ValidationError('Ese periodo ya está cerrado: sus importes no se mueven.');
   }
   if (!d.clave) throw new ValidationError('Falta el concepto');
+
+  /* Las faltas se piden en DÍAS, no en pesos. Es la única forma correcta de
+   * aplicarlas a varios: el mismo día de ausencia le cuesta distinto a cada
+   * quien, y un importe fijo le descontaría lo mismo al de $315 que al de $600.
+   * El importe se calcula por trabajador al armar el recibo, con su salario y
+   * con la parte del séptimo día que manda el Art. 69 LFT. */
+  const porDias = DEDUCCIONES_POR_DIAS.has(d.clave) && d.lado === 'egresos';
+  const dias = Number(d.dias);
   const importe = Number(d.importe);
-  if (!Number.isFinite(importe) || importe <= 0) {
+
+  if (porDias) {
+    if (!Number.isFinite(dias) || dias <= 0) {
+      throw new ValidationError('Las faltas se capturan en días: pon cuántos días faltó');
+    }
+    if (dias > 31) {
+      throw new ValidationError('No se pueden capturar más de 31 días de falta');
+    }
+  } else if (!Number.isFinite(importe) || importe <= 0) {
     throw new ValidationError('El importe tiene que ser mayor que cero');
   }
   const ids = (d.empleadoIds || []).filter(Boolean);
@@ -779,17 +826,21 @@ export async function aplicarAVarios(
     const lista = [...((previa as any)[campo] || [])].filter(
       (x: any) => x.clave !== d.clave
     );
-    lista.push({
-      clave: d.clave,
-      importe,
-      ...(d.gravadoManual !== undefined && d.gravadoManual !== null
-        ? { gravadoManual: Number(d.gravadoManual) }
-        : {}),
-    });
+    lista.push(
+      porDias
+        ? { clave: d.clave, dias }
+        : {
+            clave: d.clave,
+            importe,
+            ...(d.gravadoManual !== undefined && d.gravadoManual !== null
+              ? { gravadoManual: Number(d.gravadoManual) }
+              : {}),
+          }
+    );
 
     nuevas.push({ ...previa, [campo]: lista } as CapturaPorTrabajador);
   }
 
   await guardarCaptura(companyId, periodoId, nuevas, userId);
-  return { aplicados: nuevas.length, clave: d.clave, importe };
+  return { aplicados: nuevas.length, clave: d.clave, importe, dias: porDias ? dias : undefined };
 }

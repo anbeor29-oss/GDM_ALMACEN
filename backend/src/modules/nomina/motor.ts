@@ -222,6 +222,52 @@ export function partirGravadoExento(
   return { gravado, exento: pesos(imp - gravado) };
 }
 
+/**
+ * Lo que cuesta faltar: el día perdido MÁS su parte del séptimo.
+ *
+ * EL ART. 69 LFT
+ * Por cada seis días de trabajo corresponde uno de descanso, y ese séptimo se
+ * paga con salario íntegro (Art. 72). Quien no completa sus seis días no se
+ * ganó el séptimo completo: pierde la sexta parte por cada día que faltó.
+ *
+ *     descuento = faltas × (1 + 1/6) × salario diario
+ *
+ * La cuenta se sostiene sola en el extremo: con SEIS faltas el trabajador
+ * pierde 6 + 6/6 = SIETE días, o sea la semana entera con su día de descanso.
+ * Es la comprobación que hay que hacer si alguien duda de la fórmula.
+ *
+ * POR QUÉ SE CAPTURAN DÍAS Y NO PESOS
+ * Porque el costo depende del salario de CADA quien. Un importe fijo aplicado a
+ * media plantilla —que es como se capturan las faltas de la semana— le
+ * descontaría lo mismo al de $315 que al de $600, y los dos estarían mal.
+ * Con días, cada recibo lo convierte con su propio salario.
+ *
+ * NO SE TOPA AQUÍ
+ * Seis faltas en una semana ya son la semana completa; más que eso lo decide
+ * quien captura, no esta función, porque en periodos quincenales y mensuales
+ * los días faltados sí pasan de seis.
+ */
+export function costoDeFaltas(dias: number, salarioDiario: number): {
+  diasDescontados: number;
+  septimoProporcional: number;
+  importe: number;
+} {
+  const faltas = Number(dias) || 0;
+  const diario = Number(salarioDiario) || 0;
+  if (faltas <= 0 || diario <= 0) {
+    return { diasDescontados: 0, septimoProporcional: 0, importe: 0 };
+  }
+  const septimo = faltas / 6;
+  return {
+    diasDescontados: faltas,
+    septimoProporcional: Math.round(septimo * 10000) / 10000,
+    importe: pesos((faltas + septimo) * diario),
+  };
+}
+
+/** Las deducciones que se capturan en DÍAS y no en pesos. */
+export const DEDUCCIONES_POR_DIAS = new Set(['020']);   // faltas y retardos
+
 /* ═══════════════════ ISR / SUBSIDIO ═══════════════════ */
 
 /**

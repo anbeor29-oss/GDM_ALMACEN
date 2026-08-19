@@ -1237,7 +1237,10 @@ class APIClient {
 
   /** El mismo concepto a varios trabajadores. ESCRIBE el borrador. */
   async aplicarConceptoAVarios(periodoId: string, body: {
-    lado: 'ingresos' | 'egresos'; clave: string; importe: number;
+    lado: 'ingresos' | 'egresos'; clave: string;
+    /* Las faltas van en `dias`; lo demás en `importe`. El servidor convierte
+     * los días a pesos con el salario de cada trabajador. */
+    importe?: number; dias?: number;
     empleadoIds: string[]; gravadoManual?: number;
   }) {
     const r = await this.client.post<APIResponse<any>>(
