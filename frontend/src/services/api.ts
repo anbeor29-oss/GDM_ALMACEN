@@ -1234,10 +1234,27 @@ class APIClient {
     return r.data;
   }
 
-  /** Colonias, municipio y estado de un código postal (catálogo SAT). */
-  async resolverCodigoPostal(cp: string) {
-    const r = await this.client.get<APIResponse<any>>(`/carta-porte/cp/${cp}`);
-    return r.data;
+  /**
+   * Colonias, municipio y estado de un código postal (catálogo SAT).
+   *
+   * OJO: este endpoint responde el objeto DIRECTO —{ colonias, estado, … }—
+   * y no el envoltorio { success, data } que usa el resto de la API. Es de los
+   * de Carta Porte, que nacieron antes de esa convención. Leerlo como si lo
+   * llevara devolvía undefined y el combo de colonias salía vacío SIEMPRE,
+   * aunque el catálogo estuviera bien: se ve idéntico a "no hay datos".
+   *
+   * El tipo lo dice para que no se vuelva a leer con `.data`.
+   */
+  async resolverCodigoPostal(cp: string): Promise<{
+    codigoPostal: string;
+    colonias: Array<{ clave: string; descripcion: string }>;
+    estado: string | null;
+    estadoDescripcion: string | null;
+    municipios: Array<{ clave: string; descripcion: string }>;
+    localidades: Array<{ clave: string; descripcion: string }>;
+  }> {
+    const r = await this.client.get(`/carta-porte/cp/${cp}`);
+    return r.data as any;
   }
 
   /* ── CFDI de nómina ── */

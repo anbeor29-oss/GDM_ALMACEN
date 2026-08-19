@@ -188,7 +188,10 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
      * entera — y parece que la función no existe. */
     retry: 1,
   });
-  const cpDatos: any = cpQ.data?.data || {};
+  /* Sin `.data`: este endpoint responde el objeto directo. Ver el comentario
+   * de resolverCodigoPostal en api.ts — leerlo con envoltorio dejaba el combo
+   * vacío aunque el catálogo tuviera las colonias. */
+  const cpDatos: any = cpQ.data || {};
   const colonias: any[]   = cpDatos.colonias || [];
   const municipios: any[] = cpDatos.municipios || [];
   const estadoDelCp: string = cpDatos.estado || '';
