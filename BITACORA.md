@@ -5,6 +5,39 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-19 (remesas) — Un botón gris que no dice por qué es un botón roto
+
+"Programar pago" no respondía. El mecanismo estaba completo —elegir proveedor,
+marcar facturas, poner fecha— pero la pantalla no decía nada de lo que faltaba.
+
+### Tres cosas que juntas lo volvían indescifrable
+
+**La numeración mentía.** Arriba se leía `1 · Proveedor` y `3 · Fecha`, y el
+paso 2 vivía en una caja de abajo que **sólo aparecía al elegir proveedor**. Sin
+proveedor, la pantalla mostraba los pasos 1 y 3 y ninguno en medio: parecía tener
+un paso roto. Ahora el orden de la pantalla es el orden del trabajo —a quién,
+qué, cuándo— y el paso 2 se ve siempre, en gris, diciendo qué va ahí.
+
+**El botón callaba.** Deshabilitado, sin una palabra. Ahora dice a su lado
+exactamente qué falta: elegir proveedor, o que ese proveedor no tiene nada que
+programar, o marcar al menos una factura.
+
+**Y el caso que de verdad atora:** una factura ya metida en una remesa —aunque
+esté en BORRADOR— deja de contar como pendiente. Quien creó tres remesas y no
+las autorizó se queda sin facturas que programar, y la pantalla decía sólo "no
+tiene facturas pendientes sin programar", que suena a que falta capturarlas.
+
+Ahora dice **dónde están**: *"Tiene 2 factura(s) ya incluida(s) en la(s)
+remesa(s) #1, #3. Una factura sólo puede estar en una remesa: para moverla,
+ábrela abajo y quítala de ahí, o cancela esa remesa."* Es la diferencia entre un
+callejón sin salida y una instrucción.
+
+*Verificado contra la base:* dos facturas pendientes, una entra a una remesa, y
+queda una pendiente más otra reportada como "ya en remesa #1" con su folio. El
+aviso dice la verdad porque sale del mismo dato.
+
+---
+
 ## 2026-08-19 (permisos) — El frontend dejó de adivinar
 
 Tesorería tenía el mismo síntoma que nómina: el usuario del grupo TESORERIA veía

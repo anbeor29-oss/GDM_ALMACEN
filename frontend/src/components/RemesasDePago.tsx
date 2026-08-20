@@ -71,6 +71,21 @@ export function RemesasDePago({ canManage }: { canManage: boolean }) {
   });
   const pendientes: any[] = pendientesQ.data?.data?.payments || [];
 
+  /* Las del proveedor SIN el filtro de "sin remesa".
+   *
+   * Sirve para una sola cosa, y es importante: cuando no hay nada que
+   * programar, poder decir POR QUÉ. Casi siempre es que ya están metidas en
+   * una remesa en borrador —creada hace un rato y nunca autorizada— y desde la
+   * pantalla no había manera de enterarse: el botón quedaba gris para siempre
+   * sin decir nada. */
+  const todasDelProveedorQ = useQuery({
+    queryKey: ['treasury-todas-proveedor', supplierId],
+    queryFn: () => api.getTreasuryPayments({ status: 'PENDING', supplierId }),
+    enabled: !!supplierId,
+  });
+  const yaEnRemesa: any[] = (todasDelProveedorQ.data?.data?.payments || [])
+    .filter((x: any) => x.payment_run_id && x.remesa_status !== 'CANCELLED');
+
   const runsQ = useQuery({ queryKey: ['payment-runs'], queryFn: () => api.getPaymentRuns() });
   const runs: any[] = runsQ.data?.data?.runs || [];
 
@@ -141,35 +156,38 @@ export function RemesasDePago({ canManage }: { canManage: boolean }) {
             <CalendarCheck className="text-emerald-600" size={20} /> Programar pagos
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">1 · Proveedor</label>
-              <select value={supplierId}
-                onChange={(e) => { setSupplierId(e.target.value); setSeleccion({}); setFiltroFactura(''); }}
-                className="input w-full">
-                <option value="">— Elige un proveedor —</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.business_name}{s.rfc ? ` · ${s.rfc}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">3 · Fecha en que se paga</label>
-              <CampoFecha value={fechaPago} onChange={(v) => setFechaPago(v)} className="input w-full" />
-              <p className="text-[11px] text-gray-500 mt-1">
-                Por omisión, el próximo lunes. No cambia el vencimiento de las facturas.
-              </p>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">Nota (opcional)</label>
-              <input value={notas} onChange={(e) => setNotas(e.target.value)}
-                placeholder="Transferencias de la semana" className="input w-full" />
-            </div>
+          {/* ── El orden de la pantalla es el orden del trabajo ──
+              Antes la fila de arriba llevaba el paso 1 y el 3, y el 2 aparecía
+              debajo. Se leía "1 · 3 · 2", y el 2 ni siquiera existía hasta
+              elegir proveedor: la pantalla parecía tener un paso roto.
+              Ahora va a quién, luego qué, luego cuándo. */}
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">1 · Proveedor</label>
+            <select value={supplierId}
+              onChange={(e) => { setSupplierId(e.target.value); setSeleccion({}); setFiltroFactura(''); }}
+              className="input w-full md:max-w-md">
+              <option value="">— Elige un proveedor —</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.business_name}{s.rfc ? ` · ${s.rfc}` : ''}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* 2 · las facturas que se le deben */}
+          {/* 2 · las facturas que se le deben.
+              Sin proveedor elegido se muestra igual, en gris: un paso que
+              desaparece se lee como un paso que falta. */}
+          {!supplierId && (
+            <div className="border border-dashed rounded-lg px-3 py-6 text-center">
+              <p className="text-xs font-semibold text-gray-500">
+                2 · Facturas por pagar de este proveedor
+              </p>
+              <p className="text-sm text-gray-400 mt-1">
+                Elige un proveedor arriba y aquí aparecen sus facturas para marcarlas.
+              </p>
+            </div>
+          )}
           {supplierId && (
             <div className="border rounded-lg overflow-hidden">
               <div className="bg-gray-50 px-3 py-2 border-b">
@@ -219,9 +237,25 @@ export function RemesasDePago({ canManage }: { canManage: boolean }) {
                 <p className="px-3 py-4 text-sm text-gray-500">Cargando…</p>
               )}
               {!pendientesQ.isLoading && pendientes.length === 0 && (
-                <p className="px-3 py-6 text-sm text-gray-500 italic text-center">
-                  Este proveedor no tiene facturas pendientes sin programar.
-                </p>
+                <div className="px-3 py-6 text-sm text-center">
+                  <p className="text-gray-500 italic">
+                    Este proveedor no tiene facturas pendientes sin programar.
+                  </p>
+                  {/* Y el porqué, que es lo que faltaba: casi siempre ya están
+                      en una remesa en borrador que alguien dejó a medias. Sin
+                      esto, el botón se queda gris y no hay manera de saber si
+                      falta capturar la factura o si ya estaba programada. */}
+                  {yaEnRemesa.length > 0 && (
+                    <p className="text-amber-800 bg-amber-50 border border-amber-200
+                      rounded px-3 py-2 mt-2 inline-block text-left">
+                      Tiene <b>{yaEnRemesa.length}</b> factura(s) ya incluida(s) en la(s)
+                      remesa(s){' '}
+                      <b>{Array.from(new Set(yaEnRemesa.map((x: any) => `#${x.remesa_folio}`))).join(', ')}</b>.
+                      Una factura sólo puede estar en una remesa: para moverla, ábrela
+                      abajo y quítala de ahí, o cancela esa remesa.
+                    </p>
+                  )}
+                </div>
               )}
               {pendientes.length > 0 && visibles.length === 0 && (
                 <p className="px-3 py-6 text-sm text-gray-500 italic text-center">
@@ -264,12 +298,45 @@ export function RemesasDePago({ canManage }: { canManage: boolean }) {
             </div>
           )}
 
-          <div className="flex items-center gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">3 · Fecha en que se paga</label>
+              <CampoFecha value={fechaPago} onChange={(v) => setFechaPago(v)} className="input w-full" />
+              <p className="text-[11px] text-gray-500 mt-1">
+                Por omisión, el próximo lunes. No cambia el vencimiento de las facturas.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Nota (opcional)</label>
+              <input value={notas} onChange={(e) => setNotas(e.target.value)}
+                placeholder="Transferencias de la semana" className="input w-full" />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 border-t pt-3">
             <span className="text-sm text-gray-600">
               {elegidas.length} factura(s) · <strong>{money(totalElegido)}</strong>
             </span>
+
+            {/* ── UN BOTÓN GRIS QUE NO DICE POR QUÉ ES UN BOTÓN ROTO ──
+                Estaba deshabilitado sin explicación, y con el paso 2 escondido
+                no había forma de adivinar qué faltaba. Ahora se dice, y se dice
+                del lado del botón, que es donde se mira al intentarlo. */}
+            {elegidas.length === 0 && (
+              <span className="text-sm text-gray-500">
+                {!supplierId
+                  ? '← Elige un proveedor para ver sus facturas'
+                  : pendientes.length === 0
+                    ? 'Este proveedor no tiene nada que programar'
+                    : 'Marca al menos una factura de la lista'}
+              </span>
+            )}
+
             <button onClick={programar} disabled={busy || elegidas.length === 0}
-              className="ml-auto flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm">
+              title={elegidas.length === 0
+                ? 'Falta elegir proveedor y marcar sus facturas'
+                : `Programar ${elegidas.length} factura(s)`}
+              className="ml-auto flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm">
               <CalendarCheck size={16} /> {busy ? 'Programando…' : 'Programar pago'}
             </button>
           </div>
