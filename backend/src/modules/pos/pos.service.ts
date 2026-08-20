@@ -266,8 +266,8 @@ async function getOrCreatePublicCustomer(client: PoolClient, companyId: string):
   const ins = await transactionQuery<{ id: string }>(
     client,
     `INSERT INTO customers
-       (company_id, rfc, business_name, fiscal_regime, postal_code, party_type, is_active)
-     VALUES ($1, $2, 'PUBLICO EN GENERAL', '616', $3, 'CUSTOMER', true)
+       (company_id, rfc, business_name, fiscal_regime, postal_code, es_cliente, is_active)
+     VALUES ($1, $2, 'PUBLICO EN GENERAL', '616', $3, TRUE, true)
      RETURNING id`,
     [companyId, PUBLIC_RFC, cpR.rows[0]?.postal_code || '00000']
   );

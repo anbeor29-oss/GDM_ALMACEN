@@ -3443,3 +3443,46 @@ especificidad (AFIRME colgaba de CIRCULANTE en vez de BANCOS); el comodín de
 ventas estaba antes del bloque de costos y se llevaba `COSTO DE VENTA` al 401;
 y un heredoc de Python metió bytes 0x08 literales donde debía ir `\b` en los
 regex — se añadió barrido de caracteres de control al repo.
+
+## 2026-08-20 — Un tercero puede tener VARIOS roles
+
+**Migración:** `2026-08-20c_tercero_varios_roles.sql`
+
+Un banco es activo y pasivo a la vez: mi dinero depositado, y el crédito que él
+me dio. Un cliente puede venderme algo. En la balanza real, `AFIRME` está en
+102 Bancos Y en 205 Acreedores diversos — es el mismo banco.
+
+**Era imposible de representar**, y no por descuido:
+```
+CHECK (party_type IN (CUSTOMER, SUPPLIER))   ← un solo rol
+UNIQUE (company_id, rfc)                      ← un solo registro por RFC
+```
+Las dos juntas cerraban la puerta: ni marcar los dos roles, ni crear otro
+registro. `cfdi-import` ya chocaba con esto y reventaba con "El RFC ya está
+registrado como SUPPLIER", sin salida.
+
+**Ahora:** banderas `es_cliente`, `es_proveedor`, `es_acreedor`, `es_deudor`.
+`party_type` queda como columna DERIVADA que mantiene un trigger (CUSTOMER /
+SUPPLIER / BOTH / OTHER), para el código que aún la lee.
+
+**No se quitó el UNIQUE del RFC, a propósito.** Duplicar al tercero es la salida
+fácil y la peor: dos expedientes del mismo banco editados por separado, sin
+forma de saber cuál manda. Un tercero, un registro, varios roles.
+
+**Cambio de comportamiento:** dar de alta como cliente a un RFC que ya existe
+como proveedor le AGREGA el rol y devuelve el mismo tercero. Antes era error.
+Dar de alta el MISMO rol dos veces sigue siendo conflicto.
+
+Se cambiaron 10 archivos: los filtros `party_type = SUPPLIER` pasaron a
+`es_proveedor`. Guarda en `probar-tercero-varios-roles` que barre las 200
+fuentes y falla si alguien vuelve a filtrar por party_type (distingue filtrar
+de leer).
+
+**Regla contable que esto NO cambia:** un solo tercero no significa un solo
+saldo. Lo que el banco me debe va en el activo y lo que le debo en el pasivo,
+sin restarse. Compensar está prohibido salvo derecho legal (NIF A-7 y C-19), y
+esconde a la vez la liquidez y la deuda.
+
+Pruebas: roles 15/15 · mapeo 20/20 · balanza 30/30 · contabilidad 49/49 ·
+grupos 35/35 · nómina 19/19 · reportes 29/29 · bancos 57/57 · preregistro 18/18
+· jest 115/115

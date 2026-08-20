@@ -87,7 +87,7 @@ export async function preregistrarEnTransaccion(
     client,
     `SELECT id, business_name, es_preregistro
        FROM customers
-      WHERE company_id = $1 AND party_type = 'SUPPLIER' AND deleted_at IS NULL
+      WHERE company_id = $1 AND es_proveedor AND deleted_at IS NULL
         AND UPPER(TRIM(translate(business_name, 'ÁÉÍÓÚÜÑáéíóúüñ', 'AEIOUUNaeiouun')))
           = UPPER(TRIM(translate($2,            'ÁÉÍÓÚÜÑáéíóúüñ', 'AEIOUUNaeiouun')))
       ORDER BY es_preregistro ASC
@@ -116,9 +116,9 @@ export async function preregistrarEnTransaccion(
       const r = await transactionQuery<any>(
         client,
         `INSERT INTO customers
-           (company_id, rfc, business_name, party_type, credit_days, credit_limit,
+           (company_id, rfc, business_name, es_proveedor, credit_days, credit_limit,
             credit_used, es_preregistro)
-         VALUES ($1, $2, $3, 'SUPPLIER', $4, 0, 0, true)
+         VALUES ($1, $2, $3, TRUE, $4, 0, 0, true)
          RETURNING id, business_name`,
         [companyId, marcadorSinRfc(), nombre, dias]
       );

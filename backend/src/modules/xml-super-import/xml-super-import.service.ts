@@ -347,14 +347,14 @@ export async function checkDuplicates(companyId: string, det: DetectionResult) {
   // Emisor y receptor: dedup por RFC en customers/suppliers
   if (det.emisor.rfc) {
     const r = await pool.query(
-      `SELECT id, party_type FROM customers WHERE company_id = $1 AND rfc = $2 AND deleted_at IS NULL LIMIT 1`,
+      `SELECT id, es_cliente, es_proveedor FROM customers WHERE company_id = $1 AND rfc = $2 AND deleted_at IS NULL LIMIT 1`,
       [companyId, det.emisor.rfc],
     );
     result.emisor = { exists: (r.rowCount ?? 0) > 0, id: r.rows[0]?.id };
   }
   if (det.receptor.rfc) {
     const r = await pool.query(
-      `SELECT id, party_type FROM customers WHERE company_id = $1 AND rfc = $2 AND deleted_at IS NULL LIMIT 1`,
+      `SELECT id, es_cliente, es_proveedor FROM customers WHERE company_id = $1 AND rfc = $2 AND deleted_at IS NULL LIMIT 1`,
       [companyId, det.receptor.rfc],
     );
     result.receptor = { exists: (r.rowCount ?? 0) > 0, id: r.rows[0]?.id };

@@ -121,18 +121,42 @@ export async function createCustomer(companyId: string, data: {
   // cliente o proveedor); si existe SOFT-DELETED se REACTIVA actualizando
   // datos (el UNIQUE de BD impediría el INSERT de todos modos).
   const existing = await query<any>(
-    'SELECT id, party_type, business_name, deleted_at FROM customers WHERE company_id = $1 AND UPPER(rfc) = $2',
+    'SELECT id, party_type, es_cliente, es_proveedor, business_name, deleted_at '
+    + 'FROM customers WHERE company_id = $1 AND UPPER(rfc) = $2',
     [companyId, data.rfc.toUpperCase()]
   );
 
   if (existing.rows.length > 0) {
     const row = existing.rows[0];
     if (!row.deleted_at) {
-      const tipo = row.party_type === 'SUPPLIER' ? 'PROVEEDOR' : 'cliente';
-      throw new ConflictError(
-        `El RFC ${data.rfc.toUpperCase()} ya está registrado como ${tipo} ` +
-        `(${row.business_name}). Edítalo en lugar de crearlo de nuevo.`
+      /* ── Ya existe: ¿mismo rol, o uno nuevo? ──
+       *
+       * Un tercero puede ser cliente Y proveedor —un banco donde tengo dinero
+       * y que además me presta, un cliente que un día me vende algo—. Antes
+       * esto se rechazaba siempre, y como el RFC es único por empresa no
+       * quedaba salida: ni agregarle el rol, ni crear otro registro.
+       *
+       * Ahora, si le falta el rol que se pide, SE LE AGREGA y se devuelve el
+       * mismo tercero. Duplicarlo sería la salida fácil y la peor: dos
+       * expedientes del mismo banco, editados por separado, sin forma de
+       * saber cuál manda. */
+      const quiere = (data.partyType || 'CUSTOMER') === 'SUPPLIER' ? 'es_proveedor' : 'es_cliente';
+      const yaLoTiene = quiere === 'es_proveedor' ? row.es_proveedor : row.es_cliente;
+
+      if (yaLoTiene) {
+        const tipo = quiere === 'es_proveedor' ? 'PROVEEDOR' : 'cliente';
+        throw new ConflictError(
+          `El RFC ${data.rfc.toUpperCase()} ya está registrado como ${tipo} ` +
+          `(${row.business_name}). Edítalo en lugar de crearlo de nuevo.`
+        );
+      }
+
+      const conRol = await query<Customer>(
+        `UPDATE customers SET ${quiere} = TRUE, updated_at = NOW()
+          WHERE id = $1 RETURNING *`,
+        [row.id]
       );
+      return conRol.rows[0];
     }
     // Reactivar el registro borrado con los datos nuevos
     const revived = await query<Customer>(
@@ -140,12 +164,17 @@ export async function createCustomer(companyId: string, data: {
           deleted_at = NULL, is_active = true,
           business_name = $1, fiscal_regime = COALESCE($2, fiscal_regime),
           postal_code = COALESCE($3, postal_code), email = COALESCE($4, email),
-          phone = COALESCE($5, phone), party_type = COALESCE($6, party_type),
+          phone = COALESCE($5, phone),
+          es_cliente   = es_cliente   OR $6,
+          es_proveedor = es_proveedor OR $7,
           updated_at = NOW()
-        WHERE id = $7
+        WHERE id = $8
         RETURNING *`,
       [data.businessName, data.fiscalRegime || null, data.postalCode || null,
-       data.email || null, data.phone || null, data.partyType || null, row.id]
+       data.email || null, data.phone || null,
+       /* OR y no asignacion: al revivir un tercero se le SUMA el rol que se
+        * pide, sin quitarle los que ya tenia. */
+       data.partyType !== 'SUPPLIER', data.partyType === 'SUPPLIER', row.id]
     );
     return revived.rows[0];
   }
@@ -171,10 +200,11 @@ export async function createCustomer(companyId: string, data: {
     `INSERT INTO customers
      (company_id, rfc, business_name, fiscal_regime, default_cfdi_use,
       postal_code, state, municipality, city, neighborhood, street, ext_number, address,
-      email, phone, contact_person, credit_limit, credit_days, party_type,
+      email, phone, contact_person, credit_limit, credit_days,
+      es_cliente, es_proveedor,
       bank_code, bank_name, bank_account, bank_clabe, bank_account_holder, credit_line, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
-             $20, $21, $22, $23, $24, $25, true)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+             $19, $20, $21, $22, $23, $24, $25, $26, true)
      RETURNING *`,
     [
       companyId,
@@ -195,7 +225,11 @@ export async function createCustomer(companyId: string, data: {
       data.contactPerson,
       data.creditLimit || 0,
       data.creditDays || 0,
-      data.partyType === 'SUPPLIER' ? 'SUPPLIER' : 'CUSTOMER',
+      /* El rol, no party_type: esa columna ahora la mantiene sola la base a
+       * partir de las banderas, y escribirla a mano la dejaria peleada con
+       * ellas en cuanto el tercero tenga dos roles. */
+      data.partyType !== 'SUPPLIER',
+      data.partyType === 'SUPPLIER',
       data.bankCode || null,
       data.bankName || null,
       data.bankAccount || null,
@@ -269,11 +303,14 @@ export async function listCustomers(
     sortOrder = 'DESC',
   } = options;
 
-  // Build query — solo CLIENTES: los proveedores (party_type=SUPPLIER) viven
+  // Build query — solo CLIENTES. Se filtra por el ROL es_cliente y no por
+  // party_type: un tercero puede ser cliente Y proveedor, y con el filtro
+  // viejo desaparecia de esta lista en cuanto se le agregaba el otro rol.
+  // Los proveedores viven
   // en la misma tabla (STI) pero se listan en /suppliers, no aquí. Sin este
   // filtro, los proveedores creados por compras XML (Fase 2 ALMACEN)
   // contaminarían el dashboard y el selector de cliente al facturar.
-  let whereClause = `WHERE company_id = $1 AND deleted_at IS NULL AND party_type = 'CUSTOMER'`;
+  let whereClause = `WHERE company_id = $1 AND deleted_at IS NULL AND es_cliente`;
   const params: any[] = [companyId];
   let paramCount = 2;
 

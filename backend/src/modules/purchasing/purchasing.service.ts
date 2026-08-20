@@ -528,7 +528,7 @@ export async function setSupplier(
       const sup = await transactionQuery<any>(
         client,
         `SELECT id, business_name FROM customers
-          WHERE id = $1 AND company_id = $2 AND party_type = 'SUPPLIER' AND deleted_at IS NULL`,
+          WHERE id = $1 AND company_id = $2 AND es_proveedor AND deleted_at IS NULL`,
         [supplierId, companyId]
       );
       if (sup.rows.length === 0) throw new NotFoundError('Proveedor no encontrado');
@@ -599,7 +599,7 @@ async function resolverProveedorDeLaOrden(
     const sup = await transactionQuery<any>(
       client,
       `SELECT id FROM customers
-        WHERE id = $1 AND company_id = $2 AND party_type = 'SUPPLIER' AND deleted_at IS NULL`,
+        WHERE id = $1 AND company_id = $2 AND es_proveedor AND deleted_at IS NULL`,
       [factura.supplierId, companyId]
     );
     if (sup.rows.length === 0) throw new NotFoundError('Proveedor no encontrado');

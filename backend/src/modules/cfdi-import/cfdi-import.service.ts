@@ -160,7 +160,7 @@ export async function preview(
       exists: boolean; id?: string; kind?: 'CUSTOMER'|'SUPPLIER'; creditDays?: number;
     };
     const r = await query<{ id: string; party_type: 'CUSTOMER'|'SUPPLIER'; credit_days: number|null }>(
-      `SELECT id, party_type, credit_days FROM customers
+      `SELECT id, party_type, es_cliente, es_proveedor, credit_days FROM customers
         WHERE company_id = $1 AND UPPER(rfc) = UPPER($2) AND deleted_at IS NULL LIMIT 1`,
       [companyId, rfc]
     );
@@ -334,31 +334,50 @@ export async function commit(
 
       // Dedup ignorando deleted_at — el UNIQUE INDEX no lo filtra.
       const existing = await transactionQuery<any>(client,
-        `SELECT id, rfc, business_name, party_type, deleted_at FROM customers
+        `SELECT id, rfc, business_name, party_type, es_cliente, es_proveedor, deleted_at FROM customers
           WHERE company_id = $1 AND UPPER(rfc) = UPPER($2) LIMIT 1`,
         [companyId, party.rfc]
       );
       if (existing.rows.length > 0) {
         const row = existing.rows[0];
-        // Si ya existe pero con OTRO party_type, lo reportamos sin sobrescribir.
-        if (!row.deleted_at && row.party_type !== kind) {
-          throw new ValidationError(
-            `El RFC ${row.rfc} ya está registrado como ${row.party_type}. ` +
-            `Si quieres cambiarlo a ${kind}, hazlo manualmente desde el catálogo.`
-          );
-        }
+        const columnaRol = kind === 'SUPPLIER' ? 'es_proveedor' : 'es_cliente';
+        const yaTieneRol = kind === 'SUPPLIER' ? row.es_proveedor : row.es_cliente;
+
         if (row.deleted_at) {
           const upd = await transactionQuery<any>(client,
             `UPDATE customers SET deleted_at = NULL, business_name = $1,
-                                    party_type = $2, updated_at = NOW()
-              WHERE id = $3 RETURNING id, rfc, business_name, party_type`,
-            [(party.nombre || row.business_name).toUpperCase(), kind, row.id]
+                                    ${columnaRol} = TRUE, updated_at = NOW()
+              WHERE id = $2 RETURNING id, rfc, business_name, party_type`,
+            [(party.nombre || row.business_name).toUpperCase(), row.id]
           );
           partyResult = { ...upd.rows[0], kind, already_existed: true };
+        } else if (!yaTieneRol) {
+          /* ── Ya existe, pero con otro rol: SE LE AGREGA ──
+           *
+           * Antes esto reventaba con "el RFC ya está registrado como
+           * SUPPLIER", y no había salida: el RFC es único por empresa, así
+           * que tampoco se podía crear otro registro.
+           *
+           * Pero un tercero SÍ puede ser las dos cosas. Un banco donde tengo
+           * dinero y que además me financia; un cliente que un día me vende
+           * algo. Cerrarle la puerta obligaba a inventar un RFC falso o a
+           * dejar el CFDI sin importar.
+           *
+           * Se AGREGA el rol, no se sustituye: quitarle el de proveedor para
+           * ponerle el de cliente lo sacaría de las órdenes de compra que ya
+           * tiene. */
+          const upd = await transactionQuery<any>(client,
+            `UPDATE customers SET ${columnaRol} = TRUE, updated_at = NOW()
+              WHERE id = $1 RETURNING id, rfc, business_name, party_type`,
+            [row.id]
+          );
+          partyResult = {
+            ...upd.rows[0], kind, already_existed: true, rol_agregado: true,
+          };
         } else {
           partyResult = {
             id: row.id, rfc: row.rfc, business_name: row.business_name,
-            kind: row.party_type, already_existed: true,
+            kind, already_existed: true,
           };
         }
       } else {
@@ -370,10 +389,12 @@ export async function commit(
         const cleanName    = (partyData.nombre || party.rfc).toUpperCase().replace(/\s+/g, ' ').trim();
         const ins = await transactionQuery<any>(client,
           `INSERT INTO customers
-             (company_id, rfc, business_name, fiscal_regime, postal_code, party_type, is_active)
-           VALUES ($1, UPPER($2), $3, $4, $5, $6, true)
+             (company_id, rfc, business_name, fiscal_regime, postal_code,
+              es_cliente, es_proveedor, is_active)
+           VALUES ($1, UPPER($2), $3, $4, $5, $6, $7, true)
            RETURNING id, rfc, business_name, fiscal_regime, postal_code, party_type`,
-          [companyId, party.rfc, cleanName, fiscalRegime, postalCode, kind]
+          [companyId, party.rfc, cleanName, fiscalRegime, postalCode,
+           kind === 'CUSTOMER', kind === 'SUPPLIER']
         );
         partyResult = { ...ins.rows[0], kind, already_existed: false };
       }

@@ -1,5 +1,11 @@
 /**
- * /suppliers — vista filtrada de la tabla `customers` con party_type='SUPPLIER'.
+ * /suppliers — vista filtrada de la tabla `customers` por el rol es_proveedor.
+ *
+ * Se filtra por ROL y no por party_type porque un tercero puede ser proveedor
+ * Y cliente a la vez: un banco donde tengo dinero y que además me financia,
+ * un cliente que un dia me vende algo. Filtrando por party_type='SUPPLIER'
+ * esos terceros desaparecen de la lista de proveedores el dia que se les
+ * agrega el otro rol — y nadie relaciona una cosa con la otra.
  *
  *  Es read-only por contrato (no exponemos POST/PUT/DELETE aquí). Si en el
  *  futuro queremos editar proveedores, se usa el endpoint genérico /customers
@@ -53,7 +59,7 @@ router.put(
     // Verifica que sea un SUPPLIER de esta empresa
     const own = await query(
       `SELECT id FROM customers
-        WHERE id = $1 AND company_id = $2 AND party_type = 'SUPPLIER' AND deleted_at IS NULL`,
+        WHERE id = $1 AND company_id = $2 AND es_proveedor AND deleted_at IS NULL`,
       [req.params.id, companyId(req)]
     );
     if (own.rows.length === 0) throw new NotFoundError('Proveedor no encontrado');
@@ -95,7 +101,7 @@ router.get(
     const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10));
 
     const params: any[] = [companyId(req)];
-    const filters = ['company_id = $1', 'party_type = \'SUPPLIER\'', 'deleted_at IS NULL'];
+    const filters = ['company_id = $1', 'es_proveedor', 'deleted_at IS NULL'];
     if (search) {
       params.push(`%${search}%`);
       filters.push(`(business_name ILIKE $${params.length} OR rfc ILIKE $${params.length})`);
@@ -146,7 +152,7 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const r = await query<any>(
       `SELECT * FROM customers
-        WHERE id = $1 AND company_id = $2 AND party_type = 'SUPPLIER' AND deleted_at IS NULL`,
+        WHERE id = $1 AND company_id = $2 AND es_proveedor AND deleted_at IS NULL`,
       [req.params.id, companyId(req)]
     );
     if (r.rows.length === 0) throw new ValidationError('Proveedor no encontrado');
@@ -186,7 +192,7 @@ router.put(
           supplier_rating    = COALESCE($4, supplier_rating),
           delivery_days_avg  = COALESCE($5, delivery_days_avg),
           updated_at = NOW()
-        WHERE id = $6 AND company_id = $7 AND party_type = 'SUPPLIER' AND deleted_at IS NULL
+        WHERE id = $6 AND company_id = $7 AND es_proveedor AND deleted_at IS NULL
         RETURNING id, business_name, credit_days, credit_line, credit_used,
                   payment_conditions, supplier_rating, delivery_days_avg`,
       [creditDays, creditLine,

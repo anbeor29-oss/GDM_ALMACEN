@@ -194,7 +194,7 @@ export async function createManual(
     const sup = await transactionQuery(
       client,
       `SELECT id FROM customers
-        WHERE id = $1 AND company_id = $2 AND party_type = 'SUPPLIER' AND deleted_at IS NULL`,
+        WHERE id = $1 AND company_id = $2 AND es_proveedor AND deleted_at IS NULL`,
       [data.supplierId, companyId]
     );
     if (sup.rows.length === 0) throw new NotFoundError('Proveedor no encontrado');
