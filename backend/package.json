@@ -32,7 +32,8 @@
     "seed:examples": "node -r dotenv/config scripts/seed-examples.js",
     "docs:icons": "ts-node -r dotenv/config scripts/generate-icons-guide.ts",
     "contabilidad:sembrar": "ts-node --files -r dotenv/config scripts/sembrar-contabilidad.ts",
-    "probar:contabilidad": "ts-node --files -r dotenv/config scripts/probar-contabilidad.ts"
+    "probar:contabilidad": "ts-node --files -r dotenv/config scripts/probar-contabilidad.ts",
+    "probar:balanza": "ts-node --files -r dotenv/config scripts/probar-balanza.ts"
   },
   "keywords": [
     "cfdi",

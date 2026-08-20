@@ -15,9 +15,15 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken, requireCapability, authorize } from '../../middleware/authentication';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as catalogo from './catalogo.service';
+import * as balanza from './balanza-lector.service';
+import multer from 'multer';
 
 const router = Router();
 router.use(authenticateToken);
+
+/* 20 MB: una balanza de 5,000 cuentas en PDF no llega ni a la mitad. */
+const subir = multer({ storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 } });
 
 function companyId(req: Request): string {
   if (!req.user?.companyId) throw new ValidationError('Company ID is required');
@@ -192,6 +198,70 @@ router.put(
       companyId(req), req.params.id, cat, codigoExterno, descripcion,
     );
     res.json({ success: true, data: { equivalencia } });
+  })
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BALANZA DEL SISTEMA ANTERIOR
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * POST /accounting/balanza/analizar — lee y revisa, SIN guardar nada.
+ *
+ * Es un paso aparte a propósito. Una balanza que no cuadra no puede ser el
+ * saldo inicial de nada, y enterarse de eso DESPUÉS de haberla cargado
+ * significa deshacer una póliza de apertura con cientos de renglones.
+ *
+ * Primero se ve qué trae el archivo; cargar es otra decisión.
+ */
+router.post(
+  '/balanza/analizar',
+  requireCapability('contabilidad:capturar'),
+  subir.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = (req as any).file;
+    if (!f) throw new ValidationError('Falta el archivo de la balanza.');
+
+    const nombre = (f.originalname || '').toLowerCase();
+    const esExcel = /\.xlsx?$/.test(nombre)
+      || /spreadsheet|excel/.test(f.mimetype || '');
+    const esPdf = /\.pdf$/.test(nombre) || /pdf/.test(f.mimetype || '');
+
+    if (!esExcel && !esPdf) {
+      throw new ValidationError(
+        'El archivo tiene que ser Excel (.xlsx) o PDF. Si tu sistema exporta ' +
+        'a otro formato, dilo y se agrega.',
+      );
+    }
+
+    let lectura;
+    try {
+      lectura = esExcel
+        ? await balanza.leerBalanzaExcel(f.buffer)
+        : await balanza.leerBalanzaPdf(f.buffer);
+    } catch (e: any) {
+      throw new ValidationError(e.message);
+    }
+
+    const analisis = balanza.analizarBalanza(lectura);
+
+    /* Se devuelven las filas para poder verlas en pantalla antes de cargar,
+     * pero acotadas: una balanza de 5,000 cuentas no cabe en una respuesta
+     * cómoda, y para revisar sirve el resumen más los renglones con problema. */
+    res.json({
+      success: true,
+      data: {
+        origen: lectura.origen,
+        encabezado: lectura.encabezado,
+        analisis,
+        filas: analisis.totalFilas <= 1500 ? lectura.filas : undefined,
+        filasOmitidas: analisis.totalFilas > 1500 ? analisis.totalFilas : 0,
+      },
+      message: analisis.cuadra
+        ? `Balanza leída: ${analisis.hojas} cuentas de detalle, y cuadra.`
+        : `Balanza leída con ${analisis.avisos.filter((a) => a.nivel === 'ERROR').length} ` +
+          `problema(s) que hay que resolver antes de cargarla.`,
+    });
   })
 );
 

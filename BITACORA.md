@@ -3380,3 +3380,37 @@ Pruebas: `probar-contabilidad` 49/49, `probar-grupos-de-trabajo` 35/35.
 
 Siguiente: FASE 2 — pólizas manuales y carga de la balanza anterior
 (pendiente el archivo: viene en Excel y PDF).
+
+## 2026-08-20 — Lector de balanzas (Excel y PDF)
+
+`balanza-lector.service.ts` + `probar-balanza` (30/30).
+
+Ruta `POST /accounting/balanza/analizar`: lee y revisa SIN guardar. Una balanza
+que no cuadra no puede ser el saldo inicial de nada, y enterarse después
+significa deshacer una póliza de apertura de cientos de renglones.
+
+**Lo que enseñó el archivo real (PROKINESPORT, 343 cuentas):**
+
+1. La fórmula del saldo final DEPENDE de la naturaleza:
+   deudora `si+debe-haber`, acreedora `si-debe+haber`. Con una sola fórmula,
+   110 renglones perfectos parecen mal capturados.
+2. Una cuenta es HOJA si nadie cuelga de ella — NO por su código. `5-05-10-000`
+   termina en -000 y es hoja: con la heurística del sufijo se pierden
+   $7,517,589.43 de costos y la balanza parece descuadrada por 7 millones
+   en vez de por 20 pesos.
+3. Las sumarias no se suman: el archivo trae los dos niveles mezclados.
+
+**El PDF sale sin separadores** (`-382.000.000.00-382.00` son 4 importes) y con
+nombres partidos en 3 líneas. Se resuelve por los 2 decimales fijos + acumular
+hasta juntar 4 importes.
+
+**Ambigüedad real:** si el nombre acaba en dígitos se pegan al primer importe
+(`...2024` + `1,653,827.35` → `20241,653,827.35`). El formato admite varias
+lecturas válidas; NO se adivina. Se resuelve con la propia aritmética del
+renglón, y si ninguna o varias cuadran, se avisa.
+
+**Verificación:** los dos archivos son la MISMA balanza en dos formatos.
+Los 343 renglones coinciden centavo por centavo entre PDF y Excel.
+
+Los archivos de ejemplo NO están en el repositorio: son contabilidad real de
+un tercero. La prueba se salta sola si no están.
