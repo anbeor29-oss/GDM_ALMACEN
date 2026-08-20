@@ -11,6 +11,9 @@ import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as service from './treasury.service';
 import * as remesas from './remesas.service';
 import { generarPdfRemesa } from './pdf-remesa.service';
+import multer from 'multer';
+import * as bancos from './bancos.service';
+import { textoDePdf } from './extractor-movimientos.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -182,6 +185,137 @@ router.put(
       { userId: req.user?.userId, email: req.user?.email }
     );
     res.json({ success: true, data: result });
+  })
+);
+
+
+
+/* ═══════════════════ BANCOS ═══════════════════
+ *
+ * Cuentas bancarias, estados de cuenta y el saldo AL CORTE. Todo pide
+ * `treasury:pay`: quien programa los pagos es quien necesita saber cuánto hay.
+ */
+
+const subir = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
+
+router.get(
+  '/bancos/cuentas',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: { cuentas: await bancos.listarCuentas(companyId(req)) } });
+  })
+);
+
+router.post(
+  '/bancos/cuentas',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const c = await bancos.crearCuenta(companyId(req), req.body || {});
+    res.status(201).json({ success: true, data: c });
+  })
+);
+
+router.put(
+  '/bancos/cuentas/:id',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const c = await bancos.actualizarCuenta(companyId(req), req.params.id, req.body || {});
+    res.json({ success: true, data: c });
+  })
+);
+
+router.delete(
+  '/bancos/cuentas/:id',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await bancos.borrarCuenta(companyId(req), req.params.id) });
+  })
+);
+
+/**
+ * POST /treasury/bancos/estados — carga un estado de cuenta.
+ *
+ * Acepta el texto pegado o un archivo. Con un PDF se intenta leer su texto y
+ * **se rechaza si los importes llegan pegados**: entregar cifras que se
+ * partieron mal es peor que no entregar nada. Los escaneados no se pueden: este
+ * servidor no tiene OCR.
+ */
+router.post(
+  '/bancos/estados',
+  requireCapability('treasury:pay'),
+  subir.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    let texto = String(req.body?.texto || '');
+    let origen: 'PDF' | 'TEXTO' | 'CSV' = 'TEXTO';
+    let archivoNombre: string | undefined;
+
+    if (req.file) {
+      archivoNombre = req.file.originalname;
+      const esPdf = /\.pdf$/i.test(archivoNombre) || /pdf/i.test(req.file.mimetype || '');
+      if (esPdf) {
+        const r = await textoDePdf(req.file.buffer);
+        if (!r.utilizable) throw new ValidationError(r.motivo || 'No se pudo leer el PDF');
+        texto = r.texto;
+        origen = 'PDF';
+      } else {
+        /* CSV o texto plano: es la fuente más confiable que hay, porque no hay
+         * nada que adivinar sobre la disposición de las columnas. */
+        texto = req.file.buffer.toString('utf8');
+        origen = /\.csv$/i.test(archivoNombre) ? 'CSV' : 'TEXTO';
+      }
+    }
+
+    const r = await bancos.cargarEstadoDeCuenta(
+      companyId(req),
+      {
+        cuentaId: req.body?.cuentaId,
+        anio: Number(req.body?.anio),
+        mes: Number(req.body?.mes),
+        texto,
+        origen,
+        archivoNombre,
+      },
+      req.user?.userId
+    );
+    res.status(201).json({ success: true, data: r });
+  })
+);
+
+router.get(
+  '/bancos/cuentas/:id/estados',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({
+      success: true,
+      data: { estados: await bancos.listarEstados(companyId(req), req.params.id) },
+    });
+  })
+);
+
+router.get(
+  '/bancos/cuentas/:id/control',
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = req.query.anio ? Number(req.query.anio) : undefined;
+    res.json({
+      success: true,
+      data: await bancos.controlMensual(companyId(req), req.params.id, anio),
+    });
+  })
+);
+
+router.get(
+  '/bancos/estados/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await bancos.detalleEstado(companyId(req), req.params.id) });
+  })
+);
+
+router.delete(
+  '/bancos/estados/:id',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await bancos.borrarEstado(companyId(req), req.params.id) });
   })
 );
 

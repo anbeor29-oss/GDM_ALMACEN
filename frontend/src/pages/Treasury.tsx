@@ -17,6 +17,7 @@ import { RemesasDePago } from '@/components/RemesasDePago';
 import { fechaMx } from '@/utils/fecha';
 import { CampoFecha } from '@/components/CampoFecha';
 import { useCapacidades, CAP } from '@/utils/capacidades';
+import { BancosCuentas } from '@/components/BancosCuentas';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -38,7 +39,7 @@ export function TreasuryPage() {
    * enterado. */
   const { puede } = useCapacidades();
   const canManage = puede(CAP.pagar);
-  const [tab, setTab] = useState<'pagos' | 'remesas'>('pagos');
+  const [tab, setTab] = useState<'pagos' | 'remesas' | 'bancos'>('pagos');
   const [statusFilter, setStatusFilter] = useState('PENDING');
   const [showManual, setShowManual] = useState(false);
   const [error, setError] = useState('');
@@ -102,7 +103,10 @@ export function TreasuryPage() {
       {/* Dos vistas del mismo dinero: lo que se debe, y lo que se decidió pagar
           en la corrida de esta semana. */}
       <div className="flex gap-1 border-b">
-        {([['pagos', 'Cuentas por pagar'], ['remesas', 'Remesas de pago']] as const).map(([k, label]) => (
+        {/* Bancos va al final porque es el respaldo de lo demás: primero se ve
+            qué se debe y cómo se va a pagar, y luego con qué. */}
+        {([['pagos', 'Cuentas por pagar'], ['remesas', 'Remesas de pago'],
+           ['bancos', 'Bancos']] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
               tab === k
@@ -114,6 +118,7 @@ export function TreasuryPage() {
       </div>
 
       {tab === 'remesas' && <RemesasDePago canManage={canManage} />}
+      {tab === 'bancos'  && <BancosCuentas />}
 
       {tab === 'pagos' && (<>
       {/* KPIs */}

@@ -11,6 +11,71 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-20 — Bancos: cuentas, estados de cuenta y el saldo al corte
+
+Tesorería programaba pagos **sin saber cuánto hay en el banco**. El saldo vivía
+en el portal y en la cabeza de quien lo consultaba; al armar una remesa de
+$49,075 nadie podía decir si la cuenta lo aguantaba.
+
+Se portó el `extractor_movimientos.py` que entregó Antonio, con su
+documentación. Se conservó lo que importa —los patrones de fecha, el reparto de
+importes, el arrastre del saldo y la inferencia de comisiones de Bancrea— y se
+cambió lo que no podía sobrevivir al viaje.
+
+### Lo que cambió al portarlo, y por qué
+
+**El original lee PDF; éste lee TEXTO.** El script usa `pdfplumber`, que
+conserva la disposición de la página, y `pytesseract` para lo escaneado. En este
+servidor no hay ninguno de los dos: el runtime de Render no tiene Python ni
+Tesseract, y el único lector disponible —`pdf-parse`— **colapsa los espacios**
+(ya estaba documentado en el extractor de CSF). En un estado de cuenta eso es
+fatal: "3,500.00 20,000.00" pegado se vuelve un solo número.
+
+Se midió antes de decidir: `pdf-parse` ni siquiera pudo leer un PDF generado
+localmente. Así que el extractor trabaja sobre texto y se alimenta de tres
+fuentes —texto pegado, CSV del portal, o PDF cuando su texto sale limpio— y
+**rechaza el PDF cuando detecta importes pegados**. Entregar cifras que se
+partieron mal es peor que no entregar nada.
+
+**La comisión inferida se marca.** El original INSERTA una comisión de $3.00
+cuando la diferencia de saldos es exactamente $3.48. La deducción es correcta
+—Bancrea a veces omite el renglón— pero un movimiento que el banco no reportó no
+puede pasar por uno que sí. Se inserta igual, marcada `inferido`, y se dice
+cuántas fueron. Inventar un movimiento y no decirlo es peor que dejar el saldo
+descuadrado.
+
+**El reparto por concepto, no por magnitud.** El original suponía que el saldo
+siempre es diez veces mayor que el movimiento. Eso falla justo cuando la cuenta
+está por vaciarse: un retiro de 900 dejando 100 de saldo se leería al revés. Aquí
+manda el concepto —"ENVIADA" sale, "RECIBIDA" entra— y cuando el concepto no dice
+nada, **se marca la duda** en vez de adivinar el signo.
+
+**El arrastre se calcula siempre**, no sólo cuando el banco declara el saldo. Es
+lo único que delata un movimiento que el documento se comió.
+
+### Las decisiones del módulo
+
+**El saldo es "al corte", y así se dice.** Es el final del último estado
+procesado, con el mes escrito al lado. No es el saldo de hoy: entre el corte y
+ahora hay cheques y cargos que el banco no ha reportado. Un saldo de hace cuatro
+meses sin fecha se lee como si fuera de hoy.
+
+**Volver a cargar un mes REEMPLAZA.** Cargar dos veces julio y acumular daría un
+saldo del doble, y nadie lo notaría hasta cuadrar contra el banco. Va en una
+transacción: o queda el estado nuevo completo, o el anterior intacto.
+
+**Los meses tienen que encadenar.** El saldo final de uno debe ser el inicial del
+siguiente. Cuando no, se señala con las dos cifras — es lo que delata el mes que
+falta en medio, y ese hueco descuadra todo lo que viene después.
+
+*Verificado:* 34 comprobaciones. Casi todas de **cuadre**, no de conteo: sacar
+"los 4 movimientos" no sirve de nada si los importes están del lado equivocado, y
+el conteo saldría igual de bien. Incluye que un estado al que se le quita un
+movimiento **no cuadre y lo diga con la diferencia exacta**, y que recargar el
+mismo mes deje 4 movimientos y no 8.
+
+---
+
 ## 2026-08-18 / 19 — Índice de la jornada
 
 Doce entradas en dos días. Este índice existe porque leídas de corrido cuentan

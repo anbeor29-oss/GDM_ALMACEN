@@ -907,6 +907,45 @@ class APIClient {
     return r.data;
   }
 
+  /* ── Bancos ── */
+  async getCuentasBancarias() {
+    const r = await this.client.get<APIResponse<any>>('/treasury/bancos/cuentas');
+    return r.data;
+  }
+  async crearCuentaBancaria(datos: any) {
+    const r = await this.client.post<APIResponse<any>>('/treasury/bancos/cuentas', datos);
+    return r.data;
+  }
+  async borrarCuentaBancaria(id: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/treasury/bancos/cuentas/${id}`);
+    return r.data;
+  }
+  /**
+   * Carga un estado de cuenta: archivo o texto pegado.
+   *
+   * Va como multipart aunque sólo se mande texto, para tener UN camino: dos
+   * rutas para lo mismo garantizan que una se quede atrás.
+   */
+  async cargarEstadoDeCuenta(d: {
+    cuentaId: string; anio: number; mes: number; texto?: string; archivo?: File;
+  }) {
+    const fd = new FormData();
+    fd.append('cuentaId', d.cuentaId);
+    fd.append('anio', String(d.anio));
+    fd.append('mes', String(d.mes));
+    if (d.texto) fd.append('texto', d.texto);
+    if (d.archivo) fd.append('archivo', d.archivo);
+    const r = await this.client.post<APIResponse<any>>('/treasury/bancos/estados', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return r.data;
+  }
+  async getControlMensual(cuentaId: string, anio?: number) {
+    const r = await this.client.get<APIResponse<any>>(
+      `/treasury/bancos/cuentas/${cuentaId}/control`, { params: { anio } });
+    return r.data;
+  }
+
   async listPayments() {
     const r = await this.client.get('/payments');
     return r.data;
