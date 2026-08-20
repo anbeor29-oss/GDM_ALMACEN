@@ -44,17 +44,16 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   ADMIN_ALL: ALL_MODULES,
   VENTAS: [
     'invoices', 'carta_porte', 'credit_notes', 'customers',
-    'products', 'xml_reader', 'pos', 'reports', 'exchange_rates', 'mensajes',
+    'products', 'xml_reader', 'pos', 'exchange_rates', 'mensajes',
   ],
-  ALMACEN:   ['products', 'inventory', 'reports', 'mensajes'],
+  ALMACEN:   ['products', 'inventory', 'mensajes'],
   /* Compras pide y recibe; no administra existencias. Lo que necesita saber
    * —qué falta— lo tiene en Faltantes, que vive en su propio módulo. */
   COMPRAS:   ['purchasing', 'suppliers', 'products',
-              'xml_reader', 'reports', 'mensajes'],
+              'xml_reader', 'mensajes'],
   /* Tesorería paga; cotejar lo que el SAT dice de nuestros comprobantes es
    * otro trabajo y otra persona. */
-  TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'reports',
-              'mensajes'],
+  TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'mensajes'],
   /* Cajero de mostrador: SÓLO el punto de venta.
    *
    * VENTAS ya existía, pero alcanza facturas, clientes, Carta Porte y el lector
@@ -69,7 +68,7 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   PUNTO_VENTA: ['pos', 'mensajes'],
   /* Recursos Humanos: la nómina y nada más. Lleva 'xml_reader' porque el
    * expediente del personal se rescata de los recibos ya timbrados. */
-  RECURSOS_HUMANOS: ['nomina', 'xml_reader', 'reports', 'mensajes'],
+  RECURSOS_HUMANOS: ['nomina', 'xml_reader', 'mensajes'],
 };
 
 /** Etiquetas legibles de cada grupo (para selectores). */
@@ -87,14 +86,14 @@ export const WORK_GROUP_LABELS: Record<WorkGroup, string> = {
 export const WORK_GROUP_DETAIL: Record<WorkGroup, string> = {
   ADMIN_ALL: 'Todos los módulos del sistema.',
   VENTAS:    'Facturas, Carta Porte, Notas de crédito, Clientes, Productos, ' +
-             'Lector de XML, Punto de Venta, Reportes y Monedas.',
-  ALMACEN:   'Productos, Almacén (existencias, almacenes, inventario físico) y ' +
-             'Reportes. No ve facturación, compras ni tesorería.',
+             'Lector de XML, Punto de Venta y Monedas.',
+  ALMACEN:   'Productos y Almacén (existencias, almacenes, inventario físico). ' +
+             'No ve facturación, compras, tesorería ni reportes.',
   COMPRAS:   'Compras (órdenes, faltantes y recepción de XML), Proveedores, ' +
-             'Productos, Lector de XML y Reportes. No ve el módulo de Almacén.',
+             'Productos y Lector de XML. No ve el módulo de Almacén ni los reportes.',
   TESORERIA: 'Tesorería completa —cuentas por pagar, remesas y programación de ' +
-             'pagos—, Proveedores, Monedas y Reportes. No ve facturación, ' +
-             'almacén ni auditoría.',
+             'pagos—, expedientes de Proveedores y Monedas. No ve facturación, ' +
+             'almacén, auditoría ni reportes.',
   PUNTO_VENTA: 'Únicamente el Punto de Venta. No ve facturación, catálogos, ' +
                'almacén, compras ni reportes. Pensado para el cajero de mostrador.',
   RECURSOS_HUMANOS: 'Nómina completa (expediente del personal, cálculo, ' +

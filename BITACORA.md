@@ -5,6 +5,29 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-19 — Los reportes, también sólo para la dirección
+
+Fuera de los seis grupos operativos. Ventas por periodo, saldos y márgenes son
+el negocio entero a la vista; quien captura no los necesita para trabajar.
+
+La ruta `/reports` ya iba por `ModuleRoute`, así que quitar el módulo cierra
+también la puerta de la URL: no basta con esconder el renglón del menú.
+
+**Lo que NO se fue con ellos:** los reportes **de nómina**. Cuelgan del módulo
+`nomina`, no de `reports`, y son el trabajo de Recursos Humanos —la prenómina,
+el ISR retenido, la cuota patronal para provisionar—. Habría sido fácil llevarse
+los dos por delante, así que hay una comprobación dedicada a que sigan ahí.
+
+Los textos que se muestran bajo el selector de grupo dejaron de prometer
+reportes: si el detalle dice "y Reportes" y el menú no los tiene, la primera
+sospecha es que algo se rompió.
+
+*Verificado:* 35 comprobaciones de grupos y 30 de rutas y pantallas. La que
+importa está escrita para los SEIS a la vez —no grupo por grupo—, porque agregar
+uno nuevo y olvidarse de esto le abriría el negocio entero sin que nada fallara.
+
+---
+
 ## 2026-08-19 (grupos) — El dashboard sale, y con él casi se va un bucle
 
 ### 1 · Tesorería mantiene expedientes de proveedores

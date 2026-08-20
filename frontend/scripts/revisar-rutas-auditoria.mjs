@@ -150,6 +150,7 @@ sinPreguntar.length === 0
  * visible: es un usuario que no puede entrar al sistema.
  */
 const perm = readFileSync('src/utils/permissions.ts', 'utf8');
+const layoutTmp = readFileSync('src/components/Layout.tsx', 'utf8');
 const appSrc = readFileSync('src/App.tsx', 'utf8');
 
 perm.includes('HOME_POR_GRUPO') && perm.includes('export function homeDe')
@@ -179,6 +180,23 @@ const conDashboard = OPERATIVOS.filter((g) => {
 conDashboard.length === 0
   ? bien('ningún grupo operativo ve el dashboard: el resumen del negocio no es de quien captura')
   : mal('estos grupos siguen viendo el dashboard', conDashboard.join(', '));
+
+/* Los reportes, igual: ventas por periodo, saldos y márgenes son el negocio
+ * entero a la vista. Se comprueba junto al dashboard porque son la misma
+ * decisión, y separarlos invita a que un día se recorte uno y el otro no. */
+const conReportes = OPERATIVOS.filter((g) => {
+  const m = new RegExp(g + ":\s*(\[[^\]]*\])", 's').exec(perm);
+  return m && m[1].includes("'reports'");
+});
+conReportes.length === 0
+  ? bien('ningún grupo operativo ve el menú de Reportes')
+  : mal('estos grupos siguen viendo Reportes', conReportes.join(', '));
+
+/* Y que los reportes DE NÓMINA no se hayan ido con ellos: cuelgan del módulo
+ * 'nomina' y son el trabajo de Recursos Humanos. */
+layoutTmp.includes("to: '/nomina/reportes'")
+  ? bien('los reportes de nómina siguen en su submenú, con Recursos Humanos')
+  : mal('se perdieron los reportes de nómina');
 
 /ALL_MODULES[^=]*=[^;]*'dashboard'/s.test(perm)
   ? bien('y ADMIN_ALL sí lo alcanza, por el catálogo completo')

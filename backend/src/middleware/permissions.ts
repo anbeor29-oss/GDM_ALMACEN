@@ -55,13 +55,15 @@ const ALL_MODULES: ModuleKey[] = [
  * Lo que cada quien puede HACER dentro de esas pantallas lo decide el sistema
  * de capacidades (requireCapability), no este mapa.
  */
-/* NOTA SOBRE EL DASHBOARD Y EL CONTRATO
+/* NOTA SOBRE EL DASHBOARD, EL CONTRATO Y LOS REPORTES
  *
- * Ninguno de los dos aparece en esta lista, y es a propósito: el dashboard no
- * es un módulo protegido del API —es una pantalla de resumen— y el contrato se
- * gobierna por ROL. Los seis grupos operativos no ven ninguno de los dos: el
- * resumen del negocio y las condiciones comerciales son información de la
- * dirección, no de quien captura. */
+ * Ninguno aparece en las listas de los grupos operativos, y es a propósito: el
+ * resumen del negocio, las condiciones comerciales con GDM y los reportes
+ * —ventas por periodo, saldos, márgenes— son información de la DIRECCIÓN. Quien
+ * captura no los necesita para trabajar, y verlos es ver el negocio entero.
+ *
+ * Ojo: los reportes DE NÓMINA son otra cosa y siguen con Recursos Humanos.
+ * Cuelgan del módulo 'nomina', no de 'reports'. */
 export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   /* 'nomina' sólo la alcanzan ADMIN_ALL y RECURSOS_HUMANOS: los sueldos, la
    * CURP, las cuentas bancarias y las órdenes de pensión alimenticia son el
@@ -70,12 +72,11 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   ADMIN_ALL: ALL_MODULES,
   VENTAS: [
     'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
-    'xml_reader', 'pos', 'reports', 'exchange_rates', 'mensajes',
+    'xml_reader', 'pos', 'exchange_rates', 'mensajes',
   ],
-  ALMACEN:   ['products', 'inventory', 'reports', 'mensajes'],
-  COMPRAS:   ['purchasing', 'suppliers', 'products', 'xml_reader', 'reports',
-              'mensajes'],
-  TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'reports', 'mensajes'],
+  ALMACEN:   ['products', 'inventory', 'mensajes'],
+  COMPRAS:   ['purchasing', 'suppliers', 'products', 'xml_reader', 'mensajes'],
+  TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'mensajes'],
   /* Cajero de mostrador: SÓLO la caja.
    *
    * VENTAS ya existía pero alcanza facturas, clientes y Carta Porte, que es
@@ -94,7 +95,7 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
    * puede rescatar de los recibos ya timbrados, y ese es justamente su trabajo—
    * más reportes y mensajes. NO ve facturas, clientes, inventarios ni tesorería:
    * quien maneja sueldos no necesita ver las ventas, y al revés tampoco. */
-  RECURSOS_HUMANOS: ['nomina', 'xml_reader', 'reports', 'mensajes'],
+  RECURSOS_HUMANOS: ['nomina', 'xml_reader', 'mensajes'],
 };
 
 export function groupCanAccess(group: WorkGroup | undefined, mod: ModuleKey): boolean {

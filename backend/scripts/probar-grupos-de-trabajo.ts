@@ -63,6 +63,32 @@ async function main() {
     ['ALMACEN',          ['invoices', 'treasury', 'nomina', 'purchasing']],
     ['VENTAS',           ['nomina', 'treasury', 'purchasing', 'inventory']],
   ];
+
+  /* ── Lo que NINGÚN grupo operativo alcanza ──
+   *
+   * El resumen del negocio y los reportes —ventas por periodo, saldos,
+   * márgenes— son información de la dirección. Se comprueba de golpe para los
+   * seis: agregar un grupo nuevo y olvidarse de esto sería abrirle el negocio
+   * entero sin que nada fallara. */
+  /* Sólo 'reports': el dashboard NO es un módulo del servidor —es una pantalla
+   * de resumen— y por eso no aparece en este mapa. Que ningún grupo operativo
+   * lo vea se comprueba del lado del frontend, en revisar-rutas-auditoria. */
+  const operativos = grupos.filter((g) => g !== 'ADMIN_ALL');
+  const colados = operativos.filter((g) => groupCanAccess(g, 'reports'));
+  colados.length === 0
+    ? bien('los reportes no los alcanza ningún grupo operativo: son de la dirección')
+    : mal('los reportes quedaron abiertos a grupos operativos', colados.join(', '));
+
+  /* Pero el ADMINISTRADOR sí: quitárselos a él sería quitarlos del sistema. */
+  groupCanAccess('ADMIN_ALL', 'reports')
+    ? bien('y ADMIN_ALL los conserva: se acotó a los grupos, no se borró la pantalla')
+    : mal('el administrador perdió los reportes');
+
+  /* Los reportes DE NÓMINA son otra cosa y siguen con Recursos Humanos:
+   * cuelgan del módulo 'nomina', no de 'reports'. */
+  groupCanAccess('RECURSOS_HUMANOS', 'nomina')
+    ? bien('los reportes de nómina siguen con RH: cuelgan de su módulo, no de reports')
+    : mal('RH perdió su módulo de nómina');
   for (const [g, modulos] of NO_DEBE) {
     const colados = modulos.filter((m) => groupCanAccess(g, m as any));
     colados.length === 0
