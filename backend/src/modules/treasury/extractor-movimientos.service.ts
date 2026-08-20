@@ -190,7 +190,8 @@ const SALE  = ['ENVIADA', 'RETIRO', 'COMISION', 'IVA', 'CARGO', 'PAGO'];
  */
 export function repartirImportes(
   importes: number[],
-  concepto: string
+  concepto: string,
+  orden: OrdenColumnas = 'retiro-deposito'
 ): { retiro: number; deposito: number; saldo: number | null; duda: boolean } {
   const t = concepto.toUpperCase();
   const entra = ENTRA.some((k) => t.includes(k));
@@ -212,8 +213,10 @@ export function repartirImportes(
     return { retiro: a, deposito: 0, saldo: b, duda: true };
   }
 
-  const [r, d, s] = importes.slice(-3).map(Math.abs);
-  return { retiro: r, deposito: d, saldo: s, duda: false };
+  const [a, b, s] = importes.slice(-3).map(Math.abs);
+  return orden === 'deposito-retiro'
+    ? { retiro: b, deposito: a, saldo: s, duda: false }
+    : { retiro: a, deposito: b, saldo: s, duda: false };
 }
 
 /* ══════════════════ EL EXTRACTOR ══════════════════ */
@@ -235,8 +238,61 @@ const RX_SALDO_INICIAL =
 const RX_SALDO_FINAL =
   /SALDO\s*(?:FINAL|ACTUAL|AL\s*CORTE)[^\n\d]*(-?[\d,]+\.\d{2})/i;
 
-/** Encabezados y pies que no son movimientos aunque traigan fecha y montos. */
-const RX_RUIDO = /^(FECHA|CONCEPTO|REFERENCIA|RETIROS?|DEPOSITOS?|SALDOS?|PAGINA|P[ÁA]GINA|---)/i;
+/**
+ * ── LO QUE NO ES UN MOVIMIENTO AUNQUE LO PAREZCA ──
+ *
+ * Cuando el estado de cuenta pasa de una hoja a dos, entre los movimientos se
+ * cuelan encabezados repetidos, pies de página, "PÁGINA 2 DE 3", "VIENE DE LA
+ * PÁGINA ANTERIOR" y el número de cuenta otra vez.
+ *
+ * Esas líneas no traen fecha, así que se pegaban al movimiento ANTERIOR como si
+ * fueran su referencia. Y ahí estaba el daño: si el pie traía un número con
+ * decimales, entraba a la lista de importes del movimiento — y como los importes
+ * se leen de los ÚLTIMOS tres, los del pie ganaban sobre los verdaderos. El
+ * movimiento pegado al salto de hoja salía con las cifras de otro renglón.
+ *
+ * Por eso el patrón busca en CUALQUIER parte de la línea, no sólo al principio.
+ */
+const RX_RUIDO = new RegExp(
+  [
+    '^(FECHA|CONCEPTO|DESCRIPCI|REFERENCIA|RETIROS?|CARGOS?|DEPOSITOS?|ABONOS?|SALDOS?)',
+    'P[ÁA]GINA\\s*\\d+',
+    '\\d+\\s*DE\\s*\\d+\\s*$',
+    'VIENE\\s+DE\\s+LA\\s+P[ÁA]GINA',
+    'CONTIN[ÚU]A\\s+EN',
+    'SUMA\\s+Y\\s+SIGUE',
+    'ESTADO\\s+DE\\s+CUENTA',
+    'R\\.?F\\.?C\\.?\\s*DEL?\\s*(CLIENTE|BANCO)',
+    '^-{3,}',
+  ].join('|'),
+  'i'
+);
+
+/**
+ * ── EL ORDEN DE LAS COLUMNAS SE LEE, NO SE SUPONE ──
+ *
+ * Bancrea pone RETIROS antes de DEPOSITOS. Otros bancos ponen DEPOSITOS antes
+ * de RETIROS. Suponer un orden invierte los importes de la mitad de los bancos
+ * —el retiro entra como depósito— y el saldo sale con el signo cambiado.
+ *
+ * La única fuente confiable es el ENCABEZADO del documento, que lo dice. Si no
+ * hay encabezado se conserva el orden de Bancrea, que es el que se documentó, y
+ * se avisa: es una suposición, y las suposiciones se dicen.
+ */
+export type OrdenColumnas = 'retiro-deposito' | 'deposito-retiro';
+
+export function ordenDeColumnas(texto: string): { orden: OrdenColumnas; leido: boolean } {
+  for (const linea of texto.split(/\r?\n/)) {
+    const t = linea.toUpperCase();
+    if (!/SALDO/.test(t)) continue;
+    const iRetiro = Math.max(t.indexOf('RETIRO'), t.indexOf('CARGO'));
+    const iDepos  = Math.max(t.indexOf('DEPOSITO'), t.indexOf('ABONO'), t.indexOf('DEPÓSITO'));
+    if (iRetiro >= 0 && iDepos >= 0) {
+      return { orden: iRetiro < iDepos ? 'retiro-deposito' : 'deposito-retiro', leido: true };
+    }
+  }
+  return { orden: 'retiro-deposito', leido: false };
+}
 
 function detectarBanco(texto: string): string {
   const t = texto.toUpperCase();
@@ -269,53 +325,75 @@ export function extraerMovimientos(
     );
   }
 
-  /* ── Se junta cada movimiento con sus renglones de continuación ──
+  const { orden, leido: ordenLeido } = ordenDeColumnas(texto);
+  if (!ordenLeido) {
+    avisos.push(
+      'El documento no trae un encabezado de columnas legible, así que se supuso ' +
+      'RETIROS antes de DEPÓSITOS (el orden de Bancrea). Si tu banco los pone al ' +
+      'revés, los importes van a salir invertidos: revísalos.'
+    );
+  }
+
+  /* ── Cada movimiento con sus renglones de continuación ──
    *
-   * Una transferencia SPEI ocupa tres o cuatro líneas: la del importe y las de
-   * beneficiario, concepto y clave de rastreo. Sin juntarlas, la referencia se
-   * pierde y —peor— una línea de continuación con un número se leería como un
-   * movimiento nuevo. */
+   * Una transferencia SPEI ocupa tres o cuatro líneas: la del importe, y las de
+   * beneficiario, concepto y clave de rastreo. Sin juntarlas se pierde la
+   * referencia —que es con lo que se aclara un pago ante el banco—.
+   *
+   * PERO LOS IMPORTES SALEN SÓLO DE LA PRIMERA LÍNEA.
+   *
+   * Ésa es la que trae las columnas. Las de continuación traen texto, y a veces
+   * números: un concepto que dice "PAGO FACTURA 1,234.00", o un pie de página
+   * que se coló. Leyendo los importes del bloque entero, esos números entraban a
+   * la lista y —como se toman los ÚLTIMOS tres— GANABAN sobre los verdaderos.
+   *
+   * Es exactamente lo que fallaba al pasar de una hoja a dos: el movimiento
+   * pegado al salto salía con las cifras de otro renglón.
+   */
   const lineas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const bloques: string[] = [];
+
+  interface Bloque { principal: string; continuacion: string[] }
+  const bloques: Bloque[] = [];
+
   for (const linea of lineas) {
     if (RX_RUIDO.test(linea)) continue;
-    const tieneFecha = !!fechaDeLinea(linea, opciones.anio);
-    if (tieneFecha) bloques.push(linea);
-    else if (bloques.length) bloques[bloques.length - 1] += ' ' + linea;
+    if (fechaDeLinea(linea, opciones.anio)) bloques.push({ principal: linea, continuacion: [] });
+    else if (bloques.length) bloques[bloques.length - 1].continuacion.push(linea);
   }
 
   const movimientos: MovimientoExtraido[] = [];
-  let orden = 0;
+  let orden_ = 0;
 
-  for (const bloque of bloques) {
-    const fecha = fechaDeLinea(bloque, opciones.anio);
+  for (const b of bloques) {
+    const fecha = fechaDeLinea(b.principal, opciones.anio);
     if (!fecha) continue;
 
-    /* Los renglones de saldo inicial/final del resumen no son movimientos. */
-    if (/SALDO\s*(INICIAL|ANTERIOR|FINAL|ACTUAL)/i.test(bloque) &&
-        !/TRANSFEREN|COMISION|DEPOSITO|RETIRO/i.test(bloque)) continue;
+    /* Los renglones de saldo del resumen no son movimientos. */
+    if (/SALDO\s*(INICIAL|ANTERIOR|FINAL|ACTUAL)/i.test(b.principal) &&
+        !/TRANSFEREN|COMISION|DEPOSITO|RETIRO/i.test(b.principal)) continue;
 
-    const importes = (bloque.match(RX_MONTO) || []).map(aNumero);
+    const importes = (b.principal.match(RX_MONTO) || []).map(aNumero);
     if (importes.length === 0) continue;
 
-    const concepto = conceptoDe(bloque);
-    const { retiro, deposito, saldo, duda } = repartirImportes(importes, concepto);
-    if (retiro === 0 && deposito === 0) continue;
+    const completo = [b.principal, ...b.continuacion].join(' ');
+    const concepto = conceptoDe(completo);
+    const r = repartirImportes(importes, concepto, orden);
+    if (r.retiro === 0 && r.deposito === 0) continue;
 
     movimientos.push({
       fecha,
       concepto,
-      referencia: bloque.slice(0, 500),
-      retiro: pesos(retiro),
-      deposito: pesos(deposito),
-      saldo: saldo === null ? null : pesos(saldo),
+      referencia: completo.slice(0, 500),
+      retiro: pesos(r.retiro),
+      deposito: pesos(r.deposito),
+      saldo: r.saldo === null ? null : pesos(r.saldo),
       saldoCalculado: 0,
-      advertencia: duda
+      advertencia: r.duda
         ? 'No se pudo saber si entra o sale: el concepto no lo dice. Se tomó como retiro.'
         : '',
       inferido: false,
-      orden: orden++,
-      lineaOrigen: bloque.slice(0, 1000),
+      orden: orden_++,
+      lineaOrigen: b.principal.slice(0, 1000),
     });
   }
 

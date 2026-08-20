@@ -394,6 +394,26 @@ function ModalCargarEstado({ cuenta, onCerrar, onListo }: any) {
                   <Cifra r="Saldo inicial" v={ext.saldoInicial === null ? '—' : money(ext.saldoInicial)} />
                   <Cifra r="Saldo final" v={ext.saldoFinal === null ? '—' : money(ext.saldoFinal)} />
                 </div>
+                {/* ── El enlace con el mes anterior ──
+                    Cada estado puede cuadrar CONSIGO MISMO y la serie estar
+                    rota: basta con que falte un mes para que todos los saldos
+                    posteriores arrastren el hueco, y cada uno por separado se
+                    vea perfecto. */}
+                {resultado.enlaza === false && (
+                  <p className="text-sm text-rose-900 bg-rose-100 border border-rose-300 rounded px-3 py-2 mt-2 flex items-start gap-2">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    <span>
+                      <b>No enlaza con el mes anterior.</b> El saldo con el que abre este
+                      estado no es el que cerró el mes pasado — revisa el aviso de abajo:
+                      o falta un mes de por medio, o una de las dos cargas está incompleta.
+                    </span>
+                  </p>
+                )}
+                {resultado.enlaza === true && (
+                  <p className="text-xs text-emerald-800 mt-2">
+                    Enlaza con el mes anterior: abre donde el pasado cerró.
+                  </p>
+                )}
                 {resultado.reemplazo && (
                   <p className="text-xs text-amber-800 mt-2">
                     Ya había un estado de <b>{MESES[mes]} {anio}</b>: éste lo <b>reemplazó</b>.
@@ -450,6 +470,15 @@ function ModalCargarEstado({ cuenta, onCerrar, onListo }: any) {
               </div>
 
               <div className="flex justify-end gap-2">
+                {/* El archivo puente: las mismas columnas del banco, ya
+                    normalizadas, para llevarlas a contabilidad o a Excel. */}
+                <button
+                  onClick={() => api.descargarCsvEstado(
+                    resultado.estado.id,
+                    `${cuenta.alias.replace(/[^\w-]+/g, '_')}-${anio}-${String(mes).padStart(2, '0')}.csv`)}
+                  className="mr-auto px-4 py-2 text-sm border rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
+                  <FileText size={14} /> Bajar CSV
+                </button>
                 <button onClick={() => setResultado(null)}
                   className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
                   Cargar otro

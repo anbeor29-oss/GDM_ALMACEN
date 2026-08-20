@@ -11,6 +11,59 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-20 (bancos) — El salto de hoja, el enlace entre meses y el CSV puente
+
+### 1 · El error del salto de hoja — por qué se perdían movimientos
+Cuando el estado de cuenta pasa de una hoja a dos, entre los movimientos
+aparecen pies de página, encabezados repetidos y "PÁGINA 2 DE 3". Esas líneas
+**no traen fecha**, así que se pegaban al movimiento anterior como si fueran su
+referencia.
+
+Y ahí estaba el daño real, que es peor que perder un renglón: si el pie traía un
+número con decimales, ese número entraba a la lista de importes del movimiento
+— y como los importes se leen de los **últimos tres**, los del pie **ganaban**.
+El movimiento pegado al salto salía con las cifras de otro renglón, y el estado
+descuadraba sin que se viera por qué.
+
+**Dos arreglos:** el ruido se busca ahora en cualquier parte de la línea, no
+sólo al principio; y sobre todo, **los importes salen de la línea de la fecha**,
+que es la que trae las columnas. Las de continuación sólo aportan la referencia.
+Eso también protege de un concepto que diga "PAGO FACTURA 1,234.00".
+
+### 2 · El orden de las columnas se LEE, no se supone
+Bancrea pone RETIROS antes de DEPÓSITOS. Otros bancos al revés — y así los
+describió Antonio: *"deposito, retiro y saldo"*. Suponer un orden invierte los
+importes de la mitad de los bancos: el retiro entra como depósito.
+
+Ahora se lee del **encabezado del documento**, que lo dice. Sin encabezado
+legible se conserva el orden de Bancrea **y se avisa**: es una suposición, y las
+suposiciones se dicen.
+
+### 3 · El saldo inicial debe ser el final del mes anterior
+Es la comprobación que ata un mes con el siguiente, y ahora corre **al cargar**,
+no después. Sin ella cada estado cuadra **consigo mismo** y la serie completa
+puede estar rota: basta con que falte un mes para que todos los saldos
+posteriores arrastren el hueco, y cada uno por separado se vea perfecto.
+
+Avisa con la diferencia exacta; no bloquea. Bloquear impediría cargar agosto
+antes que julio —que es como llegan cuando alguien se pone al corriente— y
+dejaría sin manera de corregir el mes que está mal.
+
+### 4 · El CSV puente
+Las mismas columnas del banco, ya normalizadas, con el saldo arrastrado al lado
+del declarado y el resumen de cuadre al pie. Lleva **BOM**, porque sin él Excel
+en español rompe los acentos de cada concepto.
+
+Y lleva una columna **INFERIDO**: un movimiento que dedujo el sistema y que el
+banco no reportó no puede llegar a un archivo contable sin decir que lo es.
+
+*Verificado:* 52 comprobaciones. Las nuevas incluyen un estado **de dos hojas**
+con un "1,234.00" y un "9,999.99" escondidos en las líneas de concepto —cuadra
+sólo si el salto se maneja bien—, un banco con las columnas invertidas, y marzo
+abriendo en 9,999 tras cerrar febrero en 1,300.
+
+---
+
 ## 2026-08-20 — Bancos: cuentas, estados de cuenta y el saldo al corte
 
 Tesorería programaba pagos **sin saber cuánto hay en el banco**. El saldo vivía

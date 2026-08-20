@@ -940,6 +940,13 @@ class APIClient {
     });
     return r.data;
   }
+  /** El archivo puente: el estado de cuenta como CSV, para contabilidad. */
+  async descargarCsvEstado(estadoId: string, nombre: string) {
+    const r = await this.client.get(`/treasury/bancos/estados/${estadoId}/csv`,
+      { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, nombre);
+  }
+
   async getControlMensual(cuentaId: string, anio?: number) {
     const r = await this.client.get<APIResponse<any>>(
       `/treasury/bancos/cuentas/${cuentaId}/control`, { params: { anio } });

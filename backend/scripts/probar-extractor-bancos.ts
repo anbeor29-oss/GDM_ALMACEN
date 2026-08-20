@@ -188,6 +188,105 @@ SALDO FINAL 11,500.00
     : mal('el formato DD/MM/AAAA no se procesó', JSON.stringify({
         cuadra: r4b.cuadra, n: r4b.movimientos.length, avisos: r4b.avisos }));
 
+  /* ══════════════════════════════════════════════════════════════════
+   * 7-bis. EL SALTO DE HOJA — el error que se reportó
+   * ══════════════════════════════════════════════════════════════════
+   *
+   * Cuando el estado pasa de una hoja a dos, entre los movimientos aparecen
+   * pies de página, encabezados repetidos y "PÁGINA 2 DE 3". Esas líneas no
+   * traen fecha, así que se pegaban al movimiento anterior como si fueran su
+   * referencia — y si traían un número con decimales, ese número entraba a la
+   * lista de importes. Como los importes se leen de los ÚLTIMOS tres, los del
+   * pie GANABAN: el movimiento pegado al salto salía con cifras de otro renglón.
+   *
+   * El estado de aquí abajo cuadra si y sólo si el salto de hoja se maneja bien.
+   */
+  const DOS_HOJAS = `
+BANCREA  ESTADO DE CUENTA  AGOSTO 2026                    PAGINA 1 DE 2
+SALDO INICIAL                                                  10,000.00
+FECHA      CONCEPTO                  REFERENCIA     RETIROS  DEPOSITOS   SALDOS
+03-AGO-26  TRANSFERENCIA SPEI ENVIADA                1,000.00             9,000.00
+   Cpto: PAGO PARCIAL 1,234.00 | Cve.Rastreo: BCREA202608030001
+04-AGO-26  TRANSFERENCIA SPEI RECIBIDA                        2,000.00   11,000.00
+SUMA Y SIGUE                                        1,000.00  2,000.00   11,000.00
+--- PAGINA 2 DE 2 ---
+BANCREA  ESTADO DE CUENTA  AGOSTO 2026                    PAGINA 2 DE 2
+VIENE DE LA PAGINA ANTERIOR                                            11,000.00
+FECHA      CONCEPTO                  REFERENCIA     RETIROS  DEPOSITOS   SALDOS
+10-AGO-26  TRANSFERENCIA SPEI ENVIADA                  500.00            10,500.00
+   Cpto: FINIQUITO OBRA 9,999.99 | Cve.Rastreo: BCREA202608100002
+12-AGO-26  DEPOSITO EN EFECTIVO                                750.00    11,250.00
+SALDO FINAL                                                            11,250.00
+`;
+
+  const dos = extraerMovimientos(DOS_HOJAS, { anio: 2026, mes: 8 });
+
+  dos.movimientos.length === 4
+    ? bien('★ con el estado en DOS HOJAS salen los 4 movimientos: 2 de cada página')
+    : mal('se perdieron movimientos al cambiar de hoja',
+          dos.movimientos.map((m) => `${m.fecha} ${m.retiro || m.deposito}`).join(' | '));
+
+  /* El primero lleva un "1,234.00" en su línea de continuación. Si los importes
+   * se leyeran del bloque entero, ese número se colaría y el retiro saldría mal. */
+  const m1 = dos.movimientos[0];
+  m1 && m1.retiro === 1000 && m1.saldo === 9000
+    ? bien('★ un número dentro del CONCEPTO no contamina el importe del movimiento')
+    : mal('el concepto se coló a los importes', JSON.stringify(m1));
+
+  /* El de la segunda hoja: su continuación trae "9,999.99", más grande que
+   * todo lo demás. Es el que delataría la contaminación. */
+  const m3 = dos.movimientos[2];
+  m3 && m3.retiro === 500 && m3.saldo === 10500
+    ? bien('★ y en la SEGUNDA hoja tampoco: el retiro es 500, no 9,999.99')
+    : mal('el movimiento de la hoja 2 salió con cifras ajenas', JSON.stringify(m3));
+
+  dos.cuadra
+    ? bien('★ el estado de dos hojas CUADRA contra su saldo final')
+    : mal('un estado de dos hojas no cuadró', dos.avisos.join(' · '));
+
+  /* Y que las líneas de página no hayan entrado como movimientos fantasma. */
+  !dos.movimientos.some((m) => /PAGINA|SUMA Y SIGUE|VIENE DE/i.test(m.concepto))
+    ? bien('los pies y encabezados de página no entraron como movimientos')
+    : mal('se coló una línea de página como movimiento');
+
+  /* ══════════ 7-ter. EL ORDEN DE COLUMNAS SE LEE DEL ENCABEZADO ══════════
+   *
+   * Bancrea pone RETIROS antes de DEPOSITOS; otros bancos al revés. Suponerlo
+   * invierte los importes de la mitad de los bancos: el retiro entra como
+   * depósito y el saldo sale con el signo cambiado.
+   */
+  const INVERTIDO = `
+BANCO EJEMPLO — ESTADO DE CUENTA
+SALDO INICIAL                                                  5,000.00
+FECHA       DESCRIPCION            DEPOSITOS   RETIROS    SALDO
+02/09/2026  DEPOSITO EN EFECTIVO    1,500.00               6,500.00
+05/09/2026  RETIRO EN EFECTIVO                  800.00     5,700.00
+SALDO FINAL                                                    5,700.00
+`;
+  const inv = extraerMovimientos(INVERTIDO, { anio: 2026, mes: 9 });
+  const dep = inv.movimientos.find((m) => /DEPOSITO/.test(m.concepto));
+  const ret = inv.movimientos.find((m) => /RETIRO/.test(m.concepto));
+
+  dep && dep.deposito === 1500 && dep.retiro === 0
+    ? bien('★ con DEPOSITOS antes que RETIROS en el encabezado, el depósito entra bien')
+    : mal('el orden de columnas invertido no se respetó', JSON.stringify(dep));
+
+  ret && ret.retiro === 800 && ret.deposito === 0
+    ? bien('y el retiro sale del lado correcto')
+    : mal('el retiro se leyó como depósito', JSON.stringify(ret));
+
+  inv.cuadra
+    ? bien('y con las columnas al revés, también cuadra')
+    : mal('el estado de columnas invertidas no cuadró', inv.avisos.join(' · '));
+
+  /* Sin encabezado legible NO se calla la suposición. */
+  const sinEnc = extraerMovimientos(
+    'SALDO INICIAL 100.00\n01/09/2026 CARGO VARIOS 50.00 50.00\nSALDO FINAL 50.00',
+    { anio: 2026, mes: 9 });
+  sinEnc.avisos.some((a) => /supuso/.test(a))
+    ? bien('sin encabezado de columnas, se avisa que el orden es una suposición')
+    : mal('se supuso el orden de columnas en silencio');
+
   /* ── 8. De extremo a extremo, contra la base ──
    *
    * Lo que se prueba aquí no es el extractor sino la CARGA: que volver a subir
@@ -283,6 +382,80 @@ SALDO FINAL 11,500.00
   ctrl2.saltos.length === 1 && ctrl2.saltos[0].includes('08/2026')
     ? bien('★ un mes que no encadena con el anterior se señala, con las dos cifras')
     : mal('no se detectó el salto de saldo entre meses', JSON.stringify(ctrl2.saltos));
+
+  /* ── 9. El enlace con el mes anterior, AL CARGAR ──
+   *
+   * Es la comprobación que ata un mes con el siguiente. Sin ella, cada estado
+   * cuadra CONSIGO MISMO y la serie completa puede estar rota: basta con que
+   * falte un mes para que todos los saldos posteriores arrastren el hueco, y
+   * cada uno por separado se vea perfecto. */
+  const cuenta2 = await bancos.crearCuenta(companyId, {
+    bancoNombre: 'Bancrea', alias: 'ZZ enlace', saldoInicial: 1000 });
+
+  const e1 = await bancos.cargarEstadoDeCuenta(companyId, {
+    cuentaId: cuenta2.id, anio: 2026, mes: 1, texto: `
+SALDO INICIAL 1,000.00
+05/01/2026 DEPOSITO EN EFECTIVO REF 1 500.00 1,500.00
+SALDO FINAL 1,500.00
+` });
+  e1.enlaza === true
+    ? bien('el primer mes enlaza con el saldo de partida de la cuenta')
+    : mal('el primer mes no enlazó con su punto de partida',
+          e1.extraccion.avisos.join(' · '));
+
+  const e2 = await bancos.cargarEstadoDeCuenta(companyId, {
+    cuentaId: cuenta2.id, anio: 2026, mes: 2, texto: `
+SALDO INICIAL 1,500.00
+03/02/2026 RETIRO EN EFECTIVO CAJERO 200.00 1,300.00
+SALDO FINAL 1,300.00
+` });
+  e2.enlaza === true
+    ? bien('febrero abre donde enero cerró: enlaza')
+    : mal('febrero no enlazó con enero', e2.extraccion.avisos.join(' · '));
+
+  /* Y marzo abriendo en una cifra que no es el cierre de febrero. */
+  const e3 = await bancos.cargarEstadoDeCuenta(companyId, {
+    cuentaId: cuenta2.id, anio: 2026, mes: 3, texto: `
+SALDO INICIAL 9,999.00
+04/03/2026 RETIRO EN EFECTIVO CAJERO 99.00 9,900.00
+SALDO FINAL 9,900.00
+` });
+  e3.enlaza === false
+    ? bien('★ marzo abriendo en 9,999 tras cerrar febrero en 1,300 NO enlaza')
+    : mal('no se detectó el mes que no enlaza', String(e3.enlaza));
+
+  e3.extraccion.avisos.some(
+    (a) => a.includes('NO ENLAZA') && a.includes('8699.00'))
+    ? bien('y el aviso trae la diferencia exacta: 8,699.00')
+    : mal('el aviso no dice cuánto falta', e3.extraccion.avisos.join(' · '));
+
+  /* ── 10. El CSV puente ── */
+  const puente = await bancos.csvDeEstado(companyId, e1.estado.id);
+
+  puente.csv.charCodeAt(0) === 0xFEFF
+    ? bien('el CSV lleva BOM: sin él, Excel en español rompe los acentos')
+    : mal('el CSV no trae BOM');
+
+  const renglones = puente.csv.slice(1).split(String.fromCharCode(13, 10));
+  renglones[0] === 'Fecha,Concepto,Referencia,Deposito,Retiro,Saldo,SaldoCalculado,Inferido,Advertencia'
+    ? bien('con las columnas del banco: fecha, concepto, depósito, retiro y saldo')
+    : mal('el encabezado del CSV no es el esperado', renglones[0]);
+
+  renglones[1].startsWith('05/01/2026,DEPOSITO EN EFECTIVO')
+    ? bien('y la fecha va en DD/MM/AAAA, como el resto del sistema')
+    : mal('la fecha del CSV no salió en dd/mm/aaaa', renglones[1]);
+
+  puente.csv.includes('SALDO INICIAL') && puente.csv.includes('SALDO FINAL') &&
+  puente.csv.includes('CUADRA,SI')
+    ? bien('trae el resumen al pie: se puede cuadrar sin volver al sistema')
+    : mal('al CSV le falta el resumen de cuadre');
+
+  puente.nombre === 'ZZ_enlace-2026-01.csv'
+    ? bien('el archivo se llama por su cuenta y su mes: ' + puente.nombre)
+    : mal('el nombre del CSV no identifica el mes', puente.nombre);
+
+  await query("DELETE FROM bancos_cuentas WHERE company_id=$1 AND alias LIKE 'ZZ %'",
+    [companyId]);
 
   await limpiar();
   await pool.end();

@@ -209,7 +209,13 @@ export async function cargarEstadoDeCuenta(
   companyId: string,
   d: DatosCarga,
   userId?: string
-): Promise<{ estado: any; extraccion: ResultadoExtraccion; reemplazo: boolean }> {
+): Promise<{
+  estado: any;
+  extraccion: ResultadoExtraccion;
+  reemplazo: boolean;
+  /** Si el saldo inicial casa con el cierre del mes anterior. `null` si no hay con qué comparar. */
+  enlaza: boolean | null;
+}> {
   const anio = Number(d.anio);
   const mes = Number(d.mes);
   if (!Number.isInteger(anio) || anio < 2000 || anio > 2100) {
@@ -230,6 +236,58 @@ export async function cargarEstadoDeCuenta(
   if (cuenta.rows.length === 0) throw new NotFoundError('Cuenta no encontrada');
 
   const extraccion = extraerMovimientos(d.texto, { anio, mes });
+
+  /* ── EL SALDO INICIAL TIENE QUE SER EL FINAL DEL MES ANTERIOR ──
+   *
+   * Es la comprobación que ata un mes con el siguiente. Sin ella, cada estado
+   * cuadra consigo mismo y la serie completa puede estar rota: basta con que
+   * falte un mes de por medio para que todos los saldos posteriores arrastren
+   * el hueco, y cada uno por separado se vea perfecto.
+   *
+   * Se avisa, no se bloquea. Bloquear impediría cargar agosto antes que julio
+   * —que es como llegan cuando alguien se pone al corriente— y dejaría sin
+   * manera de corregir el mes que está mal. */
+  const anterior = await query<any>(
+    `SELECT anio, mes, saldo_final FROM bancos_estados_cuenta
+      WHERE cuenta_id = $1 AND (anio < $2 OR (anio = $2 AND mes < $3))
+      ORDER BY anio DESC, mes DESC LIMIT 1`,
+    [d.cuentaId, anio, mes]
+  );
+
+  let enlaza: boolean | null = null;
+  if (anterior.rows.length > 0 && anterior.rows[0].saldo_final !== null) {
+    const finAnterior = pesos(anterior.rows[0].saldo_final);
+    if (extraccion.saldoInicial === null) {
+      extraccion.avisos.push(
+        `El mes anterior (${String(anterior.rows[0].mes).padStart(2, '0')}/` +
+        `${anterior.rows[0].anio}) cerró en ${finAnterior.toFixed(2)}, pero este ` +
+        'documento no declara saldo inicial: no hay contra qué compararlo.'
+      );
+    } else {
+      enlaza = Math.abs(extraccion.saldoInicial - finAnterior) <= 0.02;
+      if (!enlaza) {
+        extraccion.avisos.push(
+          `NO ENLAZA CON EL MES ANTERIOR: ${String(anterior.rows[0].mes).padStart(2, '0')}/` +
+          `${anterior.rows[0].anio} cerró en ${finAnterior.toFixed(2)} y éste abre en ` +
+          `${extraccion.saldoInicial.toFixed(2)}. Faltan ` +
+          `${pesos(Math.abs(extraccion.saldoInicial - finAnterior)).toFixed(2)} — ` +
+          'o falta un mes de por medio, o una de las dos cargas está incompleta.'
+        );
+      }
+    }
+  } else if (anterior.rows.length === 0 && extraccion.saldoInicial !== null) {
+    /* El primer mes se compara contra el saldo de partida de la cuenta. */
+    const partida = pesos(cuenta.rows[0].saldo_inicial);
+    if (Math.abs(extraccion.saldoInicial - partida) > 0.02) {
+      extraccion.avisos.push(
+        `Es el primer mes de esta cuenta y su saldo inicial (${extraccion.saldoInicial.toFixed(2)}) ` +
+        `no coincide con el saldo de partida capturado (${partida.toFixed(2)}). ` +
+        'Revisa cuál de los dos es el bueno antes de seguir cargando meses.'
+      );
+    } else {
+      enlaza = true;
+    }
+  }
 
   return transaction(async (client: PoolClient) => {
     /* Reemplazo, no acumulación. Los movimientos se van con el estado por la
@@ -280,7 +338,7 @@ export async function cargarEstadoDeCuenta(
       (reemplazo ? ' (reemplazó la carga anterior)' : '')
     );
 
-    return { estado: est.rows[0], extraccion, reemplazo };
+    return { estado: est.rows[0], extraccion, reemplazo, enlaza };
   });
 }
 
@@ -380,4 +438,69 @@ export async function controlMensual(companyId: string, cuentaId: string, anio?:
   const sinCuadrar = meses.filter((m: any) => !m.cuadra).length;
 
   return { meses, saltos, sinCuadrar };
+}
+
+
+/**
+ * El estado de cuenta como CSV — el "archivo puente".
+ *
+ * Es lo que se lleva a la contabilidad, a Excel o al contador: las mismas
+ * columnas del documento del banco, ya normalizadas y con el saldo arrastrado
+ * al lado del declarado.
+ *
+ * Lleva la columna INFERIDO a propósito. Un movimiento que dedujo el sistema y
+ * que el banco no reportó no puede llegar a un archivo contable sin decir que
+ * lo es: quien lo reciba tiene que poder distinguirlos.
+ *
+ * Se separa con COMA y se abre con BOM: Excel en español lee el archivo como
+ * UTF-8 sólo si lo trae, y sin él los acentos salen rotos en cada concepto.
+ */
+export async function csvDeEstado(companyId: string, estadoId: string): Promise<{ csv: string; nombre: string }> {
+  const { estado, movimientos } = await detalleEstado(companyId, estadoId);
+
+  const escapar = (v: any) => {
+    const t = String(v ?? '');
+    return /[",;\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const dosDecimales = (v: any) =>
+    v === null || v === undefined ? '' : Number(v).toFixed(2);
+  /* DD/MM/AAAA, como el resto del sistema. */
+  const fecha = (v: any) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v instanceof Date ? v.toISOString() : v));
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+  };
+
+  const filas: string[] = [];
+  filas.push([
+    'Fecha', 'Concepto', 'Referencia', 'Deposito', 'Retiro',
+    'Saldo', 'SaldoCalculado', 'Inferido', 'Advertencia',
+  ].join(','));
+
+  for (const m of movimientos) {
+    filas.push([
+      escapar(fecha(m.fecha)),
+      escapar(m.concepto),
+      escapar(m.referencia),
+      dosDecimales(m.deposito),
+      dosDecimales(m.retiro),
+      dosDecimales(m.saldo),
+      dosDecimales(m.saldo_calculado),
+      m.inferido ? 'SI' : '',
+      escapar(m.advertencia),
+    ].join(','));
+  }
+
+  /* El resumen al pie: es lo que permite cuadrar el CSV sin volver al sistema. */
+  filas.push('');
+  filas.push(['SALDO INICIAL', '', '', '', '', dosDecimales(estado.saldo_inicial)].join(','));
+  filas.push(['TOTALES', '', '',
+    dosDecimales(estado.total_depositos), dosDecimales(estado.total_retiros)].join(','));
+  filas.push(['SALDO FINAL', '', '', '', '', dosDecimales(estado.saldo_final)].join(','));
+  filas.push(['CUADRA', estado.cuadra ? 'SI' : 'NO'].join(','));
+
+  const nombre =
+    `${String(estado.alias).replace(/[^\w-]+/g, '_')}-` +
+    `${estado.anio}-${String(estado.mes).padStart(2, '0')}.csv`;
+
+  return { csv: '\uFEFF' + filas.join('\r\n'), nombre };
 }

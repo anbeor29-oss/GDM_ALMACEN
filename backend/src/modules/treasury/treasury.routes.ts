@@ -319,4 +319,21 @@ router.delete(
   })
 );
 
+/**
+ * GET /treasury/bancos/estados/:id/csv — el archivo puente.
+ *
+ * Las mismas columnas del banco, ya normalizadas, con el saldo arrastrado al
+ * lado del declarado y una columna INFERIDO: un movimiento que dedujo el
+ * sistema no puede llegar a contabilidad sin decir que lo es.
+ */
+router.get(
+  '/bancos/estados/:id/csv',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { csv, nombre } = await bancos.csvDeEstado(companyId(req), req.params.id);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(csv);
+  })
+);
+
 export default router;
