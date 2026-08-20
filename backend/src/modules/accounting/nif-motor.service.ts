@@ -93,8 +93,18 @@ const SIN_NIF_APLICABLE = [
  * es adivinar sobre su contabilidad.
  */
 const DEPENDE_DEL_CONTENIDO = [
-  '121', '190', '218', '256', '258', '260', '403', '704', '160', '169', '182',
+  '121', '190', '218', '256', '258', '260', '403', '704',
 ];
+
+/* ── Lo que NO va en esa lista, y por que ──
+ * '160 Otros activos fijos' y '169 Otra maquinaria y equipo' se llaman "otros"
+ * pero no son ambiguos: son propiedades, planta y equipo, y les toca la C-6.
+ * '182 Otros activos diferidos' es intangible, y le toca la C-8.
+ *
+ * Estuvieron aqui y fue un error con consecuencia: la clasificacion pone en
+ * NULL la norma de todo lo que cae en DEPENDE, asi que les BORRABA una
+ * clasificacion que ya era correcta. La palabra "otros" en el nombre no vuelve
+ * ambigua a una cuenta cuyo rubro es inequivoco. */
 
 export interface ResultadoClasificacion {
   especifica: number;
@@ -128,6 +138,20 @@ export async function clasificarCatalogoSat(): Promise<ResultadoClasificacion> {
     `UPDATE sat_codigos_agrupadores SET nif_aplica='DEPENDE', nif_norma=NULL
       WHERE codigo LIKE ANY($1)`,
     [patronDepende]);
+
+  /* ── Red de seguridad ──
+   * Si una cuenta llego aqui con norma asignada y salio sin ella, algo la
+   * degrado. Se deja constancia en vez de que pase inadvertido: una cuenta
+   * que pierde su clasificacion deja de recibir las reglas que le tocaban, y
+   * eso no se nota nunca. */
+  const degradadas = await query<any>(
+    `SELECT codigo, nombre FROM sat_codigos_agrupadores
+      WHERE nif_aplica <> 'ESPECIFICA' AND nif_norma IS NOT NULL`);
+  if (degradadas.rows.length) {
+    logger.warn(
+      `[nif] ${degradadas.rows.length} codigo(s) conservan norma sin estar marcados ` +
+      `como ESPECIFICA: ${degradadas.rows.map((x: any) => x.codigo).join(', ')}`);
+  }
 
   const r = await query<any>(
     `SELECT nif_aplica, COUNT(*)::int n FROM sat_codigos_agrupadores GROUP BY nif_aplica`);

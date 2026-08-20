@@ -980,6 +980,23 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/catalogos-externos');
     return r.data;
   }
+  /** Los estados financieros a partir de una balanza (FormData). */
+  async generarEstadosFinancieros(fd: FormData) {
+    const r = await this.client.post<APIResponse<any>>(
+      '/accounting/estados-financieros', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
+  async evaluarNif(fd: FormData) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/nif/evaluar', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
+  async getReglasNif() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/nif/reglas');
+    return r.data;
+  }
+
   async getNormasNif() {
     const r = await this.client.get<APIResponse<any>>('/accounting/nif');
     return r.data;

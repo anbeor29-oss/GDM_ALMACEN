@@ -18,6 +18,7 @@ import * as catalogo from './catalogo.service';
 import * as balanza from './balanza-lector.service';
 import * as mapeador from './mapeador-sat.service';
 import * as motorNif from './nif-motor.service';
+import * as estados from './estados-financieros.service';
 import multer from 'multer';
 
 const router = Router();
@@ -279,6 +280,94 @@ router.post(
           `sobre el catálogo del SAT.`
         : `Balanza leída con ${analisis.avisos.filter((a) => a.nivel === 'ERROR').length} ` +
           `problema(s) que hay que resolver antes de cargarla.`,
+    });
+  })
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ESTADOS FINANCIEROS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * POST /accounting/estados-financieros
+ *
+ * Sube una balanza —o dos, para el comparativo— y devuelve el juego completo:
+ * situacion financiera, resultado integral, razones y analisis horizontal.
+ *
+ * Se corre en el momento y no se guarda todavia: mientras la contabilidad de
+ * NEXO no genere sus propios saldos, el estado es una lectura del archivo que
+ * se acaba de subir. Guardarlo daria la impresion de que el sistema lo produjo.
+ */
+router.post(
+  '/estados-financieros',
+  subir.fields([{ name: 'archivo', maxCount: 1 }, { name: 'anterior', maxCount: 1 }]),
+  asyncHandler(async (req: Request, res: Response) => {
+    const fs2 = (req as any).files || {};
+    const f = fs2.archivo?.[0];
+    if (!f) throw new ValidationError('Falta el archivo de la balanza.');
+
+    const leer = async (file: any) => {
+      const n = (file.originalname || '').toLowerCase();
+      const esExcel = /\.xlsx?$/.test(n) || /spreadsheet|excel/.test(file.mimetype || '');
+      const esPdf = /\.pdf$/.test(n) || /pdf/.test(file.mimetype || '');
+      if (!esExcel && !esPdf) throw new ValidationError('El archivo tiene que ser Excel o PDF.');
+      try {
+        return esExcel ? await balanza.leerBalanzaExcel(file.buffer)
+                       : await balanza.leerBalanzaPdf(file.buffer);
+      } catch (e: any) { throw new ValidationError(e.message); }
+    };
+
+    const validos = await mapeador.agrupadoresValidos();
+    const contextoDe = (lectura: any, fecha: string) =>
+      motorNif.contextoDeBalanza(
+        lectura.filas,
+        mapeador.proponerMapeo(lectura.filas, { agrupadoresValidos: validos }),
+        fecha);
+
+    const fechaCorte = (req.body.fechaCorte as string) || new Date().toISOString().slice(0, 10);
+    const lectura = await leer(f);
+    const ctx = contextoDe(lectura, fechaCorte);
+
+    let ctxAnterior;
+    const fAnt = fs2.anterior?.[0];
+    if (fAnt) {
+      const lecturaAnt = await leer(fAnt);
+      ctxAnterior = contextoDe(lecturaAnt, req.body.fechaCorteAnterior || '');
+    }
+
+    /* Los dias del periodo mandan en las rotaciones: usar 365 sobre una
+     * balanza de un mes multiplica por doce los dias de cartera. */
+    const diasPeriodo = Number(req.body.diasPeriodo) > 0
+      ? Number(req.body.diasPeriodo) : 365;
+
+    const juego = estados.juegoCompleto(ctx, ctxAnterior, diasPeriodo);
+    const analisisBalanza = balanza.analizarBalanza(lectura);
+    const nifRes = motorNif.evaluar(ctx);
+
+    res.json({
+      success: true,
+      data: {
+        encabezado: lectura.encabezado,
+        origen: lectura.origen,
+        fechaCorte,
+        diasPeriodo,
+        ...juego,
+        balanza: {
+          totalFilas: analisisBalanza.totalFilas,
+          hojas: analisisBalanza.hojas,
+          cuadra: analisisBalanza.cuadra,
+          sumaDebe: analisisBalanza.sumaDebe,
+          sumaHaber: analisisBalanza.sumaHaber,
+        },
+        nif: {
+          noCumple: nifRes.noCumple, revisar: nifRes.revisar, cumple: nifRes.cumple,
+          hallazgos: nifRes.hallazgos.filter((h) => h.estado !== 'NO_APLICA'),
+        },
+      },
+      message: juego.situacionFinanciera.cuadra
+        ? `Estados financieros al ${fechaCorte}. El balance cuadra.`
+        : `Estados financieros al ${fechaCorte}. ATENCION: el balance no cuadra por ` +
+          `${juego.situacionFinanciera.diferencia.toFixed(2)}.`,
     });
   })
 );

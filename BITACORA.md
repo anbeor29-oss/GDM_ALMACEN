@@ -3530,3 +3530,49 @@ Una regla que revienta se reporta y las demás siguen.
 Pruebas: nif 28/28 · mapeo 20/20 · balanza 30/30 · contabilidad 49/49 ·
 roles 15/15 · grupos 35/35 · nómina 19/19 · reportes 29/29 · bancos 57/57 ·
 preregistro 18/18 · jest 115/115
+
+## 2026-08-20 — Estados financieros en submenú de Contabilidad
+
+**Cambio de decisión:** en el plan se eligió "NEXO alimenta, EDOSFINANCIEROS
+presenta". Ahora los estados van DENTRO de NEXO. Ésta es la decisión vigente.
+
+### Paso 1 · Catálogo SAT + NIF, cerrado
+
+405 con NIF específica · 260 sin NIF aplicable · 14 que dependen del contenido.
+37 normas (se agregaron A-3 y B-4, que pide el documento de estados).
+
+**Bug corregido:** `160 Otros activos fijos`, `169 Otra maquinaria` y `182 Otros
+activos diferidos` SÍ tenían norma (C-6, C-6, C-8) y la clasificación se la
+borraba al mandarlas a DEPENDE. La palabra "otros" en el nombre no vuelve
+ambigua a una cuenta cuyo rubro es inequívoco. Se agregó una red de seguridad
+que avisa si una cuenta pierde su clasificación.
+
+### Estados financieros (§2 del documento)
+
+`estados-financieros.service.ts` + `probar-estados-financieros` (23/23).
+Ruta `POST /accounting/estados-financieros`, pantalla en Contabilidad →
+Estados financieros.
+
+- Situación financiera (B-6) con el mapeo por código agrupador del §2.1
+- Resultado integral (B-3) con la fórmula del §2.2
+- 13 razones, cada una con fórmula, cifras base e interpretación
+- Análisis vertical y horizontal comparando dos balanzas
+- Los hallazgos NIF, en la misma pantalla
+
+**Tres defectos corregidos antes de darlo por bueno:**
+1. `Margen bruto 38%` cuando es `37.86%` — el helper de división redondeaba a
+   2 decimales ANTES de multiplicar por 100. El redondeo va al presentar.
+2. `DSO −16 días` con cartera negativa. "Se tarda −16 días en cobrar" no
+   significa nada; ahora dice que un saldo de clientes negativo son anticipos.
+3. El ciclo de efectivo se armaba con las piezas que sí había, y el resultado
+   se veía como un dato bueno.
+
+El 703 se parte por NATURALEZA, igual que en el motor NIF: por código, un
+producto financiero se restaría como gasto.
+
+Verificación: el activo del estado y la diferencia de la ecuación coinciden con
+las del analizador de balanza, que llega por otro camino.
+
+Pruebas: estados 23/23 · nif 28/28 · mapeo 20/20 · balanza 30/30 ·
+contabilidad 49/49 · roles 15/15 · grupos 35/35 · nómina 19/19 ·
+reportes 29/29 · bancos 57/57 · preregistro 18/18 · jest 115/115

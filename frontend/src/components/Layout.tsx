@@ -266,6 +266,7 @@ export function Layout() {
                     pathPrefix="/contabilidad"
                     children={[
                       { to: '/contabilidad/cuentas', icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
+                      { to: '/contabilidad/estados', icon: emoji3D('📈'), label: 'Estados financieros' },
                     ]}
                   />
                 )}
