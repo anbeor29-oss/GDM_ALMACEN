@@ -23,13 +23,12 @@ import {
   CalendarPlus, Users, AlertTriangle, RefreshCw, Plus, X, Info, FileSpreadsheet, Lock,
 } from 'lucide-react';
 import api from '@/services/api';
-import { useAuthStore } from '@/store/auth';
 import { CeldaDeConceptos } from './CeldaDeConceptos';
 import { CapturaDeConceptos, type Linea } from './CapturaDeConceptos';
 import { AplicarAVarios } from './AplicarAVarios';
 import { CampoFecha } from '@/components/CampoFecha';
 import { aTextoMx } from '@/components/CampoFecha';
-import { puedeMoverNomina } from '@/utils/permissions';
+import { useCapacidades, CAP } from '@/utils/capacidades';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -42,11 +41,11 @@ const TIPOS = [
 ] as const;
 
 export function NominaCalculoPage() {
-  const { user } = useAuthStore();
-  /* No es el rol lo que decide, es la capacidad de mover nómina: Recursos
-   * Humanos la tiene sin ser administrador de la empresa. Ver
-   * puedeMoverNomina en utils/permissions. */
-  const esAdmin = puedeMoverNomina(user);
+  /* No es el rol lo que decide, sino la capacidad — y no se adivina: se
+   * pregunta al servidor, que es el único que sabe de grupos de trabajo y
+   * de otorgamientos individuales. */
+  const { puede } = useCapacidades();
+  const esAdmin = puede(CAP.nomina);
 
   const [tipo, setTipo] = useState<string>('SEMANAL');
   const [anio, setAnio] = useState(new Date().getFullYear());

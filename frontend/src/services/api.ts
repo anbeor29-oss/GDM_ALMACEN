@@ -901,6 +901,12 @@ class APIClient {
     }
   }
 
+  /** Qué puede HACER el usuario actual: rol + grupo + otorgamientos. */
+  async getMisCapacidades() {
+    const r = await this.client.get<APIResponse<any>>('/auth/mis-capacidades');
+    return r.data;
+  }
+
   async listPayments() {
     const r = await this.client.get('/payments');
     return r.data;

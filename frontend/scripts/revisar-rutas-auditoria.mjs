@@ -97,37 +97,46 @@ puertas === 1
   ? bien('y no quedó maquinaria de atajos sin usar')
   : mal('el soporte de atajos sigue ahí sin nadie que lo use');
 
-/* ── 6. La nómina: el candado y la cortesía ──
+/* ── 6. Los permisos de pantalla se PREGUNTAN, no se adivinan ──
  *
- * El servidor la protege con la capacidad `nomina:manage`. La pantalla esconde
- * sus botones con la MISMA regla. Si una de las dos se queda con el rol, pasa
- * una de dos cosas y las dos son malas: Recursos Humanos ve las pantallas sin
- * un solo botón, o ve los botones y cada clic le responde "no tienes permiso".
+ * Las pantallas escondían sus botones con reglas propias sobre el rol. Eso
+ * falla de dos maneras y las dos ocurrieron: Tesorería y Recursos Humanos
+ * viendo su pantalla sin un solo botón, o botones que el servidor rechaza.
+ *
+ * Y hay algo que el frontend NO puede adivinar: los otorgamientos individuales,
+ * que son renglones en la base. Por eso se pregunta al servidor.
  */
-const utilPerm = readFileSync('src/utils/permissions.ts', 'utf8');
-utilPerm.includes('export function puedeMoverNomina')
-  ? bien('la regla de quién mueve la nómina vive en un solo lugar')
-  : mal('falta puedeMoverNomina en utils/permissions');
+const apiSrc = readFileSync('src/services/api.ts', 'utf8');
+apiSrc.includes('mis-capacidades')
+  ? bien('el frontend pregunta sus capacidades al servidor')
+  : mal('nadie pregunta las capacidades: se estarían adivinando');
 
-/* Y que la regla NOMBRE a Recursos Humanos. Si alguien "simplifica" el ayudante
- * a sólo administradores, RH vuelve a ver sus pantallas sin un botón — y esta
- * vez sin ningún mensaje de error que lo delate, porque el servidor sí los
- * dejaría pasar. */
-utilPerm.includes('RECURSOS_HUMANOS') && utilPerm.includes('ADMIN_ALL')
-  ? bien('y esa regla incluye a RECURSOS_HUMANOS, que es quien captura la nómina')
-  : mal('la regla dejó fuera a RH: sus pantallas quedarían sin botones');
-
-const pantallasNomina = [
-  'src/pages/nomina/Empleados.tsx',
-  'src/pages/nomina/NominaCFDI.tsx',
-  'src/pages/nomina/NominaCalculo.tsx',
-  'src/pages/nomina/NominaParametros.tsx',
+const pantallasConPermisos = [
+  ['src/pages/nomina/Empleados.tsx',        'CAP.nomina'],
+  ['src/pages/nomina/NominaCFDI.tsx',       'CAP.nomina'],
+  ['src/pages/nomina/NominaCalculo.tsx',    'CAP.nomina'],
+  ['src/pages/nomina/NominaParametros.tsx', 'CAP.nomina'],
+  ['src/pages/Treasury.tsx',                'CAP.pagar'],
 ];
-const porRol = pantallasNomina.filter((f) =>
-  readFileSync(f, 'utf8').includes("esAdmin = ['ADMIN'"));
-porRol.length === 0
-  ? bien('las cuatro pantallas de nómina preguntan por la capacidad, no por el rol')
-  : mal('estas pantallas siguen escondiendo botones por rol', porRol.join(', '));
+
+const adivinando = pantallasConPermisos.filter(([f]) =>
+  readFileSync(f, 'utf8').includes("].includes(user?.role"));
+adivinando.length === 0
+  ? bien('ninguna de las cinco pantallas decide por el rol')
+  : mal('estas pantallas siguen adivinando por rol', adivinando.map((x) => x[0]).join(', '));
+
+const sinPreguntar = pantallasConPermisos.filter(([f, cap]) => {
+  const t = readFileSync(f, 'utf8');
+  return !(t.includes('useCapacidades') && t.includes(cap));
+});
+sinPreguntar.length === 0
+  ? bien('las cinco preguntan por la capacidad que de verdad exige su API')
+  : mal('estas no preguntan su capacidad', sinPreguntar.map((x) => x[0]).join(', '));
+
+/* Que no quede la regla adivinada anterior dando vueltas sin usuarios. */
+!readFileSync('src/utils/permissions.ts', 'utf8').includes('export function puedeMoverNomina')
+  ? bien('la regla adivinada anterior se retiró, no quedó dando vueltas')
+  : mal('puedeMoverNomina sigue ahí sin nadie que la use');
 
 console.log(`\n${ok} bien, ${fallos} mal`);
 process.exit(fallos ? 1 : 0);

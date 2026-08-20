@@ -23,9 +23,8 @@ import {
   FileCode2, FileDown, Download, Eye, Mail, AlertTriangle, X, CheckCircle2, Stamp, Check,
 } from 'lucide-react';
 import api from '@/services/api';
-import { useAuthStore } from '@/store/auth';
 import { aTextoMx } from '@/components/CampoFecha';
-import { puedeMoverNomina } from '@/utils/permissions';
+import { useCapacidades, CAP } from '@/utils/capacidades';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -37,11 +36,11 @@ const ESTATUS: Record<string, { label: string; cls: string }> = {
 };
 
 export function NominaCFDIPage() {
-  const { user } = useAuthStore();
-  /* No es el rol lo que decide, es la capacidad de mover nómina: Recursos
-   * Humanos la tiene sin ser administrador de la empresa. Ver
-   * puedeMoverNomina en utils/permissions. */
-  const esAdmin = puedeMoverNomina(user);
+  /* No es el rol lo que decide, sino la capacidad — y no se adivina: se
+   * pregunta al servidor, que es el único que sabe de grupos de trabajo y
+   * de otorgamientos individuales. */
+  const { puede } = useCapacidades();
+  const esAdmin = puede(CAP.nomina);
 
   const [estatus, setEstatus] = useState('PENDIENTE');
   const [viendo, setViendo] = useState<any | null>(null);

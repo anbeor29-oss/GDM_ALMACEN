@@ -5,6 +5,58 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-19 (permisos) — El frontend dejó de adivinar
+
+Tesorería tenía el mismo síntoma que nómina: el usuario del grupo TESORERIA veía
+su pantalla **sin el botón de pago manual ni el de programar remesas** — justo lo
+que viene a hacer. El servidor sí lo dejaba pasar; era la pantalla la que no se
+había enterado.
+
+### La causa, que es la misma de las últimas tres veces
+Cada pantalla escondía sus botones con **su propia regla sobre el rol**:
+`['ADMIN','MANAGER','SUPER_ADMIN'].includes(user.role)`. Adivinar falla de dos
+maneras, y las dos ocurrieron aquí:
+
+- **Esconder de más.** Tesorería y Recursos Humanos viendo su pantalla sin un
+  solo botón. No parece un problema de permisos —parece que el sistema no
+  sirve— y por eso nadie lo reporta como lo que es.
+- **Esconder de menos.** Ofrecer un botón que el servidor va a rechazar, y que
+  el usuario descubre a clics.
+
+Y hay algo que el frontend **no puede adivinar de ninguna manera**: los
+otorgamientos individuales. Son renglones en la base —"a Laura le dieron aprobar
+compras"— que sólo el servidor conoce. Cualquier regla escrita de ese lado nace
+incompleta.
+
+### La solución: preguntar
+Se agregó `GET /auth/mis-capacidades`, que responde el conjunto **efectivo** —lo
+que da el rol, más el grupo, más lo otorgado a mano— y el hook `useCapacidades`.
+Las cinco pantallas ahora preguntan por la capacidad que su propio API exige:
+`CAP.pagar` en tesorería, `CAP.nomina` en las cuatro de nómina.
+
+Los administradores no esperan la respuesta: sin ese atajo, el primer render les
+escondería los botones y aparecerían medio segundo después. Un parpadeo así se
+lee como una falla, y lo sufriría justo quien más usa el sistema.
+
+**Esto no es el candado.** Es la cortesía de no ofrecer lo que va a ser negado;
+cada endpoint sigue verificando por su cuenta.
+
+### Y se retiró el intento anterior
+`puedeMoverNomina` —la regla que miraba rol y grupo, de hace dos horas— se fue
+completa. Duró poco porque no podía saber de los otorgamientos individuales: era
+una cuarta copia de las reglas, y el problema de fondo eran las copias.
+
+El guardián ahora comprueba que **ninguna de las cinco decida por el rol**, que
+las cinco pregunten la capacidad correcta, y que no quede la regla vieja dando
+vueltas.
+
+*Verificado:* las capacidades efectivas resueltas de verdad contra la base para
+los cuatro grupos —TESORERIA sale con `treasury:pay`, RECURSOS_HUMANOS con
+`nomina:manage`— más 29 comprobaciones de grupos, 19 de rutas y pantallas, y la
+suite completa.
+
+---
+
 ## 2026-08-19 (nómina) — De rol a capacidad, sin abrirle la puerta a nadie
 
 La nómina estaba cerrada con `authorize('ADMIN','SUPER_ADMIN')`. Consecuencia:

@@ -13,10 +13,10 @@ import {
   XCircle, Plus,
 } from 'lucide-react';
 import api from '@/services/api';
-import { useAuthStore } from '@/store/auth';
 import { RemesasDePago } from '@/components/RemesasDePago';
 import { fechaMx } from '@/utils/fecha';
 import { CampoFecha } from '@/components/CampoFecha';
+import { useCapacidades, CAP } from '@/utils/capacidades';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -30,8 +30,14 @@ const BUCKET: Record<string, { label: string; cls: string }> = {
 
 export function TreasuryPage() {
   const qc = useQueryClient();
-  const { user } = useAuthStore();
-  const canManage = ['ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(user?.role || '');
+  /* Quién puede mover pagos ya no se adivina por el rol: se pregunta.
+   *
+   * Con la regla anterior, un usuario del grupo TESORERIA veía la pantalla sin
+   * el botón de pago manual ni el de programar remesas — justo lo que viene a
+   * hacer. El servidor sí lo dejaba pasar; era la pantalla la que no se había
+   * enterado. */
+  const { puede } = useCapacidades();
+  const canManage = puede(CAP.pagar);
   const [tab, setTab] = useState<'pagos' | 'remesas'>('pagos');
   const [statusFilter, setStatusFilter] = useState('PENDING');
   const [showManual, setShowManual] = useState(false);
