@@ -24,6 +24,7 @@ import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError, NotFoundError, ConflictError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import { extraerMovimientos, ResultadoExtraccion } from './extractor-movimientos.service';
+import { BANKS_MX } from '../suppliers/banks-mx';
 
 const pesos = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -50,6 +51,31 @@ function validarClabe(clabe?: string): string | null {
   return c;
 }
 
+/**
+ * Que la CLABE corresponda al banco elegido.
+ *
+ * Los TRES PRIMEROS DÍGITOS de la CLABE son la clave del banco. Si no cuadran,
+ * una de las dos cosas está mal capturada — y el que se entera es el dinero: la
+ * transferencia rebota, o peor, sale a la institución equivocada.
+ *
+ * Se avisa con las dos claves a la vista, no con un "dato inválido": quien
+ * captura tiene que poder ver cuál de los dos corrigió mal.
+ */
+function revisarClabeContraBanco(clabe: string | null, bancoClave?: string) {
+  if (!clabe || !bancoClave) return;
+  const delaClabe = clabe.slice(0, 3);
+  if (delaClabe !== String(bancoClave).padStart(3, '0')) {
+    const banco = BANKS_MX.find((b) => b.code === delaClabe);
+    throw new ValidationError(
+      `La CLABE empieza con ${delaClabe}` +
+      (banco ? ` (${banco.name})` : '') +
+      `, pero el banco elegido tiene la clave ${bancoClave}. Los tres primeros ` +
+      'dígitos de la CLABE SON la clave del banco: uno de los dos está mal, y ' +
+      'con la clave equivocada la transferencia rebota.'
+    );
+  }
+}
+
 export async function crearCuenta(companyId: string, d: DatosCuenta) {
   const alias = String(d.alias || '').trim().slice(0, 80);
   const banco = String(d.bancoNombre || '').trim().slice(0, 120);
@@ -62,6 +88,7 @@ export async function crearCuenta(companyId: string, d: DatosCuenta) {
   if (!banco) throw new ValidationError('Falta el banco');
 
   const clabe = validarClabe(d.clabe);
+  revisarClabeContraBanco(clabe, d.bancoClave);
   const moneda = String(d.moneda || 'MXN').toUpperCase().slice(0, 3);
 
   try {

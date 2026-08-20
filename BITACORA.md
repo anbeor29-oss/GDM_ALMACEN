@@ -11,6 +11,48 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-20 (bancos II) — El catálogo del SAT y la rejilla de doce meses
+
+### 1 · El banco se elige, no se teclea
+El campo era libre. Tecleado a mano nacen "Bancrea", "BANCREA" y "Banco
+Bancrea" como tres bancos distintos — y la **clave**, que es lo que de verdad
+importa, no se captura nunca.
+
+Ahora es un combo con los **75 bancos del catálogo SPEI/ABM**, el mismo que ya
+usaba nómina. Se expuso también desde tesorería porque el grupo TESORERIA no
+alcanza el módulo de nómina, y sin eso el combo habría llegado vacío.
+
+**Y con la clave aparece una comprobación que no existía:** los tres primeros
+dígitos de la CLABE **son** la clave del banco. Si no cuadran, uno de los dos
+está mal capturado — y el que se entera es el dinero: la transferencia rebota,
+o peor, sale a la institución equivocada.
+
+Se avisa en el acto, mientras se teclea, y se rechaza al guardar **diciendo las
+dos claves**: quien captura tiene que poder ver cuál de los dos corrigió mal.
+
+### 2 · La rejilla de doce meses
+El control mensual vivía en un modal, en forma de lista. Una lista muestra lo
+que hay; **una rejilla de doce muestra lo que falta**, y eso es lo que importa:
+un año con marzo y mayo pero sin abril tiene un salto de saldo que no se explica
+solo, y cada mes por separado se ve perfecto.
+
+El hueco es el dato. Por eso los meses sin cargar ocupan su lugar, en gris, con
+el botón para subir su PDF ahí mismo. Y al entrar por una casilla, **el mes y el
+año ya van puestos**: volver a pedirlos es donde se carga julio encima de agosto.
+
+Arriba de la rejilla, la conciliación del año: **ingresos, egresos, diferencia y
+saldo al último corte**. Es la lectura que se cuadra contra contabilidad.
+
+Cada mes cargado muestra su saldo, sus depósitos y retiros, cuántos movimientos
+trae, cuántos fueron inferidos, y si **cuadra** —en verde— o no —en rojo—. Desde
+la casilla se baja su CSV, se recarga o se quita.
+
+*Verificado:* 57 comprobaciones. Las nuevas cruzan una CLABE de BBVA (012) con
+Bancrea (152) elegido y comprueban que el rechazo **nombre las dos claves**, no
+que diga "dato inválido".
+
+---
+
 ## 2026-08-20 (bancos) — El salto de hoja, el enlace entre meses y el CSV puente
 
 ### 1 · El error del salto de hoja — por qué se perdían movimientos

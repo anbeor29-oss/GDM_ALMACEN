@@ -23,6 +23,7 @@ import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { fechaMx } from '@/utils/fecha';
 import { useCapacidades, CAP } from '@/utils/capacidades';
+import { BancosAnio } from '@/components/BancosAnio';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -36,14 +37,18 @@ export function BancosCuentas() {
   const puedeEditar = puede(CAP.pagar);
 
   const [alta, setAlta] = useState(false);
-  const [cargando, setCargando] = useState<any>(null);
-  const [detalle, setDetalle] = useState<string | null>(null);
+  /* La carga lleva el mes y el año ya puestos cuando se entra desde una casilla
+   * de la rejilla: es el dato que se acaba de señalar, y volver a pedirlo es
+   * donde se carga julio encima de agosto. */
+  const [cargando, setCargando] = useState<{ cuenta: any; mes?: number; anio?: number } | null>(null);
+  const [elegida, setElegida] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const q = useQuery({ queryKey: ['bancos-cuentas'], queryFn: () => api.getCuentasBancarias() });
   const cuentas: any[] = q.data?.data?.cuentas || [];
 
   const refrescar = () => qc.invalidateQueries({ queryKey: ['bancos-cuentas'] });
+  const elegidaObj = cuentas.find((c: any) => c.id === elegida);
 
   return (
     <div className="space-y-4">
@@ -85,7 +90,9 @@ export function BancosCuentas() {
 
       <div className="grid gap-3 md:grid-cols-2">
         {cuentas.map((c) => (
-          <div key={c.id} className="bg-white rounded-lg shadow border p-4">
+          <div key={c.id} className={`bg-white rounded-lg shadow border p-4 ${
+            elegida === c.id ? 'ring-2 ring-emerald-400' : ''
+          }`}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-semibold text-gray-900 truncate">{c.alias}</p>
@@ -137,30 +144,59 @@ export function BancosCuentas() {
 
             <div className="flex items-center gap-3 mt-3 pt-3 border-t">
               {puedeEditar && (
-                <button onClick={() => setCargando(c)}
+                <button onClick={() => setCargando({ cuenta: c })}
                   className="text-sm text-emerald-700 hover:underline flex items-center gap-1.5">
                   <Upload size={14} /> Cargar estado de cuenta
                 </button>
               )}
-              <button onClick={() => setDetalle(c.id)}
+              <button onClick={() => setElegida(elegida === c.id ? null : c.id)}
                 className="text-sm text-primary hover:underline flex items-center gap-1 ml-auto">
-                Control mensual <ChevronRight size={14} />
+                {elegida === c.id ? 'Ocultar los meses' : 'Ver los meses'}
+                <ChevronRight size={14}
+                  className={elegida === c.id ? 'rotate-90 transition-transform' : 'transition-transform'} />
               </button>
             </div>
           </div>
         ))}
       </div>
 
+      {/* ── Los doce meses de la cuenta elegida ──
+          Aquí es donde se carga el PDF de cada mes y donde se concilia: una
+          rejilla de doce muestra LO QUE FALTA, que es lo que una lista esconde.
+          El hueco de un mes descuadra todos los saldos posteriores, y cada uno
+          por separado se ve perfecto. */}
+      {elegidaObj && (
+        <div className="bg-white rounded-lg shadow border p-4">
+          <div className="flex items-baseline justify-between mb-3">
+            <h3 className="font-semibold text-gray-800">
+              {elegidaObj.alias}
+              <span className="ml-2 text-xs font-normal text-gray-500">
+                {elegidaObj.banco_nombre}
+              </span>
+            </h3>
+            <p className="text-xs text-gray-500">
+              Carga el PDF de cada mes en su casilla
+            </p>
+          </div>
+          <BancosAnio
+            cuenta={elegidaObj}
+            onCargar={(mes, anio) => setCargando({ cuenta: elegidaObj, mes, anio })}
+          />
+        </div>
+      )}
+
       {alta && (
         <ModalCuenta onCerrar={() => setAlta(false)}
           onListo={() => { setAlta(false); refrescar(); }} />
       )}
       {cargando && (
-        <ModalCargarEstado cuenta={cargando} onCerrar={() => setCargando(null)}
-          onListo={() => { setCargando(null); refrescar(); }} />
-      )}
-      {detalle && (
-        <ModalControl cuentaId={detalle} onCerrar={() => setDetalle(null)} />
+        <ModalCargarEstado
+          cuenta={cargando.cuenta}
+          mesInicial={cargando.mes}
+          anioInicial={cargando.anio}
+          onCerrar={() => setCargando(null)}
+          onListo={() => { setCargando(null); refrescar(); }}
+        />
       )}
     </div>
   );
@@ -170,9 +206,19 @@ export function BancosCuentas() {
 
 function ModalCuenta({ onCerrar, onListo }: any) {
   const [f, setF] = useState({
-    bancoNombre: '', alias: '', numeroCuenta: '', clabe: '',
+    bancoClave: '', bancoNombre: '', alias: '', numeroCuenta: '', clabe: '',
     moneda: 'MXN', saldoInicial: '', saldoInicialFecha: '',
   });
+
+  /* Los bancos del catálogo SPEI, con su clave de 3 dígitos. Tecleados a mano
+   * nacen "Bancrea", "BANCREA" y "Banco Bancrea" como tres bancos distintos —y
+   * la clave, que es lo que de verdad importa, no se captura nunca. */
+  const bancosQ = useQuery({
+    queryKey: ['catalogo-bancos'],
+    queryFn: () => api.getCatalogoBancos(),
+    staleTime: 24 * 60 * 60 * 1000,
+  });
+  const bancos: any[] = bancosQ.data?.data?.bancos || [];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -213,8 +259,20 @@ function ModalCuenta({ onCerrar, onListo }: any) {
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-xs text-gray-600">Banco *</span>
-              <input value={f.bancoNombre} onChange={(e) => setF({ ...f, bancoNombre: e.target.value })}
-                placeholder="Bancrea" className="input w-full" />
+              <select
+                value={f.bancoClave}
+                onChange={(e) => {
+                  const b = bancos.find((x: any) => x.code === e.target.value);
+                  /* Se guardan los dos: la clave para cuadrar contra la CLABE,
+                     y el nombre para leerlo en pantalla. */
+                  setF({ ...f, bancoClave: e.target.value, bancoNombre: b?.name || '' });
+                }}
+                className="input w-full">
+                <option value="">— Elige el banco —</option>
+                {bancos.map((b: any) => (
+                  <option key={b.code} value={b.code}>{b.code} · {b.name}</option>
+                ))}
+              </select>
             </label>
             <label className="block">
               <span className="text-xs text-gray-600">Moneda</span>
@@ -235,8 +293,22 @@ function ModalCuenta({ onCerrar, onListo }: any) {
             </label>
             <label className="block">
               <span className="text-xs text-gray-600">CLABE (18 dígitos)</span>
-              <input value={f.clabe} onChange={(e) => setF({ ...f, clabe: e.target.value })}
+              <input value={f.clabe}
+                onChange={(e) => setF({ ...f, clabe: e.target.value.replace(/\D/g, '') })}
                 maxLength={18} className="input w-full font-mono" />
+              {/* Los tres primeros dígitos de la CLABE SON la clave del banco.
+                  Si no cuadran, uno de los dos está mal capturado — y el que se
+                  entera es el dinero: la transferencia rebota, o sale a la
+                  institución equivocada. Se avisa aquí, no al guardar. */}
+              {f.clabe.length >= 3 && f.bancoClave && f.clabe.slice(0, 3) !== f.bancoClave && (
+                <span className="block text-[11px] text-rose-700 mt-1">
+                  La CLABE empieza con {f.clabe.slice(0, 3)}
+                  {bancos.find((b: any) => b.code === f.clabe.slice(0, 3))
+                    ? ` (${bancos.find((b: any) => b.code === f.clabe.slice(0, 3)).name})`
+                    : ''}
+                  , no con {f.bancoClave}. Uno de los dos está mal.
+                </span>
+              )}
             </label>
           </div>
 
@@ -268,7 +340,7 @@ function ModalCuenta({ onCerrar, onListo }: any) {
           <button onClick={onCerrar} className="px-4 py-2 text-sm text-gray-600 hover:bg-white rounded-lg">
             Cancelar
           </button>
-          <button onClick={guardar} disabled={busy || !f.alias.trim() || !f.bancoNombre.trim()}
+          <button onClick={guardar} disabled={busy || !f.alias.trim() || !f.bancoClave}
             className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
             {busy ? 'Guardando…' : 'Dar de alta'}
           </button>
@@ -280,10 +352,12 @@ function ModalCuenta({ onCerrar, onListo }: any) {
 
 /* ═══════════ CARGAR ESTADO DE CUENTA ═══════════ */
 
-function ModalCargarEstado({ cuenta, onCerrar, onListo }: any) {
+function ModalCargarEstado({ cuenta, mesInicial, anioInicial, onCerrar, onListo }: any) {
   const hoy = new Date();
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  /* Si se entró desde una casilla, el mes ya está señalado: volver a pedirlo
+   * es donde se carga julio encima de agosto. */
+  const [anio, setAnio] = useState(anioInicial || hoy.getFullYear());
+  const [mes, setMes] = useState(mesInicial || hoy.getMonth() + 1);
   const [texto, setTexto] = useState('');
   const [archivo, setArchivo] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -501,109 +575,6 @@ function Cifra({ r, v }: { r: string; v: string }) {
     <div>
       <p className="text-[10px] uppercase tracking-wide text-gray-500">{r}</p>
       <p className="font-semibold text-gray-900">{v}</p>
-    </div>
-  );
-}
-
-/* ═══════════ CONTROL MENSUAL ═══════════ */
-
-function ModalControl({ cuentaId, onCerrar }: any) {
-  const q = useQuery({
-    queryKey: ['bancos-control', cuentaId],
-    queryFn: () => api.getControlMensual(cuentaId),
-  });
-  const d: any = q.data?.data;
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white">
-          <div>
-            <h3 className="font-bold text-gray-900">Control mensual</h3>
-            <p className="text-xs text-gray-500">Un renglón por estado de cuenta cargado</p>
-          </div>
-          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-        </div>
-
-        <div className="p-5 space-y-3">
-          {q.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
-
-          {/* Los saltos entre meses: el final de uno debe ser el inicial del
-              siguiente. Si no lo es, falta un mes de por medio — y ése es el
-              error que hace cuadrar mal todo lo que viene después. */}
-          {d?.saltos?.map((s: string, i: number) => (
-            <p key={i} className="text-sm text-rose-800 bg-rose-50 border border-rose-200 rounded px-3 py-2 flex items-start gap-2">
-              <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {s}
-            </p>
-          ))}
-
-          {d && d.meses.length === 0 && (
-            <p className="text-sm text-gray-500 italic text-center py-8">
-              Esta cuenta no tiene estados de cuenta cargados todavía.
-            </p>
-          )}
-
-          {d && d.meses.length > 0 && (
-            <table className="w-full text-sm tabular-nums">
-              <thead className="bg-gray-50 border-b text-xs text-gray-600">
-                <tr>
-                  <th className="px-3 py-2 text-left">Mes</th>
-                  <th className="px-3 py-2 text-right">Saldo inicial</th>
-                  <th className="px-3 py-2 text-right">Retiros</th>
-                  <th className="px-3 py-2 text-right">Depósitos</th>
-                  <th className="px-3 py-2 text-right">Saldo final</th>
-                  <th className="px-3 py-2 text-center">Movs.</th>
-                  <th className="px-3 py-2 text-center">Cuadra</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {d.meses.map((m: any) => (
-                  <tr key={m.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-2">
-                      {MESES[m.mes]} {m.anio}
-                      <span className="block text-[11px] text-gray-400">{m.banco_detectado}</span>
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {m.saldo_inicial === null ? '—' : money(m.saldo_inicial)}
-                    </td>
-                    <td className="px-3 py-2 text-right text-rose-700">{money(m.total_retiros)}</td>
-                    <td className="px-3 py-2 text-right text-emerald-700">{money(m.total_depositos)}</td>
-                    <td className="px-3 py-2 text-right font-semibold">
-                      {m.saldo_final === null ? '—' : money(m.saldo_final)}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      {m.movimientos_total}
-                      {m.inferidos > 0 && (
-                        <span className="block text-[10px] text-amber-700">
-                          {m.inferidos} inferido(s)
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      {m.cuadra
-                        ? <CheckCircle2 size={16} className="inline text-emerald-600" />
-                        : <AlertTriangle size={16} className="inline text-rose-600" />}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {d && d.sinCuadrar > 0 && (
-            <p className="text-xs text-rose-700">
-              <b>{d.sinCuadrar}</b> mes(es) no cuadran contra el saldo final que declara su
-              documento. Mientras sigan así, el saldo de esta cuenta no es confiable.
-            </p>
-          )}
-
-          <p className="text-[11px] text-gray-500 flex items-start gap-1.5 pt-2 border-t">
-            <FileText size={12} className="mt-0.5 shrink-0" />
-            El saldo de la cuenta es el final del último mes cargado. Entre ese corte y hoy
-            puede haber cargos que el banco todavía no reporta.
-          </p>
-        </div>
-      </div>
     </div>
   );
 }

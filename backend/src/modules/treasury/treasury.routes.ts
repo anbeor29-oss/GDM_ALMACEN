@@ -13,6 +13,7 @@ import * as remesas from './remesas.service';
 import { generarPdfRemesa } from './pdf-remesa.service';
 import multer from 'multer';
 import * as bancos from './bancos.service';
+import { BANKS_MX } from '../suppliers/banks-mx';
 import { textoDePdf } from './extractor-movimientos.service';
 
 const router = Router();
@@ -200,6 +201,24 @@ const subir = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 },
 });
+
+/**
+ * GET /treasury/bancos/catalogo — los bancos con su clave de 3 dígitos.
+ *
+ * Es el catálogo de participantes SPEI (claves ABM/CNBV), el mismo que usa
+ * nómina. Se expone también aquí porque el grupo TESORERIA no alcanza el módulo
+ * de nómina, y sin esto tendría que teclear el nombre del banco a mano — que es
+ * como nacen "Bancrea", "BANCREA" y "Banco Bancrea" como tres bancos distintos.
+ *
+ * La clave importa más que el nombre: son los tres primeros dígitos de la
+ * CLABE, y si no cuadran con la cuenta, la transferencia rebota.
+ */
+router.get(
+  '/bancos/catalogo',
+  asyncHandler(async (_req: Request, res: Response) => {
+    res.json({ success: true, data: { bancos: BANKS_MX } });
+  })
+);
 
 router.get(
   '/bancos/cuentas',

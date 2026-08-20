@@ -19,6 +19,7 @@ import {
 } from '../src/modules/treasury/extractor-movimientos.service';
 import * as bancos from '../src/modules/treasury/bancos.service';
 import { pool, query } from '../src/config/database';
+import { BANKS_MX } from '../src/modules/suppliers/banks-mx';
 
 let ok = 0, fallos = 0;
 const bien = (q: string) => { ok++; console.log(`  OK  ${q}`); };
@@ -382,6 +383,54 @@ SALDO FINAL                                                    5,700.00
   ctrl2.saltos.length === 1 && ctrl2.saltos[0].includes('08/2026')
     ? bien('★ un mes que no encadena con el anterior se señala, con las dos cifras')
     : mal('no se detectó el salto de saldo entre meses', JSON.stringify(ctrl2.saltos));
+
+  /* ── 8-bis. La CLABE tiene que corresponder al banco ──
+   *
+   * Los TRES PRIMEROS DÍGITOS de la CLABE son la clave del banco. Si no
+   * cuadran, uno de los dos está mal capturado — y el que se entera es el
+   * dinero: la transferencia rebota, o peor, sale a la institución equivocada.
+   *
+   * Es la comprobación que justifica que el banco sea un combo del catálogo y
+   * no un campo de texto: sin la clave, no hay contra qué cruzar la CLABE. */
+  BANKS_MX.length > 50
+    ? bien(`el catálogo trae ${BANKS_MX.length} bancos con su clave de 3 dígitos`)
+    : mal('el catálogo de bancos está incompleto', BANKS_MX.length);
+
+  BANKS_MX.some((b) => b.code === '152' && /BANCREA/i.test(b.name))
+    ? bien('incluye Bancrea con la clave 152')
+    : mal('falta Bancrea en el catálogo');
+
+  try {
+    await bancos.crearCuenta(companyId, {
+      bancoClave: '152', bancoNombre: 'BANCREA', alias: 'ZZ cruzada',
+      /* Una CLABE de BBVA (012) con el banco Bancrea (152) elegido. */
+      clabe: '012180001234567895',
+    });
+    mal('aceptó una CLABE de un banco distinto al elegido');
+  } catch (e: any) {
+    /012/.test(e.message) && /152/.test(e.message)
+      ? bien('★ una CLABE de BBVA con Bancrea elegido se rechaza, y dice las DOS claves')
+      : mal('rechazó sin decir cuál es cuál', e.message);
+  }
+
+  const ok152 = await bancos.crearCuenta(companyId, {
+    bancoClave: '152', bancoNombre: 'BANCREA', alias: 'ZZ coherente',
+    clabe: '152180001234567891',
+  });
+  ok152.id
+    ? bien('y con la CLABE que sí empieza en 152, pasa')
+    : mal('rechazó una CLABE correcta');
+
+  /* Sin CLABE no hay nada que cruzar: se permite, porque a veces se consigue
+   * después y la cuenta hace falta hoy. */
+  const sinClabe = await bancos.crearCuenta(companyId, {
+    bancoClave: '012', bancoNombre: 'BBVA MÉXICO', alias: 'ZZ sin clabe' });
+  sinClabe.id
+    ? bien('una cuenta sin CLABE se acepta: a veces se consigue después')
+    : mal('se exigió la CLABE');
+
+  await query("DELETE FROM bancos_cuentas WHERE company_id=$1 AND alias LIKE 'ZZ %'",
+    [companyId]);
 
   /* ── 9. El enlace con el mes anterior, AL CARGAR ──
    *

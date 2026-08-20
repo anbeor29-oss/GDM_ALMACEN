@@ -940,6 +940,16 @@ class APIClient {
     });
     return r.data;
   }
+  /** Los bancos con su clave de 3 dígitos (catálogo SPEI/ABM). */
+  async getCatalogoBancos() {
+    const r = await this.client.get<APIResponse<any>>('/treasury/bancos/catalogo');
+    return r.data;
+  }
+  async borrarEstadoDeCuenta(estadoId: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/treasury/bancos/estados/${estadoId}`);
+    return r.data;
+  }
+
   /** El archivo puente: el estado de cuenta como CSV, para contabilidad. */
   async descargarCsvEstado(estadoId: string, nombre: string) {
     const r = await this.client.get(`/treasury/bancos/estados/${estadoId}/csv`,
