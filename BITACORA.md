@@ -3414,3 +3414,32 @@ Los 343 renglones coinciden centavo por centavo entre PDF y Excel.
 
 Los archivos de ejemplo NO están en el repositorio: son contabilidad real de
 un tercero. La prueba se salta sola si no están.
+
+## 2026-08-20 — Mapeador: acomodar catálogos ajenos sobre la base del SAT
+
+`mapeador-sat.service.ts` + `probar-mapeo-sat` (20/20). Conectado a
+`POST /accounting/balanza/analizar`: la misma respuesta dice si cuadra Y dónde
+cae cada cuenta.
+
+**La idea, en una línea:** el nombre de una cuenta HOJA dice quién es el
+tercero; el de su cuenta PADRE dice qué es la cuenta. Sólo el segundo mapea.
+
+El caso que lo demuestra está en la balanza real: `AFIRME` aparece DOS VECES —
+bajo BANCOS (102.01, activo) y bajo ACREEDORES DIVERSOS (205, pasivo). Un mapeo
+por nombre manda el pasivo al activo, y la balanza sigue cuadrando: sólo que del
+lado que no era. Igual `BANCO DEL BAJÍO S.A.` que es un PROVEEDOR → 201.01.
+
+Excepción: en los grupos 601-604 la hoja SÍ es un concepto (UNIFORMES → 601.77).
+
+**Resultado sobre la balanza real:** 340 de 343 cuentas acomodadas, 0 conflictos,
+y ninguna cuenta cambió de lado del balance. Las 3 sin mapear son encabezados
+puros sin saldo propio (CIRCULANTE, DIFERIDO, PASIVO A CORTO PLAZO).
+
+**Propone, no aplica.** Cada cuenta lleva confianza (ALTA/MEDIA/BAJA/CONFLICTO)
+y su razón. Un mapeo equivocado no se ve: la balanza cuadra igual.
+
+**Bugs corregidos:** el padre se elegía por longitud de código y no por
+especificidad (AFIRME colgaba de CIRCULANTE en vez de BANCOS); el comodín de
+ventas estaba antes del bloque de costos y se llevaba `COSTO DE VENTA` al 401;
+y un heredoc de Python metió bytes 0x08 literales donde debía ir `\b` en los
+regex — se añadió barrido de caracteres de control al repo.

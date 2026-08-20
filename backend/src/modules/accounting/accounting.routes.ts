@@ -16,6 +16,7 @@ import { authenticateToken, requireCapability, authorize } from '../../middlewar
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as catalogo from './catalogo.service';
 import * as balanza from './balanza-lector.service';
+import * as mapeador from './mapeador-sat.service';
 import multer from 'multer';
 
 const router = Router();
@@ -245,6 +246,15 @@ router.post(
 
     const analisis = balanza.analizarBalanza(lectura);
 
+    /* -- Acomodar el catalogo ajeno sobre la base del SAT --
+     * Va en la misma respuesta a proposito: lo que hace falta saber antes
+     * de cargar no es solo 'cuadra', es 'y donde va a caer cada cuenta'.
+     * Las dos preguntas se contestan mirando el archivo una sola vez. */
+    const validos = await mapeador.agrupadoresValidos();
+    let mapeo = mapeador.proponerMapeo(lectura.filas, { agrupadoresValidos: validos });
+    mapeo = await mapeador.conNombresDelSat(mapeo);
+    const resumenMapeo = mapeador.resumenMapeo(mapeo);
+
     /* Se devuelven las filas para poder verlas en pantalla antes de cargar,
      * pero acotadas: una balanza de 5,000 cuentas no cabe en una respuesta
      * cómoda, y para revisar sirve el resumen más los renglones con problema. */
@@ -255,10 +265,17 @@ router.post(
         encabezado: lectura.encabezado,
         analisis,
         filas: analisis.totalFilas <= 1500 ? lectura.filas : undefined,
+        mapeo: analisis.totalFilas <= 1500 ? mapeo : undefined,
+        resumenMapeo,
+        /* Lo dudoso viaja SIEMPRE, aunque el resto se omita por tamano:
+         * es justo lo que hay que revisar a mano. */
+        porRevisar: resumenMapeo.porRevisar,
         filasOmitidas: analisis.totalFilas > 1500 ? analisis.totalFilas : 0,
       },
       message: analisis.cuadra
-        ? `Balanza leída: ${analisis.hojas} cuentas de detalle, y cuadra.`
+        ? `Balanza leída: ${analisis.hojas} cuentas de detalle, cuadra, y ` +
+          `${resumenMapeo.mapeadas} de ${resumenMapeo.total} quedaron acomodadas ` +
+          `sobre el catálogo del SAT.`
         : `Balanza leída con ${analisis.avisos.filter((a) => a.nivel === 'ERROR').length} ` +
           `problema(s) que hay que resolver antes de cargarla.`,
     });

@@ -33,7 +33,8 @@
     "docs:icons": "ts-node -r dotenv/config scripts/generate-icons-guide.ts",
     "contabilidad:sembrar": "ts-node --files -r dotenv/config scripts/sembrar-contabilidad.ts",
     "probar:contabilidad": "ts-node --files -r dotenv/config scripts/probar-contabilidad.ts",
-    "probar:balanza": "ts-node --files -r dotenv/config scripts/probar-balanza.ts"
+    "probar:balanza": "ts-node --files -r dotenv/config scripts/probar-balanza.ts",
+    "probar:mapeo": "ts-node --files -r dotenv/config scripts/probar-mapeo-sat.ts"
   },
   "keywords": [
     "cfdi",

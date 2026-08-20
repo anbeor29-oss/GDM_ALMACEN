@@ -541,10 +541,24 @@ export function marcarHojas(filas: FilaBalanza[]): FilaBalanza[] {
     let nivel = 0;
     for (const s of segs) { if (/^0+$/.test(s)) break; nivel++; }
     f.nivel = Math.max(1, nivel);
-    /* El padre es la cuenta más larga del archivo que sea padre de ésta. */
+    /* ── El padre es el MÁS ESPECÍFICO, no el más largo ──
+     * '1-10-20-009 AFIRME' cuelga de '1-10-00-000 CIRCULANTE' y de
+     * '1-10-20-000 BANCOS'. Los dos códigos miden exactamente igual, así que
+     * comparar por longitud escoge al primero que aparezca —CIRCULANTE— y la
+     * cuenta pierde el único dato que decía qué es: que es un banco.
+     *
+     * Lo que distingue al padre bueno es cuántos segmentos SIGNIFICATIVOS
+     * tiene: BANCOS concreta tres, CIRCULANTE sólo dos. */
+    const significativos = (c: string) => {
+      const seg = c.split('-');
+      let n = seg.length;
+      while (n > 0 && /^0+$/.test(seg[n - 1])) n--;
+      return n;
+    };
     let mejor: string | null = null;
     for (const c of codigos) {
-      if (esPadreDe(c, f.cuenta) && (!mejor || c.length > mejor.length)) mejor = c;
+      if (!esPadreDe(c, f.cuenta)) continue;
+      if (!mejor || significativos(c) > significativos(mejor)) mejor = c;
     }
     f.padre = mejor;
   }
