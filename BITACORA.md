@@ -3486,3 +3486,47 @@ esconde a la vez la liquidez y la deuda.
 Pruebas: roles 15/15 · mapeo 20/20 · balanza 30/30 · contabilidad 49/49 ·
 grupos 35/35 · nómina 19/19 · reportes 29/29 · bancos 57/57 · preregistro 18/18
 · jest 115/115
+
+## 2026-08-20 — Motor NIF funcionando
+
+**Migración:** `2026-08-20d_motor_nif.sql` · `nif_reglas`, `nif_evaluaciones`,
+`nif_hallazgos` + columna `nif_aplica` en el catálogo del SAT y en las cuentas.
+
+**El aviso de "50 cuentas sin norma NIF" era el síntoma de un modelo de dos
+estados.** Hacen falta tres:
+
+- `ESPECIFICA` — le toca una NIF concreta. 115 Inventario → C-4. (399)
+- `NO_APLICA` — correctamente no tiene ninguna. IVA, IEPS y retenciones no son
+  instrumentos financieros (esos nacen de un contrato; el impuesto de la ley)
+  ni impuestos a la utilidad (D-4 cubre ISR y PTU). (260)
+- `DEPENDE` — no se sabe sin ver qué hay dentro: "otros activos". (20)
+
+Marcar el IVA como C-3 para vaciar la lista habría hecho que el motor le
+exigiera estimación de pérdida crediticia a un saldo que se compensa contra el
+propio impuesto. El aviso pasó de 50 cuentas irresolubles a 9 reales.
+
+**13 reglas, versionadas.** Cada hallazgo guarda con qué versión se emitió.
+Corren sobre la balanza —que ya existe— y no esperan a las pólizas: un motor
+que sólo funciona con datos que no existen no se puede probar.
+
+Sobre la balanza real encuentra: $2,490,817 de cartera sin estimación de
+incobrables (C-3), $2,911,788 de bancos sobregirados presentados como activo
+negativo en vez de pasivo (C-1), y 63 cuentas con saldo contrario a su
+naturaleza (A-7).
+
+**Bug de fondo corregido:** el 703 del Anexo 24 guarda gastos financieros
+(703.01-11) Y productos financieros (703.12-21). La regla de la ecuación
+trataba todo el 703 como gasto, así que un ingreso por intereses se restaba en
+vez de sumarse — el error entraba dos veces. Ahora el resultado se arma por
+NATURALEZA, no por el dígito del agrupador.
+
+Verificación fuerte: el motor NIF y el analizador de balanza calculan la
+diferencia de la ecuación por caminos distintos y dan lo mismo ($20.14).
+
+Otras correcciones: C-3 mide la EXPOSICIÓN (suma de saldos deudores) y no el
+neto — con el neto pedía estimar una cartera negativa. C-6 excluye terrenos.
+Una regla que revienta se reporta y las demás siguen.
+
+Pruebas: nif 28/28 · mapeo 20/20 · balanza 30/30 · contabilidad 49/49 ·
+roles 15/15 · grupos 35/35 · nómina 19/19 · reportes 29/29 · bancos 57/57 ·
+preregistro 18/18 · jest 115/115

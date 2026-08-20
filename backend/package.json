@@ -35,7 +35,8 @@
     "probar:contabilidad": "ts-node --files -r dotenv/config scripts/probar-contabilidad.ts",
     "probar:balanza": "ts-node --files -r dotenv/config scripts/probar-balanza.ts",
     "probar:mapeo": "ts-node --files -r dotenv/config scripts/probar-mapeo-sat.ts",
-    "probar:roles": "ts-node --files -r dotenv/config scripts/probar-tercero-varios-roles.ts"
+    "probar:roles": "ts-node --files -r dotenv/config scripts/probar-tercero-varios-roles.ts",
+    "probar:nif": "ts-node --files -r dotenv/config scripts/probar-motor-nif.ts"
   },
   "keywords": [
     "cfdi",

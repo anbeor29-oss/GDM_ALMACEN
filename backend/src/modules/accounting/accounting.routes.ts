@@ -17,6 +17,7 @@ import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as catalogo from './catalogo.service';
 import * as balanza from './balanza-lector.service';
 import * as mapeador from './mapeador-sat.service';
+import * as motorNif from './nif-motor.service';
 import multer from 'multer';
 
 const router = Router();
@@ -279,6 +280,111 @@ router.post(
         : `Balanza leída con ${analisis.avisos.filter((a) => a.nivel === 'ERROR').length} ` +
           `problema(s) que hay que resolver antes de cargarla.`,
     });
+  })
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOTOR NIF
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** POST /accounting/nif/sincronizar — registra las reglas y clasifica el catálogo */
+router.post(
+  '/nif/sincronizar',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const reglas = await motorNif.sincronizarReglas();
+    const catalogo = await motorNif.clasificarCatalogoSat();
+    const empresa = await motorNif.clasificarCuentasEmpresa(companyId(req));
+    res.json({
+      success: true,
+      data: { reglas, catalogo, empresa },
+      message:
+        `${reglas.total} reglas activas. Catálogo: ${catalogo.especifica} cuentas con ` +
+        `NIF específica, ${catalogo.noAplica} sin NIF aplicable y ${catalogo.depende} ` +
+        `que dependen de su contenido.`,
+    });
+  })
+);
+
+/** GET /accounting/nif/reglas — el catálogo de reglas, con lo que exige cada una */
+router.get(
+  '/nif/reglas',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const { query: q } = await import('../../config/database');
+    const r = await q(
+      `SELECT r.*, n.titulo AS norma_titulo FROM nif_reglas r
+         JOIN nif_normas n ON n.clave = r.norma
+        WHERE r.activa ORDER BY r.norma, r.clave`);
+    res.json({ success: true, data: { reglas: r.rows } });
+  })
+);
+
+/**
+ * POST /accounting/nif/evaluar — corre las reglas sobre una balanza.
+ *
+ * Recibe el archivo y devuelve los hallazgos. Se guarda la corrida para poder
+ * comparar contra la del mes pasado: lo que importa no es sólo qué está mal
+ * hoy, es si se está corrigiendo.
+ */
+router.post(
+  '/nif/evaluar',
+  requireCapability('contabilidad:capturar'),
+  subir.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = (req as any).file;
+    if (!f) throw new ValidationError('Falta el archivo de la balanza.');
+
+    const nombre = (f.originalname || '').toLowerCase();
+    const esExcel = /\.xlsx?$/.test(nombre) || /spreadsheet|excel/.test(f.mimetype || '');
+    const esPdf = /\.pdf$/.test(nombre) || /pdf/.test(f.mimetype || '');
+    if (!esExcel && !esPdf) throw new ValidationError('El archivo tiene que ser Excel o PDF.');
+
+    let lectura;
+    try {
+      lectura = esExcel
+        ? await balanza.leerBalanzaExcel(f.buffer)
+        : await balanza.leerBalanzaPdf(f.buffer);
+    } catch (e: any) { throw new ValidationError(e.message); }
+
+    const validos = await mapeador.agrupadoresValidos();
+    const mapeo = mapeador.proponerMapeo(lectura.filas, { agrupadoresValidos: validos });
+
+    const fechaCorte = (req.body.fechaCorte as string)
+      || new Date().toISOString().slice(0, 10);
+
+    const ctx = motorNif.contextoDeBalanza(lectura.filas, mapeo, fechaCorte);
+    const resultado = motorNif.evaluar(ctx);
+
+    const guardar = req.body.guardar !== 'false';
+    const evaluacionId = guardar
+      ? await motorNif.guardarEvaluacion(companyId(req), resultado, 'BALANZA', req.user?.userId)
+      : undefined;
+
+    res.json({
+      success: true,
+      data: { ...resultado, evaluacionId, encabezado: lectura.encabezado },
+      message:
+        `${resultado.reglasCorridas} reglas: ${resultado.noCumple} incumplimiento(s), ` +
+        `${resultado.revisar} por revisar, ${resultado.cumple} en orden.`,
+    });
+  })
+);
+
+/** GET /accounting/nif/evaluaciones — el histórico */
+router.get(
+  '/nif/evaluaciones',
+  asyncHandler(async (req: Request, res: Response) => {
+    const evaluaciones = await motorNif.evaluacionesDe(companyId(req));
+    res.json({ success: true, data: { evaluaciones } });
+  })
+);
+
+/** GET /accounting/nif/evaluaciones/:id — los hallazgos de una corrida */
+router.get(
+  '/nif/evaluaciones/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const hallazgos = await motorNif.hallazgosDe(req.params.id);
+    res.json({ success: true, data: { hallazgos } });
   })
 );
 

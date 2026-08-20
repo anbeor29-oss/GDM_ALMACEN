@@ -612,20 +612,48 @@ export async function revisarCatalogo(companyId: string) {
     });
   }
 
-  const sinNif = await query<any>(
+  /* ── Sin clasificar NO es lo mismo que sin NIF ──
+   *
+   * El aviso viejo contaba como pendiente toda cuenta sin norma, y metía en el
+   * mismo saco al IVA acreditable —al que NO le corresponde ninguna NIF de
+   * valuación— con las que de verdad faltan por clasificar. Cincuenta cuentas
+   * en una lista que no se puede vaciar entrenan a ignorar el aviso.
+   *
+   * Ahora sólo se reportan las que quedaron en DEPENDE: las genéricas, cuyo
+   * tratamiento no se puede saber sin ver qué hay dentro. Ésas sí las tiene
+   * que resolver la empresa, y son pocas. */
+  const porClasificar = await query<any>(
     `SELECT codigo, nombre FROM accounting_accounts
-      WHERE company_id=$1 AND activa AND permite_movimientos AND nif_norma IS NULL
-        AND tipo <> 'ORDEN'
+      WHERE company_id=$1 AND activa AND permite_movimientos
+        AND nif_aplica = 'DEPENDE'
       ORDER BY codigo LIMIT 50`,
     [companyId],
   );
-  if (sinNif.rows.length) {
+  if (porClasificar.rows.length) {
     avisos.push({
       nivel: 'AVISO',
       mensaje:
-        `${sinNif.rows.length} cuenta(s) sin norma NIF. La norma decide cómo se ` +
-        `valúa y qué se revela; sin ella el motor NIF no puede opinar sobre esa cuenta.`,
-      cuentas: sinNif.rows.map((c: any) => `${c.codigo} ${c.nombre}`),
+        `${porClasificar.rows.length} cuenta(s) cuyo tratamiento NIF depende de qué ` +
+        `se registre en ellas ("otros activos", "otros pasivos"). Clasifícalas para ` +
+        `que el motor NIF pueda opinar; las demás ya están resueltas.`,
+      cuentas: porClasificar.rows.map((c: any) => `${c.codigo} ${c.nombre}`),
+    });
+  }
+
+  /* Una cuenta que dice ESPECIFICA sin norma es una incoherencia real. */
+  const incoherentes = await query<any>(
+    `SELECT codigo, nombre FROM accounting_accounts
+      WHERE company_id=$1 AND activa AND nif_aplica='ESPECIFICA' AND nif_norma IS NULL
+      ORDER BY codigo LIMIT 20`,
+    [companyId],
+  );
+  if (incoherentes.rows.length) {
+    avisos.push({
+      nivel: 'ERROR',
+      mensaje:
+        `${incoherentes.rows.length} cuenta(s) marcadas como "con NIF específica" ` +
+        `pero sin norma asignada.`,
+      cuentas: incoherentes.rows.map((c: any) => `${c.codigo} ${c.nombre}`),
     });
   }
 

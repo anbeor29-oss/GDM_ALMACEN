@@ -9,12 +9,23 @@
  */
 import { pool } from '../src/config/database';
 import { sembrarReferencias, faltantesDelAnexo24 } from '../src/modules/accounting/catalogo.service';
+import { sincronizarReglas, clasificarCatalogoSat } from '../src/modules/accounting/nif-motor.service';
 
 (async () => {
   const r = await sembrarReferencias();
+
+  /* El motor NIF va en la misma siembra: un catálogo con normas pero sin
+   * reglas que las ejecuten es documentación, no un motor. */
+  const reglas = await sincronizarReglas();
+  const clas = await clasificarCatalogoSat();
   console.log(`\n  NIF sembradas:        ${r.nifSembradas}`);
   console.log(`  Códigos del Anexo 24: ${r.satSembrados}` +
               ` (${r.satNivel1} mayores, ${r.satNivel2} subcuentas)`);
+  console.log(`  Reglas NIF activas:   ${reglas.total}`);
+  console.log(`\n  Clasificacion NIF:`);
+  console.log(`    con NIF especifica:    ${clas.especifica}`);
+  console.log(`    sin NIF aplicable:     ${clas.noAplica}` + '   (IVA, IEPS, retenciones, cuentas de orden)');
+  console.log(`    depende del contenido: ${clas.depende}` + '   ("otros activos", "otros pasivos")');
   console.log(`\n  Faltan ~${r.nivel2Pendiente} subcuentas de ` +
               `${r.cuentasConNivel2Incompleto} cuentas mayores.`);
   console.log('  El resumen del Anexo 24 no las detalla nombre por nombre, y no');
