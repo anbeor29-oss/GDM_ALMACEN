@@ -12,10 +12,18 @@ SW Sapien.
 > quedó de antes y **se conserva a propósito**: renombrarlos en Render crea un
 > par vacío y deja colgado el actual, con su inventario dentro.
 
-**Estado** (al 2026-08-04):
-- 🟢 **Desplegado y respondiendo** en `gdm-almacen-*`, con todo lo del 08-04
-  incluido (multi-empresa, pagos multi-factura, CSD en base).
+**Estado** (al 2026-08-19):
+- 🟢 **Desplegado y respondiendo** en `gdm-almacen-*` (multi-empresa, pagos
+  multi-factura, CSD en base).
+- 🟢 **Nómina completa**: expediente, cálculo, finiquito y liquidación, cierre
+  transaccional, CFDI, cuatro reportes con la cuota patronal, y el descuento
+  automático de uniformes con costo.
+- 🟢 **Permisos por grupo de trabajo**: siete grupos, cada uno con sus módulos,
+  sus capacidades y su pantalla de inicio.
 - 🟡 **PAC en sandbox** de SW Sapien. Timbra, pero no ante el SAT real.
+- 🟡 **Descarga masiva del SAT**: el motor está, pero el cron **no arranca sin
+  `ENABLE_SAT_DESCARGA_CRON=true`** en el entorno. Sin esa variable los trabajos
+  se quedan "en proceso" para siempre.
 - 🔴 **Contabilidad** — no existe en ningún fork. Fase pendiente.
 
 ## 🔑 Cómo entrar
@@ -344,6 +352,42 @@ comporta raro después de un deploy.
 Todos los scripts son idempotentes: correrlos de más no hace daño, y lo que
 falló se reintenta solo en el siguiente arranque.
 
+### ⚠️ Lo que hay que hacer EN RENDER después de un deploy
+
+Dos cosas que **no se aplican solas** y cuyo síntoma no dice qué falta:
+
+**1. Las migraciones.** 📍 En el **Web Shell de Render** (prompt `render@srv-…`),
+no en la terminal local:
+
+```bash
+cd /opt/render/project/src/backend && npm run migrate:up
+```
+
+Sin esto, las pantallas nuevas fallan con errores de columna inexistente. Al
+2026-08-19 están pendientes las de cuotas patronales, participantes de nómina
+especial, entregas con descuento, fechas de descuento y preregistro de
+proveedores.
+
+**2. El motor de descarga del SAT.** 📍 En **Render → Environment**:
+
+```
+ENABLE_SAT_DESCARGA_CRON=true
+```
+
+El motor avanza solo cada 15 minutos **sólo si existe esa variable** (y
+`SAT_VAULT_KEY`, que ya está si se pudo guardar la e.firma). Sin ella los
+trabajos se quedan en **"En proceso"** para siempre, con `0/3` solicitudes — que
+significa que al SAT **todavía no se le ha pedido nada**, no que se haya perdido
+la respuesta.
+
+Cuánto tarda, con números: manda **5 solicitudes por corrida**. Con 39
+particiones pendientes son ~2 horas sólo para enviarlas; los primeros XML
+aparecen entre 30 y 60 minutos. El botón **"Avanzar ahora"** hace *una* corrida
+—cinco solicitudes—, así que con muchas pendientes mueve poco: no está roto, es
+el ritmo.
+
+---
+
 ### Diagnóstico rápido tras un deploy
 
 En el log de arranque, dos líneas dicen casi todo:
@@ -590,6 +634,130 @@ restringido a sus módulos.
 
 ---
 
+## 🔐 Grupos de trabajo, capacidades y a dónde llega cada quien
+
+Tres cosas distintas gobiernan lo que alguien puede hacer, y confundirlas es de
+donde salieron casi todos los problemas de permisos de este sistema:
+
+| Concepto | Qué decide | Dónde vive |
+|----------|-----------|-----------|
+| **Rol** | Autoridad: SUPER_ADMIN, ADMIN, MANAGER, USER | `users.role` |
+| **Grupo de trabajo** | Qué **pantallas ve** | `users.work_group` + `GROUP_MODULES` |
+| **Capacidad** | Qué **puede hacer** dentro de ellas | `GROUP_CAPABILITIES` + `user_capabilities` |
+
+### Los siete grupos
+
+| Grupo | Módulos que ve | Llega a | Puede hacer |
+|-------|----------------|---------|-------------|
+| **ADMIN_ALL** | todo | `/dashboard` | todo |
+| **VENTAS** | facturas, carta porte, NC, clientes, productos, lector XML, POS, monedas, mensajes | `/invoices` | `pos:sell`, `inventory:view` |
+| **ALMACEN** | productos, existencias, mensajes | `/inventory` | ajustes, traspasos, conteo físico |
+| **COMPRAS** | compras, proveedores, productos, lector XML, mensajes | `/purchase-orders` | `purchasing:capture`, `suppliers:manage` |
+| **TESORERIA** | tesorería, proveedores, monedas, mensajes | `/treasury` | `treasury:pay`, `suppliers:manage` |
+| **PUNTO_VENTA** | POS, mensajes | `/pos` | `pos:sell` |
+| **RECURSOS_HUMANOS** | nómina, lector XML, mensajes | `/nomina` | `nomina:manage` |
+
+### Lo que sólo ve la dirección
+
+**Dashboard, Reportes y Contrato** están fuera de los seis grupos operativos: el
+resumen del negocio, las ventas por periodo y las condiciones comerciales con
+GDM son información de la dirección, no de quien captura. Los tres van cerrados
+**en la ruta**, no sólo en el menú — esconder el renglón no impide llegar
+tecleando la dirección.
+
+Los reportes **de nómina** son otra cosa: cuelgan del módulo `nomina` y siguen
+con Recursos Humanos.
+
+### Por qué cada grupo tiene "casa"
+
+`/dashboard` era el destino de **todos los rechazos y del login**. Al sacarlo de
+los grupos operativos, seguir mandándolos ahí los habría dejado rebotando entre
+dos negativas — un usuario que **no puede entrar al sistema**, sin ningún error
+visible. Por eso existe `HOME_POR_GRUPO`: cada quien llega a lo que viene a
+hacer.
+
+### Las capacidades no se adivinan: se preguntan
+
+`GET /auth/mis-capacidades` responde el conjunto **efectivo** —lo que da el rol,
+más el grupo, más lo otorgado a mano— y el frontend lo consulta con
+`useCapacidades()`. Las pantallas **no** deducen permisos del rol.
+
+Tuvieron que aprenderlo dos veces: escondiendo botones por rol, Tesorería y
+Recursos Humanos veían sus pantallas **sin un solo botón** — que no parece una
+falla de permisos sino de que el sistema no sirve, y por eso nadie lo reporta
+como lo que es. Y hay algo que el frontend **no puede** adivinar: los
+otorgamientos individuales, que son renglones en la base.
+
+> ⚠️ **El MANAGER no hereda todo.** `NO_HEREDA_MANAGER` lista las capacidades
+> que **no se dan por rango**: hoy, `nomina:manage`. Sueldos, CURP, cuentas
+> bancarias y órdenes de pensión alimenticia no se abren por ser gerente. Un
+> MANAGER de RH sí la tiene — por su grupo, no por su jerarquía.
+
+### Dónde se toca un grupo
+
+Agregar o cambiar un grupo obliga a tocar **cuatro** lugares. Tres avisan
+cuando faltan; el cuarto no:
+
+1. `backend/src/middleware/permissions.ts` → `GROUP_MODULES` *(fuente de verdad)*
+2. `backend/src/modules/auth/capabilities.ts` → `GROUP_CAPABILITIES`
+3. `frontend/src/utils/permissions.ts` → el mismo mapa + `HOME_POR_GRUPO`
+4. El `CHECK` de `users.work_group` *(migración)* — rechaza el INSERT si falta
+
+La lista de grupos válidos del alta de usuarios **se deriva** de `GROUP_MODULES`.
+Estaba escrita a mano y se quedó corta: el combo ofrecía "Recursos Humanos", el
+usuario lo elegía y el servidor respondía *"workGroup inválido"*.
+
+---
+
+## 🖥️ Convenciones de interfaz
+
+Reglas que valen para **todo** el sistema. Escritas porque cada una nació de un
+problema real, y sin el motivo alguien las va a "simplificar".
+
+### Fechas: siempre DD/MM/AAAA
+
+`<input type="date">` lo dibuja el **navegador** con el formato del sistema
+operativo: en una máquina en inglés pide `mm/dd/yyyy`, y no hay CSS ni atributo
+que lo cambie. Capturar 03/07 como "3 de julio" cuando el control lee "7 de
+marzo" mueve una fecha de ingreso — y con ella la antigüedad, las vacaciones y
+el finiquito.
+
+- **Capturar** → `components/CampoFecha.tsx`. Campo de texto con máscara, habla
+  ISO hacia afuera, y **valida que la fecha exista**: "31/02/2026" son ocho
+  dígitos correctos y una fecha que no existe.
+- **Mostrar** → `utils/fecha.ts` (`fechaMx`, `fechaHoraMx`, `fechaLargaMx`).
+
+> ⚠️ Una fecha de calendario (`"2026-08-19"`) se parte **a mano**, nunca con
+> `new Date()`. Ese constructor la lee como medianoche **UTC** y en México la
+> convierte en el 18. Un vencimiento se recorre un día entero.
+
+### Un error NO se muestra como "no hay nada"
+
+Es el peor disfraz posible: nadie lo reporta, porque parece la verdad.
+
+Pasó con los complementos de pago. El `ORDER BY` sacaba los dígitos del folio
+suponiendo que era texto, pero `payments.folio` es **integer**, así que
+`COALESCE(p.folio,'')` obligaba a convertir `''` a entero y la consulta
+reventaba **siempre**. La pantalla decía *"Todavía no hay complementos de
+pago"*. Ahora distingue las dos cosas y lo dice con todas sus letras.
+
+### Un botón deshabilitado dice por qué
+
+Un botón gris sin explicación es un botón roto para quien lo mira. Si no se
+puede oprimir, al lado va la razón: *"elige un proveedor"*, *"marca al menos una
+factura"*, *"este proveedor no tiene nada que programar"*.
+
+### Los Excel llevan el formato de la casa
+
+Paleta única en `backend/src/modules/nomina/estilo-excel.ts`, sacada leyendo
+celda por celda el formato que ya se usaba. Azul lo que entra, rojo lo que se
+descuenta, verde el neto; pesos con dos decimales.
+
+> ⚠️ Se generan con **ExcelJS**, no con SheetJS: la versión libre de SheetJS
+> acepta los estilos, no marca error y **los tira al guardar**.
+
+---
+
 ## 📦 Módulos y estado
 
 ### 🔷 Operación diaria — módulos del menú de empresa (por grupo de trabajo)
@@ -609,6 +777,17 @@ restringido a sus módulos.
 | **Resumen mensual (PDF)** | ✅ | Reportes → Resumen mensual. Por mes y año: venta, cobrada, no cobrada y **adeudo acumulado**, con subtotal por año. `GET /reports/sales-summary/pdf` (inline) |
 | **Facturas no pagadas (PDF)** | ✅ | Reportes → No pagadas. TODAS las facturas con saldo, lista plana cronológica, sin importar antigüedad y **sin el umbral de $0.20** (solo descarta el redondeo, >= $0.01). Días de antigüedad: ámbar > 30, rojo > 90. `GET /reports/unpaid/pdf` |
 
+### 🟠 Compras y Tesorería
+
+| Qué | Estado | Descripción |
+|-----|--------|-------------|
+| **Faltantes** | ✅ | Agotados, bajo mínimo, y un cuarto escalón: **"llegando al mínimo"** hasta 2 unidades arriba. Enterarse al TOCAR el mínimo es enterarse tarde — el proveedor no entrega el mismo día. El margen se mueve con `?margen=`; con 0 se comporta como antes |
+| **Órdenes de compra** | ✅ | Cambiar de proveedor a media orden, con alta al vuelo en el mismo gesto: crear y asignar por separado es donde se pierde el hilo |
+| **Proveedor de preregistro** | ✅ | Nombre y días de crédito, nada más, para que la deuda **exista** cuando el proveedor no está dado de alta. Antes la mercancía entraba y la cuenta por pagar no se capturaba nunca. **No sirve para nada fiscal**: su RFC es un marcador `SINRFC-XXXXXX` que cualquier validación rechaza. `GET /purchase-orders/proveedores-a-medias` los lista para completarlos |
+| **Recepción con factura** | ✅ | Se captura el **TOTAL** de la factura —lo que dice el papel— y el subtotal se deriva. Los **días de crédito van por factura**: el mismo proveedor da 30 días en lo de siempre y contado en un pedido especial |
+| **Remesas de pago** | ✅ | Tres pasos en el orden del trabajo: a quién, qué, cuándo. **Hoja para el banco en PDF** con la CLABE junto al importe —separarlos es donde se transfiere el monto de un proveedor a la cuenta de otro—, total por proveedor, vencidas marcadas, aviso de quien no tiene datos bancarios y tres firmas. Dice que **no es un comprobante fiscal** |
+| **Expedientes de proveedor** | ✅ | Los mantienen tesorería y compras (`suppliers:manage`), no sólo los administradores: tesorería es quien descubre la CLABE vacía al programar la transferencia |
+
 ### 🟩 Nómina (grupo RECURSOS_HUMANOS + ADMIN_ALL)
 
 Módulo propio de NEXO — **GDM Facturación no lo tiene**. Portado del sistema
@@ -622,8 +801,15 @@ anterior (`NOM_COM_1`), con el motor de cálculo sacado del navegador al backend
 | Expediente | ✅ | Bitácora (logros, sanciones, incidencias, notas — las confidenciales se filtran **en el servidor**, no en el front) y control de entrega de uniformes/EPP con devolución |
 | Parámetros | ✅ | UMA, salarios mínimos, tarifa del Art. 96 y subsidio, **por ejercicio**. Globales: la tarifa es del país, no de la empresa. Los edita SUPER_ADMIN |
 | **Nómina (prenómina)** | ✅ | Rejilla con columna fija para Días · Ingresos · Otros ing. · Percepciones ‖ IMSS · ISR · Préstamos · Otras ded. ‖ Neto. Gravado y exento **anotados aparte antes de sumarlos**, que es como los reporta el CFDI. Doble clic en las columnas de "otros" para capturar; el mouse encima desglosa. Exporta a Excel (2 hojas) y cierra el periodo |
-| **CFDI** | ✅ | Recibe los XML pre-timbre del cierre. Filtro por estatus, vista previa, descarga y check de envío por correo. **El timbrado ante el PAC no está conectado** — es un paso aparte, por decisión |
-| Reportes | ⬜ | Prenómina, vista previa de CFDI, ISR por nómina e IMSS por nómina, con rango 1–53 (semanal) / 1–24 (quincenal) |
+| **CFDI** | ✅ | Recibe los XML pre-timbre del cierre. Columna de **folio fiscal (UUID)**, vista previa, descarga, y **timbrado contra el PAC** con "marcar todos" en el icono del sello. La casilla de correo se habilita **con el recibo ya timbrado**: un pre-timbre no ampara ningún pago |
+| **Reportes** | ✅ | Prenómina, CFDI, ISR e IMSS. Rango 1–53 (semanal) / 1–24 (quincenal), **sólo de periodos cerrados**. La prenómina abre **acumulada por trabajador** —con interruptor a Detalle— y marca a quien no aparece en todos los periodos del rango. Excel con el formato de la casa |
+| **Cuota patronal** | ✅ | El reporte de IMSS desglosa lo que hay que **provisionar**, rama por rama (Art. 106-I, 106-II, 107, 25, 147, 71-73, 211, 168-I, 168-II) + INFONAVIT 5%. Cesantía y vejez sale de la **escala por UMA** que sube hasta 2030 (DOF 16/12/2020). Sin prima de riesgo capturada esa rama va en cero **y se avisa** |
+| **Finiquito y liquidación** | ✅ | Separados: finiquito (lo devengado) y liquidación (indemnización). Los aniversarios se cuentan **por calendario**, no dividiendo días entre 365 — con 2556 días el séptimo aniversario todavía no llegaba y las vacaciones salían en cero |
+| **Captura persistente** | ✅ | Lo capturado en la rejilla se guarda solo. Al volver a la pantalla **se fusiona** con lo que ya había por trabajador; antes la captura parcial de la pantalla pisaba lo guardado |
+| **Faltas por días** | ✅ | Se capturan en DÍAS (1–6) y el sistema cobra el día **más su parte del séptimo** (Art. 69 LFT). Faltando los seis, no se paga el séptimo |
+| **Uniformes con costo** | ✅ | Una entrega con costo se descuenta **una sola vez**, con la clave 017 del Anexo 20, en el primer periodo que cierre a partir de su fecha. Se guarda **en qué periodo** se cobró — no un "ya se cobró"— para poder enseñar el recibo a quien reclame |
+| **Fechas de descuento** | ✅ | INFONAVIT y pensión alimenticia llevan **desde cuándo** se retienen. Un oficio notificado el 10 de septiembre no alcanza a la quincena del 1 al 15 de agosto. Vacío = desde siempre |
+| **Nómina especial** | ✅ | Al crearla se elige **quiénes entran**, en un segundo paso. Sin lista alcanza a todos —como el aguinaldo—; con todos marcados se guarda la lista **vacía** para que quien entre mañana también caiga |
 
 **Importar trabajadores desde XML de nómina**: el Super Lector detecta el
 complemento 1.2, propone el expediente y **pregunta antes de crear a cada
@@ -647,11 +833,57 @@ abonar los préstamos— le cobraría dos veces al trabajador el periodo siguien
 > cifra salió de una UMA estimada antes de que el INEGI publicara la de 2026.
 > Decidido el 2026-08-17.
 
+### 📐 Decisiones fiscales que NO se deducen del código
+
+Están escritas aquí porque el día que alguien las revise, el número solo no va a
+explicar de dónde salió.
+
+| Tema | Decisión | Por qué |
+|------|----------|---------|
+| **Subsidio al empleo 2026** | **$535.65**, no $536.22 | Es el 15.02% de la UMA mensual **real** (DOF 31/12/2025). Los considerandos traen $536.22, pero esa cifra salió de una UMA estimada antes de que el INEGI publicara la de 2026 |
+| **INFONAVIT en VSM** | Se calcula sobre la **UMI** ($100.81 diarios, congelada desde 2024) | **No** sobre el salario mínimo. Es la reforma de 2016. Usar el mínimo cobraba **el triple** — y la prueba unitaria afirmaba el comportamiento equivocado |
+| **Cesantía y vejez patronal** | Escala por rango de UMA, **cuarto escalón en 2026** | Art. Décimo Noveno Transitorio (DOF 16/12/2020). 3.150% al mínimo → 7.513% arriba de 4 UMA, subiendo hasta 2030. No es una tasa fija |
+| **SBC topado a 25 UMA** | En obrera **y** patronal | Art. 28 LSS. Sin el tope se paga de más y no cuadra contra la liquidación del IMSS, que sí topa |
+| **Cuota obrera al mínimo** | Cero, y la absorbe el patrón | Art. 36 LSS. Por eso quien está exento de cuota obrera **sí genera patronal** |
+| **Faltas** | Cada día faltado se lleva su parte del **séptimo** | Art. 69 LFT: a seis de trabajo, uno de descanso. Faltando los seis, no se paga el séptimo |
+| **Prima de antigüedad** | Tope de 2 salarios mínimos | Art. 162 LFT |
+| **Zona salarial** | Todos los trabajadores en **zona general**, nunca frontera | Decisión del negocio, 2026-08 |
+| **Exención de facturación** | Sólo `GHC1707275Y0` y `SAJ10120859A` | Cerrado a esos dos RFC. No se abre a más sin indicación directa |
+| **Cuota patronal** | Es una **estimación** para provisionar | El IMSS liquida con SUS registros y su prima autorizada. Lo que se paga es lo que emita el **SUA** |
+
+### 🧪 Guardianes: lo que el compilador no revisa
+
+Fallas que no rompen la compilación, no avisan en consola y sólo se descubren
+usando el sistema. Cada script existe porque **una de ellas ya ocurrió**.
+
+| Script | Qué atrapa |
+|--------|-----------|
+| `frontend/scripts/revisar-componentes-anidados.mjs` | Un componente definido **dentro** de otro. React lo remonta en cada render y **los campos pierden el foco**: se escribía una letra y el cursor se salía. Distingue el uso como etiqueta (`<F />`, sí remonta) del uso como función (`F(...)`, no) |
+| `frontend/scripts/revisar-rutas-auditoria.mjs` | Rutas, submenús y permisos de pantalla unidos por **cadenas de texto**: que las pantallas pregunten su capacidad en vez de deducirla del rol, que ningún grupo operativo alcance dashboard ni reportes, y que **ninguna redirección apunte al dashboard a ciegas** —el bucle que dejaría a un grupo sin poder entrar— |
+| `backend/scripts/probar-grupos-de-trabajo.ts` | Que cada grupo **vea lo suyo Y pueda hacerlo**. El segundo error no suena a permisos: suena a que el sistema no sirve |
+| `backend/scripts/probar-estilo-reportes.ts` | Que los Excel salgan **con sus colores**. SheetJS libre acepta los estilos, no marca error y **los tira al guardar**: la hoja salía perfecta en datos y en blanco y negro |
+| `backend/scripts/probar-entregas-cobradas.ts` | Que un uniforme con costo se cobre **una** vez. Cierra dos periodos y mira el segundo |
+| `backend/scripts/probar-preregistro-proveedor.ts` | Que la deuda nazca sin proveedor dado de alta, sin duplicarlo y consumiendo su línea de crédito |
+| `backend/scripts/probar-participantes.ts` | Que una nómina especial alcance **sólo** a quien se eligió |
+
+Se corren igual que el resto:
+
+```bash
+cd backend  && npx ts-node --files -r dotenv/config scripts/probar-grupos-de-trabajo.ts
+cd frontend && node scripts/revisar-rutas-auditoria.mjs
+```
+
+> ⚠️ Los scripts que importan **middleware** necesitan `--files`, o ts-node no
+> carga la extensión de tipos de Express y falla con "Property 'user' does not
+> exist on type 'Request'".
+
+---
+
 ### 🟣 Solo el ADMIN de la empresa (por ROL, no por grupo de trabajo)
 
 | Módulo | Estado | Descripción |
 |--------|--------|-------------|
-| **Usuarios** (`/team`) | ✅ | El ADMIN da de alta/baja a los **USER de SU empresa** + contraseña temporal (se muestra una vez) + reset. Aislamiento: `company_id` **siempre del JWT**, todo query lleva `AND company_id = <mía>` (id ajeno → 404) y el rol va **fijo a USER** (un ADMIN no crea otro ADMIN). Cada acción → `audit_log` |
+| **Equipo** (`/team`) | ✅ | Con entrada en el sidebar desde 2026-08-19 — la pantalla existía desde antes con su ruta y su alta, pero **sin acceso desde el menú**: un módulo al que sólo se llega escribiendo la dirección es un módulo que no existe. El ADMIN da de alta/baja a los **USER de SU empresa** + contraseña temporal (se muestra una vez) + reset. Aislamiento: `company_id` **siempre del JWT**, todo query lleva `AND company_id = <mía>` (id ajeno → 404) y el rol va **fijo a USER** (un ADMIN no crea otro ADMIN). Cada acción → `audit_log` |
 | **Contrato** (`/contract`) | ⚠️ | Contrato de prestación de servicios + T&C firmados con la **e.firma del contratante**. Estructura completa y probada; **el TEXTO LEGAL está pendiente** (ver abajo). Reusa las primitivas de e.firma de `modules/manifest`. Guarda el texto íntegro + SHA-256; la `.key` **nunca** se persiste |
 | **Bitácora de actividad** | ✅ | `user_activity_log` vía **middleware global** (`middleware/activity-log.ts`): registra toda mutación exitosa de usuarios de empresa. **Se registra a TODOS**; `users.monitoring_enabled/_email` solo controla el **envío** del reporte mensual (cláusula SEXTA del contrato). Cron día 1 06:00; el correo va **solo** a `monitoring_email` |
 | Timbrado real SW Sapien | ✅ | Endpoint `/v3/cfdi33/issue/json/v4` con vault CSD; QR SAT + sellos del XML real |

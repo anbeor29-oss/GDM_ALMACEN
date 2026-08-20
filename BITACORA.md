@@ -1,7 +1,62 @@
-# BITÁCORA — GDM_FAC
+# BITÁCORA — GDM NEXO
 
 Histórico cronológico de cambios funcionales, decisiones técnicas y deploys.
 Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
+
+> **Sobre el nombre.** Este repositorio es **GDM NEXO**. Las entradas más
+> antiguas dicen "GDM_FAC" porque este código nació de ahí, cuando era sólo
+> facturación. **Son dos productos distintos** de GRUPO HCGM: GDM Facturación
+> sigue existiendo por su cuenta y factura de verdad en `gdmfac-*`. Lo que se
+> documenta aquí, de la fase de ERP unificado en adelante, es NEXO.
+
+---
+
+## 2026-08-18 / 19 — Índice de la jornada
+
+Doce entradas en dos días. Este índice existe porque leídas de corrido cuentan
+una sola historia, y esa historia es más útil que cualquiera de las partes.
+
+### El hilo que las une
+
+**Casi todo lo que se arregló no fallaba: mentía.** Un botón gris sin
+explicación, una lista vacía que era un error 500, un menú que se veía pero sin
+un solo botón dentro, un combo que ofrecía una opción que el servidor rechazaba.
+Ninguno rompía la compilación ni aparecía en un log — todos parecían "el sistema
+no sirve", que es justo lo que nadie reporta como falla de permisos, de datos o
+de configuración.
+
+De ahí salieron los **guardianes** (`scripts/revisar-*` y `probar-*`): siete
+scripts que comprueban lo que el compilador no puede, cada uno escrito **después
+de** que su falla ocurriera de verdad.
+
+### Por tema
+
+| Tema | Entradas |
+|------|----------|
+| **Nómina** | formato de la casa en los reportes y cuota patronal · prenómina acumulada · foco perdido, CIF y nómina especial · timbres, uniformes y fechas |
+| **Compras y tesorería** | preregistro de proveedores y aviso temprano de faltantes · el 500 disfrazado, las fechas y la hoja de remesa · el botón gris de remesas |
+| **Permisos** | grupos que ven sin poder · nómina de rol a capacidad · el frontend dejó de adivinar · dashboard y contrato fuera · reportes fuera |
+| **Navegación** | "XML del SAT" con menú propio |
+
+### Los cinco errores que más enseñaron
+
+1. **Un componente definido dentro de otro** borraba el foco a cada letra. No
+   rompe nada, no avisa, y sólo se descubre escribiendo. → guardián.
+2. **SheetJS libre acepta los estilos y los tira al guardar.** La hoja salía
+   perfecta en datos y en blanco y negro. → se cambió a ExcelJS, y la prueba
+   **vuelve a abrir** el archivo generado.
+3. **`payments.folio` es integer**, y el `ORDER BY` lo trataba como texto: la
+   consulta reventaba siempre y la pantalla decía "no hay complementos".
+4. **`'\D'` dentro de un template literal** de JavaScript pierde la barra y
+   llega a Postgres como `'D'`.
+5. **Quitar el dashboard de los grupos** casi deja a seis de siete rebotando
+   entre dos negativas: era el destino de todos los rechazos.
+
+### Lo que quedó pendiente y no es código
+
+- `npm run migrate:up` en el **Web Shell de Render** — cinco migraciones.
+- `ENABLE_SAT_DESCARGA_CRON=true` en **Render → Environment**, sin la cual la
+  descarga masiva no arranca sola.
 
 ---
 
