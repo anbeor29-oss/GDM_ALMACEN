@@ -3328,3 +3328,55 @@ previa de CFDI, ISR por nómina e IMSS por nómina, con rango 1 a 53 / 1 a 24.
 Y dos cosas que bloquean operar de verdad: la empresa **no tiene capturado su
 registro patronal del IMSS** —sin él se calcula pero no se timbra— y el
 **timbrado ante el PAC** sigue desconectado por decisión.
+
+## 2026-08-20 — Plan de Contabilidad (diseño, sin código)
+
+Se analizaron `GDM_NEXO_ana_contable.md` y `Catalogo_cTAS.md` (Anexo 24 RMF 2026).
+Resultado: [PLAN_CONTABILIDAD.md](PLAN_CONTABILIDAD.md) — plan de 9 fases y bosquejo
+de pólizas, depreciaciones y estados financieros.
+
+**Correcciones al análisis** (se hizo sobre un ZIP anterior):
+- Nómina NO está pendiente: `nomina_recibos` y el motor ya existen completos.
+- Tesorería NO hay que reconstruirla: `bancos_cuentas/estados_cuenta/movimientos`
+  ya son las `bank_accounts/bank_statement_*` que el análisis proponía crear.
+- `nomina_imports` es ingesta de CFDI de terceros, no la nómina propia.
+
+**Cambio de orden respecto al análisis:** catálogo y pólizas manuales ANTES del
+motor de eventos. Una póliza automática no se valida sin poder leer una balanza.
+
+Pendiente: 4 decisiones (buzón vs interna, numeración, saldos iniciales,
+EDOSFINANCIEROS) antes de codificar la Fase 1.
+
+## 2026-08-20 — Contabilidad FASE 1: catálogo de cuentas
+
+**Migraciones:** `2026-08-20a_accounting_core.sql`, `2026-08-20b_grupo_contabilidad.sql`
+
+Tablas nuevas: `nif_normas`, `sat_codigos_agrupadores`, `accounting_fiscal_years`,
+`accounting_periods`, `accounting_accounts`, `accounting_account_equivalences`,
+`company_accounting_settings`.
+
+**679 códigos del Anexo 24 sembrados** (136 mayores + 543 subcuentas), con su
+clasificación NIF. Se reportan ~347 subcuentas que el resumen NO detalla nombre
+por nombre: NO se inventaron. Para completarlas hace falta el archivo oficial del SAT.
+
+**Decisiones aplicadas:**
+- `codigo` y `codigo_agrupador` son DOS columnas aunque hoy valgan lo mismo.
+  Probado: re-numerar a `1102-001` deja el agrupador en `102.01`.
+- `accounting_account_equivalences` permite empatar VARIOS catálogos externos.
+- `es_complementaria` para contra-cuentas (171, 108, 116, 402, 503).
+
+**Bugs encontrados y corregidos durante el desarrollo:**
+- El fin de ejercicio salía ANTES del inicio cuando arrancaba en enero.
+  Lo cazó el CHECK `fy_fechas` de la migración.
+- El CHECK de `users.work_group` no conocía CONTABILIDAD: dar de alta al
+  contador habría fallado. Lo cazó `probar-grupos-de-trabajo`.
+- 402 y 503 no estaban marcadas como complementarias. Lo cazó la propia
+  pantalla de revisión del catálogo.
+
+Grupo de trabajo CONTABILIDAD + capacidades `contabilidad:catalogo|capturar|
+asentar|cerrar`. `contabilidad:cerrar` NO se hereda por ser MANAGER.
+
+Pruebas: `probar-contabilidad` 49/49, `probar-grupos-de-trabajo` 35/35.
+
+Siguiente: FASE 2 — pólizas manuales y carga de la balanza anterior
+(pendiente el archivo: viene en Excel y PDF).

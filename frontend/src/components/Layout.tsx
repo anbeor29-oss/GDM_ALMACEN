@@ -252,6 +252,23 @@ export function Layout() {
                     ]}
                   />
                 )}
+                {/* CONTABILIDAD.
+                    Después de Nómina y antes de Tesorería: es donde caen las
+                    cifras de todo lo anterior. Por ahora sólo el catálogo —las
+                    pólizas y la balanza vienen en las siguientes fases. */}
+                {show('contabilidad') && (
+                  <NavGroup
+                    to="/contabilidad/cuentas"
+                    icon={emoji3D('📒')}
+                    label="Contabilidad"
+                    accent="amber"
+                    open={sidebarOpen}
+                    pathPrefix="/contabilidad"
+                    children={[
+                      { to: '/contabilidad/cuentas', icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
+                    ]}
+                  />
+                )}
                 {show('treasury')     && <NavItem to="/treasury"     icon={emoji3D('🏦')} accent="sky"     label="Tesorería"        open={sidebarOpen} />}
                 {/* Auditoría vive junto a Tesorería: las dos miran hacia afuera
                     —una al banco, la otra al SAT— y las dos las revisa la misma

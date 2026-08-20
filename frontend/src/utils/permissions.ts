@@ -11,7 +11,7 @@
 
 export type WorkGroup =
   | 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA' | 'PUNTO_VENTA'
-  | 'RECURSOS_HUMANOS';
+  | 'RECURSOS_HUMANOS' | 'CONTABILIDAD';
 
 /**
  * Una clave por bloque del menú. 'dashboard' es común a todos los grupos y se
@@ -22,7 +22,7 @@ export type ModuleKey =
   | 'invoices' | 'carta_porte' | 'credit_notes' | 'customers' | 'products'
   | 'xml_reader' | 'inventory' | 'purchasing' | 'suppliers' | 'pos'
   | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria' | 'mensajes'
-  | 'nomina';
+  | 'nomina' | 'contabilidad';
 
 const ALL_MODULES: ModuleKey[] = [
   'dashboard',
@@ -32,7 +32,7 @@ const ALL_MODULES: ModuleKey[] = [
   /* Nómina sólo la alcanzan ADMIN_ALL y RECURSOS_HUMANOS: sueldos, CURP,
    * cuentas bancarias y órdenes de pensión alimenticia no son "un módulo
    * más". */
-  'nomina',
+  'nomina', 'contabilidad',
 ];
 
 /**
@@ -69,6 +69,13 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   /* Recursos Humanos: la nómina y nada más. Lleva 'xml_reader' porque el
    * expediente del personal se rescata de los recibos ya timbrados. */
   RECURSOS_HUMANOS: ['nomina', 'xml_reader', 'mensajes'],
+  /* Contabilidad ve de dónde salen las cifras que tiene que explicar, pero
+   * NO ve nómina: el asiento le llega en totales por concepto, que es lo que
+   * necesita. El sueldo con nombre y apellido, no. */
+  CONTABILIDAD: [
+    'contabilidad', 'invoices', 'purchasing', 'treasury', 'inventory',
+    'customers', 'suppliers', 'xml_reader', 'exchange_rates', 'mensajes',
+  ],
 };
 
 /** Etiquetas legibles de cada grupo (para selectores). */
@@ -80,6 +87,7 @@ export const WORK_GROUP_LABELS: Record<WorkGroup, string> = {
   TESORERIA: 'Tesorería (pagos a proveedores, tipos de cambio)',
   PUNTO_VENTA: 'Punto de venta (sólo caja)',
   RECURSOS_HUMANOS: 'Recursos Humanos (sólo nómina)',
+  CONTABILIDAD: 'Contabilidad',
 };
 
 /** Detalle de lo que ve cada grupo — se muestra bajo el selector al dar de alta. */
@@ -99,6 +107,9 @@ export const WORK_GROUP_DETAIL: Record<WorkGroup, string> = {
   RECURSOS_HUMANOS: 'Nómina completa (expediente del personal, cálculo, ' +
                'parámetros y reportes), Lector de XML y Reportes. No ve ' +
                'facturación, clientes, almacén ni tesorería.',
+  CONTABILIDAD: 'Catálogo de cuentas, pólizas, balanza y estados financieros. '
+    + 'Ve facturas, compras, tesorería e inventario para poder explicar sus '
+    + 'cifras; NO ve nómina con nombre y apellido.',
 };
 
 export function canAccess(group: string | undefined, mod: ModuleKey): boolean {
@@ -146,6 +157,7 @@ export const HOME_POR_GRUPO: Record<string, string> = {
   TESORERIA:        '/treasury',
   PUNTO_VENTA:      '/pos',
   RECURSOS_HUMANOS: '/nomina',
+  CONTABILIDAD: '/contabilidad/cuentas',
 };
 
 /** A dónde mandar a este usuario. Sin grupo conocido, al dashboard. */

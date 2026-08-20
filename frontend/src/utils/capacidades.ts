@@ -40,6 +40,10 @@ export const CAP = {
   reportes:           'reports:view',
   nomina:             'nomina:manage',
   proveedores:        'suppliers:manage',
+  ctaCatalogo:        'contabilidad:catalogo',
+  ctaCapturar:        'contabilidad:capturar',
+  ctaAsentar:         'contabilidad:asentar',
+  ctaCerrar:          'contabilidad:cerrar',
 } as const;
 
 /**

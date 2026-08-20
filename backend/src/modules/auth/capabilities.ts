@@ -26,6 +26,10 @@ export const CAPABILITIES: Record<string, string> = {
   'treasury:pay':        'Autorizar pagos a proveedores',
   'nomina:manage':       'Capturar, calcular y cerrar la nómina',
   'suppliers:manage':    'Dar de alta y mantener expedientes de proveedores',
+  'contabilidad:catalogo': 'Mantener el catálogo de cuentas',
+  'contabilidad:capturar': 'Capturar pólizas en borrador',
+  'contabilidad:asentar':  'Asentar y reversar pólizas',
+  'contabilidad:cerrar':   'Cerrar periodos y ejercicios contables',
   'reports:view':        'Consultar y exportar reportes',
 };
 
@@ -48,7 +52,11 @@ const ALL_CAPS = Object.keys(CAPABILITIES);
  * (RECURSOS_HUMANOS) o por otorgamiento individual. Lo que no hay es herencia
  * automática.
  */
-const NO_HEREDA_MANAGER = ['nomina:manage'];
+/* 'contabilidad:cerrar' se suma por la misma razón que la nómina, aunque el
+ * dato no sea sensible: cerrar un periodo es un candado, y un gerente que lo
+ * cierra por error deja al contador sin poder capturar el mes —sin haber
+ * pedido nunca esa facultad. */
+const NO_HEREDA_MANAGER = ['nomina:manage', 'contabilidad:cerrar'];
 
 /** Capacidades base que un USER tiene sin necesidad de otorgamiento. */
 const USER_BASELINE = ['inventory:view', 'reports:view', 'pos:sell'];
@@ -108,6 +116,10 @@ export const GROUP_CAPABILITIES: Record<string, string[]> = {
    * Si algún día hace falta un auxiliar que capture sin cerrar, será una
    * capacidad nueva y un grupo nuevo — no una que se pueda restar de éste. */
   RECURSOS_HUMANOS: ['nomina:manage', 'reports:view'],
+  CONTABILIDAD: [
+    'contabilidad:catalogo', 'contabilidad:capturar', 'contabilidad:asentar',
+    'contabilidad:cerrar', 'inventory:view', 'reports:view',
+  ],
 };
 
 /**

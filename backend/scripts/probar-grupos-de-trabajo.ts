@@ -30,11 +30,17 @@ const mal  = (q: string, d?: any) => { fallos++; console.log(`  MAL ${q}${d ? ` 
 const EMAIL = 'zz-prueba-grupos@zz.mx';
 
 async function main() {
-  /* ── 1. Los siete grupos existen en las TRES listas ── */
+  /* ── 1. Los grupos existen en las TRES listas ──
+   *
+   * El NÚMERO no se clava. Agregar un grupo no debe hacer fallar la prueba por
+   * un conteo —eso sólo obliga a subir el número y seguir—; debe hacerla fallar
+   * si el grupo nuevo NO llegó a las tres listas. Fue lo que pasó con Recursos
+   * Humanos, y otra vez con Contabilidad. */
   const grupos = Object.keys(GROUP_MODULES) as WorkGroup[];
-  grupos.length === 7
-    ? bien(`siete grupos en el mapa: ${grupos.join(', ')}`)
-    : mal('el mapa no tiene los siete grupos', grupos.join(','));
+  const sinModulos = grupos.filter((g) => !GROUP_MODULES[g]?.length);
+  sinModulos.length === 0
+    ? bien(`${grupos.length} grupos, todos con módulos: ${grupos.join(', ')}`)
+    : mal('hay grupos sin un solo módulo', sinModulos.join(','));
 
   const chk = await query<any>(
     `SELECT pg_get_constraintdef(oid) d FROM pg_constraint
@@ -42,7 +48,7 @@ async function main() {
   const def = chk.rows[0]?.d || '';
   const faltanEnLaBase = grupos.filter((g) => !def.includes(g));
   faltanEnLaBase.length === 0
-    ? bien('los siete los acepta el CHECK de users.work_group')
+    ? bien('todos los acepta el CHECK de users.work_group')
     : mal('la base rechazaría estos grupos', faltanEnLaBase.join(','));
 
   /* La lista de validación del alta se DERIVA del mapa, así que no puede
@@ -246,7 +252,7 @@ async function main() {
    * Un grupo sin capacidades es una pantalla que se abre y no hace nada. */
   const sinCaps = grupos.filter((g) => !(GROUP_CAPABILITIES[g]?.length));
   sinCaps.length === 0
-    ? bien('los siete grupos declaran qué pueden hacer, no sólo qué ven')
+    ? bien('todos los grupos declaran qué pueden hacer, no sólo qué ven')
     : mal('hay grupos que ven pantallas sin poder usarlas', sinCaps.join(','));
 
   await query(`DELETE FROM user_capabilities WHERE user_id = $1`, [userId]);

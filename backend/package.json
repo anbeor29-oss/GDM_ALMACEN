@@ -30,7 +30,9 @@
     "create:admin": "ts-node -r dotenv/config scripts/create-admin.ts",
     "reset:company": "ts-node -r dotenv/config scripts/reset-company.ts",
     "seed:examples": "node -r dotenv/config scripts/seed-examples.js",
-    "docs:icons": "ts-node -r dotenv/config scripts/generate-icons-guide.ts"
+    "docs:icons": "ts-node -r dotenv/config scripts/generate-icons-guide.ts",
+    "contabilidad:sembrar": "ts-node --files -r dotenv/config scripts/sembrar-contabilidad.ts",
+    "probar:contabilidad": "ts-node --files -r dotenv/config scripts/probar-contabilidad.ts"
   },
   "keywords": [
     "cfdi",

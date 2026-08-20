@@ -17,7 +17,7 @@ import { Request, Response, NextFunction } from 'express';
 
 export type WorkGroup =
   | 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA' | 'PUNTO_VENTA'
-  | 'RECURSOS_HUMANOS';
+  | 'RECURSOS_HUMANOS' | 'CONTABILIDAD';
 
 /**
  * Claves de módulo protegibles — una por bloque del menú.
@@ -32,13 +32,13 @@ export type ModuleKey =
   | 'invoices' | 'carta_porte' | 'credit_notes' | 'customers' | 'products'
   | 'xml_reader' | 'inventory' | 'purchasing' | 'suppliers' | 'pos'
   | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria' | 'mensajes'
-  | 'nomina';
+  | 'nomina' | 'contabilidad';
 
 const ALL_MODULES: ModuleKey[] = [
   'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
   'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos',
   'treasury', 'reports', 'exchange_rates', 'auditoria', 'mensajes',
-  'nomina',
+  'nomina', 'contabilidad',
 ];
 
 /**
@@ -96,7 +96,21 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
    * más reportes y mensajes. NO ve facturas, clientes, inventarios ni tesorería:
    * quien maneja sueldos no necesita ver las ventas, y al revés tampoco. */
   RECURSOS_HUMANOS: ['nomina', 'xml_reader', 'mensajes'],
-};
+
+  /* Contabilidad: el catálogo, las pólizas y los estados financieros.
+   *
+   * Ve 'contabilidad' y, en sólo lectura, los módulos de donde salen las
+   * cifras que tiene que explicar: facturas, compras, tesorería e inventario.
+   * Un contador que no puede abrir la factura que originó una póliza no puede
+   * hacer su trabajo — y perseguirla por correo es peor control, no mejor.
+   *
+   * NO ve 'nomina': el asiento de nómina le llega en cifras totales por
+   * concepto, que es justo lo que necesita. El sueldo de cada trabajador con
+   * nombre y apellido no. */
+  CONTABILIDAD: [
+    'contabilidad', 'invoices', 'purchasing', 'treasury', 'inventory',
+    'customers', 'suppliers', 'xml_reader', 'exchange_rates', 'mensajes',
+  ],};
 
 export function groupCanAccess(group: WorkGroup | undefined, mod: ModuleKey): boolean {
   const g = group || 'ADMIN_ALL';

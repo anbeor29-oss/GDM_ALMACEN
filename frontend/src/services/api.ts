@@ -940,6 +940,63 @@ class APIClient {
     });
     return r.data;
   }
+  /* ═══════════ CONTABILIDAD ═══════════ */
+
+  async getCuentasContables(params?: {
+    q?: string; tipo?: string; soloMovimientos?: boolean; nivel?: number;
+  }) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/cuentas', { params });
+    return r.data;
+  }
+  async getArbolDeCuentas() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/cuentas/arbol');
+    return r.data;
+  }
+  async getRevisionCatalogo() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/cuentas/revision');
+    return r.data;
+  }
+  async getCuentaContable(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/cuentas/${id}`);
+    return r.data;
+  }
+  async crearCuentaContable(datos: any) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas', datos);
+    return r.data;
+  }
+  async actualizarCuentaContable(id: string, datos: any) {
+    const r = await this.client.patch<APIResponse<any>>(`/accounting/cuentas/${id}`, datos);
+    return r.data;
+  }
+  async desactivarCuentaContable(id: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/accounting/cuentas/${id}`);
+    return r.data;
+  }
+  async fijarEquivalenciaCuenta(id: string, datos: any) {
+    const r = await this.client.put<APIResponse<any>>(`/accounting/cuentas/${id}/equivalencia`, datos);
+    return r.data;
+  }
+  async getCatalogosExternos() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/catalogos-externos');
+    return r.data;
+  }
+  async getNormasNif() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/nif');
+    return r.data;
+  }
+  async getFaltantesAnexo24() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/referencias/faltantes');
+    return r.data;
+  }
+  async sembrarReferenciasContables() {
+    const r = await this.client.post<APIResponse<any>>('/accounting/referencias/sembrar');
+    return r.data;
+  }
+  async activarContabilidad(datos: any) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/activar', datos);
+    return r.data;
+  }
+
   /** Los bancos con su clave de 3 dígitos (catálogo SPEI/ABM). */
   async getCatalogoBancos() {
     const r = await this.client.get<APIResponse<any>>('/treasury/bancos/catalogo');
