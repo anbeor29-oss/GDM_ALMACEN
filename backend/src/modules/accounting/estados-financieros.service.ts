@@ -633,12 +633,242 @@ export function analisisHorizontal(
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   4-bis. ESTADO DE FLUJOS DE EFECTIVO — NIF B-2 (método indirecto)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export interface FlujoEfectivo {
+  norma: 'B-2';
+  metodo: 'INDIRECTO';
+  disponible: boolean;
+  motivo?: string;
+  operacion: Rubro[];
+  flujoOperacion: number;
+  inversion: Rubro[];
+  flujoInversion: number;
+  financiamiento: Rubro[];
+  flujoFinanciamiento: number;
+  incrementoNeto: number;
+  efectivoInicial: number;
+  efectivoFinal: number;
+  /** Lo calculado contra el movimiento real del efectivo. Debe ser cero. */
+  diferencia: number;
+  concilia: boolean;
+}
+
+/**
+ * Flujo de efectivo por el método indirecto.
+ *
+ * ── POR QUÉ EXIGE DOS PERIODOS ──
+ * El flujo no se lee de saldos: se lee de VARIACIONES. "Cuánto entró de
+ * clientes" es el saldo de clientes de este mes contra el del anterior. Con un
+ * solo periodo no hay resta que hacer, y devolver ceros sería peor que no
+ * devolver nada: un estado de flujo en ceros parece una empresa quieta.
+ *
+ * ── LA COMPROBACIÓN QUE LO VALIDA ──
+ * La suma de los tres flujos tiene que dar exactamente el movimiento del
+ * efectivo entre los dos periodos. Si no da, algo se quedó fuera — y el estado
+ * lo dice en vez de presentar una cifra que no cierra.
+ */
+export function flujoEfectivo(
+  actual: ContextoNif,
+  anterior?: ContextoNif,
+): FlujoEfectivo {
+  const vacio: FlujoEfectivo = {
+    norma: 'B-2', metodo: 'INDIRECTO', disponible: false,
+    motivo:
+      'El estado de flujos de efectivo se arma con las VARIACIONES entre dos periodos, ' +
+      'no con los saldos de uno. Falta el periodo anterior: cárgalo o ciérralo para ' +
+      'que este estado se pueda calcular.',
+    operacion: [], flujoOperacion: 0, inversion: [], flujoInversion: 0,
+    financiamiento: [], flujoFinanciamiento: 0, incrementoNeto: 0,
+    efectivoInicial: 0, efectivoFinal: 0, diferencia: 0, concilia: false,
+  };
+  if (!anterior) return vacio;
+
+  const d = (...pref: string[]) =>
+    pref.reduce((a, p2) => a + actual.suma(p2), 0)
+    - pref.reduce((a, p2) => a + anterior.suma(p2), 0);
+
+  const res = resultadoIntegral(actual);
+  const R = (clave: string, nombre: string, codigos: string, importe: number): Rubro =>
+    ({ clave, nombre, codigos, importe: redondear(importe) });
+
+  /* ── Operación ──
+   * La utilidad, más lo que no salió de la caja, más/menos lo que se movió en
+   * el capital de trabajo. El signo es el de su efecto en el efectivo: si
+   * clientes SUBE, el efectivo BAJA (se vendió y no se cobró). */
+  const depreciacion = actual.suma('701', '702');
+  const estimaciones = d('108', '116', '172');
+  const dClientes = d('105', '106', '107');
+  const dInventarios = d('115');
+  const dAnticipados = d('109', '118', '119', '120');
+  const dProveedores = d('201', '202', '205');
+  const dImpuestos = d('207', '208', '209', '213', '216');
+  const dProvisiones = d('210', '211', '212', '215');
+
+  const operacion: Rubro[] = [
+    R('UAI', 'Utilidad antes de impuestos', '', res.utilidadAntesImpuestos),
+    R('DEPRECIACION', 'Depreciación y amortización del periodo', '701, 702', depreciacion),
+    R('ESTIMACIONES', 'Variación de estimaciones', '108, 116, 172', estimaciones),
+    R('D_CLIENTES', 'Variación de cuentas por cobrar', '105–107', -dClientes),
+    R('D_INVENTARIOS', 'Variación de inventarios', '115', -dInventarios),
+    R('D_ANTICIPADOS', 'Variación de pagos anticipados e impuestos acreditables',
+      '109, 118–120', -dAnticipados),
+    R('D_PROVEEDORES', 'Variación de proveedores y cuentas por pagar', '201, 202, 205', dProveedores),
+    R('D_IMPUESTOS', 'Variación de impuestos por pagar', '207–209, 213, 216', dImpuestos),
+    R('D_PROVISIONES', 'Variación de provisiones', '210–212, 215', dProvisiones),
+  ];
+  const flujoOperacion = operacion.reduce((a, x) => a + x.importe, 0);
+
+  /* ── Inversión ── */
+  const dFijo = d('151', '152', '153', '154', '155', '156', '157', '158', '159',
+    '160', '161', '162', '163', '164', '165', '166', '167', '168', '169', '170');
+  const dIntangibles = d('173', '174', '175', '176', '177', '178', '179', '180', '181', '182');
+  const dPermanentes = d('188');
+
+  const inversion: Rubro[] = [
+    R('D_FIJO', 'Adquisición de propiedades, planta y equipo', '151–170', -dFijo),
+    R('D_INTANGIBLES', 'Adquisición de intangibles y diferidos', '173–182', -dIntangibles),
+    R('D_PERMANENTES', 'Inversiones permanentes en acciones', '188', -dPermanentes),
+  ];
+  const flujoInversion = inversion.reduce((a, x) => a + x.importe, 0);
+
+  /* ── Financiamiento ── */
+  const dPrestamos = d('204', '251', '252', '254');
+  const dCapital = d('301', '302');
+  const dDividendos = d('214');
+
+  const financiamiento: Rubro[] = [
+    R('D_PRESTAMOS', 'Préstamos obtenidos o pagados', '204, 251, 252, 254', dPrestamos),
+    R('D_CAPITAL', 'Aportaciones de capital', '301, 302', dCapital),
+    R('D_DIVIDENDOS', 'Dividendos decretados o pagados', '214', dDividendos),
+  ];
+  const flujoFinanciamiento = financiamiento.reduce((a, x) => a + x.importe, 0);
+
+  const incrementoNeto = flujoOperacion + flujoInversion + flujoFinanciamiento;
+  const efectivoInicial = anterior.suma('101') + anterior.suma('102')
+    + anterior.suma('103') + anterior.suma('104');
+  const efectivoFinal = actual.suma('101') + actual.suma('102')
+    + actual.suma('103') + actual.suma('104');
+  const diferencia = incrementoNeto - (efectivoFinal - efectivoInicial);
+
+  return {
+    norma: 'B-2', metodo: 'INDIRECTO', disponible: true,
+    operacion, flujoOperacion: redondear(flujoOperacion),
+    inversion, flujoInversion: redondear(flujoInversion),
+    financiamiento, flujoFinanciamiento: redondear(flujoFinanciamiento),
+    incrementoNeto: redondear(incrementoNeto),
+    efectivoInicial: redondear(efectivoInicial),
+    efectivoFinal: redondear(efectivoFinal),
+    diferencia: redondear(diferencia),
+    concilia: Math.abs(diferencia) <= 1,
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   4-ter. ESTADO DE CAMBIOS EN EL CAPITAL CONTABLE — NIF B-4
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export interface CambiosCapital {
+  norma: 'B-4';
+  disponible: boolean;
+  motivo?: string;
+  columnas: string[];
+  /** Cada renglón es un movimiento; cada columna, un rubro del capital. */
+  renglones: Array<{ concepto: string; valores: number[]; total: number; esSaldo?: boolean }>;
+  saldoInicial: number;
+  saldoFinal: number;
+  /** La reserva legal que exige la LGSM contra la que hay. */
+  reservaLegal: { hay: number; minimo: number; falta: number } | null;
+}
+
+/**
+ * Cambios en el capital contable.
+ *
+ * ── QUÉ PUEDE Y QUÉ NO ──
+ * Con dos periodos se ven los SALDOS inicial y final de cada rubro, y su
+ * variación. Lo que NO se puede deducir de saldos es el CONCEPTO del
+ * movimiento: una variación en 301 puede ser una aportación o una reducción de
+ * capital, y el estado B-4 pide distinguirlas.
+ *
+ * Se presenta lo que los saldos permiten y se dice qué falta. Inventar el
+ * concepto sería poner en un estado firmado una historia que nadie contó.
+ */
+export function cambiosCapital(
+  actual: ContextoNif,
+  anterior?: ContextoNif,
+): CambiosCapital {
+  const rubros: Array<[string, string]> = [
+    ['301', 'Capital social'],
+    ['302', 'Patrimonio'],
+    ['303', 'Reserva legal'],
+    ['304', 'Resultados acumulados'],
+    ['306', 'Otras cuentas de capital'],
+  ];
+  const columnas = [...rubros.map(([, n]) => n), 'Resultado del ejercicio'];
+
+  if (!anterior) {
+    const res = resultadoIntegral(actual);
+    const valores = [...rubros.map(([c]) => redondear(actual.suma(c))),
+                     redondear(res.utilidadNeta)];
+    return {
+      norma: 'B-4', disponible: false,
+      motivo:
+        'Con un solo periodo sólo se puede mostrar el saldo final de cada rubro. ' +
+        'El estado de cambios necesita el periodo anterior para calcular los ' +
+        'movimientos, y aun con los dos no puede deducir de los saldos si una ' +
+        'variación fue aportación o reducción de capital: eso se captura.',
+      columnas,
+      renglones: [{
+        concepto: 'Saldo final', valores, esSaldo: true,
+        total: redondear(valores.reduce((a, v) => a + v, 0)),
+      }],
+      saldoInicial: 0,
+      saldoFinal: redondear(valores.reduce((a, v) => a + v, 0)),
+      reservaLegal: null,
+    };
+  }
+
+  const resAct = resultadoIntegral(actual);
+  const resAnt = resultadoIntegral(anterior);
+
+  const inicial = [...rubros.map(([c]) => redondear(anterior.suma(c))),
+                   redondear(resAnt.utilidadNeta)];
+  const final = [...rubros.map(([c]) => redondear(actual.suma(c))),
+                 redondear(resAct.utilidadNeta)];
+  const variacion = final.map((v, i) => redondear(v - inicial[i]));
+
+  const suma = (a: number[]) => redondear(a.reduce((x, y) => x + y, 0));
+
+  const capitalSocial = Math.abs(actual.suma('301'));
+  const reserva = Math.abs(actual.suma('303'));
+  const minimo = redondear(capitalSocial * 0.20);
+
+  return {
+    norma: 'B-4', disponible: true,
+    columnas,
+    renglones: [
+      { concepto: 'Saldo inicial', valores: inicial, total: suma(inicial), esSaldo: true },
+      { concepto: 'Movimientos del periodo', valores: variacion, total: suma(variacion) },
+      { concepto: 'Saldo final', valores: final, total: suma(final), esSaldo: true },
+    ],
+    saldoInicial: suma(inicial),
+    saldoFinal: suma(final),
+    reservaLegal: capitalSocial > 0
+      ? { hay: redondear(reserva), minimo, falta: redondear(Math.max(0, minimo - reserva)) }
+      : null,
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    5. TODO JUNTO
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export interface JuegoCompleto {
   situacionFinanciera: SituacionFinanciera;
   resultadoIntegral: ResultadoIntegral;
+  flujoEfectivo: FlujoEfectivo;
+  cambiosCapital: CambiosCapital;
   razones: Razon[];
   horizontal?: RenglonHorizontal[];
   avisos: string[];
@@ -671,9 +901,19 @@ export function juegoCompleto(
       `del estado. Por eso el balance puede no cuadrar.`);
   }
 
+  const flujo = flujoEfectivo(c, anterior);
+  if (flujo.disponible && !flujo.concilia) {
+    avisos.push(
+      `El flujo de efectivo no concilia por ${flujo.diferencia.toFixed(2)}: los tres ` +
+      `flujos suman ${flujo.incrementoNeto.toFixed(2)} y el efectivo se movió ` +
+      `${(flujo.efectivoFinal - flujo.efectivoInicial).toFixed(2)}. Falta alguna partida.`);
+  }
+
   return {
     situacionFinanciera: bal,
     resultadoIntegral: res,
+    flujoEfectivo: flujo,
+    cambiosCapital: cambiosCapital(c, anterior),
     razones: razones(bal, res, c, diasPeriodo),
     horizontal: anterior ? analisisHorizontal(bal, situacionFinanciera(anterior)) : undefined,
     avisos,
@@ -681,5 +921,6 @@ export function juegoCompleto(
 }
 
 export default {
-  situacionFinanciera, resultadoIntegral, razones, analisisHorizontal, juegoCompleto,
+  situacionFinanciera, resultadoIntegral, flujoEfectivo, cambiosCapital,
+  razones, analisisHorizontal, juegoCompleto,
 };

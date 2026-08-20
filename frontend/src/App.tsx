@@ -55,7 +55,11 @@ import { NominaCalculoPage } from '@/pages/nomina/NominaCalculo';
 import { NominaCFDIPage } from '@/pages/nomina/NominaCFDI';
 import { NominaReportesPage } from '@/pages/nomina/NominaReportes';
 import { CatalogoCuentasPage } from '@/pages/contabilidad/CatalogoCuentas';
-import { EstadosFinancierosPage } from '@/pages/contabilidad/EstadosFinancieros';
+import {
+  BalanzaPage, SituacionFinancieraPage, ResultadoIntegralPage,
+  FlujoEfectivoPage, CambiosCapitalPage, RazonesPage,
+} from '@/pages/contabilidad/Estados';
+import { PeriodosPage } from '@/pages/contabilidad/Periodos';
 import { PhysicalCountPage }          from '@/pages/PhysicalCount';
 import { KardexPage }                 from '@/pages/Kardex';
 import { FaltantesPage }              from '@/pages/Faltantes';
@@ -252,7 +256,13 @@ export function App() {
             {/* Contabilidad. Mismo gateo que nómina: el backend manda con
                 requireModule, esto sólo evita la pantalla vacía. */}
             <Route path="contabilidad/cuentas"            element={<ModuleRoute module="contabilidad"><CatalogoCuentasPage /></ModuleRoute>} />
-            <Route path="contabilidad/estados"            element={<ModuleRoute module="contabilidad"><EstadosFinancierosPage /></ModuleRoute>} />
+            <Route path="contabilidad/periodos"           element={<ModuleRoute module="contabilidad"><PeriodosPage /></ModuleRoute>} />
+            <Route path="contabilidad/balanza"            element={<ModuleRoute module="contabilidad"><BalanzaPage /></ModuleRoute>} />
+            <Route path="contabilidad/situacion"          element={<ModuleRoute module="contabilidad"><SituacionFinancieraPage /></ModuleRoute>} />
+            <Route path="contabilidad/resultados"         element={<ModuleRoute module="contabilidad"><ResultadoIntegralPage /></ModuleRoute>} />
+            <Route path="contabilidad/flujo"              element={<ModuleRoute module="contabilidad"><FlujoEfectivoPage /></ModuleRoute>} />
+            <Route path="contabilidad/capital"            element={<ModuleRoute module="contabilidad"><CambiosCapitalPage /></ModuleRoute>} />
+            <Route path="contabilidad/razones"            element={<ModuleRoute module="contabilidad"><RazonesPage /></ModuleRoute>} />
             <Route path="company"                         element={<CompanyOnlyRoute><CompanyProfilePage /></CompanyOnlyRoute>} />
 
             {/* Módulos de plataforma — SOLO SUPER_ADMIN (guard por URL directa) */}

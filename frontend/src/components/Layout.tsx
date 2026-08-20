@@ -265,8 +265,14 @@ export function Layout() {
                     open={sidebarOpen}
                     pathPrefix="/contabilidad"
                     children={[
-                      { to: '/contabilidad/cuentas', icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
-                      { to: '/contabilidad/estados', icon: emoji3D('📈'), label: 'Estados financieros' },
+                      { to: '/contabilidad/cuentas',    icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
+                      { to: '/contabilidad/periodos',   icon: emoji3D('🗓️'), label: 'Periodos y cierre' },
+                      { to: '/contabilidad/balanza',    icon: emoji3D('⚖️'), label: 'Balanza de comprobación' },
+                      { to: '/contabilidad/situacion',  icon: emoji3D('🏛️'), label: 'Situación financiera' },
+                      { to: '/contabilidad/resultados', icon: emoji3D('📈'), label: 'Resultado integral' },
+                      { to: '/contabilidad/flujo',      icon: emoji3D('💧'), label: 'Flujos de efectivo' },
+                      { to: '/contabilidad/capital',    icon: emoji3D('🧾'), label: 'Cambios en el capital' },
+                      { to: '/contabilidad/razones',    icon: emoji3D('🔍'), label: 'Razones y análisis' },
                     ]}
                   />
                 )}

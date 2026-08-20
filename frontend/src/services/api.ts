@@ -980,13 +980,36 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/catalogos-externos');
     return r.data;
   }
-  /** Los estados financieros a partir de una balanza (FormData). */
-  async generarEstadosFinancieros(fd: FormData) {
+  /* ── Periodos contables ── */
+  async getPeriodosContables(anio: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/periodos/${anio}`);
+    return r.data;
+  }
+  async cargarBalanzaEnPeriodo(anio: number, mes: number, fd: FormData) {
     const r = await this.client.post<APIResponse<any>>(
-      '/accounting/estados-financieros', fd,
+      `/accounting/periodos/${anio}/${mes}/balanza`, fd,
       { headers: { 'Content-Type': 'multipart/form-data' } });
     return r.data;
   }
+  async cerrarPeriodoContable(anio: number, mes: number) {
+    const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/${mes}/cerrar`);
+    return r.data;
+  }
+  async reabrirPeriodoContable(anio: number, mes: number) {
+    const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/${mes}/reabrir`);
+    return r.data;
+  }
+
+  /** Todos los estados del mes, desde los saldos del periodo. */
+  async getEstadosDelPeriodo(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/estados/${anio}/${mes}`);
+    return r.data;
+  }
+  async getBalanzaDelPeriodo(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/estados/${anio}/${mes}/balanza`);
+    return r.data;
+  }
+
   async evaluarNif(fd: FormData) {
     const r = await this.client.post<APIResponse<any>>('/accounting/nif/evaluar', fd,
       { headers: { 'Content-Type': 'multipart/form-data' } });

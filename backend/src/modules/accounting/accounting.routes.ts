@@ -19,6 +19,7 @@ import * as balanza from './balanza-lector.service';
 import * as mapeador from './mapeador-sat.service';
 import * as motorNif from './nif-motor.service';
 import * as estados from './estados-financieros.service';
+import * as periodos from './periodos.service';
 import multer from 'multer';
 
 const router = Router();
@@ -285,90 +286,185 @@ router.post(
 );
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   ESTADOS FINANCIEROS
+   PERIODOS — el acumulador que alimenta a todos los estados
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/** GET /accounting/periodos/:anio — los doce meses, con lo que tiene cada uno */
+router.get(
+  '/periodos/:anio',
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = Number(req.params.anio);
+    if (!anio || anio < 2000 || anio > 2100) throw new ValidationError('Año inválido.');
+    const data = await periodos.anioCompleto(companyId(req), anio);
+    res.json({ success: true, data });
+  })
+);
+
+/** GET /accounting/periodos/:anio/:mes */
+router.get(
+  '/periodos/:anio/:mes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await periodos.estadoDelPeriodo(
+      companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.json({ success: true, data });
+  })
+);
+
 /**
- * POST /accounting/estados-financieros
+ * POST /accounting/periodos/:anio/:mes/balanza
  *
- * Sube una balanza —o dos, para el comparativo— y devuelve el juego completo:
- * situacion financiera, resultado integral, razones y analisis horizontal.
- *
- * Se corre en el momento y no se guarda todavia: mientras la contabilidad de
- * NEXO no genere sus propios saldos, el estado es una lectura del archivo que
- * se acaba de subir. Guardarlo daria la impresion de que el sistema lo produjo.
+ * Alimenta el mes con una balanza externa. A diferencia de la ruta de estados
+ * financieros —que sólo LEE un archivo—, esto lo DEJA GUARDADO en el periodo:
+ * a partir de aquí todos los estados de ese mes salen de estos saldos, sin
+ * volver a subir nada.
  */
 router.post(
-  '/estados-financieros',
-  subir.fields([{ name: 'archivo', maxCount: 1 }, { name: 'anterior', maxCount: 1 }]),
+  '/periodos/:anio/:mes/balanza',
+  requireCapability('contabilidad:capturar'),
+  subir.single('archivo'),
   asyncHandler(async (req: Request, res: Response) => {
-    const fs2 = (req as any).files || {};
-    const f = fs2.archivo?.[0];
+    const f = (req as any).file;
     if (!f) throw new ValidationError('Falta el archivo de la balanza.');
+    const anio = Number(req.params.anio);
+    const mes = Number(req.params.mes);
 
-    const leer = async (file: any) => {
-      const n = (file.originalname || '').toLowerCase();
-      const esExcel = /\.xlsx?$/.test(n) || /spreadsheet|excel/.test(file.mimetype || '');
-      const esPdf = /\.pdf$/.test(n) || /pdf/.test(file.mimetype || '');
-      if (!esExcel && !esPdf) throw new ValidationError('El archivo tiene que ser Excel o PDF.');
-      try {
-        return esExcel ? await balanza.leerBalanzaExcel(file.buffer)
-                       : await balanza.leerBalanzaPdf(file.buffer);
-      } catch (e: any) { throw new ValidationError(e.message); }
-    };
+    const nombre = (f.originalname || '').toLowerCase();
+    const esExcel = /\.xlsx?$/.test(nombre) || /spreadsheet|excel/.test(f.mimetype || '');
+    const esPdf = /\.pdf$/.test(nombre) || /pdf/.test(f.mimetype || '');
+    if (!esExcel && !esPdf) throw new ValidationError('El archivo tiene que ser Excel o PDF.');
 
-    const validos = await mapeador.agrupadoresValidos();
-    const contextoDe = (lectura: any, fecha: string) =>
-      motorNif.contextoDeBalanza(
-        lectura.filas,
-        mapeador.proponerMapeo(lectura.filas, { agrupadoresValidos: validos }),
-        fecha);
+    let lectura;
+    try {
+      lectura = esExcel ? await balanza.leerBalanzaExcel(f.buffer)
+                        : await balanza.leerBalanzaPdf(f.buffer);
+    } catch (e: any) { throw new ValidationError(e.message); }
 
-    const fechaCorte = (req.body.fechaCorte as string) || new Date().toISOString().slice(0, 10);
-    const lectura = await leer(f);
-    const ctx = contextoDe(lectura, fechaCorte);
-
-    let ctxAnterior;
-    const fAnt = fs2.anterior?.[0];
-    if (fAnt) {
-      const lecturaAnt = await leer(fAnt);
-      ctxAnterior = contextoDe(lecturaAnt, req.body.fechaCorteAnterior || '');
+    const analisis = balanza.analizarBalanza(lectura);
+    /* No se carga una balanza que no cuadra: quedaría guardada, y todos los
+     * estados del mes saldrían de ella. */
+    if (!analisis.cuadra) {
+      throw new ValidationError(
+        `La balanza no cuadra: cargos ${analisis.sumaDebe.toFixed(2)} contra abonos ` +
+        `${analisis.sumaHaber.toFixed(2)}. No se guarda: si se cargara, todos los ` +
+        `estados de ese mes saldrían de un descuadre.`);
     }
 
-    /* Los dias del periodo mandan en las rotaciones: usar 365 sobre una
-     * balanza de un mes multiplica por doce los dias de cartera. */
-    const diasPeriodo = Number(req.body.diasPeriodo) > 0
-      ? Number(req.body.diasPeriodo) : 365;
+    const validos = await mapeador.agrupadoresValidos();
+    const mapeo = mapeador.proponerMapeo(lectura.filas, { agrupadoresValidos: validos });
 
-    const juego = estados.juegoCompleto(ctx, ctxAnterior, diasPeriodo);
-    const analisisBalanza = balanza.analizarBalanza(lectura);
+    const r = await periodos.alimentarDesdeBalanza(
+      companyId(req), anio, mes, lectura.filas, mapeo,
+      { archivo: f.originalname, userId: req.user?.userId,
+        descripcion: lectura.encabezado.razonSocial });
+
+    res.json({
+      success: true,
+      data: { ...r, encabezado: lectura.encabezado, origen: lectura.origen },
+      message:
+        `${periodos.nombreMes(mes)} ${anio}: ${r.cuentas} cuentas cargadas` +
+        (r.cuentasNuevas ? ` (${r.cuentasNuevas} nuevas en el catálogo)` : '') + '.',
+    });
+  })
+);
+
+/** POST /accounting/periodos/:anio/:mes/cerrar */
+router.post(
+  '/periodos/:anio/:mes/cerrar',
+  requireCapability('contabilidad:cerrar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await periodos.cerrarPeriodo(
+      companyId(req), Number(req.params.anio), Number(req.params.mes), req.user?.userId);
+    res.json({
+      success: true, data,
+      message: `${periodos.nombreMes(Number(req.params.mes))} ${req.params.anio} cerrado. ` +
+               `Sus saldos quedan congelados.`,
+    });
+  })
+);
+
+/** POST /accounting/periodos/:anio/:mes/reabrir */
+router.post(
+  '/periodos/:anio/:mes/reabrir',
+  requireCapability('contabilidad:cerrar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await periodos.reabrirPeriodo(
+      companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.json({ success: true, data });
+  })
+);
+
+/**
+ * GET /accounting/estados/:anio/:mes
+ *
+ * Todos los estados del mes, desde los saldos del periodo. Si se pasa
+ * ?comparar=true toma el mes anterior para flujo, cambios en capital y
+ * análisis horizontal.
+ */
+router.get(
+  '/estados/:anio/:mes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const cid = companyId(req);
+    const anio = Number(req.params.anio);
+    const mes = Number(req.params.mes);
+
+    const estadoPeriodo = await periodos.estadoDelPeriodo(cid, anio, mes);
+    const ctx = await periodos.contextoDelPeriodo(cid, anio, mes);
+
+    if (!ctx) {
+      /* El cascarón vacío: se dice qué falta y cómo se llena, en vez de
+       * devolver un juego de estados en ceros que parece una empresa quieta. */
+      res.json({
+        success: true,
+        data: {
+          anio, mes, nombreMes: periodos.nombreMes(mes),
+          periodo: estadoPeriodo, vacio: true,
+          comoSeLlena: [
+            'Cargando la balanza del mes desde otro sistema (Excel o PDF).',
+            'Con los CFDI emitidos y recibidos del mes, cuando el motor contable los procese.',
+            'Con las pólizas capturadas o importadas de otro sistema.',
+          ],
+        },
+        message: `${periodos.nombreMes(mes)} ${anio} todavía no tiene saldos cargados.`,
+      });
+      return;
+    }
+
+    /* El mes anterior: puede ser diciembre del año pasado. */
+    const mesAnt = mes === 1 ? 12 : mes - 1;
+    const anioAnt = mes === 1 ? anio - 1 : anio;
+    const ctxAnt = await periodos.contextoDelPeriodo(cid, anioAnt, mesAnt) ?? undefined;
+
+    const p = await periodos.balanzaDelPeriodo(cid, anio, mes);
+    const dias = p ? Math.round(
+      (new Date(p.fechaFin).getTime() - new Date(p.fechaInicio).getTime()) / 86400000) + 1 : 30;
+
+    const juego = estados.juegoCompleto(ctx, ctxAnt, dias);
     const nifRes = motorNif.evaluar(ctx);
 
     res.json({
       success: true,
       data: {
-        encabezado: lectura.encabezado,
-        origen: lectura.origen,
-        fechaCorte,
-        diasPeriodo,
+        anio, mes, nombreMes: periodos.nombreMes(mes),
+        periodo: estadoPeriodo, vacio: false,
+        diasPeriodo: dias,
+        comparadoCon: ctxAnt ? { anio: anioAnt, mes: mesAnt } : null,
         ...juego,
-        balanza: {
-          totalFilas: analisisBalanza.totalFilas,
-          hojas: analisisBalanza.hojas,
-          cuadra: analisisBalanza.cuadra,
-          sumaDebe: analisisBalanza.sumaDebe,
-          sumaHaber: analisisBalanza.sumaHaber,
-        },
         nif: {
           noCumple: nifRes.noCumple, revisar: nifRes.revisar, cumple: nifRes.cumple,
           hallazgos: nifRes.hallazgos.filter((h) => h.estado !== 'NO_APLICA'),
         },
       },
-      message: juego.situacionFinanciera.cuadra
-        ? `Estados financieros al ${fechaCorte}. El balance cuadra.`
-        : `Estados financieros al ${fechaCorte}. ATENCION: el balance no cuadra por ` +
-          `${juego.situacionFinanciera.diferencia.toFixed(2)}.`,
     });
+  })
+);
+
+/** GET /accounting/estados/:anio/:mes/balanza — la balanza del periodo */
+router.get(
+  '/estados/:anio/:mes/balanza',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await periodos.balanzaDelPeriodo(
+      companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.json({ success: true, data: data ?? { vacio: true } });
   })
 );
 

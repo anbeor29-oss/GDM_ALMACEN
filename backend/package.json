@@ -37,7 +37,8 @@
     "probar:mapeo": "ts-node --files -r dotenv/config scripts/probar-mapeo-sat.ts",
     "probar:roles": "ts-node --files -r dotenv/config scripts/probar-tercero-varios-roles.ts",
     "probar:nif": "ts-node --files -r dotenv/config scripts/probar-motor-nif.ts",
-    "probar:estados": "ts-node --files -r dotenv/config scripts/probar-estados-financieros.ts"
+    "probar:estados": "ts-node --files -r dotenv/config scripts/probar-estados-financieros.ts",
+    "probar:periodos": "ts-node --files -r dotenv/config scripts/probar-periodos.ts"
   },
   "keywords": [
     "cfdi",

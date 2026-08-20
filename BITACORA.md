@@ -3576,3 +3576,60 @@ las del analizador de balanza, que llega por otro camino.
 Pruebas: estados 23/23 · nif 28/28 · mapeo 20/20 · balanza 30/30 ·
 contabilidad 49/49 · roles 15/15 · grupos 35/35 · nómina 19/19 ·
 reportes 29/29 · bancos 57/57 · preregistro 18/18 · jest 115/115
+
+## 2026-08-20 — Cascarones: cada estado su menú, alimentados por periodo
+
+**Migración:** `2026-08-20e_saldos_por_periodo.sql`
+
+La pantalla anterior estaba mal planteada: "sube un archivo → mira un reporte"
+es un visor, no una contabilidad. Se cierra y no queda nada.
+
+**Ahora los estados leen EL PERIODO**, y el periodo se alimenta de varias
+fuentes en momentos distintos:
+```
+balanza de otro sistema ─┐
+CFDI emitidos           ─┤
+CFDI recibidos          ─┼─► saldos del periodo ─► todos los estados
+nómina timbrada         ─┤
+pólizas capturadas      ─┘
+```
+El día que los XML generen pólizas, escriben ahí y las mismas pantallas se
+llenan solas. No hay que tocar ningún estado.
+
+### Ocho menús en Contabilidad
+
+Catálogo de cuentas · Periodos y cierre · Balanza de comprobación ·
+Situación financiera (B-6) · Resultado integral (B-3) · Flujos de efectivo
+(B-2) · Cambios en el capital (B-4) · Razones y análisis.
+
+Cada estado EXISTE siempre, tenga datos o no. Un mes vacío muestra qué falta
+y de dónde puede venir — NO ceros. Un estado en ceros parece una empresa
+quieta, y eso es una afirmación que nadie hizo.
+
+**B-2 y B-4 son nuevos** y exigen dos periodos: el flujo se lee de variaciones,
+no de saldos. Cuando falta el mes anterior lo dicen en vez de devolver ceros.
+
+### El corte mensual
+
+Cerrar congela los saldos. Cuatro candados:
+- No se cierra un mes que no cuadra (congelaría el descuadre para siempre).
+- No se cierra un mes vacío.
+- No se cierra con meses anteriores abiertos y cargados.
+- No se reabre con meses posteriores cerrados.
+
+Y el candado vive en la BASE, no en el servicio: probado con un UPDATE directo
+por SQL, que también se rechaza.
+
+**Recargar reemplaza, no acumula.** Probado: los cargos siguen en la misma
+cifra tras cargar dos veces.
+
+**Un hueco es un mes vacío ENTRE dos meses con datos.** Los anteriores al
+primero cargado no son huecos, son antes de empezar — marcarlos llenaba el
+aviso de cinco falsos positivos.
+
+Se retiró la pantalla y la ruta de "sube y mira": dos caminos que calculan lo
+mismo terminan diciendo cosas distintas.
+
+Pruebas: periodos 20/20 · estados 23/23 · nif 28/28 · mapeo 20/20 ·
+balanza 30/30 · contabilidad 49/49 · roles 15/15 · grupos 35/35 ·
+nómina 19/19 · reportes 29/29 · bancos 57/57 · jest 115/115
