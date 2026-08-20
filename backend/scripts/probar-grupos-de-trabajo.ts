@@ -196,6 +196,26 @@ async function main() {
     ? bien('el ADMIN sigue entrando, como antes del cambio')
     : mal('el cambio dejó fuera a los administradores');
 
+  /* ── 4-ter. Tesorería mantiene expedientes de proveedores ──
+   *
+   * Es quien descubre lo que falta: al programar una transferencia se topa con
+   * la CLABE vacía o los días de crédito equivocados. Mandarla a pedirle a un
+   * administrador que corrija cada dato garantiza que el dato se quede mal. */
+  await query(`UPDATE users SET work_group = 'TESORERIA' WHERE id = $1`, [userId]);
+  await userHasCapability(userId, 'USER', 'suppliers:manage')
+    ? bien('TESORERIA puede completar y mantener expedientes de proveedores')
+    : mal('tesorería no puede editar proveedores');
+
+  await query(`UPDATE users SET work_group = 'COMPRAS' WHERE id = $1`, [userId]);
+  await userHasCapability(userId, 'USER', 'suppliers:manage')
+    ? bien('COMPRAS también: es quien da de alta al proveedor nuevo')
+    : mal('compras no puede editar proveedores');
+
+  await query(`UPDATE users SET work_group = 'PUNTO_VENTA' WHERE id = $1`, [userId]);
+  !(await userHasCapability(userId, 'USER', 'suppliers:manage'))
+    ? bien('y el cajero NO: no tiene nada que hacer en el padrón de proveedores')
+    : mal('el cajero alcanzó los expedientes de proveedores');
+
   /* ── 5. Cada grupo tiene capacidades declaradas ──
    * Un grupo sin capacidades es una pantalla que se abre y no hace nada. */
   const sinCaps = grupos.filter((g) => !(GROUP_CAPABILITIES[g]?.length));

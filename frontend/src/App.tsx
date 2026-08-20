@@ -60,7 +60,7 @@ import { FaltantesPage }              from '@/pages/Faltantes';
 import { SuperXMLImportPage }         from '@/pages/SuperXMLImport';
 import { CompanyProfilePage }         from '@/pages/CompanyProfile';
 import { useAuthStore } from '@/store/auth';
-import { canAccess, type ModuleKey } from '@/utils/permissions';
+import { canAccess, type ModuleKey, homeDe } from '@/utils/permissions';
 
 const queryClient = new QueryClient();
 
@@ -81,7 +81,18 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
  */
 function HomeRedirect() {
   const { user } = useAuthStore();
-  return <Navigate to={user?.role === 'SUPER_ADMIN' ? '/admin/companies' : '/dashboard'} replace />;
+  /* Cada grupo llega a lo que viene a hacer.
+   *
+   * Antes todos caían en el dashboard. Ahora que el resumen del negocio es sólo
+   * para la dirección, mandar ahí a un cajero sería mandarlo a una puerta
+   * cerrada — y como el dashboard es también el destino de los rechazos, se
+   * quedaría rebotando entre dos negativas. */
+  return (
+    <Navigate
+      to={user?.role === 'SUPER_ADMIN' ? '/admin/companies' : homeDe(user)}
+      replace
+    />
+  );
 }
 
 /**
@@ -116,7 +127,9 @@ function CompanyOnlyRoute({ children }: { children: React.ReactNode }) {
 function ModuleRoute({ module, children }: { module: ModuleKey; children: React.ReactNode }) {
   const { user } = useAuthStore();
   if (user?.role === 'SUPER_ADMIN') return <Navigate to="/admin/companies" replace />;
-  if (!canAccess(user?.workGroup, module)) return <Navigate to="/dashboard" replace />;
+  /* Se rebota a la casa del grupo, NO al dashboard: si el grupo tampoco lo
+   * alcanza —y seis de los siete no— el rebote sería a otra negativa. */
+  if (!canAccess(user?.workGroup, module)) return <Navigate to={homeDe(user)} replace />;
   return <>{children}</>;
 }
 
@@ -127,7 +140,7 @@ function ModuleRoute({ module, children }: { module: ModuleKey; children: React.
  */
 function CompanyAdminRoute({ children }: { children: React.ReactNode }) {
   const { user } = useAuthStore();
-  if (user?.role !== 'ADMIN') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'ADMIN') return <Navigate to={homeDe(user)} replace />;
   return <>{children}</>;
 }
 
@@ -139,7 +152,7 @@ function CompanyAdminRoute({ children }: { children: React.ReactNode }) {
 function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   const { user } = useAuthStore();
   if (user?.role !== 'SUPER_ADMIN') {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={homeDe(user)} replace />;
   }
   return <>{children}</>;
 }
@@ -163,7 +176,12 @@ export function App() {
             }
           >
             {/* Operación diaria — gateada por grupo de trabajo (SUPER_ADMIN redirigido) */}
-            <Route path="dashboard"    element={<CompanyOnlyRoute><DashboardPage /></CompanyOnlyRoute>} />
+            {/* El dashboard deja de ser de todos.
+                El resumen del negocio —ventas, saldos, línea de crédito— es
+                información de la dirección. Va por ModuleRoute como cualquier
+                otra pantalla, y quien no lo tenga rebota a la casa de su
+                grupo en vez de verlo tecleando la dirección. */}
+            <Route path="dashboard"    element={<ModuleRoute module="dashboard"><DashboardPage /></ModuleRoute>} />
             {/* Facturación */}
             <Route path="invoices"     element={<ModuleRoute module="invoices"><InvoicesPage /></ModuleRoute>} />
             <Route path="invoices/new"       element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
@@ -177,7 +195,12 @@ export function App() {
             <Route path="team" element={<CompanyOnlyRoute><CompanyAdminRoute><TeamPage /></CompanyAdminRoute></CompanyOnlyRoute>} />
             {/* Contrato: lo lee cualquier usuario de empresa; firmarlo exige ADMIN
                 (el guard real está en el backend). */}
-            <Route path="contract" element={<CompanyOnlyRoute><CompanyAdminRoute><ContractPage /></CompanyAdminRoute></CompanyOnlyRoute>} />
+            {/* El contrato: rol de administrador Y sin grupo operativo. Un
+                administrador acotado a tesorería o a nómina no ve las
+                condiciones comerciales con GDM — se le acotó el trabajo, y esto
+                no es parte de él. El candado del menú no basta: sin esto se
+                llegaría tecleando la dirección. */}
+            <Route path="contract" element={<CompanyOnlyRoute><CompanyAdminRoute><ModuleRoute module="dashboard"><ContractPage /></ModuleRoute></CompanyAdminRoute></CompanyOnlyRoute>} />
             {/* Carta Porte 3.1 + Super Lector XML — módulos V2.
                 Cada pantalla va con el módulo al que pertenece: esconderla del
                 menú y dejarla abierta por URL no sirve de nada. */}

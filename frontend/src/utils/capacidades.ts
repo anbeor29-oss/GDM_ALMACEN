@@ -39,6 +39,7 @@ export const CAP = {
   pagar:              'treasury:pay',
   reportes:           'reports:view',
   nomina:             'nomina:manage',
+  proveedores:        'suppliers:manage',
 } as const;
 
 /**

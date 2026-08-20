@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Truck, Search, Edit2, X, Star, Plus, Landmark } from 'lucide-react';
 import api from '@/services/api';
-import { useAuthStore } from '@/store/auth';
+import { useCapacidades, CAP } from '@/utils/capacidades';
 
 interface Supplier {
   id: string;
@@ -33,8 +33,11 @@ const money = (n: any) =>
 
 export function SuppliersPage() {
   const qc = useQueryClient();
-  const { user } = useAuthStore();
-  const canEdit = ['ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(user?.role || '');
+  /* Quién mantiene los expedientes se pregunta, no se deduce del rol: tesorería
+   * y compras lo hacen sin ser administradores. Es quien se topa con la CLABE
+   * vacía o los días de crédito equivocados. */
+  const { puede } = useCapacidades();
+  const canEdit = puede(CAP.proveedores);
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

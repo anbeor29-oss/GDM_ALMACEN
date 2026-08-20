@@ -25,6 +25,7 @@ export const CAPABILITIES: Record<string, string> = {
   'pos:sell':            'Vender en punto de venta',
   'treasury:pay':        'Autorizar pagos a proveedores',
   'nomina:manage':       'Capturar, calcular y cerrar la nómina',
+  'suppliers:manage':    'Dar de alta y mantener expedientes de proveedores',
   'reports:view':        'Consultar y exportar reportes',
 };
 
@@ -84,11 +85,18 @@ export const GROUP_CAPABILITIES: Record<string, string[]> = {
   /* Captura órdenes y recibe mercancía. NO aprueba: la aprobación es un
    * segundo par de ojos, y si el mismo que captura aprueba, deja de serlo.
    * Quien deba aprobar recibe 'purchasing:approve' a título individual. */
-  COMPRAS:     ['inventory:view', 'purchasing:capture', 'reports:view'],
+  COMPRAS:     ['inventory:view', 'purchasing:capture', 'suppliers:manage', 'reports:view'],
   /* Ésta es la que faltaba: sin ella el grupo veía tesorería sin poder mover
    * nada. Programar la remesa, autorizarla y marcarla pagada son los tres
    * pasos del trabajo, y los tres piden esta capacidad. */
-  TESORERIA:   ['treasury:pay', 'reports:view'],
+  /* Tesorería mantiene los expedientes de proveedores.
+   *
+   * Es quien descubre lo que falta: al programar una transferencia se topa con
+   * la CLABE vacía, con los días de crédito equivocados o con el RFC que nunca
+   * se capturó. Mandarla a pedirle a un administrador que corrija cada dato es
+   * garantizar que el dato se quede mal — y que la transferencia salga a la
+   * cuenta de ayer. */
+  TESORERIA:   ['treasury:pay', 'suppliers:manage', 'reports:view'],
   PUNTO_VENTA: ['pos:sell'],
   /* Recursos Humanos maneja la nómina completa: capturar, calcular y cerrar.
    *

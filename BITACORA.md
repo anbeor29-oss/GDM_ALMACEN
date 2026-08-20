@@ -5,6 +5,55 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-19 (grupos) — El dashboard sale, y con él casi se va un bucle
+
+### 1 · Tesorería mantiene expedientes de proveedores
+Editar un proveedor pedía **rol** de administrador o gerente. Tesorería es
+justamente quien descubre lo que falta: al programar una transferencia se topa
+con la CLABE vacía, con los días de crédito equivocados o con el RFC que nunca
+se capturó. Mandarla a pedirle a un administrador que corrija cada dato es
+garantizar que el dato se quede mal — y que la transferencia salga a la cuenta
+de ayer.
+
+Ahora es la capacidad `suppliers:manage`, que traen **tesorería y compras**. El
+cajero no: no tiene nada que hacer en el padrón de proveedores.
+
+*(Los XML del SAT ya estaban fuera de tesorería desde el cambio anterior: ese
+menú depende de `auditoria`, que se le quitó entonces.)*
+
+### 2 · El dashboard y el contrato, sólo para la dirección
+El resumen del negocio —ventas, saldos, línea de crédito— no es información de
+quien captura. Salió de los seis grupos operativos. El contrato pide ahora rol de
+administrador **y** no estar acotado a un grupo: a un administrador limitado a
+tesorería se le acotó el trabajo, y las condiciones comerciales con GDM no son
+parte de él.
+
+**Y aquí estuvo el riesgo de verdad.** `/dashboard` era el destino de TODOS los
+rechazos y del login. Quitarlo de los grupos sin más habría dejado a seis de
+siete **rebotando**: piden una pantalla, se les niega, se les manda al
+dashboard, que también se les niega, y otra vez. No es un error visible en
+ninguna parte — es un usuario que no puede entrar al sistema.
+
+Por eso cada grupo tiene ahora **casa propia**: ventas llega a Facturas, almacén
+a Existencias, tesorería a Tesorería, el cajero al Punto de Venta, RH a Nómina.
+Que además es mejor que un tablero que no pueden usar. Hay un guardián dedicado
+a que ninguna redirección vuelva a apuntar al dashboard a ciegas.
+
+### 3 · Un módulo que existía y al que nadie podía llegar
+La pantalla de **Equipo** —donde el administrador de una empresa da de alta a su
+propia gente, con su grupo de trabajo— existía desde hacía tiempo: su ruta, su
+alta de usuarios, su edición. Lo que no tenía era **entrada en el menú**.
+
+Un módulo al que sólo se llega escribiendo la dirección es un módulo que no
+existe. Ya está en el sidebar para el administrador de empresa, y con eso deja de
+depender del super admin para cada usuario nuevo.
+
+*Verificado:* 32 comprobaciones de grupos —incluidas que tesorería y compras
+mantengan proveedores y el cajero no— y 28 de rutas y pantallas, con el guardián
+del bucle entre ellas.
+
+---
+
 ## 2026-08-19 (remesas) — Un botón gris que no dice por qué es un botón roto
 
 "Programar pago" no respondía. El mecanismo estaba completo —elegir proveedor,

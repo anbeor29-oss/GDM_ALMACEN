@@ -10,7 +10,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { authenticateToken, authorize } from '../../middleware/authentication';
+import { authenticateToken, authorize, requireCapability } from '../../middleware/authentication';
 import { asyncHandler, ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import * as customersService from '../customers/customers.service';
@@ -33,7 +33,7 @@ router.get(
  */
 router.post(
   '/',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('suppliers:manage'),
   asyncHandler(async (req: Request, res: Response) => {
     const b = req.body || {};
     const created = await customersService.createCustomer(companyId(req), {
@@ -48,7 +48,7 @@ router.post(
 /** PUT /suppliers/:id — edición completa (fiscales, domicilio, contacto, banco, crédito). */
 router.put(
   '/:id',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('suppliers:manage'),
   asyncHandler(async (req: Request, res: Response) => {
     // Verifica que sea un SUPPLIER de esta empresa
     const own = await query(
@@ -161,7 +161,7 @@ router.get(
  */
 router.put(
   '/:id/credit',
-  authorize('ADMIN', 'MANAGER', 'SUPER_ADMIN'),
+  requireCapability('suppliers:manage'),
   asyncHandler(async (req: Request, res: Response) => {
     const b = req.body || {};
     const creditDays = b.creditDays != null ? parseInt(String(b.creditDays), 10) : null;

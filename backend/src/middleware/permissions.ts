@@ -55,6 +55,13 @@ const ALL_MODULES: ModuleKey[] = [
  * Lo que cada quien puede HACER dentro de esas pantallas lo decide el sistema
  * de capacidades (requireCapability), no este mapa.
  */
+/* NOTA SOBRE EL DASHBOARD Y EL CONTRATO
+ *
+ * Ninguno de los dos aparece en esta lista, y es a propósito: el dashboard no
+ * es un módulo protegido del API —es una pantalla de resumen— y el contrato se
+ * gobierna por ROL. Los seis grupos operativos no ven ninguno de los dos: el
+ * resumen del negocio y las condiciones comerciales son información de la
+ * dirección, no de quien captura. */
 export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   /* 'nomina' sólo la alcanzan ADMIN_ALL y RECURSOS_HUMANOS: los sueldos, la
    * CURP, las cuentas bancarias y las órdenes de pensión alimenticia son el

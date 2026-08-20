@@ -119,7 +119,10 @@ export function Layout() {
                     8 Contrato, y al final Datos de la Empresa. Iconos emoji 3D
                     con drop-shadow para look moderno. Usuarios queda oculto en
                     esta versión (V2 se enfoca en facturación + CP). */}
-                <NavItem to="/dashboard"    icon={emoji3D('🏠')} accent="sky"     label="Dashboard"        open={sidebarOpen} />
+                {/* El dashboard ya no es de todos: el resumen del negocio
+                    —ventas, saldos, línea de crédito— es información de la
+                    dirección, no de quien captura. */}
+                {show('dashboard') && <NavItem to="/dashboard"    icon={emoji3D('🏠')} accent="sky"     label="Dashboard"        open={sidebarOpen} />}
                 {/* Punto de Venta va justo debajo del Dashboard: es la pantalla
                     que más veces se abre al día en un mostrador, y estaba hasta
                     abajo de la lista. Para el cajero es además la única. */}
@@ -300,7 +303,26 @@ export function Layout() {
                     ]}
                   />
                 )}
-                {user?.role === 'ADMIN' && <NavItem to="/contract"   icon={emoji3D('📜')} accent="sky"     label="Contrato"         open={sidebarOpen} />}
+                {/* ── Equipo ──
+                    La pantalla existía desde hace tiempo, con su ruta y su alta
+                    de usuarios, pero NADIE podía llegar a ella: no tenía
+                    entrada en el menú. Un módulo al que sólo se llega
+                    escribiendo la dirección es un módulo que no existe.
+
+                    Con esto, el administrador que crea el super admin da de
+                    alta a su propia gente —con su grupo de trabajo— sin
+                    depender de nosotros para cada usuario nuevo. */}
+                {user?.role === 'ADMIN' && show('dashboard') && (
+                  <NavItem to="/team"       icon={emoji3D('👥')} accent="violet"  label="Equipo"           open={sidebarOpen} />
+                )}
+                {/* El contrato lo ve el ADMINISTRADOR de la empresa, y sólo
+                    él: son las condiciones comerciales con GDM —qué se paga,
+                    cuántos timbres, qué plan—. Un administrador puesto en un
+                    grupo operativo tampoco lo ve: si se le acotó el trabajo a
+                    tesorería o a nómina, el contrato no es parte de él. */}
+                {user?.role === 'ADMIN' && show('dashboard') && (
+                  <NavItem to="/contract"   icon={emoji3D('📜')} accent="sky"     label="Contrato"         open={sidebarOpen} />
+                )}
                 {/* "Datos de la empresa" ya vive en el modal del emisor
                     (top bar → botón DATOS DE MI EMPRESA), incluye el
                     ManifestSigner. Se retira del sidebar para no duplicar. */}

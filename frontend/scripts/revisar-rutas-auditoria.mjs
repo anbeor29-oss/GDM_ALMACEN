@@ -138,5 +138,73 @@ sinPreguntar.length === 0
   ? bien('la regla adivinada anterior se retiró, no quedó dando vueltas')
   : mal('puedeMoverNomina sigue ahí sin nadie que la use');
 
+/* ── 7. Cada grupo tiene una casa, y no es el dashboard ──
+ *
+ * EL BUCLE QUE ESTO EVITA
+ * `/dashboard` era el destino de TODOS los rechazos y del login. Al sacarlo de
+ * los seis grupos operativos —el resumen del negocio es de la dirección— ese
+ * destino dejó de existir para ellos.
+ *
+ * Sin un destino propio, un cajero pediría una pantalla, se le negaría, se le
+ * mandaría al dashboard, que también se le niega, y otra vez. No es un error
+ * visible: es un usuario que no puede entrar al sistema.
+ */
+const perm = readFileSync('src/utils/permissions.ts', 'utf8');
+const appSrc = readFileSync('src/App.tsx', 'utf8');
+
+perm.includes('HOME_POR_GRUPO') && perm.includes('export function homeDe')
+  ? bien('cada grupo tiene su casa declarada')
+  : mal('no hay HOME_POR_GRUPO: quitar el dashboard dejaría a los grupos sin destino');
+
+const GRUPOS = ['ADMIN_ALL', 'VENTAS', 'ALMACEN', 'COMPRAS', 'TESORERIA',
+                'PUNTO_VENTA', 'RECURSOS_HUMANOS'];
+const sinCasa = GRUPOS.filter((g) => !new RegExp(`${g}:\\s*'/`).test(perm));
+sinCasa.length === 0
+  ? bien('los siete grupos tienen a dónde llegar')
+  : mal('estos grupos se quedarían rebotando', sinCasa.join(', '));
+
+/* Y que NADIE quede mandado al dashboard a ciegas. */
+!appSrc.includes('to="/dashboard"')
+  ? bien('ninguna redirección manda al dashboard sin preguntar el grupo')
+  : mal('quedó una redirección fija a /dashboard: es el bucle');
+
+/* ── 8. El dashboard y el contrato, sólo para la dirección ── */
+/* ADMIN_ALL no lista sus módulos: usa ALL_MODULES. Así que se comprueba al
+ * revés — que NINGÚN grupo operativo lo liste, y que el catálogo sí lo tenga. */
+const OPERATIVOS = GRUPOS.filter((g) => g !== 'ADMIN_ALL');
+const conDashboard = OPERATIVOS.filter((g) => {
+  const m = new RegExp(g + ":\\s*(\\[[^\\]]*\\])", 's').exec(perm);
+  return m && m[1].includes("'dashboard'");
+});
+conDashboard.length === 0
+  ? bien('ningún grupo operativo ve el dashboard: el resumen del negocio no es de quien captura')
+  : mal('estos grupos siguen viendo el dashboard', conDashboard.join(', '));
+
+/ALL_MODULES[^=]*=[^;]*'dashboard'/s.test(perm)
+  ? bien('y ADMIN_ALL sí lo alcanza, por el catálogo completo')
+  : mal('el dashboard desapareció también para el administrador');
+
+appSrc.includes('<Route path="dashboard"    element={<ModuleRoute module="dashboard"')
+  ? bien('y la ruta del dashboard está cerrada: no se llega tecleándola')
+  : mal('el dashboard sigue abierto por URL a cualquier grupo');
+
+appSrc.includes('path="contract"') && appSrc.includes('ModuleRoute module="dashboard"><ContractPage')
+  ? bien('el contrato pide rol de administrador Y no estar acotado a un grupo')
+  : mal('el contrato se alcanza sin ser de la dirección');
+
+/* ── 9. La pantalla de Equipo, alcanzable ──
+ *
+ * Existía desde hacía tiempo con su ruta y su alta de usuarios, pero sin
+ * entrada en el menú. Un módulo al que sólo se llega escribiendo la dirección
+ * es un módulo que no existe. */
+const layout = readFileSync('src/components/Layout.tsx', 'utf8');
+layout.includes('to="/team"')
+  ? bien('el administrador de empresa tiene cómo llegar a Equipo')
+  : mal('la pantalla de Equipo no está en el menú: nadie puede llegar');
+
+appSrc.includes('path="team"')
+  ? bien('y su ruta existe')
+  : mal('falta la ruta de Equipo');
+
 console.log(`\n${ok} bien, ${fallos} mal`);
 process.exit(fallos ? 1 : 0);

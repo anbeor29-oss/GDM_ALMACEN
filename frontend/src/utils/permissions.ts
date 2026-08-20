@@ -43,17 +43,17 @@ const ALL_MODULES: ModuleKey[] = [
 export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   ADMIN_ALL: ALL_MODULES,
   VENTAS: [
-    'dashboard', 'invoices', 'carta_porte', 'credit_notes', 'customers',
+    'invoices', 'carta_porte', 'credit_notes', 'customers',
     'products', 'xml_reader', 'pos', 'reports', 'exchange_rates', 'mensajes',
   ],
-  ALMACEN:   ['dashboard', 'products', 'inventory', 'reports', 'mensajes'],
+  ALMACEN:   ['products', 'inventory', 'reports', 'mensajes'],
   /* Compras pide y recibe; no administra existencias. Lo que necesita saber
    * —qué falta— lo tiene en Faltantes, que vive en su propio módulo. */
-  COMPRAS:   ['dashboard', 'purchasing', 'suppliers', 'products',
+  COMPRAS:   ['purchasing', 'suppliers', 'products',
               'xml_reader', 'reports', 'mensajes'],
   /* Tesorería paga; cotejar lo que el SAT dice de nuestros comprobantes es
    * otro trabajo y otra persona. */
-  TESORERIA: ['dashboard', 'treasury', 'suppliers', 'exchange_rates', 'reports',
+  TESORERIA: ['treasury', 'suppliers', 'exchange_rates', 'reports',
               'mensajes'],
   /* Cajero de mostrador: SÓLO el punto de venta.
    *
@@ -66,10 +66,10 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
    * por su propio endpoint, así que no necesita el catálogo abierto. Lo que ve
    * es la caja y nada más — salvo los mensajes: "se acabó el rollo de la
    * impresora" tiene que poder salir de ahí. */
-  PUNTO_VENTA: ['dashboard', 'pos', 'mensajes'],
+  PUNTO_VENTA: ['pos', 'mensajes'],
   /* Recursos Humanos: la nómina y nada más. Lleva 'xml_reader' porque el
    * expediente del personal se rescata de los recibos ya timbrados. */
-  RECURSOS_HUMANOS: ['dashboard', 'nomina', 'xml_reader', 'reports', 'mensajes'],
+  RECURSOS_HUMANOS: ['nomina', 'xml_reader', 'reports', 'mensajes'],
 };
 
 /** Etiquetas legibles de cada grupo (para selectores). */
@@ -118,3 +118,39 @@ export function canAccess(group: string | undefined, mod: ModuleKey): boolean {
  * Eso vive en `utils/capacidades.ts`, que lo PREGUNTA en vez de deducirlo.
  * Aquí sólo se decide qué módulos aparecen en el menú.
  */
+
+
+/**
+ * ── LA CASA DE CADA GRUPO ──
+ *
+ * A dónde llega alguien al entrar, y a dónde se le manda si teclea una
+ * dirección que no le toca.
+ *
+ * POR QUÉ HACE FALTA
+ * Antes todo caía en `/dashboard`, y el dashboard estaba en TODOS los grupos
+ * justamente por eso. Al sacarlo —el resumen del negocio, con sus ventas y sus
+ * saldos, es información de la dirección y no de quien captura— ese destino
+ * dejó de existir para seis de los siete grupos.
+ *
+ * Sin este mapa, quitarle el dashboard a un grupo lo dejaría dando vueltas:
+ * pide una pantalla, se le niega, se le manda al dashboard, que también se le
+ * niega, y otra vez. Un bucle de redirecciones, no una pantalla de error.
+ *
+ * Cada quien llega a lo que viene a hacer, que además es mejor que un tablero
+ * que no puede usar.
+ */
+export const HOME_POR_GRUPO: Record<string, string> = {
+  ADMIN_ALL:        '/dashboard',
+  VENTAS:           '/invoices',
+  ALMACEN:          '/inventory',
+  COMPRAS:          '/purchase-orders',
+  TESORERIA:        '/treasury',
+  PUNTO_VENTA:      '/pos',
+  RECURSOS_HUMANOS: '/nomina',
+};
+
+/** A dónde mandar a este usuario. Sin grupo conocido, al dashboard. */
+export function homeDe(user: any): string {
+  const grupo = user?.workGroup || user?.work_group || 'ADMIN_ALL';
+  return HOME_POR_GRUPO[grupo] || '/dashboard';
+}
