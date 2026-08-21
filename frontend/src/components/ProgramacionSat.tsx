@@ -18,7 +18,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock, Gauge, History, AlertTriangle, CheckCircle2,
-  Loader2, Play, Settings2, Info,
+  Loader2, Play, Settings2, Info, RotateCcw,
 } from 'lucide-react';
 import api from '@/services/api';
 
@@ -182,6 +182,17 @@ export function ProgramacionSat() {
 
           <EjercicioCompleto onLanzar={(anio: number, opts: any) =>
             accion('ejercicio', () => api.crearEjercicioSat(anio, opts))} busy={busy} />
+
+          <button
+            onClick={() => {
+              if (window.confirm('¿Borrar TODOS los trabajos y el cupo del día para monitorear en limpio?\n\nTu e.firma y la configuración se conservan. Esta acción no se puede deshacer.'))
+                accion('reiniciar', () => api.reiniciarSatDescarga());
+            }}
+            disabled={!!busy}
+            className="btn-secondary text-sm flex items-center gap-1.5 text-rose-700 disabled:opacity-50">
+            {busy === 'reiniciar' ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+            Reiniciar monitor
+          </button>
 
           <button onClick={() => setAbierto(!abierto)}
             className="btn-secondary text-sm flex items-center gap-1.5 ml-auto">

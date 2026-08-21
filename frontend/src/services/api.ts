@@ -1023,6 +1023,10 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/diario');
     return r.data;
   }
+  async reiniciarSatDescarga() {
+    const r = await this.client.post<APIResponse<any>>('/sat-descarga/reiniciar');
+    return r.data;
+  }
   async crearEjercicioSat(ejercicio: number, opts: any = {}) {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/ejercicio',
       { ejercicio, ...opts });

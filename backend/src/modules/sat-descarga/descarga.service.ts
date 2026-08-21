@@ -132,6 +132,23 @@ export async function borrarCredencial(companyId: string): Promise<void> {
   logger.info(`[sat-descarga] e.firma borrada de la empresa ${companyId}`);
 }
 
+/**
+ * Reinicia el monitor: borra trabajos (cascada → particiones → paquetes) y el
+ * consumo del día. NO toca la e.firma ni la configuración. Para volver a probar
+ * en limpio. Devuelve cuántos trabajos se borraron.
+ */
+export async function reiniciarDescarga(companyId: string): Promise<{ trabajos: number }> {
+  const c = await query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM sat_trabajos WHERE company_id = $1`, [companyId]
+  );
+  const trabajos = Number(c.rows[0]?.n || 0);
+  // ON DELETE CASCADE se encarga de sat_particiones y sat_paquetes.
+  await query(`DELETE FROM sat_trabajos WHERE company_id = $1`, [companyId]);
+  await query(`DELETE FROM sat_consumo_diario WHERE company_id = $1`, [companyId]);
+  logger.info(`[sat-descarga] monitor reiniciado (empresa ${companyId}): ${trabajos} trabajo(s) borrados`);
+  return { trabajos };
+}
+
 async function credencialUsable(companyId: string): Promise<soap.Credencial> {
   const r = await query<any>(
     `SELECT rfc, cer_cifrado, key_cifrado, password_cifrado, vigencia_hasta

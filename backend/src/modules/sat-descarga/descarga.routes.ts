@@ -37,6 +37,24 @@ function companyId(req: Request): string {
   return req.user.companyId;
 }
 
+/**
+ * POST /sat-descarga/reiniciar — borra trabajos, particiones, paquetes y el
+ * consumo del día para monitorear en limpio. NO toca la e.firma ni la config.
+ * Sólo ADMIN: es una acción destructiva sobre el histórico de solicitudes.
+ */
+router.post(
+  '/reiniciar',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await service.reiniciarDescarga(companyId(req));
+    res.json({
+      success: true,
+      message: `Monitor reiniciado: ${r.trabajos} trabajo(s) borrados y cupo del día en cero.`,
+      data: r,
+    });
+  })
+);
+
 /* ═══════════════════════════════════════════════════════════════════════════
    PROGRAMACIÓN — el día a día y los ejercicios completos
    ═══════════════════════════════════════════════════════════════════════════ */
