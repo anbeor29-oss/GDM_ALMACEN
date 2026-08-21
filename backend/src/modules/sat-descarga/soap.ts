@@ -220,8 +220,14 @@ export async function solicitar(
   const iso = (x: Date) => x.toISOString().slice(0, 19);
   const emitidos = d.direccion === 'emitidos';
 
-  /* El orden de los atributos NO es decorativo: la cadena que se firma es esta
-   * misma, y el SAT compara el digest contra lo que recibe. */
+  /* HIPÓTESIS "Sello Mal Formado": exc-c14n (RFC 3076) ORDENA los atributos
+   * alfabéticamente antes de digerir. El SAT valida el sello canonicalizando lo
+   * que recibe, así que el DigestValue debe calcularse sobre los atributos YA
+   * ORDENADOS. Antes iban en orden de inserción → el digest no coincidía. Como
+   * `cuerpo` se usa tanto en `sinFirma` (lo que se digiere) como en el sobre (lo
+   * que se manda), ordenarlo aquí deja ambos consistentes con la canónica del SAT.
+   * `.sort()` sobre `Attr="val"` ordena por nombre de atributo (los nombres son
+   * únicos y anteceden al `=`). */
   const attrs = [
     `FechaInicial="${iso(d.desde)}"`,
     `FechaFinal="${iso(d.hasta)}"`,
@@ -231,7 +237,7 @@ export async function solicitar(
     `RfcSolicitante="${cred.rfc}"`,
     `TipoSolicitud="${d.tipo}"`,
     !emitidos ? `RfcReceptor="${d.rfcReceptor || cred.rfc}"` : '',
-  ].filter(Boolean).join(' ');
+  ].filter(Boolean).sort().join(' ');
 
   const operacion = emitidos ? 'SolicitaDescargaEmitidos' : 'SolicitaDescargaRecibidos';
   const cuerpo =
