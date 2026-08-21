@@ -24,6 +24,7 @@ import cron from 'node-cron';
 import logger from '../middleware/logger';
 import { query } from '../config/database';
 import { avanzar } from '../modules/sat-descarga/descarga.service';
+import { crearTrabajoDiario } from '../modules/sat-descarga/programacion.service';
 import { bovedaLista } from '../modules/sat-descarga/boveda';
 
 export function registerSatDescargaCron(): void {
@@ -36,14 +37,71 @@ export function registerSatDescargaCron(): void {
     return;
   }
 
-  // '*/15 * * * *' → cada 15 minutos
+  // '*/15 * * * *' → cada 15 minutos: avanza lo que ya está pedido.
   cron.schedule('*/15 * * * *', () => {
     correrPendientes().catch((e) =>
       logger.error(`[sat-descarga-cron] falló la corrida: ${e.message}`)
     );
   });
 
-  logger.info('[sat-descarga-cron] Registrado: avanza los trabajos abiertos cada 15 minutos');
+  /* ── La pieza que faltaba: CREAR el trabajo de cada día ──
+   *
+   * El cron de arriba sólo AVANZA trabajos que ya existen. Nunca creaba
+   * ninguno, así que "descargar a diario" dependía de que alguien entrara a la
+   * pantalla y pulsara el botón. Los días que nadie entra no había CFDI, y ese
+   * hueco se descubre meses después — cuando el mes ya se declaró.
+   *
+   * A las 6:00, hora de México. No a medianoche: el SAT tarda en publicar lo
+   * del día que acaba de cerrar, y pedirlo a las 00:05 trae menos de lo que
+   * hay. */
+  cron.schedule('0 6 * * *', () => {
+    crearDiarios().catch((e) =>
+      logger.error(`[sat-descarga-cron] falló la creación diaria: ${e.message}`)
+    );
+  }, { timezone: 'America/Mexico_City' });
+
+  logger.info(
+    '[sat-descarga-cron] Registrado: crea el trabajo diario a las 6:00 (CDMX) ' +
+    'y avanza los abiertos cada 15 minutos');
+}
+
+/**
+ * Crea el trabajo del día para cada empresa con e.firma cargada.
+ *
+ * Sólo empresas con credencial: sin e.firma no se le puede pedir nada al SAT,
+ * y llenar la bitácora de errores por eso taparía los errores reales.
+ */
+async function crearDiarios(): Promise<void> {
+  const empresas = await query<any>(
+    `SELECT c.company_id
+       FROM sat_credenciales c
+      WHERE c.estado = 'ACTIVA'
+        AND (c.vigencia_hasta IS NULL OR c.vigencia_hasta > NOW())`
+  );
+  if (empresas.rows.length === 0) {
+    logger.info('[sat-descarga-cron] ninguna empresa con e.firma vigente');
+    return;
+  }
+
+  for (const e of empresas.rows) {
+    try {
+      const r = await crearTrabajoDiario(e.company_id);
+      if (r.creados.length) {
+        logger.info(
+          `[sat-descarga-cron] diario ${e.company_id}: ` +
+          r.creados.map((c) => `${c.direccion} ${c.desde}→${c.hasta}`).join(' · ')
+        );
+      }
+      if (r.omitidos.length) {
+        logger.info(`[sat-descarga-cron] diario ${e.company_id}: ${r.omitidos.join(' · ')}`);
+      }
+    } catch (err) {
+      /* Una empresa con la e.firma vencida no puede dejar sin trabajo diario a
+       * las demás. Se registra y se sigue. */
+      logger.warn(
+        `[sat-descarga-cron] diario ${e.company_id}: ${(err as Error).message}`);
+    }
+  }
 }
 
 async function correrPendientes(): Promise<void> {

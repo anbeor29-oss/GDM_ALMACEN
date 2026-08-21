@@ -3633,3 +3633,46 @@ mismo terminan diciendo cosas distintas.
 Pruebas: periodos 20/20 · estados 23/23 · nif 28/28 · mapeo 20/20 ·
 balanza 30/30 · contabilidad 49/49 · roles 15/15 · grupos 35/35 ·
 nómina 19/19 · reportes 29/29 · bancos 57/57 · jest 115/115
+
+## 2026-08-20 — Descarga del SAT: diaria automática, ejercicios y cupo
+
+**Migración:** `2026-08-20f_descarga_programada.sql`
+
+### Tres problemas encontrados al revisar el motor
+
+**1. NADA creaba trabajos.** El cron corría cada 15 min pero sólo AVANZA
+trabajos existentes. Nunca creaba el del día. "Descargar a diario" dependía de
+que alguien entrara y pulsara el botón; los días que nadie entra no había CFDI,
+y ese hueco se descubre meses después.
+
+**2. Pedir dos veces el mismo rango.** `crearTrabajo` no miraba si ya había un
+trabajo vivo sobre esas fechas. Dos clics = dos trabajos = solicitudes
+duplicadas al SAT. En la captura de pantalla se ven dos renglones idénticos de
+`01/08 → 19/08 recibidos`. Gastar cupo dos veces en el mismo rango deja sin
+cupo a un rango que sí falta.
+
+**3. "Sin datos" y "rechazada" se veían igual.** `particiones_listas` sumaba
+TERMINADA + SIN_DATOS + DIVIDIDA + RECHAZADA + FALLIDA en un solo número. La
+pantalla decía "4/5" y no había forma de saber si el SAT contestó bien sin
+comprobantes o si rechazó — que es lo único que importa con una e.firma de
+prueba.
+
+### Lo que se construyó
+
+- **Cron diario a las 6:00 (CDMX)** que crea el trabajo del día. A las 6 y no a
+  medianoche: el SAT tarda en publicar lo del día que acaba de cerrar.
+- **Ventana de 3 días atrás**, no sólo ayer. Un CFDI timbrado el 30 a las 23:50
+  no está disponible el 1 a las 6. El traslape cuesta poco (se descarta por UUID)
+  y cierra el hueco.
+- **Ejercicio completo, mes por mes.** Un rango de 12 meses topa el límite del
+  SAT y obliga a partir, quemando el triple de cupo. Mes por mes además deja ver
+  cuál falta.
+- **Presupuesto diario:** 2,000 XML y 40 solicitudes. Frena las solicitudes
+  NUEVAS, no lo que está en vuelo — un paquete caduca a las 72 h.
+- **Índice único sobre trabajos VIVOS** + detección de traslape con mensaje claro.
+- **Panel nuevo** que separa resueltas / en vuelo / atoradas, con el motivo
+  textual de cada rechazo y el cupo del día.
+
+Pruebas: descarga 22/22 · periodos 20/20 · estados 23/23 · nif 28/28 ·
+mapeo 20/20 · balanza 30/30 · contabilidad 49/49 · roles 15/15 ·
+grupos 35/35 · nómina 19/19 · reportes 29/29 · bancos 57/57 · jest 115/115

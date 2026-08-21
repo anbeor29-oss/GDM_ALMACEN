@@ -20,6 +20,7 @@
 import { useLocation } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import { XmlRecibidos } from '@/components/XmlRecibidos';
+import { ProgramacionSat } from '@/components/ProgramacionSat';
 
 export function XmlDelSatPage() {
   const location = useLocation();
@@ -41,6 +42,11 @@ export function XmlDelSatPage() {
               'lo que se puede deducir.'}
         </p>
       </div>
+
+      {/* Cómo va de verdad, el cupo del día y el histórico. Va ARRIBA de la
+          tabla: lo primero que hace falta saber es si el SAT está contestando
+          bien, no cuántas filas hay. */}
+      <ProgramacionSat />
 
       {/* El mismo componente que usa Auditoría, con la dirección puesta. */}
       <XmlRecibidos direccionInicial={direccion} />

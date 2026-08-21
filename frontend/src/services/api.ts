@@ -1010,6 +1010,25 @@ class APIClient {
     return r.data;
   }
 
+  /* ── Programación de la descarga del SAT ── */
+  async getProgramacionSat() {
+    const r = await this.client.get<APIResponse<any>>('/sat-descarga/programacion');
+    return r.data;
+  }
+  async guardarProgramacionSat(cfg: any) {
+    const r = await this.client.put<APIResponse<any>>('/sat-descarga/programacion', cfg);
+    return r.data;
+  }
+  async crearDiarioSat() {
+    const r = await this.client.post<APIResponse<any>>('/sat-descarga/diario');
+    return r.data;
+  }
+  async crearEjercicioSat(ejercicio: number, opts: any = {}) {
+    const r = await this.client.post<APIResponse<any>>('/sat-descarga/ejercicio',
+      { ejercicio, ...opts });
+    return r.data;
+  }
+
   async evaluarNif(fd: FormData) {
     const r = await this.client.post<APIResponse<any>>('/accounting/nif/evaluar', fd,
       { headers: { 'Content-Type': 'multipart/form-data' } });

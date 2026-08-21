@@ -30,6 +30,7 @@ import * as crypto from 'crypto';
 import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
+import * as programacion from './programacion.service';
 import * as boveda from './boveda';
 import * as soap from './soap';
 import { extraerXml, ZipSospechoso } from './zip-seguro';
@@ -180,7 +181,8 @@ export async function crearTrabajo(
     tipo?: 'CFDI' | 'Metadata';
     filtros?: any;
   },
-  userId?: string
+  userId?: string,
+  meta: { origen?: 'DIARIO' | 'EJERCICIO' | 'MANUAL'; ejercicio?: number } = {}
 ): Promise<any> {
   const desde = new Date(d.desde + 'T00:00:00');
   const hasta = new Date(d.hasta + 'T23:59:59');
@@ -192,15 +194,46 @@ export async function crearTrabajo(
   const cred = await credencialUsable(companyId);   // valida antes de crear nada
   const tipo = d.tipo === 'Metadata' ? 'Metadata' : 'CFDI';
 
+  /* ── No pedir dos veces lo mismo ──
+   * Dos clics en "Pedir al SAT" creaban dos trabajos con las mismas
+   * particiones, y el SAT recibia la peticion duplicada. No es solo ruido: las
+   * solicitudes estan limitadas, y gastarlas dos veces en el mismo rango deja
+   * sin cupo a un rango que si falta.
+   *
+   * Se busca TRASLAPE y no coincidencia exacta: pedir 18->20 cuando ya hay un
+   * trabajo vivo de 17->19 es pedir dos veces los mismos dias.
+   *
+   * En la base hay ademas un indice unico sobre trabajos vivos: esta
+   * comprobacion existe para dar un mensaje entendible antes de que salte. */
+  const vivo = await query<any>(
+    `SELECT id, fecha_desde::date, fecha_hasta::date FROM sat_trabajos
+      WHERE company_id=$1 AND direccion=$2 AND tipo=$3
+        AND estado IN ('CREADO','EN_PROCESO')
+        AND fecha_desde <= $5::date AND fecha_hasta >= $4::date
+      LIMIT 1`,
+    [companyId, d.direccion, tipo, d.desde, d.hasta]
+  );
+  if (vivo.rows.length) {
+    const v = vivo.rows[0];
+    throw new ValidationError(
+      `Ya hay una descarga en curso de ${d.direccion} que cubre esos dias ` +
+      `(${new Date(v.fecha_desde).toISOString().slice(0, 10)} a ` +
+      `${new Date(v.fecha_hasta).toISOString().slice(0, 10)}). Espera a que ` +
+      `termine: pedir el mismo rango otra vez gasta cupo de solicitudes del dia.`
+    );
+  }
+
   return transaction(async (client) => {
     const t = await transactionQuery<any>(
       client,
       `INSERT INTO sat_trabajos
-         (company_id, rfc, fecha_desde, fecha_hasta, direccion, tipo, filtros, creado_por)
-       VALUES ($1,$2,$3::date,$4::date,$5,$6,$7,$8)
+         (company_id, rfc, fecha_desde, fecha_hasta, direccion, tipo, filtros,
+          creado_por, origen, ejercicio)
+       VALUES ($1,$2,$3::date,$4::date,$5,$6,$7,$8,$9,$10)
        RETURNING *`,
       [companyId, cred.rfc, d.desde, d.hasta, d.direccion, tipo,
-       d.filtros ? JSON.stringify(d.filtros) : null, userId || null]
+       d.filtros ? JSON.stringify(d.filtros) : null, userId || null,
+       meta.origen || 'MANUAL', meta.ejercicio ?? null]
     );
     const trabajo = t.rows[0];
 
@@ -254,7 +287,18 @@ export async function crearTrabajo(
 export async function avanzar(companyId: string, trabajoId?: string): Promise<any> {
   const cred = await credencialUsable(companyId);
   const token = await soap.autenticar(cred);
-  const hecho = { descargados: 0, verificados: 0, solicitados: 0, divididos: 0, errores: [] as string[] };
+  const hecho = {
+    descargados: 0, verificados: 0, solicitados: 0, divididos: 0,
+    errores: [] as string[],
+    presupuesto: null as any,
+    frenadoPorPresupuesto: false,
+  };
+
+  /* El presupuesto del dia. Frena las solicitudes NUEVAS, no lo que ya esta en
+   * vuelo: un paquete que el SAT ya preparo caduca a las 72 horas, y dejarlo
+   * caducar obliga a volver a pedirlo — gastando el cupo de mañana en algo que
+   * hoy ya estaba listo. */
+  const presupuesto = await programacion.presupuestoDeHoy(companyId);
 
   const filtroTrabajo = trabajoId ? 'AND t.id = $2' : '';
   const params: any[] = trabajoId ? [companyId, trabajoId] : [companyId];
@@ -274,8 +318,12 @@ export async function avanzar(companyId: string, trabajoId?: string): Promise<an
   );
   for (const p of paquetes.rows) {
     try {
+      const antes = await xmlDelPaquete(p.id);
       await descargarPaquete(cred, token, p);
+      const despues = await xmlDelPaquete(p.id);
       hecho.descargados++;
+      await programacion.consumir(companyId,
+        { paquetes: 1, xml: Math.max(0, despues - antes) });
     } catch (e) {
       hecho.errores.push(`paquete ${p.id_paquete_sat}: ${(e as Error).message}`);
     }
@@ -302,7 +350,16 @@ export async function avanzar(companyId: string, trabajoId?: string): Promise<an
     }
   }
 
-  // ── 3. Solicitudes nuevas, al final ───────────────────────────────────
+  // ── 3. Solicitudes nuevas, al final y dentro del presupuesto ──────────
+  if (presupuesto.agotado) {
+    hecho.frenadoPorPresupuesto = true;
+    hecho.presupuesto = await programacion.presupuestoDeHoy(companyId);
+    await actualizarTotales(companyId, trabajoId);
+    return hecho;
+  }
+
+  /* Se piden como maximo las que quepan en lo que queda del cupo. */
+  const cupoSolicitudes = Math.min(POR_CORRIDA.solicitudes, presupuesto.quedanSolicitudes);
   const pendientes = await query<any>(
     `SELECT pa.*, t.direccion, t.tipo, t.filtros, t.company_id
        FROM sat_particiones pa
@@ -311,20 +368,37 @@ export async function avanzar(companyId: string, trabajoId?: string): Promise<an
         AND pa.estado = 'PENDIENTE'
         AND (pa.proxima_consulta_at IS NULL OR pa.proxima_consulta_at <= NOW())
       ORDER BY pa.desde ASC
-      LIMIT ${POR_CORRIDA.solicitudes}`,
+      LIMIT ${cupoSolicitudes}`,
     params
   );
   for (const pa of pendientes.rows) {
     try {
       const r = await solicitarParticion(cred, token, pa);
-      if (r === 'dividida') hecho.divididos++; else hecho.solicitados++;
+      if (r === 'dividida') {
+        hecho.divididos++;
+      } else {
+        hecho.solicitados++;
+        /* Dividir no gasta solicitud: no se le pidio nada al SAT, se partio el
+         * rango. Contarlo inflaria el consumo y frenaria la descarga antes de
+         * tiempo. */
+        await programacion.consumir(companyId, { solicitudes: 1 });
+      }
     } catch (e) {
       hecho.errores.push(`solicitud ${pa.id}: ${(e as Error).message}`);
     }
   }
 
   await actualizarTotales(companyId, trabajoId);
+  hecho.presupuesto = await programacion.presupuestoDeHoy(companyId);
   return hecho;
+}
+
+/** Cuantos XML lleva extraidos un paquete. Para medir lo que trajo la bajada. */
+async function xmlDelPaquete(paqueteId: string): Promise<number> {
+  const r = await query<any>(
+    `SELECT COALESCE(xml_extraidos, 0)::int n FROM sat_paquetes WHERE id = $1`,
+    [paqueteId]);
+  return r.rows[0]?.n ?? 0;
 }
 
 async function solicitarParticion(

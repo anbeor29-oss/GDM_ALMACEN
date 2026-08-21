@@ -17,6 +17,7 @@ import multer from 'multer';
 import { authenticateToken, authorize } from '../../middleware/authentication';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as service from './descarga.service';
+import * as programacion from './programacion.service';
 import { bovedaLista } from './boveda';
 import { EfirmaInvalida } from './efirma';
 
@@ -35,6 +36,94 @@ function companyId(req: Request): string {
   if (!req.user?.companyId) throw new ValidationError('Company ID is required');
   return req.user.companyId;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROGRAMACIÓN — el día a día y los ejercicios completos
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * GET /sat-descarga/programacion
+ *
+ * Cómo va la descarga de verdad: el desglose por estado, el presupuesto del
+ * día y cuándo corrió el último trabajo diario.
+ *
+ * El resumen anterior sumaba TERMINADA, SIN_DATOS, RECHAZADA y FALLIDA en un
+ * solo número, así que "4/5" no decía si esas cuatro salieron bien sin
+ * comprobantes o si el SAT las rechazó — que es justo lo que hay que saber
+ * cuando se está probando una e.firma.
+ */
+router.get(
+  '/programacion',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await programacion.comoVa(companyId(req));
+    res.json({ success: true, data });
+  })
+);
+
+/** PUT /sat-descarga/programacion — cada cuánto y cuánto por día */
+router.put(
+  '/programacion',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const config = await programacion.guardarConfig(companyId(req), {
+      diariaActiva: req.body.diariaActiva,
+      diariaRecibidos: req.body.diariaRecibidos,
+      diariaEmitidos: req.body.diariaEmitidos,
+      diasAtras: req.body.diasAtras ? Number(req.body.diasAtras) : undefined,
+      xmlPorDia: req.body.xmlPorDia ? Number(req.body.xmlPorDia) : undefined,
+      solicitudesPorDia: req.body.solicitudesPorDia
+        ? Number(req.body.solicitudesPorDia) : undefined,
+    });
+    res.json({ success: true, data: { config } });
+  })
+);
+
+/**
+ * POST /sat-descarga/diario — crea ahora el trabajo del día.
+ *
+ * El cron lo hace solo a las 6:00, pero el botón sirve para el primer día y
+ * para cuando se quiere comprobar que la e.firma responde sin esperar.
+ */
+router.post(
+  '/diario',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await programacion.crearTrabajoDiario(companyId(req), req.user?.userId);
+    res.json({
+      success: true, data: r,
+      message: r.creados.length
+        ? `${r.creados.length} trabajo(s) creado(s): ` +
+          r.creados.map((c: any) => `${c.direccion} ${c.desde} a ${c.hasta}`).join(' · ')
+        : (r.omitidos[0] || 'No había nada nuevo que pedir.'),
+    });
+  })
+);
+
+/**
+ * POST /sat-descarga/ejercicio — un año completo, mes por mes.
+ *
+ * No descarga de inmediato: crea los trabajos y el motor los va bajando dentro
+ * del presupuesto diario. Un ejercicio con volumen tarda varios días, y eso es
+ * lo correcto — bajarlo de golpe dejaría sin cupo a la descarga del día.
+ */
+router.post(
+  '/ejercicio',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const ejercicio = Number(req.body.ejercicio);
+    if (!ejercicio) throw new ValidationError('Falta el ejercicio.');
+    const r = await programacion.crearTrabajoEjercicio(
+      companyId(req), ejercicio,
+      {
+        recibidos: req.body.recibidos !== false,
+        emitidos: req.body.emitidos !== false,
+        hastaMes: req.body.hastaMes ? Number(req.body.hastaMes) : undefined,
+      },
+      req.user?.userId
+    );
+    res.json({ success: true, data: r, message: r.aviso });
+  })
+);
 
 /** GET /sat-descarga/credencial — qué e.firma hay, sin devolverla */
 router.get(
