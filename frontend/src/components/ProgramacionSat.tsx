@@ -27,6 +27,7 @@ const n = (x: number) => Number(x ?? 0).toLocaleString('es-MX');
 export function ProgramacionSat() {
   const qc = useQueryClient();
   const [abierto, setAbierto] = useState(false);
+  const [verProblemas, setVerProblemas] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
@@ -96,18 +97,35 @@ export function ProgramacionSat() {
         )}
 
         {d.problemas?.length > 0 && (
-          <div className="mt-3 space-y-1.5">
-            {d.problemas.map((x: any, i: number) => (
-              <p key={i} className="text-sm text-rose-800 bg-rose-50 border border-rose-200
-                rounded px-3 py-2">
-                <b>{x.direccion} {new Date(x.desde).toLocaleDateString('es-MX')} →{' '}
-                  {new Date(x.hasta).toLocaleDateString('es-MX')}</b>
-                {x.veces > 1 && ` (${x.veces} veces)`}
-                {x.codigo_sat && <span className="font-mono text-xs ml-2">[{x.codigo_sat}]</span>}
-                <br />
-                {x.mensaje_sat || 'El SAT rechazó la solicitud sin dar motivo.'}
-              </p>
-            ))}
+          <div className="mt-3">
+            {/* Resumen colapsable: en vez de un muro rojo, una línea que se abre. */}
+            <button
+              onClick={() => setVerProblemas(!verProblemas)}
+              className="w-full text-left text-sm text-rose-800 bg-rose-50 border border-rose-200
+                rounded px-3 py-2 flex items-center gap-2 hover:bg-rose-100 transition-colors">
+              <AlertTriangle size={15} className="shrink-0" />
+              <span className="font-medium">
+                {n(d.problemas.reduce((s: number, x: any) => s + (x.veces || 1), 0))} solicitud(es) que el SAT rechazó
+              </span>
+              <span className="ml-auto text-xs text-rose-600 underline">
+                {verProblemas ? 'ocultar' : 'ver detalle'}
+              </span>
+            </button>
+            {verProblemas && (
+              <div className="mt-1.5 space-y-1.5">
+                {d.problemas.map((x: any, i: number) => (
+                  <p key={i} className="text-sm text-rose-800 bg-rose-50 border border-rose-100
+                    rounded px-3 py-2">
+                    <b>{x.direccion} {new Date(x.desde).toLocaleDateString('es-MX')} →{' '}
+                      {new Date(x.hasta).toLocaleDateString('es-MX')}</b>
+                    {x.veces > 1 && ` (${x.veces} veces)`}
+                    {x.codigo_sat && <span className="font-mono text-xs ml-2">[{x.codigo_sat}]</span>}
+                    <br />
+                    {x.mensaje_sat || 'El SAT rechazó la solicitud sin dar motivo.'}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

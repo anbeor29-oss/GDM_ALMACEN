@@ -292,20 +292,9 @@ export function Layout() {
                     responden preguntas distintas: los recibidos son lo que hay
                     que pagar y deducir; los emitidos, la comprobación de que
                     todo lo timbrado llegó. */}
-                {show('auditoria') && (
-                  <NavGroup
-                    to="/xml-sat"
-                    icon={emoji3D('📥')}
-                    label="XML del SAT"
-                    accent="emerald"
-                    open={sidebarOpen}
-                    pathPrefix="/xml-sat"
-                    children={[
-                      { to: '/xml-sat/recibidos', icon: emoji3D('📨'), label: 'XML recibidos' },
-                      { to: '/xml-sat/emitidos',  icon: emoji3D('📤'), label: 'XML emitidos' },
-                    ]}
-                  />
-                )}
+                {/* Un solo ítem: la página /xml-sat ya trae el selector
+                    recibidos/emitidos adentro; dos submenús eran de más. */}
+                {show('auditoria') && <NavItem to="/xml-sat" icon={emoji3D('📥')} accent="emerald" label="XML del SAT" open={sidebarOpen} />}
                 {show('mensajes')     && <NavItem to="/mensajes"     icon={emoji3D('✉️')} accent="sky"     label="Mensajes"         open={sidebarOpen} contador={sinLeer} />}
                 {show('reports')      && <NavItem to="/reports"      icon={emoji3D('📊')} accent="violet"  label="Reportes"         open={sidebarOpen} />}
                 {/* Monedas sigue existiendo aparte SÓLO para quien no ve
