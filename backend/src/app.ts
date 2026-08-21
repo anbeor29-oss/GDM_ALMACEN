@@ -65,6 +65,13 @@ import mensajesRoutes        from './modules/mensajes/mensajes.routes';
 import satDescargaRoutes     from './modules/sat-descarga/descarga.routes';
 import physicalCountRoutes   from './modules/physical-count/physical-count.routes';
 import xmlSuperImportRoutes from './modules/xml-super-import/xml-super-import.routes';
+import { authenticateToken } from './middleware/authentication';
+import { requireModule, ModuleKey } from './middleware/permissions';
+// Blindaje por grupo: exige token + que el grupo tenga el módulo. El router
+// re-ejecuta authenticateToken (costo despreciable). Se aplica SOLO a módulos
+// AISLADOS de back-office; gatear rutas leídas entre módulos (products,
+// customers, invoices…) rompería POS/facturas con un 403.
+const gated = (mod: ModuleKey) => [authenticateToken, requireModule(mod)];
 import nominaRoutes          from './modules/nomina/nomina.routes';
 import accountingRoutes      from './modules/accounting/accounting.routes';
 
@@ -220,13 +227,13 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/inventory`,       inventoryRoutes);
   app.use(`/api/${config.apiVersion}/purchase-orders`, purchasingRoutes);
   app.use(`/api/${config.apiVersion}/treasury`,        treasuryRoutes);
-  app.use(`/api/${config.apiVersion}/auditoria`,       auditoriaRoutes);
+  app.use(`/api/${config.apiVersion}/auditoria`,       ...gated('auditoria'), auditoriaRoutes);
   app.use(`/api/${config.apiVersion}/presencia`,       presenciaRoutes);
   app.use(`/api/${config.apiVersion}/mensajes`,        mensajesRoutes);
-  app.use(`/api/${config.apiVersion}/sat-descarga`,    satDescargaRoutes);
+  app.use(`/api/${config.apiVersion}/sat-descarga`,    ...gated('auditoria'), satDescargaRoutes);
   app.use(`/api/${config.apiVersion}/physical-counts`, physicalCountRoutes);
-  app.use(`/api/${config.apiVersion}/nomina`,          nominaRoutes);
-  app.use(`/api/${config.apiVersion}/accounting`,      accountingRoutes);
+  app.use(`/api/${config.apiVersion}/nomina`,          ...gated('nomina'), nominaRoutes);
+  app.use(`/api/${config.apiVersion}/accounting`,      ...gated('contabilidad'), accountingRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);
 
