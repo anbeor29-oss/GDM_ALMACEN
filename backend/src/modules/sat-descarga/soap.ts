@@ -240,18 +240,24 @@ export async function solicitar(
   ].filter(Boolean).sort().join(' ');
 
   const operacion = emitidos ? 'SolicitaDescargaEmitidos' : 'SolicitaDescargaRecibidos';
-  const cuerpo =
-    `<des:solicitud ${attrs}></des:solicitud>`;
-  const sinFirma =
-    `<des:${operacion} xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx">${cuerpo}</des:${operacion}>`;
+  /* HIPÓTESIS #2: el SAT firma el elemento <des:solicitud> (NO la operación), y
+   * la <Signature> va DENTRO de <des:solicitud>. El digest se calcula sobre
+   * <des:solicitud> con su namespace `des` declarado (exc-c14n lo agrega por uso
+   * visible). Antes se firmaba/digería la operación completa → 302. */
+  const solicitudParaDigest =
+    `<des:solicitud xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx" ${attrs}></des:solicitud>`;
 
   const keyInfo = keyInfoX509(cred);
-  const firma = bloqueFirma('', digestSha1(sinFirma), cred, keyInfo, TRANSFORM.documento);
+  const firma = bloqueFirma('', digestSha1(solicitudParaDigest), cred, keyInfo, TRANSFORM.documento);
   const sobre =
     '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx" xmlns:xd="http://www.w3.org/2000/09/xmldsig#">' +
     '<s:Header/><s:Body>' +
-    `<des:${operacion}>${cuerpo}${firma}</des:${operacion}>` +
+    `<des:${operacion}><des:solicitud ${attrs}>${firma}</des:solicitud></des:${operacion}>` +
     '</s:Body></s:Envelope>';
+
+  // Diagnóstico: registra el XML EXACTO que se firma y se envía (sin llave privada;
+  // el certificado es público). Si aún falla, con esto se ve el bug sin adivinar.
+  logger.info(`[sat-descarga] solicitud ${operacion} — XML firmado:\n${sobre}`);
 
   const xml = await enviar(
     ENDPOINTS.solicitud,
