@@ -3676,3 +3676,43 @@ prueba.
 Pruebas: descarga 22/22 · periodos 20/20 · estados 23/23 · nif 28/28 ·
 mapeo 20/20 · balanza 30/30 · contabilidad 49/49 · roles 15/15 ·
 grupos 35/35 · nómina 19/19 · reportes 29/29 · bancos 57/57 · jest 115/115
+
+## 2026-08-20 — Migraciones que sobreviven a los datos que ya existen
+
+El despliegue en Render abortó: las migraciones fallaron. Pasaban en local y
+fallaban allá, y la diferencia no era el código — era que Render TIENE datos.
+
+**Una migración probada sólo contra una base limpia no está probada.**
+
+### Los dos puntos de fallo
+
+**1. `ux_trabajo_vivo_por_rango` (2026-08-20f).** Crear un índice ÚNICO sobre
+una tabla que ya tiene duplicados falla. Y duplicados había: el bug que ese
+índice viene a impedir llevaba tiempo creándolos — se ven dos renglones
+idénticos de `01/08 → 19/08 recibidos` en la captura de pantalla.
+
+Ahora la migración cancela los duplicados ANTES de crear el índice. Conserva el
+que más avanzado va (más particiones resueltas) y a igualdad el más antiguo: es
+el que ya tiene solicitudes en vuelo ante el SAT. No los borra — los marca
+CANCELADO con el motivo.
+
+**2. `chk_tercero_con_rol` (2026-08-20c).** El relleno cubre a quien traía
+party_type CUSTOMER o SUPPLIER, pero la columna admitía NULL (un CHECK no
+rechaza NULL, sólo FALSE). Las filas viejas sin party_type quedaban sin rol, y
+un CHECK normal recorre TODA la tabla al crearse.
+
+Ahora es `NOT VALID`: aplica a todo lo nuevo, no escanea lo viejo. La
+alternativa era adivinar —marcar como cliente a quien no tuviera rol— y un
+proveedor mal marcado se cuela en la lista de clientes sin que nadie lo note.
+
+### Un tercer fallo que casi introduzco arreglando el segundo
+
+`UPDATE customers SET es_cliente = es_cliente` (sincronización de party_type)
+tocaba TODAS las filas. `NOT VALID` exime del escaneo inicial pero NO de los
+UPDATE posteriores: esa línea habría estrellado las filas sin rol contra el
+CHECK recién creado, tumbando la migración por el arreglo que la iba a salvar.
+Ahora está filtrado.
+
+Prueba nueva `probar-migraciones-tolerantes` (13/13): reproduce a propósito las
+dos condiciones que rompen, comprueba que el SQL a secas FALLA, y que el
+corregido pasa.

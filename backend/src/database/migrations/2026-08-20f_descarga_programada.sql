@@ -90,6 +90,41 @@ ALTER TABLE sat_trabajos ADD COLUMN IF NOT EXISTS ejercicio SMALLINT;
 
 -- ── 4. No pedir dos veces el mismo rango ──
 --
+-- ⚠️ PRIMERO HAY QUE LIMPIAR LO QUE YA ESTÁ DUPLICADO.
+--
+-- Crear un índice único sobre una tabla que ya tiene duplicados FALLA, y con
+-- ella falla la migración entera y el arranque del servicio. Y duplicados hay:
+-- el bug que este índice viene a impedir llevaba tiempo creándolos.
+--
+-- Se conserva UNO de cada grupo y los demás se cancelan. Se queda el que más
+-- avanzado va —más particiones resueltas— y, a igualdad, el más antiguo: es el
+-- que probablemente ya tiene solicitudes en vuelo ante el SAT, y cancelarlo
+-- tiraría trabajo que el SAT ya hizo.
+--
+-- No se BORRAN: se marcan CANCELADO con el motivo. Un trabajo que desaparece
+-- sin explicación es peor que uno cancelado que se puede leer.
+WITH ordenados AS (
+  SELECT t.id,
+         ROW_NUMBER() OVER (
+           PARTITION BY t.company_id, t.rfc, t.fecha_desde, t.fecha_hasta,
+                        t.direccion, t.tipo
+           ORDER BY (
+             SELECT COUNT(*) FROM sat_particiones p
+              WHERE p.trabajo_id = t.id
+                AND p.estado IN ('TERMINADA','SIN_DATOS','DIVIDIDA')
+           ) DESC,
+           t.created_at ASC
+         ) AS puesto
+    FROM sat_trabajos t
+   WHERE t.estado IN ('CREADO', 'EN_PROCESO')
+)
+UPDATE sat_trabajos SET
+  estado = 'CANCELADO',
+  mensaje = COALESCE(mensaje || ' · ', '')
+            || 'Cancelado al migrar: había otro trabajo vivo pidiendo el mismo '
+            || 'rango y dirección. Se conservó el más avanzado.'
+WHERE id IN (SELECT id FROM ordenados WHERE puesto > 1);
+
 -- Índice parcial: sólo sobre los trabajos VIVOS. Uno terminado no estorba —
 -- volver a pedir un rango ya bajado es legítimo si se sospecha que faltó algo.
 -- Lo que no puede haber son dos trabajos vivos pidiendo lo mismo.

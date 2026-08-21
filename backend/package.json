@@ -39,7 +39,8 @@
     "probar:nif": "ts-node --files -r dotenv/config scripts/probar-motor-nif.ts",
     "probar:estados": "ts-node --files -r dotenv/config scripts/probar-estados-financieros.ts",
     "probar:periodos": "ts-node --files -r dotenv/config scripts/probar-periodos.ts",
-    "probar:descarga": "ts-node --files -r dotenv/config scripts/probar-descarga-sat.ts"
+    "probar:descarga": "ts-node --files -r dotenv/config scripts/probar-descarga-sat.ts",
+    "probar:migraciones": "ts-node --files -r dotenv/config scripts/probar-migraciones-tolerantes.ts"
   },
   "keywords": [
     "cfdi",

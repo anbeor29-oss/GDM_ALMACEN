@@ -52,9 +52,39 @@ ALTER TABLE customers ADD CONSTRAINT chk_party_type
   CHECK (party_type IN ('CUSTOMER', 'SUPPLIER', 'BOTH', 'OTHER'));
 
 -- ── 4. Un tercero tiene que ser ALGO ──
+--
+-- ⚠️ NOT VALID, y es deliberado.
+--
+-- El relleno de arriba cubre a quien traía party_type 'CUSTOMER' o 'SUPPLIER'.
+-- Pero la columna admitía NULL —un CHECK no rechaza NULL, sólo FALSE— así que
+-- puede haber filas viejas sin ningún party_type. Ésas se quedarían sin rol, y
+-- un CHECK normal recorre TODA la tabla al crearse: la migración fallaría y con
+-- ella el arranque del servicio.
+--
+-- Con NOT VALID la regla se aplica a todo lo que se inserte o modifique desde
+-- ahora, y las filas viejas quedan señaladas en vez de tumbar el despliegue.
+--
+-- La alternativa era adivinar: marcar como cliente a todo el que no tuviera
+-- rol. Un proveedor mal marcado se cuela en la lista de clientes y nadie lo
+-- nota — es exactamente el tipo de dato inventado que después se defiende solo.
 ALTER TABLE customers DROP CONSTRAINT IF EXISTS chk_tercero_con_rol;
 ALTER TABLE customers ADD CONSTRAINT chk_tercero_con_rol
-  CHECK (es_cliente OR es_proveedor OR es_acreedor OR es_deudor);
+  CHECK (es_cliente OR es_proveedor OR es_acreedor OR es_deudor) NOT VALID;
+
+-- Se deja constancia de cuántas quedaron sin rol, para poder resolverlas.
+DO $aviso$
+DECLARE
+  n INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO n FROM customers
+   WHERE NOT (es_cliente OR es_proveedor OR es_acreedor OR es_deudor);
+  IF n > 0 THEN
+    RAISE NOTICE '[migracion] % tercero(s) quedaron sin rol: tenian party_type nulo. '
+                 'Se pueden ver con: SELECT id, rfc, business_name FROM customers '
+                 'WHERE NOT (es_cliente OR es_proveedor OR es_acreedor OR es_deudor);', n;
+  END IF;
+END
+$aviso$;
 
 -- ── 5. party_type se mantiene sola ──
 --
@@ -82,7 +112,13 @@ CREATE TRIGGER trg_sincronizar_party_type
   FOR EACH ROW EXECUTE FUNCTION sincronizar_party_type();
 
 -- Se corre una vez sobre lo existente para dejar party_type consistente.
-UPDATE customers SET es_cliente = es_cliente;
+--
+-- Filtrado a los que YA tienen algun rol, y no es un detalle: NOT VALID exime
+-- del escaneo inicial, pero NO de los UPDATE posteriores. Sin el WHERE, este
+-- mismo UPDATE tocaria las filas sin rol y las estrellaria contra el CHECK que
+-- se acaba de crear — tumbando la migracion por el arreglo que la iba a salvar.
+UPDATE customers SET es_cliente = es_cliente
+ WHERE es_cliente OR es_proveedor OR es_acreedor OR es_deudor;
 
 -- ── 6. Índices por rol ──
 -- Parciales: la lista de proveedores no tiene por qué recorrer a los clientes.
