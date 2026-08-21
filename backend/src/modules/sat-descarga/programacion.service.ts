@@ -165,6 +165,27 @@ export async function crearTrabajoDiario(
     return out;
   }
 
+  /* ── ¿Ya se creó hoy? ──
+   *
+   * Ésta es la comprobación que hace que la función se pueda llamar cuantas
+   * veces haga falta. Antes se miraba si había un trabajo VIVO sobre el rango,
+   * y eso tiene un agujero: en cuanto el trabajo del día TERMINA, la
+   * comprobación pasa y se volvería a crear otro. Llamándola cada quince
+   * minutos, eso son decenas de trabajos al día.
+   *
+   * Mirando si ya se creó uno HOY, la función es idempotente por día — y
+   * entonces sí se puede llamar desde el reloj de cada cuarto de hora sin
+   * miedo, que es lo que la vuelve a prueba de reinicios. */
+  const yaHoy = await query<any>(
+    `SELECT 1 FROM sat_trabajos
+      WHERE company_id = $1 AND origen = 'DIARIO'
+        AND created_at::date = CURRENT_DATE
+      LIMIT 1`, [companyId]);
+  if (yaHoy.rows.length) {
+    out.omitidos.push('El trabajo de hoy ya se creó.');
+    return out;
+  }
+
   const hoy = new Date();
   const hasta = new Date(hoy);
   hasta.setDate(hasta.getDate() - 1);            // hasta ayer: hoy aún no cierra

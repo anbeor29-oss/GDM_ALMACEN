@@ -141,6 +141,34 @@ async function main() {
     : mal('creó trabajos con la descarga apagada', apagada);
   await prog.guardarConfig(companyId, { diariaActiva: true });
 
+  /* ── 3-bis. ★ Idempotente POR DÍA ── */
+  titulo('3-bis. ★ Llamarlo cada 15 minutos no crea 96 trabajos');
+
+  /* Se simula que el trabajo de hoy ya se creó. */
+  await query(
+    `INSERT INTO sat_trabajos
+       (company_id, rfc, fecha_desde, fecha_hasta, direccion, tipo, estado, origen)
+     VALUES ($1,'ZZTE010101ZZ1', CURRENT_DATE - 3, CURRENT_DATE - 1,
+             'recibidos','CFDI','TERMINADO','DIARIO')`,
+    [companyId]);
+
+  const otraVez = await prog.crearTrabajoDiario(companyId);
+  otraVez.creados.length === 0 && /ya se creó/i.test(otraVez.omitidos[0] || '')
+    ? bien('★★ con el trabajo de hoy ya creado, no crea otro — aunque esté TERMINADO')
+    : mal('★★ volvería a crear uno cada cuarto de hora', otraVez);
+
+  /* Y ésa es justo la diferencia: si mirara "hay uno vivo", un trabajo
+   * TERMINADO dejaría pasar la comprobación y se crearía otro. */
+  const vivos = await query<any>(
+    `SELECT COUNT(*)::int n FROM sat_trabajos
+      WHERE company_id=$1 AND origen='DIARIO' AND estado IN ('CREADO','EN_PROCESO')`,
+    [companyId]);
+  vivos.rows[0].n === 0
+    ? bien('★ y no hay ninguno vivo: la comprobación vieja habría dejado pasar')
+    : mal('la prueba no aísla el caso', vivos.rows[0].n);
+
+  await query(`DELETE FROM sat_trabajos WHERE company_id=$1 AND origen='DIARIO'`, [companyId]);
+
   /* ── 4. ★ El candado contra duplicados ── */
   titulo('4. ★ No se pide dos veces el mismo rango');
 

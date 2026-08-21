@@ -37,14 +37,32 @@ export function registerSatDescargaCron(): void {
     return;
   }
 
-  // '*/15 * * * *' → cada 15 minutos: avanza lo que ya está pedido.
+  /* Cada quince minutos: asegura el trabajo del día y avanza lo que ya está
+   * pedido.
+   *
+   * (La expresión cron va abajo, en el código. Escribirla aquí dentro
+   * cerraría este comentario: lleva una barra y un asterisco juntos.)
+   *
+   * ── POR QUÉ TAMBIÉN AQUÍ, SI YA HAY UNO A LAS 6:00 ──
+   * Un reloj con una sola oportunidad al día es frágil: si el servicio está
+   * reiniciando a las 6:00 —un despliegue, un reinicio de Render— ese día se
+   * pierde entero y nadie se entera hasta que alguien note el hueco meses
+   * después.
+   *
+   * Como crearTrabajoDiario es idempotente por día, llamarlo cada cuarto de
+   * hora no crea nada de más: el primer tick que encuentre el día sin trabajo
+   * lo crea, y los 95 restantes no hacen nada. El de las 6:00 sigue estando
+   * para que la descarga ocurra a una hora predecible; éste es la red. */
   cron.schedule('*/15 * * * *', () => {
-    correrPendientes().catch((e) =>
+    (async () => {
+      await crearDiarios();
+      await correrPendientes();
+    })().catch((e) =>
       logger.error(`[sat-descarga-cron] falló la corrida: ${e.message}`)
     );
   });
 
-  /* ── La pieza que faltaba: CREAR el trabajo de cada día ──
+  /* ── El trabajo de cada día, a hora fija ──
    *
    * El cron de arriba sólo AVANZA trabajos que ya existen. Nunca creaba
    * ninguno, así que "descargar a diario" dependía de que alguien entrara a la
@@ -60,9 +78,17 @@ export function registerSatDescargaCron(): void {
     );
   }, { timezone: 'America/Mexico_City' });
 
+  /* Al arrancar, sin esperar al primer tick: si el servicio se reinició a
+   * media mañana, el día no debería quedarse sin descarga por eso. */
+  setTimeout(() => {
+    crearDiarios().catch((e) =>
+      logger.warn(`[sat-descarga-cron] creación diaria al arrancar: ${e.message}`)
+    );
+  }, 20_000);
+
   logger.info(
-    '[sat-descarga-cron] Registrado: crea el trabajo diario a las 6:00 (CDMX) ' +
-    'y avanza los abiertos cada 15 minutos');
+    '[sat-descarga-cron] Registrado: trabajo diario a las 6:00 (CDMX), ' +
+    'con red cada 15 minutos y al arrancar');
 }
 
 /**
@@ -92,8 +118,12 @@ async function crearDiarios(): Promise<void> {
           r.creados.map((c) => `${c.direccion} ${c.desde}→${c.hasta}`).join(' · ')
         );
       }
-      if (r.omitidos.length) {
-        logger.info(`[sat-descarga-cron] diario ${e.company_id}: ${r.omitidos.join(' · ')}`);
+      /* "Ya se creó hoy" es lo NORMAL en 95 de los 96 ticks del día: no se
+       * registra, o la bitácora se vuelve ilegible y los avisos reales se
+       * pierden entre el ruido. */
+      const dignosDeNota = r.omitidos.filter((m) => !/ya se creó/i.test(m));
+      if (dignosDeNota.length) {
+        logger.info(`[sat-descarga-cron] diario ${e.company_id}: ${dignosDeNota.join(' · ')}`);
       }
     } catch (err) {
       /* Una empresa con la e.firma vencida no puede dejar sin trabajo diario a

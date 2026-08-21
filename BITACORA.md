@@ -3716,3 +3716,31 @@ Ahora está filtrado.
 Prueba nueva `probar-migraciones-tolerantes` (13/13): reproduce a propósito las
 dos condiciones que rompen, comprueba que el SQL a secas FALLA, y que el
 corregido pasa.
+
+## 2026-08-20 — La descarga diaria, a prueba de reinicios
+
+Un cron con una sola oportunidad al día es frágil: si el servicio reinicia a
+las 6:00 —un despliegue, un reinicio de Render— ese día se pierde entero y
+nadie se entera hasta que alguien note el hueco meses después.
+
+**`crearTrabajoDiario` ahora es idempotente POR DÍA.** Antes miraba si había un
+trabajo VIVO sobre el rango, y eso tiene un agujero: en cuanto el trabajo del
+día TERMINA, la comprobación pasa y se crearía otro. Llamándolo cada 15 minutos
+serían decenas al día.
+
+Mirando si ya se creó uno HOY, se puede llamar desde cualquier reloj sin miedo.
+Por eso ahora se llama desde tres lados:
+- El cron de las 6:00 (hora predecible).
+- El cron de cada 15 minutos (la red).
+- Al arrancar el servicio, 20 s después (por si reinició a media mañana).
+
+El primer tick que encuentre el día sin trabajo lo crea; los 95 restantes no
+hacen nada. Y "ya se creó hoy" NO se registra en la bitácora: en 95 de 96 ticks
+es lo normal, y escribirlo taparía los avisos reales.
+
+**Bug propio corregido:** metí `*/15 * * * *` dentro de un comentario `/* */`.
+El `*/` de la expresión cron cierra el comentario. La expresión vive en el
+código y el comentario la describe con palabras.
+
+Pruebas: descarga 24/24 · migraciones 13/13 · periodos 20/20 ·
+contabilidad 49/49 · jest 115/115
