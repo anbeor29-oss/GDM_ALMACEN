@@ -267,13 +267,18 @@ export function Layout() {
                     pathPrefix="/contabilidad"
                     children={[
                       { to: '/contabilidad/cuentas',    icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
-                      { to: '/contabilidad/periodos',   icon: emoji3D('🗓️'), label: 'Periodos y cierre' },
-                      { to: '/contabilidad/balanza',    icon: emoji3D('⚖️'), label: 'Balanza de comprobación' },
-                      { to: '/contabilidad/situacion',  icon: emoji3D('🏛️'), label: 'Situación financiera' },
-                      { to: '/contabilidad/resultados', icon: emoji3D('📈'), label: 'Resultado integral' },
-                      { to: '/contabilidad/flujo',      icon: emoji3D('💧'), label: 'Flujos de efectivo' },
-                      { to: '/contabilidad/capital',    icon: emoji3D('🧾'), label: 'Cambios en el capital' },
-                      { to: '/contabilidad/razones',    icon: emoji3D('🔍'), label: 'Razones y análisis' },
+                      {
+                        icon: emoji3D('📊'), label: 'Reportes',
+                        children: [
+                          { to: '/contabilidad/periodos',   icon: emoji3D('🗓️'), label: 'Periodos y cierre' },
+                          { to: '/contabilidad/balanza',    icon: emoji3D('⚖️'), label: 'Balanza de comprobación' },
+                          { to: '/contabilidad/situacion',  icon: emoji3D('🏛️'), label: 'Situación financiera' },
+                          { to: '/contabilidad/resultados', icon: emoji3D('📈'), label: 'Resultado integral' },
+                          { to: '/contabilidad/flujo',      icon: emoji3D('💧'), label: 'Flujos de efectivo' },
+                          { to: '/contabilidad/capital',    icon: emoji3D('🧾'), label: 'Cambios en el capital' },
+                          { to: '/contabilidad/razones',    icon: emoji3D('🔍'), label: 'Razones y análisis' },
+                        ],
+                      },
                     ]}
                   />
                 )}
@@ -453,7 +458,12 @@ const ACCENT_MAP: Record<AccentColor, { activeBg: string; activeText: string; ic
   violet:  { activeBg: 'bg-violet-50',  activeText: 'text-violet-700',  iconActive: 'text-violet-600',  iconIdle: 'text-slate-400 group-hover:text-violet-600',  bar: 'bg-violet-500' },
 };
 
-interface NavChild { to: string; icon: React.ReactNode; label: string; }
+interface NavChild {
+  to?: string;                 // hoja con ruta; ausente si es un subgrupo
+  icon: React.ReactNode;
+  label: string;
+  children?: NavChild[];       // si viene, el hijo es un subgrupo colapsable
+}
 
 /** NavGroup — item con submenú expandible; el header linkea al padre y a la vez
  *  hace toggle. Se autoexpande si la ruta activa cae bajo pathPrefix. */
@@ -494,20 +504,67 @@ function NavGroup({
       {open && expanded && (
         <div className="ml-6 mt-0.5 space-y-0.5 border-l border-slate-200 pl-3">
           {children.map(ch => (
-            <NavLink
-              key={ch.to}
-              to={ch.to}
-              className={({ isActive }) =>
-                `flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors ${
-                  isActive
-                    ? `${c.activeBg} ${c.activeText} font-medium`
-                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-                }`
-              }
-            >
-              <span className="text-slate-400">{ch.icon}</span>
-              <span>{ch.label}</span>
-            </NavLink>
+            ch.children
+              ? <NavSubGroup key={ch.label} label={ch.label} icon={ch.icon} items={ch.children} c={c} />
+              : <NavLeaf key={ch.to} to={ch.to!} icon={ch.icon} label={ch.label} c={c} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Una hoja del menú: un enlace con su rótulo, dentro de un grupo o subgrupo. */
+function NavLeaf({ to, icon, label, c }: {
+  to: string; icon: React.ReactNode; label: string; c: (typeof ACCENT_MAP)[AccentColor];
+}) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        `flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors ${
+          isActive
+            ? `${c.activeBg} ${c.activeText} font-medium`
+            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+        }`
+      }
+    >
+      <span className="text-slate-400">{icon}</span>
+      <span>{label}</span>
+    </NavLink>
+  );
+}
+
+/**
+ * Un subgrupo dentro de un grupo: un segundo nivel colapsable. Existe para que
+ * "Contabilidad" pueda tener su propio apartado de "Reportes" sin sacarlos a un
+ * menú aparte —siguen colgando de contabilidad, que es de donde son—. Se abre
+ * solo si la ruta actual cae dentro de alguno de sus enlaces.
+ */
+function NavSubGroup({ label, icon, items, c }: {
+  label: string; icon: React.ReactNode; items: NavChild[];
+  c: (typeof ACCENT_MAP)[AccentColor];
+}) {
+  const location = useLocation();
+  const dentro = items.some(
+    it => it.to && (location.pathname === it.to || location.pathname.startsWith(it.to + '/'))
+  );
+  const [abierto, setAbierto] = useState<boolean>(dentro);
+
+  return (
+    <div>
+      <button
+        onClick={() => setAbierto(v => !v)}
+        className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+      >
+        <span className="text-slate-400">{icon}</span>
+        <span className="flex-1 text-left font-medium">{label}</span>
+        {abierto ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+      </button>
+      {abierto && (
+        <div className="ml-3 mt-0.5 space-y-0.5 border-l border-slate-200 pl-2">
+          {items.map(it => (
+            <NavLeaf key={it.to} to={it.to!} icon={it.icon} label={it.label} c={c} />
           ))}
         </div>
       )}
