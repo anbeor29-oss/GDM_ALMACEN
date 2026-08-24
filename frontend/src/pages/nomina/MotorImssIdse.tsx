@@ -18,7 +18,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   HeartPulse, Search, UserPlus, UserMinus, TrendingUp, X, Download,
-  AlertTriangle, CheckCircle2, SlidersHorizontal,
+  AlertTriangle, CheckCircle2, SlidersHorizontal, Upload,
 } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
@@ -62,6 +62,7 @@ export function MotorImssIdsePage() {
   const { puede } = useCapacidades();
   const esAdmin = puede(CAP.nomina);
 
+  const [modo, setModo] = useState<'generar' | 'validar'>('generar');
   const [tipo, setTipo] = useState<Tipo>('ALTA');
   const [buscar, setBuscar] = useState('');
   const [incluirBajas, setIncluirBajas] = useState(false);
@@ -145,6 +146,23 @@ export function MotorImssIdsePage() {
           </p>
         </div>
       </div>
+
+      {/* Pestañas: generar vs. validar un archivo ya hecho */}
+      <div className="flex gap-1 border-b">
+        {([['generar', 'Generar movimientos'], ['validar', 'Validar archivo']] as const).map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setModo(k)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+              modo === k ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {modo === 'validar' ? <ValidadorIdse /> : <>
 
       {/* Selector de tipo */}
       <div className="grid sm:grid-cols-3 gap-3">
@@ -372,6 +390,143 @@ export function MotorImssIdsePage() {
           {generando ? 'Generando…' : 'Generar archivo IDSE'}
         </button>
       </div>
+      </>}
+    </div>
+  );
+}
+
+/* ═══════════════════════════ VALIDADOR DE ARCHIVOS IDSE ═══════════════════════════ */
+
+/**
+ * Revisa un TXT del IDSE —el que generó este módulo o uno de otro sistema— contra
+ * las posiciones de la guía, antes de subirlo al IMSS. Se pega el texto o se sube
+ * el archivo; el servidor devuelve TODOS los problemas de una vez.
+ */
+function ValidadorIdse() {
+  const [contenido, setContenido] = useState('');
+  const [res, setRes] = useState<any | null>(null);
+  const [error, setError] = useState('');
+  const [validando, setValidando] = useState(false);
+
+  const subirArchivo = (file: File | null) => {
+    if (!file) return;
+    setError(''); setRes(null);
+    const lector = new FileReader();
+    lector.onload = () => setContenido(String(lector.result || ''));
+    lector.onerror = () => setError('No se pudo leer el archivo.');
+    lector.readAsText(file, 'utf-8');
+  };
+
+  const validar = async () => {
+    setError(''); setRes(null); setValidando(true);
+    try {
+      const r = await api.validarIdse(contenido);
+      setRes(r.data);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'No se pudo validar.');
+    } finally {
+      setValidando(false);
+    }
+  };
+
+  const errores = res?.problemas?.filter((p: any) => p.nivel === 'error') || [];
+  const avisos = res?.problemas?.filter((p: any) => p.nivel === 'aviso') || [];
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-lg shadow border p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-sm text-violet-700 hover:text-violet-800 cursor-pointer flex items-center gap-1.5">
+            <Upload size={16} />
+            <span>Subir un .txt</span>
+            <input type="file" accept=".txt,text/plain" className="hidden"
+              onChange={(e) => subirArchivo(e.target.files?.[0] || null)} />
+          </label>
+          <span className="text-xs text-gray-400">o pega el contenido abajo</span>
+          {contenido && (
+            <button onClick={() => { setContenido(''); setRes(null); setError(''); }}
+              className="ml-auto text-xs text-gray-500 hover:text-rose-600">Limpiar</button>
+          )}
+        </div>
+        <textarea
+          value={contenido}
+          onChange={(e) => { setContenido(e.target.value); setRes(null); }}
+          spellCheck={false}
+          placeholder="Cada línea es un movimiento de 168 caracteres; la última, la cifra de control…"
+          className="w-full h-48 border rounded-lg px-3 py-2 text-xs font-mono whitespace-pre overflow-x-auto"
+        />
+        <div className="flex items-center gap-3">
+          <button onClick={validar} disabled={validando || !contenido.trim()}
+            className="bg-violet-600 text-white px-4 py-2 rounded-lg hover:bg-violet-700 flex items-center gap-2 disabled:opacity-50 text-sm">
+            <CheckCircle2 size={16} />
+            {validando ? 'Validando…' : 'Validar archivo'}
+          </button>
+          {contenido && (
+            <span className="text-xs text-gray-500">
+              {contenido.split(/\r\n|\r|\n/).filter((l) => l.length).length} línea(s)
+            </span>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-lg text-sm flex items-start gap-2">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" /> <span>{error}</span>
+        </div>
+      )}
+
+      {res && (
+        <div className="space-y-3">
+          {/* Veredicto */}
+          <div className={`rounded-lg border px-4 py-3 text-sm flex items-start gap-2 ${
+            res.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                   : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+            {res.ok ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> : <AlertTriangle size={16} className="mt-0.5 shrink-0" />}
+            <span>
+              {res.ok
+                ? `Archivo válido: ${res.movimientos} movimiento(s) y cifra de control correcta.`
+                : `${errores.length} error(es) que el IMSS rechazaría. Corrígelos antes de subir.`}
+            </span>
+          </div>
+
+          {/* Resumen */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-white rounded-lg shadow border p-4">
+            <Cifra rotulo="Líneas" valor={res.totalLineas} />
+            <Cifra rotulo="Altas" valor={res.altas} />
+            <Cifra rotulo="Bajas" valor={res.bajas} />
+            <Cifra rotulo="Modif." valor={res.modificaciones} />
+            <Cifra rotulo="Cifra control" valor={res.conCifraControl ? '✓' : '✗'}
+              color={res.conCifraControl ? 'text-emerald-700' : 'text-rose-700'} />
+          </div>
+
+          {/* Problemas */}
+          {res.problemas.length > 0 && (
+            <div className="bg-white rounded-lg shadow border divide-y">
+              {errores.map((p: any, i: number) => (
+                <div key={`e${i}`} className="px-4 py-2 text-sm flex items-start gap-2">
+                  <span className="text-[11px] font-mono bg-rose-100 text-rose-700 rounded px-1.5 py-0.5 shrink-0">L{p.linea}</span>
+                  <span className="text-rose-800">{p.texto}</span>
+                </div>
+              ))}
+              {avisos.map((p: any, i: number) => (
+                <div key={`a${i}`} className="px-4 py-2 text-sm flex items-start gap-2">
+                  <span className="text-[11px] font-mono bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 shrink-0">L{p.linea}</span>
+                  <span className="text-amber-800">{p.texto}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Cifra({ rotulo, valor, color = 'text-gray-900' }: { rotulo: string; valor: any; color?: string }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-gray-500">{rotulo}</p>
+      <p className={`text-xl font-bold tabular-nums ${color}`}>{valor}</p>
     </div>
   );
 }

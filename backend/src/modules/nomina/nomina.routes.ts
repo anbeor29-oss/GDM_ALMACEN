@@ -18,7 +18,7 @@ import { requireModule } from '../../middleware/permissions';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as empleados from './empleados.service';
 import * as imssIdse from './imss-idse.service';
-import { TipoIdse } from './imss-idse';
+import { TipoIdse, validarArchivoIdse } from './imss-idse';
 import * as parametros from './parametros.service';
 import * as ejercicios from './ejercicios.service';
 import * as periodos from './periodos.service';
@@ -895,6 +895,21 @@ router.post(
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
     res.send(contenido);
+  })
+);
+
+/**
+ * POST /nomina/imss/idse/validar — revisa un TXT del IDSE (el que generó este
+ * módulo o uno de otro sistema) contra las posiciones de la guía, antes de
+ * subirlo. Devuelve todos los problemas de una vez.
+ */
+router.post(
+  '/imss/idse/validar',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const contenido = String(req.body?.contenido ?? '');
+    if (!contenido.trim()) throw new ValidationError('Pega o sube el contenido del archivo a validar.');
+    res.json({ success: true, data: validarArchivoIdse(contenido) });
   })
 );
 

@@ -1409,6 +1409,12 @@ class APIClient {
     }
   }
 
+  /** Valida un TXT del IDSE contra las posiciones de la guía. */
+  async validarIdse(contenido: string) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/imss/idse/validar', { contenido });
+    return r.data;
+  }
+
   /** Cierra el periodo: congela los recibos y genera los XML. ESCRIBE. */
   async cerrarPeriodoNomina(periodoId: string, captura: any[]) {
     const r = await this.client.post<APIResponse<any>>(

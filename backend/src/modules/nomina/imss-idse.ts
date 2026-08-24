@@ -199,3 +199,117 @@ export function generarArchivoIdse(
   // El IDSE espera líneas de longitud fija terminadas en CRLF.
   return { contenido: lineas.join('\r\n') + '\r\n', registros: movimientos.length };
 }
+
+/* ─────────────────────────  Validador de archivos IDSE  ───────────────────── */
+
+export interface ProblemaLinea {
+  linea: number;              // 1-indexado, como lo cuenta un editor de texto
+  nivel: 'error' | 'aviso';
+  texto: string;
+}
+
+export interface ResultadoValidacion {
+  ok: boolean;                // no hay errores (avisos no cuentan)
+  totalLineas: number;
+  movimientos: number;
+  altas: number;
+  bajas: number;
+  modificaciones: number;
+  conCifraControl: boolean;
+  problemas: ProblemaLinea[];
+}
+
+/** Lee un rango de la guía (posiciones 1-indexadas, inclusivas). */
+const pos = (linea: string, desde: number, hasta: number) => linea.slice(desde - 1, hasta);
+
+/** ¿DDMMAAAA es una fecha real? */
+function fechaValida(v: string): boolean {
+  if (!/^\d{8}$/.test(v)) return false;
+  const dd = +v.slice(0, 2), mm = +v.slice(2, 4), aa = +v.slice(4, 8);
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31 || aa < 1990 || aa > 2100) return false;
+  const d = new Date(aa, mm - 1, dd);
+  return d.getFullYear() === aa && d.getMonth() === mm - 1 && d.getDate() === dd;
+}
+
+const CODIGO_A_TIPO: Record<string, TipoIdse> = { '08': 'ALTA', '02': 'BAJA', '07': 'MODIFICACION' };
+
+/**
+ * Revisa un archivo IDSE ya hecho (el que generó este módulo, o uno de otro
+ * sistema que se quiera cotejar antes de subirlo). Lee las MISMAS posiciones con
+ * las que se construye, así que valida contra la guía y no contra una copia de
+ * las reglas que se despegaría con el tiempo.
+ *
+ * Devuelve TODOS los problemas —no se detiene en el primero—, que es lo que
+ * sirve: el IMSS rechaza el lote entero y uno quiere corregirlo de una vez.
+ */
+export function validarArchivoIdse(contenido: string): ResultadoValidacion {
+  const lineas = contenido.split(/\r\n|\r|\n/);
+  while (lineas.length && lineas[lineas.length - 1].trim() === '') lineas.pop();
+
+  const problemas: ProblemaLinea[] = [];
+  let movimientos = 0, altas = 0, bajas = 0, modificaciones = 0;
+  let conCifraControl = false, totalDeclarado: number | null = null;
+
+  lineas.forEach((linea, i) => {
+    const n = i + 1;
+    const err = (texto: string) => problemas.push({ linea: n, nivel: 'error', texto });
+    const avi = (texto: string) => problemas.push({ linea: n, nivel: 'aviso', texto });
+
+    if (linea.length !== 168) {
+      err(`Longitud ${linea.length}: toda línea del IDSE debe medir exactamente 168 caracteres.`);
+      // aun así se intenta leer lo que se pueda para dar más pistas.
+    }
+
+    // ── Cifra de control ──
+    if (linea.startsWith('*'.repeat(13))) {
+      conCifraControl = true;
+      const total = pos(linea, 57, 62);
+      if (!/^\d{6}$/.test(total)) err('Cifra de control: el total (posiciones 57-62) no son 6 dígitos.');
+      else totalDeclarado = Number(total);
+      if (pos(linea, 168, 168) !== '9') avi('Cifra de control: el identificador final (168) debería ser "9".');
+      return;
+    }
+
+    // ── Movimiento ──
+    const codigo = pos(linea, 132, 133);
+    const tipo = CODIGO_A_TIPO[codigo];
+    if (!tipo) {
+      err(`Código de movimiento "${codigo}" desconocido (posiciones 132-133). Se espera 08 alta, 02 baja o 07 modificación.`);
+      return;
+    }
+    movimientos++;
+    if (tipo === 'ALTA') altas++; else if (tipo === 'BAJA') bajas++; else modificaciones++;
+
+    if (!pos(linea, 1, 11).trim()) err('Falta el registro patronal (posiciones 1-11).');
+    if (!pos(linea, 12, 22).trim()) err('Falta el NSS (posiciones 12-22): el IMSS lo exige.');
+    if (!pos(linea, 23, 49).trim()) avi('Sin apellido paterno (posiciones 23-49).');
+
+    const fecha = pos(linea, 119, 126);
+    if (!fechaValida(fecha)) err(`Fecha del movimiento inválida "${fecha}" (posiciones 119-126, formato DDMMAAAA).`);
+
+    if (tipo === 'ALTA' || tipo === 'MODIFICACION') {
+      const sbc = pos(linea, 104, 109);
+      if (!/^\d{6}$/.test(sbc)) err(`Salario base (posiciones 104-109) inválido "${sbc}": deben ser 6 dígitos en centavos.`);
+      else if (Number(sbc) === 0) avi('El salario base es 0.00 — revísalo.');
+    }
+    if (tipo === 'BAJA') {
+      const causa = pos(linea, 149, 149);
+      if (!CAUSAS_BAJA[causa]) err(`Causa de baja "${causa}" desconocida (posición 149).`);
+    }
+
+    if (pos(linea, 168, 168) !== '9') avi('El identificador final (posición 168) debería ser "9".');
+  });
+
+  if (!conCifraControl) {
+    problemas.push({ linea: lineas.length, nivel: 'error', texto: 'Falta la cifra de control (la última línea con 13 asteriscos y el total).' });
+  } else if (totalDeclarado !== null && totalDeclarado !== movimientos) {
+    problemas.push({ linea: lineas.length, nivel: 'error', texto: `La cifra de control declara ${totalDeclarado} movimiento(s) pero el archivo tiene ${movimientos}.` });
+  }
+
+  return {
+    ok: !problemas.some((p) => p.nivel === 'error'),
+    totalLineas: lineas.length,
+    movimientos, altas, bajas, modificaciones,
+    conCifraControl, problemas,
+  };
+}

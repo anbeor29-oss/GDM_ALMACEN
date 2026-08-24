@@ -39,10 +39,19 @@ produce** y la pantalla enumera a todos los que hay que corregir. Enterarse aqu�
 —no en el portal, con 40 movimientos rebotados— es la razón de ser del módulo.
 Cada registro se valida a 168 exactos antes de entrar al archivo.
 
-**Consecuencia.** Nómina → **IMSS · IDSE** en el menú. Ruta `POST
-/nomina/imss/idse`, con la misma llave que el resto de lo sensible de nómina
-(`nomina:manage`). El SUA y el validador de TXT del documento quedan para la
-siguiente fase. Ref: `GDM_NEXO_MOTOR_IMSS_IDSE_SUA.md` §5–§8, §25.
+### 4 · Y un validador que lee lo que el generador escribe
+La pantalla tiene dos pestañas: **Generar** y **Validar archivo**. La segunda
+revisa un TXT del IDSE —el que hizo este módulo o uno de otro sistema— contra
+las MISMAS posiciones con las que se genera (no una copia de las reglas, que se
+despegaría). Devuelve todos los problemas de una vez, con el número de línea: un
+NSS en blanco, un código de movimiento que no es 08/02/07, una fecha imposible,
+una cifra de control cuyo total no cuadra con los movimientos. Es la red que
+atrapa el rechazo del IMSS antes de subir, no después.
+
+**Consecuencia.** Nómina → **IMSS · IDSE** en el menú (pestañas Generar y
+Validar). Rutas `POST /nomina/imss/idse` y `POST /nomina/imss/idse/validar`, con
+la misma llave que el resto de lo sensible de nómina (`nomina:manage`). El SUA
+queda para la siguiente fase. Ref: `GDM_NEXO_MOTOR_IMSS_IDSE_SUA.md` §5–§8, §25.
 
 ---
 
