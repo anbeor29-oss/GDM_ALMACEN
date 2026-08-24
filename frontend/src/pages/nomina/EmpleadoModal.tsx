@@ -71,6 +71,65 @@ const CAMPO =
   'w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary';
 const ETIQUETA = 'block text-xs font-medium text-gray-600 mb-1';
 
+/** Catálogo c_Estado del SAT: las 32 entidades federativas. */
+const ESTADOS_MX: Array<[string, string]> = [
+  ['AGU', 'Aguascalientes'], ['BCN', 'Baja California'], ['BCS', 'Baja California Sur'],
+  ['CAM', 'Campeche'], ['CHP', 'Chiapas'], ['CHH', 'Chihuahua'], ['CMX', 'Ciudad de México'],
+  ['COA', 'Coahuila'], ['COL', 'Colima'], ['DUR', 'Durango'], ['GUA', 'Guanajuato'],
+  ['GRO', 'Guerrero'], ['HID', 'Hidalgo'], ['JAL', 'Jalisco'], ['MEX', 'México'],
+  ['MIC', 'Michoacán'], ['MOR', 'Morelos'], ['NAY', 'Nayarit'], ['NLE', 'Nuevo León'],
+  ['OAX', 'Oaxaca'], ['PUE', 'Puebla'], ['QUE', 'Querétaro'], ['ROO', 'Quintana Roo'],
+  ['SLP', 'San Luis Potosí'], ['SIN', 'Sinaloa'], ['SON', 'Sonora'], ['TAB', 'Tabasco'],
+  ['TAM', 'Tamaulipas'], ['TLA', 'Tlaxcala'], ['VER', 'Veracruz'], ['YUC', 'Yucatán'],
+  ['ZAC', 'Zacatecas'],
+];
+
+/** Días de vacaciones por antigüedad (LFT reformada 2023). Igual que el motor. */
+function diasDeVacaciones(anos: number): number {
+  const a = Math.floor(anos);
+  if (a < 1) return 12;
+  const primeros = [12, 14, 16, 18, 20];
+  if (a <= 5) return primeros[a - 1];
+  return 22 + Math.floor((a - 6) / 5) * 2;
+}
+
+/**
+ * Fecha de nacimiento a partir del RFC de una persona física: las posiciones
+ * 5-10 son AAMMDD. Devuelve AAAA-MM-DD (lo que espera CampoFecha) o null si el
+ * RFC aún no alcanza o la fecha no existe. El siglo no viene en el RFC: para
+ * gente en edad laboral, un año de dos dígitos mayor al actual es de 1900.
+ */
+function fechaNacDeRfc(rfc: string): string | null {
+  const r = String(rfc || '').toUpperCase().replace(/\s/g, '');
+  const m = /^[A-ZÑ&]{4}(\d{2})(\d{2})(\d{2})/.exec(r);
+  if (!m) return null;
+  const [, aa, mm, dd] = m;
+  const mmN = +mm, ddN = +dd;
+  if (mmN < 1 || mmN > 12 || ddN < 1 || ddN > 31) return null;
+  const actual = new Date().getFullYear() % 100;
+  const anio = +aa > actual ? 1900 + +aa : 2000 + +aa;
+  const d = new Date(anio, mmN - 1, ddN);
+  if (d.getMonth() !== mmN - 1 || d.getDate() !== ddN) return null;   // p. ej. 30-feb
+  return `${anio}-${mm}-${dd}`;
+}
+
+/** Factor de integración: 1 + (aguinaldo + prima%·vacaciones)/365 (Art. 84 LSS). */
+function factorIntegracion(aguinaldoDias: number, primaVacPct: number, fechaIngreso?: string): number {
+  const anos = fechaIngreso
+    ? Math.max(0, (Date.now() - new Date(`${fechaIngreso}T12:00:00`).getTime()) / (365.25 * 86_400_000))
+    : 0;
+  return 1 + (aguinaldoDias + (primaVacPct / 100) * diasDeVacaciones(anos)) / 365;
+}
+
+/** SDI = salario diario × factor, a dos decimales; null si el diario no es válido. */
+function sdiDeSalario(
+  salarioDiario: any, fechaIngreso: string | undefined, aguinaldoDias: number, primaVacPct: number
+): string | null {
+  const s = Number(salarioDiario);
+  if (!(s > 0)) return null;
+  return (Math.round(s * factorIntegracion(aguinaldoDias, primaVacPct, fechaIngreso) * 100) / 100).toFixed(2);
+}
+
 /**
  * ── POR QUÉ ESTOS DOS VIVEN AQUÍ Y NO DENTRO DEL MODAL ──
  *
@@ -112,7 +171,7 @@ function Seccion({ titulo, nota, icono, children }: {
   );
 }
 
-function Campo({ k, label, tipo = 'text', ancho = '', f, set, marca, ...rest }: any) {
+function Campo({ k, label, tipo = 'text', ancho = '', opciones, f, set, marca, ...rest }: any) {
   return (
     <div className={ancho}>
       <label className={ETIQUETA}>{label}</label>
@@ -125,6 +184,17 @@ function Campo({ k, label, tipo = 'text', ancho = '', f, set, marca, ...rest }: 
           onChange={(v: string) => set(k, v)}
           className={marca(k) ? 'ring-1 ring-amber-300 rounded-lg' : ''}
         />
+      ) : tipo === 'select' ? (
+        <select
+          className={`${CAMPO} ${marca(k)}`}
+          value={f[k] ?? ''}
+          onChange={(e) => set(k, e.target.value)}
+          {...rest}
+        >
+          {(opciones || []).map((o: { value: string; label: string }) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
       ) : (
         <input
           type={tipo}
@@ -159,6 +229,21 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
   const [f, setF] = useState<Record<string, any>>({ ...VACIO, ...(inicial || {}) });
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
+
+  /* Aguinaldo y prima vacacional de la empresa, para integrar el SDI solo. Si no
+   * están capturados, se usa el mínimo legal (Art. 87 y 80 LFT). */
+  const [fi, setFi] = useState({ aguinaldo: 15, prima: 25 });
+  useEffect(() => {
+    api.getNominaParametros()
+      .then((r: any) => {
+        const p = r?.data || {};
+        setFi({
+          aguinaldo: Number(p.fi_aguinaldo_dias) > 0 ? Number(p.fi_aguinaldo_dias) : 15,
+          prima: Number(p.fi_prima_vac_pct) > 0 ? Number(p.fi_prima_vac_pct) : 25,
+        });
+      })
+      .catch(() => { /* sin parámetros: se queda el mínimo legal */ });
+  }, []);
 
   const cat = useQuery({ queryKey: ['nomina-catalogos'], queryFn: () => api.getNominaCatalogos() });
   const c: any = cat.data?.data;
@@ -202,7 +287,28 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
       .catch(() => { /* si falla, se captura a mano */ });
   }, [esEdicion, inicial]);
 
-  const set = (k: string, v: any) => setF((s) => ({ ...s, [k]: v }));
+  /* Al capturar ciertos campos, otros se llenan solos —lo que el dato ya implica
+   * no se vuelve a teclear—:
+   *   · RFC → fecha de nacimiento (sólo si está vacía: no pisa lo capturado).
+   *   · Salario diario → SDI (diario × factor de integración). Se recalcula
+   *     también al cambiar la fecha de ingreso, porque el factor sube con la
+   *     antigüedad. El SDI queda editable por si el sueldo es variable. */
+  const set = (k: string, v: any) => setF((s) => {
+    const next = { ...s, [k]: v };
+    if (k === 'rfc') {
+      const fn = fechaNacDeRfc(v);
+      if (fn && !s.fecha_nacimiento) next.fecha_nacimiento = fn;
+    }
+    if (k === 'salario_diario') {
+      const sdi = sdiDeSalario(v, s.fecha_ingreso, fi.aguinaldo, fi.prima);
+      if (sdi != null) next.salario_diario_integrado = sdi;
+    }
+    if (k === 'fecha_ingreso' && s.salario_diario) {
+      const sdi = sdiDeSalario(s.salario_diario, v, fi.aguinaldo, fi.prima);
+      if (sdi != null) next.salario_diario_integrado = sdi;
+    }
+    return next;
+  });
 
   /* ── Leer la CIF ──
    *
@@ -666,7 +772,9 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                       y la cuota obrera.
                     </p>
                   </div>
-                  <Campo {...cc} k="entidad_federativa" label="Entidad federativa (c_Estado)" maxLength={3} />
+                  <Campo {...cc} k="entidad_federativa" label="Entidad federativa (c_Estado)" tipo="select"
+                    opciones={[{ value: '', label: '— elige —' },
+                      ...ESTADOS_MX.map(([c2, n]) => ({ value: c2, label: `${c2} · ${n}` }))]} />
                 </div>
               </Seccion>
 
@@ -694,7 +802,8 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
                     <Campo {...cc} k="salario_diario_integrado" label="SDI — base de cotización *"
                       tipo="number" step="0.01" />
                     <p className="text-[10px] text-gray-500 mt-0.5">
-                      Diario + aguinaldo y prima vacacional (Art. 84 LSS). Siempre el <b>mayor</b>.
+                      Se llena solo: diario × factor ({fi.aguinaldo}d aguinaldo · {fi.prima}% prima, Art. 84 LSS).
+                      Editable si el sueldo es variable.
                     </p>
                   </div>
                   {/* El aviso salta solo si quedaron al revés: el factor de
