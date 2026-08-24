@@ -90,6 +90,9 @@ export function XmlRecibidos({ direccionInicial }: {
   const [desde, setDesde] = useState(primerDiaDelMes(hoy));
   const [hasta, setHasta] = useState(iso(hoy));
   const [que, setQue] = useState<'recibidos' | 'emitidos' | 'ambos'>(direccionInicial || 'recibidos');
+  /* Los cancelados no se pueden bajar como XML; sólo su metadato. Cuando se marca,
+   * junto al pedido normal se lanza otro de tipo Metadata acotado a cancelados. */
+  const [cancelados, setCancelados] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [aviso, setAviso] = useState('');
   const [error, setError] = useState('');
@@ -156,9 +159,15 @@ export function XmlRecibidos({ direccionInicial }: {
     try {
       const r = await api.crearSatTrabajo({ desde, hasta, direccion: que });
       const d: any = r.data;
+      /* Los cancelados van en un pedido aparte, de metadatos: no topan con el 301
+       * ("no se descargan XML cancelados") porque no se pide el XML, sólo el dato. */
+      if (cancelados) {
+        await api.crearSatTrabajo({ desde, hasta, direccion: que, tipo: 'Metadata', filtros: { estadoComprobante: '0' } });
+      }
       setAviso(
         `${d.trabajos.length === 2 ? 'Dos trabajos creados' : 'Trabajo creado'} con ` +
-        `${d.particiones_total} solicitud(es) de ${d.dias_por_bloque} días. El SAT tarda ` +
+        `${d.particiones_total} solicitud(es) de ${d.dias_por_bloque} días` +
+        (cancelados ? ', más el de cancelados (metadatos)' : '') + '. El SAT tarda ' +
         'de minutos a horas; el proceso avanza solo cada 15 minutos, o con "Avanzar ahora".'
       );
       refrescar();
@@ -269,6 +278,11 @@ export function XmlRecibidos({ direccionInicial }: {
                 <option value="emitidos">Emitidos</option>
                 <option value="ambos">Recibidos y emitidos</option>
               </select>
+            </label>
+            <label className="flex items-center gap-2 text-xs text-gray-600 pb-2"
+              title="El XML de un cancelado no se puede bajar; se recupera su metadato (UUID, partes, monto, fecha de cancelación).">
+              <input type="checkbox" checked={cancelados} onChange={(e) => setCancelados(e.target.checked)} />
+              También los cancelados
             </label>
             <button onClick={pedirPeriodo} disabled={cargando}
               className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm">
@@ -390,18 +404,26 @@ export function XmlRecibidos({ direccionInicial }: {
                 aparecerá aquí conforme llegue.
               </td></tr>
             )}
-            {comprobantes.map((c) => (
-              <tr key={c.id} className="hover:bg-gray-50">
+            {comprobantes.map((c) => {
+              const cancelado = c.estado_sat === 'Cancelado';
+              return (
+              <tr key={c.id} className={cancelado ? 'bg-rose-50/40 text-gray-500' : 'hover:bg-gray-50'}>
                 <td className="px-4 py-2 text-sm whitespace-nowrap">{fecha(c.fecha_emision)}</td>
                 <td className="px-4 py-2 text-sm">
                   <p className="font-medium truncate max-w-xs">{c.nombre_emisor || '—'}</p>
                   <p className="text-xs text-gray-500 font-mono">{c.rfc_emisor}</p>
                 </td>
-                <td className="px-4 py-2 text-xs font-mono text-gray-600">{c.uuid}</td>
-                <td className="px-4 py-2 text-center text-xs">{c.tipo_comprobante}</td>
+                <td className="px-4 py-2 text-xs font-mono text-gray-600">
+                  {c.uuid}
+                  {cancelado && (
+                    <span className="ml-2 text-[10px] font-sans bg-rose-100 text-rose-700 rounded px-1.5 py-0.5">Cancelado</span>
+                  )}
+                </td>
+                <td className="px-4 py-2 text-center text-xs">{c.tipo_comprobante || '—'}</td>
                 <td className="px-4 py-2 text-right font-semibold">{money(c.total)}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

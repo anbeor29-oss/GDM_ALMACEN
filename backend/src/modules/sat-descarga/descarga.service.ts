@@ -647,9 +647,14 @@ async function descargarPaquete(cred: soap.Credencial, token: soap.Token, p: any
 
   let guardados = 0;
   for (const a of archivos) {
-    if (!/\.xml$/i.test(a.nombre)) continue;      // los .txt son metadatos: otro camino
     try {
-      if (await indexarCfdi(p.company_id, cred.rfc, p.direccion, a.contenido, p.id)) guardados++;
+      if (/\.xml$/i.test(a.nombre)) {
+        if (await indexarCfdi(p.company_id, cred.rfc, p.direccion, a.contenido, p.id)) guardados++;
+      } else if (/\.txt$/i.test(a.nombre)) {
+        /* Metadatos: un CSV con el UUID y el estatus. Es la ÚNICA vía para los
+         * comprobantes cancelados, que el SAT no deja bajar como XML. */
+        guardados += await indexarMetadata(p.company_id, cred.rfc, p.direccion, a.contenido, p.id);
+      }
     } catch (e) {
       logger.warn(`[sat-descarga] ${a.nombre}: ${(e as Error).message}`);
     }
@@ -720,6 +725,52 @@ export async function indexarCfdi(
      xml, crypto.createHash('sha256').update(xml).digest('hex'), paqueteId || null]
   );
   return (r.rowCount || 0) > 0;
+}
+
+/**
+ * Indexa un archivo de METADATOS del SAT (el .txt del paquete). Es un CSV
+ * separado por '~' con encabezado; cada renglón trae el UUID, las partes, la
+ * fecha, el monto y el ESTATUS (1 vigente, 0 cancelado).
+ *
+ * Es la única forma de recuperar los cancelados: el SAT no entrega su XML, sólo
+ * su metadato. Se guardan en la misma tabla, sin XML y con estado_sat marcado;
+ * si el comprobante ya estaba (lo trajimos vigente y luego lo cancelaron), se
+ * actualiza su estado. Devuelve cuántos renglones tocó.
+ *
+ * Orden de columnas del SAT: Uuid ~ RfcEmisor ~ NombreEmisor ~ RfcReceptor ~
+ * NombreReceptor ~ RfcPac ~ FechaEmision ~ FechaCertificacion ~ Monto ~
+ * EfectoComprobante ~ Estatus ~ FechaCancelacion.
+ */
+export async function indexarMetadata(
+  companyId: string, rfcPropietario: string, direccion: string,
+  contenido: string, paqueteId?: string
+): Promise<number> {
+  const lineas = contenido.split(/\r\n|\r|\n/).filter((l) => l.trim());
+  if (lineas.length <= 1) return 0;
+  if (!lineas[0].toLowerCase().includes('uuid')) return 0;   // no es el metadato esperado
+
+  let tocados = 0;
+  for (let i = 1; i < lineas.length; i++) {
+    const col = lineas[i].split('~');
+    const uuid = (col[0] || '').trim();
+    if (!uuid) continue;
+    const estatus = (col[10] || '').trim();
+    const estado = estatus === '0' ? 'Cancelado' : estatus === '1' ? 'Vigente' : (estatus || null);
+    await query(
+      `INSERT INTO cfdi_recibidos
+         (company_id, rfc_propietario, uuid, direccion, rfc_emisor, nombre_emisor,
+          rfc_receptor, nombre_receptor, fecha_emision, total, estado_sat, paquete_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (company_id, rfc_propietario, uuid)
+         DO UPDATE SET estado_sat = EXCLUDED.estado_sat`,
+      [companyId, rfcPropietario, uuid.toUpperCase(), direccion,
+       (col[1] || '').trim() || null, (col[2] || '').trim() || null,
+       (col[3] || '').trim() || null, (col[4] || '').trim() || null,
+       (col[6] || '').trim() || null, num((col[8] || '').trim()), estado, paqueteId || null]
+    );
+    tocados++;
+  }
+  return tocados;
 }
 
 /* ─────────────────────────  CONSULTAS DE PANTALLA  ───────────────────────── */

@@ -37,6 +37,15 @@ FALLIDA (agotaron reintentos). Botón **"Reintentar las atoradas"**: re-arma só
 lo rechazado o fallido a PENDIENTE, sin tocar lo que va en vuelo ni gastar de más
 el cupo del día. Antes la única salida era "Reiniciar monitor", que borraba todo.
 
+**Los cancelados, por metadatos.** Lo que el 301 prohíbe —bajar el XML de un
+cancelado— tiene su vuelta: el SAT sí entrega su **metadato**. Casilla **"También
+los cancelados"**: junto al pedido normal lanza otro de tipo `Metadata` acotado a
+cancelados (`EstadoComprobante=0`), que no topa con el 301 porque no pide XML. El
+paquete es un CSV separado por `~`; se lee y se guarda el UUID, las partes, el
+monto y el estatus en la misma tabla (sin XML, `estado_sat='Cancelado'`), y en la
+lista salen con su etiqueta. Si un comprobante que ya teníamos vigente aparece
+cancelado, se actualiza su estado.
+
 ---
 
 ## 2026-08-24 (nómina) — Motor IMSS · IDSE: altas, bajas y modificaciones
