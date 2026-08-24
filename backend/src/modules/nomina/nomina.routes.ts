@@ -17,6 +17,8 @@ import { authenticateToken, authorize, requireCapability } from '../../middlewar
 import { requireModule } from '../../middleware/permissions';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as empleados from './empleados.service';
+import * as imssIdse from './imss-idse.service';
+import { TipoIdse } from './imss-idse';
 import * as parametros from './parametros.service';
 import * as ejercicios from './ejercicios.service';
 import * as periodos from './periodos.service';
@@ -860,6 +862,39 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const r = await empleados.reingresar(companyId(req), req.params.id, req.body?.fecha_reingreso);
     res.json({ success: true, data: r });
+  })
+);
+
+/* ═════════════════════ IMSS · IDSE (§5–§8, §25) ═════════════════════
+ *
+ * Genera el archivo de longitud fija que sube al IDSE: altas/reingresos, bajas
+ * y modificaciones de salario. Es una atribución de nómina, no de cualquiera con
+ * el módulo abierto —mueve la afiliación de la gente ante el instituto—, así que
+ * va con la misma llave que el resto de lo sensible: `nomina:manage`.
+ *
+ * Devuelve el TXT tal cual (text/plain, adjunto). El IDSE espera el archivo, no
+ * un JSON; envolverlo obligaría a la pantalla a desenvolverlo y a nadie le sirve.
+ */
+router.post(
+  '/imss/idse',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const tipo = String(req.body?.tipo || '').toUpperCase() as TipoIdse;
+    if (!['ALTA', 'BAJA', 'MODIFICACION'].includes(tipo)) {
+      throw new ValidationError('Tipo de movimiento inválido. Usa ALTA, BAJA o MODIFICACION.');
+    }
+    const cfg = {
+      guia: req.body?.guia,
+      tipoTrabajador: req.body?.tipoTrabajador,
+      tipoSalario: req.body?.tipoSalario,
+      jornada: req.body?.jornada,
+    };
+    const { contenido, nombre } = await imssIdse.generar(
+      companyId(req), tipo, req.body?.movimientos || [], cfg,
+    );
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(contenido);
   })
 );
 

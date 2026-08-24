@@ -54,6 +54,7 @@ import { NominaParametrosPage }       from '@/pages/nomina/NominaParametros';
 import { NominaCalculoPage } from '@/pages/nomina/NominaCalculo';
 import { NominaCFDIPage } from '@/pages/nomina/NominaCFDI';
 import { NominaReportesPage } from '@/pages/nomina/NominaReportes';
+import { MotorImssIdsePage } from '@/pages/nomina/MotorImssIdse';
 import { CatalogoCuentasPage } from '@/pages/contabilidad/CatalogoCuentas';
 import {
   BalanzaPage, SituacionFinancieraPage, ResultadoIntegralPage,
@@ -250,6 +251,7 @@ export function App() {
             <Route path="nomina/empleados"                element={<ModuleRoute module="nomina"><EmpleadosPage /></ModuleRoute>} />
             <Route path="nomina/calculo"                  element={<ModuleRoute module="nomina"><NominaCalculoPage /></ModuleRoute>} />
             <Route path="nomina/cfdi"                     element={<ModuleRoute module="nomina"><NominaCFDIPage /></ModuleRoute>} />
+            <Route path="nomina/imss"                     element={<ModuleRoute module="nomina"><MotorImssIdsePage /></ModuleRoute>} />
             <Route path="nomina/parametros"               element={<ModuleRoute module="nomina"><NominaParametrosPage /></ModuleRoute>} />
             <Route path="nomina/reportes"                 element={<ModuleRoute module="nomina"><NominaReportesPage /></ModuleRoute>} />
 

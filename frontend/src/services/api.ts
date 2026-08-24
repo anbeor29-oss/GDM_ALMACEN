@@ -1378,6 +1378,37 @@ class APIClient {
     await this.downloadFile(r.data as Blob, nombre);
   }
 
+  /**
+   * IMSS · IDSE — arma y descarga el TXT de movimientos afiliatorios.
+   *
+   * Pide la respuesta como blob (es un archivo), pero cuando el backend rechaza
+   * el lote contesta JSON con la lista de lo que falta. Axios entrega ESE JSON
+   * también como blob, así que hay que leerlo y sacar el mensaje: sin esto, un
+   * "captura el NSS de fulano" llegaría a la pantalla como un error genérico.
+   */
+  async generarIdse(body: {
+    tipo: 'ALTA' | 'BAJA' | 'MODIFICACION';
+    movimientos: any[];
+    guia?: string; tipoTrabajador?: string; tipoSalario?: string; jornada?: string;
+  }) {
+    try {
+      const r = await this.client.post('/nomina/imss/idse', body, { responseType: 'blob' });
+      const cd = String(r.headers['content-disposition'] || '');
+      const m = /filename="?([^"]+)"?/.exec(cd);
+      const nombre = m?.[1] || `IDSE_${body.tipo}_${new Date().toISOString().slice(0, 10)}.txt`;
+      await this.downloadFile(r.data as Blob, nombre);
+    } catch (e: any) {
+      const data = e?.response?.data;
+      if (data instanceof Blob) {
+        const txt = await data.text();
+        let msg = txt;
+        try { const j = JSON.parse(txt); msg = j.message || j.error || txt; } catch { /* no era JSON */ }
+        throw new Error(msg);
+      }
+      throw e;
+    }
+  }
+
   /** Cierra el periodo: congela los recibos y genera los XML. ESCRIBE. */
   async cerrarPeriodoNomina(periodoId: string, captura: any[]) {
     const r = await this.client.post<APIResponse<any>>(

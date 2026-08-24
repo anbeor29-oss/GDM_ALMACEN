@@ -247,6 +247,7 @@ export function Layout() {
                       { to: '/nomina/empleados',  icon: emoji3D('👥'), label: 'Empleados' },
                       { to: '/nomina/calculo',    icon: emoji3D('🧮'), label: 'Nómina' },
                       { to: '/nomina/cfdi',       icon: emoji3D('🧾'), label: 'CFDI' },
+                      { to: '/nomina/imss',       icon: emoji3D('🏥'), label: 'IMSS · IDSE' },
                       { to: '/nomina/parametros', icon: emoji3D('⚙️'), label: 'Parámetros' },
                       { to: '/nomina/reportes',   icon: emoji3D('📊'), label: 'Reportes' },
                     ]}
