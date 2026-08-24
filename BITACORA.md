@@ -11,6 +11,41 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-24 (nómina) — Motor IMSS · IDSE: altas, bajas y modificaciones
+
+### 1 · El archivo se arma, no se teclea
+El IDSE del IMSS pide un TXT de **posición fija, 168 caracteres por renglón**.
+Tecleado a mano es un rechazo asegurado: un espacio de más en el nombre corre
+la fecha, y la fecha corrida es un aviso con fecha equivocada.
+
+Ahora se elige el **tipo de movimiento** (alta/reingreso, baja o modificación de
+salario) y los trabajadores, y el servidor arma el archivo con el NSS, el
+nombre, el CURP y el salario base que **ya viven en el expediente**. La pantalla
+sólo pide lo que el sistema no puede saber: la fecha del acto, la clínica en un
+alta, la causa en una baja.
+
+### 2 · Reconstruido desde la guía, no desde el macro
+El motor se rehízo desde las **posiciones de la guía del IMSS**, no de la
+concatenación del VBA heredado —que incrustaba constantes donde la guía define
+campos variables (número de guía, clave del trabajador, CURP, causa de baja)—.
+Esas constantes ambiguas quedaron como **parámetros**, no como texto mágico: la
+guía por defecto es `01400`, el tipo de salario `2` (variable), pero se cambian
+sin tocar código.
+
+### 3 · No genera a medias
+El IMSS rechaza el **lote completo** por un solo renglón malo. Por eso, si a
+alguien le falta el NSS, o a una baja le falta la causa, el archivo **no se
+produce** y la pantalla enumera a todos los que hay que corregir. Enterarse aquí
+—no en el portal, con 40 movimientos rebotados— es la razón de ser del módulo.
+Cada registro se valida a 168 exactos antes de entrar al archivo.
+
+**Consecuencia.** Nómina → **IMSS · IDSE** en el menú. Ruta `POST
+/nomina/imss/idse`, con la misma llave que el resto de lo sensible de nómina
+(`nomina:manage`). El SUA y el validador de TXT del documento quedan para la
+siguiente fase. Ref: `GDM_NEXO_MOTOR_IMSS_IDSE_SUA.md` §5–§8, §25.
+
+---
+
 ## 2026-08-20 (bancos II) — El catálogo del SAT y la rejilla de doce meses
 
 ### 1 · El banco se elige, no se teclea
