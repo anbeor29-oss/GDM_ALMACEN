@@ -768,11 +768,37 @@ export async function detalleTrabajo(companyId: string, trabajoId: string): Prom
   if (t.rows.length === 0) throw new NotFoundError('Trabajo no encontrado');
 
   const particiones = await query<any>(
-    `SELECT p.*, (SELECT COUNT(*) FROM sat_paquetes q WHERE q.particion_id = p.id)::int AS paquetes
+    `SELECT p.id, p.desde, p.hasta, p.estado, p.codigo_sat, p.mensaje_sat,
+            p.cfdi_contados, p.intentos, p.profundidad, p.id_solicitud_sat,
+            p.proxima_consulta_at
        FROM sat_particiones p WHERE p.trabajo_id = $1 ORDER BY p.desde`,
     [trabajoId]
   );
-  return { trabajo: t.rows[0], particiones: particiones.rows };
+
+  /* El detalle de cada paquete es lo que distingue "no hubo datos" de "el
+   * paquete está y no se ha bajado" de "el SAT no devolvió contenido". Sin
+   * esto, una partición TERMINADA con 0 XML no se puede explicar desde la
+   * pantalla y la única salida es adivinar. */
+  const paquetes = await query<any>(
+    `SELECT q.id, q.particion_id, q.id_paquete_sat, q.estado, q.xml_extraidos,
+            q.bytes, q.intentos, q.mensaje, q.descargado_at, q.vence_at
+       FROM sat_paquetes q
+       JOIN sat_particiones p ON p.id = q.particion_id
+      WHERE p.trabajo_id = $1
+      ORDER BY q.created_at`,
+    [trabajoId]
+  );
+  const porParticion = new Map<string, any[]>();
+  for (const q of paquetes.rows) {
+    const arr = porParticion.get(q.particion_id) || [];
+    arr.push(q);
+    porParticion.set(q.particion_id, arr);
+  }
+
+  return {
+    trabajo: t.rows[0],
+    particiones: particiones.rows.map((p) => ({ ...p, paquetes: porParticion.get(p.id) || [] })),
+  };
 }
 
 /** Los comprobantes ya indexados — la pantalla de XML recibidos. */

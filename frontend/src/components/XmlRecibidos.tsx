@@ -12,10 +12,11 @@
  * vigencia — lo suficiente para saber cuál está cargada y cuándo hay que
  * renovarla.
  */
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   KeyRound, Download, Trash2, PlayCircle, FileText, AlertTriangle, RefreshCw,
+  ChevronRight, ChevronDown,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -92,6 +93,7 @@ export function XmlRecibidos({ direccionInicial }: {
   const [cargando, setCargando] = useState(false);
   const [aviso, setAviso] = useState('');
   const [error, setError] = useState('');
+  const [expandido, setExpandido] = useState<string | null>(null);
 
   /* Los filtros de la lista de abajo salen del mismo rango: pedir un periodo y
    * que la tabla siga mostrando otro sería enseñar lo que no se acaba de traer. */
@@ -292,9 +294,13 @@ export function XmlRecibidos({ direccionInicial }: {
       {/* ── Trabajos ───────────────────────────────────────────────────── */}
       {trabajos.length > 0 && (
         <div className="bg-white rounded-lg shadow overflow-x-auto">
+          <p className="px-4 pt-3 text-xs text-gray-500">
+            Toca un renglón para ver, solicitud por solicitud, qué contestó el SAT.
+          </p>
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
+                <th className="w-8"></th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Periodo</th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Qué</th>
                 <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Solicitudes</th>
@@ -306,19 +312,40 @@ export function XmlRecibidos({ direccionInicial }: {
             <tbody className="divide-y">
               {trabajos.map((t) => {
                 const e = ESTADO_TRABAJO[t.estado] || { label: t.estado, cls: 'bg-gray-100 text-gray-600' };
+                const abierto = expandido === t.id;
                 return (
-                  <tr key={t.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 text-sm">{fecha(t.fecha_desde)} → {fecha(t.fecha_hasta)}</td>
-                    <td className="px-4 py-2 text-sm">{t.direccion} · {t.tipo}</td>
-                    <td className="px-4 py-2 text-center text-sm">
-                      {t.particiones_listas}/{t.particiones_total}
-                    </td>
-                    <td className="px-4 py-2 text-center text-sm">{t.paquetes}</td>
-                    <td className="px-4 py-2 text-center text-sm font-semibold">{t.xml_total}</td>
-                    <td className="px-4 py-2 text-center">
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${e.cls}`}>{e.label}</span>
-                    </td>
-                  </tr>
+                  <Fragment key={t.id}>
+                    <tr className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => setExpandido(abierto ? null : t.id)}>
+                      <td className="pl-3 text-gray-400">
+                        {abierto ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </td>
+                      <td className="px-4 py-2 text-sm">
+                        {fecha(t.fecha_desde)} → {fecha(t.fecha_hasta)}
+                        {t.ultimo_mensaje && (
+                          <p className="text-[11px] text-rose-600 mt-0.5 line-clamp-2 max-w-md">
+                            {t.ultimo_mensaje}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-sm">{t.direccion} · {t.tipo}</td>
+                      <td className="px-4 py-2 text-center text-sm">
+                        {t.particiones_listas}/{t.particiones_total}
+                      </td>
+                      <td className="px-4 py-2 text-center text-sm">{t.paquetes}</td>
+                      <td className="px-4 py-2 text-center text-sm font-semibold">{t.xml_total}</td>
+                      <td className="px-4 py-2 text-center">
+                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${e.cls}`}>{e.label}</span>
+                      </td>
+                    </tr>
+                    {abierto && (
+                      <tr>
+                        <td colSpan={7} className="p-0">
+                          <TrabajoDetalle trabajoId={t.id} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -378,6 +405,84 @@ export function XmlRecibidos({ direccionInicial }: {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/* Estado real de cada solicitud (partición) y de cada paquete. Es lo que la
+ * tabla de arriba esconde: "5/8 listas" mete en el mismo saco lo TERMINADO, lo
+ * SIN DATOS y lo RECHAZADO, y sólo aquí se separan con su motivo. */
+const ESTADO_PARTICION: Record<string, { label: string; cls: string }> = {
+  PENDIENTE:  { label: 'Pendiente',  cls: 'bg-gray-100 text-gray-600' },
+  SOLICITADA: { label: 'Solicitada', cls: 'bg-sky-100 text-sky-700' },
+  EN_PROCESO: { label: 'En proceso', cls: 'bg-sky-100 text-sky-700' },
+  TERMINADA:  { label: 'Con datos',  cls: 'bg-emerald-100 text-emerald-700' },
+  SIN_DATOS:  { label: 'Sin datos',  cls: 'bg-slate-100 text-slate-600' },
+  DIVIDIDA:   { label: 'Partida',    cls: 'bg-violet-100 text-violet-700' },
+  RECHAZADA:  { label: 'Rechazada',  cls: 'bg-rose-100 text-rose-700' },
+  FALLIDA:    { label: 'Fallida',    cls: 'bg-rose-100 text-rose-700' },
+};
+
+const COLOR_PAQUETE: Record<string, string> = {
+  PENDIENTE: 'text-gray-600', DESCARGANDO: 'text-sky-700',
+  EXTRAIDO: 'text-emerald-700', FALLIDO: 'text-rose-700',
+};
+
+/**
+ * El detalle de un trabajo: una tarjeta por solicitud (partición) con el estado
+ * y el mensaje TEXTUAL del SAT, y debajo sus paquetes. Es la respuesta a "dice
+ * 5/8 pero no aparece nada": aquí se ve si esas cinco fueron rechazadas (con su
+ * código), si vinieron sin datos, o si el paquete está y falta bajarlo.
+ */
+function TrabajoDetalle({ trabajoId }: { trabajoId: string }) {
+  const q = useQuery({
+    queryKey: ['sat-trabajo-detalle', trabajoId],
+    queryFn: () => api.getSatTrabajoDetalle(trabajoId),
+    refetchInterval: 30_000,
+  });
+  const d: any = q.data?.data;
+
+  if (q.isLoading) return <p className="p-3 text-sm text-gray-500 bg-gray-50/70">Cargando detalle…</p>;
+  const parts: any[] = d?.particiones || [];
+  if (parts.length === 0) {
+    return <p className="p-3 text-sm text-gray-500 bg-gray-50/70">Este trabajo todavía no tiene solicitudes.</p>;
+  }
+
+  return (
+    <div className="p-3 bg-gray-50/70 space-y-2">
+      <p className="text-[11px] text-gray-500">
+        Cada tarjeta es una solicitud al SAT. <b>Rechazada</b> con un código es un problema de la
+        solicitud (p. ej. el sello); <b>Sin datos</b> significa que no había comprobantes en ese rango;
+        <b> Con datos</b> trae paquetes que se bajan solos.
+      </p>
+      {parts.map((p) => {
+        const ep = ESTADO_PARTICION[p.estado] || { label: p.estado, cls: 'bg-gray-100 text-gray-600' };
+        const paquetes: any[] = p.paquetes || [];
+        return (
+          <div key={p.id} className="rounded border bg-white p-2">
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <span className="font-medium text-gray-800">{fecha(p.desde)} → {fecha(p.hasta)}</span>
+              <span className={`px-2 py-0.5 rounded-full font-medium ${ep.cls}`}>{ep.label}</span>
+              {p.codigo_sat && <span className="font-mono text-[10px] text-gray-500">[{p.codigo_sat}]</span>}
+              {p.cfdi_contados > 0 && <span className="text-gray-600">{p.cfdi_contados} CFDI</span>}
+              {p.intentos > 0 && <span className="text-gray-400">· {p.intentos} intento(s)</span>}
+            </div>
+            {p.mensaje_sat && <p className="mt-1 text-[11px] text-gray-600">{p.mensaje_sat}</p>}
+            {paquetes.length > 0 && (
+              <ul className="mt-1.5 pl-2 border-l-2 border-gray-100 space-y-1">
+                {paquetes.map((q: any) => (
+                  <li key={q.id} className="text-[11px] flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-gray-400">{String(q.id_paquete_sat).slice(0, 8)}…</span>
+                    <span className={`font-medium ${COLOR_PAQUETE[q.estado] || 'text-gray-600'}`}>{q.estado}</span>
+                    <span className="text-gray-600">{q.xml_extraidos ?? 0} XML</span>
+                    {q.mensaje && <span className="text-rose-600">· {q.mensaje}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

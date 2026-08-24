@@ -1698,6 +1698,10 @@ class APIClient {
     const r = await this.client.delete<APIResponse<any>>('/sat-descarga/credencial');
     return r.data;
   }
+  async getSatTrabajoDetalle(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/sat-descarga/trabajos/${id}`);
+    return r.data;
+  }
   async getSatTrabajos() {
     const r = await this.client.get<APIResponse<any>>('/sat-descarga/trabajos');
     return r.data;
