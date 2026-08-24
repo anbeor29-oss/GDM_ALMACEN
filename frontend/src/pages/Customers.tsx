@@ -6,7 +6,8 @@
  * Listado ordenado alfabéticamente por nombre.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { revisarRfcPersonaFisica } from '@/utils/rfc';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Edit2, X, FileUp, Loader2 } from 'lucide-react';
 import api from '@/services/api';
@@ -198,6 +199,18 @@ function CustomerModal({
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CustomerForm>(emptyForm);
   const [error, setError] = useState('');
+  /* Un RFC que viene de la CSF es oficial: no se cuestiona. En cuanto se edita a
+   * mano, vuelve a validarse. */
+  const [rfcDeCsf, setRfcDeCsf] = useState(false);
+
+  /* Control de consistencia del RFC (sólo personas físicas, captura manual).
+   * Sin apellidos partidos no se revisan las 4 letras; sí la estructura y el
+   * dígito verificador, que atrapan el error de dedo. Sólo avisa. */
+  const revisionRfc = useMemo(() => {
+    if (rfcDeCsf) return null;
+    const r = revisarRfcPersonaFisica({ rfc: form.rfc });
+    return r.aplica && !r.ok ? r : null;
+  }, [form.rfc, rfcDeCsf]);
   const [csfMsg, setCsfMsg] = useState<{ type: 'ok' | 'warn'; text: string } | null>(null);
   const [csfLoading, setCsfLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -300,6 +313,7 @@ function CustomerModal({
         street: (d.street || prev.street).toUpperCase(),
         extNumber: d.extNumber || prev.extNumber,
       }));
+      if (d.rfc) setRfcDeCsf(true);   // vino de la CSF: es oficial
       const partes: string[] = [];
       if (d.unresolvedRegimen) partes.push(`régimen "${d.raw?.regimen}" no se pudo mapear automáticamente`);
       if (d.unresolvedState) partes.push(`estado "${d.raw?.estado}" no se pudo mapear`);
@@ -382,12 +396,18 @@ function CustomerModal({
               <input
                 type="text"
                 value={form.rfc}
-                onChange={(e) => setForm({ ...form, rfc: upper(e.target.value) })}
+                onChange={(e) => { setRfcDeCsf(false); setForm({ ...form, rfc: upper(e.target.value) }); }}
                 placeholder="ABC010101AB1"
                 className="input uppercase font-mono"
                 maxLength={13}
                 required
               />
+              {revisionRfc && (
+                <div className="mt-1.5 bg-amber-50 border border-amber-300 text-amber-900 px-2.5 py-1.5 rounded text-[11px] space-y-0.5">
+                  {revisionRfc.problemas.map((p, i) => <p key={i}>· {p}</p>)}
+                  <p className="text-amber-700">Sólo es una alerta; si viene de un documento oficial, déjalo así.</p>
+                </div>
+              )}
             </Field>
             <Field label="Razón Social *">
               <input

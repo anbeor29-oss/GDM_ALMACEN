@@ -11,6 +11,34 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-24 (identidad) — Motor RFC de personas físicas: control de consistencia
+
+Un RFC mal capturado no se ve hasta que el PAC rechaza el timbrado. El motor del
+documento (`GDM_NEXO_MOTOR_RFC_PERSONA_FISICA.md`) calcula el RFC ESPERADO desde
+el nombre y la fecha y lo compara con el capturado, para avisar antes.
+
+**La idea es avisar, no sustituir.** El RFC oficial lo asigna el SAT y su
+homoclave no se puede reproducir con certeza, así que la homoclave NO se compara.
+Se revisan las cuatro cosas que sí son deterministas: la estructura (patrón del
+SAT), las 4 letras del nombre, la fecha (posiciones 5-10 contra la de nacimiento)
+y el dígito verificador. Ante una diferencia se avisa; nunca se corrige ni se
+impide guardar.
+
+**Sólo en captura manual.** Un RFC que viene de un XML timbrado o de la CSF ya es
+oficial —si no estuviera registrado no se habría timbrado—, así que ahí no se
+cuestiona: en empleados se salta si el RFC vino de la CIF, en clientes si vino de
+la CSF (y se revalida en cuanto se edita a mano).
+
+`utils/rfc.ts` es el motor central —reutilizable para proveedores, socios y CFDI
+en su momento—. El cálculo de las 4 letras cubre los casos de la guía (sin
+materno, sin paterno, apellido corto, partículas "DE LA", nombres "JOSÉ/MARÍA",
+palabras altisonantes). Verificado contra un ejemplo real del SAT: **GODE561231GR8**
+(las 4 letras y el dígito verificador cuadran). De paso se detectó que el ejemplo
+"CRLE" del documento estaba mal: lo correcto es "CULE" —la segunda letra es la
+primera vocal interna del paterno (U de CRUCES), no la consonante—.
+
+---
+
 ## 2026-08-24 (sat-descarga) — El "301" no era el sello: era el filtro de cancelados
 
 Semanas persiguiendo un "Sello Mal Formado" que nunca fue el sello. La pantalla

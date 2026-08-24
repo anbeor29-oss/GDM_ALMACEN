@@ -15,7 +15,7 @@
  * se muestran; duplicarlas en JavaScript garantizaría que un día digan cosas
  * distintas.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   X, Save, AlertTriangle, FileText,
@@ -27,6 +27,7 @@ import { CreditosDelTrabajador } from './CreditosDelTrabajador';
 import { ExpedienteDelTrabajador } from './ExpedienteDelTrabajador';
 import { FotoDelTrabajador } from './FotoDelTrabajador';
 import { CampoFecha } from '@/components/CampoFecha';
+import { revisarRfcPersonaFisica } from '@/utils/rfc';
 
 interface Props {
   /** null = alta. Con expediente = edición. */
@@ -421,6 +422,19 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
     origen?.[k] === 'deducido' || deCif[k]
       ? 'ring-1 ring-amber-300 bg-amber-50/40' : '';
 
+  /* Control de consistencia del RFC de persona física. NO se corre si el RFC vino
+   * de la CIF: ese documento ya es oficial y no se cuestiona. Sólo avisa; nunca
+   * corrige ni impide guardar —el RFC oficial lo asigna el SAT—. */
+  const revisionRfc = useMemo(() => {
+    if (deCif.rfc) return null;
+    const r = revisarRfcPersonaFisica({
+      rfc: f.rfc, nombre: f.nombre,
+      apellidoPat: f.apellido_pat, apellidoMat: f.apellido_mat,
+      fechaNacimiento: f.fecha_nacimiento,
+    });
+    return r.aplica && !r.ok ? r : null;
+  }, [f.rfc, f.nombre, f.apellido_pat, f.apellido_mat, f.fecha_nacimiento, deCif.rfc]);
+
   /* Lo que Campo y Selector necesitan del formulario. Va por props y no por
    * cierre porque los dos viven FUERA de este componente — ver el comentario
    * de arriba: definirlos aquí adentro era lo que borraba el foco. */
@@ -585,6 +599,19 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
               <Campo {...cc} k="email" label="Correo" tipo="email" ancho="sm:col-span-2" />
               <Campo {...cc} k="telefono" label="Teléfono" />
               </div>
+
+              {revisionRfc && (
+                <div className="mt-3 bg-amber-50 border border-amber-300 text-amber-900 px-3 py-2 rounded-lg text-xs space-y-1">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <AlertTriangle size={14} /> El RFC no cuadra con los datos capturados
+                  </p>
+                  {revisionRfc.problemas.map((p, i) => <p key={i}>· {p}</p>)}
+                  <p className="text-amber-700">
+                    Es sólo una alerta, no impide guardar: si el RFC viene de un documento oficial,
+                    déjalo. Si no, revisa el nombre, los apellidos, la fecha o el RFC.
+                  </p>
+                </div>
+              )}
               </div>
             </div>
           )}
