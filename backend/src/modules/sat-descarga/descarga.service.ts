@@ -149,6 +149,32 @@ export async function reiniciarDescarga(companyId: string): Promise<{ trabajos: 
   return { trabajos };
 }
 
+/**
+ * Vuelve a armar las solicitudes atoradas (RECHAZADA / FALLIDA) para que el motor
+ * las pida otra vez. Se usa después de corregir la causa del rechazo —p. ej. el
+ * filtro de cancelados—: sin esto habría que borrar TODO y empezar de cero,
+ * perdiendo lo que ya está en vuelo y el cupo del día ya gastado.
+ *
+ * Sólo toca lo atorado: lo que va bien o ya trajo datos se queda como está.
+ */
+export async function reintentarAtoradas(companyId: string): Promise<{ particiones: number }> {
+  const r = await query(
+    `UPDATE sat_particiones pa
+        SET estado = 'PENDIENTE', intentos = 0, id_solicitud_sat = NULL,
+            codigo_sat = NULL, mensaje_sat = NULL, proxima_consulta_at = NOW(),
+            updated_at = NOW()
+       FROM sat_trabajos t
+      WHERE pa.trabajo_id = t.id
+        AND t.company_id = $1
+        AND pa.estado IN ('RECHAZADA', 'FALLIDA')`,
+    [companyId]
+  );
+  const particiones = r.rowCount || 0;
+  await actualizarTotales(companyId);
+  logger.info(`[sat-descarga] reintentar atoradas (empresa ${companyId}): ${particiones} solicitud(es) re-armadas`);
+  return { particiones };
+}
+
 async function credencialUsable(companyId: string): Promise<soap.Credencial> {
   const r = await query<any>(
     `SELECT rfc, cer_cifrado, key_cifrado, password_cifrado, vigencia_hasta

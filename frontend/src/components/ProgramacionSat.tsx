@@ -18,7 +18,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock, Gauge, History, AlertTriangle, CheckCircle2,
-  Loader2, Play, Settings2, Info, RotateCcw,
+  Loader2, Play, Settings2, Info, RotateCcw, RefreshCw,
 } from 'lucide-react';
 import api from '@/services/api';
 
@@ -182,6 +182,17 @@ export function ProgramacionSat() {
 
           <EjercicioCompleto onLanzar={(anio: number, opts: any) =>
             accion('ejercicio', () => api.crearEjercicioSat(anio, opts))} busy={busy} />
+
+          {d.atoradas > 0 && (
+            <button
+              onClick={() => accion('reintentar', () => api.reintentarSatAtoradas())}
+              disabled={!!busy}
+              title="Vuelve a pedir sólo las solicitudes que el SAT rechazó, sin borrar lo demás"
+              className="btn-secondary text-sm flex items-center gap-1.5 text-amber-700 disabled:opacity-50">
+              {busy === 'reintentar' ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              Reintentar las {n(d.atoradas)} atoradas
+            </button>
+          )}
 
           <button
             onClick={() => {

@@ -55,6 +55,26 @@ router.post(
   })
 );
 
+/**
+ * POST /sat-descarga/reintentar — re-arma las solicitudes atoradas (rechazadas o
+ * fallidas) sin borrar nada más. Para usar tras corregir la causa del rechazo:
+ * conserva lo que va en vuelo y el cupo ya gastado del día.
+ */
+router.post(
+  '/reintentar',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await service.reintentarAtoradas(companyId(req));
+    res.json({
+      success: true,
+      message: r.particiones
+        ? `${r.particiones} solicitud(es) re-armadas. Se volverán a pedir en la próxima corrida o con "Avanzar ahora".`
+        : 'No había solicitudes atoradas que reintentar.',
+      data: r,
+    });
+  })
+);
+
 /* ═══════════════════════════════════════════════════════════════════════════
    PROGRAMACIÓN — el día a día y los ejercicios completos
    ═══════════════════════════════════════════════════════════════════════════ */

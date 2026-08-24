@@ -11,6 +11,34 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-24 (sat-descarga) — El "301" no era el sello: era el filtro de cancelados
+
+Semanas persiguiendo un "Sello Mal Formado" que nunca fue el sello. La pantalla
+de detalle por solicitud —que se agregó justo para dejar de adivinar— sacó el
+mensaje TEXTUAL del SAT:
+
+> **[301] XML Mal Formado. No se permite la descarga de xml que se encuentren cancelados.**
+
+No es la firma: es una **regla del servicio**. El XML de un comprobante
+**cancelado no se puede descargar** —sólo su metadato—, y si se pide el CFDI de
+un rango que incluye aunque sea uno cancelado, el SAT rechaza el lote completo
+con 301. Por eso fallaban los **recibidos** (un proveedor cancela y reexpide, es
+lo normal) y no los **emitidos** (en esos rangos no había cancelados). El sello
+llevaba bien todo el tiempo: la autenticación, la solicitud y la verificación se
+firman igual, y ésas pasaban.
+
+**El arreglo.** Al pedir `TipoSolicitud=CFDI` se acota a `EstadoComprobante="1"`
+(vigentes) salvo que se pida otro estado. En metadatos no se fuerza. Va en
+`soap.ts`, donde vive el conocimiento del SAT, y por ser un atributo más entra
+tanto en el digest como en el sobre: no toca la firma.
+
+**Y una recuperación sin borrar todo.** Las cinco solicitudes ya estaban
+FALLIDA (agotaron reintentos). Botón **"Reintentar las atoradas"**: re-arma sólo
+lo rechazado o fallido a PENDIENTE, sin tocar lo que va en vuelo ni gastar de más
+el cupo del día. Antes la única salida era "Reiniciar monitor", que borraba todo.
+
+---
+
 ## 2026-08-24 (nómina) — Motor IMSS · IDSE: altas, bajas y modificaciones
 
 ### 1 · El archivo se arma, no se teclea

@@ -228,11 +228,20 @@ export async function solicitar(
    * que se manda), ordenarlo aquí deja ambos consistentes con la canónica del SAT.
    * `.sort()` sobre `Attr="val"` ordena por nombre de atributo (los nombres son
    * únicos y anteceden al `=`). */
+  /* EstadoComprobante: el SAT rechaza con 301 "No se permite la descarga de xml
+   * que se encuentren cancelados" cuando se pide el CFDI (el XML) de un rango que
+   * incluye cancelados —cosa normal en recibidos: un proveedor cancela y
+   * reexpide—. El XML sólo se puede bajar de los VIGENTES; de los cancelados sólo
+   * hay metadatos. Así que al pedir CFDI se acota a "1" (vigentes) salvo que el
+   * llamador pida otro estado a propósito. En Metadata no se fuerza: ahí sí se
+   * pueden traer todos. Valores del SAT: 1 = vigente, 0 = cancelado. */
+  const estadoComprobante = d.estadoComprobante || (d.tipo === 'CFDI' ? '1' : '');
+
   const attrs = [
     `FechaInicial="${iso(d.desde)}"`,
     `FechaFinal="${iso(d.hasta)}"`,
     d.tipoComprobante ? `TipoComprobante="${d.tipoComprobante}"` : '',
-    d.estadoComprobante ? `EstadoComprobante="${d.estadoComprobante}"` : '',
+    estadoComprobante ? `EstadoComprobante="${estadoComprobante}"` : '',
     emitidos ? `RfcEmisor="${cred.rfc}"` : (d.rfcEmisor ? `RfcEmisor="${d.rfcEmisor}"` : ''),
     `RfcSolicitante="${cred.rfc}"`,
     `TipoSolicitud="${d.tipo}"`,
