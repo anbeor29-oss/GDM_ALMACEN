@@ -12,19 +12,26 @@ SW Sapien.
 > quedó de antes y **se conserva a propósito**: renombrarlos en Render crea un
 > par vacío y deja colgado el actual, con su inventario dentro.
 
-**Estado** (al 2026-08-19):
+**Estado** (al 2026-08-24):
 - 🟢 **Desplegado y respondiendo** en `gdm-almacen-*` (multi-empresa, pagos
   multi-factura, CSD en base).
-- 🟢 **Nómina completa**: expediente, cálculo, finiquito y liquidación, cierre
-  transaccional, CFDI, cuatro reportes con la cuota patronal, y el descuento
-  automático de uniformes con costo.
+- 🟢 **Nómina completa**: expediente (con Vacaciones y ModifSal), cálculo,
+  finiquito y liquidación, cierre transaccional, CFDI, reportes con la cuota
+  patronal, uniformes con costo, y el **periodo especial de Asimilados**.
+- 🟢 **IMSS · IDSE**: un solo constructor para altas (08), bajas (02) y
+  modificaciones (07) mezcladas en un archivo, más validador de TXT.
+- 🟢 **Motor de identidad fiscal (RFC)**: control de consistencia del RFC de
+  personas físicas en captura (empleados y clientes).
+- 🟢 **Contabilidad**: catálogo de cuentas, periodos y cierre, balanza, los
+  estados financieros y razones —agrupados en el submenú **Reportes**—.
+- 🟢 **Tesorería**: cuentas por pagar, pagos programados, bancos y
+  **conciliación bancaria** (con export a Excel).
 - 🟢 **Permisos por grupo de trabajo**: siete grupos, cada uno con sus módulos,
   sus capacidades y su pantalla de inicio.
 - 🟡 **PAC en sandbox** de SW Sapien. Timbra, pero no ante el SAT real.
-- 🟡 **Descarga masiva del SAT**: el motor está, pero el cron **no arranca sin
-  `ENABLE_SAT_DESCARGA_CRON=true`** en el entorno. Sin esa variable los trabajos
-  se quedan "en proceso" para siempre.
-- 🔴 **Contabilidad** — no existe en ningún fork. Fase pendiente.
+- 🟡 **Descarga masiva del SAT**: el motor funciona (resuelto el 301 de
+  cancelados) y trae también los UUID cancelados por metadatos; el cron diario
+  **no arranca sin `ENABLE_SAT_DESCARGA_CRON=true`** en el entorno.
 
 ## 🔑 Cómo entrar
 
@@ -56,6 +63,34 @@ Las credenciales de capacitación que aparecen más abajo son de **GDM
 Facturación**, no de este entorno.
 
 ---
+
+## 🆕 Novedades recientes (2026-08-24)
+
+Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
+
+- **IMSS · IDSE — un solo constructor.** Una lista con el tipo por renglón
+  (ALTA 08 / BAJA 02 / MODIF 07) y una casilla por movimiento; un botón genera
+  **un TXT con todos los marcados**, mezclados. La lista se llena sola con las
+  bajas, reingresos, cambios de salario y altas; también valida un TXT y lleva
+  la lista de "ya pasó en el IDSE".
+- **Expediente del trabajador**: pestañas de **Vacaciones** (ganadas/disfrutadas/
+  pagadas/remanente, con la prima que pasa a la nómina) y **ModifSal** (calendario
+  de cambios de salario que actualiza el expediente y avisa al IMSS). Y en captura:
+  RFC → fecha de nacimiento, combo de estados, y SDI que se calcula solo.
+- **Motor RFC** de personas físicas: control de consistencia en la captura de
+  empleados y clientes (estructura, 4 letras, fecha, dígito verificador; nunca
+  la homoclave, nunca bloquea).
+- **Finiquito**: vacaciones ganadas bien (ya no $0 al cumplir el año) e
+  indemnización negociable (30/60/90). La baja se manda al menú IMSS · IDSE.
+- **Nómina — Asimilados a salarios**: periodo especial con ISR mensual sobre el
+  ingreso, sin subsidio ni IMSS.
+- **SAT descarga masiva**: el "sello mal formado" era el filtro de cancelados
+  (301) — resuelto; detalle por solicitud/paquete; recuperación de UUID
+  cancelados por metadatos; botón para reintentar las atoradas.
+- **Contabilidad**: los reportes (periodos y cierre → razones y análisis) quedan
+  en un submenú **Reportes** dentro de Contabilidad.
+- **Tesorería**: "Remesas de pago" → **Pagos programados**; pestaña nueva de
+  **Conciliación bancaria** consolidada, con export a Excel.
 
 ## 🆕 Novedades de V2
 
