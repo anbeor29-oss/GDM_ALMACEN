@@ -252,6 +252,27 @@ export function ProgramacionSat() {
                 · {diag.solicitudes?.length || 0} solicitud(es) verificadas
               </span>
             </div>
+
+            {diag.prueba && (
+              <div className="text-xs bg-gray-50 border rounded p-2 space-y-1">
+                <p className="font-semibold text-gray-700">Solicitud de prueba — recibidos CFDI, últimos 3 días:</p>
+                {diag.prueba.error ? (
+                  <p className="text-rose-700">Error: {diag.prueba.error}</p>
+                ) : (
+                  <>
+                    <p className="font-mono break-all text-gray-600">Filtros enviados: {diag.prueba.atributos}</p>
+                    <p>
+                      Respuesta del SAT:{' '}
+                      <b className={diag.prueba.codigo === '5000' || diag.prueba.codigo === '5005' ? 'text-emerald-700' : 'text-rose-700'}>
+                        [{diag.prueba.codigo}]
+                      </b>{' '}
+                      {diag.prueba.mensaje}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
             {diag.solicitudes?.length > 0 && (
               <ul className="divide-y text-xs">
                 {diag.solicitudes.map((s: any, i: number) => (

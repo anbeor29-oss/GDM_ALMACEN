@@ -230,6 +230,22 @@ export async function diagnostico(companyId: string): Promise<any> {
     return { efirma, autenticacion: { ok: false, mensaje: (e as Error).message }, solicitudes: [] };
   }
 
+  /* PRUEBA REAL: manda una solicitud de recibidos CFDI de un rango chico y
+   * devuelve LOS FILTROS que se enviaron (para ver si EstadoComprobante=1 va) y
+   * la respuesta cruda del SAT. Cuesta una solicitud, pero es la única forma de
+   * ver qué se manda y qué contesta el SAT sin adivinar. No guarda nada. */
+  let prueba: any = null;
+  try {
+    const hasta = new Date();
+    const desde = new Date(Date.now() - 3 * 86_400_000);
+    const s = await soap.solicitar(cred, token, { desde, hasta, direccion: 'recibidos', tipo: 'CFDI' });
+    prueba = {
+      atributos: s.atributos, codigo: s.codigo, mensaje: s.mensaje, idSolicitud: s.idSolicitud,
+    };
+  } catch (e) {
+    prueba = { error: (e as Error).message };
+  }
+
   const enCurso = await query<any>(
     `SELECT pa.id_solicitud_sat,
             TO_CHAR(pa.desde, 'YYYY-MM-DD') AS desde, TO_CHAR(pa.hasta, 'YYYY-MM-DD') AS hasta,
@@ -240,7 +256,7 @@ export async function diagnostico(companyId: string): Promise<any> {
         AND pa.estado IN ('SOLICITADA', 'EN_PROCESO')
         AND pa.id_solicitud_sat IS NOT NULL
       ORDER BY pa.created_at
-      LIMIT 12`,
+      LIMIT 8`,
     [companyId],
   );
 
@@ -259,7 +275,7 @@ export async function diagnostico(companyId: string): Promise<any> {
     }
   }
 
-  return { efirma, autenticacion: { ok: true }, enVuelo: enCurso.rows.length, solicitudes };
+  return { efirma, autenticacion: { ok: true }, prueba, enVuelo: enCurso.rows.length, solicitudes };
 }
 
 /* ─────────────────────────  TRABAJOS Y PARTICIONES  ───────────────────────── */

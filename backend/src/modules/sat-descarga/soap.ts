@@ -216,7 +216,7 @@ export interface DatosSolicitud {
 
 export async function solicitar(
   cred: Credencial, token: Token, d: DatosSolicitud
-): Promise<RespuestaSat & { idSolicitud?: string }> {
+): Promise<RespuestaSat & { idSolicitud?: string; atributos?: string }> {
   const iso = (x: Date) => x.toISOString().slice(0, 19);
   const emitidos = d.direccion === 'emitidos';
 
@@ -278,6 +278,7 @@ export async function solicitar(
     codigo: atributo(xml, 'CodEstatus') || '',
     mensaje: atributo(xml, 'Mensaje') || '',
     idSolicitud: atributo(xml, 'IdSolicitud') || undefined,
+    atributos: attrs,      // los filtros que se mandaron, para diagnóstico
     crudo: xml,
   };
 }
