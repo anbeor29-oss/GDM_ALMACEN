@@ -26,7 +26,7 @@ import { ComboConAlta } from './ComboConAlta';
 import { CreditosDelTrabajador } from './CreditosDelTrabajador';
 import { ExpedienteDelTrabajador } from './ExpedienteDelTrabajador';
 import { FotoDelTrabajador } from './FotoDelTrabajador';
-import { CampoFecha } from '@/components/CampoFecha';
+import { CampoFecha, aTextoMx } from '@/components/CampoFecha';
 import { revisarRfcPersonaFisica } from '@/utils/rfc';
 
 interface Props {
@@ -224,9 +224,140 @@ function Selector({ k, label, opciones, incluirVacio, ancho = '', f, set, marca 
   );
 }
 
+const money = (n: any) =>
+  Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+const hoyIsoLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * ModifSal — el calendario de modificaciones de salario del trabajador.
+ *
+ * Cada cambio tiene su fecha efectiva: desde ese día el nuevo salario entra a la
+ * nómina (queda en el expediente) y se avisa al IMSS —se encola como movimiento
+ * 07 del IDSE, que aparece en Nómina → IMSS · IDSE—. Aquí se registra y se ve el
+ * histórico. Sólo con el expediente ya guardado: necesita al trabajador creado.
+ */
+function ModifSalTab({ empleadoId, esEdicion, fechaIngreso, fi, onAplicado }: {
+  empleadoId?: string;
+  esEdicion: boolean;
+  fechaIngreso?: string;
+  fi: { aguinaldo: number; prima: number };
+  onAplicado: (salario: string, sdi: string) => void;
+}) {
+  const [fecha, setFecha] = useState(hoyIsoLocal());
+  const [salario, setSalario] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const q = useQuery({
+    queryKey: ['modifsal', empleadoId],
+    queryFn: () => api.getModificacionesSalario(empleadoId as string),
+    enabled: !!empleadoId && esEdicion,
+  });
+  const lista: any[] = q.data?.data?.modificaciones || [];
+
+  const sdi = salario ? sdiDeSalario(salario, fechaIngreso, fi.aguinaldo, fi.prima) : null;
+
+  if (!esEdicion || !empleadoId) {
+    return (
+      <p className="text-sm text-gray-500">
+        Guarda primero el expediente. Los cambios de salario se registran sobre un trabajador ya dado de alta.
+      </p>
+    );
+  }
+
+  const guardar = async () => {
+    if (!(Number(salario) > 0)) { setErr('Escribe el nuevo salario diario.'); return; }
+    setBusy(true); setErr(''); setMsg('');
+    try {
+      await api.agregarModificacionSalario(empleadoId, {
+        fecha, salarioDiario: Number(salario),
+        sdi: sdi ? Number(sdi) : null, motivo,
+      });
+      setMsg('Cambio registrado. Se avisará al IMSS: quedó pendiente como movimiento 07 en IMSS · IDSE.');
+      if (sdi) onAplicado(String(Number(salario)), sdi);
+      setSalario(''); setMotivo('');
+      q.refetch();
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || 'No se pudo registrar el cambio.');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Nuevo cambio */}
+      <div className="bg-white rounded-lg border p-3 space-y-2">
+        <p className="text-sm font-semibold text-gray-800">Registrar un cambio de salario</p>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <label className="block text-xs text-gray-600">
+            Fecha efectiva
+            <CampoFecha value={fecha} onChange={setFecha} className="w-full border rounded-lg px-2 py-1.5 text-sm mt-0.5" />
+          </label>
+          <label className="block text-xs text-gray-600">
+            Nuevo salario diario
+            <input type="number" step="0.01" min="0" value={salario}
+              onChange={(e) => setSalario(e.target.value)}
+              className="w-full border rounded-lg px-2 py-1.5 text-sm mt-0.5" />
+          </label>
+          <label className="block text-xs text-gray-600">
+            Nuevo SDI (se calcula solo)
+            <input value={sdi ? money(sdi) : ''} readOnly
+              className="w-full border rounded-lg px-2 py-1.5 text-sm mt-0.5 bg-gray-50 text-gray-600" />
+          </label>
+        </div>
+        <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Motivo (opcional) — aumento, ajuste, promoción…"
+          value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+        {err && <p className="text-xs text-rose-600">{err}</p>}
+        {msg && <p className="text-xs text-emerald-700">{msg}</p>}
+        <div className="flex justify-end">
+          <button onClick={guardar} disabled={busy}
+            className="bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 text-sm disabled:opacity-50">
+            {busy ? 'Guardando…' : 'Registrar cambio'}
+          </button>
+        </div>
+      </div>
+
+      {/* Histórico */}
+      <div className="bg-white rounded-lg border overflow-hidden">
+        <p className="text-sm font-semibold text-gray-800 px-3 py-2 border-b">Histórico de cambios</p>
+        {lista.length === 0 ? (
+          <p className="p-4 text-sm text-gray-500 italic text-center">Sin cambios de salario registrados.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Fecha</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Anterior</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Nuevo</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">SDI</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Motivo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {lista.map((m) => (
+                <tr key={m.id}>
+                  <td className="px-3 py-1.5">{aTextoMx(m.fecha)}</td>
+                  <td className="px-3 py-1.5 text-right text-gray-500">{m.salario_diario_anterior ? money(m.salario_diario_anterior) : '—'}</td>
+                  <td className="px-3 py-1.5 text-right font-medium">{money(m.salario_diario)}</td>
+                  <td className="px-3 py-1.5 text-right">{m.sdi ? money(m.sdi) : '—'}</td>
+                  <td className="px-3 py-1.5 text-gray-600">{m.motivo || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose, onGuardado }: Props) {
   const esEdicion = !!empleado?.id;
-  const [bloque, setBloque] = useState<'id' | 'domicilio' | 'laboral' | 'descuentos' | 'expediente'>('id');
+  const [bloque, setBloque] = useState<'id' | 'domicilio' | 'laboral' | 'descuentos' | 'modifsal' | 'expediente'>('id');
   const [f, setF] = useState<Record<string, any>>({ ...VACIO, ...(inicial || {}) });
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -487,6 +618,8 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
       tono: 'bg-violet-50 border-violet-200', activa: 'border-violet-500 text-violet-700 bg-violet-50' },
     { id: 'descuentos', label: 'Descuentos',
       tono: 'bg-amber-50 border-amber-200', activa: 'border-amber-500 text-amber-700 bg-amber-50' },
+    { id: 'modifsal', label: 'ModifSal',
+      tono: 'bg-rose-50 border-rose-200', activa: 'border-rose-500 text-rose-700 bg-rose-50' },
     /* La bitácora y las entregas van al final: se consultan, no se capturan al
      * dar de alta. Poner primero lo que se llena el primer día y al final lo que
      * se acumula con los años. */
@@ -614,6 +747,16 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
               )}
               </div>
             </div>
+          )}
+
+          {bloque === 'modifsal' && (
+            <ModifSalTab
+              empleadoId={empleado?.id}
+              esEdicion={esEdicion}
+              fechaIngreso={f.fecha_ingreso}
+              fi={fi}
+              onAplicado={(salario, sdi) => { set('salario_diario', salario); set('salario_diario_integrado', sdi); }}
+            />
           )}
 
           {bloque === 'expediente' && (

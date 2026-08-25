@@ -1693,6 +1693,16 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>(`/nomina/empleados/${id}`, datos);
     return r.data;
   }
+  async getModificacionesSalario(empleadoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/empleados/${empleadoId}/modificaciones-salario`);
+    return r.data;
+  }
+  async agregarModificacionSalario(empleadoId: string, body: {
+    fecha: string; salarioDiario: number; sdi?: number | null; motivo?: string;
+  }) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/empleados/${empleadoId}/modificaciones-salario`, body);
+    return r.data;
+  }
   async darDeBajaEmpleado(id: string, fecha_baja: string, motivo?: string) {
     const r = await this.client.post<APIResponse<any>>(`/nomina/empleados/${id}/baja`, { fecha_baja, motivo });
     return r.data;

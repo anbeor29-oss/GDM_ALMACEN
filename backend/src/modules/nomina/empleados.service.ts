@@ -827,6 +827,66 @@ export async function reingresar(companyId: string, id: string, fechaReingreso: 
   return { id, fecha_reingreso: f };
 }
 
+/* ─────────────────  Modificaciones de salario (calendario)  ───────────────── */
+
+/**
+ * Registra un cambio de salario con su fecha efectiva. Guarda el histórico,
+ * actualiza el salario y el SDI del expediente (desde ahí lo toma la nómina), y
+ * devuelve lo necesario para avisarlo al IMSS (movimiento 07 del IDSE), que se
+ * encola en la ruta.
+ */
+export async function agregarModificacionSalario(
+  companyId: string, empleadoId: string,
+  d: { fecha: string; salarioDiario: number; sdi?: number | null; motivo?: string },
+): Promise<{ id: string; fecha: string; sdi: number | null }> {
+  const f = fecha(d.fecha, 'La fecha de la modificación');
+  if (!f) throw new ValidationError('La modificación necesita su fecha efectiva');
+  const nuevo = Number(d.salarioDiario) || 0;
+  if (!(nuevo > 0)) throw new ValidationError('El salario nuevo debe ser mayor a cero');
+  const sdi = d.sdi != null && Number(d.sdi) > 0 ? Number(d.sdi) : null;
+
+  const cur = await query<any>(
+    `SELECT salario_diario FROM nomina_empleados
+      WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
+    [empleadoId, companyId],
+  );
+  if (cur.rows.length === 0) throw new NotFoundError('Ese trabajador no existe en esta empresa');
+  const anterior = Number(cur.rows[0].salario_diario) || null;
+
+  const ins = await query<{ id: string }>(
+    `INSERT INTO nomina_modificaciones_salario
+       (company_id, empleado_id, fecha, salario_diario, sdi, salario_diario_anterior, motivo)
+     VALUES ($1,$2,$3::date,$4,$5,$6,$7)
+     RETURNING id`,
+    [companyId, empleadoId, f, nuevo, sdi, anterior, (d.motivo || '').slice(0, 200) || null],
+  );
+
+  /* El expediente queda con el salario nuevo: de ahí lo toma la siguiente nómina. */
+  await query(
+    `UPDATE nomina_empleados
+        SET salario_diario = $1,
+            salario_diario_integrado = COALESCE($2, salario_diario_integrado),
+            sbc = COALESCE($2, sbc),
+            updated_at = NOW(), edicion = edicion + 1
+      WHERE id = $3 AND company_id = $4`,
+    [nuevo, sdi, empleadoId, companyId],
+  );
+
+  return { id: ins.rows[0].id, fecha: f, sdi };
+}
+
+export async function listarModificacionesSalario(companyId: string, empleadoId: string): Promise<any[]> {
+  const r = await query<any>(
+    `SELECT id, TO_CHAR(fecha, 'YYYY-MM-DD') AS fecha, salario_diario, sdi,
+            salario_diario_anterior, motivo, created_at
+       FROM nomina_modificaciones_salario
+      WHERE company_id = $1 AND empleado_id = $2
+      ORDER BY fecha DESC, created_at DESC`,
+    [companyId, empleadoId],
+  );
+  return r.rows;
+}
+
 /* ── Auxiliares ── */
 
 async function verificarNoDuplicado(

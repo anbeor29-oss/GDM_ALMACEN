@@ -888,6 +888,38 @@ router.post(
   })
 );
 
+/* ── Modificaciones de salario (ModifSal) ── */
+router.get(
+  '/empleados/:id/modificaciones-salario',
+  asyncHandler(async (req: Request, res: Response) => {
+    const modificaciones = await empleados.listarModificacionesSalario(companyId(req), req.params.id);
+    res.json({ success: true, data: { modificaciones } });
+  })
+);
+
+router.post(
+  '/empleados/:id/modificaciones-salario',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const cid = companyId(req);
+    const r = await empleados.agregarModificacionSalario(cid, req.params.id, {
+      fecha: String(req.body?.fecha || ''),
+      salarioDiario: Number(req.body?.salarioDiario),
+      sdi: req.body?.sdi != null ? Number(req.body.sdi) : null,
+      motivo: req.body?.motivo,
+    });
+    /* La modificación se avisa al IMSS: se encola como movimiento 07 del IDSE con
+     * su fecha efectiva y el nuevo SBC. Secundario a la modificación misma. */
+    try {
+      await imssIdse.encolarPendiente(cid, {
+        empleadoId: req.params.id, tipo: 'MODIFICACION', fecha: r.fecha,
+        sbc: r.sdi ?? undefined, origen: 'modif_salario',
+      });
+    } catch { /* el pendiente es un extra: la modificación ya quedó */ }
+    res.json({ success: true, data: r });
+  })
+);
+
 /* ═════════════════════ IMSS · IDSE (§5–§8, §25) ═════════════════════
  *
  * Genera el archivo de longitud fija que sube al IDSE: altas/reingresos, bajas
