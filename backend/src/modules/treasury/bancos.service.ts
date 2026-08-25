@@ -25,6 +25,7 @@ import { ValidationError, NotFoundError, ConflictError } from '../../middleware/
 import logger from '../../middleware/logger';
 import { extraerMovimientos, ResultadoExtraccion } from './extractor-movimientos.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
+import ExcelJS from 'exceljs';
 
 const pesos = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -530,4 +531,65 @@ export async function csvDeEstado(companyId: string, estadoId: string): Promise<
     `${estado.anio}-${String(estado.mes).padStart(2, '0')}.csv`;
 
   return { csv: '\uFEFF' + filas.join('\r\n'), nombre };
+}
+
+/**
+ * El estado de cuenta como Excel (.xlsx): la rejilla de movimientos con saldo
+ * inicial, dep\u00F3sitos, retiros y saldo final. Es "el PDF convertido a Excel" que
+ * pide la conciliaci\u00F3n, ya normalizado por el extractor.
+ */
+export async function excelDeEstado(companyId: string, estadoId: string): Promise<{ buffer: Buffer; nombre: string }> {
+  const { estado, movimientos } = await detalleEstado(companyId, estadoId);
+
+  const fechaMx = (v: any) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v instanceof Date ? v.toISOString() : v));
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+  };
+  const num = (v: any) => (v === null || v === undefined || v === '' ? null : Number(v));
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Estado de cuenta');
+  ws.columns = [
+    { header: 'Fecha', key: 'fecha', width: 12 },
+    { header: 'Concepto', key: 'concepto', width: 48 },
+    { header: 'Referencia', key: 'referencia', width: 16 },
+    { header: 'Dep\u00F3sito', key: 'deposito', width: 15 },
+    { header: 'Retiro', key: 'retiro', width: 15 },
+    { header: 'Saldo', key: 'saldo', width: 15 },
+  ];
+
+  ws.mergeCells('A1:F1');
+  ws.getCell('A1').value = `${estado.banco_nombre || ''}  \u00B7  ${estado.alias || ''}  \u00B7  ${String(estado.mes).padStart(2, '0')}/${estado.anio}`;
+  ws.getCell('A1').font = { bold: true, size: 12 };
+  ws.addRow([]);
+
+  const cab = ws.addRow(['Fecha', 'Concepto', 'Referencia', 'Dep\u00F3sito', 'Retiro', 'Saldo']);
+  cab.font = { bold: true };
+  cab.eachCell((c) => { c.border = { bottom: { style: 'thin' } }; });
+
+  ws.addRow(['', 'SALDO INICIAL', '', null, null, num(estado.saldo_inicial)]).font = { italic: true };
+
+  for (const m of movimientos) {
+    ws.addRow([
+      fechaMx(m.fecha), m.concepto || '', m.referencia || '',
+      num(m.deposito), num(m.retiro), num(m.saldo ?? m.saldo_calculado),
+    ]);
+  }
+
+  const tot = ws.addRow(['', 'TOTALES', '', num(estado.total_depositos), num(estado.total_retiros), null]);
+  tot.font = { bold: true };
+  const fin = ws.addRow(['', 'SALDO FINAL', '', null, null, num(estado.saldo_final)]);
+  fin.font = { bold: true };
+  ws.addRow(['', estado.cuadra ? 'Cuadra \u2713' : 'NO cuadra', '', '', '', '']);
+
+  ['D', 'E', 'F'].forEach((col) => {
+    ws.getColumn(col).numFmt = '#,##0.00';
+    ws.getColumn(col).alignment = { horizontal: 'right' };
+  });
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const nombre =
+    `estado-${String(estado.alias || 'cuenta').replace(/[^\w-]+/g, '_')}-` +
+    `${estado.anio}-${String(estado.mes).padStart(2, '0')}.xlsx`;
+  return { buffer: Buffer.from(buffer), nombre };
 }

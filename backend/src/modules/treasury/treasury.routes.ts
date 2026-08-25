@@ -355,4 +355,15 @@ router.get(
   })
 );
 
+/** GET /treasury/bancos/estados/:id/excel — el estado de cuenta como .xlsx. */
+router.get(
+  '/bancos/estados/:id/excel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await bancos.excelDeEstado(companyId(req), req.params.id);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
 export default router;

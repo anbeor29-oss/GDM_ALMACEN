@@ -1086,6 +1086,16 @@ class APIClient {
       `/treasury/bancos/cuentas/${cuentaId}/control`, { params: { anio } });
     return r.data;
   }
+  /** El detalle de un estado de cuenta: saldos y movimientos. */
+  async getDetalleEstadoBanco(estadoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/treasury/bancos/estados/${estadoId}`);
+    return r.data;
+  }
+  /** El estado de cuenta como Excel. */
+  async descargarExcelEstado(estadoId: string, nombre: string) {
+    const r = await this.client.get(`/treasury/bancos/estados/${estadoId}/excel`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, nombre);
+  }
 
   async listPayments() {
     const r = await this.client.get('/payments');

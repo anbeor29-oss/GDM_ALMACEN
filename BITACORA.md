@@ -11,6 +11,20 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-24 (tesorería) — Conciliación bancaria: todas las cuentas en una vista, con Excel
+
+Pestaña nueva después de Bancos. No duplica el parseo —ese ya vive en "Bancos",
+que convierte el PDF/CSV del estado de cuenta en movimientos—: aquí se **consulta**
+consolidado. Se elige la cuenta y el año, se ve la rejilla de doce meses (los
+cargados se abren), y del mes elegido sale la rejilla con **saldo inicial, fecha,
+depósitos, retiros y saldo final**. Habrá tantos estados como cuentas de banco.
+
+Lo nuevo de verdad es el **Excel**: `excelDeEstado` (ExcelJS) baja el estado de
+cuenta como .xlsx —lo que antes sólo estaba en CSV—. Ruta
+`GET /bancos/estados/:id/excel`.
+
+---
+
 ## 2026-08-24 (nómina) — Expediente: pestañas de Vacaciones y ModifSal
 
 Dos pestañas nuevas en el expediente del trabajador.
