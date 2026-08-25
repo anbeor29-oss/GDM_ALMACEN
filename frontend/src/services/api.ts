@@ -1845,6 +1845,23 @@ class APIClient {
     });
     return r.data;
   }
+  /* La vista de los submenús: emitidos/recibidos con contraparte, pagado y CC. */
+  async getSatComprobantesVista(params: {
+    direccion: 'emitidos' | 'recibidos'; anio?: number; mes?: number; buscar?: string;
+  }) {
+    const r = await this.client.get<APIResponse<any>>('/sat-descarga/comprobantes/vista', { params });
+    return r.data;
+  }
+  /* Detalle de un comprobante: XML+pagos (emitidos) o ficha de metadatos (recibidos). */
+  async getSatComprobante(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/sat-descarga/comprobantes/${id}`);
+    return r.data;
+  }
+  /* Asigna (o limpia con null) la cuenta contable —columna CC— de un comprobante. */
+  async setSatCuentaContable(id: string, cuenta: string | null) {
+    const r = await this.client.put<APIResponse<any>>(`/sat-descarga/comprobantes/${id}/cuenta`, { cuenta });
+    return r.data;
+  }
 
   /* ───────────── Mensajería interna ───────────── */
   async getMensajes(buzon: 'recibidos' | 'enviados' = 'recibidos') {

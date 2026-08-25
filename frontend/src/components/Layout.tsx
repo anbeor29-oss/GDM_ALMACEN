@@ -298,9 +298,24 @@ export function Layout() {
                     responden preguntas distintas: los recibidos son lo que hay
                     que pagar y deducir; los emitidos, la comprobación de que
                     todo lo timbrado llegó. */}
-                {/* Un solo ítem: la página /xml-sat ya trae el selector
-                    recibidos/emitidos adentro; dos submenús eran de más. */}
-                {show('auditoria') && <NavItem to="/xml-sat" icon={emoji3D('📥')} accent="emerald" label="XML del SAT" open={sidebarOpen} />}
+                {/* Dos submenús —Emitidos y Recibidos—: son consultas distintas
+                    al SAT y dos vistas distintas. Emitidos traen su XML, así que
+                    tienen representación del comprobante; recibidos son ficha de
+                    metadatos (el SAT no entrega su XML). El header cae en Emitidos. */}
+                {show('auditoria') && (
+                  <NavGroup
+                    to="/xml-sat/emitidos"
+                    icon={emoji3D('📥')}
+                    label="XML del SAT"
+                    accent="emerald"
+                    open={sidebarOpen}
+                    pathPrefix="/xml-sat"
+                    children={[
+                      { to: '/xml-sat/emitidos',  icon: emoji3D('📤'), label: 'Emitidos' },
+                      { to: '/xml-sat/recibidos', icon: emoji3D('📥'), label: 'Recibidos' },
+                    ]}
+                  />
+                )}
                 {show('mensajes')     && <NavItem to="/mensajes"     icon={emoji3D('✉️')} accent="sky"     label="Mensajes"         open={sidebarOpen} contador={sinLeer} />}
                 {show('reports')      && <NavItem to="/reports"      icon={emoji3D('📊')} accent="violet"  label="Reportes"         open={sidebarOpen} />}
                 {/* Monedas sigue existiendo aparte SÓLO para quien no ve

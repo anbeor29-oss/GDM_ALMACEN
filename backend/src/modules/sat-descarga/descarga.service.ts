@@ -799,6 +799,27 @@ export async function indexarCfdi(
      attr(comprobante, 'MetodoPago'), attr(receptor, 'UsoCFDI'),
      xml, crypto.createHash('sha256').update(xml).digest('hex'), paqueteId || null]
   );
+
+  /* Si es complemento de pago (tipo P), mapear qué facturas liquida. De ahí sale
+   * el icono de "pagado": una PPD cuenta como pagada cuando existe su timbre de
+   * pago que la referencia. Se hace siempre (idempotente por el ON CONFLICT), no
+   * sólo al insertar, para rellenar también los P que ya se habían bajado antes
+   * de existir esta tabla. */
+  if (attr(comprobante, 'TipoDeComprobante') === 'P') {
+    for (const d of xml.match(/<(?:\w+:)?DoctoRelacionado\b[^>]*>/g) || []) {
+      const idDoc = attr(d, 'IdDocumento');
+      if (!idDoc) continue;
+      await query(
+        `INSERT INTO cfdi_pago_relacion
+           (company_id, rfc_propietario, pago_uuid, factura_uuid, parcialidad, imp_pagado, moneda)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT (company_id, rfc_propietario, pago_uuid, factura_uuid) DO NOTHING`,
+        [companyId, rfcPropietario, uuid.toUpperCase(), idDoc.toUpperCase(),
+         num(attr(d, 'NumParcialidad')), num(attr(d, 'ImpPagado')), attr(d, 'MonedaDR')]
+      );
+    }
+  }
+
   return (r.rowCount || 0) > 0;
 }
 
@@ -831,17 +852,21 @@ export async function indexarMetadata(
     if (!uuid) continue;
     const estatus = (col[10] || '').trim();
     const estado = estatus === '0' ? 'Cancelado' : estatus === '1' ? 'Vigente' : (estatus || null);
+    const fechaCancel = (col[11] || '').trim() || null;   // sólo viene si está cancelado
     await query(
       `INSERT INTO cfdi_recibidos
          (company_id, rfc_propietario, uuid, direccion, rfc_emisor, nombre_emisor,
-          rfc_receptor, nombre_receptor, fecha_emision, total, estado_sat, paquete_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+          rfc_receptor, nombre_receptor, fecha_emision, total, estado_sat,
+          fecha_cancelacion, paquete_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        ON CONFLICT (company_id, rfc_propietario, uuid)
-         DO UPDATE SET estado_sat = EXCLUDED.estado_sat`,
+         DO UPDATE SET estado_sat = EXCLUDED.estado_sat,
+                       fecha_cancelacion = COALESCE(EXCLUDED.fecha_cancelacion, cfdi_recibidos.fecha_cancelacion)`,
       [companyId, rfcPropietario, uuid.toUpperCase(), direccion,
        (col[1] || '').trim() || null, (col[2] || '').trim() || null,
        (col[3] || '').trim() || null, (col[4] || '').trim() || null,
-       (col[6] || '').trim() || null, num((col[8] || '').trim()), estado, paqueteId || null]
+       (col[6] || '').trim() || null, num((col[8] || '').trim()), estado,
+       fechaCancel, paqueteId || null]
     );
     tocados++;
   }
@@ -984,6 +1009,138 @@ export async function listarComprobantes(
     params
   );
   return r.rows;
+}
+
+/**
+ * Rellena `cfdi_pago_relacion` a partir de los complementos de pago (tipo P) que
+ * ya estaban guardados. Al indexar un P nuevo el mapeo se hace solo, pero los P
+ * que se bajaron ANTES de existir esta tabla se quedaron sin mapear —y con ellos
+ * el "pagado" de sus facturas—. Sólo mira los P que aún no tienen relación, así
+ * que a la segunda pasada no hace nada.
+ */
+export async function reconstruirRelacionPagos(companyId: string): Promise<number> {
+  const ps = await query<any>(
+    `SELECT rfc_propietario, uuid, xml
+       FROM cfdi_recibidos c
+      WHERE company_id = $1 AND tipo_comprobante = 'P' AND xml IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM cfdi_pago_relacion r
+                         WHERE r.company_id = $1 AND r.pago_uuid = c.uuid)`,
+    [companyId]);
+  let n = 0;
+  for (const p of ps.rows) {
+    for (const d of (String(p.xml).match(/<(?:\w+:)?DoctoRelacionado\b[^>]*>/g) || [])) {
+      const idDoc = attr(d, 'IdDocumento');
+      if (!idDoc) continue;
+      await query(
+        `INSERT INTO cfdi_pago_relacion
+           (company_id, rfc_propietario, pago_uuid, factura_uuid, parcialidad, imp_pagado, moneda)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT (company_id, rfc_propietario, pago_uuid, factura_uuid) DO NOTHING`,
+        [companyId, p.rfc_propietario, String(p.uuid).toUpperCase(), idDoc.toUpperCase(),
+         num(attr(d, 'NumParcialidad')), num(attr(d, 'ImpPagado')), attr(d, 'MonedaDR')]);
+      n++;
+    }
+  }
+  return n;
+}
+
+/**
+ * La vista de XML del SAT en dos submenús (Emitidos / Recibidos). Devuelve los
+ * renglones como los pide la pantalla del Anexo 20:
+ *  - ordenados por fecha de MENOR a mayor,
+ *  - con la CONTRAPARTE ya resuelta (cliente en emitidos = receptor; proveedor
+ *    en recibidos = emisor), para que el frontend no dependa de la dirección,
+ *  - con el flag `pagado` calculado (PUE, o PPD con su complemento de pago), que
+ *    decide el icono de la cartera,
+ *  - con `tiene_xml`, que separa lo que tiene representación (emitidos, con XML)
+ *    de lo que es sólo metadato (recibidos → ficha, punto rojo).
+ * Se excluyen los complementos de pago (tipo P): no son facturas, se ven al dar
+ * clic en la cartera de la factura que liquidan.
+ */
+export async function listarComprobantesVista(
+  companyId: string,
+  f: { direccion: string; anio?: number; mes?: number; buscar?: string } = { direccion: 'emitidos' }
+): Promise<any[]> {
+  /* Los complementos de pago viven del lado emitidos: antes de listarlos, mapear
+   * los que aún no lo estén para que el icono de "pagado" salga bien. Idempotente. */
+  if (f.direccion === 'emitidos') await reconstruirRelacionPagos(companyId);
+
+  const params: any[] = [companyId, f.direccion];
+  const where = ['c.company_id = $1', 'c.direccion = $2', `COALESCE(c.tipo_comprobante,'') <> 'P'`];
+
+  if (f.anio) {
+    params.push(f.anio);
+    where.push(`EXTRACT(YEAR FROM c.fecha_emision) = $${params.length}`);
+    if (f.mes) { params.push(f.mes); where.push(`EXTRACT(MONTH FROM c.fecha_emision) = $${params.length}`); }
+  }
+  if (f.buscar) {
+    params.push('%' + f.buscar.toLowerCase() + '%');
+    const p = `$${params.length}`;
+    where.push(`(LOWER(c.nombre_emisor) LIKE ${p} OR LOWER(c.nombre_receptor) LIKE ${p}
+                 OR LOWER(c.uuid) LIKE ${p} OR LOWER(COALESCE(c.folio,'')) LIKE ${p})`);
+  }
+
+  const r = await query<any>(
+    `SELECT c.id, c.uuid, c.direccion, c.tipo_comprobante, c.serie, c.folio,
+            c.fecha_emision, c.total, c.moneda, c.metodo_pago, c.estado_sat,
+            c.fecha_cancelacion, c.cuenta_contable,
+            (c.xml IS NOT NULL) AS tiene_xml,
+            CASE WHEN c.direccion = 'emitidos' THEN c.nombre_receptor ELSE c.nombre_emisor END AS contraparte_nombre,
+            CASE WHEN c.direccion = 'emitidos' THEN c.rfc_receptor    ELSE c.rfc_emisor    END AS contraparte_rfc,
+            CASE
+              WHEN c.metodo_pago = 'PUE' THEN true
+              WHEN EXISTS (SELECT 1 FROM cfdi_pago_relacion pr
+                            WHERE pr.company_id = c.company_id
+                              AND pr.rfc_propietario = c.rfc_propietario
+                              AND pr.factura_uuid = c.uuid) THEN true
+              ELSE false
+            END AS pagado
+       FROM cfdi_recibidos c
+      WHERE ${where.join(' AND ')}
+      ORDER BY c.fecha_emision ASC NULLS LAST, c.folio ASC
+      LIMIT 1000`,
+    params
+  );
+  return r.rows;
+}
+
+/**
+ * El detalle de un comprobante para la pantalla del sistema:
+ *  - emitidos: el XML completo (para armar la representación del Anexo 20) + los
+ *    timbres de pago que lo liquidan;
+ *  - recibidos: la ficha de metadatos (lo único que el SAT entrega de ellos).
+ * Nunca devuelve nada de otra empresa.
+ */
+export async function detalleComprobante(companyId: string, id: string): Promise<any> {
+  const r = await query<any>(
+    `SELECT * FROM cfdi_recibidos WHERE id = $1 AND company_id = $2`, [id, companyId]);
+  const c = r.rows[0];
+  if (!c) return null;
+
+  /* Los timbres de pago que referencian esta factura (para el clic en cartera). */
+  const pagos = await query<any>(
+    `SELECT p.uuid, p.serie, p.folio, p.fecha_emision, p.total, p.xml,
+            rel.parcialidad, rel.imp_pagado, rel.moneda
+       FROM cfdi_pago_relacion rel
+       JOIN cfdi_recibidos p
+         ON p.company_id = rel.company_id
+        AND p.rfc_propietario = rel.rfc_propietario
+        AND p.uuid = rel.pago_uuid
+      WHERE rel.company_id = $1 AND rel.factura_uuid = $2
+      ORDER BY p.fecha_emision ASC`,
+    [companyId, c.uuid]);
+
+  return { comprobante: c, pagos: pagos.rows };
+}
+
+/** Asigna (o limpia) la cuenta contable —la columna CC— de un comprobante. */
+export async function asignarCuentaContable(
+  companyId: string, id: string, cuenta: string | null
+): Promise<boolean> {
+  const r = await query(
+    `UPDATE cfdi_recibidos SET cuenta_contable = $3 WHERE id = $1 AND company_id = $2`,
+    [id, companyId, cuenta ? cuenta.trim().slice(0, 40) : null]);
+  return (r.rowCount || 0) > 0;
 }
 
 export async function resumenComprobantes(companyId: string, anio?: number, mes?: number): Promise<any> {

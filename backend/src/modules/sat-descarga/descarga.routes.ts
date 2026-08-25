@@ -351,4 +351,40 @@ router.get(
   })
 );
 
+/** GET /sat-descarga/comprobantes/vista — la tabla del submenú (Emitidos/Recibidos) */
+router.get(
+  '/comprobantes/vista',
+  asyncHandler(async (req: Request, res: Response) => {
+    const comprobantes = await service.listarComprobantesVista(companyId(req), {
+      direccion: (req.query.direccion as string) || 'emitidos',
+      anio:      req.query.anio ? Number(req.query.anio) : undefined,
+      mes:       req.query.mes ? Number(req.query.mes) : undefined,
+      buscar:    req.query.buscar as string | undefined,
+    });
+    res.json({ success: true, data: { comprobantes } });
+  })
+);
+
+/** GET /sat-descarga/comprobantes/:id — detalle: XML+pagos (emitidos) o ficha (recibidos) */
+router.get(
+  '/comprobantes/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await service.detalleComprobante(companyId(req), req.params.id);
+    if (!data) { res.status(404).json({ success: false, message: 'No se encontró el comprobante' }); return; }
+    res.json({ success: true, data });
+  })
+);
+
+/** PUT /sat-descarga/comprobantes/:id/cuenta — asigna la cuenta contable (CC) */
+router.put(
+  '/comprobantes/:id/cuenta',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const ok = await service.asignarCuentaContable(
+      companyId(req), req.params.id, (req.body?.cuenta ?? null) as string | null);
+    if (!ok) { res.status(404).json({ success: false, message: 'No se encontró el comprobante' }); return; }
+    res.json({ success: true });
+  })
+);
+
 export default router;

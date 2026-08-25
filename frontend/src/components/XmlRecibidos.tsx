@@ -15,16 +15,14 @@
 import { Fragment, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  KeyRound, Download, Trash2, PlayCircle, FileText, AlertTriangle, RefreshCw,
+  KeyRound, Download, Trash2, PlayCircle, AlertTriangle,
   ChevronRight, ChevronDown,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { fechaMx } from '@/utils/fecha';
 import { CampoFecha } from '@/components/CampoFecha';
-
-const money = (n: any) =>
-  Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+import { TablaComprobantesSat } from '@/components/TablaComprobantesSat';
 const fecha = (d: any) => (d ? fechaMx(d) : '—');
 
 /** AAAA-MM-DD en hora local: `toISOString` cambia el día al pasar por UTC. */
@@ -110,22 +108,11 @@ export function XmlRecibidos({ direccionInicial }: {
   const trabajosQ = useQuery({ queryKey: ['sat-trabajos'], queryFn: () => api.getSatTrabajos() });
   const trabajos: any[] = trabajosQ.data?.data?.trabajos || [];
 
-  const compQ = useQuery({
-    queryKey: ['sat-comprobantes', anio, mes],
-    queryFn: () => api.getSatComprobantes({ anio, mes }),
-  });
-  const comprobantes: any[] = compQ.data?.data?.comprobantes || [];
-
-  const resumenQ = useQuery({
-    queryKey: ['sat-resumen', anio, mes],
-    queryFn: () => api.getSatResumen(anio, mes),
-  });
-  const resumen = resumenQ.data?.data;
-
+  /* La tabla de comprobantes vive ahora en TablaComprobantesSat (queryKey
+   * 'sat-vista'); aquí sólo se la refresca tras pedir o avanzar. */
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ['sat-trabajos'] });
-    qc.invalidateQueries({ queryKey: ['sat-comprobantes'] });
-    qc.invalidateQueries({ queryKey: ['sat-resumen'] });
+    qc.invalidateQueries({ queryKey: ['sat-vista'] });
     qc.invalidateQueries({ queryKey: ['sat-credencial'] });
   };
 
@@ -375,66 +362,11 @@ export function XmlRecibidos({ direccionInicial }: {
         </div>
       )}
 
-      {/* ── Los comprobantes traídos ───────────────────────────────────── */}
-      <div className="bg-white rounded-lg shadow border p-4 flex flex-wrap items-center gap-4">
-        <h2 className="font-semibold flex items-center gap-2">
-          <FileText className="text-emerald-600" size={20} /> Comprobantes del periodo
-        </h2>
-        {resumen && (
-          <span className="text-sm text-gray-600">
-            {resumen.total} comprobante(s) · {resumen.recibidos} recibidos de{' '}
-            {resumen.emisores} emisor(es) · {money(resumen.importe_recibidos)}
-          </span>
-        )}
-        <button onClick={refrescar} className="ml-auto text-gray-500 hover:text-gray-700" title="Actualizar">
-          <RefreshCw size={16} />
-        </button>
-      </div>
-
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Fecha</th>
-              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Emisor</th>
-              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Folio fiscal</th>
-              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Tipo</th>
-              <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">Total</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {compQ.isLoading && (
-              <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>
-            )}
-            {!compQ.isLoading && comprobantes.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500 italic">
-                Sin comprobantes de ese mes. Pide el periodo arriba: lo que el SAT entregue
-                aparecerá aquí conforme llegue.
-              </td></tr>
-            )}
-            {comprobantes.map((c) => {
-              const cancelado = c.estado_sat === 'Cancelado';
-              return (
-              <tr key={c.id} className={cancelado ? 'bg-rose-50/40 text-gray-500' : 'hover:bg-gray-50'}>
-                <td className="px-4 py-2 text-sm whitespace-nowrap">{fecha(c.fecha_emision)}</td>
-                <td className="px-4 py-2 text-sm">
-                  <p className="font-medium truncate max-w-xs">{c.nombre_emisor || '—'}</p>
-                  <p className="text-xs text-gray-500 font-mono">{c.rfc_emisor}</p>
-                </td>
-                <td className="px-4 py-2 text-xs font-mono text-gray-600">
-                  {c.uuid}
-                  {cancelado && (
-                    <span className="ml-2 text-[10px] font-sans bg-rose-100 text-rose-700 rounded px-1.5 py-0.5">Cancelado</span>
-                  )}
-                </td>
-                <td className="px-4 py-2 text-center text-xs">{c.tipo_comprobante || '—'}</td>
-                <td className="px-4 py-2 text-right font-semibold">{money(c.total)}</td>
-              </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {/* ── La tabla del submenú (Emitidos / Recibidos) ──────────────────────
+          Reemplaza a la lista plana anterior: mismas facturas, pero con folio
+          navegable, iconos de estatus y cuenta contable. Toma el mismo periodo
+          del rango de arriba. */}
+      <TablaComprobantesSat direccion={direccionInicial || 'recibidos'} anio={anio} mes={mes} />
     </div>
   );
 }
