@@ -230,20 +230,22 @@ export async function diagnostico(companyId: string): Promise<any> {
     return { efirma, autenticacion: { ok: false, mensaje: (e as Error).message }, solicitudes: [] };
   }
 
-  /* PRUEBA REAL: manda una solicitud de recibidos CFDI de un rango chico y
-   * devuelve LOS FILTROS que se enviaron (para ver si EstadoComprobante=1 va) y
-   * la respuesta cruda del SAT. Cuesta una solicitud, pero es la única forma de
-   * ver qué se manda y qué contesta el SAT sin adivinar. No guarda nada. */
-  let prueba: any = null;
-  try {
-    const hasta = new Date();
-    const desde = new Date(Date.now() - 3 * 86_400_000);
-    const s = await soap.solicitar(cred, token, { desde, hasta, direccion: 'recibidos', tipo: 'CFDI' });
-    prueba = {
-      atributos: s.atributos, codigo: s.codigo, mensaje: s.mensaje, idSolicitud: s.idSolicitud,
-    };
-  } catch (e) {
-    prueba = { error: (e as Error).message };
+  /* PRUEBA REAL: manda solicitudes de recibidos CFDI de un rango chico con
+   * DISTINTOS valores de EstadoComprobante y devuelve qué contesta el SAT a cada
+   * uno. Así se ve —sin adivinar— cuál valor trae vigentes y evita el 301. No
+   * guarda nada; cuesta una solicitud por valor probado. */
+  const pruebas: any[] = [];
+  const hasta = new Date();
+  const desde = new Date(Date.now() - 3 * 86_400_000);
+  for (const estadoComprobante of ['1', '0']) {
+    try {
+      const s = await soap.solicitar(cred, token, {
+        desde, hasta, direccion: 'recibidos', tipo: 'CFDI', estadoComprobante,
+      });
+      pruebas.push({ estadoComprobante, atributos: s.atributos, codigo: s.codigo, mensaje: s.mensaje });
+    } catch (e) {
+      pruebas.push({ estadoComprobante, error: (e as Error).message });
+    }
   }
 
   const enCurso = await query<any>(
@@ -275,7 +277,7 @@ export async function diagnostico(companyId: string): Promise<any> {
     }
   }
 
-  return { efirma, autenticacion: { ok: true }, prueba, enVuelo: enCurso.rows.length, solicitudes };
+  return { efirma, autenticacion: { ok: true }, pruebas, enVuelo: enCurso.rows.length, solicitudes };
 }
 
 /* ─────────────────────────  TRABAJOS Y PARTICIONES  ───────────────────────── */

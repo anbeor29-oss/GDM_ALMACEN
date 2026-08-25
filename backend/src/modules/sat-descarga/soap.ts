@@ -292,10 +292,15 @@ export interface Verificacion extends RespuestaSat {
   paquetes: string[];
 }
 
-/** Estados oficiales de una solicitud (§6). */
+/* Estados oficiales de una solicitud del SAT (EstadoSolicitud):
+ *   1 Aceptada · 2 En proceso · 3 TERMINADA · 4 Error · 5 Rechazada · 6 Vencida.
+ * Estaban CORRIDOS (3→EnProceso, 4→Terminada…), así que una solicitud TERMINADA
+ * (código 3) se leía como "en proceso": nunca se creaban sus paquetes ni se
+ * descargaba, aunque el SAT ya tuviera los CFDI listos. Este era el bug que dejaba
+ * todo "en proceso" para siempre. */
 export const ESTADO_SOLICITUD: Record<string, string> = {
-  '1': 'ACEPTADA', '2': 'EN_PROCESO', '3': 'EN_PROCESO',
-  '4': 'TERMINADA', '5': 'ERROR', '6': 'RECHAZADA', '7': 'VENCIDA',
+  '1': 'ACEPTADA', '2': 'EN_PROCESO', '3': 'TERMINADA',
+  '4': 'ERROR', '5': 'RECHAZADA', '6': 'VENCIDA',
 };
 
 export async function verificar(

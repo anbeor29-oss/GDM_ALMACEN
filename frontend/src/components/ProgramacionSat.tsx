@@ -253,23 +253,27 @@ export function ProgramacionSat() {
               </span>
             </div>
 
-            {diag.prueba && (
-              <div className="text-xs bg-gray-50 border rounded p-2 space-y-1">
-                <p className="font-semibold text-gray-700">Solicitud de prueba — recibidos CFDI, últimos 3 días:</p>
-                {diag.prueba.error ? (
-                  <p className="text-rose-700">Error: {diag.prueba.error}</p>
-                ) : (
-                  <>
-                    <p className="font-mono break-all text-gray-600">Filtros enviados: {diag.prueba.atributos}</p>
-                    <p>
-                      Respuesta del SAT:{' '}
-                      <b className={diag.prueba.codigo === '5000' || diag.prueba.codigo === '5005' ? 'text-emerald-700' : 'text-rose-700'}>
-                        [{diag.prueba.codigo}]
-                      </b>{' '}
-                      {diag.prueba.mensaje}
+            {diag.pruebas?.length > 0 && (
+              <div className="text-xs bg-gray-50 border rounded p-2 space-y-2">
+                <p className="font-semibold text-gray-700">Prueba — recibidos CFDI, últimos 3 días, con distinto EstadoComprobante:</p>
+                {diag.pruebas.map((p: any, i: number) => (
+                  <div key={i} className="border-t pt-1.5 first:border-t-0 first:pt-0">
+                    <p className="font-mono break-all text-gray-600">
+                      EstadoComprobante="{p.estadoComprobante}"{p.atributos ? ` → ${p.atributos}` : ''}
                     </p>
-                  </>
-                )}
+                    {p.error ? (
+                      <p className="text-rose-700">Error: {p.error}</p>
+                    ) : (
+                      <p>
+                        SAT:{' '}
+                        <b className={p.codigo === '5000' || p.codigo === '5005' ? 'text-emerald-700' : 'text-rose-700'}>
+                          [{p.codigo}]
+                        </b>{' '}
+                        {p.mensaje}
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
 
