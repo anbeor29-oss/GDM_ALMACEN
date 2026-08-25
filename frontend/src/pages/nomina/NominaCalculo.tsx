@@ -785,11 +785,13 @@ function FormaEspecial({ anio, onCancelar, onCreado }: any) {
   const [guardando, setGuardando] = useState(false);
   const campo = 'w-full border rounded-lg px-3 py-1.5 text-sm';
 
-  /* Los tres casos de siempre, para no teclear el concepto ni las fechas. */
+  /* Los casos de siempre, para no teclear el concepto ni las fechas. Asimilados
+   * es distinto: cambia el cálculo (ISR mensual, sin subsidio ni IMSS). */
   const plantillas = [
     { label: 'Aguinaldo', concepto: `Aguinaldo ${anio}`, ini: `${anio}-01-01`, fin: `${anio}-12-31` },
     { label: 'PTU',       concepto: `PTU ${anio - 1}`,   ini: `${anio - 1}-01-01`, fin: `${anio - 1}-12-31` },
     { label: 'Finiquito', concepto: 'Finiquito de ',     ini: HOY, fin: HOY },
+    { label: 'Asimilados', concepto: `Asimilados ${HOY.slice(0, 7)}`, ini: `${HOY.slice(0, 7)}-01`, fin: HOY, asimilados: true },
   ];
 
   /* La plantilla activa. Se pide sólo al llegar al paso 2: en el 1 no se usa y
@@ -864,13 +866,22 @@ function FormaEspecial({ anio, onCancelar, onCreado }: any) {
           <div className="flex flex-wrap gap-2">
             {plantillas.map((p) => (
               <button key={p.label} type="button"
-                onClick={() => setF({ ...f, concepto: p.concepto, fecha_inicio: p.ini, fecha_fin: p.fin })}
-                className="text-xs border rounded-lg px-3 py-1.5 bg-white hover:border-violet-400">
+                onClick={() => setF({ ...f, concepto: p.concepto, fecha_inicio: p.ini, fecha_fin: p.fin, esAsimilados: !!(p as any).asimilados })}
+                className={`text-xs border rounded-lg px-3 py-1.5 bg-white hover:border-violet-400 ${
+                  (p as any).asimilados && f.esAsimilados ? 'border-violet-500 ring-1 ring-violet-400' : ''}`}>
                 {p.label}
               </button>
             ))}
             <span className="text-xs text-gray-500 self-center">o escribe el concepto que necesites</span>
           </div>
+
+          {f.esAsimilados && (
+            <p className="text-[11px] text-violet-800 bg-violet-100/60 border border-violet-200 rounded px-2 py-1.5">
+              <b>Asimilados a salarios:</b> al ingreso total se le aplica la tarifa <b>mensual</b> del
+              ISR (Art. 96) y se retiene. <b>No</b> se aplica subsidio al empleo ni cuotas del IMSS. El
+              pago de cada persona se captura como su ingreso en la rejilla.
+            </p>
+          )}
 
           <input className={campo} placeholder='Concepto — "Aguinaldo 2026", "Bono de agosto"…'
             value={f.concepto} onChange={(e) => setF({ ...f, concepto: e.target.value })} />

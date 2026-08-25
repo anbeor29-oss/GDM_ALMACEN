@@ -11,6 +11,29 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-24 (nómina) — Periodo especial de Asimilados a salarios
+
+Cuarta plantilla del periodo especial, junto a Aguinaldo, PTU y Finiquito. Los
+asimilados a salarios (consejeros, honorarios asimilados, etc.) retienen ISR como
+un trabajador, pero **sin la relación laboral**: al ingreso total se le aplica la
+tarifa **mensual** del Art. 96 y se retiene, **sin subsidio al empleo bajo ninguna
+circunstancia** y **sin cuotas del IMSS**.
+
+**Cómo se logra sin duplicar el motor.** Un periodo asimilado lleva su bandera
+(`es_asimilados`). En la prenómina, a esas personas se les pone salario diario y
+SDI en cero: así el sueldo por días, el IMSS y el INFONAVIT se hacen cero solos.
+El ingreso se captura como percepción y —en modo asimilado— es **totalmente
+gravable** (sin la exención del Art. 93, que es de la relación laboral). El ISR se
+calcula con la periodicidad del especial, que ya es MENSUAL, y con la opción
+`sinSubsidio` que apaga el subsidio. Nada de esto toca el cálculo de la nómina
+ordinaria: el camino no-asimilado quedó igual.
+
+Queda para después el **timbrado**: el CFDI de un asimilado usa TipoRégimen 09-12
+y la percepción 046, distinto del régimen 02 de sueldos. El cálculo ya es correcto;
+la categoría fiscal del CFDI es la siguiente capa.
+
+---
+
 ## 2026-08-24 (nómina) — Finiquito: vacaciones bien, indemnización negociable, y la baja va al IDSE
 
 Tres correcciones sobre la baja del trabajador.

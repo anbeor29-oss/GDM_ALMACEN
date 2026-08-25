@@ -281,7 +281,8 @@ export const DEDUCCIONES_POR_DIAS = new Set(['020']);   // faltas y retardos
 export function calcularIsr(
   baseGravablePeriodo: number,
   periodicidad: Periodicidad,
-  e: Ejercicio
+  e: Ejercicio,
+  opts: { sinSubsidio?: boolean } = {}
 ): { isr: number; subsidio: number; baseMensual: number; renglon: number | null } {
   const base = Number(baseGravablePeriodo) || 0;
   if (base <= 0) return { isr: 0, subsidio: 0, baseMensual: 0, renglon: null };
@@ -309,11 +310,15 @@ export function calcularIsr(
     } else break;
   }
 
+  /* En asimilados NO hay subsidio al empleo bajo ninguna circunstancia: es un
+   * beneficio de la relación laboral, y el asimilado no la tiene. */
   let subsidioMensual = 0;
-  for (const s of e.subsidio || []) {
-    const dentro = baseMensual >= s.limite_inferior &&
-      (s.limite_superior === null || baseMensual <= s.limite_superior);
-    if (dentro) { subsidioMensual = s.subsidio; break; }
+  if (!opts.sinSubsidio) {
+    for (const s of e.subsidio || []) {
+      const dentro = baseMensual >= s.limite_inferior &&
+        (s.limite_superior === null || baseMensual <= s.limite_superior);
+      if (dentro) { subsidioMensual = s.subsidio; break; }
+    }
   }
 
   const netoMensual = Math.max(isrMensual - subsidioMensual, 0);
@@ -491,6 +496,9 @@ export interface EntradaCalculo {
   otrasDeducciones?: OtraDeduccion[];
   infonavit?: DatosInfonavit;
   pension?: DatosPension;
+  /** Asimilados a salarios: ISR mensual sobre el ingreso, SIN subsidio y sin
+   *  IMSS. El ingreso va como "otros ingresos" y es totalmente gravable. */
+  asimilado?: boolean;
 }
 
 export interface Percepcion {
@@ -552,7 +560,7 @@ export interface Recibo {
  * de la plantilla.
  */
 export function calcularRecibo(entrada: EntradaCalculo, e: Ejercicio): Recibo {
-  const { salarioDiario, sdi, dias, zona, periodicidad } = entrada;
+  const { salarioDiario, sdi, dias, zona, periodicidad, asimilado } = entrada;
   if (dias <= 0) throw new Error('El periodo no puede tener cero días pagados');
 
   const ctx = { ejercicio: e, zona, salarioDiario, dias };
@@ -568,7 +576,11 @@ export function calcularRecibo(entrada: EntradaCalculo, e: Ejercicio): Recibo {
   for (const oi of entrada.otrosIngresos || []) {
     const imp = Number(oi.importe) || 0;
     if (imp <= 0) continue;
-    const { gravado, exento } = partirGravadoExento(oi.clave, imp, ctx, oi.gravadoManual);
+    /* Asimilados: el ingreso es totalmente gravable, sin la exención del Art. 93
+     * (que es de la relación laboral). Se aplica el ISR al ingreso completo. */
+    const { gravado, exento } = asimilado
+      ? { gravado: pesos(imp), exento: 0 }
+      : partirGravadoExento(oi.clave, imp, ctx, oi.gravadoManual);
     const cat = PERCEPCION_POR_CLAVE.get(oi.clave);
     percepciones.push({
       /* Los viáticos no comprobados se capturan como '050NC' para poder
@@ -600,7 +612,7 @@ export function calcularRecibo(entrada: EntradaCalculo, e: Ejercicio): Recibo {
   const totalPercepciones = pesos(sueldo + totalOtros);
 
   /* ── Impuestos y cuotas ── */
-  const { isr, subsidio, baseMensual, renglon } = calcularIsr(baseGravable, periodicidad, e);
+  const { isr, subsidio, baseMensual, renglon } = calcularIsr(baseGravable, periodicidad, e, { sinSubsidio: !!asimilado });
   const imss = calcularImssObrero(salarioDiario, sdi, dias, zona, e);
   const infonavit = calcularInfonavit(entrada.infonavit || { tiene: false }, sdi, dias, zona, e);
   const pension = calcularPension(entrada.pension || { tiene: false }, totalPercepciones, dias);

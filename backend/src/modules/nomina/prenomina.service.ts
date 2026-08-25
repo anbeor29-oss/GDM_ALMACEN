@@ -397,8 +397,12 @@ export async function calcular(
      * ceros, que se confundiría con "no se le pagó por error". */
     if (dias <= 0) continue;
 
-    const sd = Number(e.salario_diario) || 0;
-    const sdi = Number(e.salario_diario_integrado) || sd;
+    /* En asimilados no hay salario diario ni SDI: el ingreso se captura como un
+     * pago, y sin salario el motor deja en cero el sueldo por días, el IMSS y el
+     * INFONAVIT solos. El ISR sale de ese ingreso, mensual y sin subsidio. */
+    const esAsimilado = !!periodo.es_asimilados;
+    const sd = esAsimilado ? 0 : (Number(e.salario_diario) || 0);
+    const sdi = esAsimilado ? 0 : (Number(e.salario_diario_integrado) || sd);
 
     /* Los créditos entran como deducciones, sin pasarse del saldo: el último
      * abono casi nunca es completo. */
@@ -454,6 +458,7 @@ export async function calcular(
       dias,
       zona: (e.zona_geografica as Zona) || 'general',
       periodicidad,
+      asimilado: esAsimilado,
       /* Horas extra, bonos, despensa: cada uno con su exención del Art. 93,
        * que la calcula el motor según el concepto. */
       otrosIngresos: (cap?.otrosIngresos || []).filter((x) => Number(x.importe) > 0),
@@ -473,7 +478,7 @@ export async function calcular(
        * de que la columna existiera, y así los expedientes viejos no cambian de
        * un día para otro. */
       infonavit: {
-        tiene: !!e.tiene_infonavit && yaAplica(e.infonavit_desde, periodo.fecha_fin),
+        tiene: !esAsimilado && !!e.tiene_infonavit && yaAplica(e.infonavit_desde, periodo.fecha_fin),
         tipo: e.infonavit_tipo_descuento,
         valor: e.infonavit_descuento === null ? null : Number(e.infonavit_descuento),
         seguroDanosDiario: e.infonavit_seguro_danos === null ? null : Number(e.infonavit_seguro_danos),

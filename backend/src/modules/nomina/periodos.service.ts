@@ -104,6 +104,8 @@ export async function crearEspecial(
     fecha_inicio?: string; fecha_fin?: string; fecha_pago?: string;
     /** Quiénes entran. Vacío o ausente = toda la plantilla. */
     empleadoIds?: string[];
+    /** Asimilados a salarios: ISR mensual sobre el ingreso, sin subsidio ni IMSS. */
+    esAsimilados?: boolean;
   }
 ) {
   const concepto = String(d.concepto || '').trim().slice(0, 200);
@@ -152,10 +154,10 @@ export async function crearEspecial(
     const r = await transactionQuery<{ id: string }>(
       client,
       `INSERT INTO nomina_periodos
-         (company_id, anio, tipo, numero, fecha_inicio, fecha_fin, fecha_pago, dias, concepto)
-       VALUES ($1,$2,'ESPECIAL',$3,$4::date,$5::date,$6::date,$7,$8)
+         (company_id, anio, tipo, numero, fecha_inicio, fecha_fin, fecha_pago, dias, concepto, es_asimilados)
+       VALUES ($1,$2,'ESPECIAL',$3,$4::date,$5::date,$6::date,$7,$8,$9)
        RETURNING id`,
-      [companyId, anio, numero, ini, fin, pago, dias, concepto]
+      [companyId, anio, numero, ini, fin, pago, dias, concepto, !!d.esAsimilados]
     );
 
     /* Los participantes, si se eligieron.
@@ -198,7 +200,9 @@ const CAMPOS = `
   p.cerrado_at, p.concepto,
   /* Un especial de finiquito apunta a UNA persona. La prenómina lo necesita
    * para no traer a la plantilla completa. */
-  p.empleado_id, p.finiquito_tipo, p.finiquito_datos
+  p.empleado_id, p.finiquito_tipo, p.finiquito_datos,
+  /* Asimilados a salarios: cambia el cálculo (ISR mensual, sin subsidio ni IMSS). */
+  p.es_asimilados
 `;
 
 export async function listar(
