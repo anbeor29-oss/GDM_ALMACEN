@@ -311,9 +311,9 @@ export function Layout() {
                     open={sidebarOpen}
                     pathPrefix="/xml-sat"
                     children={[
-                      { to: '/xml-sat',           icon: emoji3D('📥'), label: 'XML del SAT' },
-                      { to: '/xml-sat/emitidos',  icon: emoji3D('📤'), label: 'Emitidos' },
-                      { to: '/xml-sat/recibidos', icon: emoji3D('📨'), label: 'Recibidos' },
+                      { to: '/xml-sat',           icon: emoji3D('🛰️'), label: 'XML del SAT' },
+                      { to: '/xml-sat/emitidos',  icon: emoji3D('⬆️'), label: 'Emitidos' },
+                      { to: '/xml-sat/recibidos', icon: emoji3D('⬇️'), label: 'Recibidos' },
                     ]}
                   />
                 )}

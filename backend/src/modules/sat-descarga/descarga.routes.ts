@@ -284,15 +284,24 @@ router.post(
      * propio, que sí baja). Para el XML de un recibido en concreto está la vía
      * por UUID. */
     const tipoPedido = req.body?.tipo;
+    const base = { desde: req.body?.desde, hasta: req.body?.hasta, filtros: req.body?.filtros };
+    const nuevo = (direccion: 'recibidos' | 'emitidos', tipo: 'CFDI' | 'Metadata') =>
+      service.crearTrabajo(companyId(req), { ...base, direccion, tipo }, req.user?.userId);
+
     const trabajos = [];
     for (const direccion of direcciones) {
-      trabajos.push(await service.crearTrabajo(companyId(req), {
-        desde:     req.body?.desde,
-        hasta:     req.body?.hasta,
-        direccion,
-        tipo:      tipoPedido || (direccion === 'recibidos' ? 'Metadata' : 'CFDI'),
-        filtros:   req.body?.filtros,
-      }, req.user?.userId));
+      if (tipoPedido) {
+        trabajos.push(await nuevo(direccion, tipoPedido));
+      } else if (direccion === 'recibidos') {
+        trabajos.push(await nuevo('recibidos', 'Metadata'));
+      } else {
+        /* Emitidos: el CFDI trae el XML (para la representación) y el Metadata
+         * trae el ESTATUS —vigente/cancelado—, que el XML no incluye porque la
+         * cancelación es posterior a la emisión. Con los dos, un emitido
+         * cancelado se marca en la tabla. */
+        trabajos.push(await nuevo('emitidos', 'CFDI'));
+        trabajos.push(await nuevo('emitidos', 'Metadata'));
+      }
     }
 
     res.status(201).json({

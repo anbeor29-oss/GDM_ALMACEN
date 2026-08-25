@@ -1088,6 +1088,9 @@ export async function listarComprobantesVista(
             CASE WHEN c.direccion = 'emitidos' THEN c.nombre_receptor ELSE c.nombre_emisor END AS contraparte_nombre,
             CASE WHEN c.direccion = 'emitidos' THEN c.rfc_receptor    ELSE c.rfc_emisor    END AS contraparte_rfc,
             CASE
+              /* Sólo las facturas (tipo I) se marcan como pagadas; una nota de
+               * crédito o un traslado no "se pagan". */
+              WHEN COALESCE(c.tipo_comprobante, 'I') <> 'I' THEN false
               WHEN c.metodo_pago = 'PUE' THEN true
               WHEN EXISTS (SELECT 1 FROM cfdi_pago_relacion pr
                             WHERE pr.company_id = c.company_id

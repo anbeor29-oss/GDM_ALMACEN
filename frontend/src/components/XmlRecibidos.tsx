@@ -22,7 +22,6 @@ import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { fechaMx } from '@/utils/fecha';
 import { CampoFecha } from '@/components/CampoFecha';
-import { TablaComprobantesSat } from '@/components/TablaComprobantesSat';
 const fecha = (d: any) => (d ? fechaMx(d) : '—');
 
 /** AAAA-MM-DD en hora local: `toISOString` cambia el día al pasar por UTC. */
@@ -95,11 +94,6 @@ export function XmlRecibidos({ direccionInicial }: {
   const [aviso, setAviso] = useState('');
   const [error, setError] = useState('');
   const [expandido, setExpandido] = useState<string | null>(null);
-
-  /* Los filtros de la lista de abajo salen del mismo rango: pedir un periodo y
-   * que la tabla siga mostrando otro sería enseñar lo que no se acaba de traer. */
-  const anio = Number(desde.slice(0, 4));
-  const mes = desde.slice(0, 7) === hasta.slice(0, 7) ? Number(desde.slice(5, 7)) : undefined;
 
   const credQ = useQuery({ queryKey: ['sat-credencial'], queryFn: () => api.getSatCredencial() });
   const credencial = credQ.data?.data?.credencial;
@@ -362,11 +356,9 @@ export function XmlRecibidos({ direccionInicial }: {
         </div>
       )}
 
-      {/* ── La tabla del submenú (Emitidos / Recibidos) ──────────────────────
-          Reemplaza a la lista plana anterior: mismas facturas, pero con folio
-          navegable, iconos de estatus y cuenta contable. Toma el mismo periodo
-          del rango de arriba. */}
-      <TablaComprobantesSat direccion={direccionInicial || 'recibidos'} anio={anio} mes={mes} />
+      {/* Los comprobantes ya no se listan aquí: esta es la consola de descarga.
+          Se consultan en las pantallas de Emitidos y Recibidos (cada una con su
+          filtro de mes/año). */}
     </div>
   );
 }
