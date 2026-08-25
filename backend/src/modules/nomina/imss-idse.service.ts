@@ -131,6 +131,95 @@ export async function generar(
   return { contenido, registros, nombre };
 }
 
+/** Una entrada del constructor unificado: el movimiento con su tipo. */
+export interface EntradaMixta extends EntradaMovimiento {
+  tipo: TipoIdse;
+}
+
+/**
+ * Genera UN archivo con movimientos de tipos MEZCLADOS que arma el usuario:
+ * altas, bajas y modificaciones en el mismo lote. Es el corazón del constructor
+ * unificado —un solo botón para todo—. Cada entrada trae su tipo y sus datos;
+ * el NSS, el nombre y el CURP salen del expediente. No genera a medias.
+ */
+export async function generarMixto(
+  companyId: string,
+  entradas: EntradaMixta[],
+  cfg: ConfigIdse,
+): Promise<{ contenido: string; registros: number; nombre: string }> {
+  if (!Array.isArray(entradas) || entradas.length === 0) {
+    throw new ValidationError('Marca al menos un movimiento para el archivo.');
+  }
+
+  const emp = await query<{ registro_patronal: string | null }>(
+    'SELECT registro_patronal FROM companies WHERE id = $1', [companyId],
+  );
+  const registroPatronal = emp.rows[0]?.registro_patronal;
+  if (!registroPatronal) {
+    throw new ValidationError(
+      'La empresa no tiene registro patronal ante el IMSS. Captúralo en Nómina → Parámetros.',
+    );
+  }
+
+  const ids = entradas.map((e) => e.empleadoId);
+  const r = await query<FilaEmpleado>(
+    `SELECT e.id, e.num_empleado, e.nombre, e.apellido_pat, e.apellido_mat,
+            TRIM(e.nombre || ' ' || e.apellido_pat || ' ' || COALESCE(e.apellido_mat,'')) AS nombre_completo,
+            e.nss, e.curp, e.sbc, e.salario_diario_integrado
+       FROM nomina_empleados e
+      WHERE e.company_id = $1 AND e.id::text = ANY($2::text[]) AND e.deleted_at IS NULL`,
+    [companyId, ids],
+  );
+  const porId = new Map(r.rows.map((x) => [x.id, x]));
+
+  const movimientos: MovimientoMixto[] = [];
+  const problemas: string[] = [];
+
+  for (const en of entradas) {
+    const e = porId.get(en.empleadoId);
+    if (!e) { problemas.push('Un trabajador seleccionado ya no existe en esta empresa.'); continue; }
+    if (!['ALTA', 'BAJA', 'MODIFICACION'].includes(en.tipo)) {
+      problemas.push(`${e.nombre_completo}: tipo de movimiento inválido.`); continue;
+    }
+
+    const quien = e.nombre_completo || e.num_empleado || e.id;
+    if (!en.fecha) problemas.push(`${quien}: falta la fecha del movimiento.`);
+    if (!e.nss) problemas.push(`${quien}: sin NSS en el expediente (el IMSS lo exige).`);
+    if (en.tipo === 'BAJA') {
+      if (!en.causaBaja) problemas.push(`${quien}: falta la causa de baja.`);
+      else if (!CAUSAS_BAJA[en.causaBaja]) problemas.push(`${quien}: causa de baja "${en.causaBaja}" desconocida.`);
+    }
+    const sbc = en.sbc != null && en.sbc !== ('' as any) ? Number(en.sbc)
+      : Number(e.sbc ?? e.salario_diario_integrado ?? 0);
+    if ((en.tipo === 'ALTA' || en.tipo === 'MODIFICACION') && !(sbc > 0)) {
+      problemas.push(`${quien}: sin salario base de cotización.`);
+    }
+
+    movimientos.push({
+      tipo: en.tipo,
+      registroPatronal,
+      nss: e.nss || '',
+      apellidoPaterno: e.apellido_pat,
+      apellidoMaterno: e.apellido_mat || '',
+      nombre: e.nombre,
+      fecha: en.fecha,
+      sbc,
+      umf: en.umf,
+      claveTrabajador: en.claveTrabajador || e.num_empleado || '',
+      curp: en.curp || e.curp || '',
+      causaBaja: en.causaBaja,
+    });
+  }
+
+  if (problemas.length) {
+    throw new ValidationError('No se generó el archivo. Corrige esto primero:\n• ' + problemas.join('\n• '));
+  }
+
+  const { contenido, registros } = generarArchivoMixto(movimientos, cfg);
+  const nombre = `IDSE_movimientos_${new Date().toISOString().slice(0, 10)}.txt`;
+  return { contenido, registros, nombre };
+}
+
 /* ───────────────────  Cola de pendientes (baja → menú IDSE)  ─────────────── */
 
 /**

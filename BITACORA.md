@@ -64,6 +64,16 @@ subió por error. Estados de la cola: PENDIENTE → ENVIADO, reversible.
 
 En Tesorería, de paso: "Remesas de pago" ahora se llama **Pagos programados**.
 
+**Actualización — un solo constructor.** Se fundieron las dos pestañas ("Generar
+movimientos" y "Movimientos del IDSE") en una sola. Ahora hay UNA lista con el
+tipo por renglón (dropdown ALTA 08 / BAJA 02 / MODIF 07), una **casilla por
+movimiento** que dice si entra al archivo, y **un solo botón** "Generar archivo
+IDSE (N)". La lista se llena sola con lo de la cola (bajas, reingresos, cambios
+de salario, altas) y se puede agregar a alguien del padrón eligiendo con qué tipo
+entra. `generarMixto` (nuevo, `POST /imss/idse/mixto`) arma el archivo con lo
+marcado, cada renglón con su tipo. "Ya pasó" manda cada uno a enviados;
+"regresar" lo devuelve.
+
 ---
 
 ## 2026-08-24 (nómina) — Periodo especial de Asimilados a salarios

@@ -1423,6 +1423,29 @@ class APIClient {
     }
   }
 
+  /** Constructor unificado: UN archivo con movimientos de tipos mezclados. */
+  async generarIdseMixto(body: {
+    movimientos: Array<{ empleadoId: string; tipo: string; fecha: string; sbc?: number;
+      umf?: string; claveTrabajador?: string; curp?: string; causaBaja?: string }>;
+    guia?: string; tipoTrabajador?: string; tipoSalario?: string; jornada?: string;
+  }) {
+    try {
+      const r = await this.client.post('/nomina/imss/idse/mixto', body, { responseType: 'blob' });
+      const cd = String(r.headers['content-disposition'] || '');
+      const m = /filename="?([^"]+)"?/.exec(cd);
+      await this.downloadFile(r.data as Blob, m?.[1] || `IDSE_movimientos_${new Date().toISOString().slice(0, 10)}.txt`);
+    } catch (e: any) {
+      const data = e?.response?.data;
+      if (data instanceof Blob) {
+        const txt = await data.text();
+        let msg = txt;
+        try { const j = JSON.parse(txt); msg = j.message || j.error || txt; } catch { /* no era JSON */ }
+        throw new Error(msg);
+      }
+      throw e;
+    }
+  }
+
   /** Valida un TXT del IDSE contra las posiciones de la guía. */
   async validarIdse(contenido: string) {
     const r = await this.client.post<APIResponse<any>>('/nomina/imss/idse/validar', { contenido });

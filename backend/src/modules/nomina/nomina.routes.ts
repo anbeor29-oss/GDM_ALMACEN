@@ -1004,6 +1004,28 @@ router.post(
 );
 
 /**
+ * POST /nomina/imss/idse/mixto — UN archivo con movimientos de tipos mezclados.
+ * Cada movimiento trae su tipo (ALTA/BAJA/MODIFICACION) y sus datos; es lo que
+ * genera el constructor unificado con un solo botón.
+ */
+router.post(
+  '/imss/idse/mixto',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const cfg = {
+      guia: req.body?.guia, tipoTrabajador: req.body?.tipoTrabajador,
+      tipoSalario: req.body?.tipoSalario, jornada: req.body?.jornada,
+    };
+    const { contenido, nombre } = await imssIdse.generarMixto(
+      companyId(req), req.body?.movimientos || [], cfg,
+    );
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(contenido);
+  })
+);
+
+/**
  * POST /nomina/imss/idse/validar — revisa un TXT del IDSE (el que generó este
  * módulo o uno de otro sistema) contra las posiciones de la guía, antes de
  * subirlo. Devuelve todos los problemas de una vez.
