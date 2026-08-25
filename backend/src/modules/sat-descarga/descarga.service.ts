@@ -853,16 +853,21 @@ export async function indexarMetadata(
     const estatus = (col[10] || '').trim();
     const estado = estatus === '0' ? 'Cancelado' : estatus === '1' ? 'Vigente' : (estatus || null);
     const fechaCancel = (col[11] || '').trim() || null;   // sólo viene si está cancelado
+    /* EfectoComprobante del metadato = el tipo (I/E/P/N/T). Es la única forma de
+     * saber el tipo de un recibido, que no trae XML. Para uno que ya está por
+     * CFDI no se pisa (el XML manda). */
+    const efecto = (col[9] || '').trim().charAt(0).toUpperCase() || null;
     await query(
       `INSERT INTO cfdi_recibidos
-         (company_id, rfc_propietario, uuid, direccion, rfc_emisor, nombre_emisor,
-          rfc_receptor, nombre_receptor, fecha_emision, total, estado_sat,
+         (company_id, rfc_propietario, uuid, direccion, tipo_comprobante, rfc_emisor,
+          nombre_emisor, rfc_receptor, nombre_receptor, fecha_emision, total, estado_sat,
           fecha_cancelacion, paquete_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        ON CONFLICT (company_id, rfc_propietario, uuid)
          DO UPDATE SET estado_sat = EXCLUDED.estado_sat,
-                       fecha_cancelacion = COALESCE(EXCLUDED.fecha_cancelacion, cfdi_recibidos.fecha_cancelacion)`,
-      [companyId, rfcPropietario, uuid.toUpperCase(), direccion,
+                       fecha_cancelacion = COALESCE(EXCLUDED.fecha_cancelacion, cfdi_recibidos.fecha_cancelacion),
+                       tipo_comprobante  = COALESCE(cfdi_recibidos.tipo_comprobante, EXCLUDED.tipo_comprobante)`,
+      [companyId, rfcPropietario, uuid.toUpperCase(), direccion, efecto,
        (col[1] || '').trim() || null, (col[2] || '').trim() || null,
        (col[3] || '').trim() || null, (col[4] || '').trim() || null,
        (col[6] || '').trim() || null, num((col[8] || '').trim()), estado,

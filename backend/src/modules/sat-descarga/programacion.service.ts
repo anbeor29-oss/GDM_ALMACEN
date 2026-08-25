@@ -198,21 +198,22 @@ export async function crearTrabajoDiario(
   if (cfg.diariaEmitidos) direcciones.push('emitidos');
 
   for (const direccion of direcciones) {
-    const ya = await trabajoVivoEn(companyId, iso(desde), iso(hasta), direccion);
-    if (ya) {
-      out.omitidos.push(
-        `${direccion}: ya hay un trabajo vivo sobre ${iso(desde)} → ${iso(hasta)}.`);
-      continue;
-    }
-    try {
-      const t = await crearTrabajo(
-        companyId,
-        { desde: iso(desde), hasta: iso(hasta), direccion, tipo: 'CFDI' },
-        userId,
-        { origen: 'DIARIO' });
-      out.creados.push({ direccion, desde: iso(desde), hasta: iso(hasta), trabajoId: t.id });
-    } catch (e: any) {
-      out.omitidos.push(`${direccion}: ${e.message}`);
+    for (const tipo of TIPOS_POR_DIRECCION[direccion]) {
+      if (await trabajoVivoEn(companyId, iso(desde), iso(hasta), direccion, tipo)) {
+        out.omitidos.push(
+          `${direccion}·${tipo}: ya hay un trabajo vivo sobre ${iso(desde)} → ${iso(hasta)}.`);
+        continue;
+      }
+      try {
+        const t = await crearTrabajo(
+          companyId,
+          { desde: iso(desde), hasta: iso(hasta), direccion, tipo },
+          userId,
+          { origen: 'DIARIO' });
+        out.creados.push({ direccion, desde: iso(desde), hasta: iso(hasta), trabajoId: t.id });
+      } catch (e: any) {
+        out.omitidos.push(`${direccion}·${tipo}: ${e.message}`);
+      }
     }
   }
 
@@ -225,18 +226,32 @@ export async function crearTrabajoDiario(
 }
 
 async function trabajoVivoEn(
-  companyId: string, desde: string, hasta: string, direccion: string,
+  companyId: string, desde: string, hasta: string, direccion: string, tipo?: string,
 ): Promise<boolean> {
   /* Se busca traslape, no coincidencia exacta: pedir 18→20 cuando ya hay un
-   * trabajo vivo de 17→19 es pedir dos veces los mismos días. */
+   * trabajo vivo de 17→19 es pedir dos veces los mismos días. El `tipo` importa
+   * porque de emitidos se piden DOS (CFDI + Metadata) sobre el mismo rango: sin
+   * distinguirlo, el segundo se creería duplicado del primero. */
+  const params: any[] = [companyId, direccion, desde, hasta];
+  let filtroTipo = '';
+  if (tipo) { params.push(tipo); filtroTipo = ` AND tipo = $${params.length}`; }
   const r = await query<any>(
     `SELECT 1 FROM sat_trabajos
       WHERE company_id=$1 AND direccion=$2 AND estado IN ('CREADO','EN_PROCESO')
-        AND fecha_desde <= $4::date AND fecha_hasta >= $3::date
+        AND fecha_desde <= $4::date AND fecha_hasta >= $3::date${filtroTipo}
       LIMIT 1`,
-    [companyId, direccion, desde, hasta]);
+    params);
   return r.rows.length > 0;
 }
+
+/* De cada dirección, qué tipos se piden automáticamente. Recibidos NO puede ser
+ * CFDI (el SAT contesta 301 si hay cancelados); emitidos pide CFDI —para el XML—
+ * y Metadata —para el estatus/cancelaciones, que el XML no trae—. Es la misma
+ * regla del pedido manual, para que lo automático no quede a medias. */
+const TIPOS_POR_DIRECCION: Record<string, Array<'CFDI' | 'Metadata'>> = {
+  recibidos: ['Metadata'],
+  emitidos: ['CFDI', 'Metadata'],
+};
 
 /* ═══════════════════════════════════════════════════════════════════════════
    4. UN EJERCICIO COMPLETO
@@ -325,17 +340,19 @@ export async function crearTrabajoEjercicio(
       ...(recibidos ? ['recibidos'] : []),
       ...(emitidos ? ['emitidos'] : []),
     ] as Array<'recibidos' | 'emitidos'>)) {
-      if (await trabajoVivoEn(companyId, desde, hasta, direccion)) {
-        out.omitidos.push(`${direccion} ${desde}: ya hay un trabajo vivo sobre ese mes.`);
-        continue;
-      }
-      try {
-        await crearTrabajo(companyId, { desde, hasta, direccion, tipo: 'CFDI' },
-          userId, { origen: 'EJERCICIO', ejercicio });
-        out.creados++;
-        out.trabajos.push({ direccion, mes, desde, hasta });
-      } catch (e: any) {
-        out.omitidos.push(`${direccion} ${desde}: ${e.message}`);
+      for (const tipo of TIPOS_POR_DIRECCION[direccion]) {
+        if (await trabajoVivoEn(companyId, desde, hasta, direccion, tipo)) {
+          out.omitidos.push(`${direccion}·${tipo} ${desde}: ya hay un trabajo vivo sobre ese mes.`);
+          continue;
+        }
+        try {
+          await crearTrabajo(companyId, { desde, hasta, direccion, tipo },
+            userId, { origen: 'EJERCICIO', ejercicio });
+          out.creados++;
+          out.trabajos.push({ direccion, mes, desde, hasta });
+        } catch (e: any) {
+          out.omitidos.push(`${direccion}·${tipo} ${desde}: ${e.message}`);
+        }
       }
     }
   }

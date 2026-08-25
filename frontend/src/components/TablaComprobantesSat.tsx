@@ -20,6 +20,16 @@ import { api } from '@/services/api';
 
 type Direccion = 'emitidos' | 'recibidos';
 type Modo = 'representacion' | 'pago' | 'cancelacion' | 'ficha';
+type TabTipo = 'I' | 'E' | 'N' | 'otros';
+
+/* Los tabs separan por tipo de comprobante (Anexo 20). "Otros" recoge traslados
+ * y lo que no trae tipo. Facturas siempre se muestra; los demás sólo si tienen. */
+const TABS: Array<[TabTipo, string]> = [
+  ['I', 'Facturas'], ['E', 'Notas de crédito'], ['N', 'Nómina'], ['otros', 'Otros'],
+];
+const clasifica = (c: any): TabTipo =>
+  c.tipo_comprobante === 'I' || c.tipo_comprobante === 'E' || c.tipo_comprobante === 'N'
+    ? c.tipo_comprobante : 'otros';
 
 const money = (n: any, moneda = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: (moneda || 'MXN').trim() || 'MXN' })
@@ -40,6 +50,7 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
   const hoy = new Date();
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mes, setMes] = useState<number | undefined>(hoy.getMonth() + 1);
+  const [tab, setTab] = useState<TabTipo>('I');
   const [buscar, setBuscar] = useState('');
   const [detalle, setDetalle] = useState<{ id: string; modo: Modo } | null>(null);
 
@@ -49,12 +60,14 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
   });
   const filas: any[] = q.data?.data?.comprobantes || [];
 
+  const cuentaTab = (k: TabTipo) => filas.filter((c) => clasifica(c) === k).length;
+  const porTab = filas.filter((c) => clasifica(c) === tab);
   const t = buscar.toLowerCase();
   const visibles = t
-    ? filas.filter((c) =>
+    ? porTab.filter((c) =>
         [c.contraparte_nombre, c.contraparte_rfc, c.folio, c.uuid, c.cuenta_contable]
           .some((v) => String(v || '').toLowerCase().includes(t)))
-    : filas;
+    : porTab;
 
   const emitidos = direccion === 'emitidos';
   const anios = Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i);
@@ -87,6 +100,18 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
             <RefreshCw size={16} className={q.isFetching ? 'animate-spin' : ''} />
           </button>
         </div>
+      </div>
+
+      {/* Tabs por tipo (Anexo 20). Facturas siempre; los demás si tienen algo. */}
+      <div className="flex gap-1 border-b overflow-x-auto">
+        {TABS.filter(([k]) => k === 'I' || cuentaTab(k) > 0).map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${
+              tab === k ? 'border-emerald-600 text-emerald-700'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            {label} <span className="text-xs text-gray-400">{cuentaTab(k)}</span>
+          </button>
+        ))}
       </div>
 
       <div className="bg-white rounded-lg shadow overflow-x-auto">
