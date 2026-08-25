@@ -18,7 +18,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock, Gauge, History, AlertTriangle, CheckCircle2,
-  Loader2, Play, Settings2, Info, RotateCcw, RefreshCw,
+  Loader2, Play, Settings2, Info, RotateCcw, RefreshCw, Stethoscope,
 } from 'lucide-react';
 import api from '@/services/api';
 
@@ -31,6 +31,7 @@ export function ProgramacionSat() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const [diag, setDiag] = useState<any>(null);
 
   const q = useQuery({
     queryKey: ['sat-programacion'],
@@ -53,6 +54,13 @@ export function ProgramacionSat() {
     } catch (e: any) {
       setError(e?.response?.data?.message || e.message);
     } finally { setBusy(''); }
+  };
+
+  const correrDiagnostico = async () => {
+    setMsg(''); setError(''); setDiag(null); setBusy('diag');
+    try { const r = await api.diagnosticoSat(); setDiag(r.data); }
+    catch (e: any) { setError(e?.response?.data?.message || e.message); }
+    finally { setBusy(''); }
   };
 
   if (!d) return null;
@@ -205,6 +213,13 @@ export function ProgramacionSat() {
             Reiniciar monitor
           </button>
 
+          <button onClick={correrDiagnostico} disabled={!!busy}
+            title="Prueba la e.firma y pregunta al SAT qué pasa con las solicitudes en vuelo"
+            className="btn-secondary text-sm flex items-center gap-1.5 disabled:opacity-50">
+            {busy === 'diag' ? <Loader2 size={14} className="animate-spin" /> : <Stethoscope size={14} />}
+            Diagnóstico
+          </button>
+
           <button onClick={() => setAbierto(!abierto)}
             className="btn-secondary text-sm flex items-center gap-1.5 ml-auto">
             <Settings2 size={14} /> Ajustes
@@ -222,6 +237,43 @@ export function ProgramacionSat() {
             rounded px-3 py-2 flex items-start gap-2">
             <AlertTriangle size={15} className="mt-0.5 shrink-0" /> {error}
           </p>
+        )}
+
+        {diag && (
+          <div className="text-sm bg-white border rounded-lg p-3 space-y-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className={diag.efirma?.ok ? 'text-emerald-700' : 'text-rose-700'}>
+                e.firma {diag.efirma?.ok ? `✓ ${diag.efirma.rfc}` : `✗ ${diag.efirma?.mensaje || ''}`}
+              </span>
+              <span className={diag.autenticacion?.ok ? 'text-emerald-700' : 'text-rose-700'}>
+                · Autenticación {diag.autenticacion?.ok ? '✓' : `✗ ${diag.autenticacion?.mensaje || 'no probada'}`}
+              </span>
+              <span className="text-gray-500">
+                · {diag.solicitudes?.length || 0} solicitud(es) verificadas
+              </span>
+            </div>
+            {diag.solicitudes?.length > 0 && (
+              <ul className="divide-y text-xs">
+                {diag.solicitudes.map((s: any, i: number) => (
+                  <li key={i} className="py-1.5 flex items-center gap-2 flex-wrap">
+                    <span className="text-gray-700">{s.direccion} · {s.periodo}</span>
+                    <span className={`font-medium ${
+                      s.estado === 'TERMINADA' ? 'text-emerald-700'
+                      : (String(s.estado).includes('PROCESO') || s.estado === 'ACEPTADA') ? 'text-sky-700'
+                      : 'text-rose-700'}`}>{s.error ? 'ERROR' : s.estado}</span>
+                    {s.paquetes > 0 && <span className="text-emerald-700">{s.paquetes} paquete(s)</span>}
+                    {s.cfdis > 0 && <span className="text-gray-500">{s.cfdis} CFDI</span>}
+                    {(s.mensaje || s.error) && <span className="text-gray-500">· {s.error || s.mensaje}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-[11px] text-gray-500">
+              <b>EN PROCESO / ACEPTADA</b> = el SAT todavía prepara los paquetes (hay que esperar).{' '}
+              <b>TERMINADA</b> con paquetes = ya están listos y el problema sería la descarga.{' '}
+              Un <b>error</b> muestra su motivo. No cambia nada: es solo consulta.
+            </p>
+          </div>
         )}
 
         {abierto && <Ajustes config={d.config} onGuardado={refrescar} />}

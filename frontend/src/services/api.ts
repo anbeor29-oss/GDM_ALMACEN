@@ -1031,6 +1031,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/reintentar');
     return r.data;
   }
+  /** Prueba de solo lectura: autentica la e.firma y pregunta al SAT por las en vuelo. */
+  async diagnosticoSat() {
+    const r = await this.client.post<APIResponse<any>>('/sat-descarga/diagnostico');
+    return r.data;
+  }
   async crearEjercicioSat(ejercicio: number, opts: any = {}) {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/ejercicio',
       { ejercicio, ...opts });

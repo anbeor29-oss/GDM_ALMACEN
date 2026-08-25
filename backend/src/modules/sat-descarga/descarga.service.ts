@@ -205,6 +205,63 @@ async function credencialUsable(companyId: string): Promise<soap.Credencial> {
   };
 }
 
+/**
+ * Diagnóstico de SOLO LECTURA: prueba la e.firma y le pregunta al SAT, solicitud
+ * por solicitud en vuelo, qué está pasando. No cambia nada en la base.
+ *
+ * Es la prueba "aparte" para saber dónde se atora: si la e.firma autentica, y
+ * qué contesta el SAT en la verificación —EN_PROCESO (todavía prepara), TERMINADA
+ * (ya hay paquetes: entonces el problema es la descarga) o un error con su
+ * motivo—. Sirve para no adivinar si es el código o el SAT.
+ */
+export async function diagnostico(companyId: string): Promise<any> {
+  let cred: soap.Credencial;
+  try {
+    cred = await credencialUsable(companyId);
+  } catch (e) {
+    return { efirma: { ok: false, mensaje: (e as Error).message }, autenticacion: null, solicitudes: [] };
+  }
+  const efirma = { ok: true, rfc: cred.rfc };
+
+  let token: soap.Token;
+  try {
+    token = await soap.autenticar(cred);
+  } catch (e) {
+    return { efirma, autenticacion: { ok: false, mensaje: (e as Error).message }, solicitudes: [] };
+  }
+
+  const enCurso = await query<any>(
+    `SELECT pa.id_solicitud_sat,
+            TO_CHAR(pa.desde, 'YYYY-MM-DD') AS desde, TO_CHAR(pa.hasta, 'YYYY-MM-DD') AS hasta,
+            t.direccion
+       FROM sat_particiones pa
+       JOIN sat_trabajos t ON t.id = pa.trabajo_id
+      WHERE t.company_id = $1
+        AND pa.estado IN ('SOLICITADA', 'EN_PROCESO')
+        AND pa.id_solicitud_sat IS NOT NULL
+      ORDER BY pa.created_at
+      LIMIT 12`,
+    [companyId],
+  );
+
+  const solicitudes: any[] = [];
+  for (const pa of enCurso.rows) {
+    try {
+      const v = await soap.verificar(cred, token, pa.id_solicitud_sat);
+      solicitudes.push({
+        idSolicitud: pa.id_solicitud_sat,
+        direccion: pa.direccion, periodo: `${pa.desde} → ${pa.hasta}`,
+        estado: v.estadoSolicitud, codigo: v.codigo, mensaje: v.mensaje,
+        codigoSolicitud: v.codigoSolicitud, cfdis: v.numeroCfdis, paquetes: v.paquetes.length,
+      });
+    } catch (e) {
+      solicitudes.push({ idSolicitud: pa.id_solicitud_sat, error: (e as Error).message });
+    }
+  }
+
+  return { efirma, autenticacion: { ok: true }, enVuelo: enCurso.rows.length, solicitudes };
+}
+
 /* ─────────────────────────  TRABAJOS Y PARTICIONES  ───────────────────────── */
 
 function huella(rfc: string, desde: Date, hasta: Date, d: any): string {

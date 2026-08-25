@@ -75,6 +75,18 @@ router.post(
   })
 );
 
+/**
+ * POST /sat-descarga/diagnostico — prueba de solo lectura: autentica la e.firma
+ * y le pregunta al SAT qué pasa con las solicitudes en vuelo. No cambia nada.
+ */
+router.post(
+  '/diagnostico',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await service.diagnostico(companyId(req)) });
+  })
+);
+
 /* ═══════════════════════════════════════════════════════════════════════════
    PROGRAMACIÓN — el día a día y los ejercicios completos
    ═══════════════════════════════════════════════════════════════════════════ */
