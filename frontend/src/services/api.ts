@@ -1428,8 +1428,34 @@ class APIClient {
     const r = await this.client.delete<APIResponse<any>>(`/nomina/imss/idse/pendientes/${id}`);
     return r.data;
   }
-  async marcarIdseGenerados(ids: string[]) {
-    const r = await this.client.post<APIResponse<any>>('/nomina/imss/idse/pendientes/generados', { ids });
+  /** Genera UN archivo con los pendientes elegidos (tipos mezclados) y lo descarga. */
+  async generarIdseDesdePendientes(ids: string[], cfg: any = {}) {
+    try {
+      const r = await this.client.post('/nomina/imss/idse/pendientes/generar', { ids, ...cfg }, { responseType: 'blob' });
+      const cd = String(r.headers['content-disposition'] || '');
+      const m = /filename="?([^"]+)"?/.exec(cd);
+      await this.downloadFile(r.data as Blob, m?.[1] || `IDSE_movimientos_${new Date().toISOString().slice(0, 10)}.txt`);
+    } catch (e: any) {
+      const data = e?.response?.data;
+      if (data instanceof Blob) {
+        const txt = await data.text();
+        let msg = txt;
+        try { const j = JSON.parse(txt); msg = j.message || j.error || txt; } catch { /* no era JSON */ }
+        throw new Error(msg);
+      }
+      throw e;
+    }
+  }
+  async getIdseEnviados() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/imss/idse/enviados');
+    return r.data;
+  }
+  async marcarIdseEnviados(ids: string[]) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/imss/idse/pendientes/enviados', { ids });
+    return r.data;
+  }
+  async regresarIdsePendientes(ids: string[]) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/imss/idse/enviados/regresar', { ids });
     return r.data;
   }
 

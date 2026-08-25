@@ -14,7 +14,8 @@
 import { query } from '../../config/database';
 import { ValidationError } from '../../middleware/errorHandler';
 import {
-  generarArchivoIdse, MovimientoIdse, TipoIdse, ConfigIdse, CAUSAS_BAJA,
+  generarArchivoIdse, generarArchivoMixto, MovimientoIdse, MovimientoMixto,
+  TipoIdse, ConfigIdse, CAUSAS_BAJA,
 } from './imss-idse';
 
 /** Lo que la pantalla envía por cada trabajador seleccionado. */
@@ -170,13 +171,106 @@ export async function descartarPendiente(companyId: string, id: string): Promise
   await query('DELETE FROM nomina_idse_pendientes WHERE id = $1 AND company_id = $2', [id, companyId]);
 }
 
-/** Marca como generados los pendientes cuyo archivo ya se descargó. */
-export async function marcarGenerados(companyId: string, ids: string[]): Promise<void> {
+/** Los que ya se confirmaron en el IDSE (la segunda lista). */
+export async function listarEnviados(companyId: string): Promise<any[]> {
+  const r = await query<any>(
+    `SELECT p.id, p.tipo, TO_CHAR(p.fecha, 'YYYY-MM-DD') AS fecha, TO_CHAR(p.generado_at, 'YYYY-MM-DD') AS enviado,
+            e.num_empleado,
+            TRIM(e.nombre || ' ' || e.apellido_pat || ' ' || COALESCE(e.apellido_mat,'')) AS nombre_completo
+       FROM nomina_idse_pendientes p
+       JOIN nomina_empleados e ON e.id = p.empleado_id
+      WHERE p.company_id = $1 AND p.estado = 'ENVIADO'
+      ORDER BY p.generado_at DESC NULLS LAST`,
+    [companyId],
+  );
+  return r.rows;
+}
+
+/** Confirma que los movimientos ya pasaron en el IDSE: pasan a la lista de enviados. */
+export async function marcarEnviados(companyId: string, ids: string[]): Promise<void> {
   if (!ids?.length) return;
   await query(
     `UPDATE nomina_idse_pendientes
-        SET estado = 'GENERADO', generado_at = NOW()
+        SET estado = 'ENVIADO', generado_at = NOW()
       WHERE company_id = $1 AND id::text = ANY($2::text[])`,
     [companyId, ids],
   );
+}
+
+/** Regresa movimientos enviados a la lista de pendientes (si se subieron por error). */
+export async function regresarPendientes(companyId: string, ids: string[]): Promise<void> {
+  if (!ids?.length) return;
+  await query(
+    `UPDATE nomina_idse_pendientes
+        SET estado = 'PENDIENTE', generado_at = NULL
+      WHERE company_id = $1 AND id::text = ANY($2::text[])`,
+    [companyId, ids],
+  );
+}
+
+/**
+ * Arma UN archivo IDSE con los movimientos pendientes seleccionados —mezclando
+ * altas, bajas y modificaciones—. Lee el registro patronal de la empresa y los
+ * datos de cada trabajador; la fecha y la causa vienen del propio pendiente. No
+ * cambia su estado: eso lo hace el usuario al confirmar que ya pasaron.
+ */
+export async function generarDesdePendientes(
+  companyId: string, ids: string[], cfg: ConfigIdse,
+): Promise<{ contenido: string; registros: number; nombre: string }> {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new ValidationError('Selecciona al menos un movimiento.');
+  }
+
+  const emp = await query<{ registro_patronal: string | null }>(
+    'SELECT registro_patronal FROM companies WHERE id = $1', [companyId],
+  );
+  const registroPatronal = emp.rows[0]?.registro_patronal;
+  if (!registroPatronal) {
+    throw new ValidationError(
+      'La empresa no tiene registro patronal ante el IMSS. Captúralo en Nómina → Parámetros.',
+    );
+  }
+
+  const r = await query<any>(
+    `SELECT p.id, p.tipo, TO_CHAR(p.fecha, 'YYYY-MM-DD') AS fecha, p.causa_baja, p.sbc AS sbc_pend,
+            e.nss, e.apellido_pat, e.apellido_mat, e.nombre, e.curp, e.num_empleado,
+            e.sbc AS sbc_exp, e.salario_diario_integrado,
+            TRIM(e.nombre || ' ' || e.apellido_pat || ' ' || COALESCE(e.apellido_mat,'')) AS nombre_completo
+       FROM nomina_idse_pendientes p
+       JOIN nomina_empleados e ON e.id = p.empleado_id
+      WHERE p.company_id = $1 AND p.id::text = ANY($2::text[]) AND p.estado = 'PENDIENTE'`,
+    [companyId, ids],
+  );
+
+  const movimientos: MovimientoMixto[] = [];
+  const problemas: string[] = [];
+  for (const p of r.rows) {
+    const quien = p.nombre_completo || p.num_empleado || p.id;
+    if (!p.nss) problemas.push(`${quien}: sin NSS en el expediente.`);
+    if (p.tipo === 'BAJA' && !p.causa_baja) problemas.push(`${quien}: la baja no tiene causa (edítala en el movimiento).`);
+    const sbc = p.sbc_pend != null ? Number(p.sbc_pend) : Number(p.sbc_exp ?? p.salario_diario_integrado ?? 0);
+    if ((p.tipo === 'ALTA' || p.tipo === 'MODIFICACION') && !(sbc > 0)) {
+      problemas.push(`${quien}: sin salario base de cotización.`);
+    }
+    movimientos.push({
+      tipo: p.tipo as TipoIdse,
+      registroPatronal,
+      nss: p.nss || '',
+      apellidoPaterno: p.apellido_pat,
+      apellidoMaterno: p.apellido_mat || '',
+      nombre: p.nombre,
+      fecha: p.fecha,
+      sbc,
+      claveTrabajador: p.num_empleado || '',
+      curp: p.curp || '',
+      causaBaja: p.causa_baja || undefined,
+    });
+  }
+  if (problemas.length) {
+    throw new ValidationError('No se generó el archivo. Corrige esto primero:\n• ' + problemas.join('\n• '));
+  }
+
+  const { contenido, registros } = generarArchivoMixto(movimientos, cfg);
+  const nombre = `IDSE_movimientos_${new Date().toISOString().slice(0, 10)}.txt`;
+  return { contenido, registros, nombre };
 }

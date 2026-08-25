@@ -954,13 +954,52 @@ router.delete(
   })
 );
 
-/** Marca como generados los pendientes cuyo TXT ya se descargó. */
+/** Genera UN archivo con los movimientos pendientes elegidos (tipos mezclados). */
 router.post(
-  '/imss/idse/pendientes/generados',
+  '/imss/idse/pendientes/generar',
   soloAdmin,
   asyncHandler(async (req: Request, res: Response) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
-    await imssIdse.marcarGenerados(companyId(req), ids);
+    const cfg = {
+      guia: req.body?.guia,
+      tipoTrabajador: req.body?.tipoTrabajador,
+      tipoSalario: req.body?.tipoSalario,
+      jornada: req.body?.jornada,
+    };
+    const { contenido, nombre } = await imssIdse.generarDesdePendientes(companyId(req), ids, cfg);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(contenido);
+  })
+);
+
+/** Confirma que los movimientos ya pasaron en el IDSE (pasan a la lista de enviados). */
+router.post(
+  '/imss/idse/pendientes/enviados',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    await imssIdse.marcarEnviados(companyId(req), ids);
+    res.json({ success: true });
+  })
+);
+
+/** La segunda lista: lo ya confirmado en el IDSE. */
+router.get(
+  '/imss/idse/enviados',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: { enviados: await imssIdse.listarEnviados(companyId(req)) } });
+  })
+);
+
+/** Regresa movimientos enviados a la lista de pendientes. */
+router.post(
+  '/imss/idse/enviados/regresar',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    await imssIdse.regresarPendientes(companyId(req), ids);
     res.json({ success: true });
   })
 );

@@ -200,6 +200,31 @@ export function generarArchivoIdse(
   return { contenido: lineas.join('\r\n') + '\r\n', registros: movimientos.length };
 }
 
+/** Un movimiento que además dice de qué tipo es (para archivos mezclados). */
+export interface MovimientoMixto extends MovimientoIdse {
+  tipo: TipoIdse;
+}
+
+/**
+ * Genera UN archivo con movimientos de tipos MEZCLADOS: altas, bajas y
+ * modificaciones en el mismo lote. Cada renglón se arma según su propio tipo
+ * —el IDSE lo distingue por el código de las posiciones 132-133—, y al final va
+ * una sola cifra de control con el total. Es lo que permite mandar todos los
+ * movimientos de la semana en un solo archivo en vez de uno por tipo.
+ */
+export function generarArchivoMixto(
+  movimientos: MovimientoMixto[], cfg: ConfigIdse = {}
+): { contenido: string; registros: number } {
+  if (!movimientos.length) throw new Error('No hay movimientos que generar.');
+  const lineas = movimientos.map((m) => {
+    const construir = CONSTRUCTOR[m.tipo];
+    if (!construir) throw new Error(`Tipo de movimiento IDSE inválido: ${m.tipo}`);
+    return construir(m, cfg);
+  });
+  lineas.push(cifraControlIdse(lineas.length, cfg));
+  return { contenido: lineas.join('\r\n') + '\r\n', registros: movimientos.length };
+}
+
 /* ─────────────────────────  Validador de archivos IDSE  ───────────────────── */
 
 export interface ProblemaLinea {

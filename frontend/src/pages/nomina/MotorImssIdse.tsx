@@ -62,7 +62,7 @@ export function MotorImssIdsePage() {
   const { puede } = useCapacidades();
   const esAdmin = puede(CAP.nomina);
 
-  const [modo, setModo] = useState<'generar' | 'validar'>('generar');
+  const [modo, setModo] = useState<'generar' | 'movimientos' | 'validar'>('generar');
   const [tipo, setTipo] = useState<Tipo>('ALTA');
   const [buscar, setBuscar] = useState('');
   const [incluirBajas, setIncluirBajas] = useState(false);
@@ -159,12 +159,6 @@ export function MotorImssIdsePage() {
       });
       await api.generarIdse({ tipo, movimientos, ...cfg });
       setOk(`Archivo IDSE de ${movimientos.length} movimiento(s) descargado. Súbelo en el portal del IDSE.`);
-      /* Los pendientes cuyo trabajador entró en este archivo se dan por enviados. */
-      const generados = new Set(seleccionados);
-      const idsGenerados = pendientes.filter((p) => p.tipo === tipo && generados.has(p.empleado_id)).map((p) => p.id);
-      if (idsGenerados.length) {
-        try { await api.marcarIdseGenerados(idsGenerados); pendQ.refetch(); } catch { /* secundario */ }
-      }
     } catch (e: any) {
       setError(e?.message || 'No se pudo generar el archivo.');
     } finally {
@@ -191,7 +185,7 @@ export function MotorImssIdsePage() {
 
       {/* Pestañas: generar vs. validar un archivo ya hecho */}
       <div className="flex gap-1 border-b">
-        {([['generar', 'Generar movimientos'], ['validar', 'Validar archivo']] as const).map(([k, label]) => (
+        {([['generar', 'Generar movimientos'], ['movimientos', 'Movimientos del IDSE'], ['validar', 'Validar archivo']] as const).map(([k, label]) => (
           <button
             key={k}
             onClick={() => setModo(k)}
@@ -204,7 +198,7 @@ export function MotorImssIdsePage() {
         ))}
       </div>
 
-      {modo === 'validar' ? <ValidadorIdse /> : <>
+      {modo === 'validar' ? <ValidadorIdse /> : modo === 'movimientos' ? <MovimientosIdse /> : <>
 
       {/* Selector de tipo */}
       <div className="grid sm:grid-cols-3 gap-3">
@@ -463,6 +457,151 @@ export function MotorImssIdsePage() {
         </button>
       </div>
       </>}
+    </div>
+  );
+}
+
+/* ═══════════════════════════ MOVIMIENTOS DEL IDSE (cola mixta) ═══════════════════════════ */
+
+const ETIQUETA_TIPO: Record<string, string> = {
+  ALTA: 'ALTA / REINGRESO', BAJA: 'BAJA', MODIFICACION: 'MODIF. DE SALARIO',
+};
+
+/**
+ * La cola de movimientos afiliatorios. Aquí caen las altas, bajas y modificaciones
+ * —de la baja del trabajador, del reingreso o de un cambio de salario— y se manda
+ * un SOLO archivo con los que se elijan, aunque sean de tipos distintos. Al
+ * confirmar que ya pasaron en el IDSE, se mueven a la lista de enviados; de ahí se
+ * pueden regresar si se subieron por error.
+ */
+function MovimientosIdse() {
+  const pendQ = useQuery({ queryKey: ['idse-pendientes'], queryFn: () => api.getIdsePendientes() });
+  const enviQ = useQuery({ queryKey: ['idse-enviados'], queryFn: () => api.getIdseEnviados() });
+  const pendientes: any[] = pendQ.data?.data?.pendientes || [];
+  const enviados: any[] = enviQ.data?.data?.enviados || [];
+
+  const [sel, setSel] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+
+  const idsSel = pendientes.filter((p) => sel[p.id]).map((p) => p.id);
+  const refetch = () => { pendQ.refetch(); enviQ.refetch(); };
+
+  const generar = async () => {
+    if (!idsSel.length) return;
+    setBusy(true); setMsg(''); setError('');
+    try {
+      await api.generarIdseDesdePendientes(idsSel);
+      setMsg(`Archivo con ${idsSel.length} movimiento(s) descargado. Cuando pase en el IDSE, márcalo con "ya pasó".`);
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo generar el archivo.');
+    } finally { setBusy(false); }
+  };
+
+  const accion = async (fn: () => Promise<any>) => {
+    setMsg(''); setError('');
+    try { await fn(); refetch(); } catch (e: any) { setError(e?.response?.data?.message || e?.message || 'No se pudo.'); }
+  };
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-lg text-sm flex items-start gap-2 whitespace-pre-line">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" /> <span>{error}</span>
+        </div>
+      )}
+      {msg && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg text-sm flex items-start gap-2">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> <span>{msg}</span>
+        </div>
+      )}
+
+      {/* ── Pendientes (mixtos, en un solo archivo) ── */}
+      <div className="bg-white rounded-lg shadow border">
+        <div className="p-3 border-b flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Movimientos pendientes</p>
+            <p className="text-[11px] text-gray-500">
+              Marca los que van en el archivo —pueden ser de tipos distintos— y genera uno solo.
+            </p>
+          </div>
+          <button
+            onClick={generar}
+            disabled={busy || idsSel.length === 0}
+            className="bg-violet-600 text-white px-4 py-2 rounded-lg hover:bg-violet-700 flex items-center gap-2 disabled:opacity-50 text-sm"
+          >
+            <Download size={16} />
+            {busy ? 'Generando…' : `Generar archivo IDSE (${idsSel.length})`}
+          </button>
+        </div>
+
+        {pendientes.length === 0 ? (
+          <p className="p-6 text-sm text-gray-500 italic text-center">
+            No hay movimientos pendientes. Al dar de baja, reingresar o cambiar un salario, aparecen aquí.
+          </p>
+        ) : (
+          <ul className="divide-y">
+            {pendientes.map((p) => (
+              <li key={p.id} className="px-3 py-2 flex items-center gap-3 text-sm hover:bg-gray-50">
+                {/* Casilla: entra al archivo */}
+                <input
+                  type="checkbox" checked={!!sel[p.id]}
+                  onChange={(e) => setSel((s) => ({ ...s, [p.id]: e.target.checked }))}
+                />
+                <span className="text-[10px] font-bold text-rose-600 w-28 shrink-0">{ETIQUETA_TIPO[p.tipo] || p.tipo}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-gray-900 truncate">{p.nombre_completo}</p>
+                  <p className="text-[11px] text-gray-500 font-mono">
+                    #{p.num_empleado || '—'} · NSS {p.nss || <span className="text-rose-600">falta</span>} · {p.fecha}
+                  </p>
+                </div>
+                {/* Check "ya pasó en el IDSE" → a la lista de enviados */}
+                <button
+                  onClick={() => accion(() => api.marcarIdseEnviados([p.id]))}
+                  className="text-xs text-emerald-700 hover:bg-emerald-50 px-2 py-1 rounded flex items-center gap-1"
+                  title="Confirmar que ya pasó en el IDSE"
+                >
+                  <CheckCircle2 size={14} /> ya pasó
+                </button>
+                <button onClick={() => accion(() => api.descartarIdsePendiente(p.id))}
+                  className="text-gray-400 hover:text-rose-600" title="Descartar">
+                  <X size={15} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* ── Enviados (ya pasaron en el IDSE) ── */}
+      <div className="bg-white rounded-lg shadow border">
+        <div className="p-3 border-b">
+          <p className="text-sm font-semibold text-gray-800">Ya pasaron en el IDSE</p>
+          <p className="text-[11px] text-gray-500">Si alguno se subió por error, se regresa a pendientes.</p>
+        </div>
+        {enviados.length === 0 ? (
+          <p className="p-4 text-sm text-gray-500 italic text-center">Todavía no hay movimientos confirmados.</p>
+        ) : (
+          <ul className="divide-y">
+            {enviados.map((p) => (
+              <li key={p.id} className="px-3 py-2 flex items-center gap-3 text-sm">
+                <span className="text-[10px] font-bold text-gray-500 w-28 shrink-0">{ETIQUETA_TIPO[p.tipo] || p.tipo}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-gray-700 truncate">{p.nombre_completo}</p>
+                  <p className="text-[11px] text-gray-400 font-mono">
+                    #{p.num_empleado || '—'} · {p.fecha}{p.enviado ? ` · confirmado ${p.enviado}` : ''}
+                  </p>
+                </div>
+                <button onClick={() => accion(() => api.regresarIdsePendientes([p.id]))}
+                  className="text-xs text-violet-700 hover:bg-violet-50 px-2 py-1 rounded">
+                  ↩ regresar
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

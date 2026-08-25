@@ -105,7 +105,7 @@ export function TreasuryPage() {
       <div className="flex gap-1 border-b">
         {/* Bancos va al final porque es el respaldo de lo demás: primero se ve
             qué se debe y cómo se va a pagar, y luego con qué. */}
-        {([['pagos', 'Cuentas por pagar'], ['remesas', 'Remesas de pago'],
+        {([['pagos', 'Cuentas por pagar'], ['remesas', 'Pagos programados'],
            ['bancos', 'Bancos']] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
@@ -272,14 +272,14 @@ function ManualPaymentModal({ onClose, onSaved }: { onClose: () => void; onSaved
           {/* PARA QUÉ ES ESTA PANTALLA, Y PARA QUÉ NO.
               Aquí se captura un pasivo que NO tiene factura en el sistema: un
               anticipo, una compra sin XML. Pagar varias facturas que ya se
-              recibieron es otra cosa y ya existe —Remesas de pago—, pero quien
+              recibieron es otra cosa y ya existe —Pagos programados—, pero quien
               llega buscándolo aterriza aquí, que es el botón visible. Decirlo
               cuesta tres renglones y evita capturar a mano un pasivo que ya
               estaba en la base. */}
           <div className="bg-sky-50 border border-sky-200 text-sky-900 px-3 py-2 rounded text-xs">
             Esto es para un pasivo <b>sin factura en el sistema</b> (un anticipo, una compra
             sin XML). Si lo que quieres es pagar varias facturas que ya recibiste,
-            usa la pestaña <b>Remesas de pago</b>: ahí eliges el proveedor, filtras sus
+            usa la pestaña <b>Pagos programados</b>: ahí eliges el proveedor, filtras sus
             facturas y las juntas en un solo pago.
           </div>
 

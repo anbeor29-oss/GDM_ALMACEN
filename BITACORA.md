@@ -11,6 +11,24 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-24 (nómina) — IDSE: un solo archivo con movimientos mezclados, y la lista de enviados
+
+La cola de movimientos afiliatorios se vuelve el centro del módulo. Pestaña nueva
+**Movimientos del IDSE**: las altas, bajas y modificaciones —vengan de una baja,
+un reingreso o un cambio de salario— caen en una lista con su tipo en rojo y el
+nombre. Se marcan los que van y se genera **UN solo archivo** con todos, aunque
+sean de tipos distintos (`generarArchivoMixto`: cada renglón lleva su código
+132-133 y al final una sola cifra de control). Antes había que hacer un archivo
+por tipo.
+
+Al confirmar que un movimiento **ya pasó en el IDSE**, se mueve a una segunda
+lista —nombre, tipo y fecha—; de ahí se puede **regresar** a pendientes si se
+subió por error. Estados de la cola: PENDIENTE → ENVIADO, reversible.
+
+En Tesorería, de paso: "Remesas de pago" ahora se llama **Pagos programados**.
+
+---
+
 ## 2026-08-24 (nómina) — Periodo especial de Asimilados a salarios
 
 Cuarta plantilla del periodo especial, junto a Aguinaldo, PTU y Finiquito. Los
