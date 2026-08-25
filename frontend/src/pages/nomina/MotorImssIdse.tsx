@@ -526,14 +526,29 @@ function MovimientosIdse() {
               Marca los que van en el archivo —pueden ser de tipos distintos— y genera uno solo.
             </p>
           </div>
-          <button
-            onClick={generar}
-            disabled={busy || idsSel.length === 0}
-            className="bg-violet-600 text-white px-4 py-2 rounded-lg hover:bg-violet-700 flex items-center gap-2 disabled:opacity-50 text-sm"
-          >
-            <Download size={16} />
-            {busy ? 'Generando…' : `Generar archivo IDSE (${idsSel.length})`}
-          </button>
+          <div className="flex items-center gap-3">
+            {pendientes.length > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={pendientes.every((p) => sel[p.id])}
+                  onChange={(e) => {
+                    const v = e.target.checked;
+                    setSel(Object.fromEntries(pendientes.map((p) => [p.id, v])));
+                  }}
+                />
+                Seleccionar todos
+              </label>
+            )}
+            <button
+              onClick={generar}
+              disabled={busy || idsSel.length === 0}
+              className="bg-violet-600 text-white px-4 py-2 rounded-lg hover:bg-violet-700 flex items-center gap-2 disabled:opacity-50 text-sm"
+            >
+              <Download size={16} />
+              {busy ? 'Generando…' : `Generar archivo IDSE (${idsSel.length})`}
+            </button>
+          </div>
         </div>
 
         {pendientes.length === 0 ? (

@@ -832,7 +832,20 @@ router.post(
   '/empleados',
   soloAdmin,
   asyncHandler(async (req: Request, res: Response) => {
-    const e = await empleados.crear(companyId(req), req.body || {});
+    const cid = companyId(req);
+    const e = await empleados.crear(cid, req.body || {});
+    /* Un alta manual es un alta ante el IMSS (movimiento 08): se encola con su
+     * fecha de ingreso y su SBC, y aparece en IMSS · IDSE. La importación masiva
+     * de XML NO pasa por aquí (usa su propia ruta), así que no encola altas de
+     * trabajadores ya registrados. Si un alta no aplicara, se descarta en la cola. */
+    if (e?.activo && /^\d{4}-\d{2}-\d{2}$/.test(String(e.fecha_ingreso || ''))) {
+      try {
+        await imssIdse.encolarPendiente(cid, {
+          empleadoId: e.id, tipo: 'ALTA', fecha: e.fecha_ingreso,
+          sbc: Number(e.salario_diario_integrado) || undefined, origen: 'alta',
+        });
+      } catch { /* el alta ya quedó; el pendiente es un extra */ }
+    }
     res.status(201).json({ success: true, data: e });
   })
 );
