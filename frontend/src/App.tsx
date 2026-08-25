@@ -3,8 +3,10 @@
  * Router configuration
  */
 
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
+import api from '@/services/api';
 import { Layout } from '@/components/Layout';
 import { LoginPage } from '@/pages/Login';
 import { PublicHomePage } from '@/pages/PublicHome';
@@ -164,10 +166,43 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Auto-recarga: cuando el backend cambia de commit (hubo un deploy), la próxima
+ * vez que se cambie de pantalla la app se recarga sola —así toma la versión nueva
+ * sin teclear Ctrl+Shift+R y sin cortar una captura a media—.
+ */
+function AutoActualizar() {
+  const commitInicial = useRef<string | null>(null);
+  const hayNueva = useRef(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    const revisar = async () => {
+      try {
+        const s = await api.getSalud();
+        const c = s?.commit;
+        if (!c || c === 'local') return;
+        if (commitInicial.current == null) commitInicial.current = c;
+        else if (c !== commitInicial.current) hayNueva.current = true;
+      } catch { /* sin red: no pasa nada */ }
+    };
+    revisar();
+    const id = setInterval(revisar, 120_000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (hayNueva.current) window.location.reload();
+  }, [location.pathname]);
+
+  return null;
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router basename={import.meta.env.BASE_URL}>
+        <AutoActualizar />
         <Routes>
           {/* Rutas públicas */}
           <Route path="/login" element={<LoginPage />} />
