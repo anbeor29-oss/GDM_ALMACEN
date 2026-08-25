@@ -296,6 +296,9 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [vacTomadas, setVacTomadas] = useState('0');
+  /* Días de indemnización a negociar. La constitucional es 90 (3 meses); un
+   * arreglo para no litigar suele cerrarse en menos, entre 30 y 90. */
+  const [indemDias, setIndemDias] = useState(90);
   /* Desde qué día se le debe el sueldo. Es el inicio del periodo especial, y de
    * ahí sale "su semana": el motor cobra los días del periodo como en cualquier
    * nómina. Vacío = sólo el día de la baja, que es lo conservador. */
@@ -314,11 +317,12 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
   /* El finiquito se recalcula con cada cambio de fecha o de captura. Es una
    * consulta barata y sin efectos: no escribe nada. */
   const fin = useQuery({
-    queryKey: ['finiquito', empleado.id, fecha, desdeDias, vacTomadas],
+    queryKey: ['finiquito', empleado.id, fecha, desdeDias, vacTomadas, indemDias],
     queryFn: () => api.getFiniquito(empleado.id, {
       fechaBaja: fecha,
       diasPendientesDePagar: diasDelTramo,
       vacacionesYaDisfrutadas: Number(vacTomadas) || 0,
+      indemnizacionDias: indemDias,
     }),
     enabled: /^\d{4}-\d{2}-\d{2}$/.test(fecha),
     retry: false,
@@ -340,6 +344,7 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
           tipo: pasar,
           desde: desdeDias || undefined,
           vacacionesYaDisfrutadas: Number(vacTomadas) || 0,
+          indemnizacionDias: pasar === 'LIQUIDACION' ? indemDias : undefined,
           motivo: motivo || undefined,
         });
         window.alert(r?.data?.aviso || 'Periodo especial creado.');
@@ -393,9 +398,38 @@ function ModalBaja({ empleado, onClose, onHecho }: any) {
               onChange={(e) => setVacTomadas(e.target.value)}
               className="w-full border rounded-lg px-3 py-2 text-sm" />
             <p className="text-[10px] text-gray-500 mt-0.5">
-              Días que ya tomó en este año de servicio; se restan de lo proporcional.
+              Días que ya tomó en toda la relación; se restan de los ganados.
             </p>
           </div>
+        </div>
+
+        {/* Indemnización a negociar: sólo pesa en la columna de LIQUIDACIÓN. */}
+        <div className="mt-3">
+          <label className="block text-xs text-gray-600 mb-1">
+            Indemnización a negociar — <b>{indemDias} días</b>
+          </label>
+          <div className="flex items-center gap-2 flex-wrap">
+            {[30, 60, 90].map((d) => (
+              <button
+                key={d} type="button" onClick={() => setIndemDias(d)}
+                className={`px-3 py-1 rounded-full text-xs border ${
+                  indemDias === d
+                    ? 'bg-rose-100 border-rose-300 text-rose-800 font-medium'
+                    : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+              >
+                {d}{d === 90 ? ' (constitucional)' : ''}
+              </button>
+            ))}
+            <input
+              type="range" min={30} max={90} step={5} value={indemDias}
+              onChange={(e) => setIndemDias(Number(e.target.value))}
+              className="flex-1 min-w-[8rem] accent-rose-600"
+            />
+          </div>
+          <p className="text-[10px] text-gray-500 mt-0.5">
+            La constitucional es 90 (3 meses de salario integrado). Menos es un arreglo con el
+            trabajador para no litigar; sólo afecta la columna de liquidación.
+          </p>
         </div>
 
         {fin.isFetching && <p className="text-sm text-gray-500 mt-3">Calculando…</p>}

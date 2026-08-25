@@ -1446,6 +1446,7 @@ class APIClient {
   /** Finiquito y liquidación de quien se va. NO escribe. */
   async getFiniquito(empleadoId: string, params: {
     fechaBaja: string; vacacionesYaDisfrutadas?: number; diasPendientesDePagar?: number;
+    indemnizacionDias?: number;
   }) {
     const r = await this.client.get<APIResponse<any>>(
       `/nomina/empleados/${empleadoId}/finiquito`, { params }
@@ -1531,7 +1532,8 @@ class APIClient {
   /** Deja el finiquito listo en un periodo especial de UNA persona. ESCRIBE. */
   async finiquitoANominaEspecial(empleadoId: string, body: {
     fechaBaja: string; tipo: 'FINIQUITO' | 'LIQUIDACION';
-    desde?: string; vacacionesYaDisfrutadas?: number; motivo?: string; fechaPago?: string;
+    desde?: string; vacacionesYaDisfrutadas?: number; indemnizacionDias?: number;
+    motivo?: string; fechaPago?: string;
   }) {
     const r = await this.client.post<APIResponse<any>>(
       `/nomina/empleados/${empleadoId}/finiquito/a-nomina-especial`, body

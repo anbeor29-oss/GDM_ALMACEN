@@ -122,7 +122,12 @@ export async function calcular(
   companyId: string,
   empleadoId: string,
   fechaBaja: string,
-  opciones: { vacacionesYaDisfrutadas?: number; diasPendientesDePagar?: number } = {}
+  opciones: {
+    vacacionesYaDisfrutadas?: number;
+    diasPendientesDePagar?: number;
+    /** Días de indemnización a negociar (30-90). Por omisión 90 (Art. 48). */
+    indemnizacionDias?: number;
+  } = {}
 ): Promise<Calculo> {
   const e = await query<any>(
     `SELECT id, num_empleado, nombre, apellido_pat, apellido_mat,
@@ -191,25 +196,35 @@ export async function calcular(
     fundamento: `Art. 87 LFT — ${diasAguinaldo} días al año, por ${diasDelAno} días trabajados`,
   });
 
-  /* Vacaciones: los días que le tocan por su antigüedad, proporcionales al
-   * tiempo corrido desde su último aniversario, menos las que ya disfrutó. */
+  /* Vacaciones GANADAS de ingreso a baja, menos las disfrutadas.
+   *
+   * Cada año CUMPLIDO aporta su cuota completa: al cerrar el año se gana entero
+   * (Art. 76), no a prorrata. El año EN CURSO aporta lo proporcional a los días
+   * corridos desde el último aniversario.
+   *
+   * Antes se pagaba SÓLO lo proporcional del periodo en curso —ignorando los
+   * años ya cumplidos—, así que quien se iba justo al cumplir un año recibía 0
+   * (12 días × 0 días corridos ÷ 365). Ese es el "$0.00" que se veía en pantalla. */
   const aniversarios = aniversariosCumplidos(t.fecha_ingreso, fechaBaja);
-  const diasQueLeTocan = diasDeVacaciones(aniversarios);
   const desdeAniversario = fechaDeAniversario(t.fecha_ingreso, aniversarios);
   const diasCorridos = Math.max(0, diasEntre(desdeAniversario, fechaBaja));
 
-  const vacProporcionales = (diasQueLeTocan / 365) * diasCorridos;
+  let diasGanados = 0;
+  for (let k = 1; k <= aniversarios; k++) diasGanados += diasDeVacaciones(k);
+  diasGanados += diasDeVacaciones(aniversarios + 1) * (diasCorridos / 365);
+  diasGanados = Math.round(diasGanados * 100) / 100;
+
   const yaDisfrutadas = Number(opciones.vacacionesYaDisfrutadas) || 0;
-  const vacPorPagar = Math.max(0, vacProporcionales - yaDisfrutadas);
+  const vacPorPagar = Math.max(0, diasGanados - yaDisfrutadas);
 
   finiquito.push({
     clave: '001', concepto: 'Vacaciones no disfrutadas',
     dias: Math.round(vacPorPagar * 100) / 100, base: diario,
     importe: pesos(diario * vacPorPagar),
     fundamento:
-      `Art. 76 LFT — ${diasQueLeTocan} días con ${aniversarios} año(s) de antigüedad, ` +
-      `proporcionales a ${diasCorridos} días desde su aniversario` +
-      (yaDisfrutadas > 0 ? `, menos ${yaDisfrutadas} ya disfrutados` : ''),
+      `Art. 76 LFT — ${diasGanados} día(s) ganados (${aniversarios} año(s) cumplidos ` +
+      `+ proporcional del año en curso)` +
+      (yaDisfrutadas > 0 ? `, menos ${yaDisfrutadas} disfrutados` : ''),
   });
 
   finiquito.push({
@@ -222,10 +237,19 @@ export async function calcular(
   /* ── LIQUIDACIÓN — sólo si el despido es injustificado ── */
   const liquidacion: Concepto[] = [];
 
+  /* Indemnización: la constitucional es de 90 días (3 meses, Art. 48). Pero un
+   * arreglo con el trabajador para no litigar suele negociarse en menos —30, 60
+   * o un punto intermedio—, así que el número de días es un parámetro. Se topa a
+   * 90: por arriba ya no es "negociar a la baja", y evita un dedazo caro. */
+  const indemDias = Number(opciones.indemnizacionDias);
+  const dias = Number.isFinite(indemDias) && indemDias > 0 ? Math.min(90, indemDias) : 90;
   liquidacion.push({
-    clave: '025', concepto: 'Indemnización constitucional (3 meses)',
-    dias: 90, base: integrado, importe: pesos(integrado * 90),
-    fundamento: 'Art. 48 LFT — tres meses de salario integrado (Art. 89)',
+    clave: '025',
+    concepto: dias === 90 ? 'Indemnización constitucional (3 meses)' : `Indemnización negociada (${dias} días)`,
+    dias, base: integrado, importe: pesos(integrado * dias),
+    fundamento: dias === 90
+      ? 'Art. 48 LFT — tres meses de salario integrado (Art. 89)'
+      : `Negociada sobre la base del Art. 48 (90 días); ${dias} días de salario integrado`,
   });
 
   /* Los VEINTE DÍAS POR AÑO del Art. 50 Fr. II no se calculan.
@@ -317,6 +341,8 @@ export async function pasarANominaEspecial(
     /** Desde cuándo se le debe el sueldo. Es el inicio del periodo. */
     desde?: string;
     vacacionesYaDisfrutadas?: number;
+    /** Días de indemnización negociados (sólo LIQUIDACION). */
+    indemnizacionDias?: number;
     motivo?: string;
     fechaPago?: string;
   }
@@ -325,6 +351,7 @@ export async function pasarANominaEspecial(
    * mejor tronar antes de crear un periodo que habría que borrar. */
   const cuenta = await calcular(companyId, empleadoId, d.fechaBaja, {
     vacacionesYaDisfrutadas: d.vacacionesYaDisfrutadas,
+    indemnizacionDias: d.indemnizacionDias,
   });
 
   /* El tramo que se le debe. Por omisión el mismo día de la baja —un solo día—,
@@ -354,6 +381,7 @@ export async function pasarANominaEspecial(
       periodo.id, empleadoId, d.tipo,
       JSON.stringify({
         vacacionesYaDisfrutadas: Number(d.vacacionesYaDisfrutadas) || 0,
+        indemnizacionDias: d.indemnizacionDias != null ? Number(d.indemnizacionDias) : null,
         motivo: d.motivo || null,
         fechaBaja: d.fechaBaja,
       }),
@@ -392,7 +420,10 @@ export async function conceptosParaPrenomina(
   const cuenta = await calcular(
     companyId, periodo.empleado_id,
     datos.fechaBaja || periodo.fecha_fin,
-    { vacacionesYaDisfrutadas: Number(datos.vacacionesYaDisfrutadas) || 0 }
+    {
+      vacacionesYaDisfrutadas: Number(datos.vacacionesYaDisfrutadas) || 0,
+      indemnizacionDias: datos.indemnizacionDias != null ? Number(datos.indemnizacionDias) : undefined,
+    }
   );
 
   const conceptos = [...cuenta.finiquito.conceptos];

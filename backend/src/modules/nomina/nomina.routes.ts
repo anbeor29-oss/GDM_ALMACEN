@@ -412,6 +412,8 @@ router.get(
       {
         vacacionesYaDisfrutadas: Number(req.query.vacacionesYaDisfrutadas) || 0,
         diasPendientesDePagar:   Number(req.query.diasPendientesDePagar) || 0,
+        indemnizacionDias: req.query.indemnizacionDias != null
+          ? Number(req.query.indemnizacionDias) : undefined,
       }
     );
     res.json({ success: true, data: r });
@@ -438,6 +440,8 @@ router.post(
         tipo: req.body?.tipo === 'LIQUIDACION' ? 'LIQUIDACION' : 'FINIQUITO',
         desde: req.body?.desde,
         vacacionesYaDisfrutadas: Number(req.body?.vacacionesYaDisfrutadas) || 0,
+        indemnizacionDias: req.body?.indemnizacionDias != null
+          ? Number(req.body.indemnizacionDias) : undefined,
         motivo: req.body?.motivo,
         fechaPago: req.body?.fechaPago,
       }
