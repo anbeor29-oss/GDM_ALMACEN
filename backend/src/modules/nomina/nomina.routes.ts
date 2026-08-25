@@ -17,6 +17,7 @@ import { authenticateToken, authorize, requireCapability } from '../../middlewar
 import { requireModule } from '../../middleware/permissions';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as empleados from './empleados.service';
+import * as vacaciones from './vacaciones.service';
 import * as imssIdse from './imss-idse.service';
 import { TipoIdse, validarArchivoIdse } from './imss-idse';
 import * as parametros from './parametros.service';
@@ -885,6 +886,42 @@ router.post(
       } catch { /* extra: el reingreso ya quedó */ }
     }
     res.json({ success: true, data: r });
+  })
+);
+
+/* ── Vacaciones (control + prima) ── */
+router.get(
+  '/empleados/:id/vacaciones',
+  asyncHandler(async (req: Request, res: Response) => {
+    const [lista, res_] = await Promise.all([
+      vacaciones.listar(companyId(req), req.params.id),
+      vacaciones.resumen(companyId(req), req.params.id),
+    ]);
+    res.json({ success: true, data: { vacaciones: lista, resumen: res_ } });
+  })
+);
+
+router.post(
+  '/empleados/:id/vacaciones',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await vacaciones.agregar(companyId(req), req.params.id, {
+      fechaInicio: String(req.body?.fechaInicio || ''),
+      fechaFin: String(req.body?.fechaFin || ''),
+      dias: Number(req.body?.dias),
+      tipo: req.body?.tipo === 'PAGADA' ? 'PAGADA' : 'DISFRUTADA',
+      motivo: req.body?.motivo,
+    });
+    res.json({ success: true, data: r });
+  })
+);
+
+router.delete(
+  '/empleados/:id/vacaciones/:vacId',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    await vacaciones.eliminar(companyId(req), req.params.id, req.params.vacId);
+    res.json({ success: true });
   })
 );
 

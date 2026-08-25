@@ -1703,6 +1703,20 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/nomina/empleados/${empleadoId}/modificaciones-salario`, body);
     return r.data;
   }
+  async getVacaciones(empleadoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/empleados/${empleadoId}/vacaciones`);
+    return r.data;
+  }
+  async agregarVacacion(empleadoId: string, body: {
+    fechaInicio: string; fechaFin: string; dias: number; tipo: string; motivo?: string;
+  }) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/empleados/${empleadoId}/vacaciones`, body);
+    return r.data;
+  }
+  async eliminarVacacion(empleadoId: string, vacId: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/nomina/empleados/${empleadoId}/vacaciones/${vacId}`);
+    return r.data;
+  }
   async darDeBajaEmpleado(id: string, fecha_baja: string, motivo?: string) {
     const r = await this.client.post<APIResponse<any>>(`/nomina/empleados/${id}/baja`, { fecha_baja, motivo });
     return r.data;

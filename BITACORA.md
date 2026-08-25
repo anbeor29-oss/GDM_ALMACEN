@@ -11,6 +11,29 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-24 (nómina) — Expediente: pestañas de Vacaciones y ModifSal
+
+Dos pestañas nuevas en el expediente del trabajador.
+
+**Vacaciones.** El control de días: GANADAS por antigüedad (Art. 76, cuota
+completa por año cumplido más proporcional del año en curso —igual que el
+finiquito—) menos DISFRUTADAS menos PAGADAS = REMANENTE. Se capturan los tramos
+que tomó o que se le pagaron. La **prima vacacional** de los días que caen en un
+periodo de nómina pasa sola a esa nómina; las pagadas además cobran el importe de
+los días. Verificado el cálculo de ganadas: 12 a un año, 26 a dos, proporcional
+en medio.
+
+**ModifSal.** El calendario de cambios de salario: fecha efectiva, salario nuevo
+(el SDI se calcula solo) y motivo. Al guardar, el expediente toma el salario
+nuevo —de ahí lo lee la siguiente nómina— y se encola el movimiento 07 en
+IMSS · IDSE para avisar al instituto.
+
+Tablas `nomina_vacaciones` y `nomina_modificaciones_salario`. La prima de
+vacaciones se inyecta en `prenomina.calcular` sólo para nómina ordinaria (ni
+especiales ni asimilados), y un fallo ahí no tumba el cálculo.
+
+---
+
 ## 2026-08-24 (nómina) — IDSE: un solo archivo con movimientos mezclados, y la lista de enviados
 
 La cola de movimientos afiliatorios se vuelve el centro del módulo. Pestaña nueva

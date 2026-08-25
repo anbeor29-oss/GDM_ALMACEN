@@ -35,6 +35,7 @@ import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import * as ejercicios from './ejercicios.service';
 import * as periodosSvc from './periodos.service';
 import * as finiquitoSvc from './finiquito.service';
+import * as vacacionesSvc from './vacaciones.service';
 import {
   calcularRecibo, EntradaCalculo, Periodicidad, Zona, pesos, partirGravadoExento,
   costoDeFaltas, DEDUCCIONES_POR_DIAS,
@@ -404,6 +405,19 @@ export async function calcular(
     const sd = esAsimilado ? 0 : (Number(e.salario_diario) || 0);
     const sdi = esAsimilado ? 0 : (Number(e.salario_diario_integrado) || sd);
 
+    /* La prima vacacional —y, si se pagaron, el importe— de las vacaciones que
+     * caen en este periodo pasan a la nómina. Sólo en nómina ordinaria: en un
+     * especial o en asimilados no aplica. Un fallo aquí no tumba el cálculo. */
+    let vacacionesDelPeriodo: Array<{ clave: string; importe: number }> = [];
+    if (periodo.tipo !== 'ESPECIAL' && !esAsimilado) {
+      try {
+        vacacionesDelPeriodo = await vacacionesSvc.delPeriodo(
+          companyId, e.id, periodo.fecha_inicio, periodo.fecha_fin, sd,
+          Number(emp.fi_prima_vac_pct) || 25,
+        );
+      } catch { /* la nómina no depende de esto */ }
+    }
+
     /* Los créditos entran como deducciones, sin pasarse del saldo: el último
      * abono casi nunca es completo. */
     const otrasDeducciones = [
@@ -461,7 +475,10 @@ export async function calcular(
       asimilado: esAsimilado,
       /* Horas extra, bonos, despensa: cada uno con su exención del Art. 93,
        * que la calcula el motor según el concepto. */
-      otrosIngresos: (cap?.otrosIngresos || []).filter((x) => Number(x.importe) > 0),
+      otrosIngresos: [
+        ...(cap?.otrosIngresos || []).filter((x) => Number(x.importe) > 0),
+        ...vacacionesDelPeriodo,
+      ],
       otrasDeducciones,
       /* ── Desde cuándo aplica cada descuento ──
        *

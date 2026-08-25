@@ -355,9 +355,169 @@ function ModifSalTab({ empleadoId, esEdicion, fechaIngreso, fi, onAplicado }: {
   );
 }
 
+/**
+ * Vacaciones — el control de días del trabajador.
+ *
+ * GANADAS (por su antigüedad, Art. 76) − DISFRUTADAS − PAGADAS = REMANENTE. Se
+ * capturan los tramos que tomó o que se le pagaron; la prima vacacional de los
+ * que caen en un periodo de nómina pasa a esa nómina. Sólo con el expediente ya
+ * guardado.
+ */
+function VacacionesTab({ empleadoId, esEdicion }: { empleadoId?: string; esEdicion: boolean }) {
+  const [ini, setIni] = useState(hoyIsoLocal());
+  const [fin, setFin] = useState(hoyIsoLocal());
+  const [dias, setDias] = useState('');
+  const [tipo, setTipo] = useState<'DISFRUTADA' | 'PAGADA'>('DISFRUTADA');
+  const [motivo, setMotivo] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const q = useQuery({
+    queryKey: ['vacaciones', empleadoId],
+    queryFn: () => api.getVacaciones(empleadoId as string),
+    enabled: !!empleadoId && esEdicion,
+  });
+  const lista: any[] = q.data?.data?.vacaciones || [];
+  const r: any = q.data?.data?.resumen || { ganados: 0, disfrutados: 0, pagados: 0, remanente: 0 };
+
+  if (!esEdicion || !empleadoId) {
+    return (
+      <p className="text-sm text-gray-500">
+        Guarda primero el expediente. Las vacaciones se llevan sobre un trabajador ya dado de alta.
+      </p>
+    );
+  }
+
+  /* Días naturales del rango como sugerencia; el usuario ajusta a los hábiles. */
+  const diasDelRango = (() => {
+    if (!ini || !fin || fin < ini) return 0;
+    return Math.round((new Date(`${fin}T12:00:00`).getTime() - new Date(`${ini}T12:00:00`).getTime()) / 86_400_000) + 1;
+  })();
+
+  const guardar = async () => {
+    const d = Number(dias) || diasDelRango;
+    if (!(d > 0)) { setErr('Escribe cuántos días son.'); return; }
+    setBusy(true); setErr('');
+    try {
+      await api.agregarVacacion(empleadoId, { fechaInicio: ini, fechaFin: fin, dias: d, tipo, motivo });
+      setDias(''); setMotivo('');
+      q.refetch();
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || 'No se pudo registrar.');
+    } finally { setBusy(false); }
+  };
+
+  const quitar = async (id: string) => {
+    try { await api.eliminarVacacion(empleadoId, id); q.refetch(); } catch { /* nada */ }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Resumen */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white rounded-lg border p-3">
+        <Resumen rotulo="Ganadas" valor={r.ganados} color="text-gray-900" />
+        <Resumen rotulo="Disfrutadas" valor={r.disfrutados} color="text-sky-700" />
+        <Resumen rotulo="Pagadas" valor={r.pagados} color="text-violet-700" />
+        <Resumen rotulo="Remanente" valor={r.remanente}
+          color={r.remanente < 0 ? 'text-rose-700' : 'text-emerald-700'} />
+      </div>
+
+      {/* Alta */}
+      <div className="bg-white rounded-lg border p-3 space-y-2">
+        <p className="text-sm font-semibold text-gray-800">Registrar vacaciones</p>
+        <div className="grid sm:grid-cols-4 gap-3">
+          <label className="block text-xs text-gray-600">
+            Del
+            <CampoFecha value={ini} onChange={setIni} className="w-full border rounded-lg px-2 py-1.5 text-sm mt-0.5" />
+          </label>
+          <label className="block text-xs text-gray-600">
+            Al
+            <CampoFecha value={fin} onChange={setFin} className="w-full border rounded-lg px-2 py-1.5 text-sm mt-0.5" />
+          </label>
+          <label className="block text-xs text-gray-600">
+            Días{diasDelRango > 0 ? ` (rango: ${diasDelRango})` : ''}
+            <input type="number" step="0.5" min="0" value={dias}
+              onChange={(e) => setDias(e.target.value)} placeholder={String(diasDelRango || '')}
+              className="w-full border rounded-lg px-2 py-1.5 text-sm mt-0.5" />
+          </label>
+          <label className="block text-xs text-gray-600">
+            Tipo
+            <select value={tipo} onChange={(e) => setTipo(e.target.value as any)}
+              className="w-full border rounded-lg px-2 py-1.5 text-sm mt-0.5 bg-white">
+              <option value="DISFRUTADA">Disfrutadas (las tomó)</option>
+              <option value="PAGADA">Pagadas (no las tomó)</option>
+            </select>
+          </label>
+        </div>
+        <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Motivo (opcional)"
+          value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+        {err && <p className="text-xs text-rose-600">{err}</p>}
+        <div className="flex justify-end">
+          <button onClick={guardar} disabled={busy}
+            className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 text-sm disabled:opacity-50">
+            {busy ? 'Guardando…' : 'Registrar'}
+          </button>
+        </div>
+        <p className="text-[11px] text-gray-500">
+          La prima vacacional de los días que caigan en un periodo de nómina pasa sola a esa nómina;
+          las <b>pagadas</b> además cobran el importe de los días.
+        </p>
+      </div>
+
+      {/* Histórico */}
+      <div className="bg-white rounded-lg border overflow-hidden">
+        <p className="text-sm font-semibold text-gray-800 px-3 py-2 border-b">Registro</p>
+        {lista.length === 0 ? (
+          <p className="p-4 text-sm text-gray-500 italic text-center">Sin vacaciones registradas.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Periodo</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Días</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Tipo</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Motivo</th>
+                <th className="w-8"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {lista.map((v) => (
+                <tr key={v.id}>
+                  <td className="px-3 py-1.5">{aTextoMx(v.fecha_inicio)} → {aTextoMx(v.fecha_fin)}</td>
+                  <td className="px-3 py-1.5 text-right font-medium">{Number(v.dias)}</td>
+                  <td className="px-3 py-1.5">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      v.tipo === 'PAGADA' ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700'}`}>
+                      {v.tipo === 'PAGADA' ? 'Pagadas' : 'Disfrutadas'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-1.5 text-gray-600">{v.motivo || '—'}</td>
+                  <td className="px-3 py-1.5 text-right">
+                    <button onClick={() => quitar(v.id)} className="text-gray-400 hover:text-rose-600"><X size={14} /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Resumen({ rotulo, valor, color }: { rotulo: string; valor: any; color: string }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-gray-500">{rotulo}</p>
+      <p className={`text-xl font-bold tabular-nums ${color}`}>{Number(valor)}</p>
+      <p className="text-[10px] text-gray-400">días</p>
+    </div>
+  );
+}
+
 export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose, onGuardado }: Props) {
   const esEdicion = !!empleado?.id;
-  const [bloque, setBloque] = useState<'id' | 'domicilio' | 'laboral' | 'descuentos' | 'modifsal' | 'expediente'>('id');
+  const [bloque, setBloque] = useState<'id' | 'domicilio' | 'laboral' | 'descuentos' | 'vacaciones' | 'modifsal' | 'expediente'>('id');
   const [f, setF] = useState<Record<string, any>>({ ...VACIO, ...(inicial || {}) });
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -618,6 +778,8 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
       tono: 'bg-violet-50 border-violet-200', activa: 'border-violet-500 text-violet-700 bg-violet-50' },
     { id: 'descuentos', label: 'Descuentos',
       tono: 'bg-amber-50 border-amber-200', activa: 'border-amber-500 text-amber-700 bg-amber-50' },
+    { id: 'vacaciones', label: 'Vacaciones',
+      tono: 'bg-teal-50 border-teal-200', activa: 'border-teal-500 text-teal-700 bg-teal-50' },
     { id: 'modifsal', label: 'ModifSal',
       tono: 'bg-rose-50 border-rose-200', activa: 'border-rose-500 text-rose-700 bg-rose-50' },
     /* La bitácora y las entregas van al final: se consultan, no se capturan al
@@ -747,6 +909,10 @@ export function EmpleadoModal({ empleado, inicial, origen, soloDevolver, onClose
               )}
               </div>
             </div>
+          )}
+
+          {bloque === 'vacaciones' && (
+            <VacacionesTab empleadoId={empleado?.id} esEdicion={esEdicion} />
           )}
 
           {bloque === 'modifsal' && (
