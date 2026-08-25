@@ -301,16 +301,19 @@ export const ESTADO_SOLICITUD: Record<string, string> = {
 export async function verificar(
   cred: Credencial, token: Token, idSolicitud: string
 ): Promise<Verificacion> {
-  const cuerpo =
-    `<des:solicitud IdSolicitud="${idSolicitud}" RfcSolicitante="${cred.rfc}"></des:solicitud>`;
-  const sinFirma =
-    `<des:VerificaSolicitudDescarga xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx">${cuerpo}</des:VerificaSolicitudDescarga>`;
+  /* El sello va sobre el elemento INTERNO <des:solicitud>, no sobre la operación
+   * —igual que en la solicitud (hipótesis #2)—. Firmar la operación completa daba
+   * "Sello Mal Formado" en la verificación, y sin verificación válida nada llega
+   * a "terminada" ni se descarga. Atributos ordenados por exc-c14n. */
+  const attrs = [`IdSolicitud="${idSolicitud}"`, `RfcSolicitante="${cred.rfc}"`].sort().join(' ');
+  const solicitudParaDigest =
+    `<des:solicitud xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx" ${attrs}></des:solicitud>`;
 
-  const firma = bloqueFirma('', digestSha1(sinFirma), cred, keyInfoX509(cred), TRANSFORM.documento);
+  const firma = bloqueFirma('', digestSha1(solicitudParaDigest), cred, keyInfoX509(cred), TRANSFORM.documento);
   const sobre =
     '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx" xmlns:xd="http://www.w3.org/2000/09/xmldsig#">' +
     '<s:Header/><s:Body>' +
-    `<des:VerificaSolicitudDescarga>${cuerpo}${firma}</des:VerificaSolicitudDescarga>` +
+    `<des:VerificaSolicitudDescarga><des:solicitud ${attrs}>${firma}</des:solicitud></des:VerificaSolicitudDescarga>` +
     '</s:Body></s:Envelope>';
 
   const xml = await enviar(
@@ -336,16 +339,18 @@ export async function verificar(
 export async function descargar(
   cred: Credencial, token: Token, idPaquete: string
 ): Promise<RespuestaSat & { zip?: Buffer }> {
-  const cuerpo =
-    `<des:peticionDescarga IdPaquete="${idPaquete}" RfcSolicitante="${cred.rfc}"></des:peticionDescarga>`;
-  const sinFirma =
-    `<des:PeticionDescargaMasivaTercerosEntrada xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx">${cuerpo}</des:PeticionDescargaMasivaTercerosEntrada>`;
+  /* Igual que la solicitud y la verificación: el sello va sobre el elemento
+   * INTERNO <des:peticionDescarga>, no sobre la operación. Firmar la operación
+   * daba "Sello Mal Formado" al descargar. Atributos ordenados por exc-c14n. */
+  const attrs = [`IdPaquete="${idPaquete}"`, `RfcSolicitante="${cred.rfc}"`].sort().join(' ');
+  const peticionParaDigest =
+    `<des:peticionDescarga xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx" ${attrs}></des:peticionDescarga>`;
 
-  const firma = bloqueFirma('', digestSha1(sinFirma), cred, keyInfoX509(cred), TRANSFORM.documento);
+  const firma = bloqueFirma('', digestSha1(peticionParaDigest), cred, keyInfoX509(cred), TRANSFORM.documento);
   const sobre =
     '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx" xmlns:xd="http://www.w3.org/2000/09/xmldsig#">' +
     '<s:Header/><s:Body>' +
-    `<des:PeticionDescargaMasivaTercerosEntrada>${cuerpo}${firma}</des:PeticionDescargaMasivaTercerosEntrada>` +
+    `<des:PeticionDescargaMasivaTercerosEntrada><des:peticionDescarga ${attrs}>${firma}</des:peticionDescarga></des:PeticionDescargaMasivaTercerosEntrada>` +
     '</s:Body></s:Envelope>';
 
   const xml = await enviar(
