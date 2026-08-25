@@ -267,6 +267,7 @@ export function Layout() {
                     pathPrefix="/contabilidad"
                     children={[
                       { to: '/contabilidad/cuentas',    icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
+                      { to: '/contabilidad/asignacion', icon: emoji3D('🏷️'), label: 'Asignación de cuenta' },
                       {
                         icon: emoji3D('📊'), label: 'Reportes',
                         children: [
@@ -279,14 +280,14 @@ export function Layout() {
                           { to: '/contabilidad/razones',    icon: emoji3D('🔍'), label: 'Razones y análisis' },
                         ],
                       },
+                      /* Auditoría cuelga de Contabilidad, después de Reportes: es
+                         quien revisa lo timbrado contra lo contabilizado antes del
+                         cierre del mes. La ruta sigue siendo /auditoria. */
+                      { to: '/auditoria', icon: emoji3D('🛡️'), label: 'Auditoría' },
                     ]}
                   />
                 )}
                 {show('treasury')     && <NavItem to="/treasury"     icon={emoji3D('🏦')} accent="sky"     label="Tesorería"        open={sidebarOpen} />}
-                {/* Auditoría vive junto a Tesorería: las dos miran hacia afuera
-                    —una al banco, la otra al SAT— y las dos las revisa la misma
-                    persona antes del cierre del mes. */}
-                {show('auditoria')    && <NavItem to="/auditoria"    icon={emoji3D('🛡️')} accent="emerald" label="Auditoría"        open={sidebarOpen} />}
                 {/* ── XML del SAT, con menú propio ──
                     Era la segunda pestaña de Auditoría y llegar costaba dos
                     clics. Para una pantalla que se abre varias veces al día
