@@ -275,13 +275,22 @@ router.post(
       : pedida === 'emitidos' ? ['emitidos']
       : ['recibidos'];
 
+    /* El SAT NO deja bajar el XML (CFDI) de RECIBIDOS cuando hay cancelados en
+     * el rango: contesta 301 "no se permite la descarga de xml cancelados", y
+     * lo hace sin importar el EstadoComprobante que se mande (se probó "1" y
+     * "0", ambos 301). En cambio los metadatos de recibidos sí los entrega.
+     * Por eso, si el usuario no fuerza un tipo, recibidos se pide como Metadata
+     * (para tener el dato de las cuentas por pagar) y emitidos como CFDI (el XML
+     * propio, que sí baja). Para el XML de un recibido en concreto está la vía
+     * por UUID. */
+    const tipoPedido = req.body?.tipo;
     const trabajos = [];
     for (const direccion of direcciones) {
       trabajos.push(await service.crearTrabajo(companyId(req), {
         desde:     req.body?.desde,
         hasta:     req.body?.hasta,
         direccion,
-        tipo:      req.body?.tipo,
+        tipo:      tipoPedido || (direccion === 'recibidos' ? 'Metadata' : 'CFDI'),
         filtros:   req.body?.filtros,
       }, req.user?.userId));
     }

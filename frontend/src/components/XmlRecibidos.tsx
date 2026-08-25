@@ -273,9 +273,9 @@ export function XmlRecibidos({ direccionInicial }: {
             </label>
             <label className="block">
               <span className="block text-xs text-gray-600 mb-1">Qué traer</span>
-              <select value={que} onChange={(e) => setQue(e.target.value as any)} className="input w-48">
-                <option value="recibidos">Recibidos</option>
-                <option value="emitidos">Emitidos</option>
+              <select value={que} onChange={(e) => setQue(e.target.value as any)} className="input w-56">
+                <option value="recibidos">Recibidos (datos)</option>
+                <option value="emitidos">Emitidos (XML)</option>
                 <option value="ambos">Recibidos y emitidos</option>
               </select>
             </label>
@@ -302,6 +302,14 @@ export function XmlRecibidos({ direccionInicial }: {
             rango trae demasiados comprobantes, lo parte a la mitad y reintenta.
             {dias > 180 && ' En periodos largos se empieza con bloques de 30 días para no gastar el límite diario de solicitudes del SAT.'}
           </p>
+          {(que === 'recibidos' || que === 'ambos') && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              De <b>recibidos</b> el SAT no entrega el XML por descarga masiva cuando hay
+              cancelados en el rango (contesta 301, con cualquier filtro), así que se traen sus
+              <b> metadatos</b>: UUID, emisor, fecha, monto y estatus vigente/cancelado — la base
+              para las cuentas por pagar. De <b>emitidos</b> sí baja el XML completo.
+            </p>
+          )}
         </div>
       )}
 
