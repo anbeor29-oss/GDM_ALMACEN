@@ -853,9 +853,18 @@ router.post(
   '/empleados/:id/baja',
   soloAdmin,
   asyncHandler(async (req: Request, res: Response) => {
-    const r = await empleados.darDeBaja(
-      companyId(req), req.params.id, req.body?.fecha_baja, req.body?.motivo
-    );
+    const cid = companyId(req);
+    const r = await empleados.darDeBaja(cid, req.params.id, req.body?.fecha_baja, req.body?.motivo);
+    /* La baja se encola para el IDSE: aparece sola en Nómina → IMSS · IDSE. Es
+     * secundario a la baja misma, así que un fallo aquí no la tumba. */
+    const fechaBaja = String(req.body?.fecha_baja || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fechaBaja)) {
+      try {
+        await imssIdse.encolarPendiente(cid, {
+          empleadoId: req.params.id, tipo: 'BAJA', fecha: fechaBaja, origen: 'baja',
+        });
+      } catch { /* el pendiente es un extra: la baja ya quedó registrada */ }
+    }
     res.json({ success: true, data: r });
   })
 );
@@ -864,7 +873,17 @@ router.post(
   '/empleados/:id/reingreso',
   soloAdmin,
   asyncHandler(async (req: Request, res: Response) => {
-    const r = await empleados.reingresar(companyId(req), req.params.id, req.body?.fecha_reingreso);
+    const cid = companyId(req);
+    const r = await empleados.reingresar(cid, req.params.id, req.body?.fecha_reingreso);
+    /* El reingreso es un alta ante el IMSS (movimiento 08): también se encola. */
+    const fechaRe = String(req.body?.fecha_reingreso || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fechaRe)) {
+      try {
+        await imssIdse.encolarPendiente(cid, {
+          empleadoId: req.params.id, tipo: 'ALTA', fecha: fechaRe, origen: 'reingreso',
+        });
+      } catch { /* extra: el reingreso ya quedó */ }
+    }
     res.json({ success: true, data: r });
   })
 );
@@ -914,6 +933,35 @@ router.post(
     const contenido = String(req.body?.contenido ?? '');
     if (!contenido.trim()) throw new ValidationError('Pega o sube el contenido del archivo a validar.');
     res.json({ success: true, data: validarArchivoIdse(contenido) });
+  })
+);
+
+/* Cola de pendientes: lo que la baja (y el reingreso) mandan al menú IDSE. */
+router.get(
+  '/imss/idse/pendientes',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: { pendientes: await imssIdse.listarPendientes(companyId(req)) } });
+  })
+);
+
+router.delete(
+  '/imss/idse/pendientes/:id',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    await imssIdse.descartarPendiente(companyId(req), req.params.id);
+    res.json({ success: true });
+  })
+);
+
+/** Marca como generados los pendientes cuyo TXT ya se descargó. */
+router.post(
+  '/imss/idse/pendientes/generados',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    await imssIdse.marcarGenerados(companyId(req), ids);
+    res.json({ success: true });
   })
 );
 

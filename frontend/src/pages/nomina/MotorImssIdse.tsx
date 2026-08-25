@@ -82,7 +82,43 @@ export function MotorImssIdsePage() {
   const lista: any[] = q.data?.data?.empleados || [];
   const porId = useMemo(() => new Map(lista.map((e) => [e.id, e])), [lista]);
 
+  /* Movimientos que la baja/reingreso mandaron a este menú. Se traen aquí para
+   * cargarlos en la selección sin volver a buscar a la persona. */
+  const pendQ = useQuery({ queryKey: ['idse-pendientes'], queryFn: () => api.getIdsePendientes() });
+  const pendientes: any[] = pendQ.data?.data?.pendientes || [];
+  const pendDelTipo = pendientes.filter((p) => p.tipo === tipo);
+  /* Datos de los pendientes cargados, para pintarlos aunque sean bajas que ya no
+   * están en el padrón activo. */
+  const [pendMap, setPendMap] = useState<Record<string, any>>({});
+
   const seleccionados = Object.keys(sel);
+
+  const cargarPendientes = () => {
+    setOk(''); setError('');
+    setPendMap((m) => {
+      const nuevo = { ...m };
+      for (const p of pendDelTipo) nuevo[p.empleado_id] = { nombre_completo: p.nombre_completo, nss: p.nss };
+      return nuevo;
+    });
+    setSel((prev) => {
+      const copia = { ...prev };
+      for (const p of pendDelTipo) {
+        copia[p.empleado_id] = {
+          fecha: p.fecha || hoyIso(),
+          sbc: p.sbc != null ? String(p.sbc) : '',
+          umf: '',
+          clave: p.num_empleado || '',
+          curp: '',
+          causaBaja: p.causa_baja || '',
+        };
+      }
+      return copia;
+    });
+  };
+
+  const descartarPendiente = async (id: string) => {
+    try { await api.descartarIdsePendiente(id); pendQ.refetch(); } catch { /* no pasa nada */ }
+  };
 
   const alternar = (e: any) => {
     setOk(''); setError('');
@@ -123,6 +159,12 @@ export function MotorImssIdsePage() {
       });
       await api.generarIdse({ tipo, movimientos, ...cfg });
       setOk(`Archivo IDSE de ${movimientos.length} movimiento(s) descargado. Súbelo en el portal del IDSE.`);
+      /* Los pendientes cuyo trabajador entró en este archivo se dan por enviados. */
+      const generados = new Set(seleccionados);
+      const idsGenerados = pendientes.filter((p) => p.tipo === tipo && generados.has(p.empleado_id)).map((p) => p.id);
+      if (idsGenerados.length) {
+        try { await api.marcarIdseGenerados(idsGenerados); pendQ.refetch(); } catch { /* secundario */ }
+      }
     } catch (e: any) {
       setError(e?.message || 'No se pudo generar el archivo.');
     } finally {
@@ -185,6 +227,36 @@ export function MotorImssIdsePage() {
           );
         })}
       </div>
+
+      {/* ── Pendientes que mandó la baja / el reingreso ── */}
+      {pendDelTipo.length > 0 && (
+        <div className="bg-violet-50 border border-violet-200 rounded-lg p-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-sm text-violet-900">
+              <b>{pendDelTipo.length}</b> movimiento(s) de {TIPOS.find((t) => t.clave === tipo)!.label.toLowerCase()}{' '}
+              llegaron desde una baja o reingreso, listos para enviar al IDSE.
+            </p>
+            <button
+              onClick={cargarPendientes}
+              className="text-xs bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700"
+            >
+              Cargar en la selección
+            </button>
+          </div>
+          <ul className="mt-2 divide-y divide-violet-100">
+            {pendDelTipo.map((p) => (
+              <li key={p.id} className="py-1 flex items-center gap-2 text-xs text-violet-900">
+                <span className="flex-1 truncate">
+                  {p.nombre_completo} · NSS {p.nss || <span className="text-rose-600">falta</span>} · {p.fecha}
+                </span>
+                <button onClick={() => descartarPendiente(p.id)} className="text-violet-400 hover:text-rose-600" title="Descartar">
+                  <X size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-4">
         {/* ── Padrón ── */}
@@ -253,7 +325,7 @@ export function MotorImssIdsePage() {
             ) : (
               <ul className="divide-y">
                 {seleccionados.map((id) => {
-                  const e = porId.get(id);
+                  const e = porId.get(id) || pendMap[id];
                   const f = sel[id];
                   return (
                     <li key={id} className="p-3 space-y-2">
@@ -375,7 +447,7 @@ export function MotorImssIdsePage() {
 
       {/* Acción */}
       <div className="flex items-center justify-end gap-3">
-        {seleccionados.some((id) => faltaNss(porId.get(id))) && (
+        {seleccionados.some((id) => faltaNss(porId.get(id) || pendMap[id])) && (
           <p className="text-xs text-amber-700 flex items-center gap-1 mr-auto">
             <AlertTriangle size={13} /> Hay seleccionados sin NSS: el IMSS lo exige y el archivo no se generará hasta capturarlo.
           </p>

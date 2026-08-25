@@ -11,6 +11,33 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-24 (nómina) — Finiquito: vacaciones bien, indemnización negociable, y la baja va al IDSE
+
+Tres correcciones sobre la baja del trabajador.
+
+**Vacaciones que sí se pagan.** El cálculo pagaba sólo lo proporcional del periodo
+en curso desde el último aniversario, así que quien se iba justo al cumplir un año
+recibía **$0.00** (12 días × 0 días corridos ÷ 365) —el error que se veía—. Ahora
+se pagan las vacaciones **ganadas** de ingreso a baja: cada año cumplido aporta su
+cuota completa (al cerrar el año se gana entero, Art. 76) más lo proporcional del
+año en curso, menos las disfrutadas. A un año exacto, sin disfrutar: 12 días.
+
+**Indemnización negociable.** La constitucional del Art. 48 son 90 días, pero un
+arreglo para no litigar se cierra en menos. El número de días es ahora un
+parámetro (30/60/90 o un punto entre 30 y 90, topado a 90) con presets y
+deslizador en el modal; recalcula la columna de liquidación y se guarda en el
+periodo especial.
+
+**La baja se manda al menú IDSE.** Antes había que volver a capturar a la persona
+en Nómina → IMSS · IDSE para generar su baja. Ahora, al dar de baja (cualquiera de
+los tres botones), el movimiento se **encola** (`nomina_idse_pendientes`) y aparece
+solo en esa pantalla, con su fecha ya puesta, listo para elegir la causa y generar
+el TXT. El reingreso encola un alta (mov. 08) igual. Al generar el archivo, el
+pendiente se marca como enviado; mientras, se puede descartar a mano. La cola no
+sustituye al generador ni guarda el archivo: es sólo el pendiente.
+
+---
+
 ## 2026-08-24 (identidad) — Motor RFC de personas físicas: control de consistencia
 
 Un RFC mal capturado no se ve hasta que el PAC rechaza el timbrado. El motor del

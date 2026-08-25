@@ -129,3 +129,54 @@ export async function generar(
   const nombre = `IDSE_${tipo}_${hoy}.txt`;
   return { contenido, registros, nombre };
 }
+
+/* ───────────────────  Cola de pendientes (baja → menú IDSE)  ─────────────── */
+
+/**
+ * Encola un movimiento afiliatorio para el IDSE. Lo llama la baja del trabajador
+ * —y en su momento el alta y la modificación de salario—, para que aparezca solo
+ * en Nómina → IMSS · IDSE sin recapturar a nadie. Si ya estaba encolado el mismo
+ * movimiento, no lo duplica.
+ */
+export async function encolarPendiente(
+  companyId: string,
+  m: { empleadoId: string; tipo: TipoIdse; fecha: string; causaBaja?: string; sbc?: number; origen?: string },
+): Promise<void> {
+  await query(
+    `INSERT INTO nomina_idse_pendientes
+       (company_id, empleado_id, tipo, fecha, causa_baja, sbc, origen)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (company_id, empleado_id, tipo, fecha) DO NOTHING`,
+    [companyId, m.empleadoId, m.tipo, m.fecha, m.causaBaja || null, m.sbc ?? null, m.origen || 'manual'],
+  );
+}
+
+export async function listarPendientes(companyId: string): Promise<any[]> {
+  const r = await query<any>(
+    `SELECT p.id, p.empleado_id, p.tipo, TO_CHAR(p.fecha, 'YYYY-MM-DD') AS fecha,
+            p.causa_baja, p.sbc, p.origen, p.created_at,
+            e.num_empleado, e.nss,
+            TRIM(e.nombre || ' ' || e.apellido_pat || ' ' || COALESCE(e.apellido_mat,'')) AS nombre_completo
+       FROM nomina_idse_pendientes p
+       JOIN nomina_empleados e ON e.id = p.empleado_id
+      WHERE p.company_id = $1 AND p.estado = 'PENDIENTE'
+      ORDER BY p.created_at DESC`,
+    [companyId],
+  );
+  return r.rows;
+}
+
+export async function descartarPendiente(companyId: string, id: string): Promise<void> {
+  await query('DELETE FROM nomina_idse_pendientes WHERE id = $1 AND company_id = $2', [id, companyId]);
+}
+
+/** Marca como generados los pendientes cuyo archivo ya se descargó. */
+export async function marcarGenerados(companyId: string, ids: string[]): Promise<void> {
+  if (!ids?.length) return;
+  await query(
+    `UPDATE nomina_idse_pendientes
+        SET estado = 'GENERADO', generado_at = NOW()
+      WHERE company_id = $1 AND id::text = ANY($2::text[])`,
+    [companyId, ids],
+  );
+}

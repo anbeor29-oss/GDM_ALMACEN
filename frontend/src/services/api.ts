@@ -1419,6 +1419,20 @@ class APIClient {
     return r.data;
   }
 
+  /** Movimientos que la baja/reingreso encolaron para el IDSE. */
+  async getIdsePendientes() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/imss/idse/pendientes');
+    return r.data;
+  }
+  async descartarIdsePendiente(id: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/nomina/imss/idse/pendientes/${id}`);
+    return r.data;
+  }
+  async marcarIdseGenerados(ids: string[]) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/imss/idse/pendientes/generados', { ids });
+    return r.data;
+  }
+
   /** Cierra el periodo: congela los recibos y genera los XML. ESCRIBE. */
   async cerrarPeriodoNomina(periodoId: string, captura: any[]) {
     const r = await this.client.post<APIResponse<any>>(
