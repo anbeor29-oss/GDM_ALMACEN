@@ -103,7 +103,7 @@ export function TablaComprobantesSat({ direccion, anio, mes }: {
             )}
             {!q.isLoading && visibles.length === 0 && (
               <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500 italic">
-                Sin comprobantes. Pídelos al SAT arriba: conforme lleguen aparecen aquí, ordenados por fecha.
+                Sin comprobantes. Pídelos desde «XML del SAT»: conforme lleguen aparecen aquí, ordenados por fecha.
               </td></tr>
             )}
             {visibles.map((c) => {

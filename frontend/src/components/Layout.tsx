@@ -298,21 +298,22 @@ export function Layout() {
                     responden preguntas distintas: los recibidos son lo que hay
                     que pagar y deducir; los emitidos, la comprobación de que
                     todo lo timbrado llegó. */}
-                {/* Dos submenús —Emitidos y Recibidos—: son consultas distintas
-                    al SAT y dos vistas distintas. Emitidos traen su XML, así que
-                    tienen representación del comprobante; recibidos son ficha de
-                    metadatos (el SAT no entrega su XML). El header cae en Emitidos. */}
+                {/* Menú XML: la pantalla de descarga ("XML del SAT") y, aparte,
+                    las dos vistas de consulta —Emitidos (con representación, que
+                    traen XML) y Recibidos (ficha de metadatos, el SAT no da su
+                    XML)—. El header cae en la pantalla principal de descarga. */}
                 {show('auditoria') && (
                   <NavGroup
-                    to="/xml-sat/emitidos"
-                    icon={emoji3D('📥')}
-                    label="XML del SAT"
+                    to="/xml-sat"
+                    icon={emoji3D('🗂️')}
+                    label="XML"
                     accent="emerald"
                     open={sidebarOpen}
                     pathPrefix="/xml-sat"
                     children={[
+                      { to: '/xml-sat',           icon: emoji3D('📥'), label: 'XML del SAT' },
                       { to: '/xml-sat/emitidos',  icon: emoji3D('📤'), label: 'Emitidos' },
-                      { to: '/xml-sat/recibidos', icon: emoji3D('📥'), label: 'Recibidos' },
+                      { to: '/xml-sat/recibidos', icon: emoji3D('📨'), label: 'Recibidos' },
                     ]}
                   />
                 )}
