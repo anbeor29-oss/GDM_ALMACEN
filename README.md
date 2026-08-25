@@ -95,6 +95,12 @@ Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
   (no da el XML de recibidos con cancelados, con cualquier filtro) → por eso los
   recibidos se traen por metadatos. Botón **Diagnóstico** read-only, detalle por
   solicitud/paquete y reintento de atoradas.
+- **XML del SAT en tres pantallas**: menú **XML** con «XML del SAT» (la descarga),
+  **Emitidos** y **Recibidos**. La tabla es la del Anexo 20 —fecha, folio,
+  cliente/proveedor, RFC, total, estatus, CC—. En emitidos el folio (verde) abre
+  la representación del CFDI y la cartera muestra el timbre de pago (pagado = PUE o
+  PPD con complemento); en recibidos, punto rojo → ficha de metadatos. Pendiente:
+  marcar cancelados de emitidos (bajan por CFDI, sin `estado_sat`).
 - **Contabilidad**: los reportes (periodos y cierre → razones y análisis) quedan
   en un submenú **Reportes** dentro de Contabilidad.
 - **Tesorería**: "Remesas de pago" → **Pagos programados**; pestaña nueva de

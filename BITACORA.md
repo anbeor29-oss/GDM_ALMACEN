@@ -11,6 +11,57 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-25 (xml-sat) — Menú XML en tres pantallas y la vista del Anexo 20 (Emitidos / Recibidos)
+
+Ya que la descarga baja los XML, faltaba mirarlos como contabilidad los pide. El
+menú **XML** queda con tres hijos:
+
+- **XML del SAT** — la pantalla principal de descarga (estado, cupo, pedir al SAT,
+  trabajos). Es la que alimenta a las otras dos.
+- **Emitidos** — sólo la tabla, con la representación del comprobante.
+- **Recibidos** — sólo la tabla (aparece con sus títulos aunque esté vacía).
+
+**La tabla (columnas del Anexo 20).** Fecha (de menor a mayor), folio, la
+CONTRAPARTE ya resuelta (cliente en emitidos = receptor; proveedor en recibidos =
+emisor), RFC, total, ESTATUS y **CC** (cuenta contable). La contraparte y el flag
+de pagado se calculan en el backend (`listarComprobantesVista`) para que el
+frontend no dependa de la dirección.
+
+**Folio, según haya XML o no.** De EMITIDOS tenemos el XML: el folio va en verde y
+al hacer clic se abre la **representación** del CFDI —emisor, receptor, conceptos,
+impuestos, totales y timbre— parseada del propio XML sin depender del prefijo de
+namespace. De RECIBIDOS el SAT sólo entrega metadatos: su folio lleva un **punto
+rojo** y el clic abre la **ficha** con lo que sí hay.
+
+**Estatus con los iconos estándar (lucide).** `Wallet` verde = **pagado** → clic:
+el timbre de pago que la liquida; `Ban` rojo = **cancelado** → clic: la
+cancelación (fecha y datos); y un círculo hueco para lo vigente-no-pagado. La
+columna deja aire a propósito: van a entrar más estatus.
+
+**"Pagado" = PUE, o PPD con su complemento.** Se agregó `cfdi_pago_relacion`, que
+mapea el `DoctoRelacionado` de los complementos de pago (tipo P) a las facturas
+que liquidan. Se llena al indexar un P, y `reconstruirRelacionPagos` rellena los
+que ya estaban bajados —así las facturas traídas antes de esta versión muestran su
+cartera sin volver a descargar—. Los complementos P no salen como renglón: se ven
+al clic de la cartera de su factura.
+
+**CC** es la columna nueva `cuenta_contable`, editable en su celda. Por ahora es
+captura manual; enlazarla a un catálogo de cuentas (o regla) va con la
+contabilidad.
+
+**Límites que se documentan (no son bug, es el dato):**
+- Recibidos nunca muestran "pagado": sin XML no hay complemento que cruzar. Sólo
+  punto rojo → ficha, y `Ban` si el metadato dice cancelado.
+- **Emitidos cancelados — PENDIENTE.** Como los emitidos bajan por CFDI (no por
+  metadato), el `estado_sat` no viene en el XML, así que un emitido cancelado no
+  se marca con `Ban` todavía. Queda por revisar: la vía es traer también el
+  metadato de emitidos (que sí trae el estatus) para saber sus cancelaciones.
+
+Migración `2026-08-25a_xml_sat_vista.sql` (columnas `cuenta_contable` y
+`fecha_cancelacion`, tabla `cfdi_pago_relacion`). Commits `c6cfa40`, `49b21a1`.
+
+---
+
 ## 2026-08-25 (sat-descarga) — La descarga de XML por fin baja: dos bugs del sello/estados y la restricción de recibidos
 
 Quedó **funcionando de punta a punta** el motor de descarga masiva del SAT
