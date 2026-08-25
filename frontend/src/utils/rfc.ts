@@ -102,8 +102,14 @@ const RE_PERSONA_FISICA =
 const RE_PERSONA_MORAL =
   /^[A-ZÑ&]{3}[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])[A-Z0-9]{3}$/;
 
+/** Limpia el RFC SIN borrar los dígitos: mayúsculas y sólo caracteres válidos de
+ *  RFC (letras, Ñ, & y números). `normalizar` no sirve aquí —quita los dígitos—. */
+function limpiarRfc(rfc: string): string {
+  return (rfc || '').toUpperCase().replace(/[^A-ZÑ&0-9]/g, '');
+}
+
 export function esPersonaFisica(rfc: string): boolean {
-  return normalizar(rfc).replace(/ /g, '').length === 13;
+  return limpiarRfc(rfc).length === 13;
 }
 export function estructuraValida(rfc: string): boolean {
   const r = (rfc || '').toUpperCase().trim();
@@ -146,7 +152,7 @@ export function revisarRfcPersonaFisica(datos: {
   apellidoMat?: string;
   fechaNacimiento?: string;
 }): RevisionRfc {
-  const rfc = normalizar(datos.rfc).replace(/ /g, '');
+  const rfc = limpiarRfc(datos.rfc);
   if (rfc.length !== 13) return { aplica: false, ok: true, problemas: [], rfcCalculado4: '' };
 
   const problemas: string[] = [];
