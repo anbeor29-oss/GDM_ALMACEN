@@ -11,6 +11,51 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-25 (sat-descarga) — La descarga de XML por fin baja: dos bugs del sello/estados y la restricción de recibidos
+
+Quedó **funcionando de punta a punta** el motor de descarga masiva del SAT
+(e.firma → autenticar → solicitar → verificar → **descargar** → indexar). La
+prueba: se pidió agosto 2026 y bajaron **6 CFDI emitidos**, ya indexados y
+visibles en "Comprobantes del periodo" (facturas de $9,916, $1,624 y $928 más
+sus complementos de pago). Llevaba varias sesiones sin bajar un solo XML; ahora
+sí. Se llegó ahí cerrando **dos bugs** y entendiendo **una restricción del SAT**.
+
+**Bug 1 — el sello de la verificación (y la descarga) estaba mal armado.** El
+XML-DSig de `solicitar` firma el elemento **interno** (`<des:solicitud>`), pero
+`verificar` y `descargar` firmaban el **wrapper** de la operación. El SAT
+contestaba "Sello Mal Formado" al verificar, así que **ninguna** solicitud
+pasaba de "en proceso" y nada se descargaba. Se corrigió para firmar el elemento
+interno (`<des:solicitud>` / `<des:peticionDescarga>`) con los atributos
+ordenados alfabéticamente, igual que la solicitud que sí servía.
+
+**Bug 2 — el mapa de EstadoSolicitud estaba corrido.** Los códigos oficiales son
+`1 Aceptada · 2 EnProceso · 3 Terminada · 4 Error · 5 Rechazada · 6 Vencida`,
+pero el `ESTADO_SOLICITUD` tenía el `3` como "EN_PROCESO". Resultado: una
+solicitud **Terminada** (con su paquete y sus CFDI listos en el SAT) se leía como
+"en proceso", así que el motor **nunca creaba el paquete** ni lo bajaba. Éste era
+el motivo de fondo de que —incluso con el sello ya bueno— no bajara nada. Se puso
+el mapa en los valores oficiales.
+
+**La restricción de recibidos (no es un bug, es del SAT).** El SAT contesta
+**301 "no se permite la descarga de xml cancelados"** al pedir el **XML de
+recibidos** cuando hay cancelados en el rango, y lo hace **con cualquier filtro**:
+se probaron `EstadoComprobante="1"` y `"0"`, ambos 301. Los **metadatos** de
+recibidos sí los entrega. Decisión: si el usuario no fuerza el tipo, **recibidos
+se pide como Metadata** (UUID, emisor, fecha, monto y estatus vigente/cancelado —
+la base de cuentas por pagar) y **emitidos como CFDI** (el XML propio, que sí
+baja). En la pantalla las opciones dicen "Recibidos (datos)" / "Emitidos (XML)" y
+una nota ámbar explica el 301. Los metadatos entran a `cfdi_recibidos` por
+`indexarMetadata` y salen en la misma lista de comprobantes. Si algún día se
+necesita el XML de un recibido concreto, la vía es pedirlo **por UUID**.
+
+Herramienta que destrabó todo: el botón **"Diagnóstico"** (read-only) —autentica,
+reverifica las solicitudes en vuelo y manda pruebas de recibidos con distinto
+EstadoComprobante—, que fue lo que dejó ver el "Sello Mal Formado" y confirmó los
+dos 301. Commits: sello `4794e13`, mapa de estados `62efb1a`, recibidos→metadata
+`9d39690`.
+
+---
+
 ## 2026-08-24 (tesorería) — Conciliación bancaria: todas las cuentas en una vista, con Excel
 
 Pestaña nueva después de Bancos. No duplica el parseo —ese ya vive en "Bancos",

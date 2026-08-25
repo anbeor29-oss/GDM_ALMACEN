@@ -29,9 +29,12 @@ SW Sapien.
 - 🟢 **Permisos por grupo de trabajo**: siete grupos, cada uno con sus módulos,
   sus capacidades y su pantalla de inicio.
 - 🟡 **PAC en sandbox** de SW Sapien. Timbra, pero no ante el SAT real.
-- 🟡 **Descarga masiva del SAT**: el motor funciona (resuelto el 301 de
-  cancelados) y trae también los UUID cancelados por metadatos; el cron diario
-  **no arranca sin `ENABLE_SAT_DESCARGA_CRON=true`** en el entorno.
+- 🟢 **Descarga masiva del SAT**: baja de punta a punta (autenticar → solicitar →
+  verificar → **descargar** → indexar). **Emitidos** se traen como **CFDI** (el XML
+  completo); **recibidos** como **metadatos** (UUID, emisor, fecha, monto, estatus)
+  porque el SAT contesta 301 al XML de recibidos si hay cancelados en el rango, con
+  cualquier filtro. El cron diario **no arranca sin `ENABLE_SAT_DESCARGA_CRON=true`**
+  en el entorno.
 
 ## 🔑 Cómo entrar
 
@@ -84,9 +87,14 @@ Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
   indemnización negociable (30/60/90). La baja se manda al menú IMSS · IDSE.
 - **Nómina — Asimilados a salarios**: periodo especial con ISR mensual sobre el
   ingreso, sin subsidio ni IMSS.
-- **SAT descarga masiva**: el "sello mal formado" era el filtro de cancelados
-  (301) — resuelto; detalle por solicitud/paquete; recuperación de UUID
-  cancelados por metadatos; botón para reintentar las atoradas.
+- **SAT descarga masiva**: ya baja (probado: 6 CFDI emitidos indexados). Cayeron
+  dos bugs — el **"sello mal formado"** era que verificar/descargar firmaban el
+  wrapper y no el elemento interno (`<des:solicitud>`), y el **mapa de
+  EstadoSolicitud estaba corrido** (una Terminada se leía como en-proceso, por eso
+  no bajaba nada). El **301** de recibidos es aparte: es una restricción del SAT
+  (no da el XML de recibidos con cancelados, con cualquier filtro) → por eso los
+  recibidos se traen por metadatos. Botón **Diagnóstico** read-only, detalle por
+  solicitud/paquete y reintento de atoradas.
 - **Contabilidad**: los reportes (periodos y cierre → razones y análisis) quedan
   en un submenú **Reportes** dentro de Contabilidad.
 - **Tesorería**: "Remesas de pago" → **Pagos programados**; pestaña nueva de
