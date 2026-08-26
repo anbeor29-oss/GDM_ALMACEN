@@ -38,6 +38,13 @@ por el RFC. Automático y consecutivo, con opción a **capturar/override** el c�
 gasto** partido por producto, más `cargo` al **IVA acreditable 119.01** (siempre
 esa, una sola cuenta); `abono` a la subcuenta del proveedor por el total.
 
+**COBROS y PAGOS (traslado del IVA).** En **Tesorería → Cobros y pagos**, de cada
+complemento de pago (tipo P) con XML: en cobros, `102 banco` + `209 no cobrado`
+(cargo) → `105 cliente` + `208 cobrado` (abono); en pagos, `201 proveedor` +
+`118 pagado` (cargo) → `102 banco` + `119 por pagar` (abono). El monto y el IVA
+salen del propio complemento (respetan el de la factura original). Una póliza por
+complemento.
+
 **Pantallas.** Menú **XML del SAT → Asignación de cuenta** (puente CFDI→balanza) y
 **Auditoría** pasó a colgar de Contabilidad, después de Reportes. En **Facturas →
 Pólizas de venta** (3 pestañas: ingresos por producto / clientes / pólizas) y en
@@ -55,8 +62,7 @@ descuento, retenciones— se **OMITE con su motivo**, nunca se inventa.
   alcanza a los que tengan XML. Por eso el cron diario ahora pide recibidos
   también como CFDI (un día casi nunca trae cancelados).
 - **Balanza derivada** de `journal_lines`, **póliza de apertura** con la balanza
-  del sistema anterior (falta el archivo), **generación de la póliza de nómina**
-  y **cobros/pagos** (traslado 209→208, 119→118).
+  del sistema anterior (falta el archivo) y **generación de la póliza de nómina**.
 
 Migraciones `2026-08-25b…f` (journal, tercero_rfc, nomina_concepto_cuenta,
 venta/compra_producto_cuenta). Commits `28f4cc1`, `791418b`, `568c7fe`,
