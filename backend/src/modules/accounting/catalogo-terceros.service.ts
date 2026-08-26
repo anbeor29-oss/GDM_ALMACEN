@@ -108,3 +108,31 @@ export async function generarSubcuentasDeComprobantes(
   }
   return { creadas, existentes, errores };
 }
+
+/** Las subcuentas de tercero ya creadas (para revisarlas / capturar su código). */
+export async function listarSubcuentasTercero(companyId: string, tipo: 'cliente' | 'proveedor') {
+  const agrups = tipo === 'cliente' ? ['105.01', '105.02'] : ['201.01', '201.02'];
+  const r = await query<any>(
+    `SELECT id, codigo, nombre, tercero_rfc, codigo_agrupador
+       FROM accounting_accounts
+      WHERE company_id=$1 AND tercero_rfc IS NOT NULL AND codigo_agrupador = ANY($2)
+      ORDER BY codigo`, [companyId, agrups]);
+  return r.rows;
+}
+
+/** Captura/override manual del código de una subcuenta de tercero (respaldos). */
+export async function fijarCodigoSubcuenta(
+  companyId: string, id: string, nuevoCodigo: string
+): Promise<{ codigo: string } | { error: string }> {
+  const cod = (nuevoCodigo || '').trim().slice(0, 30);
+  if (!cod) return { error: 'el código no puede ir vacío' };
+  const dup = await query<any>(
+    `SELECT 1 FROM accounting_accounts WHERE company_id=$1 AND codigo=$2 AND id<>$3`, [companyId, cod, id]);
+  if (dup.rows[0]) return { error: `ya existe una cuenta con el código ${cod}` };
+  const r = await query<any>(
+    `UPDATE accounting_accounts SET codigo=$3, updated_at=NOW()
+      WHERE id=$1 AND company_id=$2 AND tercero_rfc IS NOT NULL
+      RETURNING codigo`, [id, companyId, cod]);
+  if (!r.rows[0]) return { error: 'no se encontró la subcuenta' };
+  return { codigo: r.rows[0].codigo };
+}

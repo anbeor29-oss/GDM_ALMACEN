@@ -985,6 +985,24 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/subcuentas/generar', { direccion });
     return r.data;
   }
+  async getSubcuentasTercero(tipo: 'cliente' | 'proveedor') {
+    const r = await this.client.get<APIResponse<any>>('/accounting/subcuentas', { params: { tipo } });
+    return r.data;
+  }
+  async setCodigoSubcuenta(id: string, codigo: string) {
+    const r = await this.client.put<APIResponse<any>>(`/accounting/subcuentas/${id}/codigo`, { codigo });
+    return r.data;
+  }
+
+  /* ── Ingresos por producto (ClaveProdServ → 401) ── */
+  async getVentasProductos(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/ventas/productos', { params: { anio, mes } });
+    return r.data;
+  }
+  async setVentaProducto(clave: string, descripcion: string | null, cuenta: string | null) {
+    const r = await this.client.put<APIResponse<any>>('/accounting/ventas/productos', { clave, descripcion, cuenta });
+    return r.data;
+  }
 
   /* ── Pólizas (paso 1: ventas) ── */
   async getPolizas(anio: number, mes: number) {

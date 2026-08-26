@@ -22,6 +22,7 @@ import * as estados from './estados-financieros.service';
 import * as periodos from './periodos.service';
 import * as polizas from './polizas.service';
 import * as terceros from './catalogo-terceros.service';
+import * as ventas from './ventas-cuentas.service';
 import multer from 'multer';
 
 const router = Router();
@@ -595,6 +596,47 @@ router.get(
 /* ═══════════════════════════════════════════════════════════════════════════
    PÓLIZAS — paso 1: ventas (de facturas emitidas asignadas)
    ═══════════════════════════════════════════════════════════════════════════ */
+
+/** GET /accounting/ventas/productos?anio&mes — ClaveProdServ de emitidos con su 401 */
+router.get(
+  '/ventas/productos',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await ventas.clavesProdServDeEmitidos(
+      companyId(req), Number(req.query.anio), Number(req.query.mes));
+    res.json({ success: true, data: { productos: data } });
+  })
+);
+
+/** PUT /accounting/ventas/productos — asigna la cuenta 401 a una ClaveProdServ */
+router.put(
+  '/ventas/productos',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    await ventas.asignarCuentaProducto(
+      companyId(req), String(req.body?.clave), req.body?.descripcion ?? null, req.body?.cuenta ?? null);
+    res.json({ success: true });
+  })
+);
+
+/** GET /accounting/subcuentas?tipo=cliente|proveedor — las subcuentas ya creadas */
+router.get(
+  '/subcuentas',
+  asyncHandler(async (req: Request, res: Response) => {
+    const tipo = req.query.tipo === 'proveedor' ? 'proveedor' : 'cliente';
+    res.json({ success: true, data: { subcuentas: await terceros.listarSubcuentasTercero(companyId(req), tipo) } });
+  })
+);
+
+/** PUT /accounting/subcuentas/:id/codigo — captura/override manual del código */
+router.put(
+  '/subcuentas/:id/codigo',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await terceros.fijarCodigoSubcuenta(companyId(req), req.params.id, String(req.body?.codigo || ''));
+    if ('error' in r) { res.status(400).json({ success: false, message: r.error }); return; }
+    res.json({ success: true, data: r });
+  })
+);
 
 /** POST /accounting/subcuentas/generar — da de alta la subcuenta de cada tercero */
 router.post(

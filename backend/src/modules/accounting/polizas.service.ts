@@ -18,6 +18,7 @@
  */
 import { query, transaction } from '../../config/database';
 import { resolverOCrearSubcuentaTercero } from './catalogo-terceros.service';
+import { conceptosDeXml, mapaProductoCuenta } from './ventas-cuentas.service';
 
 export interface LineaPoliza {
   account_id: string; cargo?: number; abono?: number; concepto?: string;
@@ -86,19 +87,22 @@ export async function crearPoliza(companyId: string, p: NuevaPoliza, userId?: st
 }
 
 /**
- * Genera las pólizas de VENTA del mes: una por factura emitida (tipo I) con XML
- * y cuenta asignada que aún no tenga póliza. Idempotente (UNIQUE por origen_uuid).
+ * Genera las pólizas de VENTA del mes: UNA por factura emitida (tipo I), PARTIDA
+ * POR PRODUCTO. Cada ClaveProdServ va a su 401 (mapaProductoCuenta); el cargo es
+ * la subcuenta del cliente (se crea al vuelo) y el IVA va a 208 (PUE) o 209
+ * (PPD). Idempotente (UNIQUE por origen_uuid). Lo que no cuadra —producto sin
+ * 401, descuento, retenciones— se OMITE con su motivo.
  */
 export async function generarVentasDelMes(
   companyId: string, anio: number, mes: number, userId?: string
 ): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
+  const mapaProd = await mapaProductoCuenta(companyId);
   const r = await query<any>(
-    `SELECT c.uuid, c.serie, c.folio, c.fecha_emision, c.total, c.metodo_pago,
-            c.cuenta_contable, c.nombre_receptor, c.rfc_receptor, c.xml
+    `SELECT c.uuid, c.serie, c.folio, c.fecha_emision, c.total, c.descuento, c.metodo_pago,
+            c.nombre_receptor, c.rfc_receptor, c.xml
        FROM cfdi_recibidos c
       WHERE c.company_id=$1 AND c.direccion='emitidos'
         AND c.tipo_comprobante='I' AND c.xml IS NOT NULL
-        AND c.cuenta_contable IS NOT NULL
         AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
         AND c.fecha_emision::date BETWEEN $2 AND $3
         AND NOT EXISTS (SELECT 1 FROM journal_entries e
@@ -112,40 +116,55 @@ export async function generarVentasDelMes(
   for (const c of r.rows) {
     const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
     try {
+      if (round2(c.descuento) > 0) { omitidas.push({ folio: folioTxt, motivo: 'tiene descuento — regla pendiente' }); continue; }
       const imp = impuestosDeXml(String(c.xml));
       if (imp.retenidos > 0) { omitidas.push({ folio: folioTxt, motivo: 'tiene retenciones — regla pendiente' }); continue; }
 
-      const ventas = await cuentaPorCodigo(companyId, c.cuenta_contable);
-      if (!ventas) { omitidas.push({ folio: folioTxt, motivo: `la cuenta ${c.cuenta_contable} no está en el catálogo` }); continue; }
-      if (!ventas.permite_movimientos) { omitidas.push({ folio: folioTxt, motivo: `la cuenta ${c.cuenta_contable} no admite movimientos` }); continue; }
+      // Partir el subtotal por producto → su 401 (según el mapeo ClaveProdServ).
+      const porCuenta = new Map<string, number>();
+      let faltaProducto: string | null = null;
+      for (const cn of conceptosDeXml(String(c.xml))) {
+        const cod = mapaProd.get(cn.clave);
+        if (!cod) { faltaProducto = cn.clave; break; }
+        porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + cn.importe));
+      }
+      if (faltaProducto) { omitidas.push({ folio: folioTxt, motivo: `producto ${faltaProducto} sin cuenta 401 asignada` }); continue; }
+      if (porCuenta.size === 0) { omitidas.push({ folio: folioTxt, motivo: 'la factura no trae conceptos' }); continue; }
 
-      /* La póliza carga a la SUBCUENTA del cliente (105-01-001…), que se crea al
-       * vuelo si es su primera factura. Así el saldo se abre por cliente. */
       const cli = await resolverOCrearSubcuentaTercero(companyId, 'cliente', c.rfc_receptor, c.nombre_receptor);
       if ('error' in cli) { omitidas.push({ folio: folioTxt, motivo: `clientes: ${cli.error}` }); continue; }
 
       const total = round2(c.total);
       const iva = round2(imp.trasladados);
-      const agrupIva = c.metodo_pago === 'PPD' ? '209.01' : '208.01';
-      let ctaIva: any = null;
-      if (iva > 0) {
-        ctaIva = await cuentaPorAgrupador(companyId, agrupIva);
-        if (!ctaIva) { omitidas.push({ folio: folioTxt, motivo: `falta la cuenta de IVA (agrupador ${agrupIva})` }); continue; }
+      const sumaVentas = round2(Array.from(porCuenta.values()).reduce((a, b) => a + b, 0));
+      if (round2(sumaVentas + iva) !== total) {
+        omitidas.push({ folio: folioTxt, motivo: `no cuadra: ventas ${sumaVentas} + IVA ${iva} ≠ total ${total}` }); continue;
       }
 
       const lineas: LineaPoliza[] = [
         { account_id: cli.id, cargo: total, concepto: 'Clientes', uuid_cfdi: c.uuid, party_rfc: c.rfc_receptor },
       ];
-      if (ctaIva) lineas.push({
-        account_id: ctaIva.id, abono: iva, uuid_cfdi: c.uuid,
-        concepto: c.metodo_pago === 'PPD' ? 'IVA trasladado no cobrado' : 'IVA trasladado cobrado',
-      });
-      lineas.push({ account_id: ventas.id, abono: round2(total - iva), concepto: 'Ventas', uuid_cfdi: c.uuid });
+      if (iva > 0) {
+        const agrupIva = c.metodo_pago === 'PPD' ? '209.01' : '208.01';
+        const ctaIva = await cuentaPorAgrupador(companyId, agrupIva);
+        if (!ctaIva) { omitidas.push({ folio: folioTxt, motivo: `falta la cuenta de IVA (agrupador ${agrupIva})` }); continue; }
+        lineas.push({
+          account_id: ctaIva.id, abono: iva, uuid_cfdi: c.uuid,
+          concepto: c.metodo_pago === 'PPD' ? 'IVA trasladado no cobrado' : 'IVA trasladado cobrado',
+        });
+      }
+      let faltaCuenta: string | null = null;
+      for (const [cod, monto] of porCuenta) {
+        const cuenta = await cuentaPorCodigo(companyId, cod);
+        if (!cuenta || !cuenta.permite_movimientos) { faltaCuenta = cod; break; }
+        lineas.push({ account_id: cuenta.id, abono: monto, concepto: `Ventas ${cod}`, uuid_cfdi: c.uuid });
+      }
+      if (faltaCuenta) { omitidas.push({ folio: folioTxt, motivo: `la cuenta ${faltaCuenta} no está en el catálogo o no admite movimientos` }); continue; }
 
       await crearPoliza(companyId, {
         tipo: 'INGRESO', fecha: String(c.fecha_emision).slice(0, 10),
         concepto: `Venta ${folioTxt} · ${(c.nombre_receptor || c.rfc_receptor || '').toString().slice(0, 80)}`.trim(),
-        origen: 'CFDI', origen_uuid: c.uuid, regla: 'ventas_cfdi_v1', lineas,
+        origen: 'CFDI', origen_uuid: c.uuid, regla: 'ventas_cfdi_v2', lineas,
       }, userId);
       creadas++;
     } catch (e: any) {

@@ -156,6 +156,10 @@ export function Layout() {
                         { to: '/tipos-de-cambio',      icon: emoji3D('🪙'), label: 'Tipos de cambio' },
                         { to: '/diferencia-cambiaria', icon: emoji3D('⚖️'), label: 'Diferencia cambiaria' },
                       ] : []),
+                      /* La contabilización de las ventas: ingresos por producto,
+                         clientes y la póliza por factura. Cuelga de Facturas, que
+                         es de donde salen los datos. */
+                      { to: '/invoices/polizas-venta', icon: emoji3D('📗'), label: 'Pólizas de venta' },
                     ]}
                   />
                 )}
