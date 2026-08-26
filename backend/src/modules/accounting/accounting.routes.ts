@@ -21,6 +21,7 @@ import * as motorNif from './nif-motor.service';
 import * as estados from './estados-financieros.service';
 import * as periodos from './periodos.service';
 import * as polizas from './polizas.service';
+import * as terceros from './catalogo-terceros.service';
 import multer from 'multer';
 
 const router = Router();
@@ -594,6 +595,16 @@ router.get(
 /* ═══════════════════════════════════════════════════════════════════════════
    PÓLIZAS — paso 1: ventas (de facturas emitidas asignadas)
    ═══════════════════════════════════════════════════════════════════════════ */
+
+/** POST /accounting/subcuentas/generar — da de alta la subcuenta de cada tercero */
+router.post(
+  '/subcuentas/generar',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const dir = req.body?.direccion === 'recibidos' ? 'recibidos' : 'emitidos';
+    res.json({ success: true, data: await terceros.generarSubcuentasDeComprobantes(companyId(req), dir) });
+  })
+);
 
 /** GET /accounting/polizas?anio&mes — las pólizas del mes con sus partidas */
 router.get(

@@ -59,6 +59,21 @@ export function AsignacionCuentaPage() {
     qc.invalidateQueries({ queryKey: claveVista });
   };
 
+  const [subMsg, setSubMsg] = useState('');
+  const [subBusy, setSubBusy] = useState(false);
+  const generarSubs = async () => {
+    setSubBusy(true); setSubMsg('');
+    try {
+      const r: any = await api.generarSubcuentas(dir);
+      const d = r.data;
+      setSubMsg(`${d.creadas} subcuenta(s) nueva(s) · ${d.existentes} ya existían`
+        + (d.errores?.length ? ` · ${d.errores.length} sin cuenta de control (agrupador 105.01/201.01)` : '') + '.');
+      qc.invalidateQueries({ queryKey: ['ctas-mov'] });
+      qc.invalidateQueries({ queryKey: ['cuentas-arbol'] });
+    } catch (e: any) { setSubMsg(e?.response?.data?.message || 'No se pudo generar'); }
+    finally { setSubBusy(false); }
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -87,6 +102,11 @@ export function AsignacionCuentaPage() {
         <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
           {anios.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
+        <button onClick={generarSubs} disabled={subBusy}
+          title={`Dar de alta la subcuenta (000-00-000) de cada ${dir === 'recibidos' ? 'proveedor' : 'cliente'}`}
+          className="flex items-center gap-1.5 border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50 disabled:opacity-50 text-sm">
+          <Tag size={15} /> {subBusy ? 'Generando…' : 'Generar subcuentas'}
+        </button>
         <div className="ml-auto flex items-center gap-3 text-sm">
           <span className={asignados === filas.length && filas.length > 0 ? 'text-emerald-700' : 'text-gray-600'}>
             {asignados} de {filas.length} asignados
@@ -96,6 +116,8 @@ export function AsignacionCuentaPage() {
           </button>
         </div>
       </div>
+
+      {subMsg && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">{subMsg}</p>}
 
       {ctasQ.data && cuentas.length === 0 && (
         <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-3">

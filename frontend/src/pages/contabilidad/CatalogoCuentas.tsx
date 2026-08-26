@@ -155,6 +155,12 @@ export function CatalogoCuentasPage() {
           <option value="">Todos los tipos</option>
           {Object.keys(TIPO_COLOR).map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
+        {/* El árbol arranca compactado; esto lo re-colapsa tras explorarlo —útil
+            cuando un respaldo trae cientos de subcuentas por cliente. */}
+        <button onClick={() => setAbiertos(new Set())} title="Colapsar todo el catálogo"
+          className="border px-3 rounded-lg hover:bg-gray-50 text-sm text-gray-600 flex items-center gap-1.5">
+          <ChevronRight size={14} /> Colapsar todo
+        </button>
       </div>
 
       {/* ── El árbol ── */}

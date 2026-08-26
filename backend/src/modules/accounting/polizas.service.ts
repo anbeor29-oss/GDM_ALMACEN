@@ -17,6 +17,7 @@
  * su motivo, no se inventa.
  */
 import { query, transaction } from '../../config/database';
+import { resolverOCrearSubcuentaTercero } from './catalogo-terceros.service';
 
 export interface LineaPoliza {
   account_id: string; cargo?: number; abono?: number; concepto?: string;
@@ -118,8 +119,10 @@ export async function generarVentasDelMes(
       if (!ventas) { omitidas.push({ folio: folioTxt, motivo: `la cuenta ${c.cuenta_contable} no está en el catálogo` }); continue; }
       if (!ventas.permite_movimientos) { omitidas.push({ folio: folioTxt, motivo: `la cuenta ${c.cuenta_contable} no admite movimientos` }); continue; }
 
-      const clientes = await cuentaPorAgrupador(companyId, '105.01');
-      if (!clientes) { omitidas.push({ folio: folioTxt, motivo: 'falta la cuenta de clientes (agrupador 105.01)' }); continue; }
+      /* La póliza carga a la SUBCUENTA del cliente (105-01-001…), que se crea al
+       * vuelo si es su primera factura. Así el saldo se abre por cliente. */
+      const cli = await resolverOCrearSubcuentaTercero(companyId, 'cliente', c.rfc_receptor, c.nombre_receptor);
+      if ('error' in cli) { omitidas.push({ folio: folioTxt, motivo: `clientes: ${cli.error}` }); continue; }
 
       const total = round2(c.total);
       const iva = round2(imp.trasladados);
@@ -131,7 +134,7 @@ export async function generarVentasDelMes(
       }
 
       const lineas: LineaPoliza[] = [
-        { account_id: clientes.id, cargo: total, concepto: 'Clientes', uuid_cfdi: c.uuid, party_rfc: c.rfc_receptor },
+        { account_id: cli.id, cargo: total, concepto: 'Clientes', uuid_cfdi: c.uuid, party_rfc: c.rfc_receptor },
       ];
       if (ctaIva) lineas.push({
         account_id: ctaIva.id, abono: iva, uuid_cfdi: c.uuid,

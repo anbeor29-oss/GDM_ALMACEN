@@ -980,6 +980,12 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/catalogos-externos');
     return r.data;
   }
+  /* ── Subcuentas por tercero (máscara 000-00-000) ── */
+  async generarSubcuentas(direccion: 'emitidos' | 'recibidos') {
+    const r = await this.client.post<APIResponse<any>>('/accounting/subcuentas/generar', { direccion });
+    return r.data;
+  }
+
   /* ── Pólizas (paso 1: ventas) ── */
   async getPolizas(anio: number, mes: number) {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas', { params: { anio, mes } });
