@@ -89,6 +89,24 @@ export function aNumero(texto: string): number {
 }
 
 /**
+ * Separa importes pegados. `pdf-parse` colapsa los espacios y deja
+ * "3,500.0020,000.00". Como TODO importe termina en centavos (.dd), el corte es
+ * determinista: se mete un espacio después de cada .dd SÓLO cuando lo que sigue
+ * es otro importe (un dígito, dígitos/comas y .dd). Así no se parte un tipo de
+ * cambio de cuatro decimales ni una referencia. No inventa cifras: sólo separa
+ * lo que ya estaba ahí.
+ */
+export function separarImportesPegados(texto: string): string {
+  let out = texto;
+  for (let k = 0; k < 4; k++) {
+    const n = out.replace(/(\.\d{2})(?=\d[\d,]*\.\d{2})/g, '$1 ');
+    if (n === out) break;
+    out = n;
+  }
+  return out;
+}
+
+/**
  * Normaliza a ISO. Acepta 6-JUL-26, 06/07/2026, 6 JULIO 2026, 2026-07-06.
  *
  * El año de dos dígitos se resuelve a 2000+YY: un estado de cuenta de 1926 no
@@ -152,6 +170,10 @@ const CONCEPTOS = [
   'TRANSFERENCIA - ENVIO',
   'TRANSFERENCIA RECIBIDA',
   'TRANSFERENCIA ENVIADA',
+  'SPEI ENVIADA',
+  'SPEI RECIBIDA',
+  'SPEI ENVIADO',
+  'SPEI RECIBIDO',
   'IVA DE COMISION',
   'PAGO DE SERVICIOS',
   'DEPOSITO EN EFECTIVO',
@@ -170,8 +192,8 @@ function conceptoDe(texto: string): string {
 }
 
 /** Palabras que delatan de qué lado va un importe cuando viene solo. */
-const ENTRA = ['RECIBIDA', 'DEPOSITO', 'ABONO', 'INGRESO', 'DEVOLUCION'];
-const SALE  = ['ENVIADA', 'RETIRO', 'COMISION', 'IVA', 'CARGO', 'PAGO'];
+const ENTRA = ['RECIBIDA', 'RECIBIDO', 'DEPOSITO', 'DEPÓSITO', 'ABONO', 'INGRESO', 'DEVOLUCION', 'REEMBOLSO'];
+const SALE  = ['ENVIADA', 'ENVIADO', 'RETIRO', 'COMISION', 'IVA', 'CARGO', 'PAGO', 'DOMICILIA', 'COMPRA'];
 
 /**
  * Reparte los importes de una línea en retiro / depósito / saldo.
@@ -191,13 +213,31 @@ const SALE  = ['ENVIADA', 'RETIRO', 'COMISION', 'IVA', 'CARGO', 'PAGO'];
 export function repartirImportes(
   importes: number[],
   concepto: string,
-  orden: OrdenColumnas = 'retiro-deposito'
+  orden: OrdenColumnas = 'retiro-deposito',
+  dosSaldos = false
 ): { retiro: number; deposito: number; saldo: number | null; duda: boolean } {
   const t = concepto.toUpperCase();
   const entra = ENTRA.some((k) => t.includes(k));
   const sale  = SALE.some((k) => t.includes(k));
 
   if (importes.length === 0) return { retiro: 0, deposito: 0, saldo: null, duda: false };
+
+  /* ── BBVA y otros con DOS columnas de saldo (operación y liquidación) ──
+   * El renglón es: [cargo|abono] · saldo operación · saldo liquidación. Un
+   * movimiento llena SÓLO cargo o abono, así que el importe del movimiento es el
+   * que va ANTES de los dos saldos, y el saldo real es el último (liquidación).
+   * Tomar los "últimos tres como retiro/depósito/saldo" —lo genérico— leería un
+   * saldo como depósito. El lado (entra/sale) lo dice el concepto. */
+  if (dosSaldos) {
+    const abs = importes.map(Math.abs);
+    let mov = 0, saldo: number | null = null;
+    if (abs.length >= 3)      { mov = abs[abs.length - 3]; saldo = abs[abs.length - 1]; }
+    else if (abs.length === 2) { mov = abs[0]; saldo = abs[1]; }
+    else                       { mov = abs[0]; saldo = null; }
+    if (entra) return { retiro: 0, deposito: mov, saldo, duda: false };
+    if (sale)  return { retiro: mov, deposito: 0, saldo, duda: false };
+    return { retiro: mov, deposito: 0, saldo, duda: true };
+  }
 
   if (importes.length === 1) {
     const v = Math.abs(importes[0]);
@@ -311,6 +351,18 @@ export function extraerMovimientos(
   opciones: { anio?: number; mes?: number } = {}
 ): ResultadoExtraccion {
   const avisos: string[] = [];
+
+  /* Si el PDF trajo los importes pegados (pdf-parse colapsa espacios), se
+   * separan por sus centavos ANTES de nada. Es determinista y no inventa cifras. */
+  const separado = separarImportesPegados(texto);
+  if (separado !== texto) {
+    avisos.push(
+      'Los importes venían pegados en el PDF; se separaron por sus centavos ' +
+      '(cada importe termina en .dd). Revisa que los saldos cuadren.'
+    );
+    texto = separado;
+  }
+
   const banco = detectarBanco(texto);
 
   const mIni = RX_SALDO_INICIAL.exec(texto);
@@ -326,7 +378,7 @@ export function extraerMovimientos(
   }
 
   const { orden, leido: ordenLeido } = ordenDeColumnas(texto);
-  if (!ordenLeido) {
+  if (!ordenLeido && banco !== 'BBVA') {
     avisos.push(
       'El documento no trae un encabezado de columnas legible, así que se supuso ' +
       'RETIROS antes de DEPÓSITOS (el orden de Bancrea). Si tu banco los pone al ' +
@@ -377,7 +429,12 @@ export function extraerMovimientos(
 
     const completo = [b.principal, ...b.continuacion].join(' ');
     const concepto = conceptoDe(completo);
-    const r = repartirImportes(importes, concepto, orden);
+    /* Se le pasa el TEXTO COMPLETO (no sólo la etiqueta) para saber si entra o
+     * sale: BBVA dice "SPEI ENVIADA/RECIBIDA" sin "TRANSFERENCIA", y con la
+     * etiqueta sola se perdería el lado. BBVA trae dos columnas de saldo
+     * (operación y liquidación): el reparto lo tiene que saber para no leer un
+     * saldo como depósito. */
+    const r = repartirImportes(importes, completo, orden, banco === 'BBVA');
     if (r.retiro === 0 && r.deposito === 0) continue;
 
     movimientos.push({
@@ -528,17 +585,9 @@ export async function textoDePdf(buffer: Buffer): Promise<{ texto: string; utili
     };
   }
 
-  /* Dos importes pegados sin espacio: la señal de que se colapsó el texto. */
-  const pegados = /\d\.\d{2}\d{1,3},\d{3}\.\d{2}/.test(texto) ||
-                  /\d\.\d{2}\d+\.\d{2}/.test(texto);
-  if (pegados) {
-    return {
-      texto, utilizable: false,
-      motivo: 'El PDF se leyó, pero los importes llegaron pegados entre sí y no se ' +
-              'pueden separar sin inventar cifras. Sube el CSV del portal del banco, ' +
-              'o pega el texto del estado de cuenta.',
-    };
-  }
-
+  /* Los importes pegados ("3,500.0020,000.00") YA NO se rechazan: se separan por
+   * sus centavos en la extracción (separarImportesPegados), que es determinista.
+   * Aquí sólo se entrega el texto; el rechazo se reserva para lo que de verdad no
+   * se puede leer (un PDF escaneado, arriba). */
   return { texto, utilizable: true };
 }
