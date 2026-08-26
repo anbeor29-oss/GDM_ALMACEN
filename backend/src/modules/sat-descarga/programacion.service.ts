@@ -198,7 +198,7 @@ export async function crearTrabajoDiario(
   if (cfg.diariaEmitidos) direcciones.push('emitidos');
 
   for (const direccion of direcciones) {
-    for (const tipo of TIPOS_POR_DIRECCION[direccion]) {
+    for (const tipo of TIPOS_DIARIO[direccion]) {
       if (await trabajoVivoEn(companyId, iso(desde), iso(hasta), direccion, tipo)) {
         out.omitidos.push(
           `${direccion}·${tipo}: ya hay un trabajo vivo sobre ${iso(desde)} → ${iso(hasta)}.`);
@@ -244,11 +244,20 @@ async function trabajoVivoEn(
   return r.rows.length > 0;
 }
 
-/* De cada dirección, qué tipos se piden automáticamente. Recibidos NO puede ser
- * CFDI (el SAT contesta 301 si hay cancelados); emitidos pide CFDI —para el XML—
- * y Metadata —para el estatus/cancelaciones, que el XML no trae—. Es la misma
- * regla del pedido manual, para que lo automático no quede a medias. */
-const TIPOS_POR_DIRECCION: Record<string, Array<'CFDI' | 'Metadata'>> = {
+/* De cada dirección, qué tipos se piden automáticamente.
+ *
+ * DIARIO (rango de un día): recibidos también se piden como CFDI, porque UN día
+ * casi nunca trae cancelados y ahí el XML sí baja —lo que alimenta la póliza de
+ * compra—; el Metadata acompaña para el estatus y para cubrir los días que sí
+ * tengan cancelado (donde el CFDI dará 301).
+ *
+ * EJERCICIO (rango de un mes): recibidos SÓLO Metadata, porque en un mes es casi
+ * seguro que haya cancelados y el CFDI daría 301. */
+const TIPOS_DIARIO: Record<string, Array<'CFDI' | 'Metadata'>> = {
+  recibidos: ['CFDI', 'Metadata'],
+  emitidos: ['CFDI', 'Metadata'],
+};
+const TIPOS_EJERCICIO: Record<string, Array<'CFDI' | 'Metadata'>> = {
   recibidos: ['Metadata'],
   emitidos: ['CFDI', 'Metadata'],
 };
@@ -340,7 +349,7 @@ export async function crearTrabajoEjercicio(
       ...(recibidos ? ['recibidos'] : []),
       ...(emitidos ? ['emitidos'] : []),
     ] as Array<'recibidos' | 'emitidos'>)) {
-      for (const tipo of TIPOS_POR_DIRECCION[direccion]) {
+      for (const tipo of TIPOS_EJERCICIO[direccion]) {
         if (await trabajoVivoEn(companyId, desde, hasta, direccion, tipo)) {
           out.omitidos.push(`${direccion}·${tipo} ${desde}: ya hay un trabajo vivo sobre ese mes.`);
           continue;
