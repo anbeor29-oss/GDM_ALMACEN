@@ -701,6 +701,17 @@ router.post(
   })
 );
 
+/** POST /accounting/polizas/generar-cobros-pagos — cobros y pagos (del complemento) del mes */
+router.post(
+  '/polizas/generar-cobros-pagos',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await polizas.generarCobrosPagosDelMes(
+      companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
+
 /** DELETE /accounting/polizas/cfdi?anio&mes — borra las de origen CFDI (re-generar) */
 router.delete(
   '/polizas/cfdi',

@@ -1017,6 +1017,10 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-compras', { anio, mes });
     return r.data;
   }
+  async generarCobrosPagos(anio: number, mes: number) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-cobros-pagos', { anio, mes });
+    return r.data;
+  }
 
   /* ── Pólizas (paso 1: ventas) ── */
   async getPolizas(anio: number, mes: number) {

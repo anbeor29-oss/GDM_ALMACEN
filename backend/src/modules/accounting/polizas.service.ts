@@ -18,7 +18,7 @@
  */
 import { query, transaction } from '../../config/database';
 import { resolverOCrearSubcuentaTercero } from './catalogo-terceros.service';
-import { conceptosDeXml, mapaProductoCuenta } from './ventas-cuentas.service';
+import { conceptosDeXml, complementoDeXml, mapaProductoCuenta } from './ventas-cuentas.service';
 import { mapaProductoCuentaCompra } from './compras-cuentas.service';
 
 export interface LineaPoliza {
@@ -258,6 +258,103 @@ export async function generarComprasDelMes(
       omitidas.push({ folio: folioTxt, motivo: (e?.message || 'error').toString().slice(0, 140) });
     }
   }
+  return { creadas, omitidas };
+}
+
+/**
+ * Genera las pólizas de COBRO y PAGO del mes, desde los complementos de pago
+ * (tipo P) con XML — una por complemento (PLAN_CONTABILIDAD §2.4 C y E):
+ *
+ *   COBRO (complemento EMITIDO):        PAGO (complemento RECIBIDO):
+ *     102 Banco            cargo monto    201 Proveedor        cargo monto
+ *     209 IVA no cobrado   cargo iva      118 IVA pagado       cargo iva
+ *         105 Cliente      abono monto        102 Banco        abono monto
+ *         208 IVA cobrado  abono iva          119 IVA por pagar abono iva
+ *
+ * El IVA sale del propio complemento (TrasladoDR), así que respeta el de la
+ * factura original. El banco es la cuenta de control 102.01 (si hay varias, la
+ * primera). Idempotente por origen_uuid.
+ */
+export async function generarCobrosPagosDelMes(
+  companyId: string, anio: number, mes: number, userId?: string
+): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
+  let creadas = 0;
+  const omitidas: Array<{ folio: string; motivo: string }> = [];
+  const banco = await cuentaPorAgrupador(companyId, '102.01');
+
+  const traer = (direccion: 'emitidos' | 'recibidos') => query<any>(
+    `SELECT c.uuid, c.serie, c.folio, c.fecha_emision, c.moneda,
+            c.nombre_emisor, c.rfc_emisor, c.nombre_receptor, c.rfc_receptor, c.xml
+       FROM cfdi_recibidos c
+      WHERE c.company_id=$1 AND c.direccion=$2 AND c.tipo_comprobante='P' AND c.xml IS NOT NULL
+        AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
+        AND c.fecha_emision::date BETWEEN $3 AND $4
+        AND NOT EXISTS (SELECT 1 FROM journal_entries e
+                         WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)
+      ORDER BY c.fecha_emision`,
+    [companyId, direccion, iniDeMes(anio, mes), finDeMes(anio, mes)]);
+
+  const cobros = await traer('emitidos');   // los que NOSOTROS timbramos = cobros a clientes
+  const pagos = await traer('recibidos');   // los que el proveedor timbró = pagos a proveedores
+
+  for (const c of cobros.rows) {
+    const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
+    try {
+      if (!banco) { omitidas.push({ folio: folioTxt, motivo: 'falta la cuenta de banco (agrupador 102.01)' }); continue; }
+      const { monto, iva } = complementoDeXml(String(c.xml));
+      if (monto <= 0) { omitidas.push({ folio: folioTxt, motivo: 'el complemento no trae monto' }); continue; }
+      const cli = await resolverOCrearSubcuentaTercero(companyId, 'cliente', c.rfc_receptor, c.nombre_receptor);
+      if ('error' in cli) { omitidas.push({ folio: folioTxt, motivo: `clientes: ${cli.error}` }); continue; }
+
+      const lineas: LineaPoliza[] = [
+        { account_id: banco.id, cargo: monto, concepto: 'Banco (cobro)', uuid_cfdi: c.uuid },
+        { account_id: cli.id, abono: monto, concepto: 'Clientes', uuid_cfdi: c.uuid, party_rfc: c.rfc_receptor },
+      ];
+      if (iva > 0) {
+        const c209 = await cuentaPorAgrupador(companyId, '209.01');
+        const c208 = await cuentaPorAgrupador(companyId, '208.01');
+        if (!c209 || !c208) { omitidas.push({ folio: folioTxt, motivo: 'falta cuenta de IVA (208.01 / 209.01)' }); continue; }
+        lineas.push({ account_id: c209.id, cargo: iva, concepto: 'IVA trasladado no cobrado', uuid_cfdi: c.uuid });
+        lineas.push({ account_id: c208.id, abono: iva, concepto: 'IVA trasladado cobrado', uuid_cfdi: c.uuid });
+      }
+      await crearPoliza(companyId, {
+        tipo: 'INGRESO', fecha: String(c.fecha_emision).slice(0, 10),
+        concepto: `Cobro ${folioTxt} · ${(c.nombre_receptor || c.rfc_receptor || '').toString().slice(0, 80)}`.trim(),
+        origen: 'CFDI', origen_uuid: c.uuid, regla: 'cobro_cfdi_v1', lineas,
+      }, userId);
+      creadas++;
+    } catch (e: any) { omitidas.push({ folio: folioTxt, motivo: (e?.message || 'error').toString().slice(0, 140) }); }
+  }
+
+  for (const c of pagos.rows) {
+    const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
+    try {
+      if (!banco) { omitidas.push({ folio: folioTxt, motivo: 'falta la cuenta de banco (agrupador 102.01)' }); continue; }
+      const { monto, iva } = complementoDeXml(String(c.xml));
+      if (monto <= 0) { omitidas.push({ folio: folioTxt, motivo: 'el complemento no trae monto' }); continue; }
+      const prov = await resolverOCrearSubcuentaTercero(companyId, 'proveedor', c.rfc_emisor, c.nombre_emisor);
+      if ('error' in prov) { omitidas.push({ folio: folioTxt, motivo: `proveedores: ${prov.error}` }); continue; }
+
+      const lineas: LineaPoliza[] = [
+        { account_id: prov.id, cargo: monto, concepto: 'Proveedores', uuid_cfdi: c.uuid, party_rfc: c.rfc_emisor },
+        { account_id: banco.id, abono: monto, concepto: 'Banco (pago)', uuid_cfdi: c.uuid },
+      ];
+      if (iva > 0) {
+        const c118 = await cuentaPorAgrupador(companyId, '118.01');
+        const c119 = await cuentaPorAgrupador(companyId, '119.01');
+        if (!c118 || !c119) { omitidas.push({ folio: folioTxt, motivo: 'falta cuenta de IVA (118.01 / 119.01)' }); continue; }
+        lineas.push({ account_id: c118.id, cargo: iva, concepto: 'IVA acreditable pagado', uuid_cfdi: c.uuid });
+        lineas.push({ account_id: c119.id, abono: iva, concepto: 'IVA acreditable por pagar', uuid_cfdi: c.uuid });
+      }
+      await crearPoliza(companyId, {
+        tipo: 'EGRESO', fecha: String(c.fecha_emision).slice(0, 10),
+        concepto: `Pago ${folioTxt} · ${(c.nombre_emisor || c.rfc_emisor || '').toString().slice(0, 80)}`.trim(),
+        origen: 'CFDI', origen_uuid: c.uuid, regla: 'pago_cfdi_v1', lineas,
+      }, userId);
+      creadas++;
+    } catch (e: any) { omitidas.push({ folio: folioTxt, motivo: (e?.message || 'error').toString().slice(0, 140) }); }
+  }
+
   return { creadas, omitidas };
 }
 

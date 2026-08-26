@@ -14,6 +14,16 @@ const attr = (s: string, n: string) => {
   return m ? m[1] : '';
 };
 
+/** Un complemento de pago (tipo P): el monto pagado y el IVA trasladado que
+ *  traen sus Pago/DoctoRelacionado. Es lo que respeta "el IVA de la factura
+ *  original", porque el TrasladoDR lo trae calculado sobre lo pagado. */
+export function complementoDeXml(xml: string): { monto: number; iva: number } {
+  let monto = 0, iva = 0;
+  for (const p of xml.match(/<(?:\w+:)?Pago\b[^>]*>/g) || []) monto += Number(attr(p, 'Monto')) || 0;
+  for (const t of xml.match(/<(?:\w+:)?TrasladoDR\b[^>]*>/g) || []) iva += Number(attr(t, 'ImporteDR')) || 0;
+  return { monto: Math.round(monto * 100) / 100, iva: Math.round(iva * 100) / 100 };
+}
+
 /** Los conceptos de un CFDI, leídos del XML sin parser completo. */
 export function conceptosDeXml(xml: string): Array<{ clave: string; descripcion: string; importe: number }> {
   const out: Array<{ clave: string; descripcion: string; importe: number }> = [];
