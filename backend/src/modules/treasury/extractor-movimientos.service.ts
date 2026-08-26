@@ -48,6 +48,8 @@ export interface MovimientoExtraido {
   saldoCalculado: number;
   advertencia: string;
   inferido: boolean;
+  /** El concepto no dijo si entra o sale (columna perdida): a resolver por saldo. */
+  duda: boolean;
   orden: number;
   lineaOrigen: string;
 }
@@ -98,6 +100,11 @@ export function aNumero(texto: string): number {
  */
 export function separarImportesPegados(texto: string): string {
   let out = texto;
+  /* Fechas pegadas: BBVA pone la de operación y la de liquidación juntas
+   * ("01/JUL01/JUL"). Se separa metiendo un espacio después de "/MMM" cuando
+   * sigue un dígito. Sólo afecta fechas (nada más tiene "/MMM"). */
+  out = out.replace(/([/-][A-Za-z]{3})(?=\d)/g, '$1 ');
+  /* Importes pegados: cada uno termina en centavos, corte determinista. */
   for (let k = 0; k < 4; k++) {
     const n = out.replace(/(\.\d{2})(?=\d[\d,]*\.\d{2})/g, '$1 ');
     if (n === out) break;
@@ -193,6 +200,12 @@ function conceptoDe(texto: string): string {
 
 /** Palabras que delatan de qué lado va un importe cuando viene solo. */
 const ENTRA = ['RECIBIDA', 'RECIBIDO', 'DEPOSITO', 'DEPÓSITO', 'ABONO', 'INGRESO', 'DEVOLUCION', 'REEMBOLSO'];
+
+/* Conceptos que el documento NO desambigua: en BBVA "PAGO CUENTA DE TERCERO" se
+ * usa para lo que te pagan (abono) Y para lo que pagas (cargo) —el sentido lo
+ * daba la columna CARGOS/ABONOS, que el PDF pegado perdió—. Se marcan como duda
+ * para que el usuario los revise; NO se inventa el lado. */
+const AMBIGUOS = ['CUENTA DE TERCERO'];
 const SALE  = ['ENVIADA', 'ENVIADO', 'RETIRO', 'COMISION', 'IVA', 'CARGO', 'PAGO', 'DOMICILIA', 'COMPRA'];
 
 /**
@@ -217,8 +230,11 @@ export function repartirImportes(
   dosSaldos = false
 ): { retiro: number; deposito: number; saldo: number | null; duda: boolean } {
   const t = concepto.toUpperCase();
-  const entra = ENTRA.some((k) => t.includes(k));
-  const sale  = SALE.some((k) => t.includes(k));
+  let entra = ENTRA.some((k) => t.includes(k));
+  let sale  = SALE.some((k) => t.includes(k));
+  /* Un concepto ambiguo (el sentido lo daba una columna que se perdió) no se
+   * adivina: se deja como duda para que el usuario lo revise. */
+  if (AMBIGUOS.some((k) => t.includes(k))) { entra = false; sale = false; }
 
   if (importes.length === 0) return { retiro: 0, deposito: 0, saldo: null, duda: false };
 
@@ -231,7 +247,11 @@ export function repartirImportes(
   if (dosSaldos) {
     const abs = importes.map(Math.abs);
     let mov = 0, saldo: number | null = null;
-    if (abs.length >= 3)      { mov = abs[abs.length - 3]; saldo = abs[abs.length - 1]; }
+    /* [movimiento · saldo OPERACIÓN · saldo LIQUIDACIÓN]. Se valida contra el de
+     * OPERACIÓN (el penúltimo): es el que refleja el saldo en el orden del
+     * documento; el de liquidación puede ser de otro día y descuadraría el
+     * arrastre. */
+    if (abs.length >= 3)      { mov = abs[abs.length - 3]; saldo = abs[abs.length - 2]; }
     else if (abs.length === 2) { mov = abs[0]; saldo = abs[1]; }
     else                       { mov = abs[0]; saldo = null; }
     if (entra) return { retiro: 0, deposito: mov, saldo, duda: false };
@@ -273,10 +293,13 @@ export function repartirImportes(
  *
  * El tope de 40 que traía el original dejaba fuera justo los estados bien
  * alineados, que son la mayoría. */
+/* Se permite texto entre SALDO y INICIAL/FINAL porque BBVA lo escribe como
+ * "Saldo de Liquidación Inicial18,386.71" / "Saldo Final (+)20,000.00". El
+ * `[^\d\n]` de en medio no cruza números ni renglones, así que no se va a otro. */
 const RX_SALDO_INICIAL =
-  /SALDO\s*(?:INICIAL|ANTERIOR)[^\n\d]*(-?[\d,]+\.\d{2})/i;
+  /SALDO[^\d\n]{0,30}?(?:INICIAL|ANTERIOR)[^\n\d]*(-?[\d,]+\.\d{2})/i;
 const RX_SALDO_FINAL =
-  /SALDO\s*(?:FINAL|ACTUAL|AL\s*CORTE)[^\n\d]*(-?[\d,]+\.\d{2})/i;
+  /SALDO[^\d\n]{0,30}?(?:FINAL|ACTUAL|AL\s*CORTE)[^\n\d]*(-?[\d,]+\.\d{2})/i;
 
 /**
  * ── LO QUE NO ES UN MOVIMIENTO AUNQUE LO PAREZCA ──
@@ -295,7 +318,10 @@ const RX_SALDO_FINAL =
  */
 const RX_RUIDO = new RegExp(
   [
-    '^(FECHA|CONCEPTO|DESCRIPCI|REFERENCIA|RETIROS?|CARGOS?|DEPOSITOS?|ABONOS?|SALDOS?)',
+    /* BBVA repite el encabezado "OPERLIQ COD. DESCRIPCIÓN…CARGOS ABONOS…" en cada
+     * hoja; si se cuela como continuación, su "ABONOS/CARGOS" voltea el lado del
+     * movimiento pegado al salto de página. Por eso "OPER…" también es ruido. */
+    '^(FECHA\\s*SALDO|FECHA|OPER\\s*LIQ|OPERLIQ|OPER|CONCEPTO|DESCRIPCI|REFERENCIA|RETIROS?|CARGOS?|DEPOSITOS?|ABONOS?|SALDOS?)',
     'P[ÁA]GINA\\s*\\d+',
     '\\d+\\s*DE\\s*\\d+\\s*$',
     'VIENE\\s+DE\\s+LA\\s+P[ÁA]GINA',
@@ -336,8 +362,11 @@ export function ordenDeColumnas(texto: string): { orden: OrdenColumnas; leido: b
 
 function detectarBanco(texto: string): string {
   const t = texto.toUpperCase();
-  if (/BANCREA|BBA130722BR7/.test(t)) return 'Bancrea';
-  if (/\bBBVA\b|BANCOMER/.test(t))    return 'BBVA';
+  /* BBVA primero: "BANCREA" aparece como CONTRAPARTE en estados de otros bancos
+   * (un SPEI recibido de/para Bancrea), así que Bancrea se detecta SÓLO por su
+   * RFC o su marca propia —nunca por la palabra suelta, que engaña—. */
+  if (/BBVA|BANCOMER|MAESTRA\s*PYME|BBA830831LJ2/.test(t)) return 'BBVA';
+  if (/BBA130722BR7|SOYBANCREA|800\s*BANCREA/.test(t))     return 'Bancrea';
   if (/SANTANDER/.test(t))            return 'Santander';
   if (/BANORTE/.test(t))              return 'Banorte';
   if (/\bHSBC\b/.test(t))             return 'HSBC';
@@ -428,13 +457,15 @@ export function extraerMovimientos(
     if (importes.length === 0) continue;
 
     const completo = [b.principal, ...b.continuacion].join(' ');
-    const concepto = conceptoDe(completo);
-    /* Se le pasa el TEXTO COMPLETO (no sólo la etiqueta) para saber si entra o
-     * sale: BBVA dice "SPEI ENVIADA/RECIBIDA" sin "TRANSFERENCIA", y con la
-     * etiqueta sola se perdería el lado. BBVA trae dos columnas de saldo
-     * (operación y liquidación): el reparto lo tiene que saber para no leer un
-     * saldo como depósito. */
-    const r = repartirImportes(importes, completo, orden, banco === 'BBVA');
+    /* El concepto y el LADO (entra/sale) se leen de la línea PRINCIPAL, no del
+     * texto completo: las continuaciones traen la referencia y —cuando el bloque
+     * cruza un salto de página— el encabezado repetido con "CARGOS/ABONOS", que
+     * voltearía el lado del movimiento. En la principal está "SPEI ENVIADO/
+     * RECIBIDO" o "CUENTA DE TERCERO", que es lo que decide. BBVA trae dos
+     * columnas de saldo: el reparto lo sabe (dosSaldos) para no leer un saldo
+     * como depósito. */
+    const concepto = conceptoDe(b.principal);
+    const r = repartirImportes(importes, b.principal, orden, banco === 'BBVA');
     if (r.retiro === 0 && r.deposito === 0) continue;
 
     movimientos.push({
@@ -449,9 +480,56 @@ export function extraerMovimientos(
         ? 'No se pudo saber si entra o sale: el concepto no lo dice. Se tomó como retiro.'
         : '',
       inferido: false,
+      duda: r.duda,
       orden: orden_++,
       lineaOrigen: b.principal.slice(0, 1000),
     });
+  }
+
+  /* ── BBVA: resolver los ambiguos con los saldos como puntos de control ──
+   *
+   * "PAGO CUENTA DE TERCERO" no dice si entra o sale. Pero entre dos saldos
+   * declarados, la diferencia MENOS los movimientos de lado conocido es lo que
+   * deben sumar los ambiguos. Si hay una ÚNICA combinación de signos que da esa
+   * cifra, se resuelve; si no, se deja marcado. No se inventa el lado: se deduce
+   * de lo que el propio banco declaró. */
+  if (banco === 'BBVA' && movimientos.some((m) => m.duda)) {
+    let prev = saldoInicial ?? 0;
+    let i = 0;
+    while (i < movimientos.length) {
+      let j = i;
+      while (j < movimientos.length && movimientos[j].saldo === null) j++;
+      if (j >= movimientos.length) break;                    // sin más puntos de control
+      const seg = movimientos.slice(i, j + 1);
+      const objetivo = pesos(movimientos[j].saldo! - prev);
+      let claros = 0;
+      const amb: MovimientoExtraido[] = [];
+      for (const m of seg) {
+        if (m.duda) amb.push(m);
+        else claros = pesos(claros - m.retiro + m.deposito);
+      }
+      const faltante = pesos(objetivo - claros);
+      if (amb.length >= 1 && amb.length <= 14) {
+        const mag = amb.map((m) => m.retiro || m.deposito);
+        let sol: number[] | null = null, cuantas = 0;
+        for (let mask = 0; mask < (1 << amb.length); mask++) {
+          let s = 0; const sg: number[] = [];
+          for (let b = 0; b < amb.length; b++) {
+            const v = (mask >> b) & 1 ? 1 : -1; sg.push(v); s = pesos(s + v * mag[b]);
+          }
+          if (Math.abs(s - faltante) < 0.02) { sol = sg; cuantas++; }
+        }
+        if (cuantas === 1 && sol) {
+          amb.forEach((m, k) => {
+            const v = m.retiro || m.deposito;
+            if (sol![k] > 0) { m.deposito = v; m.retiro = 0; } else { m.retiro = v; m.deposito = 0; }
+            m.duda = false; m.advertencia = '';
+          });
+        }
+      }
+      prev = movimientos[j].saldo!;
+      i = j + 1;
+    }
   }
 
   /* ── El arrastre del saldo, y lo que delata ── */
@@ -490,6 +568,7 @@ export function extraerMovimientos(
         saldoCalculado: 0,
         advertencia: 'Movimiento INFERIDO: el banco no lo reportó, se dedujo del saldo.',
         inferido: true,
+        duda: false,
         orden: 0,
         lineaOrigen: '',
       });
