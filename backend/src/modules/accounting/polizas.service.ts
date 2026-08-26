@@ -19,6 +19,7 @@
 import { query, transaction } from '../../config/database';
 import { resolverOCrearSubcuentaTercero } from './catalogo-terceros.service';
 import { conceptosDeXml, mapaProductoCuenta } from './ventas-cuentas.service';
+import { mapaProductoCuentaCompra } from './compras-cuentas.service';
 
 export interface LineaPoliza {
   account_id: string; cargo?: number; abono?: number; concepto?: string;
@@ -165,6 +166,92 @@ export async function generarVentasDelMes(
         tipo: 'INGRESO', fecha: String(c.fecha_emision).slice(0, 10),
         concepto: `Venta ${folioTxt} · ${(c.nombre_receptor || c.rfc_receptor || '').toString().slice(0, 80)}`.trim(),
         origen: 'CFDI', origen_uuid: c.uuid, regla: 'ventas_cfdi_v2', lineas,
+      }, userId);
+      creadas++;
+    } catch (e: any) {
+      omitidas.push({ folio: folioTxt, motivo: (e?.message || 'error').toString().slice(0, 140) });
+    }
+  }
+  return { creadas, omitidas };
+}
+
+/**
+ * Genera las pólizas de COMPRA del mes: UNA por factura recibida (tipo I) con
+ * XML, PARTIDA POR PRODUCTO. Cada ClaveProdServ va a su 115 (inventario) o 601
+ * (gasto); el IVA acreditable va al cargo (119.01) y el abono al proveedor
+ * (subcuenta de 201, creada al vuelo). Idempotente.
+ *
+ * Los recibidos que sólo tienen metadato (sin XML —la mayoría, por la
+ * restricción del SAT) se OMITEN con su motivo: sin conceptos no hay póliza.
+ */
+export async function generarComprasDelMes(
+  companyId: string, anio: number, mes: number, userId?: string
+): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
+  const mapaProd = await mapaProductoCuentaCompra(companyId);
+  const r = await query<any>(
+    `SELECT c.uuid, c.serie, c.folio, c.fecha_emision, c.total, c.descuento,
+            c.nombre_emisor, c.rfc_emisor, c.xml
+       FROM cfdi_recibidos c
+      WHERE c.company_id=$1 AND c.direccion='recibidos'
+        AND (c.tipo_comprobante='I' OR c.tipo_comprobante IS NULL)
+        AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
+        AND c.fecha_emision::date BETWEEN $2 AND $3
+        AND NOT EXISTS (SELECT 1 FROM journal_entries e
+                         WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)
+      ORDER BY c.fecha_emision`,
+    [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
+
+  let creadas = 0;
+  const omitidas: Array<{ folio: string; motivo: string }> = [];
+
+  for (const c of r.rows) {
+    const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
+    try {
+      if (!c.xml) { omitidas.push({ folio: folioTxt, motivo: 'sin XML (bajó como metadato) — no hay conceptos que contabilizar' }); continue; }
+      if (round2(c.descuento) > 0) { omitidas.push({ folio: folioTxt, motivo: 'tiene descuento — regla pendiente' }); continue; }
+      const imp = impuestosDeXml(String(c.xml));
+      if (imp.retenidos > 0) { omitidas.push({ folio: folioTxt, motivo: 'tiene retenciones — regla pendiente' }); continue; }
+
+      const porCuenta = new Map<string, number>();
+      let faltaProducto: string | null = null;
+      for (const cn of conceptosDeXml(String(c.xml))) {
+        const cod = mapaProd.get(cn.clave);
+        if (!cod) { faltaProducto = cn.clave; break; }
+        porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + cn.importe));
+      }
+      if (faltaProducto) { omitidas.push({ folio: folioTxt, motivo: `producto ${faltaProducto} sin cuenta (115/601) asignada` }); continue; }
+      if (porCuenta.size === 0) { omitidas.push({ folio: folioTxt, motivo: 'la factura no trae conceptos' }); continue; }
+
+      const prov = await resolverOCrearSubcuentaTercero(companyId, 'proveedor', c.rfc_emisor, c.nombre_emisor);
+      if ('error' in prov) { omitidas.push({ folio: folioTxt, motivo: `proveedores: ${prov.error}` }); continue; }
+
+      const total = round2(c.total);
+      const iva = round2(imp.trasladados);
+      const sumaCargos = round2(Array.from(porCuenta.values()).reduce((a, b) => a + b, 0));
+      if (round2(sumaCargos + iva) !== total) {
+        omitidas.push({ folio: folioTxt, motivo: `no cuadra: compras ${sumaCargos} + IVA ${iva} ≠ total ${total}` }); continue;
+      }
+
+      const lineas: LineaPoliza[] = [];
+      let faltaCuenta: string | null = null;
+      for (const [cod, monto] of porCuenta) {
+        const cuenta = await cuentaPorCodigo(companyId, cod);
+        if (!cuenta || !cuenta.permite_movimientos) { faltaCuenta = cod; break; }
+        lineas.push({ account_id: cuenta.id, cargo: monto, concepto: `Compra ${cod}`, uuid_cfdi: c.uuid });
+      }
+      if (faltaCuenta) { omitidas.push({ folio: folioTxt, motivo: `la cuenta ${faltaCuenta} no está en el catálogo o no admite movimientos` }); continue; }
+
+      if (iva > 0) {
+        const ctaIva = await cuentaPorAgrupador(companyId, '119.01');
+        if (!ctaIva) { omitidas.push({ folio: folioTxt, motivo: 'falta la cuenta de IVA acreditable (agrupador 119.01)' }); continue; }
+        lineas.push({ account_id: ctaIva.id, cargo: iva, concepto: 'IVA acreditable por pagar', uuid_cfdi: c.uuid });
+      }
+      lineas.push({ account_id: prov.id, abono: total, concepto: 'Proveedores', uuid_cfdi: c.uuid, party_rfc: c.rfc_emisor });
+
+      await crearPoliza(companyId, {
+        tipo: 'EGRESO', fecha: String(c.fecha_emision).slice(0, 10),
+        concepto: `Compra ${folioTxt} · ${(c.nombre_emisor || c.rfc_emisor || '').toString().slice(0, 80)}`.trim(),
+        origen: 'CFDI', origen_uuid: c.uuid, regla: 'compras_cfdi_v1', lineas,
       }, userId);
       creadas++;
     } catch (e: any) {

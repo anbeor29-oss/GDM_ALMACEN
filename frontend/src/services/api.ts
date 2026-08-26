@@ -1004,6 +1004,20 @@ class APIClient {
     return r.data;
   }
 
+  /* ── Compras por producto (ClaveProdServ → 115/601) ── */
+  async getComprasProductos(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/compras/productos', { params: { anio, mes } });
+    return r.data;
+  }
+  async setCompraProducto(clave: string, descripcion: string | null, cuenta: string | null) {
+    const r = await this.client.put<APIResponse<any>>('/accounting/compras/productos', { clave, descripcion, cuenta });
+    return r.data;
+  }
+  async generarCompras(anio: number, mes: number) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-compras', { anio, mes });
+    return r.data;
+  }
+
   /* ── Pólizas (paso 1: ventas) ── */
   async getPolizas(anio: number, mes: number) {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas', { params: { anio, mes } });

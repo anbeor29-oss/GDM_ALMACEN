@@ -60,6 +60,7 @@ import { MotorImssIdsePage } from '@/pages/nomina/MotorImssIdse';
 import { CatalogoCuentasPage } from '@/pages/contabilidad/CatalogoCuentas';
 import { AsignacionCuentaPage } from '@/pages/contabilidad/AsignacionCuenta';
 import { PolizasVentaPage } from '@/pages/contabilidad/PolizasVenta';
+import { PolizasCompraPage } from '@/pages/contabilidad/PolizasCompra';
 import {
   BalanzaPage, SituacionFinancieraPage, ResultadoIntegralPage,
   FlujoEfectivoPage, CambiosCapitalPage, RazonesPage,
@@ -229,6 +230,7 @@ export function App() {
             {/* Facturación */}
             <Route path="invoices"     element={<ModuleRoute module="invoices"><InvoicesPage /></ModuleRoute>} />
             <Route path="invoices/polizas-venta" element={<ModuleRoute module="invoices"><PolizasVentaPage /></ModuleRoute>} />
+            <Route path="compras/polizas"        element={<ModuleRoute module="suppliers"><PolizasCompraPage /></ModuleRoute>} />
             <Route path="invoices/new"       element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
             <Route path="invoices/:id/edit"  element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
             <Route path="credit-notes" element={<ModuleRoute module="credit_notes"><CreditNotesPage /></ModuleRoute>} />

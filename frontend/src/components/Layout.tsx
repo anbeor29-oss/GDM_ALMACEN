@@ -220,6 +220,7 @@ export function Layout() {
                     show('purchasing') && { to: '/purchase-orders', icon: emoji3D('📝'), label: 'Órdenes de compra' },
                     show('purchasing') && { to: '/compras/xml',     icon: emoji3D('📥'), label: 'Recibir XML' },
                     show('suppliers')  && { to: '/suppliers',       icon: emoji3D('🚚'), label: 'Proveedores' },
+                    show('suppliers')  && { to: '/compras/polizas',  icon: emoji3D('📕'), label: 'Pólizas de compra' },
                   ].filter(Boolean) as Array<{ to: string; icon: JSX.Element; label: string }>;
                   if (hijas.length === 0) return null;
                   return (

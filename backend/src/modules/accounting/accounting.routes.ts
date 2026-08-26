@@ -23,6 +23,7 @@ import * as periodos from './periodos.service';
 import * as polizas from './polizas.service';
 import * as terceros from './catalogo-terceros.service';
 import * as ventas from './ventas-cuentas.service';
+import * as compras from './compras-cuentas.service';
 import multer from 'multer';
 
 const router = Router();
@@ -618,6 +619,27 @@ router.put(
   })
 );
 
+/** GET /accounting/compras/productos?anio&mes — ClaveProdServ de recibidos con su cuenta */
+router.get(
+  '/compras/productos',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await compras.clavesProdServDeRecibidos(
+      companyId(req), Number(req.query.anio), Number(req.query.mes));
+    res.json({ success: true, data: { productos: data } });
+  })
+);
+
+/** PUT /accounting/compras/productos — asigna la cuenta (115/601) a una ClaveProdServ */
+router.put(
+  '/compras/productos',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    await compras.asignarCuentaProductoCompra(
+      companyId(req), String(req.body?.clave), req.body?.descripcion ?? null, req.body?.cuenta ?? null);
+    res.json({ success: true });
+  })
+);
+
 /** GET /accounting/subcuentas?tipo=cliente|proveedor — las subcuentas ya creadas */
 router.get(
   '/subcuentas',
@@ -663,6 +685,17 @@ router.post(
   authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await polizas.generarVentasDelMes(
+      companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
+
+/** POST /accounting/polizas/generar-compras — arma las pólizas de compra del mes */
+router.post(
+  '/polizas/generar-compras',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await polizas.generarComprasDelMes(
       companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
     res.json({ success: true, data: r });
   })
