@@ -20,6 +20,7 @@ import * as mapeador from './mapeador-sat.service';
 import * as motorNif from './nif-motor.service';
 import * as estados from './estados-financieros.service';
 import * as periodos from './periodos.service';
+import * as polizas from './polizas.service';
 import multer from 'multer';
 
 const router = Router();
@@ -587,6 +588,40 @@ router.get(
         WHERE vigente ORDER BY serie, clave`,
     );
     res.json({ success: true, data: { normas: r.rows } });
+  })
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PÓLIZAS — paso 1: ventas (de facturas emitidas asignadas)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** GET /accounting/polizas?anio&mes — las pólizas del mes con sus partidas */
+router.get(
+  '/polizas',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await polizas.listarPolizas(companyId(req), Number(req.query.anio), Number(req.query.mes));
+    res.json({ success: true, data: { polizas: data } });
+  })
+);
+
+/** POST /accounting/polizas/generar-ventas — arma las pólizas de venta del mes */
+router.post(
+  '/polizas/generar-ventas',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await polizas.generarVentasDelMes(
+      companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
+
+/** DELETE /accounting/polizas/cfdi?anio&mes — borra las de origen CFDI (re-generar) */
+router.delete(
+  '/polizas/cfdi',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const borradas = await polizas.borrarVentasDelMes(companyId(req), Number(req.query.anio), Number(req.query.mes));
+    res.json({ success: true, data: { borradas } });
   })
 );
 

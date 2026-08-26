@@ -14,7 +14,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Tag, Check, Users, RefreshCw } from 'lucide-react';
+import { Tag, Check, Users, RefreshCw, FileText, PlayCircle, Trash2, X } from 'lucide-react';
 import { api } from '@/services/api';
 
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
@@ -134,6 +134,121 @@ export function AsignacionCuentaPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Paso 1 del motor: de emitidos asignados nacen las pólizas de venta. */}
+      {dir === 'emitidos' && <PolizasPanel anio={anio} mes={mes} />}
+    </div>
+  );
+}
+
+/* ── Pólizas de venta del mes (emitidos) ──────────────────────────────────── */
+function PolizasPanel({ anio, mes }: { anio: number; mes: number }) {
+  const qc = useQueryClient();
+  const [msg, setMsg] = useState('');
+  const [omitidas, setOmitidas] = useState<any[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [ver, setVer] = useState(false);
+
+  const generar = async () => {
+    setCargando(true); setMsg(''); setOmitidas([]);
+    try {
+      const r: any = await api.generarVentas(anio, mes);
+      setMsg(`${r.data.creadas} póliza(s) de venta creada(s).`);
+      setOmitidas(r.data.omitidas || []);
+      qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo generar'); }
+    finally { setCargando(false); }
+  };
+  const regenerar = async () => {
+    if (!window.confirm('¿Borrar las pólizas de CFDI de este mes y volver a generarlas?')) return;
+    setCargando(true); setMsg('');
+    try { await api.borrarPolizasCfdi(anio, mes); await generar(); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo regenerar'); setCargando(false); }
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow border p-4 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="font-semibold flex items-center gap-2">
+          <FileText size={18} className="text-amber-600" /> Pólizas de venta
+        </h3>
+        <span className="text-xs text-gray-500">De cada factura con cuenta asignada. No duplica.</span>
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={generar} disabled={cargando}
+            className="flex items-center gap-1.5 bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:opacity-50 text-sm">
+            <PlayCircle size={15} /> {cargando ? 'Generando…' : 'Generar'}
+          </button>
+          <button onClick={() => setVer(true)}
+            className="border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm">Ver pólizas</button>
+          <button onClick={regenerar} disabled={cargando}
+            title="Borrar las de CFDI y regenerar (arranque)"
+            className="text-gray-400 hover:text-rose-600"><Trash2 size={15} /></button>
+        </div>
+      </div>
+      {msg && <p className="text-sm text-emerald-700">{msg}</p>}
+      {omitidas.length > 0 && (
+        <details className="text-xs text-amber-700">
+          <summary className="cursor-pointer">{omitidas.length} omitida(s) — ver por qué</summary>
+          <ul className="mt-1 list-disc pl-5 space-y-0.5">
+            {omitidas.map((o, i) => <li key={i}><b>{o.folio}</b>: {o.motivo}</li>)}
+          </ul>
+        </details>
+      )}
+      {ver && <PolizasModal anio={anio} mes={mes} onClose={() => setVer(false)} />}
+    </div>
+  );
+}
+
+function PolizasModal({ anio, mes, onClose }: { anio: number; mes: number; onClose: () => void }) {
+  const q = useQuery({ queryKey: ['polizas', anio, mes], queryFn: () => api.getPolizas(anio, mes) });
+  const polizas: any[] = q.data?.data?.polizas || [];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl my-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl">
+          <h3 className="font-semibold">Pólizas de {MESES[mes]} {anio}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          {q.isLoading && <p className="text-center text-gray-500 py-6">Cargando…</p>}
+          {!q.isLoading && polizas.length === 0 && (
+            <p className="text-center text-gray-500 italic py-6">Sin pólizas en el mes. Genera desde el botón.</p>
+          )}
+          {polizas.map((p) => {
+            const cargos = (p.lineas || []).reduce((a: number, l: any) => a + Number(l.cargo || 0), 0);
+            const abonos = (p.lineas || []).reduce((a: number, l: any) => a + Number(l.abono || 0), 0);
+            return (
+              <div key={p.id} className="border rounded-lg overflow-hidden">
+                <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-gray-50 border-b text-sm">
+                  <b>#{p.folio}</b>
+                  <span className="text-xs bg-gray-200 rounded px-1.5 py-0.5">{p.tipo}</span>
+                  <span className="text-gray-500">{fecha(p.fecha)}</span>
+                  <span className="text-gray-700 truncate">{p.concepto}</span>
+                  <span className="ml-auto text-[10px] text-gray-400">{p.origen} · {p.regla || '—'}</span>
+                </div>
+                <table className="w-full text-xs">
+                  <tbody>
+                    {(p.lineas || []).map((l: any, i: number) => (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="px-3 py-1 font-mono text-gray-500 w-20">{l.codigo}</td>
+                        <td className="px-2 py-1">{l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}</td>
+                        <td className="px-3 py-1 text-right w-28">{Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
+                        <td className="px-3 py-1 text-right w-28">{Number(l.abono) > 0 ? money(l.abono) : ''}</td>
+                      </tr>
+                    ))}
+                    <tr className="font-semibold bg-gray-50">
+                      <td colSpan={2} className="px-3 py-1 text-right">Sumas</td>
+                      <td className="px-3 py-1 text-right">{money(cargos)}</td>
+                      <td className="px-3 py-1 text-right">{money(abonos)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

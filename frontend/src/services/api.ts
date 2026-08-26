@@ -980,6 +980,20 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/catalogos-externos');
     return r.data;
   }
+  /* ── Pólizas (paso 1: ventas) ── */
+  async getPolizas(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/polizas', { params: { anio, mes } });
+    return r.data;
+  }
+  async generarVentas(anio: number, mes: number) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-ventas', { anio, mes });
+    return r.data;
+  }
+  async borrarPolizasCfdi(anio: number, mes: number) {
+    const r = await this.client.delete<APIResponse<any>>('/accounting/polizas/cfdi', { params: { anio, mes } });
+    return r.data;
+  }
+
   /* ── Periodos contables ── */
   async getPeriodosContables(anio: number) {
     const r = await this.client.get<APIResponse<any>>(`/accounting/periodos/${anio}`);
