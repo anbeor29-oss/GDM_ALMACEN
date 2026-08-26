@@ -1326,6 +1326,15 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/nomina/catalogos');
     return r.data;
   }
+  /* Conceptos de nómina → cuenta (config de la póliza de pasivo) */
+  async getConceptosCuentaNomina() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/conceptos-cuenta');
+    return r.data;
+  }
+  async setConceptoCuentaNomina(grupo: string, clave: string, cuenta: string | null) {
+    const r = await this.client.put<APIResponse<any>>('/nomina/conceptos-cuenta', { grupo, clave, cuenta });
+    return r.data;
+  }
   async getNominaParametros() {
     const r = await this.client.get<APIResponse<any>>('/nomina/parametros');
     return r.data;

@@ -17,8 +17,9 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   FileBarChart, FileSpreadsheet, AlertTriangle, Users, Receipt, Landmark, HeartPulse,
-  Sigma, List,
+  Sigma, List, Tag, Check,
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import api from '@/services/api';
 import { aTextoMx } from '@/components/CampoFecha';
 
@@ -41,6 +42,8 @@ const REPORTES = [
     ayuda: 'Lo retenido por el Art. 96, agrupado como la constancia anual.' },
   { id: 'imss',      label: 'IMSS por nómina', icono: HeartPulse,
     ayuda: 'La cuota OBRERA — sólo la parte del trabajador.' },
+  { id: 'cuentas',   label: 'Conceptos y cuentas', icono: Tag,
+    ayuda: 'Asigna cuenta a cada concepto para la póliza de pasivo.' },
 ] as const;
 
 export function NominaReportesPage() {
@@ -75,7 +78,7 @@ export function NominaReportesPage() {
   const repQ = useQuery({
     queryKey: ['reporte-nomina', que, anio, tipo, desde, hasta, acumulado],
     queryFn: () => api.getReporteNomina(que, { anio, tipo, desde, hasta, acumulado }),
-    enabled: cerrados.length > 0,
+    enabled: cerrados.length > 0 && que !== 'cuentas',
     retry: false,
   });
   const d: any = repQ.data?.data;
@@ -111,7 +114,7 @@ export function NominaReportesPage() {
       )}
 
       {/* ── Qué reporte ── */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {REPORTES.map((r) => {
           const Ico = r.icono;
           return (
@@ -135,6 +138,9 @@ export function NominaReportesPage() {
         })}
       </div>
 
+      {que === 'cuentas' && <ConceptosCuentasNomina />}
+
+      {que !== 'cuentas' && (<>
       {/* ── De qué periodos ── */}
       <div className="bg-white rounded-lg shadow border p-4">
         <div className="flex flex-wrap items-end gap-4">
@@ -226,6 +232,7 @@ export function NominaReportesPage() {
       {d && que === 'cfdi'      && <TablaCfdi d={d} />}
       {d && que === 'isr'       && <TablaIsr d={d} />}
       {d && que === 'imss'      && <TablaImss d={d} />}
+      </>)}
     </div>
   );
 }
@@ -610,6 +617,116 @@ function PorPeriodo({ filas, columnas }: { filas: any[]; columnas: Array<[string
         </tbody>
       </table>
     </div>
+  );
+}
+
+/* ── Conceptos de nómina → cuenta (dos pestañas: percepciones / deducciones) ──
+ * De aquí sale la póliza de pasivo: percepciones al cargo (601), deducciones y
+ * provisiones al abono (210/211/216). Los importes ya los da el motor; esto sólo
+ * dice a qué cuenta va cada concepto. */
+function ConceptosCuentasNomina() {
+  const qc = useQueryClient();
+  const [sub, setSub] = useState<'ingresos' | 'egresos'>('ingresos');
+
+  const q = useQuery({ queryKey: ['nomina-conceptos-cuenta'], queryFn: () => api.getConceptosCuentaNomina() });
+  const conceptos: any[] = q.data?.data?.conceptos || [];
+
+  const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
+  const cuentas: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);
+  const nombreCta = new Map<string, string>(cuentas.map((c: any) => [c.codigo, c.nombre]));
+
+  const lista = conceptos.filter((c) => sub === 'ingresos' ? c.grupo === 'PERCEPCION' : c.grupo !== 'PERCEPCION');
+  const faltan = conceptos.filter((c) => !c.cuenta).length;
+
+  const guardar = async (c: any, codigo: string) => {
+    await api.setConceptoCuentaNomina(c.grupo, c.clave, codigo.trim() || null);
+    qc.invalidateQueries({ queryKey: ['nomina-conceptos-cuenta'] });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white rounded-lg shadow border p-4">
+        <p className="text-sm text-gray-600">
+          Coloca cada concepto en su cuenta del catálogo. Con esto la póliza de pasivo de nómina
+          sale exacta: percepciones al <b>cargo</b> (601), deducciones y provisiones al <b>abono</b>
+          {' '}(210 / 211 / 216).
+          {faltan > 0 && <b className="text-amber-700"> Faltan {faltan} por asignar.</b>}
+        </p>
+      </div>
+
+      {cuentas.length === 0 && ctasQ.data && (
+        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+          El catálogo no tiene cuentas de movimiento. Créalas en Contabilidad → Catálogo de cuentas.
+        </p>
+      )}
+
+      <datalist id="ctas-mov-nom">
+        {cuentas.map((c) => <option key={c.id} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+      </datalist>
+
+      <div className="flex gap-1 border-b">
+        {([['ingresos', 'Ingresos (percepciones)'], ['egresos', 'Egresos (deducciones y provisiones)']] as const)
+          .map(([k, label]) => (
+            <button key={k} onClick={() => setSub(k)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+                sub === k ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              {label}
+            </button>
+          ))}
+      </div>
+
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b">
+            <tr>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Clave</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Concepto</th>
+              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Mov.</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 w-80">Cuenta contable</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {q.isLoading && <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>}
+            {lista.map((c) => (
+              <RenglonConcepto key={`${c.grupo}-${c.clave}`} c={c} nombreCta={nombreCta} onGuardar={guardar} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RenglonConcepto({ c, nombreCta, onGuardar }: {
+  c: any; nombreCta: Map<string, string>; onGuardar: (c: any, codigo: string) => void;
+}) {
+  const [val, setVal] = useState(c.cuenta || '');
+  useEffect(() => { setVal(c.cuenta || ''); }, [c.cuenta]);
+  const etiqueta = c.grupo === 'PROVISION' ? 'provisión' : c.grupo === 'NETO' ? 'neto' : c.grupo === 'DEDUCCION' ? 'deducción' : '';
+  return (
+    <tr className="hover:bg-gray-50">
+      <td className="px-4 py-2 text-xs font-mono text-gray-500">{c.clave}</td>
+      <td className="px-4 py-2 text-sm">
+        {c.nombre}
+        {etiqueta && <span className="ml-2 text-[10px] rounded px-1.5 py-0.5 bg-gray-100 text-gray-500">{etiqueta}</span>}
+      </td>
+      <td className="px-4 py-2 text-center text-xs">
+        <span className={c.lado === 'cargo' ? 'text-sky-700' : 'text-rose-700'}>{c.lado === 'cargo' ? 'Cargo' : 'Abono'}</span>
+      </td>
+      <td className="px-4 py-2">
+        <div className="flex items-center gap-1">
+          <input list="ctas-mov-nom" value={val} onChange={(e) => setVal(e.target.value)}
+            onBlur={() => { if ((val || '') !== (c.cuenta || '')) onGuardar(c, val); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            placeholder={`sugerido ${c.sugerida}`}
+            className="border rounded px-2 py-1 text-sm w-36" />
+          {val && nombreCta.get(val) && (
+            <span className="text-xs text-gray-500 truncate max-w-[12rem]" title={nombreCta.get(val)}>{nombreCta.get(val)}</span>
+          )}
+          {c.cuenta === val && val && <Check size={14} className="text-emerald-500 shrink-0" />}
+        </div>
+      </td>
+    </tr>
   );
 }
 

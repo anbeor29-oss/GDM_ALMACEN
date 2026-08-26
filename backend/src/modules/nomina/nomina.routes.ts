@@ -32,6 +32,7 @@ import * as reportes from './reportes.service';
 import * as finiquito from './finiquito.service';
 import { generarReciboPDF } from './pdf-recibo.service';
 import * as cierre from './cierre.service';
+import * as conceptosCuenta from './conceptos-cuenta.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -1104,6 +1105,24 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
     await imssIdse.regresarPendientes(companyId(req), ids);
+    res.json({ success: true });
+  })
+);
+
+/* ── Conceptos de nómina → cuenta (config de la póliza de pasivo) ── */
+router.get(
+  '/conceptos-cuenta',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: { conceptos: await conceptosCuenta.conceptosConCuenta(companyId(req)) } });
+  })
+);
+router.put(
+  '/conceptos-cuenta',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ok = await conceptosCuenta.asignarCuentaConcepto(
+      companyId(req), String(req.body?.grupo), String(req.body?.clave), req.body?.cuenta ?? null);
+    if (!ok) { res.status(404).json({ success: false, message: 'Concepto no reconocido' }); return; }
     res.json({ success: true });
   })
 );
