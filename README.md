@@ -96,13 +96,21 @@ Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
   recibidos se traen por metadatos. Botón **Diagnóstico** read-only, detalle por
   solicitud/paquete y reintento de atoradas.
 - **XML del SAT en tres pantallas**: menú **XML** con «XML del SAT» (la descarga),
-  **Emitidos** y **Recibidos**. La tabla es la del Anexo 20 —fecha, folio,
-  cliente/proveedor, RFC, total, estatus, CC—. En emitidos el folio (verde) abre
-  la representación del CFDI y la cartera muestra el timbre de pago (pagado = PUE o
-  PPD con complemento); en recibidos, punto rojo → ficha de metadatos. Pendiente:
-  marcar cancelados de emitidos (bajan por CFDI, sin `estado_sat`).
-- **Contabilidad**: los reportes (periodos y cierre → razones y análisis) quedan
-  en un submenú **Reportes** dentro de Contabilidad.
+  **Emitidos** y **Recibidos**. Tabla del Anexo 20 con **tabs por tipo** (factura /
+  nota de crédito / nómina), **filtro mes/año** y CC. El folio abre la
+  **previsualización** de los 3 formatos (factura azul / nota roja / complemento
+  verde) desde el XML; la cartera, el timbre de pago. **Cancelaciones** de emitidos
+  captadas (se piden CFDI + Metadata). Recibidos → ficha de metadatos.
+- **Contabilidad — motor de pólizas**: `journal_entries/journal_lines` con el
+  **cuadre en la base** (trigger `DEFERRABLE`) e idempotencia por CFDI.
+  **Subcuentas por tercero** con máscara `000-00-000` (clientes 105 / proveedores
+  201; auto-consecutivas + captura). **Pólizas de venta** (Facturas → cada producto
+  a su 401, IVA 208/209) y **de compra** (Proveedores → producto a 115/601, IVA
+  acreditable 119.01), una por factura. **Conceptos de nómina → cuenta** (percep. a
+  601 / deducciones y provisiones a 210-211-216). Reportes en submenú **Reportes**;
+  **Auditoría** cuelga de Contabilidad; **Asignación de cuenta** como puente.
+  Pendiente: balanza derivada, póliza de nómina y saldos iniciales (balanza
+  anterior).
 - **Tesorería**: "Remesas de pago" → **Pagos programados**; pestaña nueva de
   **Conciliación bancaria** consolidada, con export a Excel.
 

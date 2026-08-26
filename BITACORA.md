@@ -11,6 +11,82 @@ Formato: cada entrada tiene fecha, contexto, decisión y consecuencia.
 
 ---
 
+## 2026-08-25 (contabilidad) — Arranca el motor de pólizas: journal, ventas, compras, nómina y subcuentas por tercero
+
+Con los XML ya bajando, empezó la contabilización. Todo se apoya en el `journal`
+(pólizas), del que se derivará la balanza; no se guardan saldos.
+
+**Journal (el ledger).** `journal_entries` + `journal_lines`, con dos defensas en
+la BASE, no en TypeScript: un **trigger `CONSTRAINT … DEFERRABLE`** que exige
+`Σ cargo = Σ abono` al cierre de cada transacción, y un **UNIQUE por `origen_uuid`**
+(un CFDI = una póliza; volver a generar no duplica). Una póliza asentada se
+reversa, no se edita.
+
+**Subcuentas por tercero (máscara `000-00-000`).** Bajo la cuenta de control
+(105.01/105.02 clientes, 201.01/201.02 proveedores) nace una subcuenta por cada
+tercero: `105-01-001`, `105-01-002`… El `tercero_rfc` la amarra (no se duplica) y
+al nacer la primera, el control deja de recibir movimientos. Nacional/extranjero
+por el RFC. Automático y consecutivo, con opción a **capturar/override** el código
+(para respaldos que ya traen su numeración).
+
+**Regla de VENTAS (v2, por producto).** De cada factura emitida, la póliza:
+`cargo` a la subcuenta del cliente por el total; `abono` a **ventas 401** partido
+**por producto** (cada ClaveProdServ del XML a su 401, mapeado en la pantalla); y
+`abono` al **IVA trasladado 208** (PUE) o **209** (PPD). Una póliza por factura.
+
+**Regla de COMPRAS.** De cada factura recibida: `cargo` a **115 inventario / 601
+gasto** partido por producto, más `cargo` al **IVA acreditable 119.01** (siempre
+esa, una sola cuenta); `abono` a la subcuenta del proveedor por el total.
+
+**Pantallas.** Menú **XML del SAT → Asignación de cuenta** (puente CFDI→balanza) y
+**Auditoría** pasó a colgar de Contabilidad, después de Reportes. En **Facturas →
+Pólizas de venta** (3 pestañas: ingresos por producto / clientes / pólizas) y en
+**Proveedores → Pólizas de compra** (cargos por producto / proveedores / pólizas).
+En **Nómina → Reportes → Conceptos y cuentas**, las dos pestañas (percepciones a
+601 / deducciones y provisiones IMSS-INFONAVIT-RCV-FONACOT a 210-211-216) que
+serán la póliza de pasivo de nómina.
+
+**Lados (para que cuadre):** clientes/compras al **cargo**; ventas, IVA y
+proveedores al **abono** según el caso. Lo que no cuadra —producto sin cuenta,
+descuento, retenciones— se **OMITE con su motivo**, nunca se inventa.
+
+**Pendientes (documentados):**
+- **Recibidos sin XML.** El SAT los da como metadato; la póliza de compra sólo
+  alcanza a los que tengan XML. Por eso el cron diario ahora pide recibidos
+  también como CFDI (un día casi nunca trae cancelados).
+- **Balanza derivada** de `journal_lines`, **póliza de apertura** con la balanza
+  del sistema anterior (falta el archivo), **generación de la póliza de nómina**
+  y **cobros/pagos** (traslado 209→208, 119→118).
+
+Migraciones `2026-08-25b…f` (journal, tercero_rfc, nomina_concepto_cuenta,
+venta/compra_producto_cuenta). Commits `28f4cc1`, `791418b`, `568c7fe`,
+`91d17b9`, `870d402`, `9350584`, `3f1693b`.
+
+---
+
+## 2026-08-25 (xml-sat) — Previsualización de los 3 formatos, cancelaciones y tabs por tipo
+
+Agregados a la vista de XML del SAT:
+
+- **Previsualización en pantalla** (se ve, se revisa, se cierra; datos del XML):
+  el folio abre la **factura** (formato azul, tipo I), la **nota de crédito**
+  (rojo, tipo E) o —al clic de la cartera— el **complemento de pago** (verde) con
+  sus documentos relacionados. Parser de CFDI sin depender del prefijo de
+  namespace e importe con letra propios. Reproduce los formatos del sistema, no es
+  el PDF descargable.
+- **Cancelaciones de emitidos.** Como bajan por CFDI (sin estatus en el XML), al
+  pedir emitidos se lanza CFDI **+ Metadata**; con el metadato, un emitido
+  cancelado se marca con `Ban`. La cartera de "pagado" quedó restringida a
+  facturas (tipo I).
+- **Tabs por tipo** en Emitidos y Recibidos —Facturas / Notas de crédito / Nómina
+  / Otros—, con el tipo de un recibido tomado del `EfectoComprobante` del
+  metadato. **Filtro por mes y año.** Iconos del sidebar y consola de descarga
+  separada de las tablas.
+
+Commits `4c44165`, `100b95e`, `49b21a1`.
+
+---
+
 ## 2026-08-25 (xml-sat) — Menú XML en tres pantallas y la vista del Anexo 20 (Emitidos / Recibidos)
 
 Ya que la descarga baja los XML, faltaba mirarlos como contabilidad los pide. El
