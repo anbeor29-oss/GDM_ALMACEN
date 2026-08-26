@@ -82,6 +82,12 @@ const MESES_ES: Record<string, number> = {
 /** Montos con separador de miles y DOS decimales: 3,500.00 · 20000.00 */
 const RX_MONTO = /-?\$?\d{1,3}(?:,\d{3})*\.\d{2}\b|-?\$?\d+\.\d{2}\b/g;
 
+/** Un renglón de PUROS importes: 1 a 3 montos y nada más (con $ o signo/espacios
+ * alrededor). Banorte parte el movimiento y pone su "MONTO SALDO" —o sólo el
+ * saldo— en una línea propia; ésta la reconoce. Los renglones de referencia
+ * traen texto/RFC además del número, así que un "IVA: 0.00" no la pasa. */
+const RX_SOLO_IMPORTES = /^(?:[\s$-]*[\d,]+\.\d{2}[\s$-]*){1,3}$/;
+
 const pesos = (n: number) => Math.round(n * 100) / 100;
 
 export function aNumero(texto: string): number {
@@ -108,6 +114,14 @@ export function separarImportesPegados(texto: string): string {
    * "06-07-2026FT26187…"). Se exige año de 4 dígitos para no tocar la sección de
    * "detalle de comisiones" de BanBajío, que repite con año de 2 dígitos. */
   out = out.replace(/(\d{1,2}[-/]\d{1,2}[-/]\d{4})(?=[A-Za-z])/g, '$1 ');
+  /* Fecha con mes en palabra y año de 2 dígitos, pegada a lo que sigue
+   * (Banorte: "01-JUL-261498061…" o "31-JUL-26MERCADO PAGO…"). Se separa antes
+   * del número o del texto. El año de 4 dígitos queda intacto: tras "-YY" sólo
+   * se corta si siguen 3+ dígitos (ya no son año) o una letra (la descripción).
+   * Es clave para Banorte, que parte casi cada renglón: fecha+descripción arriba
+   * y "MONTO SALDO" en una línea aparte; sin separar la fecha del texto, esos
+   * movimientos se fundían con el anterior y se perdían. */
+  out = out.replace(/(\d{1,2}[-/][A-Za-z]{3}[-/]\d{2})(?=\d{3,}|[A-Za-zÁÉÍÓÚÑáéíóúñ])/g, '$1 ');
   /* Importes pegados: cada uno termina en centavos, corte determinista. */
   for (let k = 0; k < 4; k++) {
     const n = out.replace(/(\.\d{2})(?=\d[\d,]*\.\d{2})/g, '$1 ');
@@ -413,6 +427,35 @@ export function extraerMovimientos(
 
   const banco = detectarBanco(texto);
 
+  /* Un estado de TARJETA DE CRÉDITO no es una cuenta bancaria: se concilia contra
+   * el PASIVO (la tarjeta), no contra bancos, y su cuadre es "adeudo anterior +
+   * cargos − pagos", no un arrastre de saldo. Colarlo por aquí produciría
+   * movimientos que ensucian la conciliación del banco. Se reconoce por su
+   * lenguaje —pago mínimo junto con adeudo del periodo / no generar intereses—;
+   * una chequera menciona "tarjeta de débito", pero nunca eso. Se corta aquí con
+   * un aviso claro en vez de inventar movimientos bancarios. */
+  const cab = texto.toUpperCase().slice(0, 4000);
+  if (/PAGO\s*M[ÍI]NIMO/.test(cab) &&
+      /ADEUDO\s+DEL\s+PERIODO|NO\s+GENERAR\s+INTERESES|SALDO\s+DEUDOR/.test(cab)) {
+    return {
+      banco: 'Tarjeta de crédito',
+      saldoInicial: null,
+      saldoFinal: null,
+      movimientos: [],
+      totalRetiros: 0,
+      totalDepositos: 0,
+      conAdvertencia: 0,
+      inferidos: 0,
+      cuadra: false,
+      avisos: [
+        'Esto es un estado de TARJETA DE CRÉDITO, no una cuenta bancaria. Se ' +
+        'concilia contra la cuenta de pasivo de la tarjeta (adeudo anterior + ' +
+        'cargos − pagos), no contra el banco. No se extrajeron movimientos para ' +
+        'no ensuciar la conciliación bancaria.',
+      ],
+    };
+  }
+
   const mIni = RX_SALDO_INICIAL.exec(texto);
   const mFin = RX_SALDO_FINAL.exec(texto);
   const saldoInicial = mIni ? aNumero(mIni[1]) : null;
@@ -455,8 +498,27 @@ export function extraerMovimientos(
   interface Bloque { principal: string; continuacion: string[] }
   const bloques: Bloque[] = [];
 
+  /* Banorte: los movimientos SÓLO valen dentro de "DETALLE DE MOVIMIENTOS". El
+   * resumen de arriba trae fechas sueltas ("Periodo 01/Julio/2026", "01 Jul al
+   * 31 Jul") y totales ($264,518.00 depósitos, $250,891.67 retiros) que —al
+   * recolectar los renglones de puros importes— se colaban como movimientos
+   * gigantes y duplicaban el bruto. Se arranca la lectura tras ese encabezado. */
+  const RX_DETALLE = /DETALLE\s+DE\s+MOVIMIENTOS/i;
+  const conDetalle = banco === 'Banorte' && RX_DETALLE.test(texto);
+  let enDetalle = !conDetalle;
+
+  /* Un estado de cuenta puede traer VARIOS productos (Banorte lista la cuenta de
+   * cheques y, seguido, otro producto que arranca en su propio "SALDO ANTERIOR
+   * 0.00"). Encadenar los dos como un solo hilo de saldos descuadra todo. Se
+   * concilia el PRINCIPAL: al toparse con el SEGUNDO "SALDO ANTERIOR <importe>"
+   * —el que reinicia la cadena— se corta. BBVA/BanBajío usan "Inicial", no
+   * "Anterior", así que a ellos no les aplica. */
+  const RX_ANTERIOR = /SALDO\s*ANTERIOR[^A-Za-z]*[\d,]+\.\d{2}/i;
+  let anteriores = 0;
   for (const linea of lineas) {
     if (RX_RUIDO.test(linea)) continue;
+    if (!enDetalle) { if (RX_DETALLE.test(linea)) enDetalle = true; continue; }
+    if (RX_ANTERIOR.test(linea) && ++anteriores >= 2) break;
     if (fechaDeLinea(linea, opciones.anio)) bloques.push({ principal: linea, continuacion: [] });
     else if (bloques.length) bloques[bloques.length - 1].continuacion.push(linea);
   }
@@ -473,6 +535,17 @@ export function extraerMovimientos(
         !/TRANSFEREN|COMISION|DEPOSITO|RETIRO/i.test(b.principal)) continue;
 
     const importes = (b.principal.match(RX_MONTO) || []).map(aNumero);
+    /* Banorte parte casi cada movimiento: fecha y descripción en un renglón, y
+     * el "MONTO SALDO" (o sólo el saldo) en una línea aparte de puros importes.
+     * Se anexa esa línea para no perder el SALDO —de donde el movimiento sale por
+     * diferencia—. Las de referencia (texto + RFC) no son "solo importes", así
+     * que no se cuelan. El saldo, que va al final, queda de último en la lista. */
+    if (banco === 'Banorte') {
+      for (const c of b.continuacion) {
+        if (RX_SOLO_IMPORTES.test(c.trim()))
+          for (const x of c.match(RX_MONTO) || []) importes.push(aNumero(x));
+      }
+    }
     if (importes.length === 0) continue;
 
     const completo = [b.principal, ...b.continuacion].join(' ');
@@ -548,6 +621,28 @@ export function extraerMovimientos(
       }
       prev = movimientos[j].saldo!;
       i = j + 1;
+    }
+  }
+
+  /* ── El movimiento, de la DIFERENCIA de saldos (no BBVA) ──
+   *
+   * Cuando un renglón trae su saldo, el movimiento y su lado salen de restar el
+   * saldo anterior: es exacto y —clave para Banorte— ignora la basura de un
+   * número de tarjeta o RFC pegado al importe ("…162179.00"). El saldo, que va al
+   * final, sí llega limpio. Sin saldo en el renglón, se conserva lo parseado por
+   * concepto. (BBVA usa su propio solucionador, arriba, por sus dos saldos.) */
+  if (banco !== 'BBVA') {
+    let prev = saldoInicial ?? 0;
+    for (const m of movimientos) {
+      if (m.saldo !== null) {
+        const delta = pesos(m.saldo - prev);
+        if (delta >= 0) { m.deposito = delta; m.retiro = 0; }
+        else { m.retiro = pesos(-delta); m.deposito = 0; }
+        m.duda = false; m.advertencia = '';
+        prev = m.saldo;
+      } else {
+        prev = pesos(prev - m.retiro + m.deposito);
+      }
     }
   }
 
