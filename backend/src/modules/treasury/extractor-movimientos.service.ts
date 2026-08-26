@@ -104,6 +104,10 @@ export function separarImportesPegados(texto: string): string {
    * ("01/JUL01/JUL"). Se separa metiendo un espacio después de "/MMM" cuando
    * sigue un dígito. Sólo afecta fechas (nada más tiene "/MMM"). */
   out = out.replace(/([/-][A-Za-z]{3})(?=\d)/g, '$1 ');
+  /* Fecha numérica de año COMPLETO pegada al texto que sigue (VePorMás:
+   * "06-07-2026FT26187…"). Se exige año de 4 dígitos para no tocar la sección de
+   * "detalle de comisiones" de BanBajío, que repite con año de 2 dígitos. */
+  out = out.replace(/(\d{1,2}[-/]\d{1,2}[-/]\d{4})(?=[A-Za-z])/g, '$1 ');
   /* Importes pegados: cada uno termina en centavos, corte determinista. */
   for (let k = 0; k < 4; k++) {
     const n = out.replace(/(\.\d{2})(?=\d[\d,]*\.\d{2})/g, '$1 ');
@@ -154,10 +158,12 @@ export function aFechaIso(texto: string, anioSugerido?: number): string {
 /** La fecha que aparezca primero en una línea, en cualquiera de los formatos. */
 function fechaDeLinea(linea: string, anio?: number): string {
   const patrones = [
-    /\b(\d{1,2}[-/][A-Za-z]{3,10}[-/]\d{2,4})\b/,
-    /\b(\d{4}-\d{1,2}-\d{1,2})\b/,
-    /\b(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b/,
-    /\b(\d{1,2}[-/][A-Za-z]{3,10})\b/,
+    /\b(\d{1,2}[-/][A-Za-z]{3,10}[-/]\d{2,4})\b/, // 6-JUL-26
+    /\b(\d{4}-\d{1,2}-\d{1,2})\b/,                 // 2026-07-06
+    /\b(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b/,         // 06-07-2026
+    /\b(\d{1,2}\s+[A-Za-z]{3,10}\s+\d{2,4})\b/,    // 1 JULIO 2026
+    /\b(\d{1,2}[-/][A-Za-z]{3,10})\b/,             // 6-JUL
+    /\b(\d{1,2}\s+[A-Za-z]{3,10})\b/,              // 1 JUL (BanBajío) — el mes lo valida aFechaIso
   ];
   for (const rx of patrones) {
     const m = rx.exec(linea);
@@ -360,18 +366,31 @@ export function ordenDeColumnas(texto: string): { orden: OrdenColumnas; leido: b
   return { orden: 'retiro-deposito', leido: false };
 }
 
+/**
+ * El banco EMISOR, no una contraparte. El nombre corto de un banco ("BBVA",
+ * "Banorte", "Bajío") aparece en los renglones como beneficiario/ordenante de un
+ * SPEI, así que detectar por él confunde a casi todos. Se detecta por marcas del
+ * EMISOR —su RFC (único) o su nombre en forma legal ("BBVA MEXICO, S.A.")—, y de
+ * preferencia en el ENCABEZADO, que es donde el emisor se identifica.
+ */
 function detectarBanco(texto: string): string {
-  const t = texto.toUpperCase();
-  /* BBVA primero: "BANCREA" aparece como CONTRAPARTE en estados de otros bancos
-   * (un SPEI recibido de/para Bancrea), así que Bancrea se detecta SÓLO por su
-   * RFC o su marca propia —nunca por la palabra suelta, que engaña—. */
-  if (/BBVA|BANCOMER|MAESTRA\s*PYME|BBA830831LJ2/.test(t)) return 'BBVA';
-  if (/BBA130722BR7|SOYBANCREA|800\s*BANCREA/.test(t))     return 'Bancrea';
-  if (/SANTANDER/.test(t))            return 'Santander';
-  if (/BANORTE/.test(t))              return 'Banorte';
-  if (/\bHSBC\b/.test(t))             return 'HSBC';
-  if (/SCOTIABANK/.test(t))           return 'Scotiabank';
-  if (/BANBAJIO|BAJ[ÍI]O/.test(t))    return 'BanBajío';
+  /* Sólo el ENCABEZADO: ahí el emisor se identifica (RFC, nombre legal). Las
+   * contrapartes —el otro banco de un SPEI— van en los renglones, más abajo, y
+   * son las que confundían la detección. */
+  const t = texto.toUpperCase().slice(0, 3500);
+  if (/BBA130722BR7|MULTIPLE,?\s*BANCREA|SOYBANCREA/.test(t))            return 'Bancrea';
+  if (/BBA830831LJ2|MAESTRA\s*PYME|BBVA\s*M[ÉE]XICO,?\s*S/.test(t))      return 'BBVA';
+  if (/BRM940216|BANREGIO\s*GRUPO|BANCO\s*REGIONAL/.test(t))             return 'BanRegio';
+  if (/BANCO\s*DEL\s*BAJ[ÍI]O|CONECTA\s*BANBAJIO|BB\.COM\.MX/.test(t))   return 'BanBajío';
+  if (/CUENTA\s*NU\b|¡HOLA,|NU\s*M[ÉE]XICO/.test(t))                     return 'Nu';
+  if (/CUST\s*ID|ESTADO\s*DE\s*SALDOS\s*Y\s*MOVIMIENTOS/.test(t))        return 'MercadoPago';
+  if (/BVM951002|VE\s*POR\s*M[ÁA]S/.test(t))                            return 'VePorMás';
+  if (/CITIBANAMEX|BANCO\s*NACIONAL\s*DE\s*M[ÉE]XICO|BNM840515/.test(t)) return 'Banamex';
+  if (/BANCA\s*AFIRME|AFI9\d{5}/.test(t))                               return 'Afirme';
+  if (/BNO951005|MERCANTIL\s*DEL\s*NORTE/.test(t))                       return 'Banorte';
+  if (/BANCO\s*SANTANDER|BSM9\d/.test(t))                                return 'Santander';
+  if (/SCOTIABANK\s*INVERLAT/.test(t))                                  return 'Scotiabank';
+  if (/HSBC\s*M[ÉE]XICO/.test(t))                                       return 'HSBC';
   return 'Genérico';
 }
 
@@ -493,7 +512,7 @@ export function extraerMovimientos(
    * deben sumar los ambiguos. Si hay una ÚNICA combinación de signos que da esa
    * cifra, se resuelve; si no, se deja marcado. No se inventa el lado: se deduce
    * de lo que el propio banco declaró. */
-  if (banco === 'BBVA' && movimientos.some((m) => m.duda)) {
+  if (movimientos.some((m) => m.duda) && movimientos.some((m) => m.saldo !== null)) {
     let prev = saldoInicial ?? 0;
     let i = 0;
     while (i < movimientos.length) {
@@ -601,15 +620,26 @@ export function extraerMovimientos(
   const totalDepositos = pesos(movimientos.reduce((a, m) => a + m.deposito, 0));
   const finalCalculado = pesos((saldoInicial ?? 0) - totalRetiros + totalDepositos);
 
-  const cuadra = saldoFinal !== null && Math.abs(saldoFinal - finalCalculado) <= 0.02;
-  if (saldoFinal !== null && !cuadra) {
+  /* Si el resumen no trae SALDO FINAL, se usa el ÚLTIMO saldo que el banco puso
+   * en un renglón: BanBajío y otros lo traen por movimiento, no en un resumen.
+   * Verificar el arrastre contra ese último saldo declarado sí dice algo —si un
+   * movimiento saliera mal, el arrastre se separaría de él—. */
+  let finalDeclarado = saldoFinal;
+  if (finalDeclarado === null) {
+    for (let k = movimientos.length - 1; k >= 0; k--) {
+      if (movimientos[k].saldo !== null) { finalDeclarado = movimientos[k].saldo; break; }
+    }
+  }
+
+  const cuadra = finalDeclarado !== null && Math.abs(finalDeclarado - finalCalculado) <= 0.02;
+  if (finalDeclarado !== null && !cuadra) {
     avisos.push(
-      `NO CUADRA: el documento declara un saldo final de ${saldoFinal.toFixed(2)} y los ` +
+      `NO CUADRA: el saldo final declarado es ${finalDeclarado.toFixed(2)} y los ` +
       `movimientos extraídos dan ${finalCalculado.toFixed(2)}. La diferencia es ` +
-      `${pesos(saldoFinal - finalCalculado).toFixed(2)} — falta o sobra algo.`
+      `${pesos(finalDeclarado - finalCalculado).toFixed(2)} — falta o sobra algo.`
     );
   }
-  if (saldoFinal === null) {
+  if (finalDeclarado === null) {
     avisos.push('El documento no declara SALDO FINAL: no hay contra qué verificar lo extraído.');
   }
   if (movimientos.length === 0) {
@@ -622,7 +652,7 @@ export function extraerMovimientos(
   return {
     banco,
     saldoInicial,
-    saldoFinal,
+    saldoFinal: finalDeclarado,
     movimientos,
     totalRetiros,
     totalDepositos,
