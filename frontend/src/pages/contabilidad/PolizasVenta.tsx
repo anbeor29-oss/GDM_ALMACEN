@@ -5,10 +5,11 @@
  *   3. Pólizas    — una por factura del mes: cargo al cliente, abono a ventas
  *                   (partido por producto) y al IVA (208 PUE / 209 PPD).
  */
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Tag, Users, FileText, PlayCircle, RefreshCw, Check, Pencil } from 'lucide-react';
 import api from '@/services/api';
+import { CuentaPicker } from '@/components/CuentaPicker';
 
 const money = (n: any, m = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: (m || 'MXN').trim() || 'MXN' }).format(Number(n) || 0);
@@ -126,8 +127,6 @@ function TabIngresos({ anio, mes, cuentas }: { anio: number; mes: number; cuenta
 function RenglonProducto({ p, nombreCta, onGuardar }: {
   p: any; nombreCta: Map<string, string>; onGuardar: (p: any, codigo: string) => void;
 }) {
-  const [val, setVal] = useState(p.cuenta || '');
-  useEffect(() => { setVal(p.cuenta || ''); }, [p.cuenta]);
   return (
     <tr className="hover:bg-gray-50">
       <td className="px-4 py-2 text-xs font-mono text-gray-600">{p.clave}</td>
@@ -135,16 +134,8 @@ function RenglonProducto({ p, nombreCta, onGuardar }: {
       <td className="px-4 py-2 text-center text-xs text-gray-500">{p.veces}</td>
       <td className="px-4 py-2 text-right text-sm">{money(p.importe)}</td>
       <td className="px-4 py-2">
-        <div className="flex items-center gap-1">
-          <input list="ctas-ventas" value={val} onChange={(e) => setVal(e.target.value)}
-            onBlur={() => { if ((val || '') !== (p.cuenta || '')) onGuardar(p, val); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-            placeholder="401-xx…" className="input py-1 text-sm w-36" />
-          {val && nombreCta.get(val) && (
-            <span className="text-xs text-gray-500 truncate max-w-[11rem]" title={nombreCta.get(val)}>{nombreCta.get(val)}</span>
-          )}
-          {p.cuenta === val && val && <Check size={14} className="text-emerald-500 shrink-0" />}
-        </div>
+        <CuentaPicker listId="ctas-ventas" nombreCta={nombreCta} value={p.cuenta}
+          onSave={(codigo) => onGuardar(p, codigo)} placeholder="401-xx…" ancho="w-64" />
       </td>
     </tr>
   );

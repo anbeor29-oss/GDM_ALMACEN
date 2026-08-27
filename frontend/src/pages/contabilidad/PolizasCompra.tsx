@@ -8,10 +8,11 @@
  * OJO: de recibidos el SAT entrega METADATOS (sin XML). La póliza necesita los
  * conceptos del XML, así que sólo alcanza a los recibidos que tengan XML.
  */
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Tag, Truck, FileText, PlayCircle, RefreshCw, Check, Pencil, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
+import { CuentaPicker } from '@/components/CuentaPicker';
 
 const money = (n: any, m = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: (m || 'MXN').trim() || 'MXN' }).format(Number(n) || 0);
@@ -139,8 +140,6 @@ function TabCargos({ anio, mes, cuentas }: { anio: number; mes: number; cuentas:
 function RenglonProducto({ p, nombreCta, onGuardar }: {
   p: any; nombreCta: Map<string, string>; onGuardar: (p: any, codigo: string) => void;
 }) {
-  const [val, setVal] = useState(p.cuenta || '');
-  useEffect(() => { setVal(p.cuenta || ''); }, [p.cuenta]);
   return (
     <tr className="hover:bg-gray-50">
       <td className="px-4 py-2 text-xs font-mono text-gray-600">{p.clave}</td>
@@ -148,16 +147,8 @@ function RenglonProducto({ p, nombreCta, onGuardar }: {
       <td className="px-4 py-2 text-center text-xs text-gray-500">{p.veces}</td>
       <td className="px-4 py-2 text-right text-sm">{money(p.importe)}</td>
       <td className="px-4 py-2">
-        <div className="flex items-center gap-1">
-          <input list="ctas-compras" value={val} onChange={(e) => setVal(e.target.value)}
-            onBlur={() => { if ((val || '') !== (p.cuenta || '')) onGuardar(p, val); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-            placeholder="115/601…" className="input py-1 text-sm w-36" />
-          {val && nombreCta.get(val) && (
-            <span className="text-xs text-gray-500 truncate max-w-[11rem]" title={nombreCta.get(val)}>{nombreCta.get(val)}</span>
-          )}
-          {p.cuenta === val && val && <Check size={14} className="text-emerald-500 shrink-0" />}
-        </div>
+        <CuentaPicker listId="ctas-compras" nombreCta={nombreCta} value={p.cuenta}
+          onSave={(codigo) => onGuardar(p, codigo)} placeholder="115/601…" ancho="w-64" />
       </td>
     </tr>
   );
@@ -187,7 +178,8 @@ function TabProveedores() {
       <div className="bg-white rounded-lg shadow border p-4 flex flex-wrap items-center gap-3">
         <p className="text-sm text-gray-600 flex-1 min-w-[16rem]">
           Cada proveedor tiene su subcuenta bajo 201.01 (nacional) o 201.02 (extranjero), numerada
-          <b> 201-01-001, 201-01-002…</b> Se generan solas; puedes capturar/override el código.
+          <b> 201-01-001, 201-01-002…</b> Se generan solas —de los recibidos <b>y del catálogo de
+          proveedores</b>— y el código se guarda en el expediente del tercero. Puedes capturar/override.
         </p>
         <button onClick={generar} disabled={busy}
           className="flex items-center gap-1.5 bg-emerald-700 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-800 disabled:opacity-50 text-sm">
@@ -212,7 +204,7 @@ function TabProveedores() {
           <tbody className="divide-y">
             {!q.isLoading && subs.length === 0 && (
               <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-500 italic">
-                Aún no hay subcuentas. Dale «Generar subcuentas» (necesita proveedores en los recibidos).
+                Aún no hay subcuentas. Dale «Generar subcuentas»: toma los proveedores de los recibidos y del catálogo.
               </td></tr>
             )}
             {subs.map((s) => <RenglonProveedor key={s.id} s={s} onListo={() => qc.invalidateQueries({ queryKey: ['subcuentas-prov'] })} />)}

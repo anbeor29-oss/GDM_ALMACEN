@@ -22,6 +22,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import api from '@/services/api';
 import { aTextoMx } from '@/components/CampoFecha';
+import { CuentaPicker } from '@/components/CuentaPicker';
 
 const money = (v: any) =>
   Number(v || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -704,8 +705,6 @@ function ConceptosCuentasNomina() {
 function RenglonConcepto({ c, nombreCta, onGuardar }: {
   c: any; nombreCta: Map<string, string>; onGuardar: (c: any, codigo: string) => void;
 }) {
-  const [val, setVal] = useState(c.cuenta || '');
-  useEffect(() => { setVal(c.cuenta || ''); }, [c.cuenta]);
   const etiqueta = c.grupo === 'PROVISION' ? 'provisión' : c.grupo === 'NETO' ? 'neto' : c.grupo === 'DEDUCCION' ? 'deducción' : '';
   return (
     <tr className="hover:bg-gray-50">
@@ -718,17 +717,8 @@ function RenglonConcepto({ c, nombreCta, onGuardar }: {
         <span className={c.lado === 'cargo' ? 'text-sky-700' : 'text-rose-700'}>{c.lado === 'cargo' ? 'Cargo' : 'Abono'}</span>
       </td>
       <td className="px-4 py-2">
-        <div className="flex items-center gap-1">
-          <input list="ctas-mov-nom" value={val} onChange={(e) => setVal(e.target.value)}
-            onBlur={() => { if ((val || '') !== (c.cuenta || '')) onGuardar(c, val); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-            placeholder={`sugerido ${c.sugerida}`}
-            className="border rounded px-2 py-1 text-sm w-36" />
-          {val && nombreCta.get(val) && (
-            <span className="text-xs text-gray-500 truncate max-w-[12rem]" title={nombreCta.get(val)}>{nombreCta.get(val)}</span>
-          )}
-          {c.cuenta === val && val && <Check size={14} className="text-emerald-500 shrink-0" />}
-        </div>
+        <CuentaPicker listId="ctas-mov-nom" nombreCta={nombreCta} value={c.cuenta}
+          onSave={(codigo) => onGuardar(c, codigo)} placeholder={`sugerido ${c.sugerida}`} ancho="w-56" />
       </td>
     </tr>
   );
