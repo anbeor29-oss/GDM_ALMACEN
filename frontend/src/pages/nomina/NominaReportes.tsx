@@ -625,7 +625,7 @@ function PorPeriodo({ filas, columnas }: { filas: any[]; columnas: Array<[string
  * De aquí sale la póliza de pasivo: percepciones al cargo (601), deducciones y
  * provisiones al abono (210/211/216). Los importes ya los da el motor; esto sólo
  * dice a qué cuenta va cada concepto. */
-function ConceptosCuentasNomina() {
+export function ConceptosCuentasNomina() {
   const qc = useQueryClient();
   const [sub, setSub] = useState<'ingresos' | 'egresos' | 'poliza'>('ingresos');
 

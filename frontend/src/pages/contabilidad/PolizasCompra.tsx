@@ -87,7 +87,7 @@ export function PolizasCompraPage() {
 }
 
 /* ── Tab 1: Cargos (ClaveProdServ → 115/601) ──────────────────────────────── */
-function TabCargos({ anio, mes, cuentas }: { anio: number; mes: number; cuentas: any[] }) {
+export function TabCargos({ anio, mes, cuentas }: { anio: number; mes: number; cuentas: any[] }) {
   const qc = useQueryClient();
   const clave = ['compras-productos', anio, mes];
   const q = useQuery({ queryKey: clave, queryFn: () => api.getComprasProductos(anio, mes) });

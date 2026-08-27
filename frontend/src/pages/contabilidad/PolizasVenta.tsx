@@ -75,7 +75,7 @@ export function PolizasVentaPage() {
 }
 
 /* ── Tab 1: Ingresos (ClaveProdServ → 401) ────────────────────────────────── */
-function TabIngresos({ anio, mes, cuentas }: { anio: number; mes: number; cuentas: any[] }) {
+export function TabIngresos({ anio, mes, cuentas }: { anio: number; mes: number; cuentas: any[] }) {
   const qc = useQueryClient();
   const clave = ['ventas-productos', anio, mes];
   const q = useQuery({ queryKey: clave, queryFn: () => api.getVentasProductos(anio, mes) });

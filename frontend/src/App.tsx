@@ -59,6 +59,7 @@ import { NominaReportesPage } from '@/pages/nomina/NominaReportes';
 import { MotorImssIdsePage } from '@/pages/nomina/MotorImssIdse';
 import { CatalogoCuentasPage } from '@/pages/contabilidad/CatalogoCuentas';
 import { AsignacionCuentaPage } from '@/pages/contabilidad/AsignacionCuenta';
+import { AsignacionCuentasPage } from '@/pages/contabilidad/AsignacionCuentas';
 import { PolizaManualPage } from '@/pages/contabilidad/PolizaManual';
 import { PolizasListaPage } from '@/pages/contabilidad/PolizasLista';
 import { PolizasVentaPage } from '@/pages/contabilidad/PolizasVenta';
@@ -300,7 +301,8 @@ export function App() {
             {/* Contabilidad. Mismo gateo que nómina: el backend manda con
                 requireModule, esto sólo evita la pantalla vacía. */}
             <Route path="contabilidad/cuentas"            element={<ModuleRoute module="contabilidad"><CatalogoCuentasPage /></ModuleRoute>} />
-            <Route path="contabilidad/asignacion"         element={<ModuleRoute module="contabilidad"><AsignacionCuentaPage /></ModuleRoute>} />
+            <Route path="contabilidad/asignacion"         element={<ModuleRoute module="contabilidad"><AsignacionCuentasPage /></ModuleRoute>} />
+            <Route path="contabilidad/asignacion-cfdi"    element={<ModuleRoute module="contabilidad"><AsignacionCuentaPage /></ModuleRoute>} />
             <Route path="contabilidad/poliza-manual"      element={<ModuleRoute module="contabilidad"><PolizaManualPage /></ModuleRoute>} />
             <Route path="contabilidad/polizas"            element={<ModuleRoute module="contabilidad"><PolizasListaPage /></ModuleRoute>} />
             <Route path="contabilidad/periodos"           element={<ModuleRoute module="contabilidad"><PeriodosPage /></ModuleRoute>} />
