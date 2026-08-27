@@ -980,6 +980,13 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/catalogos-externos');
     return r.data;
   }
+  /** Lee y revisa una balanza/respaldo SIN guardar nada (análisis de cliente nuevo). */
+  async analizarBalanzaRespaldo(fd: FormData) {
+    const r = await this.client.post<APIResponse<any>>(
+      '/accounting/balanza/analizar', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
   /* ── Subcuentas por tercero (máscara 000-00-000) ── */
   async generarSubcuentas(direccion: 'emitidos' | 'recibidos') {
     const r = await this.client.post<APIResponse<any>>('/accounting/subcuentas/generar', { direccion });

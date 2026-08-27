@@ -17,7 +17,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight, ChevronDown, Search, Plus, AlertTriangle, CheckCircle2,
-  Link2, BookOpen, X, Info,
+  Link2, BookOpen, X, Info, Layers, Upload, Loader2, Scale,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
@@ -106,7 +106,7 @@ export function CatalogoCuentasPage() {
   }
 
   return (
-    <div className="p-6 space-y-4 max-w-6xl">
+    <div className="p-6 space-y-4 max-w-[1500px]">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -150,48 +150,58 @@ export function CatalogoCuentasPage() {
         </p>
       )}
 
-      {/* ── Buscador ── */}
-      <div className="flex flex-wrap gap-2">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search size={15} className="absolute left-2.5 top-2.5 text-gray-400" />
-          <input
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Código o nombre…"
-            className="input w-full pl-8"
-          />
-        </div>
-        <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="input">
-          <option value="">Todos los tipos</option>
-          {Object.keys(TIPO_COLOR).map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        {/* Toggle real: el árbol arranca compactado, así que estando colapsado el
-            botón OFRECE expandir; ya expandido, re-colapsa para liberar la pantalla
-            —útil cuando un respaldo trae cientos de subcuentas por cliente. Con una
-            búsqueda activa el árbol se abre solo, así que el toggle se inhabilita. */}
-        <button
-          onClick={() => setAbiertos(abiertos.size ? new Set() : new Set(idsConHijos))}
-          disabled={buscando}
-          title={buscando ? 'La búsqueda ya muestra todo abierto' : (abiertos.size ? 'Colapsar todo el catálogo' : 'Expandir todo el catálogo')}
-          className="border px-3 rounded-lg hover:bg-gray-50 text-sm text-gray-600 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
-          {abiertos.size ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          {abiertos.size ? 'Colapsar todo' : 'Expandir todo'}
-        </button>
-      </div>
+      {/* ── Dos paneles: el árbol a la izquierda, el análisis a la derecha ──
+          Colapsar el árbol libera la mitad de la pantalla para revisar el
+          respaldo contable de un cliente nuevo o empatar su catálogo. */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-4 items-start">
+        <div className="space-y-3 min-w-0">
+          {/* ── Buscador ── */}
+          <div className="flex flex-wrap gap-2">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={15} className="absolute left-2.5 top-2.5 text-gray-400" />
+              <input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Código o nombre…"
+                className="input w-full pl-8"
+              />
+            </div>
+            <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="input">
+              <option value="">Todos los tipos</option>
+              {Object.keys(TIPO_COLOR).map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            {/* Toggle real: el árbol arranca compactado, así que estando colapsado el
+                botón OFRECE expandir; ya expandido, re-colapsa para liberar la pantalla
+                —útil cuando un respaldo trae cientos de subcuentas por cliente. Con una
+                búsqueda activa el árbol se abre solo, así que el toggle se inhabilita. */}
+            <button
+              onClick={() => setAbiertos(abiertos.size ? new Set() : new Set(idsConHijos))}
+              disabled={buscando}
+              title={buscando ? 'La búsqueda ya muestra todo abierto' : (abiertos.size ? 'Colapsar todo el catálogo' : 'Expandir todo el catálogo')}
+              className="border px-3 rounded-lg hover:bg-gray-50 text-sm text-gray-600 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+              {abiertos.size ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              {abiertos.size ? 'Colapsar todo' : 'Expandir todo'}
+            </button>
+          </div>
 
-      {/* ── El árbol ── */}
-      <div className="bg-white rounded-lg shadow border divide-y">
-        {filtrado.length === 0 && (
-          <p className="p-6 text-center text-gray-500 text-sm">
-            Ninguna cuenta coincide con la búsqueda.
-          </p>
-        )}
-        {filtrado.map((n: any) => (
-          <Rama key={n.id} nodo={n} nivel={0}
-            abiertos={abiertos} buscando={buscando}
-            onAlternar={alternar} onDetalle={setDetalle}
-            onAgregar={puedeEditar ? (p: any) => setAlta({ parentId: p.id, padre: p }) : undefined} />
-        ))}
+          {/* ── El árbol ── */}
+          <div className="bg-white rounded-lg shadow border divide-y">
+            {filtrado.length === 0 && (
+              <p className="p-6 text-center text-gray-500 text-sm">
+                Ninguna cuenta coincide con la búsqueda.
+              </p>
+            )}
+            {filtrado.map((n: any) => (
+              <Rama key={n.id} nodo={n} nivel={0}
+                abiertos={abiertos} buscando={buscando}
+                onAlternar={alternar} onDetalle={setDetalle}
+                onAgregar={puedeEditar ? (p: any) => setAlta({ parentId: p.id, padre: p }) : undefined} />
+            ))}
+          </div>
+        </div>
+
+        {/* ── El área de análisis (pestañas) ── */}
+        <PanelAnalisis />
       </div>
 
       {detalle && (
@@ -204,6 +214,269 @@ export function CatalogoCuentasPage() {
       )}
     </div>
   );
+}
+
+/* ═══════════ ÁREA DE ANÁLISIS (RESPALDO + CATÁLOGOS) ═══════════ */
+
+const money = (n: any) =>
+  new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
+
+const CONF_COLOR: Record<string, string> = {
+  ALTA:      'bg-emerald-100 text-emerald-800',
+  MEDIA:     'bg-sky-100 text-sky-800',
+  BAJA:      'bg-amber-100 text-amber-800',
+  CONFLICTO: 'bg-rose-100 text-rose-800',
+  NINGUNA:   'bg-gray-200 text-gray-700',
+};
+
+/**
+ * El área de análisis del catálogo. UNA sola subida —la balanza / respaldo
+ * contable de un cliente— alimenta las dos pestañas: al leerla, el backend ya
+ * devuelve tanto su revisión (cuadre, niveles, avisos) como el acomodo de cada
+ * cuenta ajena sobre el Anexo 24. No guarda nada: es el paso previo a decidir.
+ * Pensado para crecer: una pestaña más es una entrada más en `PESTANAS`.
+ */
+function PanelAnalisis() {
+  const [pestana, setPestana] = useState<'respaldo' | 'catalogos'>('respaldo');
+  const [res, setRes] = useState<any>(null);
+  const [nombre, setNombre] = useState('');
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+
+  const analizar = async (file: File) => {
+    setError(''); setCargando(true); setNombre(file.name); setRes(null);
+    try {
+      const fd = new FormData();
+      fd.append('archivo', file);
+      const r: any = await api.analizarBalanzaRespaldo(fd);
+      setRes(r.data);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e.message || 'No se pudo leer el archivo.');
+    } finally { setCargando(false); }
+  };
+
+  const PESTANAS: Array<{ id: 'respaldo' | 'catalogos'; nombre: string; icono: any }> = [
+    { id: 'respaldo',  nombre: 'Respaldo de balanza', icono: Scale },
+    { id: 'catalogos', nombre: 'Catálogos',           icono: Layers },
+  ];
+
+  return (
+    <div className="bg-white rounded-lg shadow border flex flex-col xl:sticky xl:top-4 min-h-[420px]">
+      <div className="flex border-b text-sm">
+        {PESTANAS.map((p) => {
+          const Ico = p.icono;
+          return (
+            <button key={p.id} onClick={() => setPestana(p.id)}
+              className={`flex items-center gap-1.5 px-3 py-2.5 border-b-2 -mb-px ${
+                pestana === p.id
+                  ? 'border-primary text-primary font-medium'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>
+              <Ico size={14} /> {p.nombre}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Una subida sirve a las dos pestañas. */}
+      <div className="p-3 border-b bg-gray-50/60">
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600">
+          <input type="file" accept=".xlsx,.xls,.pdf" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) analizar(f); e.currentTarget.value = ''; }} />
+          <span className="inline-flex items-center gap-1.5 border rounded-lg px-3 py-1.5 bg-white hover:bg-gray-50 hover:text-primary">
+            <Upload size={14} /> Subir balanza / respaldo
+          </span>
+          <span className="text-xs text-gray-400 truncate min-w-0">{nombre || '.xlsx o .pdf — no se guarda nada'}</span>
+        </label>
+      </div>
+
+      <div className="p-4 flex-1 overflow-auto max-h-[72vh]">
+        {cargando && (
+          <p className="text-sm text-gray-500 flex items-center gap-2">
+            <Loader2 size={15} className="animate-spin" /> Leyendo y revisando…
+          </p>
+        )}
+        {error && (
+          <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{error}</p>
+        )}
+        {!res && !cargando && !error && <Vacio pestana={pestana} />}
+        {res && !cargando && pestana === 'respaldo'  && <VistaRespaldo res={res} />}
+        {res && !cargando && pestana === 'catalogos' && <VistaCatalogos res={res} />}
+      </div>
+    </div>
+  );
+}
+
+function Vacio({ pestana }: any) {
+  const Ico = pestana === 'respaldo' ? Scale : Layers;
+  return (
+    <div className="text-center text-gray-500 text-sm py-10 px-4">
+      <Ico size={28} className="mx-auto text-gray-300 mb-2" />
+      {pestana === 'respaldo' ? (
+        <>
+          <p className="font-medium text-gray-600">Análisis del respaldo de un cliente</p>
+          <p className="mt-1">Sube la balanza (Excel o PDF) de la historia contable del cliente:
+          te dice si <b>cuadra</b>, cuántas cuentas y niveles trae y qué revisar — sin guardar nada.
+          Es el paso previo a la póliza de apertura.</p>
+        </>
+      ) : (
+        <>
+          <p className="font-medium text-gray-600">Empatar su catálogo con el SAT</p>
+          <p className="mt-1">De la misma balanza se propone dónde cae cada cuenta ajena sobre el
+          catálogo del Anexo 24, marcando lo dudoso para confirmarlo a mano.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function VistaRespaldo({ res }: any) {
+  const a = res.analisis || {};
+  const enc = res.encabezado || {};
+  return (
+    <div className="space-y-4 text-sm">
+      {(enc.razonSocial || enc.rfc || enc.periodo) && (
+        <div className="text-xs text-gray-500">
+          {enc.razonSocial && <span className="font-medium text-gray-700">{enc.razonSocial}</span>}
+          {enc.rfc && <span className="ml-2 font-mono">{enc.rfc}</span>}
+          {enc.periodo && <span className="ml-2">· {enc.periodo}</span>}
+          <span className="ml-2 uppercase">· {res.origen}</span>
+        </div>
+      )}
+
+      <div className={`rounded-lg border px-3 py-2 flex items-center gap-2 ${
+        a.cuadra ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                 : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+        {a.cuadra ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+        <span className="font-medium">{a.cuadra ? 'La balanza cuadra' : 'La balanza NO cuadra'}</span>
+      </div>
+
+      <dl className="grid grid-cols-2 gap-3">
+        <Mini r="Cuentas de detalle" v={a.hojas} />
+        <Mini r="Cuentas sumarias" v={a.sumarias} />
+        <Mini r="Suma debe" v={money(a.sumaDebe)} />
+        <Mini r="Suma haber" v={money(a.sumaHaber)} />
+        <Mini r="Activo" v={money(a.activo)} />
+        <Mini r="Pasivo + Cap. + Res." v={money(a.pasivoCapitalResultado)} />
+      </dl>
+      {Math.abs(Number(a.diferenciaEcuacion)) > 0.005 && (
+        <p className="text-xs text-rose-700">Diferencia en la ecuación contable: {money(a.diferenciaEcuacion)}</p>
+      )}
+
+      {(a.porTipo || []).length > 0 && (
+        <div>
+          <h4 className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Por tipo</h4>
+          <table className="w-full text-xs">
+            <tbody>
+              {a.porTipo.map((t: any) => (
+                <tr key={t.tipo} className="border-b last:border-0">
+                  <td className="py-1"><span className={`px-1.5 py-0.5 rounded ${TIPO_COLOR[t.tipo] || ''}`}>{t.tipo}</span></td>
+                  <td className="py-1 text-right text-gray-500">{t.cuentas} ctas</td>
+                  <td className="py-1 text-right font-mono">{money(t.saldoFinal)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {(a.avisos || []).length > 0 && (
+        <div className="space-y-1.5">
+          {a.avisos.map((av: any, i: number) => (
+            <div key={i} className={`rounded border px-2.5 py-1.5 text-xs flex items-start gap-1.5 ${
+              av.nivel === 'ERROR' ? 'bg-rose-50 border-rose-200 text-rose-800'
+                                   : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p>{av.mensaje}</p>
+                {av.detalle?.length > 0 && (
+                  <p className="opacity-75 mt-0.5 break-words">
+                    {av.detalle.slice(0, 6).join(' · ')}{av.detalle.length > 6 ? ' …' : ''}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {res.filasOmitidas > 0 && (
+        <p className="text-xs text-gray-400">Balanza grande: {res.filasOmitidas} renglones; se muestra el resumen.</p>
+      )}
+    </div>
+  );
+}
+
+function VistaCatalogos({ res }: any) {
+  const rm = res.resumenMapeo || {};
+  const filas: any[] = res.mapeo || res.porRevisar || [];
+  if (!filas.length && !rm.total) {
+    return <p className="text-sm text-gray-500">La balanza no trae cuentas que empatar.</p>;
+  }
+  return (
+    <div className="space-y-4 text-sm">
+      <div className="flex flex-wrap gap-1.5 text-xs">
+        <Chip n={rm.mapeadas} t={`de ${rm.total} acomodadas`} c="bg-gray-100 text-gray-700" />
+        {rm.alta > 0 && <Chip n={rm.alta} t="alta" c={CONF_COLOR.ALTA} />}
+        {rm.media > 0 && <Chip n={rm.media} t="media" c={CONF_COLOR.MEDIA} />}
+        {rm.baja > 0 && <Chip n={rm.baja} t="baja" c={CONF_COLOR.BAJA} />}
+        {rm.conflicto > 0 && <Chip n={rm.conflicto} t="conflicto" c={CONF_COLOR.CONFLICTO} />}
+        {rm.ninguna > 0 && <Chip n={rm.ninguna} t="sin empate" c={CONF_COLOR.NINGUNA} />}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-gray-400 text-[10px] uppercase">
+              <th className="text-left font-medium py-1">Cuenta del cliente</th>
+              <th className="text-left font-medium py-1">→ SAT</th>
+              <th className="text-left font-medium py-1">Conf.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((p: any, i: number) => (
+              <tr key={i} className="border-b last:border-0 align-top">
+                <td className="py-1 pr-2">
+                  <span className="font-mono text-gray-800">{p.cuenta}</span>
+                  <span className="text-gray-500 ml-1.5">{p.nombre}</span>
+                </td>
+                <td className="py-1 pr-2">
+                  {p.agrupador
+                    ? <span className="font-mono text-gray-700">{p.agrupador}{p.agrupadorNombre ? ` · ${p.agrupadorNombre}` : ''}</span>
+                    : <span className="text-gray-400">—</span>}
+                </td>
+                <td className="py-1">
+                  <span className={`px-1.5 py-0.5 rounded ${CONF_COLOR[p.confianza] || ''}`} title={p.razon}>
+                    {p.confianza}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {res.filasOmitidas > 0 && (
+        <p className="text-xs text-gray-400">
+          La balanza es grande: se listan las {(res.porRevisar || []).length} cuentas por revisar.
+        </p>
+      )}
+      <p className="text-[11px] text-gray-400">
+        El empate es una propuesta; cada cuenta se confirma en su detalle (Equivalencias).
+      </p>
+    </div>
+  );
+}
+
+function Mini({ r, v }: any) {
+  return (
+    <div>
+      <dt className="text-[10px] uppercase tracking-wide text-gray-500">{r}</dt>
+      <dd className="text-gray-900 font-medium">{v}</dd>
+    </div>
+  );
+}
+
+function Chip({ n, t, c }: any) {
+  return <span className={`px-1.5 py-0.5 rounded ${c}`}><b>{n}</b> {t}</span>;
 }
 
 /* ═══════════ UNA RAMA DEL ÁRBOL ═══════════ */
