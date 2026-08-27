@@ -275,14 +275,16 @@ router.post(
       : pedida === 'emitidos' ? ['emitidos']
       : ['recibidos'];
 
-    /* El 301 "no se permite la descarga de xml cancelados" salta cuando el rango
-     * de RECIBIDOS incluye cancelados. Se evita acotando a VIGENTES
-     * (EstadoComprobante=1, que soap.ts pone al pedir CFDI): es lo que hace el
-     * proyecto IVA con @nodecfdi (DocumentStatus 'active') y sí baja el XML de
-     * recibidos. Por eso, si el usuario no fuerza tipo, se piden los DOS —CFDI
-     * (XML vigente, base de la póliza de compra) + Metadata (el estatus)— igual
-     * para recibidos y emitidos. El XML de un recibido cancelado no existe: sólo
-     * queda su metadato. */
+    /* EL SAT NO DEJA BAJAR EL XML MASIVO DE RECIBIDOS cuando hay cancelados en el
+     * rango: contesta 301 "no se permite la descarga de xml que se encuentren
+     * cancelados", y —comprobado— lo hace AUNQUE se mande EstadoComprobante=1
+     * (el filtro de vigentes es efectivo en EMITIDOS, no en recibidos). Por eso:
+     *   · EMITIDOS  → CFDI (el XML propio) + Metadata (el estatus).
+     *   · RECIBIDOS → SÓLO Metadata (UUID, emisor, fecha, monto, estatus): es la
+     *     base de las cuentas por pagar y nunca da 301.
+     * Para tener el XML de una compra —y contabilizarla— se sube su XML en
+     * Contabilidad → Pólizas de compra → «Subir XML de compra», o se baja el de
+     * un recibido VIGENTE por su UUID. */
     const tipoPedido = req.body?.tipo;
     const base = { desde: req.body?.desde, hasta: req.body?.hasta, filtros: req.body?.filtros };
     const nuevo = (direccion: 'recibidos' | 'emitidos', tipo: 'CFDI' | 'Metadata') =>
@@ -292,18 +294,11 @@ router.post(
     for (const direccion of direcciones) {
       if (tipoPedido) {
         trabajos.push(await nuevo(direccion, tipoPedido));
+      } else if (direccion === 'recibidos') {
+        trabajos.push(await nuevo('recibidos', 'Metadata'));
       } else {
-        /* Recibidos Y emitidos: se piden los DOS trabajos, CFDI + Metadata. El
-         * CFDI trae el XML (recibidos: base de la póliza de compra; emitidos:
-         * su representación) y se acota a VIGENTES (EstadoComprobante=1 en
-         * soap.ts) para no toparse con el 301 de los cancelados —el mismo criterio
-         * que el proyecto IVA (@nodecfdi, DocumentStatus 'active') que sí baja el
-         * XML de recibidos—. El Metadata trae el ESTATUS (vigente/cancelado), que
-         * el XML no incluye porque la cancelación es posterior. Antes recibidos
-         * bajaba SÓLO Metadata (sin XML) y las pólizas de compra quedaban vacías.
-         * El cron DIARIO ya pedía los dos; aquí se iguala la petición manual. */
-        trabajos.push(await nuevo(direccion, 'CFDI'));
-        trabajos.push(await nuevo(direccion, 'Metadata'));
+        trabajos.push(await nuevo('emitidos', 'CFDI'));
+        trabajos.push(await nuevo('emitidos', 'Metadata'));
       }
     }
 

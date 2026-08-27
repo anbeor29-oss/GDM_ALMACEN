@@ -244,18 +244,18 @@ async function trabajoVivoEn(
   return r.rows.length > 0;
 }
 
-/* De cada dirección, qué tipos se piden automáticamente. En AMBOS casos el CFDI
- * de recibidos se acota a VIGENTES (EstadoComprobante=1 en soap.ts), que es lo
- * que evita el 301 de los cancelados —el criterio del proyecto IVA con @nodecfdi
- * (DocumentStatus 'active'), que sí baja el XML de recibidos—. El XML alimenta
- * la póliza de compra; el Metadata acompaña para el estatus (vigente/cancelado)
- * y para el metadato de los cancelados, que no tienen XML. */
+/* De cada dirección, qué tipos se piden automáticamente. EMITIDOS: CFDI (el XML
+ * propio) + Metadata (el estatus). RECIBIDOS: SÓLO Metadata — el SAT rechaza con
+ * 301 el XML masivo de recibidos cuando hay cancelados en el rango, aun mandando
+ * EstadoComprobante=1 (el filtro de vigentes sirve en emitidos, no en recibidos).
+ * El XML de una compra se sube a mano (Pólizas de compra → «Subir XML de compra»)
+ * o se baja por UUID de un recibido vigente. */
 const TIPOS_DIARIO: Record<string, Array<'CFDI' | 'Metadata'>> = {
-  recibidos: ['CFDI', 'Metadata'],
+  recibidos: ['Metadata'],
   emitidos: ['CFDI', 'Metadata'],
 };
 const TIPOS_EJERCICIO: Record<string, Array<'CFDI' | 'Metadata'>> = {
-  recibidos: ['CFDI', 'Metadata'],   // CFDI acotado a VIGENTES (evita el 301); da el XML para la póliza de compra
+  recibidos: ['Metadata'],
   emitidos: ['CFDI', 'Metadata'],
 };
 

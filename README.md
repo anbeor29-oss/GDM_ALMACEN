@@ -30,12 +30,12 @@ SW Sapien.
   sus capacidades y su pantalla de inicio.
 - 🟡 **PAC en sandbox** de SW Sapien. Timbra, pero no ante el SAT real.
 - 🟢 **Descarga masiva del SAT**: baja de punta a punta (autenticar → solicitar →
-  verificar → **descargar** → indexar). **Emitidos y recibidos** se traen como
-  **CFDI + Metadata**: el CFDI (XML) acotado a **vigentes** (`EstadoComprobante=1`)
-  para esquivar el 301 de los cancelados —el mismo criterio de @nodecfdi—, y el
-  Metadata para el estatus (vigente/cancelado) y para los cancelados, que no tienen
-  XML. El cron diario **no arranca sin `ENABLE_SAT_DESCARGA_CRON=true`** en el
-  entorno.
+  verificar → **descargar** → indexar). **Emitidos**: CFDI (el XML completo) +
+  Metadata. **Recibidos**: SÓLO **Metadata** (UUID, emisor, fecha, monto, estatus)
+  — el SAT rechaza con 301 el XML masivo de recibidos cuando hay cancelados en el
+  rango, aun con `EstadoComprobante=1`. El XML de una compra se sube a mano
+  (**Pólizas de compra → «Subir XML de compra»**) o se baja por UUID. El cron
+  diario **no arranca sin `ENABLE_SAT_DESCARGA_CRON=true`** en el entorno.
 
 ## 🔑 Cómo entrar
 

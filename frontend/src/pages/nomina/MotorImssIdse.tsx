@@ -429,6 +429,11 @@ export function MotorImssIdsePage() {
             diario: String(Number(modal.emp?.salario_diario ?? 0) || ''),
             umf: '', causaBaja: '',
           }}
+          factor={(() => {
+            const di = Number(modal.emp?.salario_diario) || 0;
+            const in_ = Number(modal.emp?.salario_diario_integrado) || 0;
+            return di > 0 && in_ >= di ? in_ / di : 1.0452;   // del expediente; si no, factor de ley (1 año)
+          })()}
           onGuardar={guardarMov}
           onCerrar={() => setModal(null)}
         />
@@ -438,9 +443,10 @@ export function MotorImssIdsePage() {
 }
 
 /* ── El modal por movimiento: pide lo que falta según el tipo ── */
-function ModalMovimiento({ modal, inicial, onGuardar, onCerrar }: {
+function ModalMovimiento({ modal, inicial, factor, onGuardar, onCerrar }: {
   modal: { nombre: string; nss: string; tipo: Tipo };
   inicial: { fecha: string; sbc: string; diario: string; umf: string; causaBaja: string };
+  factor: number;
   onGuardar: (f: { fecha: string; sbc: string; diario: string; umf: string; causaBaja: string }) => void;
   onCerrar: () => void;
 }) {
@@ -451,6 +457,14 @@ function ModalMovimiento({ modal, inicial, onGuardar, onCerrar }: {
   const esBaja = modal.tipo === 'BAJA';
   const esAlta = modal.tipo === 'ALTA';
   const conSalario = esAlta || modal.tipo === 'MODIFICACION';
+
+  /* Al cambiar el salario DIARIO, el SBC (integrado) se recalcula con el factor
+   * de integración = SBC/diario del expediente (o el de ley del primer año). Se
+   * puede sobrescribir a mano si hace falta. */
+  const setDiario = (v: string) => {
+    const d = Number(v) || 0;
+    setF((prev) => ({ ...prev, diario: v, sbc: d > 0 ? String(Math.round(d * factor * 100) / 100) : '' }));
+  };
   const st = BOTON_MOV[modal.tipo];
 
   const listo = !!f.fecha && (esBaja ? !!f.causaBaja : Number(f.sbc) > 0);
@@ -478,17 +492,23 @@ function ModalMovimiento({ modal, inicial, onGuardar, onCerrar }: {
           </label>
 
           {conSalario && (
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block">
-                <span className="text-xs text-gray-600">Salario diario</span>
-                <input type="number" step="0.01" min="0" value={f.diario}
-                  onChange={(e) => setF({ ...f, diario: e.target.value })} className="input w-full" />
-              </label>
-              <label className="block">
-                <span className="text-xs text-gray-600">SBC (integrado) *</span>
-                <input type="number" step="0.01" min="0" value={f.sbc}
-                  onChange={(e) => setF({ ...f, sbc: e.target.value })} className="input w-full" />
-              </label>
+            <div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="text-xs text-gray-600">Salario diario</span>
+                  <input type="number" step="0.01" min="0" value={f.diario}
+                    onChange={(e) => setDiario(e.target.value)} className="input w-full" />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-gray-600">SBC (integrado) *</span>
+                  <input type="number" step="0.01" min="0" value={f.sbc}
+                    onChange={(e) => setF({ ...f, sbc: e.target.value })} className="input w-full" />
+                </label>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1">
+                SBC = diario × factor de integración <b>{factor.toFixed(4)}</b> (se recalcula al cambiar el
+                diario; puedes ajustarlo).
+              </p>
             </div>
           )}
 
