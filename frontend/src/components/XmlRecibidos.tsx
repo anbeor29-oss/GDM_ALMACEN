@@ -284,11 +284,16 @@ export function XmlRecibidos({ direccionInicial }: {
             {dias > 180 && ' En periodos largos se empieza con bloques de 30 días para no gastar el límite diario de solicitudes del SAT.'}
           </p>
           {(que === 'recibidos' || que === 'ambos') && (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-              De <b>recibidos</b> el SAT no entrega el XML por descarga masiva cuando hay
-              cancelados en el rango (contesta 301, con cualquier filtro), así que se traen sus
-              <b> metadatos</b>: UUID, emisor, fecha, monto y estatus vigente/cancelado — la base
-              para las cuentas por pagar. De <b>emitidos</b> sí baja el XML completo.
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              <b>Por qué recibidos es sólo metadato:</b> el SAT no entrega el XML de recibidos por
+              descarga masiva cuando hay cancelados en el rango —contesta 301 «no se permite la
+              descarga de xml que se encuentren cancelados»— y es así <b>aunque se pida sólo
+              vigentes</b> (`EstadoComprobante=1`); es una restricción del SAT, no un filtro que se
+              pueda ajustar (comprobado). Por eso de recibidos se traen los <b>metadatos</b> (UUID,
+              emisor, fecha, monto, estatus vigente/cancelado), que son la base de las cuentas por
+              pagar. Para tener el <b>XML de una compra y contabilizarla</b>, súbelo en{' '}
+              <b>Contabilidad → Pólizas de compra → «Subir XML de compra»</b>. De <b>emitidos</b> sí
+              baja el XML completo.
             </p>
           )}
         </div>
