@@ -4238,3 +4238,33 @@ También quedó el **SBC por factor de integración** en el constructor del IDSE
 al cambiar el salario diario, el SBC (integrado) se recalcula = diario × factor
 (el del expediente, SBC/diario; o el de ley del primer año, 1.0452), y se puede
 ajustar a mano.
+
+Y una **nota en la pantalla de descarga** explicando por qué recibidos es sólo
+metadato (el 301 del SAT, comprobado, aun pidiendo sólo vigentes) y remitiendo a
+«Subir XML de compra» para contabilizar una compra. Aparece sólo en
+recibidos/ambos.
+
+---
+
+## 2026-08-27 — Extractor de bancos: parser dedicado de Bancrea
+
+Bancrea daba 0 movimientos: su "Detalle de Movimientos" no es tabular como los
+demás. Imprime los **tres importes de la fila** (Saldo · Depósito · Retiro,
+**explícitos por columna** — no hay que inferir el signo) en un renglón, y
+DESPUÉS el concepto con la **fecha pegada al final** ("TRANSFERENCIA SPEI
+ENVIADA6-JUL-26"); los saldos del período van "valor+etiqueta"
+("8,924.55Saldo Inicial del Período"). El modelo por bloques (que ancla en la
+línea de la fecha) no lo agarraba.
+
+`extraerBancrea` (como `extraerNu`, parser propio que devuelve el mismo formato):
+lee los importes por `^saldo dep ret`, la fecha aunque venga pegada a letras, y
+el concepto priorizando la línea con palabra clave del movimiento (ENVIADA/
+RECIBIDA/COMISIÓN) que además sea texto y no dato bancario. **No hay que inferir
+la comisión SPEI** (viene como movimiento propio: cada envío da 3 renglones —
+transferencia + comisión $3 + IVA $0.48). Se coteja renglón a renglón contra el
+saldo que Bancrea sí declara por movimiento.
+
+Consecuencia: Julio 2026 (AAB) cuadra — 20 movs, ini 8,924.55, retiros
+44,840.88, depósitos 40,000.00, final 4,083.67, 0 advertencias. Nu sin cambios,
+sigue cuadrando. Faltan MercadoPago, Afirme, Banamex, HSBC y la conciliación de
+tarjetas de crédito como feature aparte.
