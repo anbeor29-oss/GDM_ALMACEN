@@ -33,6 +33,7 @@ import * as finiquito from './finiquito.service';
 import { generarReciboPDF } from './pdf-recibo.service';
 import * as cierre from './cierre.service';
 import * as conceptosCuenta from './conceptos-cuenta.service';
+import * as nominaPoliza from './nomina-poliza.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -1124,6 +1125,32 @@ router.put(
       companyId(req), String(req.body?.grupo), String(req.body?.clave), req.body?.cuenta ?? null);
     if (!ok) { res.status(404).json({ success: false, message: 'Concepto no reconocido' }); return; }
     res.json({ success: true });
+  })
+);
+
+/* ── Póliza de pasivo de nómina (finiquitos timbrados) ── */
+router.get(
+  '/poliza/finiquitos',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: { finiquitos: await nominaPoliza.finiquitosTimbrados(companyId(req)) } });
+  })
+);
+router.get(
+  '/poliza/:reciboId',
+  asyncHandler(async (req: Request, res: Response) => {
+    const [representacion, armado] = await Promise.all([
+      nominaPoliza.representacionFiniquito(companyId(req), req.params.reciboId),
+      nominaPoliza.armarPoliza(companyId(req), req.params.reciboId),
+    ]);
+    res.json({ success: true, data: { representacion, poliza: armado } });
+  })
+);
+router.post(
+  '/poliza/:reciboId/generar',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await nominaPoliza.generarPoliza(companyId(req), req.params.reciboId, req.user?.userId);
+    res.json({ success: true, data: r });
   })
 );
 

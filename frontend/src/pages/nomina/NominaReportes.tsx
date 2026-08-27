@@ -17,7 +17,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   FileBarChart, FileSpreadsheet, AlertTriangle, Users, Receipt, Landmark, HeartPulse,
-  Sigma, List, Tag, Check,
+  Sigma, List, Tag, Check, PlayCircle, CheckCircle2, BookOpen, Download,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '@/services/api';
@@ -626,7 +626,7 @@ function PorPeriodo({ filas, columnas }: { filas: any[]; columnas: Array<[string
  * dice a qué cuenta va cada concepto. */
 function ConceptosCuentasNomina() {
   const qc = useQueryClient();
-  const [sub, setSub] = useState<'ingresos' | 'egresos'>('ingresos');
+  const [sub, setSub] = useState<'ingresos' | 'egresos' | 'poliza'>('ingresos');
 
   const q = useQuery({ queryKey: ['nomina-conceptos-cuenta'], queryFn: () => api.getConceptosCuentaNomina() });
   const conceptos: any[] = q.data?.data?.conceptos || [];
@@ -665,7 +665,7 @@ function ConceptosCuentasNomina() {
       </datalist>
 
       <div className="flex gap-1 border-b">
-        {([['ingresos', 'Ingresos (percepciones)'], ['egresos', 'Egresos (deducciones y provisiones)']] as const)
+        {([['ingresos', 'Ingresos (percepciones)'], ['egresos', 'Egresos (deducciones y provisiones)'], ['poliza', 'Póliza']] as const)
           .map(([k, label]) => (
             <button key={k} onClick={() => setSub(k)}
               className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
@@ -675,24 +675,28 @@ function ConceptosCuentasNomina() {
           ))}
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Clave</th>
-              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Concepto</th>
-              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Mov.</th>
-              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 w-80">Cuenta contable</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {q.isLoading && <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>}
-            {lista.map((c) => (
-              <RenglonConcepto key={`${c.grupo}-${c.clave}`} c={c} nombreCta={nombreCta} onGuardar={guardar} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {sub === 'poliza' ? (
+        <PolizaFiniquito />
+      ) : (
+        <div className="bg-white rounded-lg shadow overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Clave</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Concepto</th>
+                <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Mov.</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 w-80">Cuenta contable</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {q.isLoading && <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>}
+              {lista.map((c) => (
+                <RenglonConcepto key={`${c.grupo}-${c.clave}`} c={c} nombreCta={nombreCta} onGuardar={guardar} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -727,6 +731,212 @@ function RenglonConcepto({ c, nombreCta, onGuardar }: {
         </div>
       </td>
     </tr>
+  );
+}
+
+/* ── Póliza del finiquito timbrado + su representación ──
+ * Una sola subida (el recibo timbrado del finiquito) muestra a la izquierda el
+ * ingreso por concepto con su parte gravada/exenta, el ISR y el neto a cobrar; a
+ * la derecha, la póliza de pasivo lista para asentarse en la contabilidad. */
+function PolizaFiniquito() {
+  const qc = useQueryClient();
+  const [reciboSel, setReciboSel] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const listaQ = useQuery({ queryKey: ['nomina-finiquitos-poliza'], queryFn: () => api.getFiniquitosParaPoliza() });
+  const finiquitos: any[] = listaQ.data?.data?.finiquitos || [];
+  const sel = reciboSel || finiquitos[0]?.recibo_id || '';
+
+  const detQ = useQuery({
+    queryKey: ['nomina-poliza', sel],
+    queryFn: () => api.getPolizaNomina(sel),
+    enabled: !!sel,
+  });
+  const rep = detQ.data?.data?.representacion;
+  const pol = detQ.data?.data?.poliza;
+
+  const generar = async () => {
+    setBusy(true); setMsg('');
+    try {
+      const r: any = await api.generarPolizaNomina(sel);
+      setMsg(r.data?.creada ? `Póliza #${r.data.poliza?.folio} generada en la contabilidad.` : (r.data?.motivo || 'Sin cambios.'));
+      qc.invalidateQueries({ queryKey: ['nomina-finiquitos-poliza'] });
+      qc.invalidateQueries({ queryKey: ['nomina-poliza', sel] });
+    } catch (e: any) { setMsg(e?.response?.data?.message || e.message || 'No se pudo generar.'); }
+    finally { setBusy(false); }
+  };
+
+  const pdf = async () => {
+    try { await api.descargarReciboPdf(sel, `finiquito-${rep?.empleado?.num_empleado || sel}.pdf`); }
+    catch { setMsg('No se pudo descargar el PDF.'); }
+  };
+
+  if (listaQ.isLoading) return <p className="text-sm text-gray-500 bg-white border rounded-lg p-4">Cargando…</p>;
+  if (finiquitos.length === 0) return (
+    <p className="text-sm text-gray-600 bg-white border rounded-lg p-4">
+      No hay finiquitos timbrados todavía. Genera el finiquito (Nómina → Especial), ciérralo y
+      tímbralo; en cuanto tenga folio fiscal aparece aquí para contabilizarlo.
+    </p>
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={sel} onChange={(e) => { setReciboSel(e.target.value); setMsg(''); }}
+          className="border rounded-lg px-3 py-1.5 text-sm max-w-full">
+          {finiquitos.map((f) => (
+            <option key={f.recibo_id} value={f.recibo_id}>
+              {f.finiquito_tipo === 'LIQUIDACION' ? 'Liquidación' : 'Finiquito'} · {f.nombre} · baja {f.fecha_baja}
+              {f.con_poliza ? ' · (ya contabilizado)' : ''}
+            </option>
+          ))}
+        </select>
+        {sel && (
+          <button onClick={pdf} className="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
+            <Download size={14} /> PDF
+          </button>
+        )}
+      </div>
+
+      {detQ.isLoading && <p className="text-sm text-gray-500 bg-white border rounded-lg p-4">Cargando…</p>}
+
+      {rep && pol && (
+        <div className="grid lg:grid-cols-2 gap-3 items-start">
+          {/* Representación del finiquito */}
+          <div className="bg-white rounded-lg shadow border p-4 space-y-3">
+            <div>
+              <h4 className="font-semibold text-gray-800">
+                {rep.periodo.tipo === 'LIQUIDACION' ? 'Liquidación' : 'Finiquito'} de {rep.empleado.nombre}
+              </h4>
+              <p className="text-xs text-gray-500">
+                {rep.empleado.num_empleado} · {rep.empleado.rfc} · baja {rep.periodo.fecha_fin} · {rep.periodo.dias} día(s)
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[10px] uppercase text-gray-400 border-b">
+                    <th className="text-left py-1">Ingreso por concepto</th>
+                    <th className="text-right py-1">Gravado</th>
+                    <th className="text-right py-1">Exento</th>
+                    <th className="text-right py-1">Importe</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rep.percepciones.map((p: any, i: number) => (
+                    <tr key={i} className="border-b last:border-0">
+                      <td className="py-1">{p.concepto}</td>
+                      <td className="py-1 text-right text-gray-600">{money(p.gravado)}</td>
+                      <td className="py-1 text-right text-gray-600">{money(p.exento)}</td>
+                      <td className="py-1 text-right font-medium">{money(p.importe)}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-semibold bg-gray-50">
+                    <td className="py-1">Total percepciones</td>
+                    <td className="py-1 text-right">{money(rep.totales.gravado)}</td>
+                    <td className="py-1 text-right">{money(rep.totales.exento)}</td>
+                    <td className="py-1 text-right">{money(rep.totales.percepciones)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {rep.subsidio > 0 && (
+              <p className="text-xs text-gray-500">Subsidio al empleo entregado: {money(rep.subsidio)}</p>
+            )}
+
+            <div className="text-sm space-y-1">
+              {rep.deducciones.map((d: any, i: number) => (
+                <div key={i} className="flex justify-between">
+                  <span className="text-gray-600">{d.concepto}</span>
+                  <span className="text-rose-700">− {money(d.importe)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between border-t pt-1 text-gray-500">
+                <span>ISR retenido</span><span>{money(rep.totales.isr)}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-baseline border-t pt-2">
+              <span className="text-sm font-semibold text-gray-700">Neto a cobrar</span>
+              <span className="text-lg font-bold text-emerald-700">{money(rep.totales.neto)}</span>
+            </div>
+          </div>
+
+          {/* Póliza de pasivo */}
+          <div className="bg-white rounded-lg shadow border p-4 space-y-3">
+            <h4 className="font-semibold text-gray-800 flex items-center gap-1.5">
+              <BookOpen size={16} className="text-violet-600" /> Póliza de pasivo
+            </h4>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10px] uppercase text-gray-400 border-b">
+                    <th className="text-left py-1">Cuenta</th>
+                    <th className="text-right py-1">Cargo</th>
+                    <th className="text-right py-1">Abono</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pol.lineas.map((l: any, i: number) => (
+                    <tr key={i} className="border-b last:border-0">
+                      <td className="py-1">
+                        <span className="font-mono text-gray-700">{l.codigo}</span>
+                        <span className="text-gray-500 ml-1.5">{l.concepto}</span>
+                      </td>
+                      <td className="py-1 text-right">{l.cargo ? money(l.cargo) : ''}</td>
+                      <td className="py-1 text-right">{l.abono ? money(l.abono) : ''}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-semibold bg-gray-50">
+                    <td className="py-1 text-right">Sumas</td>
+                    <td className="py-1 text-right">{money(pol.sumaCargo)}</td>
+                    <td className="py-1 text-right">{money(pol.sumaAbono)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {pol.faltantes.length > 0 && (
+              <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                <p className="flex items-center gap-1.5 font-medium">
+                  <AlertTriangle size={13} /> Faltan {pol.faltantes.length} concepto(s) por asignar cuenta:
+                </p>
+                <ul className="mt-1 list-disc pl-5 space-y-0.5">
+                  {pol.faltantes.map((f: any, i: number) => (
+                    <li key={i}>{f.concepto} — {money(f.importe)}{f.sugerida ? ` (sugerida ${f.sugerida})` : ''}</li>
+                  ))}
+                </ul>
+                <p className="mt-1">Asígnalas en Ingresos/Egresos y vuelve.</p>
+              </div>
+            )}
+
+            {pol.faltantes.length === 0 && (
+              <p className={`text-xs flex items-center gap-1.5 ${pol.cuadra ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {pol.cuadra ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                {pol.cuadra ? 'La póliza cuadra.' : 'La póliza no cuadra — revisa las cuentas.'}
+              </p>
+            )}
+
+            {pol.yaGenerada ? (
+              <p className="text-sm text-gray-500 flex items-center gap-1.5">
+                <Check size={14} className="text-emerald-500" /> Ya está contabilizada.
+              </p>
+            ) : (
+              <button onClick={generar} disabled={busy || pol.faltantes.length > 0 || !pol.cuadra}
+                className="flex items-center gap-1.5 bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 disabled:opacity-50 text-sm">
+                <PlayCircle size={15} /> {busy ? 'Generando…' : 'Generar póliza'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {msg && <p className="text-sm text-emerald-700">{msg}</p>}
+    </div>
   );
 }
 

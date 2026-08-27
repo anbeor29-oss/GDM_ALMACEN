@@ -1378,6 +1378,19 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>('/nomina/conceptos-cuenta', { grupo, clave, cuenta });
     return r.data;
   }
+  /* ── Póliza de pasivo de nómina (finiquitos timbrados) ── */
+  async getFiniquitosParaPoliza() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/poliza/finiquitos');
+    return r.data;
+  }
+  async getPolizaNomina(reciboId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/poliza/${reciboId}`);
+    return r.data;
+  }
+  async generarPolizaNomina(reciboId: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/poliza/${reciboId}/generar`);
+    return r.data;
+  }
   async getNominaParametros() {
     const r = await this.client.get<APIResponse<any>>('/nomina/parametros');
     return r.data;
