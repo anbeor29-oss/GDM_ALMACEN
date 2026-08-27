@@ -500,6 +500,57 @@ export async function crearPolizaManual(
   return { ...poliza, sumaCargo, sumaAbono };
 }
 
+/**
+ * Edita las partidas (y el encabezado) de una póliza, del origen que sea. Se
+ * reemplazan TODAS las partidas por las nuevas; útil para corregir a mano una
+ * póliza automática que quedó con la cuenta equivocada. Cuadra o no se guarda.
+ */
+export async function editarPoliza(
+  companyId: string, id: string,
+  d: { fecha?: string; concepto?: string; lineas: Array<{ codigo: string; cargo?: number; abono?: number; concepto?: string }> }
+) {
+  const filas = (d.lineas || []).filter((l) => l && l.codigo && (round2(l.cargo) > 0 || round2(l.abono) > 0));
+  if (filas.length < 2) throw new Error('Una póliza necesita al menos dos partidas con importe.');
+
+  const nuevas: Array<{ account_id: string; cargo: number; abono: number; concepto: string | null }> = [];
+  let sumaCargo = 0, sumaAbono = 0;
+  for (const l of filas) {
+    const cargo = round2(l.cargo), abono = round2(l.abono);
+    if (cargo > 0 && abono > 0) throw new Error(`La cuenta ${l.codigo} no puede llevar cargo y abono a la vez.`);
+    const cuenta = await cuentaPorCodigo(companyId, String(l.codigo).trim());
+    if (!cuenta) throw new Error(`La cuenta ${l.codigo} no está en el catálogo.`);
+    if (!cuenta.permite_movimientos) throw new Error(`La cuenta ${l.codigo} es de agrupación: no admite movimientos.`);
+    sumaCargo = round2(sumaCargo + cargo); sumaAbono = round2(sumaAbono + abono);
+    nuevas.push({ account_id: cuenta.id, cargo, abono, concepto: (l.concepto || d.concepto || '').toString().slice(0, 200) || null });
+  }
+  if (sumaCargo <= 0) throw new Error('La póliza no tiene importes.');
+  if (sumaCargo !== sumaAbono) throw new Error(`No cuadra: cargos ${sumaCargo.toFixed(2)} ≠ abonos ${sumaAbono.toFixed(2)}.`);
+
+  return transaction(async (client) => {
+    const own = await client.query<any>(
+      `SELECT origen_uuid FROM journal_entries WHERE company_id=$1 AND id=$2`, [companyId, id]);
+    if (own.rows.length === 0) throw new Error('No se encontró la póliza.');
+    const uuid = own.rows[0].origen_uuid || null;
+
+    const fechaValida = d.fecha && /^\d{4}-\d{2}-\d{2}$/.test(d.fecha) ? d.fecha : null;
+    if (fechaValida || d.concepto !== undefined) {
+      await client.query(
+        `UPDATE journal_entries SET fecha = COALESCE($3, fecha), concepto = COALESCE($4, concepto)
+          WHERE id=$1 AND company_id=$2`,
+        [id, companyId, fechaValida, d.concepto ?? null]);
+    }
+    await client.query(`DELETE FROM journal_lines WHERE entry_id=$1`, [id]);
+    let orden = 1;
+    for (const l of nuevas) {
+      await client.query(
+        `INSERT INTO journal_lines (entry_id, orden, account_id, cargo, abono, concepto, uuid_cfdi)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [id, orden++, l.account_id, l.cargo, l.abono, l.concepto, uuid]);
+    }
+    return { id, sumaCargo, sumaAbono };
+  });
+}
+
 /** Borra UNA póliza (encabezado + partidas), sea cual sea su origen. */
 export async function borrarPoliza(companyId: string, id: string): Promise<boolean> {
   return transaction(async (client) => {

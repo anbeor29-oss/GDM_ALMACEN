@@ -732,6 +732,16 @@ router.delete(
   })
 );
 
+/** PUT /accounting/polizas/:id — edita las partidas/encabezado de una póliza */
+router.put(
+  '/polizas/:id',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await polizas.editarPoliza(companyId(req), req.params.id, req.body || {});
+    res.json({ success: true, data: { poliza: r } });
+  })
+);
+
 /** DELETE /accounting/polizas/:id — borra UNA póliza (cualquier origen) */
 router.delete(
   '/polizas/:id',

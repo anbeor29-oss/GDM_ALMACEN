@@ -7,11 +7,13 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Trash2, AlertTriangle } from 'lucide-react';
+import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X } from 'lucide-react';
 import api from '@/services/api';
+import { CampoFecha } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
+const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 const fecha = (s?: string) => s ? new Date(s + (String(s).length <= 10 ? 'T12:00:00' : '')).toLocaleDateString('es-MX') : '—';
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -41,6 +43,7 @@ export function PolizasListaPage() {
   const [mes, setMes] = useState(hoy.getMonth() + 1);
   const [filtro, setFiltro] = useState<string>('');
   const [msg, setMsg] = useState('');
+  const [editar, setEditar] = useState<any>(null);
   const anios = Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i);
 
   const q = useQuery({ queryKey: ['polizas', anio, mes], queryFn: () => api.getPolizas(anio, mes) });
@@ -113,8 +116,10 @@ export function PolizasListaPage() {
                 {!cuadra && (
                   <span className="text-[10px] text-rose-600 flex items-center gap-0.5"><AlertTriangle size={11} /> descuadrada</span>
                 )}
+                <button onClick={() => setEditar(p)} title="Editar póliza"
+                  className="ml-auto text-gray-300 hover:text-primary"><Pencil size={14} /></button>
                 <button onClick={() => borrar(p)} title="Eliminar póliza"
-                  className="ml-auto text-gray-300 hover:text-rose-500"><Trash2 size={15} /></button>
+                  className="text-gray-300 hover:text-rose-500"><Trash2 size={15} /></button>
               </div>
               <table className="w-full text-xs">
                 <tbody>
@@ -136,6 +141,152 @@ export function PolizasListaPage() {
             </div>
           );
         })}
+      </div>
+
+      {editar && (
+        <EditorPoliza
+          poliza={editar}
+          onCerrar={() => setEditar(null)}
+          onGuardado={() => {
+            setEditar(null);
+            setMsg('Póliza actualizada.');
+            qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Editor de una póliza (reemplaza sus partidas; cuadra o no se guarda) ── */
+function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
+  const [fecha, setFecha] = useState<string>(String(poliza.fecha || '').slice(0, 10));
+  const [concepto, setConcepto] = useState<string>(poliza.concepto || '');
+  const [lineas, setLineas] = useState<Array<{ codigo: string; concepto: string; cargo: string; abono: string }>>(
+    (poliza.lineas || []).map((l: any) => ({
+      codigo: l.codigo || '', concepto: l.concepto || '',
+      cargo: Number(l.cargo) > 0 ? String(l.cargo) : '',
+      abono: Number(l.abono) > 0 ? String(l.abono) : '',
+    })));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
+  const cuentas: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);
+  const nombreDe = useMemo(() => new Map<string, string>(cuentas.map((c: any) => [c.codigo, c.nombre])), [cuentas]);
+
+  const set = (i: number, campo: keyof (typeof lineas)[number], valor: string) => {
+    setLineas((ls) => ls.map((l, k) => {
+      if (k !== i) return l;
+      const nl = { ...l, [campo]: valor } as typeof l;
+      if (campo === 'cargo' && valor) nl.abono = '';
+      if (campo === 'abono' && valor) nl.cargo = '';
+      return nl;
+    }));
+    setError('');
+  };
+  const cuadrar = (i: number, campo: 'cargo' | 'abono') => {
+    setLineas((ls) => {
+      const oc = round2(ls.reduce((a, l, k) => a + (k === i ? 0 : Number(l.cargo) || 0), 0));
+      const oa = round2(ls.reduce((a, l, k) => a + (k === i ? 0 : Number(l.abono) || 0), 0));
+      const falta = campo === 'cargo' ? round2(oa - oc) : round2(oc - oa);
+      if (falta <= 0) return ls;
+      return ls.map((l, k) => k === i ? { ...l, cargo: campo === 'cargo' ? String(falta) : '', abono: campo === 'abono' ? String(falta) : '' } : l);
+    });
+  };
+  const agregar = () => setLineas((ls) => [...ls, { codigo: '', concepto: '', cargo: '', abono: '' }]);
+  const quitar = (i: number) => setLineas((ls) => ls.length > 1 ? ls.filter((_, k) => k !== i) : ls);
+
+  const sumaCargo = round2(lineas.reduce((a, l) => a + (Number(l.cargo) || 0), 0));
+  const sumaAbono = round2(lineas.reduce((a, l) => a + (Number(l.abono) || 0), 0));
+  const cuadra = sumaCargo > 0 && sumaCargo === sumaAbono;
+
+  const guardar = async () => {
+    setBusy(true); setError('');
+    try {
+      await api.editarPoliza(poliza.id, {
+        fecha, concepto: concepto.trim(),
+        lineas: lineas
+          .filter((l) => l.codigo && (Number(l.cargo) > 0 || Number(l.abono) > 0))
+          .map((l) => ({ codigo: l.codigo.trim(), concepto: l.concepto.trim() || undefined, cargo: Number(l.cargo) || 0, abono: Number(l.abono) || 0 })),
+      });
+      onGuardado();
+    } catch (e: any) { setError(e?.response?.data?.message || e.message || 'No se pudo guardar.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white">
+          <h3 className="font-semibold text-gray-900">Editar póliza #{poliza.folio}</h3>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <div className="grid sm:grid-cols-[9rem_1fr] gap-3">
+            <label className="block">
+              <span className="text-xs text-gray-600">Fecha</span>
+              <CampoFecha value={fecha} onChange={setFecha} className="input w-full" />
+            </label>
+            <label className="block">
+              <span className="text-xs text-gray-600">Concepto</span>
+              <input value={concepto} onChange={(e) => setConcepto(e.target.value)} className="input w-full" />
+            </label>
+          </div>
+
+          <datalist id="ctas-editar-poliza">
+            {cuentas.map((c) => <option key={c.id} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+          </datalist>
+
+          <div className="border rounded-lg overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 w-52">Cuenta</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Concepto</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 w-28">Debe</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 w-28">Haber</th>
+                  <th className="w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {lineas.map((l, i) => (
+                  <tr key={i}>
+                    <td className="px-2 py-1.5">
+                      <input list="ctas-editar-poliza" value={l.codigo} onChange={(e) => set(i, 'codigo', e.target.value)}
+                        placeholder="Cuenta" className={`border rounded px-2 py-1 text-sm w-full font-mono ${l.codigo && !nombreDe.has(l.codigo) ? 'border-rose-400 text-rose-700' : ''}`} />
+                      {l.codigo && nombreDe.get(l.codigo) && <span className="text-[10px] text-gray-500 truncate block">{nombreDe.get(l.codigo)}</span>}
+                      {l.codigo && !nombreDe.has(l.codigo) && <span className="text-[10px] text-rose-500 block">no existe</span>}
+                    </td>
+                    <td className="px-2 py-1.5"><input value={l.concepto} onChange={(e) => set(i, 'concepto', e.target.value)} className="border rounded px-2 py-1 text-sm w-full" /></td>
+                    <td className="px-2 py-1.5"><input type="number" step="0.01" min="0" value={l.cargo} onChange={(e) => set(i, 'cargo', e.target.value)} onKeyDown={(e) => { if (e.key === '-') { e.preventDefault(); cuadrar(i, 'cargo'); } }} title="− para cuadrar" className="border rounded px-2 py-1 text-sm w-full text-right" /></td>
+                    <td className="px-2 py-1.5"><input type="number" step="0.01" min="0" value={l.abono} onChange={(e) => set(i, 'abono', e.target.value)} onKeyDown={(e) => { if (e.key === '-') { e.preventDefault(); cuadrar(i, 'abono'); } }} title="− para cuadrar" className="border rounded px-2 py-1 text-sm w-full text-right" /></td>
+                    <td className="px-1"><button onClick={() => quitar(i)} className="text-gray-300 hover:text-rose-500"><Trash2 size={14} /></button></td>
+                  </tr>
+                ))}
+                <tr className="font-semibold bg-gray-50">
+                  <td colSpan={2} className="px-3 py-1.5 text-right">Sumas</td>
+                  <td className="px-3 py-1.5 text-right">{money(sumaCargo)}</td>
+                  <td className="px-3 py-1.5 text-right">{money(sumaAbono)}</td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={agregar} className="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"><Plus size={14} /> Agregar renglón</button>
+            <span className={`text-sm ${cuadra ? 'text-emerald-700' : 'text-gray-500'}`}>
+              {cuadra ? 'Sumas iguales' : sumaCargo === sumaAbono ? 'Captura los importes' : `Diferencia ${money(round2(sumaCargo - sumaAbono))}`}
+            </span>
+            <button onClick={guardar} disabled={busy || !cuadra}
+              className="ml-auto flex items-center gap-1.5 bg-primary text-white px-4 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
+              <Save size={15} /> {busy ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+          {error && <p className="text-sm text-rose-700">{error}</p>}
+        </div>
       </div>
     </div>
   );

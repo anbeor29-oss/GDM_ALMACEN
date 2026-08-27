@@ -1050,6 +1050,10 @@ class APIClient {
     const r = await this.client.delete<APIResponse<any>>(`/accounting/polizas/${id}`);
     return r.data;
   }
+  async editarPoliza(id: string, datos: any) {
+    const r = await this.client.put<APIResponse<any>>(`/accounting/polizas/${id}`, datos);
+    return r.data;
+  }
 
   /* ── Periodos contables ── */
   async getPeriodosContables(anio: number) {
