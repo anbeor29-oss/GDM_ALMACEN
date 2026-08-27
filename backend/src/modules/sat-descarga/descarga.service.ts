@@ -759,7 +759,13 @@ const attr = (xml: string, nombre: string): string | null => {
 const num = (v: string | null): number | null => (v == null || v === '' ? null : Number(v));
 
 /**
- * Guarda un CFDI. Devuelve false si ya estaba.
+ * Guarda un CFDI. Devuelve false si ya estaba (con su XML).
+ *
+ * CFDI y Metadata de emitidos son trabajos DISTINTOS que terminan en cualquier
+ * orden. Si el Metadata gana la carrera, crea la fila con estado_sat pero SIN
+ * XML; cuando luego llega el CFDI, en vez de descartarlo (el viejo DO NOTHING lo
+ * perdía y el emitido quedaba sin representación) RELLENA el XML y sus campos,
+ * dejando intactos estado_sat/fecha_cancelacion que sólo el Metadata trae.
  *
  * Se lee con expresiones y no con un analizador de XML completo: de los 40
  * campos de un CFDI aquí interesan doce, y cargar cada comprobante entero a un
@@ -786,7 +792,17 @@ export async function indexarCfdi(
         nombre_receptor, subtotal, descuento, total, moneda, tipo_cambio,
         forma_pago, metodo_pago, uso_cfdi, xml, xml_sha256, paquete_id)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
-     ON CONFLICT (company_id, rfc_propietario, uuid) DO NOTHING
+     ON CONFLICT (company_id, rfc_propietario, uuid) DO UPDATE SET
+       xml = EXCLUDED.xml, xml_sha256 = EXCLUDED.xml_sha256,
+       tipo_comprobante = EXCLUDED.tipo_comprobante, serie = EXCLUDED.serie, folio = EXCLUDED.folio,
+       fecha_emision = EXCLUDED.fecha_emision, fecha_timbrado = EXCLUDED.fecha_timbrado,
+       rfc_emisor = EXCLUDED.rfc_emisor, nombre_emisor = EXCLUDED.nombre_emisor,
+       rfc_receptor = EXCLUDED.rfc_receptor, nombre_receptor = EXCLUDED.nombre_receptor,
+       subtotal = EXCLUDED.subtotal, descuento = EXCLUDED.descuento, total = EXCLUDED.total,
+       moneda = EXCLUDED.moneda, tipo_cambio = EXCLUDED.tipo_cambio,
+       forma_pago = EXCLUDED.forma_pago, metodo_pago = EXCLUDED.metodo_pago,
+       uso_cfdi = EXCLUDED.uso_cfdi, paquete_id = EXCLUDED.paquete_id
+     WHERE cfdi_recibidos.xml IS NULL
      RETURNING id`,
     [companyId, rfcPropietario, uuid.toUpperCase(), direccion,
      attr(comprobante, 'TipoDeComprobante'), attr(comprobante, 'Serie'), attr(comprobante, 'Folio'),
