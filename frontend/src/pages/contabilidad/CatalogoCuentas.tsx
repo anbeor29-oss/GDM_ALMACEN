@@ -81,6 +81,16 @@ export function CatalogoCuentasPage() {
 
   const buscando = !!busqueda.trim() || !!tipo;
 
+  /* Los id de las ramas que TIENEN hijos: es lo que "Expandir todo" abre. */
+  const idsConHijos = useMemo(() => {
+    const ids: string[] = [];
+    const rec = (n: any) => {
+      if ((n.hijosLista || []).length) { ids.push(n.id); (n.hijosLista as any[]).forEach(rec); }
+    };
+    arbol.forEach(rec);
+    return ids;
+  }, [arbol]);
+
   const alternar = (id: string) => {
     const s = new Set(abiertos);
     s.has(id) ? s.delete(id) : s.add(id);
@@ -155,11 +165,17 @@ export function CatalogoCuentasPage() {
           <option value="">Todos los tipos</option>
           {Object.keys(TIPO_COLOR).map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
-        {/* El árbol arranca compactado; esto lo re-colapsa tras explorarlo —útil
-            cuando un respaldo trae cientos de subcuentas por cliente. */}
-        <button onClick={() => setAbiertos(new Set())} title="Colapsar todo el catálogo"
-          className="border px-3 rounded-lg hover:bg-gray-50 text-sm text-gray-600 flex items-center gap-1.5">
-          <ChevronRight size={14} /> Colapsar todo
+        {/* Toggle real: el árbol arranca compactado, así que estando colapsado el
+            botón OFRECE expandir; ya expandido, re-colapsa para liberar la pantalla
+            —útil cuando un respaldo trae cientos de subcuentas por cliente. Con una
+            búsqueda activa el árbol se abre solo, así que el toggle se inhabilita. */}
+        <button
+          onClick={() => setAbiertos(abiertos.size ? new Set() : new Set(idsConHijos))}
+          disabled={buscando}
+          title={buscando ? 'La búsqueda ya muestra todo abierto' : (abiertos.size ? 'Colapsar todo el catálogo' : 'Expandir todo el catálogo')}
+          className="border px-3 rounded-lg hover:bg-gray-50 text-sm text-gray-600 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+          {abiertos.size ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {abiertos.size ? 'Colapsar todo' : 'Expandir todo'}
         </button>
       </div>
 
