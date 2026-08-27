@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   HeartPulse, Search, UserPlus, UserMinus, TrendingUp, X, Download,
-  AlertTriangle, CheckCircle2, SlidersHorizontal, Upload,
+  AlertTriangle, CheckCircle2, SlidersHorizontal, Upload, Pencil,
 } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha, aTextoMx } from '@/components/CampoFecha';
@@ -40,6 +40,15 @@ const TIPOS: { clave: Tipo; label: string; icono: any; ayuda: string }[] = [
 const ETIQUETA_TIPO: Record<string, string> = {
   ALTA: 'ALTA', BAJA: 'BAJA', MODIFICACION: 'MODIF.',
 };
+/** El código IDSE de cada movimiento: 08 alta, 07 modificación, 02 baja. */
+const CODIGO_TIPO: Record<string, string> = { ALTA: '08', MODIFICACION: '07', BAJA: '02' };
+/** Colores por tipo (clases estáticas: Tailwind no admite nombres dinámicos). */
+const BOTON_MOV: Record<Tipo, { activo: string; base: string }> = {
+  ALTA:         { activo: 'bg-emerald-600 text-white border-emerald-600', base: 'text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
+  MODIFICACION: { activo: 'bg-violet-600 text-white border-violet-600',   base: 'text-violet-700 border-violet-200 hover:bg-violet-50' },
+  BAJA:         { activo: 'bg-rose-600 text-white border-rose-600',       base: 'text-rose-700 border-rose-200 hover:bg-rose-50' },
+};
+const NOMBRE_BOTON: Record<Tipo, string> = { ALTA: 'Alta', MODIFICACION: 'ModSal', BAJA: 'Baja' };
 
 /** Hoy en AAAA-MM-DD según el reloj local (sin corrimiento por UTC). */
 function hoyIso(): string {
@@ -52,7 +61,8 @@ function hoyIso(): string {
 interface Fila {
   tipo: Tipo;
   fecha: string;
-  sbc: string;
+  sbc: string;        // salario base de cotización (INTEGRADO) — lo que va al IDSE
+  diario: string;     // salario diario (referencia de la empresa)
   umf: string;
   clave: string;
   curp: string;
@@ -67,6 +77,7 @@ export function MotorImssIdsePage() {
 
   const [modo, setModo] = useState<'movimientos' | 'validar'>('movimientos');
   const [tipoNuevo, setTipoNuevo] = useState<Tipo>('ALTA');
+  const [modal, setModal] = useState<{ id: string; nombre: string; nss: string; tipo: Tipo; emp: any } | null>(null);
   const [buscar, setBuscar] = useState('');
   const [incluirBajas, setIncluirBajas] = useState(false);
   const [sel, setSel] = useState<Record<string, Fila>>({});
@@ -107,6 +118,7 @@ export function MotorImssIdsePage() {
           next[p.empleado_id] = {
             tipo: p.tipo, fecha: p.fecha || hoyIso(),
             sbc: p.sbc != null ? String(p.sbc) : '',
+            diario: p.diario != null ? String(p.diario) : '',
             umf: '', clave: p.num_empleado || '', curp: '',
             causaBaja: p.causa_baja || '', incluir: true, pendienteId: p.id,
           };
@@ -126,21 +138,29 @@ export function MotorImssIdsePage() {
   const incluidos = filas.filter((id) => sel[id].incluir);
   const datosDe = (id: string) => porId.get(id) || datos[id] || {};
 
-  const agregar = (e: any) => {
+  /* El alta/baja/modificación se captura en un modal por trabajador: se abre con
+   * los datos que ya tenemos (SBC integrado, salario diario) y pide lo que falta
+   * según el tipo (motivo en baja; diario e integrado en alta/modificación). */
+  const abrirModal = (e: any, tipo: Tipo) => {
     setOk(''); setError('');
     setDatos((d) => ({ ...d, [e.id]: { nombre_completo: e.nombre_completo, nss: e.nss } }));
-    setSel((prev) => {
-      if (prev[e.id]) return prev;   // ya está: no duplica
-      return {
-        ...prev,
-        [e.id]: {
-          tipo: tipoNuevo, fecha: hoyIso(),
-          sbc: String(Number(e.sbc ?? e.salario_diario_integrado ?? 0) || ''),
-          umf: '', clave: e.num_empleado || '', curp: e.curp || '',
-          causaBaja: '', incluir: true,
-        },
-      };
-    });
+    setModal({ id: e.id, nombre: e.nombre_completo, nss: e.nss, tipo, emp: e });
+  };
+
+  const guardarMov = (fila: { fecha: string; sbc: string; diario: string; umf: string; causaBaja: string }) => {
+    if (!modal) return;
+    const e = modal.emp || porId.get(modal.id) || datos[modal.id] || {};
+    setSel((prev) => ({
+      ...prev,
+      [modal.id]: {
+        tipo: modal.tipo, fecha: fila.fecha || hoyIso(),
+        sbc: fila.sbc, diario: fila.diario, umf: fila.umf,
+        clave: e.num_empleado || '', curp: e.curp || '',
+        causaBaja: fila.causaBaja, incluir: true,
+        pendienteId: prev[modal.id]?.pendienteId,
+      },
+    }));
+    setModal(null);
   };
 
   const editar = (id: string, campo: keyof Fila, valor: any) =>
@@ -225,7 +245,10 @@ export function MotorImssIdsePage() {
         {/* ── Padrón: agregar movimientos ── */}
         <div className="bg-white rounded-lg shadow border overflow-hidden">
           <div className="p-3 border-b space-y-2">
-            <p className="text-[11px] text-gray-500">Al agregar de la lista, el movimiento entra como:</p>
+            <p className="text-[11px] text-gray-500">
+              Elige el movimiento con los botones <b>Alta · ModSal · Baja</b> de cada trabajador.
+              Estos botones sólo ajustan a quién muestra la búsqueda:
+            </p>
             <div className="grid grid-cols-3 gap-1.5">
               {TIPOS.map((t) => {
                 const activo = tipoNuevo === t.clave;
@@ -259,10 +282,9 @@ export function MotorImssIdsePage() {
               <p className="p-6 text-sm text-gray-500 italic text-center">Nadie coincide con esa búsqueda.</p>
             )}
             {lista.map((e) => {
-              const puesto = !!sel[e.id];
+              const puesto = sel[e.id];
               return (
-                <button key={e.id} onClick={() => agregar(e)} disabled={puesto}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-3 hover:bg-gray-50 ${puesto ? 'opacity-50' : ''}`}>
+                <div key={e.id} className="px-3 py-2 flex items-center gap-3 hover:bg-gray-50">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-gray-900 truncate">{e.nombre_completo}</p>
                     <p className="text-[11px] text-gray-500 font-mono">
@@ -270,8 +292,21 @@ export function MotorImssIdsePage() {
                       {!e.activo && <span className="text-rose-600"> · baja</span>}
                     </p>
                   </div>
-                  <span className="text-xs text-gray-400 shrink-0">{puesto ? 'agregado' : 'agregar +'}</span>
-                </button>
+                  {/* Un botón por movimiento: abre el modal con lo que falta. */}
+                  <div className="flex items-center gap-1 shrink-0 text-[11px]">
+                    {(['ALTA', 'MODIFICACION', 'BAJA'] as Tipo[]).map((t) => {
+                      const activo = puesto?.tipo === t;
+                      const st = BOTON_MOV[t];
+                      return (
+                        <button key={t} onClick={() => abrirModal(e, t)}
+                          title={`${ETIQUETA_TIPO[t]} ${CODIGO_TIPO[t]}`}
+                          className={`px-2 py-1 rounded border font-semibold ${activo ? st.activo : st.base}`}>
+                          {NOMBRE_BOTON[t]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -304,72 +339,28 @@ export function MotorImssIdsePage() {
                 {filas.map((id) => {
                   const e = datosDe(id);
                   const f = sel[id];
+                  const faltaCausa = f.tipo === 'BAJA' && !f.causaBaja;
                   return (
-                    <li key={id} className={`p-2.5 space-y-2 ${f.incluir ? '' : 'opacity-60'}`}>
-                      <div className="flex items-center gap-2">
-                        <input type="checkbox" checked={f.incluir}
-                          onChange={(ev) => editar(id, 'incluir', ev.target.checked)} title="Entra al archivo" />
-                        <select value={f.tipo} onChange={(ev) => editar(id, 'tipo', ev.target.value as Tipo)}
-                          className={`text-[11px] font-bold rounded px-1.5 py-1 border ${
-                            f.tipo === 'BAJA' ? 'text-rose-700 border-rose-200'
-                            : f.tipo === 'ALTA' ? 'text-emerald-700 border-emerald-200'
-                            : 'text-violet-700 border-violet-200'}`}>
-                          <option value="ALTA">ALTA 08</option>
-                          <option value="BAJA">BAJA 02</option>
-                          <option value="MODIFICACION">MODIF 07</option>
-                        </select>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gray-900 truncate">{e?.nombre_completo || 'Trabajador'}</p>
-                          <p className="text-[11px] font-mono text-gray-500">
-                            NSS {e?.nss || <span className="text-rose-600 font-semibold">falta</span>}
-                          </p>
-                          {/* Tipo + fecha destacados: distinguen de un vistazo qué movimiento
-                              es cada quien dentro del mismo archivo. */}
-                          <p className={`text-[11px] font-bold ${
-                            f.tipo === 'BAJA' ? 'text-rose-600'
-                            : f.tipo === 'ALTA' ? 'text-emerald-600' : 'text-violet-600'}`}>
-                            {ETIQUETA_TIPO[f.tipo] || f.tipo} · {aTextoMx(f.fecha) || '—'}
-                          </p>
-                        </div>
-                        <button onClick={() => yaPaso(id)} title="Ya pasó en el IDSE"
-                          className="text-[11px] text-emerald-700 hover:bg-emerald-50 px-1.5 py-1 rounded flex items-center gap-1">
-                          <CheckCircle2 size={13} /> ya pasó
-                        </button>
-                        <button onClick={() => descartar(id)} className="text-gray-400 hover:text-rose-600" title="Quitar"><X size={15} /></button>
+                    <li key={id} className={`px-3 py-2 flex items-center gap-3 ${f.incluir ? '' : 'opacity-50'}`}>
+                      <input type="checkbox" checked={f.incluir}
+                        onChange={(ev) => editar(id, 'incluir', ev.target.checked)} title="Entra al archivo" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 truncate">{e?.nombre_completo || 'Trabajador'}</p>
+                        <p className="text-[11px] font-mono text-gray-500">
+                          NSS {e?.nss || <span className="text-rose-600 font-semibold">falta</span>}
+                          {faltaCausa && <span className="text-rose-600 font-semibold"> · falta causa</span>}
+                        </p>
                       </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pl-6">
-                        <label className="text-[11px] text-gray-500">
-                          {f.tipo === 'BAJA' ? 'Fecha baja' : f.tipo === 'MODIFICACION' ? 'Fecha cambio' : 'Fecha alta'}
-                          <CampoFecha value={f.fecha} onChange={(iso) => editar(id, 'fecha', iso)} className="w-full border rounded px-2 py-1 text-sm mt-0.5" />
-                        </label>
-                        {(f.tipo === 'ALTA' || f.tipo === 'MODIFICACION') && (
-                          <label className="text-[11px] text-gray-500">
-                            SBC
-                            <input type="number" step="0.01" min="0" value={f.sbc}
-                              onChange={(ev) => editar(id, 'sbc', ev.target.value)}
-                              className="w-full border rounded px-2 py-1 text-sm mt-0.5" />
-                          </label>
-                        )}
-                        {f.tipo === 'ALTA' && (
-                          <label className="text-[11px] text-gray-500">
-                            UMF
-                            <input value={f.umf} maxLength={3}
-                              onChange={(ev) => editar(id, 'umf', ev.target.value.replace(/\D/g, ''))}
-                              className="w-full border rounded px-2 py-1 text-sm mt-0.5" />
-                          </label>
-                        )}
-                        {f.tipo === 'BAJA' && (
-                          <label className="text-[11px] text-gray-500 sm:col-span-2">
-                            Causa de baja
-                            <select value={f.causaBaja} onChange={(ev) => editar(id, 'causaBaja', ev.target.value)}
-                              className="w-full border rounded px-2 py-1 text-sm mt-0.5 bg-white">
-                              <option value="">— elige —</option>
-                              {Object.entries(CAUSAS_BAJA).map(([k, v]) => <option key={k} value={k}>{k} · {v}</option>)}
-                            </select>
-                          </label>
-                        )}
+                      {/* Dos columnas: fecha solicitada al IDSE · código del movimiento (rojo). */}
+                      <div className="text-right shrink-0 w-24">
+                        <p className="text-xs font-mono text-gray-700">{aTextoMx(f.fecha) || '—'}</p>
+                        <p className="text-xs font-bold text-rose-600">{CODIGO_TIPO[f.tipo]} {ETIQUETA_TIPO[f.tipo]}</p>
                       </div>
+                      <button onClick={() => setModal({ id, nombre: e?.nombre_completo, nss: e?.nss, tipo: f.tipo,
+                          emp: { id, nombre_completo: e?.nombre_completo, nss: e?.nss, num_empleado: f.clave, curp: f.curp, salario_diario_integrado: f.sbc, salario_diario: f.diario } })}
+                        title="Editar movimiento" className="text-gray-400 hover:text-primary"><Pencil size={14} /></button>
+                      <button onClick={() => yaPaso(id)} title="Ya pasó en el IDSE" className="text-emerald-600 hover:bg-emerald-50 p-1 rounded"><CheckCircle2 size={14} /></button>
+                      <button onClick={() => descartar(id)} className="text-gray-400 hover:text-rose-600" title="Quitar"><X size={15} /></button>
                     </li>
                   );
                 })}
@@ -451,6 +442,104 @@ export function MotorImssIdsePage() {
         </div>
       )}
       </>}
+
+      {modal && (
+        <ModalMovimiento
+          modal={modal}
+          inicial={sel[modal.id] || {
+            fecha: hoyIso(),
+            sbc: String(Number(modal.emp?.salario_diario_integrado ?? 0) || ''),
+            diario: String(Number(modal.emp?.salario_diario ?? 0) || ''),
+            umf: '', causaBaja: '',
+          }}
+          onGuardar={guardarMov}
+          onCerrar={() => setModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── El modal por movimiento: pide lo que falta según el tipo ── */
+function ModalMovimiento({ modal, inicial, onGuardar, onCerrar }: {
+  modal: { nombre: string; nss: string; tipo: Tipo };
+  inicial: { fecha: string; sbc: string; diario: string; umf: string; causaBaja: string };
+  onGuardar: (f: { fecha: string; sbc: string; diario: string; umf: string; causaBaja: string }) => void;
+  onCerrar: () => void;
+}) {
+  const [f, setF] = useState({
+    fecha: inicial.fecha || '', sbc: inicial.sbc || '', diario: inicial.diario || '',
+    umf: inicial.umf || '', causaBaja: inicial.causaBaja || '',
+  });
+  const esBaja = modal.tipo === 'BAJA';
+  const esAlta = modal.tipo === 'ALTA';
+  const conSalario = esAlta || modal.tipo === 'MODIFICACION';
+  const st = BOTON_MOV[modal.tipo];
+
+  const listo = !!f.fecha && (esBaja ? !!f.causaBaja : Number(f.sbc) > 0);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <span className={`text-[11px] font-bold px-2 py-0.5 rounded border ${st.activo}`}>
+              {ETIQUETA_TIPO[modal.tipo]} {CODIGO_TIPO[modal.tipo]}
+            </span>
+            <p className="font-semibold text-gray-900 truncate mt-1">{modal.nombre}</p>
+            <p className="text-[11px] font-mono text-gray-500">NSS {modal.nss || '— falta —'}</p>
+          </div>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <label className="block">
+            <span className="text-xs text-gray-600">
+              {esBaja ? 'Fecha de baja' : modal.tipo === 'MODIFICACION' ? 'Fecha del cambio' : 'Fecha de alta'}
+            </span>
+            <CampoFecha value={f.fecha} onChange={(iso) => setF({ ...f, fecha: iso })} className="input w-full" />
+          </label>
+
+          {conSalario && (
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="text-xs text-gray-600">Salario diario</span>
+                <input type="number" step="0.01" min="0" value={f.diario}
+                  onChange={(e) => setF({ ...f, diario: e.target.value })} className="input w-full" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-600">SBC (integrado) *</span>
+                <input type="number" step="0.01" min="0" value={f.sbc}
+                  onChange={(e) => setF({ ...f, sbc: e.target.value })} className="input w-full" />
+              </label>
+            </div>
+          )}
+
+          {esAlta && (
+            <label className="block">
+              <span className="text-xs text-gray-600">UMF (opcional)</span>
+              <input value={f.umf} maxLength={3}
+                onChange={(e) => setF({ ...f, umf: e.target.value.replace(/\D/g, '') })} className="input w-full font-mono" />
+            </label>
+          )}
+
+          {esBaja && (
+            <label className="block">
+              <span className="text-xs text-gray-600">Motivo de la baja *</span>
+              <select value={f.causaBaja} onChange={(e) => setF({ ...f, causaBaja: e.target.value })} className="input w-full bg-white">
+                <option value="">— elige el motivo —</option>
+                {Object.entries(CAUSAS_BAJA).map(([k, v]) => <option key={k} value={k}>{k} · {v}</option>)}
+              </select>
+            </label>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 p-4 border-t">
+          <button onClick={onCerrar} className="btn-secondary text-sm">Cancelar</button>
+          <button onClick={() => onGuardar(f)} disabled={!listo}
+            className="btn-primary text-sm disabled:opacity-50">Agregar al archivo</button>
+        </div>
+      </div>
     </div>
   );
 }
