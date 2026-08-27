@@ -17,7 +17,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight, ChevronDown, Search, Plus, AlertTriangle, CheckCircle2,
-  Link2, BookOpen, X, Info, Layers, Upload, Loader2, Scale,
+  Link2, BookOpen, X, Info, Layers, Upload, Loader2, Scale, Pencil,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
@@ -224,7 +224,8 @@ export function CatalogoCuentasPage() {
 
       {detalle && (
         <PanelCuenta id={detalle} onCerrar={() => setDetalle(null)}
-          puedeEditar={puedeEditar} onListo={refrescar} />
+          puedeEditar={puedeEditar} onListo={refrescar}
+          onAgregarHija={(padre: any) => { setDetalle(null); setAlta({ parentId: padre.id, padre }); }} />
       )}
       {alta && (
         <ModalNuevaCuenta datos={alta} onCerrar={() => setAlta(null)}
@@ -576,16 +577,42 @@ function Rama({ nodo, nivel, abiertos, buscando, onAlternar, onDetalle, onAgrega
 
 /* ═══════════ PANEL DE UNA CUENTA ═══════════ */
 
-function PanelCuenta({ id, onCerrar, puedeEditar, onListo }: any) {
+function PanelCuenta({ id, onCerrar, puedeEditar, onListo, onAgregarHija }: any) {
   const qc = useQueryClient();
   const [cat, setCat] = useState('');
   const [cod, setCod] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [editando, setEditando] = useState(false);
+  const [form, setForm] = useState({ nombre: '', moneda: 'MXN', codigoAgrupador: '' });
 
   const q = useQuery({ queryKey: ['cuenta', id], queryFn: () => api.getCuentaContable(id) });
   const cuenta = q.data?.data?.cuenta;
   const equivalencias: any[] = q.data?.data?.equivalencias || [];
+
+  const abrirEdicion = () => {
+    setForm({
+      nombre: cuenta?.nombre || '',
+      moneda: cuenta?.moneda || 'MXN',
+      codigoAgrupador: cuenta?.codigo_agrupador || '',
+    });
+    setError(''); setEditando(true);
+  };
+  const guardarCambios = async () => {
+    setError(''); setBusy(true);
+    try {
+      await api.actualizarCuentaContable(id, {
+        nombre: form.nombre.trim(),
+        moneda: form.moneda.trim() || 'MXN',
+        codigoAgrupador: form.codigoAgrupador.trim() || null,
+      });
+      qc.invalidateQueries({ queryKey: ['cuenta', id] });
+      setEditando(false);
+      onListo();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e.message);
+    } finally { setBusy(false); }
+  };
 
   const guardarEquivalencia = async () => {
     setError(''); setBusy(true);
@@ -617,14 +644,58 @@ function PanelCuenta({ id, onCerrar, puedeEditar, onListo }: any) {
 
         {cuenta && (
           <div className="p-4 space-y-5">
-            <dl className="grid grid-cols-2 gap-3 text-sm">
-              <Dato r="Tipo" v={cuenta.tipo} />
-              <Dato r="Naturaleza" v={cuenta.naturaleza} />
-              <Dato r="Nivel" v={cuenta.nivel} />
-              <Dato r="Movimientos" v={cuenta.permite_movimientos ? 'Sí' : 'No (tiene subcuentas)'} />
-              <Dato r="Código agrupador SAT" v={cuenta.codigo_agrupador || '— sin mapear —'} />
-              <Dato r="Moneda" v={cuenta.moneda} />
-            </dl>
+            {puedeEditar && (
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => onAgregarHija?.(cuenta)}
+                  className="flex items-center gap-1.5 text-sm border rounded-lg px-3 py-1.5 text-gray-700 hover:bg-gray-50">
+                  <Plus size={14} className="text-primary" /> Agregar subcuenta
+                </button>
+                {!editando && (
+                  <button onClick={abrirEdicion}
+                    className="flex items-center gap-1.5 text-sm border rounded-lg px-3 py-1.5 text-gray-700 hover:bg-gray-50">
+                    <Pencil size={14} /> Editar
+                  </button>
+                )}
+              </div>
+            )}
+
+            {editando ? (
+              <div className="space-y-3 border rounded-lg p-3 bg-gray-50">
+                <label className="block">
+                  <span className="text-[11px] text-gray-600">Nombre</span>
+                  <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+                    className="input w-full text-sm" />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="text-[11px] text-gray-600">Moneda</span>
+                    <input value={form.moneda} onChange={(e) => setForm({ ...form, moneda: e.target.value.toUpperCase().slice(0, 3) })}
+                      className="input w-full text-sm font-mono" placeholder="MXN" />
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] text-gray-600">Agrupador SAT</span>
+                    <input value={form.codigoAgrupador} onChange={(e) => setForm({ ...form, codigoAgrupador: e.target.value })}
+                      className="input w-full text-sm font-mono" placeholder="opcional" />
+                  </label>
+                </div>
+                <p className="text-[11px] text-gray-500">El tipo y la naturaleza no se editan: los hereda del padre y cambiarlos descuadraría la balanza.</p>
+                <div className="flex gap-2">
+                  <button onClick={guardarCambios} disabled={busy || !form.nombre.trim()}
+                    className="btn-primary text-sm px-3 disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar'}</button>
+                  <button onClick={() => setEditando(false)} className="btn-secondary text-sm px-3">Cancelar</button>
+                </div>
+                {error && <p className="text-xs text-rose-700">{error}</p>}
+              </div>
+            ) : (
+              <dl className="grid grid-cols-2 gap-3 text-sm">
+                <Dato r="Tipo" v={cuenta.tipo} />
+                <Dato r="Naturaleza" v={cuenta.naturaleza} />
+                <Dato r="Nivel" v={cuenta.nivel} />
+                <Dato r="Movimientos" v={cuenta.permite_movimientos ? 'Sí' : 'No (tiene subcuentas)'} />
+                <Dato r="Código agrupador SAT" v={cuenta.codigo_agrupador || '— sin mapear —'} />
+                <Dato r="Moneda" v={cuenta.moneda} />
+              </dl>
+            )}
 
             {cuenta.es_complementaria && (
               <p className="text-xs text-slate-700 bg-slate-100 rounded px-3 py-2">
@@ -709,6 +780,7 @@ function ModalNuevaCuenta({ datos, onCerrar, onListo }: any) {
     tipo: datos.padre?.tipo || 'ACTIVO',
     naturaleza: datos.padre?.naturaleza || 'DEUDORA',
     codigoAgrupador: '',
+    moneda: datos.padre?.moneda || 'MXN',
     requiereTercero: false,
   });
   const [busy, setBusy] = useState(false);
@@ -770,16 +842,24 @@ function ModalNuevaCuenta({ datos, onCerrar, onListo }: any) {
             </div>
           )}
 
-          <label className="block">
-            <span className="text-xs text-gray-600">Código agrupador SAT</span>
-            <input value={f.codigoAgrupador}
-              onChange={(e) => setF({ ...f, codigoAgrupador: e.target.value })}
-              className="input w-full font-mono" placeholder="102.01" />
-            <span className="text-[11px] text-gray-500">
-              Se valida contra el Anexo 24 al guardar. Hoy la contabilidad es interna,
-              pero mapear después —con movimientos encima— cuesta mucho más.
-            </span>
-          </label>
+          <div className="grid grid-cols-[1fr_5rem] gap-2">
+            <label className="block">
+              <span className="text-xs text-gray-600">Código agrupador SAT</span>
+              <input value={f.codigoAgrupador}
+                onChange={(e) => setF({ ...f, codigoAgrupador: e.target.value })}
+                className="input w-full font-mono" placeholder="102.01" />
+            </label>
+            <label className="block">
+              <span className="text-xs text-gray-600">Moneda</span>
+              <input value={f.moneda}
+                onChange={(e) => setF({ ...f, moneda: e.target.value.toUpperCase().slice(0, 3) })}
+                className="input w-full font-mono" placeholder="MXN" />
+            </label>
+          </div>
+          <span className="text-[11px] text-gray-500 -mt-2 block">
+            El agrupador se valida contra el Anexo 24 al guardar. La subcuenta hereda
+            tipo y naturaleza del padre.
+          </span>
 
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={f.requiereTercero}

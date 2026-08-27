@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FileText, Plus, Trash2, Save, Scale, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
+import { CampoFecha } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -110,7 +111,7 @@ export function PolizaManualPage() {
         </label>
         <label className="block">
           <span className="text-xs text-gray-600">Fecha</span>
-          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="input w-full" />
+          <CampoFecha value={fecha} onChange={setFecha} className="input w-full" />
         </label>
         <label className="block lg:col-span-2">
           <span className="text-xs text-gray-600">Concepto</span>

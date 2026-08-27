@@ -475,6 +475,7 @@ export async function actualizarCuenta(companyId: string, id: string, d: Partial
   const set = (col: string, val: any) => { par.push(val); campos.push(`${col} = $${par.length}`); };
 
   if (d.nombre !== undefined) set('nombre', d.nombre.trim());
+  if (d.moneda !== undefined) set('moneda', (d.moneda || 'MXN').toString().trim().slice(0, 3).toUpperCase() || 'MXN');
   if (d.codigoAgrupador !== undefined) {
     if (d.codigoAgrupador) {
       const s = await query<any>(`SELECT codigo FROM sat_codigos_agrupadores WHERE codigo=$1`,
