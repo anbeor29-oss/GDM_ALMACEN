@@ -408,6 +408,117 @@ function detectarBanco(texto: string): string {
   return 'Genérico';
 }
 
+/**
+ * Nu (Nu México Financiera) — estado NARRATIVO, no tabular.
+ *
+ * Cada movimiento son varios renglones: la fecha sola ("29 JUN 2026"), el
+ * concepto ("OPENAI Compra"), y el importe FIRMADO en su propio renglón
+ * ("+$1.00" / "-$1,747.00"); a veces siguen el tipo de cambio USD y la narrativa
+ * del SPEI. NO hay saldo por movimiento, así que el lado sale del SIGNO, no de
+ * una diferencia de saldos. Los importes del resumen de arriba (Depósitos,
+ * Gastos) NO son movimientos: la lectura arranca en "Detalle de movimientos" y
+ * termina en el bloque de "Dinero generado".
+ */
+function extraerNu(
+  texto: string, opciones: { anio?: number; mes?: number }, avisos: string[]
+): ResultadoExtraccion {
+  const lineas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const buscar = (re: RegExp): number | null => { const m = re.exec(texto); return m ? aNumero(m[1]) : null; };
+
+  const saldoInicial = buscar(/Saldo\s*inicial\s*\$?\s*([\d,]+\.\d{2})/i);
+  const saldoFinal =
+    buscar(/Saldo\s*al\s*generar\s*este\s*estado\s*de\s*cuenta\s*\$?\s*([\d,]+\.\d{2})/i) ??
+    buscar(/Saldo\s*final\s*\$?\s*([\d,]+\.\d{2})/i);
+
+  /** Un renglón que es SÓLO la fecha de Nu: "29 JUN 2026". */
+  const esFecha = (l: string) => /^\d{1,2}\s+[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}\s+\d{4}$/.test(l);
+  /** El importe firmado en su propio renglón: "+$1.00", "-$1,747.00". */
+  const RX_FIRMADO = /^([+-])\s*\$?\s*([\d,]+\.\d{2})$/;
+  /** Fin de los movimientos. */
+  const esFin = (l: string) => /DINERO\s+GENERADO\s+EN\s+TU\s+CUENTA|Con\s+estos\s+movimientos/i.test(l);
+
+  const movimientos: MovimientoExtraido[] = [];
+  let orden = 0;
+  let enDetalle = false;
+
+  for (let i = 0; i < lineas.length; i++) {
+    const l = lineas[i];
+    if (!enDetalle) { if (/Detalle\s+de\s+movimientos/i.test(l)) enDetalle = true; continue; }
+    if (esFin(l)) break;
+    if (!esFecha(l)) continue;
+
+    const fecha = aFechaIso(l, opciones.anio);
+    if (!fecha) continue;
+
+    // El bloque va hasta la próxima fecha o el fin de los movimientos.
+    const cont: string[] = [];
+    let j = i + 1;
+    for (; j < lineas.length; j++) {
+      if (esFecha(lineas[j]) || esFin(lineas[j])) break;
+      cont.push(lineas[j]);
+    }
+
+    // Importe FIRMADO (el primero) y concepto (el primer renglón con texto que
+    // no sea importe, tipo de cambio USD ni un pie de página que se coló).
+    let signo = '', monto = 0, concepto = '';
+    for (const c of cont) {
+      const m = RX_FIRMADO.exec(c.replace(/\s+/g, ''));
+      if (m && monto === 0) { signo = m[1]; monto = aNumero(m[2]); continue; }
+      if (!concepto &&
+          !RX_FIRMADO.test(c.replace(/\s+/g, '')) &&
+          !/^\$?[\d,]+\.\d{2}$/.test(c) &&
+          !/^USD\b/i.test(c) &&
+          !/^Cuenta\s*Nu|^Nu\s*M[ée]xico|^C\.P\.|^\d+\s*de\s*\d+$|^FECHADEL|Ávila\s*Camacho/i.test(c)) {
+        concepto = c.slice(0, 140);
+      }
+    }
+
+    if (monto > 0 && (signo === '+' || signo === '-')) {
+      movimientos.push({
+        fecha, concepto: concepto || 'Movimiento',
+        referencia: cont.join(' ').slice(0, 500),
+        retiro: signo === '-' ? pesos(monto) : 0,
+        deposito: signo === '+' ? pesos(monto) : 0,
+        saldo: null, saldoCalculado: 0, advertencia: '',
+        inferido: false, duda: false, orden: orden++, lineaOrigen: l,
+      });
+    }
+    i = j - 1;
+  }
+
+  // Arrastre desde el saldo inicial (Nu no da saldo por renglón).
+  let corriendo = saldoInicial ?? 0;
+  for (const m of movimientos) { corriendo = pesos(corriendo - m.retiro + m.deposito); m.saldoCalculado = corriendo; }
+
+  const totalRetiros = pesos(movimientos.reduce((a, m) => a + m.retiro, 0));
+  const totalDepositos = pesos(movimientos.reduce((a, m) => a + m.deposito, 0));
+  const finalCalculado = pesos((saldoInicial ?? 0) - totalRetiros + totalDepositos);
+  const cuadra = saldoFinal !== null && Math.abs(saldoFinal - finalCalculado) <= 0.02;
+
+  if (saldoInicial === null) avisos.push('Nu: no se encontró el saldo inicial.');
+  if (saldoFinal !== null && !cuadra) {
+    avisos.push(
+      `NO CUADRA: Nu declara saldo final ${saldoFinal.toFixed(2)} y los movimientos dan ` +
+      `${finalCalculado.toFixed(2)} (dif ${pesos(saldoFinal - finalCalculado).toFixed(2)}).`);
+  }
+  if (movimientos.length === 0) {
+    avisos.push('Nu: no se reconoció ningún movimiento en el detalle.');
+  }
+
+  return {
+    banco: 'Nu',
+    saldoInicial,
+    saldoFinal,
+    movimientos,
+    totalRetiros,
+    totalDepositos,
+    conAdvertencia: movimientos.filter((m) => m.advertencia).length,
+    inferidos: 0,
+    cuadra,
+    avisos,
+  };
+}
+
 export function extraerMovimientos(
   texto: string,
   opciones: { anio?: number; mes?: number } = {}
@@ -455,6 +566,11 @@ export function extraerMovimientos(
       ],
     };
   }
+
+  /* Nu no es tabular: no trae columnas ni saldo por movimiento. La fecha, el
+   * concepto y el importe FIRMADO van en renglones distintos. Se lee con su
+   * propio parser, que devuelve el mismo formato. */
+  if (banco === 'Nu') return extraerNu(texto, opciones, avisos);
 
   const mIni = RX_SALDO_INICIAL.exec(texto);
   const mFin = RX_SALDO_FINAL.exec(texto);
