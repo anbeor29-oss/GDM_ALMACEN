@@ -371,6 +371,21 @@ router.post(
   })
 );
 
+/** POST /accounting/periodos/:anio/:mes/desde-polizas — deriva la balanza de las pólizas */
+router.post(
+  '/periodos/:anio/:mes/desde-polizas',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await periodos.alimentarDesdePolizas(
+      companyId(req), Number(req.params.anio), Number(req.params.mes), { userId: req.user?.userId });
+    res.json({
+      success: true, data: r,
+      message: `${periodos.nombreMes(Number(req.params.mes))} ${req.params.anio}: balanza actualizada con ` +
+        `${r.cuentas} cuenta(s) de las pólizas` + (r.cuadra ? '.' : ' — NO cuadra, revisa.'),
+    });
+  })
+);
+
 /** POST /accounting/periodos/:anio/:mes/cerrar */
 router.post(
   '/periodos/:anio/:mes/cerrar',

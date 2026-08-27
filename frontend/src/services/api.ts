@@ -1084,6 +1084,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/estados/${anio}/${mes}/balanza`);
     return r.data;
   }
+  /** Deriva/actualiza la balanza del mes desde las pólizas (journal_lines). */
+  async actualizarBalanzaDesdePolizas(anio: number, mes: number) {
+    const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/${mes}/desde-polizas`);
+    return r.data;
+  }
 
   /* ── Programación de la descarga del SAT ── */
   async getProgramacionSat() {

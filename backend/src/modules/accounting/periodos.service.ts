@@ -368,6 +368,84 @@ export async function alimentarDesdeBalanza(
   });
 }
 
+/**
+ * Deriva la balanza del mes de las PÓLIZAS (journal_lines). Es el puente que hace
+ * que lo contabilizado —ventas, compras, cobros/pagos, nómina, manuales— se vea
+ * en la balanza de comprobación y en los estados. El botón «Actualizar» la vuelve
+ * a calcular mes a mes.
+ *
+ *   cargos/abonos = Σ de las partidas de las pólizas del mes, por cuenta.
+ *   saldo_inicial = saldo_final del mes anterior (la cadena de saldos).
+ *   saldo_final   = por naturaleza (deudora: +cargos−abonos; acreedora: al revés).
+ *
+ * REEMPLAZA la balanza del periodo (como la carga de una balanza externa): al
+ * re-generar pólizas y volver a actualizar, no se duplica. Ojo: si el mes tenía
+ * una balanza EXTERNA cargada, ésta la sustituye —son dos formas de armar el
+ * mismo mes; la de apertura vive en el saldo inicial del primer periodo—.
+ */
+export async function alimentarDesdePolizas(
+  companyId: string, anio: number, mes: number, opciones: { userId?: string } = {}
+): Promise<{ periodoId: string; cuentas: number; totalCargos: number; totalAbonos: number; cuadra: boolean }> {
+  const p = await periodoDe(companyId, anio, mes);
+  if (!p) throw new Error(`No existe el periodo ${nombreMes(mes)} ${anio}. Activa la contabilidad de ese ejercicio.`);
+  if (p.estado === 'CERRADO') throw new Error(`${nombreMes(mes)} ${anio} está cerrado. Reábrelo para actualizarlo.`);
+
+  const mov = await query<any>(
+    `SELECT l.account_id, a.naturaleza,
+            COALESCE(SUM(l.cargo),0)::float AS cargos,
+            COALESCE(SUM(l.abono),0)::float AS abonos
+       FROM journal_lines l
+       JOIN journal_entries e ON e.id = l.entry_id
+       JOIN accounting_accounts a ON a.id = l.account_id
+      WHERE e.company_id=$1 AND e.fecha >= $2::date AND e.fecha <= $3::date
+      GROUP BY l.account_id, a.naturaleza
+      HAVING COALESCE(SUM(l.cargo),0) <> 0 OR COALESCE(SUM(l.abono),0) <> 0`,
+    [companyId, p.fecha_inicio, p.fecha_fin]);
+
+  // Saldo inicial = saldo_final del mes anterior (si ya tiene balanza).
+  const mesPrev = mes === 1 ? 12 : mes - 1;
+  const anioPrev = mes === 1 ? anio - 1 : anio;
+  const prev = await periodoDe(companyId, anioPrev, mesPrev);
+  const ini = new Map<string, number>();
+  if (prev) {
+    const pb = await query<any>(
+      `SELECT account_id, saldo_final::float AS sf FROM accounting_period_balances WHERE periodo_id=$1`, [prev.id]);
+    for (const r of pb.rows) ini.set(r.account_id, r.sf);
+  }
+
+  return transaction(async (client: PoolClient) => {
+    await transactionQuery(client, `DELETE FROM accounting_period_balances WHERE periodo_id=$1`, [p.id]);
+    let totalCargos = 0, totalAbonos = 0;
+    for (const m of mov.rows) {
+      const si = ini.get(m.account_id) || 0;
+      const sf = m.naturaleza === 'ACREEDORA' ? si - m.cargos + m.abonos : si + m.cargos - m.abonos;
+      await transactionQuery(client,
+        `INSERT INTO accounting_period_balances
+           (company_id, periodo_id, account_id, saldo_inicial, cargos, abonos, saldo_final)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT (periodo_id, account_id) DO UPDATE
+           SET saldo_inicial=EXCLUDED.saldo_inicial, cargos=EXCLUDED.cargos,
+               abonos=EXCLUDED.abonos, saldo_final=EXCLUDED.saldo_final, updated_at=NOW()`,
+        [companyId, p.id, m.account_id, si, m.cargos, m.abonos, Math.round(sf * 100) / 100]);
+      totalCargos += m.cargos; totalAbonos += m.abonos;
+    }
+    await transactionQuery(client,
+      `DELETE FROM accounting_period_sources WHERE periodo_id=$1 AND fuente='POLIZAS'`, [p.id]);
+    await transactionQuery(client,
+      `INSERT INTO accounting_period_sources
+         (company_id, periodo_id, fuente, descripcion, cuentas, total_cargos, total_abonos, modo, created_by)
+       VALUES ($1,$2,'POLIZAS',$3,$4,$5,$6,'REEMPLAZA',$7)`,
+      [companyId, p.id, `Pólizas de ${nombreMes(mes)} ${anio}`, mov.rows.length, totalCargos, totalAbonos, opciones.userId ?? null]);
+    logger.info(`[contabilidad] ${nombreMes(mes)} ${anio}: balanza derivada de ${mov.rows.length} cuenta(s) con póliza`);
+    return {
+      periodoId: p.id, cuentas: mov.rows.length,
+      totalCargos: Math.round(totalCargos * 100) / 100,
+      totalAbonos: Math.round(totalAbonos * 100) / 100,
+      cuadra: Math.abs(totalCargos - totalAbonos) <= 0.02,
+    };
+  });
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    4. CIERRE
    ═══════════════════════════════════════════════════════════════════════════ */

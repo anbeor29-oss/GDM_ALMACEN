@@ -10,7 +10,7 @@
  * consultas, un día dirían cosas diferentes del mismo mes.
  */
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Info, TrendingUp } from 'lucide-react';
 import api from '@/services/api';
 import {
@@ -24,14 +24,27 @@ import {
 
 export function BalanzaPage() {
   const hoy = new Date();
+  const qc = useQueryClient();
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
 
   const q = useQuery({
     queryKey: ['balanza-periodo', anio, mes],
     queryFn: () => api.getBalanzaDelPeriodo(anio, mes),
   });
   const d: any = q.data?.data;
+
+  const actualizar = async () => {
+    setBusy(true); setMsg('');
+    try {
+      const r: any = await api.actualizarBalanzaDesdePolizas(anio, mes);
+      setMsg(r.message || 'Balanza actualizada.');
+      qc.invalidateQueries({ queryKey: ['balanza-periodo', anio, mes] });
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo actualizar.'); }
+    finally { setBusy(false); }
+  };
 
   return (
     <div className="p-6 space-y-4 max-w-6xl">
@@ -44,6 +57,11 @@ export function BalanzaPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={actualizar} disabled={busy}
+            title="Recalcula la balanza del mes con lo contabilizado en las pólizas"
+            className="flex items-center gap-1.5 bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
+            {busy ? 'Actualizando…' : 'Actualizar desde pólizas'}
+          </button>
           <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input">
             {MESES.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
@@ -52,14 +70,14 @@ export function BalanzaPage() {
         </div>
       </div>
 
+      {msg && <p className="text-sm text-emerald-700">{msg}</p>}
       {q.isLoading && <p className="text-gray-500">Cargando…</p>}
 
-      {d?.vacio !== undefined && d.vacio && (
+      {(!d || d?.vacio) && !q.isLoading && (
         <p className="text-sm text-gray-600 bg-gray-50 border rounded px-4 py-6 text-center">
-          {MESES[mes]} {anio} no tiene saldos cargados.{' '}
-          <a href="/contabilidad/periodos" className="text-primary hover:underline">
-            Cárgalo en Periodos
-          </a>.
+          {MESES[mes]} {anio} no tiene saldos. Genera las pólizas del mes y dale
+          <b> «Actualizar desde pólizas»</b> — o carga una balanza externa en{' '}
+          <a href="/contabilidad/periodos" className="text-primary hover:underline">Periodos</a>.
         </p>
       )}
 
