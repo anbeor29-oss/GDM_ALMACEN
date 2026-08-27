@@ -78,33 +78,57 @@ export async function resolverOCrearSubcuentaTercero(
   return { id: ins.rows[0].id, codigo: ins.rows[0].codigo, creada: true };
 }
 
+/** Guarda (espeja) el código de la subcuenta en el expediente del tercero. */
+async function guardarCuentaEnTercero(
+  companyId: string, tipo: 'cliente' | 'proveedor', rfc: string, codigo: string
+): Promise<void> {
+  const rolCol = tipo === 'cliente' ? 'es_cliente' : 'es_proveedor';
+  await query(
+    `UPDATE customers SET cuenta_contable=$3
+      WHERE company_id=$1 AND UPPER(rfc)=UPPER($2) AND ${rolCol}=true`,
+    [companyId, rfc, codigo]);
+}
+
 /**
- * Recorre los comprobantes de una dirección y da de alta la subcuenta de cada
- * tercero que aún no la tenga. Emitidos → clientes (por receptor); recibidos →
- * proveedores (por emisor).
+ * Da de alta la subcuenta de cada tercero que aún no la tenga, tomando los RFC
+ * de DOS fuentes: los comprobantes (emitidos→clientes por receptor;
+ * recibidos→proveedores por emisor) Y el CATÁLOGO de terceros (customers con el
+ * rol correspondiente). Así un proveedor capturado a mano —sin factura todavía—
+ * también obtiene su número. El código se espeja en customers.cuenta_contable.
  */
 export async function generarSubcuentasDeComprobantes(
   companyId: string, direccion: 'emitidos' | 'recibidos'
 ): Promise<{ creadas: number; existentes: number; errores: Array<{ rfc: string; motivo: string }> }> {
   const esCliente = direccion === 'emitidos';
+  const tipo = esCliente ? 'cliente' : 'proveedor';
   const colRfc = esCliente ? 'rfc_receptor' : 'rfc_emisor';
   const colNom = esCliente ? 'nombre_receptor' : 'nombre_emisor';
+  const rolCol = esCliente ? 'es_cliente' : 'es_proveedor';
 
-  const r = await query<any>(
+  // Fuente 1: los comprobantes. Fuente 2: el catálogo de terceros.
+  const deCfdi = await query<any>(
     `SELECT DISTINCT ON (${colRfc}) ${colRfc} AS rfc, ${colNom} AS nombre
        FROM cfdi_recibidos
       WHERE company_id=$1 AND direccion=$2 AND ${colRfc} IS NOT NULL AND ${colRfc} <> ''
       ORDER BY ${colRfc}, fecha_emision DESC`,
     [companyId, direccion]);
+  const deCatalogo = await query<any>(
+    `SELECT rfc, business_name AS nombre FROM customers
+      WHERE company_id=$1 AND ${rolCol}=true AND rfc IS NOT NULL AND rfc <> ''`,
+    [companyId]);
+
+  // Unir por RFC; el nombre del catálogo (más completo/curado) gana si existe.
+  const porRfc = new Map<string, string>();
+  for (const row of deCfdi.rows) porRfc.set(String(row.rfc).toUpperCase().trim(), row.nombre);
+  for (const row of deCatalogo.rows) porRfc.set(String(row.rfc).toUpperCase().trim(), row.nombre);
 
   let creadas = 0, existentes = 0;
   const errores: Array<{ rfc: string; motivo: string }> = [];
-  for (const row of r.rows) {
-    const res = await resolverOCrearSubcuentaTercero(
-      companyId, esCliente ? 'cliente' : 'proveedor', row.rfc, row.nombre);
-    if ('error' in res) errores.push({ rfc: row.rfc, motivo: res.error });
-    else if (res.creada) creadas++;
-    else existentes++;
+  for (const [rfc, nombre] of porRfc) {
+    const res = await resolverOCrearSubcuentaTercero(companyId, tipo, rfc, nombre);
+    if ('error' in res) { errores.push({ rfc, motivo: res.error }); continue; }
+    await guardarCuentaEnTercero(companyId, tipo, rfc, res.codigo);
+    if (res.creada) creadas++; else existentes++;
   }
   return { creadas, existentes, errores };
 }
@@ -132,7 +156,13 @@ export async function fijarCodigoSubcuenta(
   const r = await query<any>(
     `UPDATE accounting_accounts SET codigo=$3, updated_at=NOW()
       WHERE id=$1 AND company_id=$2 AND tercero_rfc IS NOT NULL
-      RETURNING codigo`, [id, companyId, cod]);
+      RETURNING codigo, tercero_rfc`, [id, companyId, cod]);
   if (!r.rows[0]) return { error: 'no se encontró la subcuenta' };
+  // Espeja el nuevo código en el expediente del tercero (si está en el catálogo).
+  if (r.rows[0].tercero_rfc) {
+    await query(
+      `UPDATE customers SET cuenta_contable=$3 WHERE company_id=$1 AND UPPER(rfc)=UPPER($2)`,
+      [companyId, r.rows[0].tercero_rfc, r.rows[0].codigo]);
+  }
   return { codigo: r.rows[0].codigo };
 }
