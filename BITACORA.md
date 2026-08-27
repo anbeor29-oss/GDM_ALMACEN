@@ -4217,24 +4217,22 @@ menú con pestañas ventas/compras/nómina/pagos; y fechas DD/MM/AAAA en la pól
 manual (CampoFecha). Sigue pendiente sólo la **póliza de apertura** (saldo
 inicial del primer periodo) y la nómina ordinaria en UI.
 
-## 2026-08-27 — Recibidos: los vigentes SÍ traen su XML; los cancelados, aparte
+## 2026-08-27 — Recibidos: el SAT NO da su XML masivo (301, comprobado)
 
-El XML masivo de recibidos daba 301 ("no se permite la descarga de xml que se
-encuentren cancelados") cuando el rango mezclaba vigentes y cancelados, y se
-había dejado en sólo-Metadata para no ensuciar la pantalla con errores.
+Se intentó partir el pedido de recibidos por estatus para traer el XML de los
+vigentes (CFDI con `EstadoComprobante=1`) y los cancelados aparte (Metadata
+`EstadoComprobante=0`). **Con solicitudes nuevas se comprobó que no funciona:**
+el SAT sigue contestando **301 "no se permite la descarga de xml que se
+encuentren cancelados"** al CFDI de recibidos aunque se acote a vigentes. NO es
+un filtro que se pueda esquivar: es una restricción del SAT para recibidos (en
+emitidos el XML sí baja porque es el comprobante propio).
 
-La estrategia definitiva parte el pedido de recibidos por estatus:
-- **Vigentes** → se piden acotados a `EstadoComprobante=1` como **CFDI (su XML)**
-  + Metadata. El XML es la base de la póliza de compra; al pedir sólo vigentes
-  no hay cancelados en el resultado y no se dispara el 301.
-- **Cancelados** → van en un pedido **APARTE** de Metadata con
-  `EstadoComprobante=0` (el checkbox «También los cancelados», que ya existía),
-  porque su XML el SAT no lo entrega —sólo su metadato—.
-
-Con esto se recuperan todos los XML sin cancelados con los parámetros que ya se
-tienen, y los cancelados se traen por separado sin romper la descarga. Si algún
-día el SAT rechazara igual el CFDI de recibidos, queda la vía «Subir XML de
-compra» (Contabilidad → Pólizas de compra) para contabilizar el comprobante.
+Decisión final: **recibidos = SÓLO Metadata** (UUID, emisor, fecha, monto,
+estatus) —base de las cuentas por pagar, nunca da 301—; los cancelados por el
+pedido aparte (checkbox). Para tener el **XML de una compra** y contabilizarla se
+sube en **Contabilidad → Pólizas de compra → «Subir XML de compra»** (o entra por
+el asistente de almacén, que ya lo indexa a cfdi_recibidos). Insistir con el CFDI
+masivo de recibidos sólo generaba solicitudes rechazadas con 301.
 
 También quedó el **SBC por factor de integración** en el constructor del IDSE:
 al cambiar el salario diario, el SBC (integrado) se recalcula = diario × factor

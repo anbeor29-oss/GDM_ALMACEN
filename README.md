@@ -31,14 +31,14 @@ SW Sapien.
 - 🟡 **PAC en sandbox** de SW Sapien. Timbra, pero no ante el SAT real.
 - 🟢 **Descarga masiva del SAT**: baja de punta a punta (autenticar → solicitar →
   verificar → **descargar** → indexar). **Emitidos**: CFDI (el XML completo) +
-  Metadata. **Recibidos**: los **VIGENTES** se piden acotados a
-  `EstadoComprobante=1` como **CFDI (su XML)** + Metadata —el XML alimenta la
-  póliza de compra—; los **CANCELADOS** van por un pedido **APARTE** (checkbox
-  «También los cancelados» → Metadata `EstadoComprobante=0`), porque su XML el SAT
-  no lo entrega. Así se esquiva el 301, que salta cuando un rango de recibidos
-  mezcla vigentes y cancelados. Si el SAT aún rechazara el CFDI de recibidos, el
-  XML de una compra se sube a mano (**Pólizas de compra → «Subir XML de compra»**).
-  El cron diario **no arranca sin `ENABLE_SAT_DESCARGA_CRON=true`** en el entorno.
+  Metadata. **Recibidos**: SÓLO **Metadata** (UUID, emisor, fecha, monto, estatus)
+  — **comprobado**: el SAT rechaza con 301 el XML masivo de recibidos cuando hay
+  cancelados en el rango, **aun acotando a `EstadoComprobante=1`** (vigentes); es
+  una restricción del SAT, no un filtro que se pueda esquivar. Los cancelados van
+  por un pedido aparte (checkbox «También los cancelados» → Metadata
+  `EstadoComprobante=0`). El **XML de una compra** se contabiliza subiéndolo en
+  **Pólizas de compra → «Subir XML de compra»** (o entra por el asistente de
+  almacén). El cron diario **no arranca sin `ENABLE_SAT_DESCARGA_CRON=true`**.
 
 ## 🔑 Cómo entrar
 

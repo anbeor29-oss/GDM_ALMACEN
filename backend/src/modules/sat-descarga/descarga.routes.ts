@@ -275,34 +275,34 @@ router.post(
       : pedida === 'emitidos' ? ['emitidos']
       : ['recibidos'];
 
-    /* El 301 "no se permite la descarga de xml que se encuentren cancelados" salta
-     * cuando el rango de RECIBIDOS mezcla vigentes y cancelados. La estrategia:
-     *   · EMITIDOS  → CFDI + Metadata (sin acotar: el XML propio siempre baja).
-     *   · RECIBIDOS → se piden los VIGENTES (EstadoComprobante=1) como CFDI (su XML,
-     *     base de la póliza de compra) + Metadata; los CANCELADOS van APARTE, por
-     *     el checkbox "También los cancelados" (Metadata EstadoComprobante=0), ya
-     *     que su XML el SAT no lo entrega.
-     * Si aun así el SAT rechazara el CFDI de recibidos, queda «Subir XML de compra»
-     * (Contabilidad → Pólizas de compra) para contabilizar el comprobante. */
+    /* COMPROBADO (2026-08-27, con solicitudes nuevas): el SAT rechaza con 301 el
+     * XML masivo de RECIBIDOS cuando el rango tiene cancelados, AUNQUE se acote a
+     * EstadoComprobante=1 (vigentes). Es una restricción del SAT, no un filtro que
+     * se pueda esquivar. Por eso:
+     *   · EMITIDOS  → CFDI (el XML propio, que sí baja) + Metadata (el estatus).
+     *   · RECIBIDOS → SÓLO Metadata (UUID, emisor, fecha, monto, estatus): base de
+     *     las cuentas por pagar, nunca da 301. Los cancelados van APARTE por el
+     *     checkbox "También los cancelados" (Metadata EstadoComprobante=0).
+     * El XML de una compra se contabiliza subiéndolo en Contabilidad → Pólizas de
+     * compra → «Subir XML de compra» (o entra por el asistente de almacén). */
     const tipoPedido = req.body?.tipo;
     const base = { desde: req.body?.desde, hasta: req.body?.hasta, filtros: req.body?.filtros };
-    const nuevo = (direccion: 'recibidos' | 'emitidos', tipo: 'CFDI' | 'Metadata', estado?: string) =>
-      service.crearTrabajo(
-        companyId(req),
-        { ...base, direccion, tipo, filtros: estado ? { ...(base.filtros || {}), estadoComprobante: estado } : base.filtros },
-        req.user?.userId);
+    const nuevo = (direccion: 'recibidos' | 'emitidos', tipo: 'CFDI' | 'Metadata') =>
+      service.crearTrabajo(companyId(req), { ...base, direccion, tipo }, req.user?.userId);
 
     const trabajos = [];
     for (const direccion of direcciones) {
       if (tipoPedido) {
         trabajos.push(await nuevo(direccion, tipoPedido));
       } else if (direccion === 'recibidos') {
-        /* Los VIGENTES sí traen XML si se acota a EstadoComprobante=1: se piden su
-         * CFDI (el XML, base de la póliza de compra) y su metadato. Los CANCELADOS
-         * van en un pedido APARTE (el checkbox "También los cancelados" lanza un
-         * Metadata con EstadoComprobante=0), porque su XML el SAT no lo entrega. */
-        trabajos.push(await nuevo('recibidos', 'CFDI', '1'));
-        trabajos.push(await nuevo('recibidos', 'Metadata', '1'));
+        /* COMPROBADO con solicitudes nuevas: el SAT rechaza el CFDI (XML) de
+         * recibidos con 301 AUNQUE se acote a EstadoComprobante=1 (vigentes). Es
+         * una restricción del SAT, no un filtro que se pueda esquivar. Por eso
+         * recibidos baja SÓLO Metadata (UUID, emisor, fecha, monto, estatus): es
+         * la base de las cuentas por pagar y nunca da 301. Los cancelados van en
+         * el pedido aparte (checkbox → Metadata EstadoComprobante=0). El XML de una
+         * compra se contabiliza subiéndolo en «Subir XML de compra». */
+        trabajos.push(await nuevo('recibidos', 'Metadata'));
       } else {
         trabajos.push(await nuevo('emitidos', 'CFDI'));
         trabajos.push(await nuevo('emitidos', 'Metadata'));
