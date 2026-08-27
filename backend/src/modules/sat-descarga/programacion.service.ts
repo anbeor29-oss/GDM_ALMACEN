@@ -244,21 +244,18 @@ async function trabajoVivoEn(
   return r.rows.length > 0;
 }
 
-/* De cada dirección, qué tipos se piden automáticamente.
- *
- * DIARIO (rango de un día): recibidos también se piden como CFDI, porque UN día
- * casi nunca trae cancelados y ahí el XML sí baja —lo que alimenta la póliza de
- * compra—; el Metadata acompaña para el estatus y para cubrir los días que sí
- * tengan cancelado (donde el CFDI dará 301).
- *
- * EJERCICIO (rango de un mes): recibidos SÓLO Metadata, porque en un mes es casi
- * seguro que haya cancelados y el CFDI daría 301. */
+/* De cada dirección, qué tipos se piden automáticamente. En AMBOS casos el CFDI
+ * de recibidos se acota a VIGENTES (EstadoComprobante=1 en soap.ts), que es lo
+ * que evita el 301 de los cancelados —el criterio del proyecto IVA con @nodecfdi
+ * (DocumentStatus 'active'), que sí baja el XML de recibidos—. El XML alimenta
+ * la póliza de compra; el Metadata acompaña para el estatus (vigente/cancelado)
+ * y para el metadato de los cancelados, que no tienen XML. */
 const TIPOS_DIARIO: Record<string, Array<'CFDI' | 'Metadata'>> = {
   recibidos: ['CFDI', 'Metadata'],
   emitidos: ['CFDI', 'Metadata'],
 };
 const TIPOS_EJERCICIO: Record<string, Array<'CFDI' | 'Metadata'>> = {
-  recibidos: ['Metadata'],
+  recibidos: ['CFDI', 'Metadata'],   // CFDI acotado a VIGENTES (evita el 301); da el XML para la póliza de compra
   emitidos: ['CFDI', 'Metadata'],
 };
 
