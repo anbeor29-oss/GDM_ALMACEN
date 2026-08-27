@@ -47,8 +47,8 @@ export const CONCEPTOS_NOMINA: ConceptoNomina[] = [
   { grupo: 'PERCEPCION', clave: 'SUBSIDIO', nombre: 'Subsidio al empleo por aplicar', lado: 'cargo', sugerida: '110.01' },
 
   /* ── Deducciones (abono → pasivo por retención al trabajador) ── */
-  { grupo: 'DEDUCCION', clave: '002', nombre: 'ISR retenido por sueldos', lado: 'abono', sugerida: '216.01' },
-  { grupo: 'DEDUCCION', clave: '001', nombre: 'Seguridad social (IMSS obrero)', lado: 'abono', sugerida: '216.11' },
+  { grupo: 'DEDUCCION', clave: '002', nombre: 'ISR retenido por sueldos', lado: 'abono', sugerida: '216.02' },
+  { grupo: 'DEDUCCION', clave: '001', nombre: 'Retención de IMSS (obrero)', lado: 'abono', sugerida: '216.01' },
   { grupo: 'DEDUCCION', clave: 'INFONAVIT', nombre: 'Crédito INFONAVIT (descuento al trabajador)', lado: 'abono', sugerida: '211.03' },
   { grupo: 'DEDUCCION', clave: 'FONACOT', nombre: 'FONACOT (descuento al trabajador)', lado: 'abono', sugerida: '205.01' },
   { grupo: 'DEDUCCION', clave: '007', nombre: 'Pensión alimenticia', lado: 'abono', sugerida: '216.20' },
