@@ -19,7 +19,7 @@ import {
   AlertTriangle, CheckCircle2, SlidersHorizontal, Upload,
 } from 'lucide-react';
 import api from '@/services/api';
-import { CampoFecha } from '@/components/CampoFecha';
+import { CampoFecha, aTextoMx } from '@/components/CampoFecha';
 import { useCapacidades, CAP } from '@/utils/capacidades';
 
 type Tipo = 'ALTA' | 'BAJA' | 'MODIFICACION';
@@ -322,6 +322,13 @@ export function MotorImssIdsePage() {
                           <p className="text-sm font-medium text-gray-900 truncate">{e?.nombre_completo || 'Trabajador'}</p>
                           <p className="text-[11px] font-mono text-gray-500">
                             NSS {e?.nss || <span className="text-rose-600 font-semibold">falta</span>}
+                          </p>
+                          {/* Tipo + fecha destacados: distinguen de un vistazo qué movimiento
+                              es cada quien dentro del mismo archivo. */}
+                          <p className={`text-[11px] font-bold ${
+                            f.tipo === 'BAJA' ? 'text-rose-600'
+                            : f.tipo === 'ALTA' ? 'text-emerald-600' : 'text-violet-600'}`}>
+                            {ETIQUETA_TIPO[f.tipo] || f.tipo} · {aTextoMx(f.fecha) || '—'}
                           </p>
                         </div>
                         <button onClick={() => yaPaso(id)} title="Ya pasó en el IDSE"
