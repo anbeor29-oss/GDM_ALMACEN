@@ -55,6 +55,8 @@ export function CatalogoCuentasPage() {
     queryKey: ['cuentas-revision'],
     queryFn: () => api.getRevisionCatalogo(),
   });
+  const agrupQ = useQuery({ queryKey: ['agrupadores-sat'], queryFn: () => api.getAgrupadoresSat() });
+  const agrupadores: any[] = agrupQ.data?.data?.agrupadores || [];
 
   const arbol: any[] = arbolQ.data?.data?.arbol || [];
   const revision: any = revisionQ.data?.data;
@@ -110,6 +112,12 @@ export function CatalogoCuentasPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-[1500px]">
+      {/* Desplegable de agrupadores del Anexo 24 (lo usan el alta y la edición). */}
+      <datalist id="agrup-sat">
+        {agrupadores.map((a) => (
+          <option key={a.codigo} value={a.codigo}>{a.codigo} — {a.nombre}</option>
+        ))}
+      </datalist>
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -674,7 +682,7 @@ function PanelCuenta({ id, onCerrar, puedeEditar, onListo, onAgregarHija }: any)
                   </label>
                   <label className="block">
                     <span className="text-[11px] text-gray-600">Agrupador SAT</span>
-                    <input value={form.codigoAgrupador} onChange={(e) => setForm({ ...form, codigoAgrupador: e.target.value })}
+                    <input list="agrup-sat" value={form.codigoAgrupador} onChange={(e) => setForm({ ...form, codigoAgrupador: e.target.value })}
                       className="input w-full text-sm font-mono" placeholder="opcional" />
                   </label>
                 </div>
@@ -845,7 +853,7 @@ function ModalNuevaCuenta({ datos, onCerrar, onListo }: any) {
           <div className="grid grid-cols-[1fr_5rem] gap-2">
             <label className="block">
               <span className="text-xs text-gray-600">Código agrupador SAT</span>
-              <input value={f.codigoAgrupador}
+              <input list="agrup-sat" value={f.codigoAgrupador}
                 onChange={(e) => setF({ ...f, codigoAgrupador: e.target.value })}
                 className="input w-full font-mono" placeholder="102.01" />
             </label>

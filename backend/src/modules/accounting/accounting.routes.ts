@@ -138,6 +138,14 @@ router.get(
   })
 );
 
+/** GET /accounting/agrupadores — los códigos del Anexo 24 para el desplegable */
+router.get(
+  '/agrupadores',
+  asyncHandler(async (_req: Request, res: Response) => {
+    res.json({ success: true, data: { agrupadores: await catalogo.listarAgrupadoresSat() } });
+  })
+);
+
 /** GET /accounting/cuentas/:id */
 router.get(
   '/cuentas/:id',

@@ -18,6 +18,7 @@ import * as productsService from '../products/products.service';
 import { applyMovementTx, getOrCreateDefaultWarehouse } from '../inventory/inventory.service';
 import { validarRfcSat } from '../../utils/validators';
 import { aplicarRecepcionDesdeXml } from '../purchasing/recepcion-por-xml.service';
+import { indexarCfdi } from '../sat-descarga/descarga.service';
 import {
   PreviewResult,
   PreviewedParty,
@@ -289,7 +290,7 @@ export async function commit(
   const kind: 'CUSTOMER' | 'SUPPLIER' =
     req.selection.partyKind === 'SUPPLIER' ? 'SUPPLIER' : 'CUSTOMER';
 
-  return transaction(async (client) => {
+  const commitResult: CommitResult = await transaction(async (client) => {
     // 1) Party (cliente o proveedor)
     let partyResult: CommitResult['party'] | undefined;
     if (req.selection.party === 'emisor' || req.selection.party === 'receptor') {
@@ -716,6 +717,22 @@ export async function commit(
     }
     return result;
   });
+
+  /* Si fue una COMPRA, se indexa el mismo XML en cfdi_recibidos para que la
+   * CONTABILIDAD lo vea: la póliza de compra lee de ahí, no del import de almacén.
+   * Sin esto, una factura recibida por el asistente de almacén nunca llegaba a la
+   * póliza de compra. No debe tumbar el import si algo falla —el asiento es un
+   * paso posterior—. Idempotente por UUID (indexarCfdi rellena/omite). */
+  if (commitResult.party?.kind === 'SUPPLIER') {
+    try {
+      const self = await query<{ rfc: string }>(`SELECT UPPER(rfc) AS rfc FROM companies WHERE id = $1`, [companyId]);
+      const ownRfc = self.rows[0]?.rfc || '';
+      if (ownRfc) await indexarCfdi(companyId, ownRfc, 'recibidos', xmlBuf.toString('utf8'));
+    } catch (e: any) {
+      logger.warn(`[cfdi-import] compra importada pero no se pudo indexar a cfdi_recibidos: ${e?.message}`);
+    }
+  }
+  return commitResult;
 }
 
 /* ─────────────────────  HISTORY  ───────────────────── */

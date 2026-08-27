@@ -952,6 +952,10 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/cuentas/arbol');
     return r.data;
   }
+  async getAgrupadoresSat() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/agrupadores');
+    return r.data;
+  }
   async getRevisionCatalogo() {
     const r = await this.client.get<APIResponse<any>>('/accounting/cuentas/revision');
     return r.data;

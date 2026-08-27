@@ -505,6 +505,13 @@ export async function actualizarCuenta(companyId: string, id: string, d: Partial
   return r.rows[0];
 }
 
+/** Los códigos agrupadores del Anexo 24 (referencia), para el desplegable. */
+export async function listarAgrupadoresSat(): Promise<Array<{ codigo: string; nombre: string; nivel: number; tipo: string; naturaleza: string }>> {
+  const r = await query<any>(
+    `SELECT codigo, nombre, nivel, tipo, naturaleza FROM sat_codigos_agrupadores ORDER BY codigo`);
+  return r.rows;
+}
+
 /**
  * Desactivar, nunca borrar.
  *
