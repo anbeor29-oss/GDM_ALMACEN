@@ -94,15 +94,44 @@ export function TabCargos({ anio, mes, cuentas }: { anio: number; mes: number; c
   const productos: any[] = q.data?.data?.productos || [];
   const nombreCta = useMemo(() => new Map<string, string>(cuentas.map((c) => [c.codigo, c.nombre])), [cuentas]);
   const faltan = productos.filter((p) => !p.cuenta).length;
+  const [subMsg, setSubMsg] = useState('');
+  const [subiendo, setSubiendo] = useState(false);
 
   const guardar = async (p: any, codigo: string) => {
     await api.setCompraProducto(p.clave, p.descripcion || null, codigo.trim() || null);
     qc.invalidateQueries({ queryKey: clave });
   };
 
+  const subir = async (files: FileList | null) => {
+    if (!files || !files.length) return;
+    setSubiendo(true); setSubMsg('');
+    try {
+      const fd = new FormData();
+      Array.from(files).forEach((f) => fd.append('archivos', f));
+      const r: any = await api.subirXmlCompra(fd);
+      const errs = r.data?.errores || [];
+      setSubMsg(`${r.data?.indexados || 0} XML contabilizable(s).` +
+        (errs.length ? ` ${errs.length} omitido(s): ${errs.map((e: any) => `${e.archivo} (${e.motivo})`).join('; ')}` : ''));
+      qc.invalidateQueries({ queryKey: clave });
+    } catch (e: any) { setSubMsg(e?.response?.data?.message || 'No se pudieron subir los XML.'); }
+    finally { setSubiendo(false); }
+  };
+
   return (
     <div className="space-y-3">
       <AvisoXml />
+      <div className="bg-white rounded-lg shadow border p-3 flex flex-wrap items-center gap-3">
+        <p className="text-sm text-gray-600 flex-1 min-w-[16rem]">
+          ¿Una compra no aparece porque bajó sólo como metadato o vino del almacén?
+          <b> Sube su XML</b> aquí y queda contabilizable.
+        </p>
+        <label className="flex items-center gap-1.5 bg-emerald-700 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-800 text-sm cursor-pointer">
+          <input type="file" accept=".xml" multiple className="hidden"
+            onChange={(e) => { subir(e.target.files); e.currentTarget.value = ''; }} />
+          {subiendo ? 'Subiendo…' : 'Subir XML de compra'}
+        </label>
+      </div>
+      {subMsg && <p className="text-sm text-emerald-700">{subMsg}</p>}
       <p className="text-sm text-gray-600 bg-gray-50 border rounded p-3">
         A cada <b>producto</b> (ClaveProdServ) su cuenta: <b>115</b> si va a inventario o <b>601</b>
         {' '}si es gasto. La póliza carga a estas cuentas por producto, más el <b>IVA acreditable

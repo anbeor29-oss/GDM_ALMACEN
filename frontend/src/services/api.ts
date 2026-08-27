@@ -1050,6 +1050,12 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/manual', datos);
     return r.data;
   }
+  /** Sube XML(s) de facturas recibidas para contabilizarlas (los indexa a cfdi_recibidos). */
+  async subirXmlCompra(fd: FormData) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/compras/subir-xml', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
   async borrarPoliza(id: string) {
     const r = await this.client.delete<APIResponse<any>>(`/accounting/polizas/${id}`);
     return r.data;

@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  HeartPulse, Search, UserPlus, UserMinus, TrendingUp, X, Download,
+  HeartPulse, Search, X, Download,
   AlertTriangle, CheckCircle2, SlidersHorizontal, Upload, Pencil,
 } from 'lucide-react';
 import api from '@/services/api';
@@ -30,12 +30,6 @@ const CAUSAS_BAJA: Record<string, string> = {
   '4': 'Defunción', '5': 'Clausura', '6': 'Otras', '7': 'Ausentismo',
   '8': 'Rescisión de contrato', '9': 'Jubilación', 'A': 'Pensión',
 };
-
-const TIPOS: { clave: Tipo; label: string; icono: any; ayuda: string }[] = [
-  { clave: 'ALTA',         label: 'Alta / Reingreso',   icono: UserPlus,   ayuda: 'Inscribe o reinscribe. Movimiento 08.' },
-  { clave: 'BAJA',         label: 'Baja',               icono: UserMinus,  ayuda: 'Baja con su causa. Movimiento 02.' },
-  { clave: 'MODIFICACION', label: 'Modif. de salario',  icono: TrendingUp, ayuda: 'Cambia el SBC. Movimiento 07.' },
-];
 
 const ETIQUETA_TIPO: Record<string, string> = {
   ALTA: 'ALTA', BAJA: 'BAJA', MODIFICACION: 'MODIF.',
@@ -76,7 +70,6 @@ export function MotorImssIdsePage() {
   const esAdmin = puede(CAP.nomina);
 
   const [modo, setModo] = useState<'movimientos' | 'validar'>('movimientos');
-  const [tipoNuevo, setTipoNuevo] = useState<Tipo>('ALTA');
   const [modal, setModal] = useState<{ id: string; nombre: string; nss: string; tipo: Tipo; emp: any } | null>(null);
   const [buscar, setBuscar] = useState('');
   const [incluirBajas, setIncluirBajas] = useState(false);
@@ -90,8 +83,8 @@ export function MotorImssIdsePage() {
   const [generando, setGenerando] = useState(false);
 
   const q = useQuery({
-    queryKey: ['empleados-idse', buscar, incluirBajas, tipoNuevo],
-    queryFn: () => api.getEmpleados({ buscar, incluirBajas: incluirBajas || tipoNuevo === 'ALTA' }),
+    queryKey: ['empleados-idse', buscar, incluirBajas],
+    queryFn: () => api.getEmpleados({ buscar, incluirBajas }),
   });
   const lista: any[] = q.data?.data?.empleados || [];
   const porId = useMemo(() => new Map(lista.map((e) => [e.id, e])), [lista]);
@@ -246,35 +239,19 @@ export function MotorImssIdsePage() {
         <div className="bg-white rounded-lg shadow border overflow-hidden">
           <div className="p-3 border-b space-y-2">
             <p className="text-[11px] text-gray-500">
-              Elige el movimiento con los botones <b>Alta · ModSal · Baja</b> de cada trabajador.
-              Estos botones sólo ajustan a quién muestra la búsqueda:
+              Elige el movimiento con los botones <b>Alta · ModSal · Baja</b> de cada trabajador;
+              se abre un recuadro con lo que falta.
             </p>
-            <div className="grid grid-cols-3 gap-1.5">
-              {TIPOS.map((t) => {
-                const activo = tipoNuevo === t.clave;
-                const Icono = t.icono;
-                return (
-                  <button key={t.clave} onClick={() => setTipoNuevo(t.clave)}
-                    title={t.ayuda}
-                    className={`text-xs rounded-lg border px-2 py-1.5 flex items-center justify-center gap-1 ${
-                      activo ? 'border-violet-500 bg-violet-50 text-violet-800 font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                    <Icono size={14} /> {t.label}
-                  </button>
-                );
-              })}
-            </div>
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input className="w-full border rounded-lg pl-9 pr-3 py-2 text-sm"
                 placeholder="Buscar por nombre, número, RFC, CURP o NSS…"
                 value={buscar} onChange={(e) => setBuscar(e.target.value)} />
             </div>
-            {tipoNuevo !== 'ALTA' && (
-              <label className="flex items-center gap-2 text-xs text-gray-600">
-                <input type="checkbox" checked={incluirBajas} onChange={(e) => setIncluirBajas(e.target.checked)} />
-                Incluir a los que ya están de baja
-              </label>
-            )}
+            <label className="flex items-center gap-2 text-xs text-gray-600">
+              <input type="checkbox" checked={incluirBajas} onChange={(e) => setIncluirBajas(e.target.checked)} />
+              Incluir a los que ya están de baja (para reingresos)
+            </label>
           </div>
           <div className="max-h-[24rem] overflow-y-auto divide-y">
             {q.isLoading && <p className="p-4 text-sm text-gray-500">Cargando plantilla…</p>}

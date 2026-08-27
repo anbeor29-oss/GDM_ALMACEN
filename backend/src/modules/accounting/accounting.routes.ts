@@ -24,6 +24,8 @@ import * as polizas from './polizas.service';
 import * as terceros from './catalogo-terceros.service';
 import * as ventas from './ventas-cuentas.service';
 import * as compras from './compras-cuentas.service';
+import { query } from '../../config/database';
+import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
 
 const router = Router();
@@ -710,6 +712,43 @@ router.post(
     const r = await polizas.generarVentasDelMes(
       companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
     res.json({ success: true, data: r });
+  })
+);
+
+/**
+ * POST /accounting/compras/subir-xml — sube uno o varios XML de facturas RECIBIDAS
+ * y los indexa en cfdi_recibidos, para contabilizarlos aunque no vinieran de la
+ * descarga masiva (recibidos que sólo bajaron como metadato, o compras cargadas
+ * por el almacén). El compra debe tener a la empresa como RECEPTOR.
+ */
+router.post(
+  '/compras/subir-xml',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  subir.array('archivos', 60),
+  asyncHandler(async (req: Request, res: Response) => {
+    const files = ((req as any).files || []) as Array<{ originalname: string; buffer: Buffer }>;
+    if (!files.length) throw new ValidationError('Sube al menos un archivo XML.');
+    const cid = companyId(req);
+    const comp = await query<any>('SELECT UPPER(rfc) AS rfc FROM companies WHERE id=$1', [cid]);
+    const rfc = (comp.rows[0]?.rfc || '').trim();
+    if (!rfc) throw new ValidationError('La empresa activa no tiene RFC configurado.');
+
+    let indexados = 0;
+    const errores: Array<{ archivo: string; motivo: string }> = [];
+    for (const f of files) {
+      try {
+        const xml = f.buffer.toString('utf8');
+        const emisor = (/<(?:\w+:)?Emisor\b[^>]*\bRfc\s*=\s*"([^"]*)"/i.exec(xml)?.[1] || '').toUpperCase().trim();
+        const receptor = (/<(?:\w+:)?Receptor\b[^>]*\bRfc\s*=\s*"([^"]*)"/i.exec(xml)?.[1] || '').toUpperCase().trim();
+        if (emisor && emisor === rfc) { errores.push({ archivo: f.originalname, motivo: 'lo emitió la empresa: es una venta, no una compra' }); continue; }
+        if (receptor && receptor !== rfc) { errores.push({ archivo: f.originalname, motivo: `el receptor es ${receptor}, no la empresa (${rfc})` }); continue; }
+        await indexarCfdi(cid, rfc, 'recibidos', xml);
+        indexados++;
+      } catch (e: any) {
+        errores.push({ archivo: f.originalname, motivo: (e?.message || 'no se pudo leer el XML').slice(0, 140) });
+      }
+    }
+    res.json({ success: true, data: { indexados, errores } });
   })
 );
 

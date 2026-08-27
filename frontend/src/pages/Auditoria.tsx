@@ -14,7 +14,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, AlertTriangle, RefreshCw, Clock, HelpCircle } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
-import { XmlRecibidos } from '@/components/XmlRecibidos';
 import { Lista69B } from '@/components/Lista69B';
 import { fechaHoraMx } from '@/utils/fecha';
 
@@ -44,7 +43,7 @@ export function AuditoriaPage() {
    * La descarga de XML también vive en su propio menú, "XML del SAT". Aquí se
    * queda porque es donde se revisa junto con lo demás: la misma persona que
    * mira los comprobantes propios mira los recibidos. */
-  const [tab, setTab] = useState<'emitidos' | 'recibidos' | 'lista69b'>('emitidos');
+  const [tab, setTab] = useState<'emitidos' | 'lista69b'>('emitidos');
   const [soloDiferencias, setSoloDiferencias] = useState(false);
   const [revisando, setRevisando] = useState(false);
   const [aviso, setAviso] = useState('');
@@ -111,7 +110,7 @@ export function AuditoriaPage() {
       </div>
 
       <div className="flex gap-1 border-b">
-        {([['emitidos', 'Nuestros comprobantes'], ['recibidos', 'XML recibidos del SAT'],
+        {([['emitidos', 'Nuestros comprobantes'],
           ['lista69b', 'Listas 69-B']] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
@@ -122,8 +121,6 @@ export function AuditoriaPage() {
           </button>
         ))}
       </div>
-
-      {tab === 'recibidos' && <XmlRecibidos />}
 
       {tab === 'lista69b' && <Lista69B />}
 
