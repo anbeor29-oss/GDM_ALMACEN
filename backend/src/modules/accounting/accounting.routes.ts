@@ -732,4 +732,15 @@ router.delete(
   })
 );
 
+/** DELETE /accounting/polizas/:id — borra UNA póliza (cualquier origen) */
+router.delete(
+  '/polizas/:id',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const ok = await polizas.borrarPoliza(companyId(req), req.params.id);
+    if (!ok) { res.status(404).json({ success: false, message: 'No se encontró la póliza' }); return; }
+    res.json({ success: true });
+  })
+);
+
 export default router;

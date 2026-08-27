@@ -50,8 +50,8 @@ export const CONCEPTOS_NOMINA: ConceptoNomina[] = [
   { grupo: 'DEDUCCION', clave: '002', nombre: 'ISR retenido por sueldos', lado: 'abono', sugerida: '216.02' },
   { grupo: 'DEDUCCION', clave: '001', nombre: 'Retención de IMSS (obrero)', lado: 'abono', sugerida: '216.01' },
   { grupo: 'DEDUCCION', clave: 'INFONAVIT', nombre: 'Crédito INFONAVIT (descuento al trabajador)', lado: 'abono', sugerida: '211.03' },
-  { grupo: 'DEDUCCION', clave: 'FONACOT', nombre: 'FONACOT (descuento al trabajador)', lado: 'abono', sugerida: '205.01' },
-  { grupo: 'DEDUCCION', clave: '007', nombre: 'Pensión alimenticia', lado: 'abono', sugerida: '216.20' },
+  { grupo: 'DEDUCCION', clave: 'FONACOT', nombre: 'FONACOT (descuento al trabajador)', lado: 'abono', sugerida: '213.01' },
+  { grupo: 'DEDUCCION', clave: '007', nombre: 'Pensión alimenticia', lado: 'abono', sugerida: '213.02' },
   { grupo: 'DEDUCCION', clave: '006', nombre: 'Caja / fondo de ahorro', lado: 'abono', sugerida: '216.21' },
   { grupo: 'DEDUCCION', clave: '004', nombre: 'Otros descuentos', lado: 'abono', sugerida: '216.99' },
 

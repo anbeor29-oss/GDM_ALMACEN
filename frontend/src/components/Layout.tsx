@@ -274,6 +274,7 @@ export function Layout() {
                       { to: '/contabilidad/cuentas',       icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
                       { to: '/contabilidad/asignacion',    icon: emoji3D('🏷️'), label: 'Asignación de cuenta' },
                       { to: '/contabilidad/poliza-manual', icon: emoji3D('✍️'), label: 'Póliza manual' },
+                      { to: '/contabilidad/polizas',       icon: emoji3D('📔'), label: 'Pólizas' },
                       {
                         icon: emoji3D('📊'), label: 'Reportes',
                         children: [

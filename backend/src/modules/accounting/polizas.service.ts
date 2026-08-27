@@ -142,7 +142,7 @@ export async function generarVentasDelMes(
 ): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
   const mapaProd = await mapaProductoCuenta(companyId);
   const r = await query<any>(
-    `SELECT c.uuid, c.serie, c.folio, c.fecha_emision, c.total, c.descuento, c.metodo_pago,
+    `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.total, c.descuento, c.metodo_pago,
             c.nombre_receptor, c.rfc_receptor, c.xml
        FROM cfdi_recibidos c
       WHERE c.company_id=$1 AND c.direccion='emitidos'
@@ -180,10 +180,20 @@ export async function generarVentasDelMes(
 
       const total = round2(c.total);
       const iva = round2(imp.trasladados);
-      const sumaVentas = round2(Array.from(porCuenta.values()).reduce((a, b) => a + b, 0));
-      // total = ventas NETO + IVA trasladado − (ISR + IVA que el cliente nos retiene)
-      if (round2(sumaVentas + iva - ret.isr - ret.iva) !== total) {
+      let sumaVentas = round2(Array.from(porCuenta.values()).reduce((a, b) => a + b, 0));
+      // Las ventas deben sumar: total + retenciones − IVA. El residuo (centavos por
+      // el redondeo del propio CFDI) se absorbe en la cuenta de mayor importe; más
+      // de 5 centavos ya no es redondeo y se OMITE.
+      const requerido = round2(total + ret.isr + ret.iva - iva);
+      const residuo = round2(requerido - sumaVentas);
+      if (Math.abs(residuo) > 0.05) {
         omitidas.push({ folio: folioTxt, motivo: `no cuadra: ventas ${sumaVentas} + IVA ${iva} − retención ${round2(ret.isr + ret.iva)} ≠ total ${total}` }); continue;
+      }
+      if (residuo !== 0) {
+        let cod = '', max = -1;
+        for (const [k, v] of porCuenta) if (v > max) { max = v; cod = k; }
+        porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + residuo));
+        sumaVentas = round2(sumaVentas + residuo);
       }
 
       const lineas: LineaPoliza[] = [
@@ -246,7 +256,7 @@ export async function generarComprasDelMes(
 ): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
   const mapaProd = await mapaProductoCuentaCompra(companyId);
   const r = await query<any>(
-    `SELECT c.uuid, c.serie, c.folio, c.fecha_emision, c.total, c.descuento,
+    `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.total, c.descuento,
             c.nombre_emisor, c.rfc_emisor, c.xml
        FROM cfdi_recibidos c
       WHERE c.company_id=$1 AND c.direccion='recibidos'
@@ -284,10 +294,20 @@ export async function generarComprasDelMes(
 
       const total = round2(c.total);
       const iva = round2(imp.trasladados);
-      const sumaCargos = round2(Array.from(porCuenta.values()).reduce((a, b) => a + b, 0));
-      // total = compras NETO + IVA acreditable − (ISR + IVA que le retenemos al proveedor)
-      if (round2(sumaCargos + iva - ret.isr - ret.iva) !== total) {
+      let sumaCargos = round2(Array.from(porCuenta.values()).reduce((a, b) => a + b, 0));
+      // Los cargos deben sumar: total + retenciones − IVA. El residuo (centavos por
+      // el redondeo del propio CFDI) se absorbe en la cuenta de mayor importe; más
+      // de 5 centavos ya no es redondeo y se OMITE.
+      const requerido = round2(total + ret.isr + ret.iva - iva);
+      const residuo = round2(requerido - sumaCargos);
+      if (Math.abs(residuo) > 0.05) {
         omitidas.push({ folio: folioTxt, motivo: `no cuadra: compras ${sumaCargos} + IVA ${iva} − retención ${round2(ret.isr + ret.iva)} ≠ total ${total}` }); continue;
+      }
+      if (residuo !== 0) {
+        let cod = '', max = -1;
+        for (const [k, v] of porCuenta) if (v > max) { max = v; cod = k; }
+        porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + residuo));
+        sumaCargos = round2(sumaCargos + residuo);
       }
 
       const lineas: LineaPoliza[] = [];
@@ -352,7 +372,7 @@ export async function generarCobrosPagosDelMes(
   const banco = await cuentaPorAgrupador(companyId, '102.01');
 
   const traer = (direccion: 'emitidos' | 'recibidos') => query<any>(
-    `SELECT c.uuid, c.serie, c.folio, c.fecha_emision, c.moneda,
+    `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.moneda,
             c.nombre_emisor, c.rfc_emisor, c.nombre_receptor, c.rfc_receptor, c.xml
        FROM cfdi_recibidos c
       WHERE c.company_id=$1 AND c.direccion=$2 AND c.tipo_comprobante='P' AND c.xml IS NOT NULL
@@ -478,6 +498,18 @@ export async function crearPolizaManual(
     origen: 'MANUAL', origen_uuid: d.uuid || null, regla: 'manual', lineas,
   }, userId);
   return { ...poliza, sumaCargo, sumaAbono };
+}
+
+/** Borra UNA póliza (encabezado + partidas), sea cual sea su origen. */
+export async function borrarPoliza(companyId: string, id: string): Promise<boolean> {
+  return transaction(async (client) => {
+    const own = await client.query(
+      `SELECT 1 FROM journal_entries WHERE company_id=$1 AND id=$2`, [companyId, id]);
+    if (own.rows.length === 0) return false;
+    await client.query(`DELETE FROM journal_lines WHERE entry_id=$1`, [id]);
+    await client.query(`DELETE FROM journal_entries WHERE id=$1 AND company_id=$2`, [id, companyId]);
+    return true;
+  });
 }
 
 /** Las pólizas del mes, con sus partidas, para revisarlas. */

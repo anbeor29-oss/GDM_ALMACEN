@@ -1046,6 +1046,10 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/manual', datos);
     return r.data;
   }
+  async borrarPoliza(id: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/accounting/polizas/${id}`);
+    return r.data;
+  }
 
   /* ── Periodos contables ── */
   async getPeriodosContables(anio: number) {

@@ -51,6 +51,21 @@ export function PolizaManualPage() {
   const agregar = () => setLineas((ls) => [...ls, filaVacia()]);
   const quitar = (i: number) => setLineas((ls) => ls.length > 1 ? ls.filter((_, k) => k !== i) : ls);
 
+  /* Cuadre rápido: al oprimir "−" en un cargo/abono, ese campo se llena con lo
+   * que falta para igualar las sumas (como en la contabilidad de escritorio). */
+  const cuadrar = (i: number, campo: 'cargo' | 'abono') => {
+    setLineas((ls) => {
+      const otrosCargo = round2(ls.reduce((a, l, k) => a + (k === i ? 0 : Number(l.cargo) || 0), 0));
+      const otrosAbono = round2(ls.reduce((a, l, k) => a + (k === i ? 0 : Number(l.abono) || 0), 0));
+      const falta = campo === 'cargo' ? round2(otrosAbono - otrosCargo) : round2(otrosCargo - otrosAbono);
+      if (falta <= 0) return ls;                 // este lado ya cuadra o sobra
+      return ls.map((l, k) => k === i
+        ? { ...l, cargo: campo === 'cargo' ? String(falta) : '', abono: campo === 'abono' ? String(falta) : '' }
+        : l);
+    });
+    setMsg(null);
+  };
+
   const sumaCargo = round2(lineas.reduce((a, l) => a + (Number(l.cargo) || 0), 0));
   const sumaAbono = round2(lineas.reduce((a, l) => a + (Number(l.abono) || 0), 0));
   const cuadra = sumaCargo > 0 && sumaCargo === sumaAbono;
@@ -81,6 +96,7 @@ export function PolizaManualPage() {
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
           Cargos y abonos a mano, con cualquier cuenta del catálogo. Se guarda sólo si las sumas cuadran.
+          {' '}Tip: oprime <b>−</b> en un importe y se llena con lo que falta para cuadrar.
         </p>
       </div>
 
@@ -146,11 +162,15 @@ export function PolizaManualPage() {
                 <td className="px-3 py-1.5">
                   <input type="number" step="0.01" min="0" value={l.cargo}
                     onChange={(e) => set(i, 'cargo', e.target.value)}
+                    onKeyDown={(e) => { if (e.key === '-') { e.preventDefault(); cuadrar(i, 'cargo'); } }}
+                    title="Oprime − para cuadrar" placeholder="0.00"
                     className="border rounded px-2 py-1 text-sm w-full text-right" />
                 </td>
                 <td className="px-3 py-1.5">
                   <input type="number" step="0.01" min="0" value={l.abono}
                     onChange={(e) => set(i, 'abono', e.target.value)}
+                    onKeyDown={(e) => { if (e.key === '-') { e.preventDefault(); cuadrar(i, 'abono'); } }}
+                    title="Oprime − para cuadrar" placeholder="0.00"
                     className="border rounded px-2 py-1 text-sm w-full text-right" />
                 </td>
                 <td className="px-1">
