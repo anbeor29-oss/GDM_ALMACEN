@@ -43,6 +43,9 @@ export function CatalogoCuentasPage() {
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
   const [detalle, setDetalle] = useState<any>(null);
   const [alta, setAlta] = useState<any>(null);
+  /* Colapsa TODO el catálogo a un solo renglón, para dejar la pantalla entera
+     al panel de análisis (respaldo del cliente, catálogos). */
+  const [arbolColapsado, setArbolColapsado] = useState(false);
 
   const arbolQ = useQuery({
     queryKey: ['cuentas-arbol'],
@@ -150,54 +153,69 @@ export function CatalogoCuentasPage() {
         </p>
       )}
 
-      {/* ── Dos paneles: el árbol a la izquierda, el análisis a la derecha ──
-          Colapsar el árbol libera la mitad de la pantalla para revisar el
-          respaldo contable de un cliente nuevo o empatar su catálogo. */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-4 items-start">
+      {/* ── Dos paneles: el catálogo (colapsable a un solo renglón) y el análisis ──
+          Al colapsar el catálogo, el panel de análisis ocupa toda la pantalla. */}
+      <div className={`grid gap-4 items-start ${
+        arbolColapsado ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-[1.15fr_0.85fr]'}`}>
         <div className="space-y-3 min-w-0">
-          {/* ── Buscador ── */}
-          <div className="flex flex-wrap gap-2">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search size={15} className="absolute left-2.5 top-2.5 text-gray-400" />
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Código o nombre…"
-                className="input w-full pl-8"
-              />
-            </div>
-            <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="input">
-              <option value="">Todos los tipos</option>
-              {Object.keys(TIPO_COLOR).map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-            {/* Toggle real: el árbol arranca compactado, así que estando colapsado el
-                botón OFRECE expandir; ya expandido, re-colapsa para liberar la pantalla
-                —útil cuando un respaldo trae cientos de subcuentas por cliente. Con una
-                búsqueda activa el árbol se abre solo, así que el toggle se inhabilita. */}
-            <button
-              onClick={() => setAbiertos(abiertos.size ? new Set() : new Set(idsConHijos))}
-              disabled={buscando}
-              title={buscando ? 'La búsqueda ya muestra todo abierto' : (abiertos.size ? 'Colapsar todo el catálogo' : 'Expandir todo el catálogo')}
-              className="border px-3 rounded-lg hover:bg-gray-50 text-sm text-gray-600 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
-              {abiertos.size ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              {abiertos.size ? 'Colapsar todo' : 'Expandir todo'}
-            </button>
-          </div>
+          {/* Encabezado: colapsa/expande TODO el catálogo a un solo renglón. */}
+          <button
+            onClick={() => setArbolColapsado((v) => !v)}
+            className="w-full flex items-center gap-2 bg-white border rounded-lg px-3 py-2 text-sm hover:bg-gray-50">
+            {arbolColapsado ? <ChevronRight size={15} className="text-gray-400" /> : <ChevronDown size={15} className="text-gray-400" />}
+            <BookOpen size={15} className="text-primary" />
+            <span className="font-medium text-gray-800">Catálogo de cuentas</span>
+            <span className="text-xs text-gray-400">{revision?.total} cuentas</span>
+            <span className="ml-auto text-xs text-gray-400">{arbolColapsado ? 'mostrar' : 'ocultar'}</span>
+          </button>
 
-          {/* ── El árbol ── */}
-          <div className="bg-white rounded-lg shadow border divide-y">
-            {filtrado.length === 0 && (
-              <p className="p-6 text-center text-gray-500 text-sm">
-                Ninguna cuenta coincide con la búsqueda.
-              </p>
-            )}
-            {filtrado.map((n: any) => (
-              <Rama key={n.id} nodo={n} nivel={0}
-                abiertos={abiertos} buscando={buscando}
-                onAlternar={alternar} onDetalle={setDetalle}
-                onAgregar={puedeEditar ? (p: any) => setAlta({ parentId: p.id, padre: p }) : undefined} />
-            ))}
-          </div>
+          {!arbolColapsado && (
+            <>
+              {/* ── Buscador ── */}
+              <div className="flex flex-wrap gap-2">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search size={15} className="absolute left-2.5 top-2.5 text-gray-400" />
+                  <input
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    placeholder="Código o nombre…"
+                    className="input w-full pl-8"
+                  />
+                </div>
+                <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="input">
+                  <option value="">Todos los tipos</option>
+                  {Object.keys(TIPO_COLOR).map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                {/* Toggle real: el árbol arranca compactado, así que estando colapsado el
+                    botón OFRECE expandir; ya expandido, re-colapsa para liberar la pantalla
+                    —útil cuando un respaldo trae cientos de subcuentas por cliente. Con una
+                    búsqueda activa el árbol se abre solo, así que el toggle se inhabilita. */}
+                <button
+                  onClick={() => setAbiertos(abiertos.size ? new Set() : new Set(idsConHijos))}
+                  disabled={buscando}
+                  title={buscando ? 'La búsqueda ya muestra todo abierto' : (abiertos.size ? 'Colapsar todo el catálogo' : 'Expandir todo el catálogo')}
+                  className="border px-3 rounded-lg hover:bg-gray-50 text-sm text-gray-600 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                  {abiertos.size ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  {abiertos.size ? 'Colapsar todo' : 'Expandir todo'}
+                </button>
+              </div>
+
+              {/* ── El árbol ── */}
+              <div className="bg-white rounded-lg shadow border divide-y">
+                {filtrado.length === 0 && (
+                  <p className="p-6 text-center text-gray-500 text-sm">
+                    Ninguna cuenta coincide con la búsqueda.
+                  </p>
+                )}
+                {filtrado.map((n: any) => (
+                  <Rama key={n.id} nodo={n} nivel={0}
+                    abiertos={abiertos} buscando={buscando}
+                    onAlternar={alternar} onDetalle={setDetalle}
+                    onAgregar={puedeEditar ? (p: any) => setAlta({ parentId: p.id, padre: p }) : undefined} />
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* ── El área de análisis (pestañas) ── */}
