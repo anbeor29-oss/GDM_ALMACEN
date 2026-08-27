@@ -519,6 +519,120 @@ function extraerNu(
   };
 }
 
+/* Parser propio de Bancrea. Su "Detalle de Movimientos" no pone la fila en un
+ * renglón: primero imprime los tres importes de la fila (Saldo · Depósito ·
+ * Retiro, en ese orden y explícitos —no hay que inferir signo—) y DESPUÉS, en
+ * uno o varios renglones, el concepto y la fecha, esta última pegada al final
+ * del texto ("TRANSFERENCIA SPEI ENVIADA6-JUL-26"). Los saldos del período se
+ * imprimen "valor+etiqueta" ("8,924.55Saldo Inicial del Período"). */
+function extraerBancrea(
+  texto: string, opciones: { anio?: number; mes?: number }, avisos: string[]
+): ResultadoExtraccion {
+  const lineas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+  // Saldos del período: el valor va pegado ANTES de la etiqueta.
+  const buscarAntes = (re: RegExp): number | null => { const m = re.exec(texto); return m ? aNumero(m[1]) : null; };
+  const saldoInicial = buscarAntes(/([\d,]+\.\d{2})\s*SALDO\s*INICIAL/i);
+  const saldoFinal = buscarAntes(/([\d,]+\.\d{2})\s*SALDO\s*FINAL/i);
+
+  // Renglón de importes de una fila: Saldo, Depósito, Retiro (3 importes al inicio).
+  const RX_TRES = /^([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/;
+  // La fecha "6-JUL-26" esté donde esté, aunque venga pegada a letras.
+  const fechaEnBloque = (lns: string[]): string => {
+    for (const l of lns) {
+      const m = /(\d{1,2})[-/]([A-Za-zÁÉÍÓÚÑáéíóúñ]{3})[-/](\d{2,4})(?!\d)/.exec(l);
+      if (m) { const iso = aFechaIso(`${m[1]}-${m[2]}-${m[3]}`, opciones.anio); if (iso) return iso; }
+    }
+    return '';
+  };
+  // Cortes que terminan el bloque de detalle de un movimiento (otra fila o pie de página).
+  const esCorte = (l: string) =>
+    RX_TRES.test(l) ||
+    /Detalle de Movimientos|SaldosDep[óo]sitos|P[ÁA]G\.\s*\d|BANCO BANCREA|ESTADO DE CUENTA|www\.bancrea|SALDO\s*(INICIAL|FINAL)|NO\.\s*DE\s*CUENTA/i.test(l);
+
+  const movimientos: MovimientoExtraido[] = [];
+  let orden = 0;
+  let enDetalle = false;
+
+  for (let i = 0; i < lineas.length; i++) {
+    const l = lineas[i];
+    if (!enDetalle) { if (/Detalle de Movimientos/i.test(l)) enDetalle = true; continue; }
+    const m = RX_TRES.exec(l);
+    if (!m) continue;
+
+    const saldo = aNumero(m[1]), deposito = aNumero(m[2]), retiro = aNumero(m[3]);
+    // Detalle: lo que sobra de esta línea (tras los 3 importes) + renglones siguientes hasta el próximo corte.
+    const cont: string[] = [];
+    const resto = l.slice(m[0].length).trim();
+    if (resto) cont.push(resto);
+    let j = i + 1;
+    for (; j < lineas.length; j++) { if (esCorte(lineas[j])) break; cont.push(lineas[j]); }
+
+    const fecha = fechaEnBloque(cont);
+    // Concepto: se le quita una ref BCREA pegada al inicio y la fecha (con lo que la sigue) al final.
+    const limpiar = (c: string) => c
+      .replace(/^BCREA\d+/i, '')
+      .replace(/(\d{1,2})[-/][A-Za-zÁÉÍÓÚÑáéíóúñ]{3}[-/]\d{2,4}.*$/, '')
+      .trim();
+    // La descripción del movimiento es la línea con la palabra clave (ENVIADA/RECIBIDA/COMISIÓN…);
+    // sólo si no la hay se cae a la línea de la fecha y, por último, al primer texto no-bancario.
+    const KW = /TRANSFERENCIA|COMISI|SPEI|DEP[ÓO]SITO|RETIRO|\bPAGO\b|ABONO|CARGO|INTER[ÉE]S|TRASPASO/i;
+    const noDato = (c: string) => /[A-Za-zÁÉÍÓÚÑ]/.test(c) && !/^Bco\.|^Cta:|^Rastreo|^Ref:|^Rfc:|^T\.C\.|^Iva:|^Cve\./i.test(c);
+    let concepto =
+      limpiar(cont.find((c) => KW.test(c) && noDato(c)) || '') ||
+      limpiar(cont.find((c) => /\d{1,2}[-/][A-Za-zÁÉÍÓÚÑáéíóúñ]{3}[-/]\d{2,4}/.test(c) && noDato(c)) || '') ||
+      limpiar(cont.find(noDato) || '') ||
+      'Movimiento';
+
+    if (deposito > 0 || retiro > 0) {
+      movimientos.push({
+        fecha, concepto: concepto.slice(0, 140),
+        referencia: [resto, ...cont].filter(Boolean).join(' ').slice(0, 500),
+        retiro: pesos(retiro), deposito: pesos(deposito),
+        saldo: pesos(saldo), saldoCalculado: 0, advertencia: '',
+        inferido: false, duda: false, orden: orden++, lineaOrigen: l,
+      });
+    }
+    i = j - 1;
+  }
+
+  // Arrastre desde el saldo inicial; se coteja contra el saldo por renglón que sí trae Bancrea.
+  let corriendo = saldoInicial ?? 0;
+  for (const mv of movimientos) {
+    corriendo = pesos(corriendo - mv.retiro + mv.deposito);
+    mv.saldoCalculado = corriendo;
+    if (mv.saldo !== null && Math.abs(mv.saldo - corriendo) > 0.02) {
+      mv.advertencia = 'el saldo declarado no coincide con el arrastre';
+    }
+  }
+
+  const totalRetiros = pesos(movimientos.reduce((a, m) => a + m.retiro, 0));
+  const totalDepositos = pesos(movimientos.reduce((a, m) => a + m.deposito, 0));
+  const finalCalculado = pesos((saldoInicial ?? 0) - totalRetiros + totalDepositos);
+  const cuadra = saldoFinal !== null && Math.abs(saldoFinal - finalCalculado) <= 0.02;
+
+  if (saldoInicial === null) avisos.push('Bancrea: no se encontró el saldo inicial.');
+  if (saldoFinal !== null && !cuadra) {
+    avisos.push(
+      `NO CUADRA: Bancrea declara saldo final ${saldoFinal.toFixed(2)} y los movimientos dan ` +
+      `${finalCalculado.toFixed(2)} (dif ${pesos(saldoFinal - finalCalculado).toFixed(2)}).`);
+  }
+  if (movimientos.length === 0) avisos.push('Bancrea: no se reconoció ningún movimiento en el detalle.');
+
+  return {
+    banco: 'Bancrea',
+    saldoInicial,
+    saldoFinal,
+    movimientos,
+    totalRetiros,
+    totalDepositos,
+    conAdvertencia: movimientos.filter((m) => m.advertencia).length,
+    inferidos: 0,
+    cuadra,
+    avisos,
+  };
+}
+
 export function extraerMovimientos(
   texto: string,
   opciones: { anio?: number; mes?: number } = {}
@@ -571,6 +685,12 @@ export function extraerMovimientos(
    * concepto y el importe FIRMADO van en renglones distintos. Se lee con su
    * propio parser, que devuelve el mismo formato. */
   if (banco === 'Nu') return extraerNu(texto, opciones, avisos);
+
+  /* Bancrea tampoco es tabular a la manera de los demás: los importes
+   * (Saldo · Depósito · Retiro) van en un renglón AL INICIO del movimiento y el
+   * concepto con la fecha (pegada, "…ENVIADA6-JUL-26") viene después. Además el
+   * saldo inicial/final se imprime "valor+etiqueta". Tiene su propio parser. */
+  if (banco === 'Bancrea') return extraerBancrea(texto, opciones, avisos);
 
   const mIni = RX_SALDO_INICIAL.exec(texto);
   const mFin = RX_SALDO_FINAL.exec(texto);
