@@ -30,11 +30,12 @@ SW Sapien.
   sus capacidades y su pantalla de inicio.
 - 🟡 **PAC en sandbox** de SW Sapien. Timbra, pero no ante el SAT real.
 - 🟢 **Descarga masiva del SAT**: baja de punta a punta (autenticar → solicitar →
-  verificar → **descargar** → indexar). **Emitidos** se traen como **CFDI** (el XML
-  completo); **recibidos** como **metadatos** (UUID, emisor, fecha, monto, estatus)
-  porque el SAT contesta 301 al XML de recibidos si hay cancelados en el rango, con
-  cualquier filtro. El cron diario **no arranca sin `ENABLE_SAT_DESCARGA_CRON=true`**
-  en el entorno.
+  verificar → **descargar** → indexar). **Emitidos y recibidos** se traen como
+  **CFDI + Metadata**: el CFDI (XML) acotado a **vigentes** (`EstadoComprobante=1`)
+  para esquivar el 301 de los cancelados —el mismo criterio de @nodecfdi—, y el
+  Metadata para el estatus (vigente/cancelado) y para los cancelados, que no tienen
+  XML. El cron diario **no arranca sin `ENABLE_SAT_DESCARGA_CRON=true`** en el
+  entorno.
 
 ## 🔑 Cómo entrar
 
@@ -104,13 +105,17 @@ Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
 - **Contabilidad — motor de pólizas**: `journal_entries/journal_lines` con el
   **cuadre en la base** (trigger `DEFERRABLE`) e idempotencia por CFDI.
   **Subcuentas por tercero** con máscara `000-00-000` (clientes 105 / proveedores
-  201; auto-consecutivas + captura). **Pólizas de venta** (Facturas → cada producto
-  a su 401, IVA 208/209) y **de compra** (Proveedores → producto a 115/601, IVA
-  acreditable 119.01), una por factura. **Conceptos de nómina → cuenta** (percep. a
-  601 / deducciones y provisiones a 210-211-216). Reportes en submenú **Reportes**;
-  **Auditoría** cuelga de Contabilidad; **Asignación de cuenta** como puente.
-  Pendiente: balanza derivada, póliza de nómina y saldos iniciales (balanza
-  anterior).
+  201; auto-consecutivas + captura; se generan de los CFDI **y del catálogo**, con
+  espejo en `customers.cuenta_contable`). **Pólizas de venta** (cada producto a su
+  401, IVA 208/209) y **de compra** (producto a 115/601, IVA acreditable 119.01),
+  con descuento (neto) y retenciones ISR/IVA, una por factura. **Póliza de nómina**
+  del finiquito timbrado (percep. a 601, deducciones a 216, neto a 210). **Póliza
+  manual** con cualquier cuenta y atajo "−" para cuadrar. Menú **Pólizas** = el
+  libro diario del mes (todas, por origen, con borrar). La asignación de cuentas se
+  **valida contra el catálogo**. Reportes en submenú **Reportes**; **Auditoría**
+  cuelga de Contabilidad; **Asignación de cuenta** como puente.
+  Pendiente: **balanza derivada** (pasar los saldos de `journal_lines` a la balanza
+  de comprobación) y la póliza de apertura (balanza anterior).
 - **Tesorería**: "Remesas de pago" → **Pagos programados**; pestaña nueva de
   **Conciliación bancaria** consolidada, con export a Excel.
 
