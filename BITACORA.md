@@ -4146,3 +4146,73 @@ código y el comentario la describe con palabras.
 
 Pruebas: descarga 24/24 · migraciones 13/13 · periodos 20/20 ·
 contabilidad 49/49 · jest 115/115
+
+## 2026-08-27 — Pólizas: de la factura al asiento, y lo que faltaba para que cuadre
+
+Sesión larga de contabilidad. El motor de pólizas ya existía (ventas, compras,
+cobros/pagos, nómina de finiquito); esta vez se cerró el circuito para que las
+pólizas **de verdad se generen, se vean juntas y cuadren**.
+
+**El bug que lo tapaba todo.** Las pólizas de venta/compra no se generaban:
+`String(fecha_emision).slice(0,10)` sobre un `Date` de node-postgres da
+`"Sat Aug 01"`, que Postgres rechaza (`invalid input syntax for type date`). Se
+lee con `TO_CHAR(...,'YYYY-MM-DD')` en las tres consultas. **Todos los formatos
+de calendario del sistema son DD/MM/AAAA de cara al usuario; en la base, ISO.**
+
+**Descuentos y retenciones (antes se omitían).** Descuento = método neto (el
+concepto va `importe − descuento` a su 401/115/601). Retenciones ISR(001)/IVA(002)
+del nodo de impuestos a nivel comprobante: en venta son impuesto A FAVOR (cargo
+113.02/113.01), en compra pasivo POR ENTERAR (abono 216.xx). El **residuo de
+redondeo** del propio CFDI (1206.92 + 193.10 ≠ 1400) se ABSORBE (≤5 centavos) en
+la cuenta de mayor importe, en vez de omitir la factura.
+
+**Cuentas que no existían.** El catálogo semilla dejaba 210/213/216 como cuentas
+de agrupación, sin hoja donde asentar; la póliza de finiquito no cuadraba porque
+el abono al neto/retenciones caía en "cuenta inexistente". Migración
+`2026-08-26b` que crea, heredando del padre y acumulando a él: **210.01 Nómina
+por pagar, 213.01 Retenciones de FONACOT, 213.02 Pensión alimenticia, 216.01
+Retención de IMSS, 216.02 ISR retenido**. Y la **asignación de cuentas valida
+contra el catálogo** (componente `CuentaPicker`, verde si existe / rojo si no):
+antes era texto libre y se "asignaba" un código inexistente.
+
+**Menú Pólizas (el libro diario).** Contabilidad → Pólizas: todas las del mes,
+por origen, con **borrar** (`DELETE /accounting/polizas/:id`). La **póliza
+manual** capta cargos/abonos con cualquier cuenta; al oprimir **"−"** en un
+importe se llena con lo que falta para cuadrar.
+
+**Terceros.** `customers` gana `cuenta_contable` (espejo de su subcuenta) y
+«Generar subcuentas» ahora levanta a los proveedores del CATÁLOGO, no sólo de
+los recibidos.
+
+**Descarga de recibidos como XML.** Comparado con el proyecto IVA
+(`E:\Obsidian\IVA.HTML`, @nodecfdi con `DocumentStatus 'active'`): recibidos se
+piden ya como **CFDI vigente + Metadata** en las tres vías (manual, diario,
+ejercicio). El 301 de los cancelados se esquiva acotando a vigentes
+(`EstadoComprobante=1`); antes recibidos bajaba sólo metadato y la póliza de
+compra quedaba vacía.
+
+**Extractor de bancos:** Banorte, BanRegio y **Nu** (narrativo) cuadran; guard de
+tarjeta de crédito.
+
+**PENDIENTE que sigue (para la próxima):** **balanza derivada** — pasar los
+saldos de `journal_lines` a la balanza de comprobación. Hoy la balanza sale de
+`accounting_period_balances` (guardada: de una balanza cargada o del ejercicio
+anterior); falta agregar los movimientos de las pólizas del mes (Σcargo/Σabono
+por cuenta) para que el saldo final = saldo inicial + cargos − abonos, SIN pisar
+la balanza de apertura. Es el puente que hace que lo contabilizado se vea en la
+balanza y los estados. También pendiente: verificar EN VIVO que la descarga de
+recibidos-CFDI-vigente no siga dando 301 (si diera, el arreglo de fondo es
+adoptar el request del paquete @nodecfdi).
+
+**ADDENDUM (mismo día) — se cerró el pendiente de la balanza.**
+`alimentarDesdePolizas` agrega Σcargo/Σabono por cuenta de las pólizas del mes,
+toma el saldo inicial del mes anterior y calcula el saldo final por naturaleza;
+reemplaza la balanza del periodo (fuente 'POLIZAS'). Botón «Actualizar desde
+pólizas» en la Balanza de comprobación. Con esto lo contabilizado ya se ve en la
+balanza y los estados. Además: **editar y borrar pólizas** en el menú Pólizas
+(corrige la de nómina que caía en cuentas equivocadas); **editar cuentas y
+agregar subcuentas hijas desde el detalle del catálogo** (moneda editable), para
+crear a mano 213-01/210-01/etc.; **asignación de cuentas unificada** en un solo
+menú con pestañas ventas/compras/nómina/pagos; y fechas DD/MM/AAAA en la póliza
+manual (CampoFecha). Sigue pendiente sólo la **póliza de apertura** (saldo
+inicial del primer periodo) y la nómina ordinaria en UI.
