@@ -712,6 +712,16 @@ router.post(
   })
 );
 
+/** POST /accounting/polizas/manual — una póliza capturada a mano (cargos/abonos) */
+router.post(
+  '/polizas/manual',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await polizas.crearPolizaManual(companyId(req), req.body || {}, req.user?.userId);
+    res.json({ success: true, data: { poliza: r } });
+  })
+);
+
 /** DELETE /accounting/polizas/cfdi?anio&mes — borra las de origen CFDI (re-generar) */
 router.delete(
   '/polizas/cfdi',

@@ -32,7 +32,7 @@ export interface NuevaPoliza {
   lineas: LineaPoliza[];
 }
 
-const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 const finDeMes = (anio: number, mes: number) => new Date(anio, mes, 0).toISOString().slice(0, 10);
 const iniDeMes = (anio: number, mes: number) => `${anio}-${String(mes).padStart(2, '0')}-01`;
 
@@ -425,6 +425,59 @@ export async function generarCobrosPagosDelMes(
   }
 
   return { creadas, omitidas };
+}
+
+/**
+ * Póliza MANUAL — cargos y abonos capturados a mano, con CUALQUIER cuenta del
+ * catálogo (a diferencia de ventas/compras/nómina, que sólo tocan sus cuentas).
+ * Cuadra o no se guarda: se valida Σcargo = Σabono antes de asentar, y la base
+ * lo revalida al COMMIT. El UUID es opcional; si se pone, liga la póliza a un CFDI.
+ */
+export async function crearPolizaManual(
+  companyId: string,
+  d: {
+    tipo?: 'INGRESO' | 'EGRESO' | 'DIARIO';
+    fecha: string; concepto?: string; uuid?: string | null;
+    lineas: Array<{ codigo: string; cargo?: number; abono?: number; concepto?: string; party_rfc?: string | null }>;
+  },
+  userId?: string
+) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.fecha || ''))) {
+    throw new Error('La fecha debe venir como AAAA-MM-DD.');
+  }
+  const filas = (d.lineas || []).filter((l) => l && l.codigo && (round2(l.cargo) > 0 || round2(l.abono) > 0));
+  if (filas.length < 2) throw new Error('Una póliza necesita al menos dos partidas con importe.');
+
+  const lineas: LineaPoliza[] = [];
+  let sumaCargo = 0, sumaAbono = 0;
+  for (const l of filas) {
+    const cargo = round2(l.cargo), abono = round2(l.abono);
+    if (cargo > 0 && abono > 0) throw new Error(`La cuenta ${l.codigo} no puede llevar cargo y abono a la vez.`);
+    const cuenta = await cuentaPorCodigo(companyId, String(l.codigo).trim());
+    if (!cuenta) throw new Error(`La cuenta ${l.codigo} no está en el catálogo.`);
+    if (!cuenta.permite_movimientos) throw new Error(`La cuenta ${l.codigo} es de agrupación (tiene subcuentas): no admite movimientos.`);
+    sumaCargo = round2(sumaCargo + cargo);
+    sumaAbono = round2(sumaAbono + abono);
+    lineas.push({
+      account_id: cuenta.id, cargo, abono,
+      concepto: (l.concepto || d.concepto || '').toString().slice(0, 200) || undefined,
+      uuid_cfdi: d.uuid || null, party_rfc: l.party_rfc || null,
+    });
+  }
+  if (sumaCargo <= 0) throw new Error('La póliza no tiene importes.');
+  if (sumaCargo !== sumaAbono) {
+    throw new Error(`No cuadra: cargos ${sumaCargo.toFixed(2)} ≠ abonos ${sumaAbono.toFixed(2)} (diferencia ${(sumaCargo - sumaAbono).toFixed(2)}).`);
+  }
+  if (d.uuid) {
+    const dup = await query('SELECT 1 FROM journal_entries WHERE company_id=$1 AND origen_uuid=$2 LIMIT 1', [companyId, d.uuid]);
+    if ((dup.rowCount || 0) > 0) throw new Error('Ya existe una póliza con ese UUID.');
+  }
+
+  const poliza = await crearPoliza(companyId, {
+    tipo: d.tipo || 'DIARIO', fecha: d.fecha, concepto: d.concepto || 'Póliza manual',
+    origen: 'MANUAL', origen_uuid: d.uuid || null, regla: 'manual', lineas,
+  }, userId);
+  return { ...poliza, sumaCargo, sumaAbono };
 }
 
 /** Las pólizas del mes, con sus partidas, para revisarlas. */

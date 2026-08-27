@@ -1042,6 +1042,10 @@ class APIClient {
     const r = await this.client.delete<APIResponse<any>>('/accounting/polizas/cfdi', { params: { anio, mes } });
     return r.data;
   }
+  async crearPolizaManual(datos: any) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/manual', datos);
+    return r.data;
+  }
 
   /* ── Periodos contables ── */
   async getPeriodosContables(anio: number) {
