@@ -45,6 +45,47 @@ function impuestosDeXml(xml: string): { trasladados: number; retenidos: number }
   };
 }
 
+/**
+ * Las retenciones del comprobante partidas por impuesto: ISR (001) e IVA (002).
+ * Se lee SÓLO el nodo de Impuestos a nivel comprobante —el que trae
+ * `TotalImpuestosRetenidos`— para no sumar las retenciones por concepto (que
+ * duplicarían). Van a cuentas distintas: el ISR y el IVA no se mezclan.
+ */
+function retencionesDeXml(xml: string): { isr: number; iva: number } {
+  const bloque = /<(?:\w+:)?Impuestos\b[^>]*TotalImpuestosRetenidos[^>]*>([\s\S]*?)<\/(?:\w+:)?Impuestos>/.exec(xml);
+  if (!bloque) return { isr: 0, iva: 0 };
+  let isr = 0, iva = 0;
+  for (const r of bloque[1].match(/<(?:\w+:)?Retencion\b[^>]*>/g) || []) {
+    const imp = /\bImpuesto\s*=\s*"([^"]*)"/.exec(r)?.[1] || '';
+    const val = Number(/\bImporte\s*=\s*"([\d.]+)"/.exec(r)?.[1]) || 0;
+    if (imp === '001') isr += val;
+    else if (imp === '002') iva += val;
+  }
+  return { isr: round2(isr), iva: round2(iva) };
+}
+
+/** La primera cuenta de movimientos que exista para cualquiera de los agrupadores
+ *  dados, en orden. Sirve para las cuentas de retención, cuyo agrupador Anexo 24
+ *  (216.xx / 113.xx) puede estar armado distinto en cada catálogo. */
+async function cuentaPorAgrupadores(companyId: string, agrupadores: string[]) {
+  for (const a of agrupadores) {
+    const c = await cuentaPorAgrupador(companyId, a);
+    if (c) return c;
+  }
+  return null;
+}
+
+/* Agrupadores Anexo 24 de las cuentas de retención (se toma la primera que exista
+ * como cuenta de movimientos en el catálogo de la empresa):
+ *   VENTA  — el cliente nos retiene → es un impuesto A FAVOR (activo, cargo).
+ *   COMPRA — nosotros retenemos al proveedor → es un pasivo POR ENTERAR (abono). */
+const AGR_RET = {
+  ventaISR:  ['113.02'],                             // ISR a favor
+  ventaIVA:  ['113.01'],                             // IVA a favor
+  compraISR: ['216.05', '216.04', '216.03', '216.01', '216'], // ISR retenido por enterar
+  compraIVA: ['216.10', '216'],                      // IVA retenido por enterar
+};
+
 async function cuentaPorAgrupador(companyId: string, agrupador: string) {
   const r = await query<any>(
     `SELECT id, codigo, nombre FROM accounting_accounts
@@ -89,10 +130,12 @@ export async function crearPoliza(companyId: string, p: NuevaPoliza, userId?: st
 
 /**
  * Genera las pólizas de VENTA del mes: UNA por factura emitida (tipo I), PARTIDA
- * POR PRODUCTO. Cada ClaveProdServ va a su 401 (mapaProductoCuenta); el cargo es
- * la subcuenta del cliente (se crea al vuelo) y el IVA va a 208 (PUE) o 209
- * (PPD). Idempotente (UNIQUE por origen_uuid). Lo que no cuadra —producto sin
- * 401, descuento, retenciones— se OMITE con su motivo.
+ * POR PRODUCTO. Cada ClaveProdServ va a su 401 (mapaProductoCuenta) por su NETO
+ * (importe − descuento); el cargo es la subcuenta del cliente (se crea al vuelo)
+ * y el IVA va a 208 (PUE) o 209 (PPD). Si el cliente nos retiene ISR/IVA, esa
+ * retención es un impuesto A FAVOR (cargo). Idempotente (UNIQUE por origen_uuid).
+ * Lo que no cuadra —producto sin 401, falta la cuenta de retención— se OMITE con
+ * su motivo.
  */
 export async function generarVentasDelMes(
   companyId: string, anio: number, mes: number, userId?: string
@@ -117,17 +160,17 @@ export async function generarVentasDelMes(
   for (const c of r.rows) {
     const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
     try {
-      if (round2(c.descuento) > 0) { omitidas.push({ folio: folioTxt, motivo: 'tiene descuento — regla pendiente' }); continue; }
       const imp = impuestosDeXml(String(c.xml));
-      if (imp.retenidos > 0) { omitidas.push({ folio: folioTxt, motivo: 'tiene retenciones — regla pendiente' }); continue; }
+      const ret = retencionesDeXml(String(c.xml));
 
-      // Partir el subtotal por producto → su 401 (según el mapeo ClaveProdServ).
+      // Partir el subtotal NETO (importe − descuento) por producto → su 401. El
+      // IVA se causa sobre el neto, así que la cuenta de ingreso lleva el neto.
       const porCuenta = new Map<string, number>();
       let faltaProducto: string | null = null;
       for (const cn of conceptosDeXml(String(c.xml))) {
         const cod = mapaProd.get(cn.clave);
         if (!cod) { faltaProducto = cn.clave; break; }
-        porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + cn.importe));
+        porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + cn.importe - cn.descuento));
       }
       if (faltaProducto) { omitidas.push({ folio: folioTxt, motivo: `producto ${faltaProducto} sin cuenta 401 asignada` }); continue; }
       if (porCuenta.size === 0) { omitidas.push({ folio: folioTxt, motivo: 'la factura no trae conceptos' }); continue; }
@@ -138,13 +181,25 @@ export async function generarVentasDelMes(
       const total = round2(c.total);
       const iva = round2(imp.trasladados);
       const sumaVentas = round2(Array.from(porCuenta.values()).reduce((a, b) => a + b, 0));
-      if (round2(sumaVentas + iva) !== total) {
-        omitidas.push({ folio: folioTxt, motivo: `no cuadra: ventas ${sumaVentas} + IVA ${iva} ≠ total ${total}` }); continue;
+      // total = ventas NETO + IVA trasladado − (ISR + IVA que el cliente nos retiene)
+      if (round2(sumaVentas + iva - ret.isr - ret.iva) !== total) {
+        omitidas.push({ folio: folioTxt, motivo: `no cuadra: ventas ${sumaVentas} + IVA ${iva} − retención ${round2(ret.isr + ret.iva)} ≠ total ${total}` }); continue;
       }
 
       const lineas: LineaPoliza[] = [
         { account_id: cli.id, cargo: total, concepto: 'Clientes', uuid_cfdi: c.uuid, party_rfc: c.rfc_receptor },
       ];
+      // Lo que el cliente nos retiene es un impuesto A FAVOR (activo, cargo).
+      if (ret.isr > 0) {
+        const cta = await cuentaPorAgrupadores(companyId, AGR_RET.ventaISR);
+        if (!cta) { omitidas.push({ folio: folioTxt, motivo: `tiene ISR retenido pero no hay cuenta a favor (agrupador ${AGR_RET.ventaISR.join('/')})` }); continue; }
+        lineas.push({ account_id: cta.id, cargo: ret.isr, concepto: 'ISR retenido a favor', uuid_cfdi: c.uuid });
+      }
+      if (ret.iva > 0) {
+        const cta = await cuentaPorAgrupadores(companyId, AGR_RET.ventaIVA);
+        if (!cta) { omitidas.push({ folio: folioTxt, motivo: `tiene IVA retenido pero no hay cuenta a favor (agrupador ${AGR_RET.ventaIVA.join('/')})` }); continue; }
+        lineas.push({ account_id: cta.id, cargo: ret.iva, concepto: 'IVA retenido a favor', uuid_cfdi: c.uuid });
+      }
       if (iva > 0) {
         const agrupIva = c.metodo_pago === 'PPD' ? '209.01' : '208.01';
         const ctaIva = await cuentaPorAgrupador(companyId, agrupIva);
@@ -178,8 +233,10 @@ export async function generarVentasDelMes(
 /**
  * Genera las pólizas de COMPRA del mes: UNA por factura recibida (tipo I) con
  * XML, PARTIDA POR PRODUCTO. Cada ClaveProdServ va a su 115 (inventario) o 601
- * (gasto); el IVA acreditable va al cargo (119.01) y el abono al proveedor
- * (subcuenta de 201, creada al vuelo). Idempotente.
+ * (gasto) por su NETO (importe − descuento); el IVA acreditable va al cargo
+ * (119.01) y el abono al proveedor (subcuenta de 201, creada al vuelo). Si le
+ * retenemos ISR/IVA al proveedor, esa retención es un pasivo POR ENTERAR (abono)
+ * y el proveedor recibe el neto. Idempotente.
  *
  * Los recibidos que sólo tienen metadato (sin XML —la mayoría, por la
  * restricción del SAT) se OMITEN con su motivo: sin conceptos no hay póliza.
@@ -208,16 +265,16 @@ export async function generarComprasDelMes(
     const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
     try {
       if (!c.xml) { omitidas.push({ folio: folioTxt, motivo: 'sin XML (bajó como metadato) — no hay conceptos que contabilizar' }); continue; }
-      if (round2(c.descuento) > 0) { omitidas.push({ folio: folioTxt, motivo: 'tiene descuento — regla pendiente' }); continue; }
       const imp = impuestosDeXml(String(c.xml));
-      if (imp.retenidos > 0) { omitidas.push({ folio: folioTxt, motivo: 'tiene retenciones — regla pendiente' }); continue; }
+      const ret = retencionesDeXml(String(c.xml));
 
+      // Cada concepto va NETO (importe − descuento) a su 115/601.
       const porCuenta = new Map<string, number>();
       let faltaProducto: string | null = null;
       for (const cn of conceptosDeXml(String(c.xml))) {
         const cod = mapaProd.get(cn.clave);
         if (!cod) { faltaProducto = cn.clave; break; }
-        porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + cn.importe));
+        porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + cn.importe - cn.descuento));
       }
       if (faltaProducto) { omitidas.push({ folio: folioTxt, motivo: `producto ${faltaProducto} sin cuenta (115/601) asignada` }); continue; }
       if (porCuenta.size === 0) { omitidas.push({ folio: folioTxt, motivo: 'la factura no trae conceptos' }); continue; }
@@ -228,8 +285,9 @@ export async function generarComprasDelMes(
       const total = round2(c.total);
       const iva = round2(imp.trasladados);
       const sumaCargos = round2(Array.from(porCuenta.values()).reduce((a, b) => a + b, 0));
-      if (round2(sumaCargos + iva) !== total) {
-        omitidas.push({ folio: folioTxt, motivo: `no cuadra: compras ${sumaCargos} + IVA ${iva} ≠ total ${total}` }); continue;
+      // total = compras NETO + IVA acreditable − (ISR + IVA que le retenemos al proveedor)
+      if (round2(sumaCargos + iva - ret.isr - ret.iva) !== total) {
+        omitidas.push({ folio: folioTxt, motivo: `no cuadra: compras ${sumaCargos} + IVA ${iva} − retención ${round2(ret.isr + ret.iva)} ≠ total ${total}` }); continue;
       }
 
       const lineas: LineaPoliza[] = [];
@@ -246,7 +304,18 @@ export async function generarComprasDelMes(
         if (!ctaIva) { omitidas.push({ folio: folioTxt, motivo: 'falta la cuenta de IVA acreditable (agrupador 119.01)' }); continue; }
         lineas.push({ account_id: ctaIva.id, cargo: iva, concepto: 'IVA acreditable por pagar', uuid_cfdi: c.uuid });
       }
+      // El proveedor recibe el NETO de la retención; lo retenido es un pasivo POR ENTERAR (abono).
       lineas.push({ account_id: prov.id, abono: total, concepto: 'Proveedores', uuid_cfdi: c.uuid, party_rfc: c.rfc_emisor });
+      if (ret.isr > 0) {
+        const cta = await cuentaPorAgrupadores(companyId, AGR_RET.compraISR);
+        if (!cta) { omitidas.push({ folio: folioTxt, motivo: `le retienes ISR pero no hay cuenta por enterar (agrupador ${AGR_RET.compraISR.join('/')})` }); continue; }
+        lineas.push({ account_id: cta.id, abono: ret.isr, concepto: 'ISR retenido por enterar', uuid_cfdi: c.uuid });
+      }
+      if (ret.iva > 0) {
+        const cta = await cuentaPorAgrupadores(companyId, AGR_RET.compraIVA);
+        if (!cta) { omitidas.push({ folio: folioTxt, motivo: `le retienes IVA pero no hay cuenta por enterar (agrupador ${AGR_RET.compraIVA.join('/')})` }); continue; }
+        lineas.push({ account_id: cta.id, abono: ret.iva, concepto: 'IVA retenido por enterar', uuid_cfdi: c.uuid });
+      }
 
       await crearPoliza(companyId, {
         tipo: 'EGRESO', fecha: String(c.fecha_emision).slice(0, 10),

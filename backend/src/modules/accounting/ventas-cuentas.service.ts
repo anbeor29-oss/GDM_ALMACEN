@@ -24,14 +24,20 @@ export function complementoDeXml(xml: string): { monto: number; iva: number } {
   return { monto: Math.round(monto * 100) / 100, iva: Math.round(iva * 100) / 100 };
 }
 
-/** Los conceptos de un CFDI, leídos del XML sin parser completo. */
-export function conceptosDeXml(xml: string): Array<{ clave: string; descripcion: string; importe: number }> {
-  const out: Array<{ clave: string; descripcion: string; importe: number }> = [];
+/** Los conceptos de un CFDI, leídos del XML sin parser completo. `importe` es el
+ *  bruto (Concepto@Importe, antes de descuento) y `descuento` el del propio
+ *  concepto; el NETO gravado es `importe − descuento`, que es sobre lo que se
+ *  calcula el IVA y lo que debe ir a la cuenta de ingreso/gasto. */
+export function conceptosDeXml(
+  xml: string
+): Array<{ clave: string; descripcion: string; importe: number; descuento: number }> {
+  const out: Array<{ clave: string; descripcion: string; importe: number; descuento: number }> = [];
   for (const c of xml.match(/<(?:\w+:)?Concepto\b[^>]*>/g) || []) {
     out.push({
       clave: attr(c, 'ClaveProdServ'),
       descripcion: attr(c, 'Descripcion'),
       importe: Number(attr(c, 'Importe')) || 0,
+      descuento: Number(attr(c, 'Descuento')) || 0,
     });
   }
   return out;
