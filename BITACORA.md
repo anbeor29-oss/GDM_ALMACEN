@@ -4216,3 +4216,27 @@ crear a mano 213-01/210-01/etc.; **asignación de cuentas unificada** en un solo
 menú con pestañas ventas/compras/nómina/pagos; y fechas DD/MM/AAAA en la póliza
 manual (CampoFecha). Sigue pendiente sólo la **póliza de apertura** (saldo
 inicial del primer periodo) y la nómina ordinaria en UI.
+
+## 2026-08-27 — Recibidos: los vigentes SÍ traen su XML; los cancelados, aparte
+
+El XML masivo de recibidos daba 301 ("no se permite la descarga de xml que se
+encuentren cancelados") cuando el rango mezclaba vigentes y cancelados, y se
+había dejado en sólo-Metadata para no ensuciar la pantalla con errores.
+
+La estrategia definitiva parte el pedido de recibidos por estatus:
+- **Vigentes** → se piden acotados a `EstadoComprobante=1` como **CFDI (su XML)**
+  + Metadata. El XML es la base de la póliza de compra; al pedir sólo vigentes
+  no hay cancelados en el resultado y no se dispara el 301.
+- **Cancelados** → van en un pedido **APARTE** de Metadata con
+  `EstadoComprobante=0` (el checkbox «También los cancelados», que ya existía),
+  porque su XML el SAT no lo entrega —sólo su metadato—.
+
+Con esto se recuperan todos los XML sin cancelados con los parámetros que ya se
+tienen, y los cancelados se traen por separado sin romper la descarga. Si algún
+día el SAT rechazara igual el CFDI de recibidos, queda la vía «Subir XML de
+compra» (Contabilidad → Pólizas de compra) para contabilizar el comprobante.
+
+También quedó el **SBC por factor de integración** en el constructor del IDSE:
+al cambiar el salario diario, el SBC (integrado) se recalcula = diario × factor
+(el del expediente, SBC/diario; o el de ley del primer año, 1.0452), y se puede
+ajustar a mano.
