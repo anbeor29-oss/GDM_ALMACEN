@@ -1065,6 +1065,40 @@ class APIClient {
     return r.data;
   }
 
+  /* ── Activos fijos y depreciación ── */
+  async getActivos() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/activos');
+    return r.data;
+  }
+  async detectarActivos(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/activos/detectar', { params: { anio, mes } });
+    return r.data;
+  }
+  async getCedulaActivo(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/activos/${id}/cedula`);
+    return r.data;
+  }
+  async registrarActivo(datos: any) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/activos', datos);
+    return r.data;
+  }
+  async registrarActivosDetectados(activos: any[]) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/activos/registrar-detectados', { activos });
+    return r.data;
+  }
+  async actualizarActivo(id: string, datos: any) {
+    const r = await this.client.put<APIResponse<any>>(`/accounting/activos/${id}`, datos);
+    return r.data;
+  }
+  async borrarActivo(id: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/accounting/activos/${id}`);
+    return r.data;
+  }
+  async generarDepreciacion(anio: number, mes: number) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-depreciacion', { anio, mes });
+    return r.data;
+  }
+
   /* ── Periodos contables ── */
   async getPeriodosContables(anio: number) {
     const r = await this.client.get<APIResponse<any>>(`/accounting/periodos/${anio}`);

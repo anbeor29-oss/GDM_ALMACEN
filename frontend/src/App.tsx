@@ -64,6 +64,7 @@ import { PolizaManualPage } from '@/pages/contabilidad/PolizaManual';
 import { PolizasListaPage } from '@/pages/contabilidad/PolizasLista';
 import { PolizasVentaPage } from '@/pages/contabilidad/PolizasVenta';
 import { PolizasCompraPage } from '@/pages/contabilidad/PolizasCompra';
+import { ActivoFijoPage } from '@/pages/contabilidad/ActivoFijo';
 import {
   BalanzaPage, SituacionFinancieraPage, ResultadoIntegralPage,
   FlujoEfectivoPage, CambiosCapitalPage, RazonesPage,
@@ -305,6 +306,7 @@ export function App() {
             <Route path="contabilidad/asignacion-cfdi"    element={<ModuleRoute module="contabilidad"><AsignacionCuentaPage /></ModuleRoute>} />
             <Route path="contabilidad/poliza-manual"      element={<ModuleRoute module="contabilidad"><PolizaManualPage /></ModuleRoute>} />
             <Route path="contabilidad/polizas"            element={<ModuleRoute module="contabilidad"><PolizasListaPage /></ModuleRoute>} />
+            <Route path="contabilidad/activo-fijo"        element={<ModuleRoute module="contabilidad"><ActivoFijoPage /></ModuleRoute>} />
             <Route path="contabilidad/periodos"           element={<ModuleRoute module="contabilidad"><PeriodosPage /></ModuleRoute>} />
             <Route path="contabilidad/balanza"            element={<ModuleRoute module="contabilidad"><BalanzaPage /></ModuleRoute>} />
             <Route path="contabilidad/situacion"          element={<ModuleRoute module="contabilidad"><SituacionFinancieraPage /></ModuleRoute>} />

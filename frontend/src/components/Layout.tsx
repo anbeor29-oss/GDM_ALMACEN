@@ -276,6 +276,7 @@ export function Layout() {
                       { to: '/contabilidad/asignacion-cfdi', icon: emoji3D('🧾'), label: 'Cuenta por CFDI' },
                       { to: '/contabilidad/poliza-manual',  icon: emoji3D('✍️'), label: 'Póliza manual' },
                       { to: '/contabilidad/polizas',       icon: emoji3D('📔'), label: 'Pólizas' },
+                      { to: '/contabilidad/activo-fijo',   icon: emoji3D('🏗️'), label: 'Activo fijo · Depreciación' },
                       {
                         icon: emoji3D('📊'), label: 'Reportes',
                         children: [

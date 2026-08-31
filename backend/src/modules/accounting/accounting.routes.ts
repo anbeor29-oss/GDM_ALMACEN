@@ -24,6 +24,7 @@ import * as polizas from './polizas.service';
 import * as terceros from './catalogo-terceros.service';
 import * as ventas from './ventas-cuentas.service';
 import * as compras from './compras-cuentas.service';
+import * as activos from './activos-fijos.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
@@ -812,6 +813,91 @@ router.delete(
     const ok = await polizas.borrarPoliza(companyId(req), req.params.id);
     if (!ok) { res.status(404).json({ success: false, message: 'No se encontró la póliza' }); return; }
     res.json({ success: true });
+  })
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACTIVOS FIJOS Y DEPRECIACIÓN (LISR 33-35)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** GET /accounting/activos — la cédula (con depreciación mensual/anual y valor en libros) */
+router.get(
+  '/activos',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await activos.listarActivos(companyId(req));
+    res.json({ success: true, data: { activos: data } });
+  })
+);
+
+/** GET /accounting/activos/detectar?anio&mes — propone activos fijos desde las compras con XML */
+router.get(
+  '/activos/detectar',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await activos.detectarDesdeCompras(
+      companyId(req), Number(req.query.anio), Number(req.query.mes));
+    res.json({ success: true, data: { detectados: data } });
+  })
+);
+
+/** GET /accounting/activos/:id/cedula — la depreciación mes a mes de un activo */
+router.get(
+  '/activos/:id/cedula',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await activos.cedulaMensual(companyId(req), req.params.id);
+    if (!data) { res.status(404).json({ success: false, message: 'No se encontró el activo' }); return; }
+    res.json({ success: true, data });
+  })
+);
+
+/** POST /accounting/activos — registra un activo (alta manual o desde un candidato) */
+router.post(
+  '/activos',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await activos.registrarActivo(companyId(req), req.body || {}, req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
+
+/** POST /accounting/activos/registrar-detectados — registra en bloque los candidatos elegidos */
+router.post(
+  '/activos/registrar-detectados',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await activos.registrarDetectados(companyId(req), req.body?.activos || [], req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
+
+/** PUT /accounting/activos/:id — edita tasa, cuentas, mes de inicio, baja… */
+router.put(
+  '/activos/:id',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await activos.actualizarActivo(companyId(req), req.params.id, req.body || {});
+    res.json({ success: true, data: r });
+  })
+);
+
+/** DELETE /accounting/activos/:id — borra un activo sin depreciación asentada */
+router.delete(
+  '/activos/:id',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await activos.borrarActivo(companyId(req), req.params.id);
+    if (!r.ok) { res.status(400).json({ success: false, message: r.motivo || 'No se pudo borrar' }); return; }
+    res.json({ success: true });
+  })
+);
+
+/** POST /accounting/polizas/generar-depreciacion — la póliza de depreciación del mes */
+router.post(
+  '/polizas/generar-depreciacion',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await activos.generarDepreciacionDelMes(
+      companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
+    res.json({ success: true, data: r });
   })
 );
 
