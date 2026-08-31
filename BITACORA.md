@@ -4357,3 +4357,25 @@ un comprobante **cancelado** no hay XML, sólo metadato.
 **Pendiente de validar contra el SAT real con la e.firma** (no se puede probar sin una
 corrida real). **Lección:** no dar por buenos valores de enum de memoria; verificar en
 fuente autoritativa (phpcfdi/nodecfdi) antes de afirmarlos.
+
+---
+
+## 2026-08-31 — Balanza: auxiliar al doble clic; y bitácora del IDSE con su acuse
+
+**Balanza → auxiliar → póliza.** En la Balanza de comprobación, doble clic en una
+cuenta (incluidas las subcuentas de cliente/proveedor) abre su **auxiliar** del mes:
+cada renglón de póliza que la tocó, con fecha, folio (en azul), concepto, cargo/abono
+y saldo corriente, sacado del `journal_lines` directo. El folio abre la póliza en el
+editor (el `EditorPoliza` que ya existía); al guardar, **regresa a la balanza** —no a
+la lista de pólizas— y la recalcula para que refleje el cambio. Backend:
+`periodos.auxiliarDeCuenta` + `GET /accounting/estados/:anio/:mes/auxiliar?cuenta=`.
+Se quitó del menú de Contabilidad **«Cuenta por CFDI»** (redundante).
+
+**Bitácora del IDSE.** Al pie de Nómina → IMSS · IDSE, cada archivo generado se
+registra como un **lote** con la foto de sus movimientos (trabajador, NSS, tipo,
+fecha, SBC, causa —el dato tal como se envió, no una referencia viva). A cada lote se
+le **adjunta el acuse (PDF)** que devuelve el portal del IDSE; se guarda en la BASE
+(`BYTEA`) porque el disco de Render es efímero, y se ve/descarga desde la bitácora.
+Así queda junto el envío y su confirmación. Tablas `nomina_idse_lotes` +
+`nomina_idse_lote_movimientos`; el lote lo graban `generarMixto` y
+`generarDesdePendientes`.
