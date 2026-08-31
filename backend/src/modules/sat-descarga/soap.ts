@@ -228,14 +228,24 @@ export async function solicitar(
    * que se manda), ordenarlo aquí deja ambos consistentes con la canónica del SAT.
    * `.sort()` sobre `Attr="val"` ordena por nombre de atributo (los nombres son
    * únicos y anteceden al `=`). */
-  /* EstadoComprobante: el SAT rechaza con 301 "No se permite la descarga de xml
-   * que se encuentren cancelados" cuando se pide el CFDI (el XML) de un rango que
-   * incluye cancelados —cosa normal en recibidos: un proveedor cancela y
-   * reexpide—. El XML sólo se puede bajar de los VIGENTES; de los cancelados sólo
-   * hay metadatos. Así que al pedir CFDI se acota a "1" (vigentes) salvo que el
-   * llamador pida otro estado a propósito. En Metadata no se fuerza: ahí sí se
-   * pueden traer todos. Valores del SAT: 1 = vigente, 0 = cancelado. */
-  const estadoComprobante = d.estadoComprobante || (d.tipo === 'CFDI' ? '1' : '');
+  /* EstadoComprobante: el SAT sólo entrega el XML (CFDI) de los comprobantes
+   * VIGENTES; de los cancelados hay únicamente metadatos —y en recibidos casi
+   * siempre hay cancelados (un proveedor cancela y reexpide)—. Si al pedir CFDI
+   * NO se acota a vigentes, el SAT topa con un cancelado y rechaza con 301
+   * "No se permite la descarga de xml que se encuentren cancelados".
+   *
+   * EL VALOR VA COMO PALABRA, NO COMO NÚMERO. El servicio SOAP de descarga masiva
+   * espera EstadoComprobante="Vigente" | "Cancelado" | "Todos" (así lo serializa
+   * phpcfdi, la implementación de referencia de este mismo servicio). Antes se
+   * mandaba "1" creyéndolo "vigente": el SAT NO reconoce "1", no filtra, incluye
+   * cancelados y suelta el 301. Ése era el bug que dejaba a los recibidos sin XML.
+   * (Los valores 0/1/2 que circulan en blogs son de la API REST de un PAC, no del
+   * SOAP del SAT.)
+   *
+   * Por eso: CFDI → "Vigente" (los únicos con XML). Metadata → "Todos" (para
+   * traer también el estatus de los cancelados: base de cuentas por pagar). El
+   * llamador puede forzar otro valor (p. ej. "Cancelado") con estadoComprobante. */
+  const estadoComprobante = d.estadoComprobante || (d.tipo === 'CFDI' ? 'Vigente' : 'Todos');
 
   const attrs = [
     `FechaInicial="${iso(d.desde)}"`,

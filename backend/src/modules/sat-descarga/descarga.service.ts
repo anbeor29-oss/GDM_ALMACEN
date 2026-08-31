@@ -232,12 +232,13 @@ export async function diagnostico(companyId: string): Promise<any> {
 
   /* PRUEBA REAL: manda solicitudes de recibidos CFDI de un rango chico con
    * DISTINTOS valores de EstadoComprobante y devuelve qué contesta el SAT a cada
-   * uno. Así se ve —sin adivinar— cuál valor trae vigentes y evita el 301. No
-   * guarda nada; cuesta una solicitud por valor probado. */
+   * uno. Así se ve —sin adivinar— que "Vigente" es aceptada (5000) y que un valor
+   * que incluya cancelados provoca el 301. No guarda nada; cuesta una solicitud
+   * por valor probado. Los valores van como PALABRA (así los espera el SOAP). */
   const pruebas: any[] = [];
   const hasta = new Date();
   const desde = new Date(Date.now() - 3 * 86_400_000);
-  for (const estadoComprobante of ['1', '0']) {
+  for (const estadoComprobante of ['Vigente', 'Cancelado']) {
     try {
       const s = await soap.solicitar(cred, token, {
         desde, hasta, direccion: 'recibidos', tipo: 'CFDI', estadoComprobante,

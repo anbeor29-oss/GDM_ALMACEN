@@ -244,18 +244,17 @@ async function trabajoVivoEn(
   return r.rows.length > 0;
 }
 
-/* De cada dirección, qué tipos se piden automáticamente. EMITIDOS: CFDI (el XML
- * propio) + Metadata (el estatus). RECIBIDOS: SÓLO Metadata — el SAT rechaza con
- * 301 el XML masivo de recibidos cuando hay cancelados en el rango, aun mandando
- * EstadoComprobante=1 (el filtro de vigentes sirve en emitidos, no en recibidos).
- * El XML de una compra se sube a mano (Pólizas de compra → «Subir XML de compra»)
- * o se baja por UUID de un recibido vigente. */
+/* De cada dirección, qué tipos se piden automáticamente. Ambas direcciones son
+ * simétricas: CFDI (el XML, acotado a VIGENTES —los únicos que el SAT entrega
+ * como XML—) + Metadata (Todos, para el estatus incl. cancelados). El acotado a
+ * vigentes lo pone soap.ts con EstadoComprobante="Vigente"; el 301 de recibidos
+ * era ese valor mal codificado ("1" en vez de la palabra), ya corregido. */
 const TIPOS_DIARIO: Record<string, Array<'CFDI' | 'Metadata'>> = {
-  recibidos: ['Metadata'],
+  recibidos: ['CFDI', 'Metadata'],
   emitidos: ['CFDI', 'Metadata'],
 };
 const TIPOS_EJERCICIO: Record<string, Array<'CFDI' | 'Metadata'>> = {
-  recibidos: ['Metadata'],
+  recibidos: ['CFDI', 'Metadata'],
   emitidos: ['CFDI', 'Metadata'],
 };
 

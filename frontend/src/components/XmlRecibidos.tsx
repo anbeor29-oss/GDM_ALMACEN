@@ -87,9 +87,6 @@ export function XmlRecibidos({ direccionInicial }: {
   const [desde, setDesde] = useState(primerDiaDelMes(hoy));
   const [hasta, setHasta] = useState(iso(hoy));
   const [que, setQue] = useState<'recibidos' | 'emitidos' | 'ambos'>(direccionInicial || 'recibidos');
-  /* Los cancelados no se pueden bajar como XML; sólo su metadato. Cuando se marca,
-   * junto al pedido normal se lanza otro de tipo Metadata acotado a cancelados. */
-  const [cancelados, setCancelados] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [aviso, setAviso] = useState('');
   const [error, setError] = useState('');
@@ -140,15 +137,11 @@ export function XmlRecibidos({ direccionInicial }: {
     try {
       const r = await api.crearSatTrabajo({ desde, hasta, direccion: que });
       const d: any = r.data;
-      /* Los cancelados van en un pedido aparte, de metadatos: no topan con el 301
-       * ("no se descargan XML cancelados") porque no se pide el XML, sólo el dato. */
-      if (cancelados) {
-        await api.crearSatTrabajo({ desde, hasta, direccion: que, tipo: 'Metadata', filtros: { estadoComprobante: '0' } });
-      }
+      /* Cada dirección crea DOS trabajos: CFDI (el XML, vigentes) + Metadata
+       * (Todos, con el estatus incl. cancelados). "ambos" → cuatro. */
       setAviso(
-        `${d.trabajos.length === 2 ? 'Dos trabajos creados' : 'Trabajo creado'} con ` +
-        `${d.particiones_total} solicitud(es) de ${d.dias_por_bloque} días` +
-        (cancelados ? ', más el de cancelados (metadatos)' : '') + '. El SAT tarda ' +
+        `${d.trabajos.length} trabajo(s) creado(s) con ` +
+        `${d.particiones_total} solicitud(es) de ${d.dias_por_bloque} días. El SAT tarda ` +
         'de minutos a horas; el proceso avanza solo cada 15 minutos, o con "Avanzar ahora".'
       );
       refrescar();
@@ -255,15 +248,10 @@ export function XmlRecibidos({ direccionInicial }: {
             <label className="block">
               <span className="block text-xs text-gray-600 mb-1">Qué traer</span>
               <select value={que} onChange={(e) => setQue(e.target.value as any)} className="input w-56">
-                <option value="recibidos">Recibidos (datos)</option>
+                <option value="recibidos">Recibidos (XML)</option>
                 <option value="emitidos">Emitidos (XML)</option>
                 <option value="ambos">Recibidos y emitidos</option>
               </select>
-            </label>
-            <label className="flex items-center gap-2 text-xs text-gray-600 pb-2"
-              title="El XML de un cancelado no se puede bajar; se recupera su metadato (UUID, partes, monto, fecha de cancelación).">
-              <input type="checkbox" checked={cancelados} onChange={(e) => setCancelados(e.target.checked)} />
-              También los cancelados
             </label>
             <button onClick={pedirPeriodo} disabled={cargando}
               className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm">
@@ -277,23 +265,20 @@ export function XmlRecibidos({ direccionInicial }: {
           </div>
 
           <p className="text-xs text-gray-500">
-            {dias} día(s) seleccionados{que === 'ambos' && ', en dos trabajos (el SAT pide emitidos y recibidos por separado)'}.
+            {dias} día(s) seleccionados. Cada dirección se pide en dos trabajos —el XML (vigentes) y
+            el metadato (todos)—{que === 'ambos' && ', y emitidos y recibidos van por separado (el SAT los pide así)'}.
             El SAT entrega por lotes: acepta la solicitud, la procesa de minutos a horas y deja
             un paquete que caduca a las 72 horas. El motor pide, espera y recoge solo; si un
             rango trae demasiados comprobantes, lo parte a la mitad y reintenta.
             {dias > 180 && ' En periodos largos se empieza con bloques de 30 días para no gastar el límite diario de solicitudes del SAT.'}
           </p>
           {(que === 'recibidos' || que === 'ambos') && (
-            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-              <b>Por qué recibidos es sólo metadato:</b> el SAT no entrega el XML de recibidos por
-              descarga masiva cuando hay cancelados en el rango —contesta 301 «no se permite la
-              descarga de xml que se encuentren cancelados»— y es así <b>aunque se pida sólo
-              vigentes</b> (`EstadoComprobante=1`); es una restricción del SAT, no un filtro que se
-              pueda ajustar (comprobado). Por eso de recibidos se traen los <b>metadatos</b> (UUID,
-              emisor, fecha, monto, estatus vigente/cancelado), que son la base de las cuentas por
-              pagar. Para tener el <b>XML de una compra y contabilizarla</b>, súbelo en{' '}
-              <b>Contabilidad → Pólizas de compra → «Subir XML de compra»</b>. De <b>emitidos</b> sí
-              baja el XML completo.
+            <p className="text-xs text-gray-600 bg-gray-50 border rounded px-3 py-2">
+              De cada dirección se piden <b>dos trabajos</b>: el <b>XML (CFDI)</b> de los
+              comprobantes <b>vigentes</b> —los únicos que el SAT entrega como XML— y el
+              <b> metadato (Todos)</b> con el estatus de todos, incluidos los cancelados. Así los
+              recibidos vigentes traen su XML para contabilizar, y de un cancelado queda su ficha
+              (el SAT nunca entrega el XML de un comprobante cancelado, eso sí es regla suya).
             </p>
           )}
         </div>

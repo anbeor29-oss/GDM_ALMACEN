@@ -275,17 +275,16 @@ router.post(
       : pedida === 'emitidos' ? ['emitidos']
       : ['recibidos'];
 
-    /* COMPROBADO (2026-08-27, con solicitudes nuevas): el SAT rechaza con 301 el
-     * XML masivo de RECIBIDOS cuando el rango tiene cancelados, AUNQUE se acote a
-     * EstadoComprobante=1 (vigentes). Es una restricción del SAT, no un filtro que
-     * se pueda esquivar. Por eso:
-     *   · EMITIDOS  → CFDI (el XML propio, que sí baja) + Metadata (el estatus).
-     *   · RECIBIDOS → SÓLO Metadata (UUID, emisor, fecha, monto, estatus): base de
-     *     las cuentas por pagar, nunca da 301. Los cancelados van APARTE por el
-     *     checkbox "También los cancelados" (Metadata EstadoComprobante=0).
-     * El XML de una compra se contabiliza subiéndolo en Contabilidad → Pólizas de
-     * compra → «Subir XML de compra» (o entra por el asistente de almacén). */
-    const tipoPedido = req.body?.tipo;
+    /* Recibidos y emitidos son SIMÉTRICOS: cada dirección baja su XML (CFDI) y su
+     * Metadata. El XML se acota a VIGENTES —los únicos que el SAT entrega como
+     * XML— y el Metadata trae Todos (para el estatus, incl. cancelados). Esto lo
+     * fija el default de soap.ts (CFDI→"Vigente", Metadata→"Todos").
+     *
+     * El 301 de recibidos que se veía antes NO era una restricción del SAT: era
+     * el EstadoComprobante mal codificado (se mandaba "1" en vez de la palabra
+     * "Vigente"), ya corregido. Con la palabra correcta, los recibidos vigentes
+     * SÍ traen su XML. */
+    const tipoPedido = req.body?.tipo as 'CFDI' | 'Metadata' | undefined;
     const base = { desde: req.body?.desde, hasta: req.body?.hasta, filtros: req.body?.filtros };
     const nuevo = (direccion: 'recibidos' | 'emitidos', tipo: 'CFDI' | 'Metadata') =>
       service.crearTrabajo(companyId(req), { ...base, direccion, tipo }, req.user?.userId);
@@ -294,18 +293,9 @@ router.post(
     for (const direccion of direcciones) {
       if (tipoPedido) {
         trabajos.push(await nuevo(direccion, tipoPedido));
-      } else if (direccion === 'recibidos') {
-        /* COMPROBADO con solicitudes nuevas: el SAT rechaza el CFDI (XML) de
-         * recibidos con 301 AUNQUE se acote a EstadoComprobante=1 (vigentes). Es
-         * una restricción del SAT, no un filtro que se pueda esquivar. Por eso
-         * recibidos baja SÓLO Metadata (UUID, emisor, fecha, monto, estatus): es
-         * la base de las cuentas por pagar y nunca da 301. Los cancelados van en
-         * el pedido aparte (checkbox → Metadata EstadoComprobante=0). El XML de una
-         * compra se contabiliza subiéndolo en «Subir XML de compra». */
-        trabajos.push(await nuevo('recibidos', 'Metadata'));
       } else {
-        trabajos.push(await nuevo('emitidos', 'CFDI'));
-        trabajos.push(await nuevo('emitidos', 'Metadata'));
+        trabajos.push(await nuevo(direccion, 'CFDI'));
+        trabajos.push(await nuevo(direccion, 'Metadata'));
       }
     }
 
