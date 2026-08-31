@@ -13,6 +13,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
 import { authenticateToken, authorize, requireCapability } from '../../middleware/authentication';
 import { requireModule } from '../../middleware/permissions';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
@@ -61,6 +62,10 @@ router.use(requireModule('nomina'));
  * hecho de ser gerente. Ver NO_HEREDA_MANAGER en capabilities.ts.
  */
 const soloAdmin = requireCapability('nomina:manage');
+
+/* El acuse del IDSE es un PDF chico; se recibe en memoria y se guarda en la base
+ * (el disco de Render es efímero). 10 MB de tope: un acuse no llega ni cerca. */
+const subirAcuse = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
 
 function companyId(req: Request): string {
   if (!req.user?.companyId) throw new ValidationError('Falta la empresa activa');
@@ -1019,7 +1024,7 @@ router.post(
       tipoSalario: req.body?.tipoSalario, jornada: req.body?.jornada,
     };
     const { contenido, nombre } = await imssIdse.generarMixto(
-      companyId(req), req.body?.movimientos || [], cfg,
+      companyId(req), req.body?.movimientos || [], cfg, req.user?.userId,
     );
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
@@ -1072,10 +1077,60 @@ router.post(
       tipoSalario: req.body?.tipoSalario,
       jornada: req.body?.jornada,
     };
-    const { contenido, nombre } = await imssIdse.generarDesdePendientes(companyId(req), ids, cfg);
+    const { contenido, nombre } = await imssIdse.generarDesdePendientes(companyId(req), ids, cfg, req.user?.userId);
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
     res.send(contenido);
+  })
+);
+
+/* ── Bitácora de lotes IDSE + el acuse que devuelve el portal ── */
+
+/** GET /nomina/imss/idse/lotes — la bitácora de archivos generados */
+router.get(
+  '/imss/idse/lotes',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: { lotes: await imssIdse.listarLotes(companyId(req)) } });
+  })
+);
+
+/** POST /nomina/imss/idse/lotes/:id/acuse — sube el acuse (PDF) del IDSE al lote */
+router.post(
+  '/imss/idse/lotes/:id/acuse',
+  soloAdmin,
+  subirAcuse.single('acuse'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = req.file;
+    if (!f?.buffer?.length) throw new ValidationError('Falta el archivo del acuse.');
+    const ok = await imssIdse.adjuntarAcuse(
+      companyId(req), req.params.id, f.buffer, f.originalname || 'acuse.pdf', f.mimetype || 'application/pdf');
+    if (!ok) { res.status(404).json({ success: false, message: 'No se encontró el lote' }); return; }
+    res.json({ success: true });
+  })
+);
+
+/** GET /nomina/imss/idse/lotes/:id/acuse — ve/descarga el acuse guardado */
+router.get(
+  '/imss/idse/lotes/:id/acuse',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const a = await imssIdse.acuseDeLote(companyId(req), req.params.id);
+    if (!a) { res.status(404).json({ success: false, message: 'Este lote no tiene acuse' }); return; }
+    res.setHeader('Content-Type', a.tipo || 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${(a.nombre || 'acuse.pdf').replace(/"/g, '')}"`);
+    res.send(a.pdf);
+  })
+);
+
+/** DELETE /nomina/imss/idse/lotes/:id — borra un lote de la bitácora (y su acuse) */
+router.delete(
+  '/imss/idse/lotes/:id',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ok = await imssIdse.borrarLote(companyId(req), req.params.id);
+    if (!ok) { res.status(404).json({ success: false, message: 'No se encontró el lote' }); return; }
+    res.json({ success: true });
   })
 );
 

@@ -11,7 +11,7 @@
  * este archivo es el puente entre la base y ese motor. Ref §5–§8, §25.
  */
 
-import { query } from '../../config/database';
+import { query, transaction } from '../../config/database';
 import { ValidationError } from '../../middleware/errorHandler';
 import {
   generarArchivoIdse, generarArchivoMixto, MovimientoIdse, MovimientoMixto,
@@ -40,6 +40,18 @@ interface FilaEmpleado {
   curp: string | null;
   sbc: number | string | null;
   salario_diario_integrado: number | string | null;
+}
+
+/** La foto de un movimiento tal como se envió, para la bitácora del lote. */
+interface LoteMovimiento {
+  empleadoId: string;
+  nombreCompleto: string;
+  nss: string;
+  numEmpleado: string;
+  tipo: string;
+  fecha: string;
+  sbc: number;
+  causaBaja?: string;
 }
 
 /**
@@ -146,7 +158,8 @@ export async function generarMixto(
   companyId: string,
   entradas: EntradaMixta[],
   cfg: ConfigIdse,
-): Promise<{ contenido: string; registros: number; nombre: string }> {
+  userId?: string,
+): Promise<{ contenido: string; registros: number; nombre: string; loteId?: string }> {
   if (!Array.isArray(entradas) || entradas.length === 0) {
     throw new ValidationError('Marca al menos un movimiento para el archivo.');
   }
@@ -173,6 +186,7 @@ export async function generarMixto(
   const porId = new Map(r.rows.map((x) => [x.id, x]));
 
   const movimientos: MovimientoMixto[] = [];
+  const detalle: LoteMovimiento[] = [];
   const problemas: string[] = [];
 
   for (const en of entradas) {
@@ -209,6 +223,16 @@ export async function generarMixto(
       curp: en.curp || e.curp || '',
       causaBaja: en.causaBaja,
     });
+    detalle.push({
+      empleadoId: en.empleadoId,
+      nombreCompleto: e.nombre_completo || '',
+      nss: e.nss || '',
+      numEmpleado: e.num_empleado || en.claveTrabajador || '',
+      tipo: en.tipo,
+      fecha: en.fecha,
+      sbc,
+      causaBaja: en.causaBaja,
+    });
   }
 
   if (problemas.length) {
@@ -217,7 +241,8 @@ export async function generarMixto(
 
   const { contenido, registros } = generarArchivoMixto(movimientos, cfg);
   const nombre = `IDSE_movimientos_${new Date().toISOString().slice(0, 10)}.txt`;
-  return { contenido, registros, nombre };
+  const loteId = await registrarLote(companyId, { nombre, registroPatronal, movimientos: detalle }, userId);
+  return { contenido, registros, nombre, loteId };
 }
 
 /* ───────────────────  Cola de pendientes (baja → menú IDSE)  ─────────────── */
@@ -304,8 +329,8 @@ export async function regresarPendientes(companyId: string, ids: string[]): Prom
  * cambia su estado: eso lo hace el usuario al confirmar que ya pasaron.
  */
 export async function generarDesdePendientes(
-  companyId: string, ids: string[], cfg: ConfigIdse,
-): Promise<{ contenido: string; registros: number; nombre: string }> {
+  companyId: string, ids: string[], cfg: ConfigIdse, userId?: string,
+): Promise<{ contenido: string; registros: number; nombre: string; loteId?: string }> {
   if (!Array.isArray(ids) || ids.length === 0) {
     throw new ValidationError('Selecciona al menos un movimiento.');
   }
@@ -321,7 +346,7 @@ export async function generarDesdePendientes(
   }
 
   const r = await query<any>(
-    `SELECT p.id, p.tipo, TO_CHAR(p.fecha, 'YYYY-MM-DD') AS fecha, p.causa_baja, p.sbc AS sbc_pend,
+    `SELECT p.id, p.empleado_id, p.tipo, TO_CHAR(p.fecha, 'YYYY-MM-DD') AS fecha, p.causa_baja, p.sbc AS sbc_pend,
             e.nss, e.apellido_pat, e.apellido_mat, e.nombre, e.curp, e.num_empleado,
             e.sbc AS sbc_exp, e.salario_diario_integrado,
             TRIM(e.nombre || ' ' || e.apellido_pat || ' ' || COALESCE(e.apellido_mat,'')) AS nombre_completo
@@ -332,6 +357,7 @@ export async function generarDesdePendientes(
   );
 
   const movimientos: MovimientoMixto[] = [];
+  const detalle: LoteMovimiento[] = [];
   const problemas: string[] = [];
   for (const p of r.rows) {
     const quien = p.nombre_completo || p.num_empleado || p.id;
@@ -354,6 +380,16 @@ export async function generarDesdePendientes(
       curp: p.curp || '',
       causaBaja: p.causa_baja || undefined,
     });
+    detalle.push({
+      empleadoId: p.empleado_id,
+      nombreCompleto: p.nombre_completo || '',
+      nss: p.nss || '',
+      numEmpleado: p.num_empleado || '',
+      tipo: p.tipo,
+      fecha: p.fecha,
+      sbc,
+      causaBaja: p.causa_baja || undefined,
+    });
   }
   if (problemas.length) {
     throw new ValidationError('No se generó el archivo. Corrige esto primero:\n• ' + problemas.join('\n• '));
@@ -361,5 +397,88 @@ export async function generarDesdePendientes(
 
   const { contenido, registros } = generarArchivoMixto(movimientos, cfg);
   const nombre = `IDSE_movimientos_${new Date().toISOString().slice(0, 10)}.txt`;
-  return { contenido, registros, nombre };
+  const loteId = await registrarLote(companyId, { nombre, registroPatronal, movimientos: detalle }, userId);
+  return { contenido, registros, nombre, loteId };
+}
+
+/* ───────────────────  Bitácora de lotes IDSE + su acuse  ─────────────── */
+
+/** Registra un lote generado (la foto de sus movimientos) para la bitácora. */
+export async function registrarLote(
+  companyId: string,
+  d: { nombre: string; registroPatronal?: string | null; movimientos: LoteMovimiento[] },
+  userId?: string,
+): Promise<string> {
+  return transaction(async (client) => {
+    const l = await client.query(
+      `INSERT INTO nomina_idse_lotes
+         (company_id, nombre_archivo, num_movimientos, registro_patronal, created_by)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [companyId, d.nombre.slice(0, 120), d.movimientos.length, d.registroPatronal || null, userId || null]);
+    const loteId = l.rows[0].id;
+    let orden = 1;
+    for (const m of d.movimientos) {
+      await client.query(
+        `INSERT INTO nomina_idse_lote_movimientos
+           (lote_id, empleado_id, nombre_completo, nss, num_empleado, tipo, fecha, sbc, causa_baja, orden)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [loteId, m.empleadoId || null, (m.nombreCompleto || '').slice(0, 250), m.nss || null,
+         (m.numEmpleado || '').slice(0, 30), m.tipo, m.fecha, m.sbc || null, m.causaBaja || null, orden++]);
+    }
+    return loteId;
+  });
+}
+
+/** La bitácora: los lotes generados, del más reciente al más viejo (sin el PDF). */
+export async function listarLotes(companyId: string): Promise<any[]> {
+  const r = await query<any>(
+    `SELECT l.id, l.nombre_archivo, l.num_movimientos, l.registro_patronal,
+            TO_CHAR(l.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS created_at,
+            (l.acuse_pdf IS NOT NULL) AS tiene_acuse, l.acuse_nombre,
+            TO_CHAR(l.acuse_subido_at, 'YYYY-MM-DD') AS acuse_subido,
+            COALESCE(json_agg(json_build_object(
+              'tipo', m.tipo, 'nombre', m.nombre_completo, 'nss', m.nss,
+              'num_empleado', m.num_empleado, 'fecha', TO_CHAR(m.fecha,'YYYY-MM-DD'),
+              'sbc', m.sbc, 'causa_baja', m.causa_baja
+            ) ORDER BY m.orden) FILTER (WHERE m.id IS NOT NULL), '[]') AS movimientos
+       FROM nomina_idse_lotes l
+       LEFT JOIN nomina_idse_lote_movimientos m ON m.lote_id = l.id
+      WHERE l.company_id = $1
+      GROUP BY l.id
+      ORDER BY l.created_at DESC
+      LIMIT 200`, [companyId]);
+  return r.rows;
+}
+
+/** Guarda el acuse (PDF que devuelve el portal del IDSE) de un lote. */
+export async function adjuntarAcuse(
+  companyId: string, loteId: string, pdf: Buffer, nombre: string, tipo: string,
+): Promise<boolean> {
+  const r = await query(
+    `UPDATE nomina_idse_lotes
+        SET acuse_pdf=$3, acuse_nombre=$4, acuse_tipo=$5, acuse_subido_at=NOW()
+      WHERE company_id=$1 AND id=$2`,
+    [companyId, loteId, pdf, (nombre || 'acuse.pdf').slice(0, 200), (tipo || 'application/pdf').slice(0, 120)]);
+  return (r.rowCount || 0) > 0;
+}
+
+/** El acuse guardado de un lote (para verlo/descargarlo), o null si no tiene. */
+export async function acuseDeLote(
+  companyId: string, loteId: string,
+): Promise<{ pdf: Buffer; nombre: string; tipo: string } | null> {
+  const r = await query<any>(
+    `SELECT acuse_pdf, acuse_nombre, acuse_tipo FROM nomina_idse_lotes
+      WHERE company_id=$1 AND id=$2 AND acuse_pdf IS NOT NULL`, [companyId, loteId]);
+  if (!r.rows[0]) return null;
+  return {
+    pdf: r.rows[0].acuse_pdf,
+    nombre: r.rows[0].acuse_nombre || 'acuse.pdf',
+    tipo: r.rows[0].acuse_tipo || 'application/pdf',
+  };
+}
+
+/** Borra un lote de la bitácora (y su acuse, por cascada). */
+export async function borrarLote(companyId: string, loteId: string): Promise<boolean> {
+  const r = await query(`DELETE FROM nomina_idse_lotes WHERE company_id=$1 AND id=$2`, [companyId, loteId]);
+  return (r.rowCount || 0) > 0;
 }

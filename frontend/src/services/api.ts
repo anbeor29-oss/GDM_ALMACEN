@@ -1649,6 +1649,32 @@ class APIClient {
     return r.data;
   }
 
+  /** La bitácora de archivos IDSE generados, con la foto de sus movimientos. */
+  async getIdseLotes() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/imss/idse/lotes');
+    return r.data;
+  }
+  /** Sube el acuse (PDF que devuelve el portal del IDSE) a un lote. */
+  async subirIdseAcuse(loteId: string, file: File) {
+    const fd = new FormData();
+    fd.append('acuse', file);
+    const r = await this.client.post<APIResponse<any>>(
+      `/nomina/imss/idse/lotes/${loteId}/acuse`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
+  /** Abre el acuse guardado de un lote en una pestaña (o lo descarga si el navegador la bloquea). */
+  async verIdseAcuse(loteId: string) {
+    const r = await this.client.get(`/nomina/imss/idse/lotes/${loteId}/acuse`, { responseType: 'blob' });
+    const blob = r.data as Blob;
+    const url = URL.createObjectURL(new Blob([blob], { type: blob.type || 'application/pdf' }));
+    const w = window.open(url, '_blank');
+    if (!w) await this.downloadFile(new Blob([blob]), 'acuse-idse.pdf');
+  }
+  async borrarIdseLote(loteId: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/nomina/imss/idse/lotes/${loteId}`);
+    return r.data;
+  }
+
   /** Cierra el periodo: congela los recibos y genera los XML. ESCRIBE. */
   async cerrarPeriodoNomina(periodoId: string, captura: any[]) {
     const r = await this.client.post<APIResponse<any>>(

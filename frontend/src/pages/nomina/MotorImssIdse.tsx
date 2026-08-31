@@ -17,6 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   HeartPulse, Search, X, Download,
   AlertTriangle, CheckCircle2, SlidersHorizontal, Upload, Pencil,
+  Trash2, Paperclip, FileCheck2, ChevronDown, ChevronRight, ClipboardList,
 } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha, aTextoMx } from '@/components/CampoFecha';
@@ -91,8 +92,10 @@ export function MotorImssIdsePage() {
 
   const pendQ = useQuery({ queryKey: ['idse-pendientes'], queryFn: () => api.getIdsePendientes() });
   const enviQ = useQuery({ queryKey: ['idse-enviados'], queryFn: () => api.getIdseEnviados() });
+  const lotesQ = useQuery({ queryKey: ['idse-lotes'], queryFn: () => api.getIdseLotes() });
   const pendientes: any[] = pendQ.data?.data?.pendientes || [];
   const enviados: any[] = enviQ.data?.data?.enviados || [];
+  const lotes: any[] = lotesQ.data?.data?.lotes || [];
 
   /* Los pendientes de la cola se sincronizan con la lista: se agregan los nuevos y
    * se quitan los que ya se enviaron o descartaron. Se conservan las ediciones y
@@ -180,7 +183,8 @@ export function MotorImssIdsePage() {
         };
       });
       await api.generarIdseMixto({ movimientos, ...cfg });
-      setOk(`Archivo con ${movimientos.length} movimiento(s) descargado. Súbelo al IDSE; cuando pase, marca "ya pasó".`);
+      setOk(`Archivo con ${movimientos.length} movimiento(s) descargado. Súbelo al IDSE; cuando el portal te dé el acuse, adjúntalo en la bitácora de abajo.`);
+      lotesQ.refetch();
     } catch (e: any) {
       setError(e?.message || 'No se pudo generar el archivo.');
     } finally { setGenerando(false); }
@@ -418,6 +422,8 @@ export function MotorImssIdsePage() {
           </ul>
         </div>
       )}
+
+      <BitacoraIdse lotes={lotes} onCambio={() => lotesQ.refetch()} />
       </>}
 
       {modal && (
@@ -438,6 +444,99 @@ export function MotorImssIdsePage() {
           onCerrar={() => setModal(null)}
         />
       )}
+    </div>
+  );
+}
+
+/* ── Bitácora de envíos al IDSE: cada archivo generado, con su acuse ──
+ *
+ * Registra qué se mandó (la foto de los movimientos) y guarda el acuse en PDF que
+ * el portal del IDSE devuelve: así queda junto el envío y su confirmación, aunque
+ * el trabajador cambie después. El acuse vive en la base (el disco de Render es
+ * efímero). */
+function BitacoraIdse({ lotes, onCambio }: { lotes: any[]; onCambio: () => void }) {
+  const [abierto, setAbierto] = useState<string | null>(null);
+  const [subiendo, setSubiendo] = useState<string | null>(null);
+  const [err, setErr] = useState('');
+
+  const subirAcuse = async (loteId: string, file: File | null) => {
+    if (!file) return;
+    setSubiendo(loteId); setErr('');
+    try { await api.subirIdseAcuse(loteId, file); onCambio(); }
+    catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo subir el acuse.'); }
+    finally { setSubiendo(null); }
+  };
+  const borrar = async (loteId: string) => {
+    if (!window.confirm('¿Borrar este lote de la bitácora? (No afecta lo ya enviado al IMSS.)')) return;
+    setErr('');
+    try { await api.borrarIdseLote(loteId); onCambio(); }
+    catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo borrar.'); }
+  };
+
+  if (!lotes.length) return null;
+  return (
+    <div className="bg-white rounded-lg shadow border">
+      <p className="text-sm font-semibold text-gray-800 px-3 py-2 border-b flex items-center gap-2">
+        <ClipboardList size={15} className="text-violet-600" /> Bitácora de envíos al IDSE
+      </p>
+      {err && <p className="text-xs text-rose-600 px-3 py-1">{err}</p>}
+      <ul className="divide-y">
+        {lotes.map((l) => {
+          const open = abierto === l.id;
+          const cuando = (() => { try { return new Date(l.created_at).toLocaleString('es-MX'); } catch { return l.created_at; } })();
+          return (
+            <li key={l.id} className="text-sm">
+              <div className="px-3 py-2 flex items-center gap-2">
+                <button onClick={() => setAbierto(open ? null : l.id)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                  {open ? <ChevronDown size={14} className="text-gray-400 shrink-0" /> : <ChevronRight size={14} className="text-gray-400 shrink-0" />}
+                  <span className="min-w-0">
+                    <span className="block font-medium text-gray-700">{cuando} · {l.num_movimientos} movimiento(s)</span>
+                    <span className="block text-[11px] text-gray-400 font-mono truncate">
+                      {l.nombre_archivo || '—'}{l.registro_patronal ? ` · RP ${l.registro_patronal}` : ''}
+                    </span>
+                  </span>
+                </button>
+                {l.tiene_acuse ? (
+                  <button onClick={() => api.verIdseAcuse(l.id)}
+                    className="text-xs text-emerald-700 hover:bg-emerald-50 px-2 py-1 rounded flex items-center gap-1 shrink-0"
+                    title={`Ver acuse${l.acuse_subido ? ` (subido ${l.acuse_subido})` : ''}`}>
+                    <FileCheck2 size={14} /> acuse
+                  </button>
+                ) : (
+                  <label className="text-xs text-violet-700 hover:bg-violet-50 px-2 py-1 rounded cursor-pointer flex items-center gap-1 shrink-0"
+                    title="Sube el PDF del acuse que te dio el portal del IDSE">
+                    <input type="file" accept="application/pdf,.pdf" className="hidden"
+                      onChange={(e) => { subirAcuse(l.id, e.target.files?.[0] || null); e.currentTarget.value = ''; }} />
+                    <Paperclip size={13} /> {subiendo === l.id ? 'Subiendo…' : 'adjuntar acuse'}
+                  </label>
+                )}
+                <button onClick={() => borrar(l.id)} className="text-gray-300 hover:text-rose-500 shrink-0" title="Borrar de la bitácora">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              {open && (
+                <div className="px-3 pb-2 overflow-x-auto">
+                  <table className="w-full text-xs border-t">
+                    <tbody className="divide-y">
+                      {(l.movimientos || []).map((m: any, i: number) => (
+                        <tr key={i}>
+                          <td className="py-1 pr-2 font-bold text-gray-500 w-14 whitespace-nowrap">{ETIQUETA_TIPO[m.tipo] || m.tipo}</td>
+                          <td className="py-1 pr-2 text-gray-700">{m.nombre}</td>
+                          <td className="py-1 pr-2 font-mono text-gray-400 whitespace-nowrap">{m.nss}</td>
+                          <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{m.fecha}</td>
+                          <td className="py-1 text-right text-gray-500 whitespace-nowrap">
+                            {m.sbc ? `SBC ${Number(m.sbc).toFixed(2)}` : ''}{m.causa_baja ? ` · causa ${m.causa_baja}` : ''}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
