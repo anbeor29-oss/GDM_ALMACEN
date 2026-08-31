@@ -399,7 +399,7 @@ function detectarBanco(texto: string): string {
   if (/CUENTA\s*NU\b|¡HOLA,|NU\s*M[ÉE]XICO/.test(t))                     return 'Nu';
   if (/CUST\s*ID|ESTADO\s*DE\s*SALDOS\s*Y\s*MOVIMIENTOS/.test(t))        return 'MercadoPago';
   if (/BVM951002|VE\s*POR\s*M[ÁA]S/.test(t))                            return 'VePorMás';
-  if (/CITIBANAMEX|BANCO\s*NACIONAL\s*DE\s*M[ÉE]XICO|BNM840515/.test(t)) return 'Banamex';
+  if (/CITIBANAMEX|BANCO\s*NACIONAL\s*DE\s*M[ÉE]XICO|BNM840515|BANCANET|MICUENTA\s*BANAMEX|APP\s*BANAMEX/.test(t)) return 'Banamex';
   if (/BANCA\s*AFIRME|AFI9\d{5}/.test(t))                               return 'Afirme';
   if (/BNO951005|MERCANTIL\s*DEL\s*NORTE/.test(t))                       return 'Banorte';
   if (/BANCO\s*SANTANDER|BSM9\d/.test(t))                                return 'Santander';
@@ -633,6 +633,175 @@ function extraerBancrea(
   };
 }
 
+/* Busca un importe que sigue a una etiqueta aunque estén en renglones distintos
+ * (Afirme/Banamex imprimen "Saldo inicial$" y el número aparte). \s incluye \n. */
+function importeTrasEtiqueta(texto: string, re: RegExp): number | null {
+  const m = re.exec(texto);
+  return m ? aNumero(m[1]) : null;
+}
+
+/**
+ * Afirme entrega el estado como CFDI. En el "DETALLE DE OPERACIONES" cada
+ * movimiento es un renglón "DD$ <saldo><descripción/referencia>[ $ <importe>]":
+ * el PRIMER importe es el SALDO CORRIENTE, no el movimiento. El movimiento (y su
+ * lado) salen de la diferencia contra el saldo anterior — telescopia y cuadra
+ * sola contra el "Saldo al corte". El mes viene del período del corte.
+ */
+function extraerAfirme(
+  texto: string, opciones: { anio?: number; mes?: number }, avisos: string[]
+): ResultadoExtraccion {
+  const lineas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+  const saldoInicial = importeTrasEtiqueta(texto, /Saldo\s*inicial\s*\$?\s*([\d,]+\.\d{2})/i);
+  const saldoFinal =
+    importeTrasEtiqueta(texto, /Saldo\s*al\s*corte\s*\$?\s*([\d,]+\.\d{2})/i) ??
+    importeTrasEtiqueta(texto, /Saldo\s*final\s*\$?\s*([\d,]+\.\d{2})/i);
+
+  // El mes/año del período del corte ("01ENE2025AL31ENE2025"); si no, lo de opciones.
+  let anio = opciones.anio, mesNum = opciones.mes;
+  const per = /(\d{2})([A-Za-zÁÉÍÓÚÑ]{3})(\d{4})\s*AL\s*\d{2}[A-Za-zÁÉÍÓÚÑ]{3}\d{4}/i.exec(texto);
+  if (per) { const iso = aFechaIso(`${per[1]}-${per[2]}-${per[3]}`); if (iso) { anio = Number(iso.slice(0, 4)); mesNum = Number(iso.slice(5, 7)); } }
+  const fechaDeDia = (dia: string) =>
+    anio && mesNum ? `${anio}-${String(mesNum).padStart(2, '0')}-${dia.padStart(2, '0')}` : '';
+
+  const movimientos: MovimientoExtraido[] = [];
+  let orden = 0, enDetalle = false;
+  let prev = saldoInicial ?? 0;
+  const RX_MOV = /^(\d{2})\$\s*([\d,]+\.\d{2})(.*)$/;
+
+  for (const l of lineas) {
+    if (!enDetalle) { if (/DETALLE\s+DE\s+OPERACIONES/i.test(l)) enDetalle = true; continue; }
+    const m = RX_MOV.exec(l);
+    if (!m) continue;
+    const dia = m[1];
+    const saldo = aNumero(m[2]);
+    const delta = pesos(saldo - prev);
+    prev = saldo;
+    if (delta === 0) continue; // sin efecto (p.ej. un ajuste que no mueve saldo)
+    // Descripción: lo que sigue al saldo, sin el importe pegado al final ni relleno.
+    const concepto = (m[3] || '')
+      .replace(/\$?\s*[\d,]+\.\d{2}\s*$/, '')
+      .replace(/\s{2,}/g, ' ').trim() || 'Movimiento';
+    movimientos.push({
+      fecha: fechaDeDia(dia), concepto: concepto.slice(0, 140),
+      referencia: l.slice(0, 300),
+      retiro: delta < 0 ? pesos(-delta) : 0,
+      deposito: delta > 0 ? pesos(delta) : 0,
+      saldo: pesos(saldo), saldoCalculado: 0, advertencia: '',
+      inferido: false, duda: false, orden: orden++, lineaOrigen: l,
+    });
+  }
+
+  let corriendo = saldoInicial ?? 0;
+  for (const mv of movimientos) { corriendo = pesos(corriendo - mv.retiro + mv.deposito); mv.saldoCalculado = corriendo; }
+  const totalRetiros = pesos(movimientos.reduce((a, m) => a + m.retiro, 0));
+  const totalDepositos = pesos(movimientos.reduce((a, m) => a + m.deposito, 0));
+  const finalCalculado = pesos((saldoInicial ?? 0) - totalRetiros + totalDepositos);
+  const cuadra = saldoFinal !== null && Math.abs((saldoFinal ?? 0) - finalCalculado) <= 0.02;
+
+  if (saldoInicial === null) avisos.push('Afirme: no se encontró el saldo inicial.');
+  if (saldoFinal !== null && !cuadra) {
+    avisos.push(`NO CUADRA: Afirme declara saldo final ${saldoFinal.toFixed(2)} y los movimientos dan ${finalCalculado.toFixed(2)} (dif ${pesos((saldoFinal ?? 0) - finalCalculado).toFixed(2)}).`);
+  }
+  if (movimientos.length === 0) avisos.push('Afirme: no se reconoció ningún movimiento en el detalle.');
+
+  return {
+    banco: 'Afirme', saldoInicial, saldoFinal, movimientos, totalRetiros, totalDepositos,
+    conAdvertencia: 0, inferidos: 0, cuadra, avisos,
+  };
+}
+
+/**
+ * Banamex reparte cada operación en un bloque largo delimitado por su FECHA
+ * ("09   JUL"), y AL CIERRE imprime "…SUC <4 díg><importe> <saldo>" con el saldo
+ * pegado a la sucursal. Se lee por bloques: el SALDO corriente es el último
+ * importe tras "SUC dddd" (los 4 dígitos de sucursal lo aíslan del importe), y el
+ * movimiento —y su lado— salen de la diferencia contra el saldo anterior.
+ */
+function extraerBanamex(
+  texto: string, opciones: { anio?: number; mes?: number }, avisos: string[]
+): ResultadoExtraccion {
+  const lineas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+  const saldoInicial =
+    importeTrasEtiqueta(texto, /Saldo\s*anterior\s*(?:En\s*pesos\s*M\.?N\.?\s*)?\$?\s*([\d,]+\.\d{2})/i);
+  const saldoFinal =
+    importeTrasEtiqueta(texto, /Saldo\s*al\s*[Cc]orte\s*\$?\s*([\d,]+\.\d{2})/i);
+
+  const RX_FECHA = /^(\d{1,2})\s+([A-Za-zÁÉÍÓÚÑ]{3})\.?$/;
+  // La línea de cierre de cada operación lleva "HORA HH:MM" y/o "SUC dddd"; ahí,
+  // al final, va el SALDO. Pero el saldo suele venir pegado a la hora o a la
+  // sucursal ("HORA 14:52<retiro> <saldo>", "SUC 0511<saldo>"): se desengancha
+  // metiendo un espacio tras la hora y tras los 4 dígitos de sucursal, y el saldo
+  // es el ÚLTIMO importe de la última línea de cierre del bloque.
+  const esCierre = /HORA\s?\d{1,2}:\d{2}|SUC\s?\d{4}/i;
+  const desglosar = (s: string) => s
+    .replace(/(SUC\s?\d{4})(?=\d)/gi, '$1 ')
+    .replace(/(HORA\s?\d{1,2}:\d{2})(?=\d)/gi, '$1 ');
+  const RX_IMPORTE = /[\d,]+\.\d{2}/g;
+
+  const movimientos: MovimientoExtraido[] = [];
+  let orden = 0, enDetalle = false;
+  let prev = saldoInicial ?? 0;
+
+  // Índices de las líneas de fecha dentro del detalle.
+  const idxFecha: number[] = [];
+  for (let i = 0; i < lineas.length; i++) {
+    if (!enDetalle) { if (/Detalle\s+de\s+Operaciones/i.test(lineas[i])) enDetalle = true; continue; }
+    if (RX_FECHA.test(lineas[i])) idxFecha.push(i);
+  }
+
+  for (let k = 0; k < idxFecha.length; k++) {
+    const ini = idxFecha[k];
+    const fin = k + 1 < idxFecha.length ? idxFecha[k + 1] : lineas.length;
+    const bloque = lineas.slice(ini, fin);
+    const fm = RX_FECHA.exec(lineas[ini])!;
+
+    // El saldo corriente: el último importe de la última línea de cierre del bloque.
+    let saldo: number | null = null;
+    for (const b of bloque) {
+      if (!esCierre.test(b)) continue;
+      const nums = desglosar(b).match(RX_IMPORTE);
+      if (nums && nums.length) saldo = aNumero(nums[nums.length - 1]);
+    }
+    if (saldo === null) continue; // bloque sin línea de cierre (no mueve saldo con certeza)
+
+    const delta = pesos(saldo - prev);
+    prev = saldo;
+    if (delta === 0) continue; // comisión exenta u otro sin efecto
+
+    // Concepto: primeras líneas de texto tras la fecha (antes de las referencias).
+    const concepto = bloque.slice(1).find((b) => /[A-Za-zÁÉÍÓÚÑ]/.test(b) && !/^SUC|^CAJA|^HORA|^RASTREO|^REF\.|^CTA|^CLAVE|^\d/.test(b)) || 'Movimiento';
+    const fecha = aFechaIso(`${fm[1]}-${fm[2]}-${opciones.anio || ''}`.replace(/-$/, ''), opciones.anio);
+
+    movimientos.push({
+      fecha, concepto: concepto.slice(0, 140), referencia: bloque.join(' ').slice(0, 400),
+      retiro: delta < 0 ? pesos(-delta) : 0,
+      deposito: delta > 0 ? pesos(delta) : 0,
+      saldo: pesos(saldo), saldoCalculado: 0, advertencia: '',
+      inferido: false, duda: false, orden: orden++, lineaOrigen: lineas[ini],
+    });
+  }
+
+  let corriendo = saldoInicial ?? 0;
+  for (const mv of movimientos) { corriendo = pesos(corriendo - mv.retiro + mv.deposito); mv.saldoCalculado = corriendo; }
+  const totalRetiros = pesos(movimientos.reduce((a, m) => a + m.retiro, 0));
+  const totalDepositos = pesos(movimientos.reduce((a, m) => a + m.deposito, 0));
+  const finalCalculado = pesos((saldoInicial ?? 0) - totalRetiros + totalDepositos);
+  const cuadra = saldoFinal !== null && Math.abs((saldoFinal ?? 0) - finalCalculado) <= 0.02;
+
+  if (saldoInicial === null) avisos.push('Banamex: no se encontró el saldo anterior.');
+  if (saldoFinal !== null && !cuadra) {
+    avisos.push(`NO CUADRA: Banamex declara saldo al corte ${saldoFinal.toFixed(2)} y los movimientos dan ${finalCalculado.toFixed(2)} (dif ${pesos((saldoFinal ?? 0) - finalCalculado).toFixed(2)}).`);
+  }
+  if (movimientos.length === 0) avisos.push('Banamex: no se reconoció ningún movimiento en el detalle.');
+
+  return {
+    banco: 'Banamex', saldoInicial, saldoFinal, movimientos, totalRetiros, totalDepositos,
+    conAdvertencia: 0, inferidos: 0, cuadra, avisos,
+  };
+}
+
 export function extraerMovimientos(
   texto: string,
   opciones: { anio?: number; mes?: number } = {}
@@ -691,6 +860,16 @@ export function extraerMovimientos(
    * concepto con la fecha (pegada, "…ENVIADA6-JUL-26") viene después. Además el
    * saldo inicial/final se imprime "valor+etiqueta". Tiene su propio parser. */
   if (banco === 'Bancrea') return extraerBancrea(texto, opciones, avisos);
+
+  /* Afirme imprime el estado de cuenta como un CFDI y NO trae columna de
+   * depósito/retiro fiable: el primer importe de cada renglón es el SALDO
+   * corriente. El movimiento se saca de la diferencia de saldos (como BBVA). */
+  if (banco === 'Afirme') return extraerAfirme(texto, opciones, avisos);
+
+  /* Banamex pega el saldo al número de sucursal ("SUC 0511144.71") y reparte el
+   * movimiento en un bloque largo por operación. Se lee por bloques (delimitados
+   * por la fecha) y el lado sale de la diferencia del saldo corriente. */
+  if (banco === 'Banamex') return extraerBanamex(texto, opciones, avisos);
 
   const mIni = RX_SALDO_INICIAL.exec(texto);
   const mFin = RX_SALDO_FINAL.exec(texto);
