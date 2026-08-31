@@ -70,10 +70,16 @@ ORDER BY m.IdPoliza, m.NumMovto
 FOR JSON PATH
 '@
 
-Export-Json 'asoccfdi' @'
-SELECT GuidRef AS guidRef, UUID AS uuid, AppType AS appType
-FROM AsocCFDIs
-WHERE UUID IS NOT NULL AND UUID <> ''''
+Export-Json 'poliza_cfdi' @'
+-- La liga CFDI viene sobre todo a nivel MOVIMIENTO (GuidRef = Guid del
+-- movimiento), no de la póliza. Se resuelve por ambos y se deja (idPoliza, uuid)
+-- ya deduplicado, listo para el importador.
+SELECT DISTINCT COALESCE(p.Id, mp.IdPoliza) AS idPoliza, a.UUID AS uuid
+FROM AsocCFDIs a
+LEFT JOIN Polizas p ON p.Guid = a.GuidRef
+LEFT JOIN MovimientosPoliza mp ON mp.Guid = a.GuidRef
+WHERE a.UUID IS NOT NULL AND a.UUID <> ''''
+  AND COALESCE(p.Id, mp.IdPoliza) IS NOT NULL
 FOR JSON PATH
 '@
 
