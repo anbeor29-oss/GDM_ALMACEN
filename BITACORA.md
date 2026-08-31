@@ -4268,3 +4268,56 @@ Consecuencia: Julio 2026 (AAB) cuadra — 20 movs, ini 8,924.55, retiros
 44,840.88, depósitos 40,000.00, final 4,083.67, 0 advertencias. Nu sin cambios,
 sigue cuadrando. Faltan MercadoPago, Afirme, Banamex, HSBC y la conciliación de
 tarjetas de crédito como feature aparte.
+
+---
+
+## 2026-08-31 (contabilidad) — Activo fijo: la depreciación se calcula y se asienta sola
+
+Una compra de un vehículo (o maquinaria, equipo de oficina, cómputo, licencias
+de software…) manda su partida a una cuenta de activo fijo (15x) o intangible
+(17x). Esa partida ES un activo: su MOI es el cargo neto (sin IVA) y la fecha, la
+del CFDI. De ahí sale, en automático, la depreciación en **línea recta** (LISR
+33-35). Nuevo módulo **Contabilidad → Activo fijo · Depreciación**.
+
+**Tres pasos, como Pólizas de compra.** (1) *Detectar desde compras*: parte los
+recibidos con XML del mes y propone como activo cada partida cuya cuenta sea
+15x/17x, con la tasa del máximo LISR por rubro (vehículos 25%, cómputo 30%,
+mobiliario/maquinaria 10%, edificios 5%, software 15%…), editable. (2) *Cédula*:
+cada activo con su MOI, tasa, depreciación anual y mensual, acumulada asentada y
+valor en libros; al clic, la depreciación mes a mes. (3) *Pólizas de
+depreciación*: UNA póliza al mes, cargo al gasto (701/702) y abono a la acumulada
+(171/183, subcuenta por rubro que se crea sola bajo su mayor).
+
+**Lo que se cuidó.** La póliza es idempotente por mes (`origen='DEPRECIACION'`,
+`origen_uuid='DEPRE-AAAA-MM'` —el esquema del journal ya preveía este origen). La
+constancia por activo (`activo_fijo_depreciacion`) cuelga de la póliza: borrarla
+libera el mes para regenerar. Terrenos, obra en proceso y crédito mercantil NO se
+deprecian. Nada se asienta sin el clic de «Generar». Verificado: vehículo MOI
+293,017.25 al 25% → 6,104.53/mes, 73,254.31/año, 48 meses, agota exacto en el MOI.
+
+---
+
+## 2026-08-31 — Extractor de bancos: Afirme y Banamex (diferencia de saldos)
+
+Los dos daban 0 movimientos, y por la misma razón: tras el colapso de pdf-parse
+ninguno deja una columna de depósito/retiro fiable. Pero **ambos imprimen el
+saldo corriente por movimiento**, así que el lado sale de la diferencia contra el
+saldo anterior (como ya se hace en BBVA): telescopia y cuadra solo contra el
+saldo final.
+
+**Afirme** entrega el estado de cuenta como un CFDI. En el "DETALLE DE
+OPERACIONES" cada renglón es `DD$ <saldo><descripción>`: el PRIMER importe es el
+saldo corriente, no el movimiento. El mes se toma del período del corte. Los 8
+meses de PROKINESPORT 2025 cuadran, y los saldos encadenan mes a mes (febrero
+cierra donde marzo abre).
+
+**Banamex** reparte cada operación en un bloque largo delimitado por su fecha
+("09 JUL") y al cierre PEGA el saldo a la hora o al número de sucursal
+("HORA 14:52<retiro> <saldo>", "SUC 0511<saldo>"). Se desengancha metiendo un
+espacio tras `HORA HH:MM` y tras `SUC` + 4 dígitos, y el saldo es el último
+importe de la última línea de cierre del bloque. Julio 2026 (RAQUEL LOPEZ): 52
+movimientos —exactamente los 17 depósitos + 35 retiros del resumen—, con
+depósitos 184,277.38 y retiros 175,040.79 idénticos a los totales que declara el
+banco. Detección ampliada a BancaNet / MiCuenta Banamex / App Banamex, porque la
+muestra (una MiCuenta personal) no trae RFC del banco ni "Banco Nacional de
+México". Faltan MercadoPago y HSBC.

@@ -22,8 +22,10 @@ SW Sapien.
   modificaciones (07) mezcladas en un archivo, más validador de TXT.
 - 🟢 **Motor de identidad fiscal (RFC)**: control de consistencia del RFC de
   personas físicas en captura (empleados y clientes).
-- 🟢 **Contabilidad**: catálogo de cuentas, periodos y cierre, balanza, los
-  estados financieros y razones —agrupados en el submenú **Reportes**—.
+- 🟢 **Contabilidad**: catálogo de cuentas, pólizas (venta/compra/cobro-pago),
+  **activo fijo y su depreciación en automático** (línea recta LISR 33-35, desde
+  el XML de compra), periodos y cierre, balanza, los estados financieros y
+  razones —agrupados en el submenú **Reportes**—.
 - 🟢 **Tesorería**: cuentas por pagar, pagos programados, bancos y
   **conciliación bancaria** (con export a Excel).
 - 🟢 **Permisos por grupo de trabajo**: siete grupos, cada uno con sus módulos,
