@@ -231,6 +231,70 @@ export async function balanzaDelPeriodo(companyId: string, anio: number, mes: nu
   };
 }
 
+/**
+ * El AUXILIAR de una cuenta en el mes: cada renglón de póliza que la tocó, con su
+ * folio, fecha, concepto, cargo/abono y el saldo corriente. Es el detalle detrás
+ * del renglón de la balanza —de aquí sale, sumando, la columna de cargos/abonos—.
+ * El saldo arranca del saldo inicial de la balanza del periodo (si existe) y se
+ * arrastra según la naturaleza: deudora suma cargos y resta abonos; acreedora al
+ * revés. Cada movimiento trae `entry_id` para abrir su póliza en el editor.
+ */
+export async function auxiliarDeCuenta(
+  companyId: string, codigo: string, anio: number, mes: number
+) {
+  const cta = await query<any>(
+    `SELECT id, codigo, nombre, naturaleza FROM accounting_accounts
+      WHERE company_id=$1 AND codigo=$2 LIMIT 1`, [companyId, String(codigo).trim()]);
+  if (!cta.rows[0]) return null;
+  const cuenta = cta.rows[0];
+
+  const desde = `${anio}-${String(mes).padStart(2, '0')}-01`;
+  const hasta = new Date(Date.UTC(anio, mes, 0)).toISOString().slice(0, 10);
+
+  // Saldo inicial: de la balanza materializada del periodo, si ya se actualizó.
+  const p = await periodoDe(companyId, anio, mes);
+  let saldoInicial = 0;
+  if (p) {
+    const b = await query<any>(
+      `SELECT saldo_inicial::float AS s FROM accounting_period_balances
+        WHERE periodo_id=$1 AND account_id=$2`, [p.id, cuenta.id]);
+    if (b.rows[0]) saldoInicial = Number(b.rows[0].s) || 0;
+  }
+
+  const mov = await query<any>(
+    `SELECT e.id AS entry_id, e.folio, TO_CHAR(e.fecha,'YYYY-MM-DD') AS fecha,
+            e.concepto AS poliza_concepto, e.tipo, e.origen, e.regla,
+            l.cargo::float AS cargo, l.abono::float AS abono, l.concepto AS linea_concepto
+       FROM journal_lines l
+       JOIN journal_entries e ON e.id = l.entry_id
+      WHERE e.company_id=$1 AND l.account_id=$2 AND e.fecha BETWEEN $3 AND $4
+      ORDER BY e.fecha, e.folio, l.orden`,
+    [companyId, cuenta.id, desde, hasta]);
+
+  const acreedora = cuenta.naturaleza === 'ACREEDORA';
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  let saldo = saldoInicial;
+  const movimientos = mov.rows.map((m: any) => {
+    const cargo = Number(m.cargo) || 0, abono = Number(m.abono) || 0;
+    saldo = r2(saldo + (acreedora ? abono - cargo : cargo - abono));
+    return {
+      entry_id: m.entry_id, folio: m.folio, fecha: m.fecha,
+      poliza_concepto: m.poliza_concepto, linea_concepto: m.linea_concepto,
+      tipo: m.tipo, origen: m.origen, regla: m.regla,
+      cargo, abono, saldo,
+    };
+  });
+
+  return {
+    cuenta: { codigo: cuenta.codigo, nombre: cuenta.nombre, naturaleza: cuenta.naturaleza },
+    anio, mes, saldoInicial,
+    movimientos,
+    totalCargos: r2(movimientos.reduce((a: number, m: any) => a + m.cargo, 0)),
+    totalAbonos: r2(movimientos.reduce((a: number, m: any) => a + m.abono, 0)),
+    saldoFinal: saldo,
+  };
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    3. ALIMENTAR
    ═══════════════════════════════════════════════════════════════════════════ */

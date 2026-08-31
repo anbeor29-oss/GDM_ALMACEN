@@ -5,7 +5,8 @@
  * No las genera: para eso están las pantallas de cada origen. Aquí se ven juntas
  * y se puede borrar una que salió mal (el asiento y sus partidas).
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X } from 'lucide-react';
 import api from '@/services/api';
@@ -39,8 +40,12 @@ const FILTROS = [
 export function PolizasListaPage() {
   const hoy = new Date();
   const qc = useQueryClient();
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  /* Se puede llegar desde el auxiliar de la balanza con ?editar=<id>&anio&mes:
+   * el mes/año arrancan en los del enlace y, al cargar, se abre el editor de esa
+   * póliza. Es el «doble clic en la póliza → editarla» pedido desde la balanza. */
+  const [params, setParams] = useSearchParams();
+  const [anio, setAnio] = useState(Number(params.get('anio')) || hoy.getFullYear());
+  const [mes, setMes] = useState(Number(params.get('mes')) || hoy.getMonth() + 1);
   const [filtro, setFiltro] = useState<string>('');
   const [msg, setMsg] = useState('');
   const [editar, setEditar] = useState<any>(null);
@@ -48,6 +53,18 @@ export function PolizasListaPage() {
 
   const q = useQuery({ queryKey: ['polizas', anio, mes], queryFn: () => api.getPolizas(anio, mes) });
   const todas: any[] = q.data?.data?.polizas || [];
+
+  // Abre el editor de la póliza que venga en ?editar=<id> una vez que cargó la lista.
+  const editarId = params.get('editar');
+  useEffect(() => {
+    if (!editarId || !todas.length) return;
+    const p = todas.find((x) => x.id === editarId);
+    if (p) {
+      setEditar(p);
+      params.delete('editar'); params.delete('anio'); params.delete('mes');
+      setParams(params, { replace: true });
+    }
+  }, [editarId, todas]); // eslint-disable-line react-hooks/exhaustive-deps
   const polizas = useMemo(
     () => todas.filter((p) => !filtro || categoria(p) === filtro),
     [todas, filtro]);

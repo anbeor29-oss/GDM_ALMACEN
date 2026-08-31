@@ -1128,6 +1128,12 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/estados/${anio}/${mes}/balanza`);
     return r.data;
   }
+  /** El auxiliar de una cuenta en el mes: sus movimientos con folio de póliza. */
+  async getAuxiliarCuenta(cuenta: string, anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(
+      `/accounting/estados/${anio}/${mes}/auxiliar`, { params: { cuenta } });
+    return r.data;
+  }
   /** Deriva/actualiza la balanza del mes desde las pólizas (journal_lines). */
   async actualizarBalanzaDesdePolizas(anio: number, mes: number) {
     const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/${mes}/desde-polizas`);

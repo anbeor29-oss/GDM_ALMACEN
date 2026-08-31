@@ -10,8 +10,9 @@
  * consultas, un día dirían cosas diferentes del mismo mes.
  */
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, Info, TrendingUp } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, TrendingUp, X } from 'lucide-react';
 import api from '@/services/api';
 import {
   MarcoEstado, SeccionBalance, Total, ListaRubros, NoDisponible, Cuadre,
@@ -29,6 +30,7 @@ export function BalanzaPage() {
   const [mes, setMes] = useState(hoy.getMonth() + 1);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [auxiliar, setAuxiliar] = useState<string | null>(null);
 
   const q = useQuery({
     queryKey: ['balanza-periodo', anio, mes],
@@ -105,7 +107,9 @@ export function BalanzaPage() {
               </thead>
               <tbody className="divide-y">
                 {d.filas.map((f: any) => (
-                  <tr key={f.codigo} className="hover:bg-gray-50">
+                  <tr key={f.codigo} className="hover:bg-sky-50 cursor-pointer"
+                    onDoubleClick={() => setAuxiliar(f.codigo)}
+                    title="Doble clic para ver el auxiliar de la cuenta">
                     <td className="px-3 py-1 font-mono text-xs whitespace-nowrap">{f.codigo}</td>
                     <td className="px-3 py-1">{f.nombre}</td>
                     <td className="px-2 py-1 text-center text-xs text-gray-500">
@@ -132,6 +136,99 @@ export function BalanzaPage() {
           </div>
         </>
       )}
+
+      {auxiliar && (
+        <AuxiliarModal codigo={auxiliar} anio={anio} mes={mes} onClose={() => setAuxiliar(null)} />
+      )}
+    </div>
+  );
+}
+
+/* ── Auxiliar de una cuenta: sus movimientos del mes, con la póliza en azul ── */
+function AuxiliarModal({ codigo, anio, mes, onClose }: {
+  codigo: string; anio: number; mes: number; onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  const q = useQuery({
+    queryKey: ['auxiliar', codigo, anio, mes],
+    queryFn: () => api.getAuxiliarCuenta(codigo, anio, mes),
+  });
+  const d: any = q.data?.data;
+  const abrirPoliza = (entryId: string) =>
+    navigate(`/contabilidad/polizas?editar=${entryId}&anio=${anio}&mes=${mes}`);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[88vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <div>
+            <h3 className="font-semibold text-gray-900">
+              Auxiliar · <span className="font-mono">{d?.cuenta?.codigo || codigo}</span> {d?.cuenta?.nombre || ''}
+            </h3>
+            <p className="text-xs text-gray-500">{MESES[mes]} {anio} · doble clic en un renglón para abrir su póliza</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-xs text-gray-600 sticky top-0">
+              <tr>
+                <th className="px-3 py-2 text-left">Fecha</th>
+                <th className="px-3 py-2 text-left">Póliza</th>
+                <th className="px-3 py-2 text-left">Concepto</th>
+                <th className="px-3 py-2 text-right">Cargo</th>
+                <th className="px-3 py-2 text-right">Abono</th>
+                <th className="px-3 py-2 text-right">Saldo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              <tr className="bg-gray-50/60">
+                <td colSpan={5} className="px-3 py-1.5 text-right text-xs text-gray-500 italic">Saldo inicial</td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{mx(d?.saldoInicial ?? 0)}</td>
+              </tr>
+              {q.isLoading && <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-500">Cargando…</td></tr>}
+              {!q.isLoading && d && d.movimientos.length === 0 && (
+                <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-500 italic">
+                  Esta cuenta no tuvo movimientos en {MESES[mes]} {anio}.
+                </td></tr>
+              )}
+              {(d?.movimientos || []).map((m: any, i: number) => (
+                <tr key={i} className="hover:bg-sky-50 cursor-pointer"
+                  onDoubleClick={() => abrirPoliza(m.entry_id)}
+                  title="Doble clic para abrir la póliza en edición">
+                  <td className="px-3 py-1 text-xs text-gray-600 whitespace-nowrap">
+                    {new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-MX')}
+                  </td>
+                  <td className="px-3 py-1">
+                    <button onClick={(e) => { e.stopPropagation(); abrirPoliza(m.entry_id); }}
+                      className="text-sky-600 hover:text-sky-800 hover:underline font-medium">
+                      #{m.folio}
+                    </button>
+                  </td>
+                  <td className="px-3 py-1 text-gray-700">
+                    <span className="truncate block max-w-md">{m.linea_concepto || m.poliza_concepto || '—'}</span>
+                  </td>
+                  <td className="px-3 py-1 text-right tabular-nums">{m.cargo > 0 ? mx(m.cargo) : ''}</td>
+                  <td className="px-3 py-1 text-right tabular-nums">{m.abono > 0 ? mx(m.abono) : ''}</td>
+                  <td className="px-3 py-1 text-right tabular-nums text-gray-600">{mx(m.saldo)}</td>
+                </tr>
+              ))}
+            </tbody>
+            {d && (
+              <tfoot>
+                <tr className="bg-gray-100 font-semibold border-t">
+                  <td colSpan={3} className="px-3 py-2 text-right">Sumas del mes</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{mx(d.totalCargos)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{mx(d.totalAbonos)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{mx(d.saldoFinal)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

@@ -498,6 +498,19 @@ router.get(
   })
 );
 
+/** GET /accounting/estados/:anio/:mes/auxiliar?cuenta=CODIGO — el auxiliar de una cuenta */
+router.get(
+  '/estados/:anio/:mes/auxiliar',
+  asyncHandler(async (req: Request, res: Response) => {
+    const cuenta = String(req.query.cuenta || '').trim();
+    if (!cuenta) throw new ValidationError('Falta la cuenta.');
+    const data = await periodos.auxiliarDeCuenta(
+      companyId(req), cuenta, Number(req.params.anio), Number(req.params.mes));
+    if (!data) { res.status(404).json({ success: false, message: 'No se encontró la cuenta' }); return; }
+    res.json({ success: true, data });
+  })
+);
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MOTOR NIF
    ═══════════════════════════════════════════════════════════════════════════ */
