@@ -276,7 +276,7 @@ export function Layout() {
                       { to: '/contabilidad/poliza-manual',  icon: emoji3D('✍️'), label: 'Póliza manual' },
                       { to: '/contabilidad/polizas',       icon: emoji3D('📔'), label: 'Pólizas' },
                       { to: '/contabilidad/activo-fijo',   icon: emoji3D('🏗️'), label: 'Activo fijo · Depreciación' },
-                      { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar de CONTPAQi' },
+                      { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },
                       {
                         icon: emoji3D('📊'), label: 'Reportes',
                         children: [

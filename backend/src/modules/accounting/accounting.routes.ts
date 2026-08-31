@@ -928,7 +928,7 @@ router.post(
   '/contpaqi/importar',
   authorize('ADMIN', 'SUPER_ADMIN'),
   subir.fields([
-    { name: 'cuentas', maxCount: 1 }, { name: 'polizas', maxCount: 1 },
+    { name: 'empresa', maxCount: 1 }, { name: 'cuentas', maxCount: 1 }, { name: 'polizas', maxCount: 1 },
     { name: 'movimientos', maxCount: 1 }, { name: 'poliza_cfdi', maxCount: 1 },
     { name: 'cfdi', maxCount: 1 }, { name: 'saldos', maxCount: 1 },
   ]),
@@ -942,13 +942,14 @@ router.post(
       catch { throw new ValidationError(`El archivo ${n}.json no es JSON válido.`); }
     };
     const paquete = {
-      cuentas: leer('cuentas'), polizas: leer('polizas'), movimientos: leer('movimientos'),
+      empresa: leer('empresa'), cuentas: leer('cuentas'), polizas: leer('polizas'), movimientos: leer('movimientos'),
       poliza_cfdi: leer('poliza_cfdi'), cfdi: leer('cfdi'), saldos: leer('saldos'),
     };
     if (!paquete.cuentas.length || !paquete.polizas.length) {
       throw new ValidationError('El paquete necesita al menos cuentas.json y polizas.json.');
     }
-    const rep = await contpaqi.importarContpaqi(companyId(req), paquete, req.user?.userId);
+    const forzar = req.body?.forzar === 'true' || req.body?.forzar === true;
+    const rep = await contpaqi.importarContpaqi(companyId(req), paquete, req.user?.userId, { forzar });
     res.json({ success: true, data: rep });
   })
 );

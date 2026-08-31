@@ -43,6 +43,12 @@ function Export-Json([string]$name, [string]$query) {
 
 Write-Output "== Extrayendo $Db -> $Out =="
 
+Export-Json 'empresa' @'
+SELECT TOP 1 RFC AS rfc, RazonSocial AS nombre, IdEmpresa AS idEmpresa
+FROM Parametros
+FOR JSON PATH
+'@
+
 Export-Json 'cuentas' @'
 SELECT c.Codigo AS codigo, c.Nombre AS nombre, a.Codigo AS agrupador,
        CAST(c.Afectable AS int) AS afectable, c.CtaMayor AS ctaMayor,

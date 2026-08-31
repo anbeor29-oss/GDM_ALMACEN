@@ -32,12 +32,14 @@ export interface CfdiCt {
   tipoComprobante: string; serie: string; folio: string; fecEmi: string; total: number; subtotal: number;
   descuento: number; usoCfdi: string; metodoPago: string; formaPago: string; moneda: string;
 }
+export interface EmpresaCt { rfc: string; nombre: string; idEmpresa?: number; }
 export interface PaqueteContpaqi {
-  cuentas: CuentaCt[]; polizas: PolizaCt[]; movimientos: MovimientoCt[];
+  empresa?: EmpresaCt[]; cuentas: CuentaCt[]; polizas: PolizaCt[]; movimientos: MovimientoCt[];
   poliza_cfdi: PolizaCfdiCt[]; cfdi: CfdiCt[]; saldos?: any[];
 }
 
 export interface ReporteImport {
+  rfc: { respaldo: string; empresaActiva: string; coincide: boolean };
   ejerciciosActivados: number[];
   cuentas: { creadas: number; omitidas: number; sinAgrupador: number };
   polizas: { creadas: number; yaExistian: number; omitidas: number; motivos: Array<{ guid: string; motivo: string }> };
@@ -72,19 +74,32 @@ function fechaCt(s: string): string | null {
 }
 
 export async function importarContpaqi(
-  companyId: string, paquete: PaqueteContpaqi, userId?: string
+  companyId: string, paquete: PaqueteContpaqi, userId?: string, opciones?: { forzar?: boolean }
 ): Promise<ReporteImport> {
+  const emp = await query<any>('SELECT rfc FROM companies WHERE id=$1', [companyId]);
+  const rfcEmpresa = String(emp.rows[0]?.rfc || '').toUpperCase().trim();
+  if (!rfcEmpresa) throw new Error('La empresa destino no tiene RFC.');
+
+  /* PRIMER PASO: validar el RFC. El respaldo trae el RFC de su empresa
+   * (Parametros.RFC); si no es el de la empresa ACTIVA, se detiene para no
+   * mezclar la contabilidad de un contribuyente con la de otro. Se puede forzar
+   * a propósito (misma empresa con RFC recapturado, cambio de RFC, etc.). */
+  const rfcRespaldo = String(paquete.empresa?.[0]?.rfc || '').toUpperCase().trim();
+  const coincide = !!rfcRespaldo && rfcRespaldo === rfcEmpresa;
+  if (rfcRespaldo && !coincide && !opciones?.forzar) {
+    throw new Error(
+      `El RFC del respaldo (${rfcRespaldo}) no coincide con el de la empresa activa (${rfcEmpresa}). ` +
+      `Cambia a la empresa correcta en NEXO, o confirma que quieres importar de todos modos.`);
+  }
+
   const rep: ReporteImport = {
+    rfc: { respaldo: rfcRespaldo || '(no venía en el paquete)', empresaActiva: rfcEmpresa, coincide },
     ejerciciosActivados: [],
     cuentas: { creadas: 0, omitidas: 0, sinAgrupador: 0 },
     polizas: { creadas: 0, yaExistian: 0, omitidas: 0, motivos: [] },
     cfdi: { creados: 0, emitidos: 0, recibidos: 0 },
     avisos: [],
   };
-
-  const emp = await query<any>('SELECT rfc FROM companies WHERE id=$1', [companyId]);
-  const rfcEmpresa = String(emp.rows[0]?.rfc || '').toUpperCase().trim();
-  if (!rfcEmpresa) throw new Error('La empresa destino no tiene RFC.');
 
   // 1. Activar los ejercicios que tocan las pólizas (crea los 12 periodos c/u; NO siembra catálogo).
   const ejercicios = Array.from(new Set((paquete.polizas || []).map((p) => p.ejercicio))).filter(Boolean).sort();

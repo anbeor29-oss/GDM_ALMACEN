@@ -1128,8 +1128,8 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/estados/${anio}/${mes}/balanza`);
     return r.data;
   }
-  /** Importa un paquete CONTPAQi (los 6 JSON del extractor) a la empresa activa. */
-  async importarContpaqi(fd: FormData) {
+  /** Importa un paquete de respaldo (los JSON del extractor) a la empresa activa. */
+  async importarRespaldo(fd: FormData) {
     const r = await this.client.post<APIResponse<any>>('/accounting/contpaqi/importar', fd,
       { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 600000 });
     return r.data;
