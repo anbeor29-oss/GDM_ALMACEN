@@ -25,6 +25,7 @@ import * as terceros from './catalogo-terceros.service';
 import * as ventas from './ventas-cuentas.service';
 import * as compras from './compras-cuentas.service';
 import * as activos from './activos-fijos.service';
+import * as contpaqi from './contpaqi-import.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
@@ -911,6 +912,44 @@ router.post(
     const r = await activos.generarDepreciacionDelMes(
       companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
     res.json({ success: true, data: r });
+  })
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   IMPORTADOR CONTPAQi (migración de respaldos, cualquier empresa/RFC)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * POST /accounting/contpaqi/importar — sube el paquete JSON que produce el
+ * extractor (cuentas, polizas, movimientos, poliza_cfdi, cfdi, saldos) y lo
+ * carga en la empresa activa usando el motor de NEXO. Idempotente.
+ */
+router.post(
+  '/contpaqi/importar',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  subir.fields([
+    { name: 'cuentas', maxCount: 1 }, { name: 'polizas', maxCount: 1 },
+    { name: 'movimientos', maxCount: 1 }, { name: 'poliza_cfdi', maxCount: 1 },
+    { name: 'cfdi', maxCount: 1 }, { name: 'saldos', maxCount: 1 },
+  ]),
+  asyncHandler(async (req: Request, res: Response) => {
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const leer = (n: string): any[] => {
+      const f = files?.[n]?.[0];
+      if (!f) return [];
+      const txt = f.buffer.toString('utf8').replace(/^﻿/, ''); // quita BOM de PowerShell
+      try { const j = JSON.parse(txt); return Array.isArray(j) ? j : []; }
+      catch { throw new ValidationError(`El archivo ${n}.json no es JSON válido.`); }
+    };
+    const paquete = {
+      cuentas: leer('cuentas'), polizas: leer('polizas'), movimientos: leer('movimientos'),
+      poliza_cfdi: leer('poliza_cfdi'), cfdi: leer('cfdi'), saldos: leer('saldos'),
+    };
+    if (!paquete.cuentas.length || !paquete.polizas.length) {
+      throw new ValidationError('El paquete necesita al menos cuentas.json y polizas.json.');
+    }
+    const rep = await contpaqi.importarContpaqi(companyId(req), paquete, req.user?.userId);
+    res.json({ success: true, data: rep });
   })
 );
 
