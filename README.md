@@ -32,15 +32,16 @@ SW Sapien.
   sus capacidades y su pantalla de inicio.
 - 🟡 **PAC en sandbox** de SW Sapien. Timbra, pero no ante el SAT real.
 - 🟢 **Descarga masiva del SAT**: baja de punta a punta (autenticar → solicitar →
-  verificar → **descargar** → indexar). **Emitidos**: CFDI (el XML completo) +
-  Metadata. **Recibidos**: SÓLO **Metadata** (UUID, emisor, fecha, monto, estatus)
-  — **comprobado**: el SAT rechaza con 301 el XML masivo de recibidos cuando hay
-  cancelados en el rango, **aun acotando a `EstadoComprobante=1`** (vigentes); es
-  una restricción del SAT, no un filtro que se pueda esquivar. Los cancelados van
-  por un pedido aparte (checkbox «También los cancelados» → Metadata
-  `EstadoComprobante=0`). El **XML de una compra** se contabiliza subiéndolo en
-  **Pólizas de compra → «Subir XML de compra»** (o entra por el asistente de
-  almacén). El cron diario **no arranca sin `ENABLE_SAT_DESCARGA_CRON=true`**.
+  verificar → **descargar** → indexar). **Emitidos y recibidos son simétricos**:
+  cada uno baja su **CFDI** (el XML, acotado a **vigentes** —los únicos que el SAT
+  entrega como XML—) + **Metadata** (Todos, para el estatus incl. cancelados). El
+  **301** "no se permite descarga de xml cancelados" que se veía en recibidos NO
+  era restricción del SAT: era `EstadoComprobante` mal codificado —se mandaba `"1"`
+  en vez de la **palabra** `"Vigente"` que espera el SOAP (así lo serializa phpcfdi,
+  la librería de referencia)—; corregido 2026-08-31. Regla real que sí aplica: de un
+  **cancelado** no hay XML, sólo metadato. La descarga **automática del día
+  anterior** (cron 6:00) y el **rango por fechas** (admite varios años) traen ya el
+  XML de recibidos vigentes. El cron **no arranca sin `ENABLE_SAT_DESCARGA_CRON=true`**.
 
 ## 🔑 Cómo entrar
 
@@ -97,16 +98,17 @@ Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
   dos bugs — el **"sello mal formado"** era que verificar/descargar firmaban el
   wrapper y no el elemento interno (`<des:solicitud>`), y el **mapa de
   EstadoSolicitud estaba corrido** (una Terminada se leía como en-proceso, por eso
-  no bajaba nada). El **301** de recibidos es aparte: es una restricción del SAT
-  (no da el XML de recibidos con cancelados, con cualquier filtro) → por eso los
-  recibidos se traen por metadatos. Botón **Diagnóstico** read-only, detalle por
-  solicitud/paquete y reintento de atoradas.
+  no bajaba nada). El **301** de recibidos NO era del SAT: era `EstadoComprobante`
+  mal codificado (`"1"` en vez de la palabra `"Vigente"`) → corregido 2026-08-31,
+  y los recibidos vigentes vuelven a traer su XML. Botón **Diagnóstico** read-only
+  (prueba «Vigente» vs «Cancelado»), detalle por solicitud/paquete y reintento de atoradas.
 - **XML del SAT en tres pantallas**: menú **XML** con «XML del SAT» (la descarga),
   **Emitidos** y **Recibidos**. Tabla del Anexo 20 con **tabs por tipo** (factura /
   nota de crédito / nómina), **filtro mes/año** y CC. El folio abre la
   **previsualización** de los 3 formatos (factura azul / nota roja / complemento
-  verde) desde el XML; la cartera, el timbre de pago. **Cancelaciones** de emitidos
-  captadas (se piden CFDI + Metadata). Recibidos → ficha de metadatos.
+  verde) desde el XML; la cartera, el timbre de pago. **Cancelaciones** captadas
+  (se piden CFDI + Metadata en ambas direcciones). Recibidos ahora traen su XML
+  (vigentes); de un recibido cancelado queda su ficha de metadatos.
 - **Contabilidad — motor de pólizas**: `journal_entries/journal_lines` con el
   **cuadre en la base** (trigger `DEFERRABLE`) e idempotencia por CFDI.
   **Subcuentas por tercero** con máscara `000-00-000` (clientes 105 / proveedores

@@ -4321,3 +4321,39 @@ depósitos 184,277.38 y retiros 175,040.79 idénticos a los totales que declara 
 banco. Detección ampliada a BancaNet / MiCuenta Banamex / App Banamex, porque la
 muestra (una MiCuenta personal) no trae RFC del banco ni "Banco Nacional de
 México". Faltan MercadoPago y HSBC.
+
+---
+
+## 2026-08-31 — Recibidos SÍ bajan su XML: el 301 era un bug nuestro, no del SAT
+
+**Corrige lo que dije el 2026-08-27** ("recibidos = sólo metadato, el SAT no da su
+XML masivo"). Estaba **equivocado**. El usuario —que baja estos XML a diario— avisó
+que sí deben bajar, y tenía razón.
+
+La causa del 301 "No se permite la descarga de xml que se encuentren cancelados":
+`soap.ts` mandaba **`EstadoComprobante="1"`** creyendo que "1" era "vigente". Pero el
+servicio **SOAP** de descarga masiva del SAT espera el valor como **PALABRA** —
+`EstadoComprobante="Vigente" | "Cancelado" | "Todos"`—, no como número. Se verificó
+en el **código fuente de phpcfdi**, la implementación de referencia de este mismo
+servicio. Al mandar "1", el SAT no reconocía el filtro, incluía cancelados, topaba
+con uno y rechazaba con 301. (Los "0/1/2" que circulan en blogs son de la API REST
+de un PAC, no del SOAP del SAT.)
+
+Arreglo: `EstadoComprobante` como palabra —default **CFDI → "Vigente"** (los únicos
+que el SAT entrega como XML), **Metadata → "Todos"** (para el estatus, incluidos los
+cancelados)—. Recibidos vuelven a ser **simétricos** con emitidos (CFDI + Metadata)
+en las tres rutas: el pedido manual (`POST /trabajos`), la descarga diaria y el
+ejercicio. Se quitó el candado "recibidos = sólo metadato" y, del frontend, la nota
+vieja del 301 y el checkbox redundante "también los cancelados" (Metadata=Todos ya
+los trae). El `/diagnostico` ahora prueba "Vigente" vs "Cancelado" para confirmarlo
+contra el SAT sin adivinar.
+
+Lo que el usuario pidió queda cubierto: **automático del día anterior** (el cron de
+las 6:00 ya crea el trabajo de ayer —con traslape de días para no perder lo que el
+SAT publica tarde— y ahora incluye el XML de recibidos), y **rango por fechas** libre
+que puede abarcar varios años (ya existía). Regla real del SAT que SÍ se mantiene: de
+un comprobante **cancelado** no hay XML, sólo metadato.
+
+**Pendiente de validar contra el SAT real con la e.firma** (no se puede probar sin una
+corrida real). **Lección:** no dar por buenos valores de enum de memoria; verificar en
+fuente autoritativa (phpcfdi/nodecfdi) antes de afirmarlos.
