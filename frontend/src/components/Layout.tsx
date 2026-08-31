@@ -273,7 +273,6 @@ export function Layout() {
                     children={[
                       { to: '/contabilidad/cuentas',        icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
                       { to: '/contabilidad/asignacion',     icon: emoji3D('🏷️'), label: 'Asignación de cuentas' },
-                      { to: '/contabilidad/asignacion-cfdi', icon: emoji3D('🧾'), label: 'Cuenta por CFDI' },
                       { to: '/contabilidad/poliza-manual',  icon: emoji3D('✍️'), label: 'Póliza manual' },
                       { to: '/contabilidad/polizas',       icon: emoji3D('📔'), label: 'Pólizas' },
                       { to: '/contabilidad/activo-fijo',   icon: emoji3D('🏗️'), label: 'Activo fijo · Depreciación' },

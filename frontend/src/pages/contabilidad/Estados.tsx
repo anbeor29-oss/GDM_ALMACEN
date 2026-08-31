@@ -10,7 +10,7 @@
  * consultas, un día dirían cosas diferentes del mismo mes.
  */
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Info, TrendingUp, X } from 'lucide-react';
 import api from '@/services/api';
@@ -26,8 +26,11 @@ import {
 export function BalanzaPage() {
   const hoy = new Date();
   const qc = useQueryClient();
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  /* Se puede volver aquí desde el editor de una póliza (que se abrió por el
+   * auxiliar): el mes/año llegan en la URL para reabrir en el mismo periodo. */
+  const [params] = useSearchParams();
+  const [anio, setAnio] = useState(Number(params.get('anio')) || hoy.getFullYear());
+  const [mes, setMes] = useState(Number(params.get('mes')) || hoy.getMonth() + 1);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [auxiliar, setAuxiliar] = useState<string | null>(null);
@@ -155,7 +158,7 @@ function AuxiliarModal({ codigo, anio, mes, onClose }: {
   });
   const d: any = q.data?.data;
   const abrirPoliza = (entryId: string) =>
-    navigate(`/contabilidad/polizas?editar=${entryId}&anio=${anio}&mes=${mes}`);
+    navigate(`/contabilidad/polizas?editar=${entryId}&anio=${anio}&mes=${mes}&desde=balanza`);
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>

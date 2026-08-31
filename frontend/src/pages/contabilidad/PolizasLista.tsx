@@ -6,7 +6,7 @@
  * y se puede borrar una que salió mal (el asiento y sus partidas).
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X } from 'lucide-react';
 import api from '@/services/api';
@@ -43,16 +43,22 @@ export function PolizasListaPage() {
   /* Se puede llegar desde el auxiliar de la balanza con ?editar=<id>&anio&mes:
    * el mes/año arrancan en los del enlace y, al cargar, se abre el editor de esa
    * póliza. Es el «doble clic en la póliza → editarla» pedido desde la balanza. */
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [anio, setAnio] = useState(Number(params.get('anio')) || hoy.getFullYear());
   const [mes, setMes] = useState(Number(params.get('mes')) || hoy.getMonth() + 1);
   const [filtro, setFiltro] = useState<string>('');
   const [msg, setMsg] = useState('');
   const [editar, setEditar] = useState<any>(null);
+  /* Si se llegó desde el auxiliar de la balanza, al cerrar/guardar el editor se
+   * regresa allá (no a esta lista): es donde estaba trabajando el usuario. */
+  const [volverBalanza, setVolverBalanza] = useState(false);
   const anios = Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i);
 
   const q = useQuery({ queryKey: ['polizas', anio, mes], queryFn: () => api.getPolizas(anio, mes) });
   const todas: any[] = q.data?.data?.polizas || [];
+
+  const aBalanza = () => navigate(`/contabilidad/balanza?anio=${anio}&mes=${mes}`);
 
   // Abre el editor de la póliza que venga en ?editar=<id> una vez que cargó la lista.
   const editarId = params.get('editar');
@@ -61,7 +67,8 @@ export function PolizasListaPage() {
     const p = todas.find((x) => x.id === editarId);
     if (p) {
       setEditar(p);
-      params.delete('editar'); params.delete('anio'); params.delete('mes');
+      if (params.get('desde') === 'balanza') setVolverBalanza(true);
+      params.delete('editar'); params.delete('anio'); params.delete('mes'); params.delete('desde');
       setParams(params, { replace: true });
     }
   }, [editarId, todas]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -163,11 +170,20 @@ export function PolizasListaPage() {
       {editar && (
         <EditorPoliza
           poliza={editar}
-          onCerrar={() => setEditar(null)}
-          onGuardado={() => {
+          onCerrar={() => { setEditar(null); if (volverBalanza) { setVolverBalanza(false); aBalanza(); } }}
+          onGuardado={async () => {
             setEditar(null);
-            setMsg('Póliza actualizada.');
             qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
+            if (volverBalanza) {
+              setVolverBalanza(false);
+              /* Se volvió a editar desde la balanza: se recalcula para que refleje
+               * el cambio y se regresa allá, que es donde estaba el usuario. */
+              try { await api.actualizarBalanzaDesdePolizas(anio, mes); } catch { /* la balanza se puede actualizar a mano */ }
+              qc.invalidateQueries({ queryKey: ['balanza-periodo', anio, mes] });
+              aBalanza();
+            } else {
+              setMsg('Póliza actualizada.');
+            }
           }}
         />
       )}
