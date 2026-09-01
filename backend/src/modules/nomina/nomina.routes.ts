@@ -26,6 +26,7 @@ import * as ejercicios from './ejercicios.service';
 import * as periodos from './periodos.service';
 import * as creditos from './creditos.service';
 import * as expediente from './expediente.service';
+import * as nominaImport from './nomina-import.service';
 import * as prenomina from './prenomina.service';
 import { generarExcel } from './prenomina-excel.service';
 import { generarListaDeRaya } from './lista-de-raya.service';
@@ -66,6 +67,7 @@ const soloAdmin = requireCapability('nomina:manage');
 /* El acuse del IDSE es un PDF chico; se recibe en memoria y se guarda en la base
  * (el disco de Render es efímero). 10 MB de tope: un acuse no llega ni cerca. */
 const subirAcuse = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
+const subirNomina = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024, files: 10 } });
 
 function companyId(req: Request): string {
   if (!req.user?.companyId) throw new ValidationError('Falta la empresa activa');
@@ -1228,6 +1230,45 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const r = await nominaPoliza.generarPoliza(companyId(req), req.params.reciboId, req.user?.userId);
     res.json({ success: true, data: r });
+  })
+);
+
+/**
+ * POST /nomina/importar — sube el paquete JSON del extractor de NomiPaq (empresa,
+ * departamentos, puestos, empleados, periodos, conceptos, movimientos, cfdi) y lo
+ * carga en la empresa activa. Idempotente. `ejercicios` (años, coma-separados)
+ * filtra; `forzar` salta la validación de RFC.
+ */
+router.post(
+  '/importar',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  subirNomina.fields([
+    { name: 'empresa', maxCount: 1 }, { name: 'departamentos', maxCount: 1 }, { name: 'puestos', maxCount: 1 },
+    { name: 'empleados', maxCount: 1 }, { name: 'periodos', maxCount: 1 }, { name: 'conceptos', maxCount: 1 },
+    { name: 'movimientos', maxCount: 1 }, { name: 'cfdi', maxCount: 1 },
+  ]),
+  asyncHandler(async (req: Request, res: Response) => {
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const leer = (n: string): any[] => {
+      const f = files?.[n]?.[0];
+      if (!f) return [];
+      const txt = f.buffer.toString('utf8').replace(/^﻿/, '');
+      try { const j = JSON.parse(txt); return Array.isArray(j) ? j : [j]; }
+      catch { throw new ValidationError(`El archivo ${n}.json no es JSON válido.`); }
+    };
+    const paquete = {
+      empresa: leer('empresa'), departamentos: leer('departamentos'), puestos: leer('puestos'),
+      empleados: leer('empleados'), periodos: leer('periodos'), conceptos: leer('conceptos'),
+      movimientos: leer('movimientos'), cfdi: leer('cfdi'),
+    } as any;
+    if (!paquete.empleados.length || !paquete.periodos.length) {
+      throw new ValidationError('El paquete necesita al menos empleados.json y periodos.json.');
+    }
+    const forzar = req.body?.forzar === 'true' || req.body?.forzar === true;
+    const ejercicios = String(req.body?.ejercicios || '')
+      .split(',').map((s) => Number(s.trim())).filter((x) => Number.isInteger(x) && x > 0);
+    const rep = await nominaImport.importarNomina(companyId(req), paquete, req.user?.userId, { forzar, ejercicios });
+    res.json({ success: true, data: rep });
   })
 );
 

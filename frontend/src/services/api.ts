@@ -1816,6 +1816,13 @@ class APIClient {
     );
   }
 
+  /** Importa el paquete de un respaldo de NomiPaq (empleados, periodos, recibos). */
+  async importarNominaRespaldo(fd: FormData) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/importar', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 600000 });
+    return r.data;
+  }
+
   /** El recibo en PDF, para verlo en pantalla (blob URL). */
   async getReciboPdfBlob(id: string): Promise<string> {
     const r = await this.client.get(`/nomina/recibos/${id}/pdf`, { responseType: 'blob' });
