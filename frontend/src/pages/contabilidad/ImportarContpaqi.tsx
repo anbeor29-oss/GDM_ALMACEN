@@ -16,15 +16,23 @@ import api from '@/services/api';
 const ARCHIVOS = ['empresa', 'cuentas', 'polizas', 'movimientos', 'poliza_cfdi', 'cfdi', 'saldos'] as const;
 type Archivo = typeof ARCHIVOS[number];
 const OPCIONALES: Archivo[] = ['saldos'];
+const mx = (n: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
+const COMANDO = '.\\importar-respaldo.ps1 -Bak "C:\\ruta\\del\\respaldo.bak" -Nexo "https://TU-NEXO" -Email "tu@correo.com"';
 
 export function ImportarContpaqiPage() {
   const [files, setFiles] = useState<Partial<Record<Archivo, File>>>({});
   const [empresa, setEmpresa] = useState<{ rfc?: string; nombre?: string } | null>(null);
+  const [preview, setPreview] = useState<any>(null);
   const [forzar, setForzar] = useState(false);
   const [busy, setBusy] = useState(false);
   const [rep, setRep] = useState<any>(null);
   const [error, setError] = useState('');
   const [rfcMismatch, setRfcMismatch] = useState(false);
+
+  const leerJson = async (f?: File): Promise<any[]> => {
+    if (!f) return [];
+    try { const j = JSON.parse((await f.text()).replace(/^﻿/, '')); return Array.isArray(j) ? j : [j]; } catch { return []; }
+  };
 
   const recibir = async (lista: FileList | null) => {
     if (!lista) return;
@@ -36,10 +44,19 @@ export function ImportarContpaqiPage() {
     }
     setFiles(next); setError(''); setRep(null); setRfcMismatch(false); setForzar(false);
     // Lee el RFC del respaldo (empresa.json) para mostrarlo como primer paso.
-    if (next.empresa) {
-      try { const txt = (await next.empresa.text()).replace(/^﻿/, ''); const j = JSON.parse(txt); setEmpresa(Array.isArray(j) ? j[0] : j); }
-      catch { setEmpresa(null); }
-    }
+    if (next.empresa) { const j = await leerJson(next.empresa); setEmpresa(j[0] || null); }
+    // PREVIO: conteos de lo que se va a importar, sin subir nada.
+    if (next.cuentas && next.polizas && next.movimientos) {
+      const [cuentas, pol, mov, cfdi, pc] = await Promise.all([
+        leerJson(next.cuentas), leerJson(next.polizas), leerJson(next.movimientos), leerJson(next.cfdi), leerJson(next.poliza_cfdi)]);
+      const car = mov.filter((m: any) => m.tm === 0).reduce((a: number, m: any) => a + Number(m.importe || 0), 0);
+      const ab = mov.filter((m: any) => m.tm === 1).reduce((a: number, m: any) => a + Number(m.importe || 0), 0);
+      setPreview({
+        cuentas: cuentas.length, polizas: pol.length, movimientos: mov.length, cfdi: cfdi.length, ligas: pc.length,
+        cargos: Math.round(car * 100) / 100, abonos: Math.round(ab * 100) / 100,
+        ejercicios: [...new Set(pol.map((p: any) => p.ejercicio))].filter(Boolean).sort(),
+      });
+    } else { setPreview(null); }
   };
 
   const faltan = ARCHIVOS.filter((a) => !OPCIONALES.includes(a) && !files[a]);
@@ -79,6 +96,26 @@ export function ImportarContpaqiPage() {
         </p>
       </details>
 
+      {/* Opción A: un solo comando desde la PC (recomendada) */}
+      <div className="bg-white rounded-lg shadow border p-4 space-y-2">
+        <p className="text-sm font-semibold text-gray-800">Opción A · Un solo comando <span className="text-[11px] font-normal text-emerald-700">(recomendada)</span></p>
+        <p className="text-sm text-gray-600">
+          Desde la PC (con SQL Server), señalas el <b>.bak</b> y la herramienta hace todo:
+          restaura → extrae → te muestra el previo → busca la empresa por su RFC → importa. Nunca tocas archivos sueltos.
+        </p>
+        <div className="flex items-start gap-2">
+          <pre className="flex-1 text-xs bg-gray-900 text-gray-100 rounded px-3 py-2 overflow-x-auto whitespace-pre-wrap">{COMANDO}</pre>
+          <button onClick={() => navigator.clipboard?.writeText(COMANDO)}
+            className="text-xs border rounded px-2 py-1 text-gray-600 hover:bg-gray-50 shrink-0">Copiar</button>
+        </div>
+        <p className="text-[11px] text-gray-400">
+          En <span className="font-mono">backend/scripts/contpaqi/</span>. Agrega <span className="font-mono">-DryRun</span> para
+          ver sólo el previo sin importar. Pide la contraseña sin mostrarla.
+        </p>
+      </div>
+
+      <p className="text-sm font-semibold text-gray-800 pt-1">Opción B · Subir el paquete ya extraído</p>
+
       {/* Paso 1: validación de empresa/RFC */}
       <div className="bg-white rounded-lg shadow border p-4 space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Paso 1 · Empresa del respaldo</p>
@@ -116,6 +153,24 @@ export function ImportarContpaqiPage() {
             </div>
           ))}
         </div>
+
+        {preview && (
+          <div className="border border-sky-200 bg-sky-50 rounded-lg p-3 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-sky-700 mb-1">Previo · lo que se va a importar</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-gray-700">
+              <span>Ejercicios: <b>{(preview.ejercicios || []).join(', ') || '—'}</b></span>
+              <span>Cuentas: <b>{preview.cuentas}</b></span>
+              <span>Pólizas: <b>{preview.polizas}</b></span>
+              <span>Movimientos: <b>{preview.movimientos}</b></span>
+              <span>CFDI: <b>{preview.cfdi}</b></span>
+              <span>Ligas póliza-UUID: <b>{preview.ligas}</b></span>
+            </div>
+            <p className={`text-xs mt-1 ${Math.abs(preview.cargos - preview.abonos) < 0.01 ? 'text-emerald-700' : 'text-rose-700'}`}>
+              Cargos {mx(preview.cargos)} {Math.abs(preview.cargos - preview.abonos) < 0.01 ? '=' : '≠'} Abonos {mx(preview.abonos)}
+              {Math.abs(preview.cargos - preview.abonos) < 0.01 ? ' · cuadra' : ` · dif ${mx(preview.cargos - preview.abonos)}`}
+            </p>
+          </div>
+        )}
 
         {rfcMismatch && (
           <label className="flex items-center gap-2 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
