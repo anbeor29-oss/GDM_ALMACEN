@@ -1823,6 +1823,12 @@ class APIClient {
     return r.data;
   }
 
+  /** Descarga la herramienta local de nómina (lee el .bak y deja un .zip para subir). */
+  async descargarHerramientaNomina() {
+    const r = await this.client.get('/nomina/herramienta', { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, 'Importar respaldo nomina NEXO.zip');
+  }
+
   /** El recibo en PDF, para verlo en pantalla (blob URL). */
   async getReciboPdfBlob(id: string): Promise<string> {
     const r = await this.client.get(`/nomina/recibos/${id}/pdf`, { responseType: 'blob' });

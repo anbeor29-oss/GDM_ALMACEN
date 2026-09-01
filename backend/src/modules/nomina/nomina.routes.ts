@@ -14,6 +14,9 @@
 
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
+import archiver from 'archiver';
+import * as fs from 'fs';
+import * as path from 'path';
 import { authenticateToken, authorize, requireCapability } from '../../middleware/authentication';
 import { requireModule } from '../../middleware/permissions';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
@@ -1269,6 +1272,28 @@ router.post(
       .split(',').map((s) => Number(s.trim())).filter((x) => Number.isInteger(x) && x > 0);
     const rep = await nominaImport.importarNomina(companyId(req), paquete, req.user?.userId, { forzar, ejercicios });
     res.json({ success: true, data: rep });
+  })
+);
+
+/**
+ * GET /nomina/herramienta — descarga la herramienta local que lee el .bak de
+ * NomiPaq y deja un paquete .zip para subir aquí. No sube nada (la subida es por
+ * la pantalla), así que no necesita la dirección de NEXO.
+ */
+router.get(
+  '/herramienta',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const dir = path.resolve(__dirname, '../../../scripts/nomina');
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="Importar respaldo nomina NEXO.zip"');
+    const zip = (archiver as unknown as (f: string, o?: any) => import('archiver').Archiver)('zip', { zlib: { level: 9 } });
+    zip.on('error', (e: Error) => { res.destroy(e); });
+    zip.pipe(res);
+    for (const f of ['importar-respaldo-nomina.ps1', 'extraer-nomina.ps1', 'Importar respaldo nomina.cmd']) {
+      const p = path.join(dir, f);
+      if (fs.existsSync(p)) zip.file(p, { name: f });
+    }
+    await zip.finalize();
   })
 );
 
