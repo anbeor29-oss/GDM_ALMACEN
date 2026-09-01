@@ -102,6 +102,7 @@ export interface ActivoDetectado {
   moi: number;
   tasa_anual: number;
   depreciable: boolean;
+  intangible: boolean;
   fecha_adquisicion: string;
   origen_uuid: string;
   origen_folio: string;
@@ -158,7 +159,7 @@ export async function detectarDesdeCompras(
         descripcion: (e.desc || regla.etiqueta).slice(0, 250),
         categoria: regla.categoria, etiqueta: regla.etiqueta,
         cuenta_activo: cod, cuenta_gasto: regla.gasto, cuenta_dep_acum: regla.depAcum,
-        moi: e.monto, tasa_anual: regla.tasaAnual, depreciable: regla.depreciable,
+        moi: e.monto, tasa_anual: regla.tasaAnual, depreciable: regla.depreciable, intangible: regla.intangible,
         fecha_adquisicion: String(c.fecha).slice(0, 10),
         origen_uuid: c.uuid, origen_folio: [c.serie, c.folio].filter(Boolean).join('-') || '',
         clave_prod_serv: e.clave, proveedor_rfc: c.rfc_emisor || '', proveedor_nombre: c.nombre_emisor || '',
@@ -274,12 +275,15 @@ export async function listarActivos(companyId: string) {
   return r.rows.map((a: any) => {
     const calc = calcularDepreciacion(Number(a.moi), Number(a.valor_residual), Number(a.tasa_anual));
     const acumulada = round2(a.acumulada);
+    const regla = reglaDeCuentaActivo(a.cuenta_activo);
     return {
       ...a,
       moi: Number(a.moi), valor_residual: Number(a.valor_residual), tasa_anual: Number(a.tasa_anual),
       dep_mensual: calc.depMensual, dep_anual: calc.depAnual, meses_vida: calc.mesesVida,
       acumulada, pendiente: round2(calc.base - acumulada), valor_en_libros: round2(Number(a.moi) - acumulada),
       totalmente_depreciado: calc.base > 0 && acumulada >= calc.base - 0.01,
+      // Para separar la vista: intangibles/diferidos se AMORTIZAN (702/183); el resto se DEPRECIA.
+      intangible: !!regla?.intangible,
     };
   });
 }

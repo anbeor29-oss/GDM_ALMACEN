@@ -23,21 +23,38 @@ const mesAA = (s?: string) => s ? `${MESES[Number(s.slice(5, 7))]} ${s.slice(0, 
 
 export function ActivoFijoPage() {
   const hoy = new Date();
+  const [modo, setModo] = useState<'depreciacion' | 'amortizacion'>('depreciacion');
   const [tab, setTab] = useState<'cedula' | 'detectar' | 'depreciacion'>('cedula');
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mes, setMes] = useState(hoy.getMonth() + 1);
   const anios = Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i);
+  const amort = modo === 'amortizacion';
 
   return (
     <div className="p-6 space-y-4 max-w-6xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Building2 size={22} className="text-emerald-700" /> Activo fijo y depreciación
+          <Building2 size={22} className="text-emerald-700" />
+          {amort ? 'Activos intangibles y amortización' : 'Activo fijo y depreciación'}
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Cada compra que cae en una cuenta de activo fijo se deprecia sola en línea recta (LISR 33-35):
-          su cédula, y una póliza mensual que no duplica.
+          {amort
+            ? 'Cada compra que cae en una cuenta de intangible o diferido (17x) se amortiza sola en línea recta (LISR 33): su cédula, y una póliza mensual (gasto 702 / acumulada 183) que no duplica.'
+            : 'Cada compra que cae en una cuenta de activo fijo (15x) se deprecia sola en línea recta (LISR 34-35): su cédula, y una póliza mensual (gasto 701 / acumulada 171) que no duplica.'}
         </p>
+      </div>
+
+      {/* Depreciación (tangibles) ⇆ Amortización (intangibles) — el mismo motor, filtrado por rubro */}
+      <div className="inline-flex rounded-lg border bg-white p-0.5 text-sm">
+        {([['depreciacion', 'Depreciación', 'tangibles · 15x'],
+           ['amortizacion', 'Amortización', 'intangibles · 17x']] as const).map(([k, label, sub]) => (
+          <button key={k} onClick={() => setModo(k)}
+            className={`px-4 py-1.5 rounded-md flex flex-col items-center leading-tight ${
+              modo === k ? 'bg-emerald-700 text-white' : 'text-gray-600 hover:text-gray-800'}`}>
+            <span className="font-medium">{label}</span>
+            <span className={`text-[10px] ${modo === k ? 'text-emerald-100' : 'text-gray-400'}`}>{sub}</span>
+          </button>
+        ))}
       </div>
 
       {tab !== 'cedula' && (
@@ -54,7 +71,7 @@ export function ActivoFijoPage() {
 
       <div className="flex gap-1 border-b">
         {([['cedula', 'Cédula', Building2], ['detectar', 'Detectar desde compras', Sparkles],
-           ['depreciacion', 'Pólizas de depreciación', FileText]] as const).map(([k, label, Icon]) => (
+           ['depreciacion', 'Pólizas del mes', FileText]] as const).map(([k, label, Icon]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-1.5 ${
               tab === k ? 'border-emerald-700 text-emerald-800' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
@@ -63,18 +80,19 @@ export function ActivoFijoPage() {
         ))}
       </div>
 
-      {tab === 'cedula' && <TabCedula />}
-      {tab === 'detectar' && <TabDetectar anio={anio} mes={mes} />}
+      {tab === 'cedula' && <TabCedula soloIntangibles={amort} />}
+      {tab === 'detectar' && <TabDetectar anio={anio} mes={mes} soloIntangibles={amort} />}
       {tab === 'depreciacion' && <TabDepreciacion anio={anio} mes={mes} />}
     </div>
   );
 }
 
 /* ── Tab 1: Cédula ─────────────────────────────────────────────────────────── */
-function TabCedula() {
+function TabCedula({ soloIntangibles }: { soloIntangibles: boolean }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['activos-fijos'], queryFn: () => api.getActivos() });
-  const activos: any[] = q.data?.data?.activos || [];
+  const todos: any[] = q.data?.data?.activos || [];
+  const activos = todos.filter((a) => !!a.intangible === soloIntangibles);
   const [cedula, setCedula] = useState<string | null>(null);
 
   const totalMoi = activos.reduce((a, x) => a + Number(x.moi || 0), 0);
@@ -113,7 +131,8 @@ function TabCedula() {
             {q.isLoading && <tr><td colSpan={10} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>}
             {!q.isLoading && activos.length === 0 && (
               <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-500 italic">
-                Aún no hay activos. Ve a «Detectar desde compras» para levantarlos del XML.
+                Aún no hay {soloIntangibles ? 'intangibles ni diferidos' : 'activos fijos'} en esta vista.
+                Ve a «Detectar desde compras» para levantarlos del XML.
               </td></tr>
             )}
             {activos.map((a) => (
@@ -258,7 +277,7 @@ function ModalCedula({ id, onClose }: { id: string; onClose: () => void }) {
 }
 
 /* ── Tab 2: Detectar desde compras ─────────────────────────────────────────── */
-function TabDetectar({ anio, mes }: { anio: number; mes: number }) {
+function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number; soloIntangibles: boolean }) {
   const qc = useQueryClient();
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
@@ -267,14 +286,16 @@ function TabDetectar({ anio, mes }: { anio: number; mes: number }) {
   const [sel, setSel] = useState<Record<number, boolean>>({});
   const [tasas, setTasas] = useState<Record<number, string>>({});
 
-  const marcados = detectados.filter((_, i) => sel[i]);
+  // Filtra por rubro conservando el índice original (sel/tasas se llavean por él).
+  const visibles = detectados.map((d, i) => ({ d, i })).filter(({ d }) => !!d.intangible === soloIntangibles);
+  const marcados = visibles.filter(({ i }) => sel[i]);
 
   const registrar = async () => {
     if (!marcados.length) return;
     setBusy(true); setMsg('');
     try {
-      const payload = detectados
-        .map((d, i) => ({ d, i })).filter(({ i }) => sel[i])
+      const payload = visibles
+        .filter(({ i }) => sel[i])
         .map(({ d, i }) => ({ ...d, tasa_anual: tasas[i] !== undefined ? (Number(tasas[i]) || 0) / 100 : d.tasa_anual }));
       const r: any = await api.registrarActivosDetectados(payload);
       setMsg(`${r.data?.registrados || 0} activo(s) registrado(s) en la cédula.`);
@@ -289,8 +310,9 @@ function TabDetectar({ anio, mes }: { anio: number; mes: number }) {
     <div className="space-y-3">
       <div className="bg-white rounded-lg shadow border p-4 flex flex-wrap items-center gap-3">
         <p className="text-sm text-gray-600 flex-1 min-w-[16rem]">
-          Toma las compras de <b>{MESES[mes]} {anio}</b> con XML y propone como activo cada partida cuya cuenta sea de
-          activo fijo (15x) o intangible (17x). La <b>tasa</b> viene del máximo LISR; ajústala antes de registrar.
+          Toma las compras de <b>{MESES[mes]} {anio}</b> con XML y propone como activo cada partida cuya cuenta sea de{' '}
+          {soloIntangibles ? 'intangible o diferido (17x)' : 'activo fijo (15x)'}. La <b>tasa</b> viene del máximo LISR;
+          ajústala antes de registrar.
         </p>
         <button onClick={() => q.refetch()} disabled={q.isFetching}
           className="flex items-center gap-1.5 bg-white border text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50 disabled:opacity-50 text-sm">
@@ -308,8 +330,8 @@ function TabDetectar({ anio, mes }: { anio: number; mes: number }) {
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-3 py-2 w-8">
-                <input type="checkbox" checked={detectados.length > 0 && marcados.length === detectados.length}
-                  onChange={(e) => setSel(e.target.checked ? Object.fromEntries(detectados.map((_, i) => [i, true])) : {})} />
+                <input type="checkbox" checked={visibles.length > 0 && marcados.length === visibles.length}
+                  onChange={(e) => setSel(e.target.checked ? Object.fromEntries(visibles.map(({ i }) => [i, true])) : {})} />
               </th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Concepto</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Rubro / cuenta</th>
@@ -319,13 +341,13 @@ function TabDetectar({ anio, mes }: { anio: number; mes: number }) {
           </thead>
           <tbody className="divide-y">
             {q.isLoading && <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500">Buscando…</td></tr>}
-            {!q.isLoading && detectados.length === 0 && (
+            {!q.isLoading && visibles.length === 0 && (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500 italic">
-                Sin activos por registrar en {MESES[mes]} {anio}. (Recuerda: la partida debe caer en una cuenta 15x/17x,
-                y el recibido tener XML.)
+                Sin {soloIntangibles ? 'intangibles' : 'activos fijos'} por registrar en {MESES[mes]} {anio}.
+                (Recuerda: la partida debe caer en una cuenta {soloIntangibles ? '17x' : '15x'}, y el recibido tener XML.)
               </td></tr>
             )}
-            {detectados.map((d, i) => (
+            {visibles.map(({ d, i }) => (
               <tr key={i} className={`hover:bg-gray-50 ${!d.depreciable ? 'text-gray-400' : ''}`}>
                 <td className="px-3 py-2 text-center">
                   <input type="checkbox" checked={!!sel[i]} onChange={(e) => setSel({ ...sel, [i]: e.target.checked })} />
