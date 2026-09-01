@@ -14,6 +14,9 @@ import { CampoFecha } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
+/** #,###.## con dos decimales, sin símbolo — el formato contable de importes. */
+const fmt2 = (n: any) =>
+  new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n) || 0);
 const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 const fecha = (s?: string) => s ? new Date(s + (String(s).length <= 10 ? 'T12:00:00' : '')).toLocaleDateString('es-MX') : '—';
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
@@ -192,6 +195,32 @@ export function PolizasListaPage() {
 }
 
 /* ── Editor de una póliza (reemplaza sus partidas; cuadra o no se guarda) ── */
+/**
+ * Un campo de importe: se ve como #,###.## (dos decimales) cuando no se edita, y
+ * en crudo mientras se escribe. Sin los botones de subir/baja (no es `type
+ * number`), y con «−» para que el sistema lo cuadre.
+ */
+function CampoImporte({ value, onChange, onMinus, className }: {
+  value: string; onChange: (v: string) => void; onMinus: () => void; className?: string;
+}) {
+  const [foco, setFoco] = useState(false);
+  const [draft, setDraft] = useState('');
+  const mostrado = foco ? draft : (value ? fmt2(value) : '');
+  return (
+    <input
+      type="text" inputMode="decimal" value={mostrado}
+      onFocus={() => { setDraft(value); setFoco(true); }}
+      onBlur={() => setFoco(false)}
+      onChange={(e) => { const limpio = e.target.value.replace(/[^\d.]/g, ''); setDraft(limpio); onChange(limpio); }}
+      onKeyDown={(e) => { if (e.key === '-') { e.preventDefault(); onMinus(); (e.target as HTMLInputElement).blur(); } }}
+      title="− para cuadrar"
+      className={className}
+    />
+  );
+}
+
+const TIPO_POLIZA_LABEL: Record<string, string> = { DIARIO: 'Diario', INGRESO: 'Ingreso', EGRESO: 'Egreso' };
+
 function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
   const [fecha, setFecha] = useState<string>(String(poliza.fecha || '').slice(0, 10));
   const [concepto, setConcepto] = useState<string>(poliza.concepto || '');
@@ -250,10 +279,16 @@ function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white">
-          <h3 className="font-semibold text-gray-900">Editar póliza #{poliza.folio}</h3>
-          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto ring-1 ring-indigo-200" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 sticky top-0 bg-gradient-to-r from-indigo-700 to-indigo-600 text-white z-10">
+          <div className="flex items-center gap-2.5">
+            <h3 className="font-semibold text-base">Editar póliza #{poliza.folio}</h3>
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/25 font-medium">
+              {TIPO_POLIZA_LABEL[poliza.tipo] || poliza.tipo || 'Diario'}
+            </span>
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/15">{ETIQUETA[categoria(poliza)]}</span>
+          </div>
+          <button onClick={onCerrar} className="text-white/80 hover:text-white"><X size={18} /></button>
         </div>
 
         <div className="p-4 space-y-3">
@@ -274,12 +309,12 @@ function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
 
           <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="border-b border-indigo-200 bg-indigo-50/60">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 w-52">Cuenta</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Concepto</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 w-28">Debe</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 w-28">Haber</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-900 w-64">Cuenta y nombre</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-900">Concepto</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-sky-800 w-36 bg-sky-100/70">Debe</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-violet-800 w-36 bg-violet-100/70">Haber</th>
                   <th className="w-8" />
                 </tr>
               </thead>
@@ -289,19 +324,19 @@ function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
                     <td className="px-2 py-1.5">
                       <input list="ctas-editar-poliza" value={l.codigo} onChange={(e) => set(i, 'codigo', e.target.value)}
                         placeholder="Cuenta" className={`border rounded px-2 py-1 text-sm w-full font-mono ${l.codigo && !nombreDe.has(l.codigo) ? 'border-rose-400 text-rose-700' : ''}`} />
-                      {l.codigo && nombreDe.get(l.codigo) && <span className="text-[10px] text-gray-500 truncate block">{nombreDe.get(l.codigo)}</span>}
-                      {l.codigo && !nombreDe.has(l.codigo) && <span className="text-[10px] text-rose-500 block">no existe</span>}
+                      {l.codigo && nombreDe.get(l.codigo) && <span className="text-[11px] text-gray-600 truncate block">{nombreDe.get(l.codigo)}</span>}
+                      {l.codigo && !nombreDe.has(l.codigo) && <span className="text-[11px] text-rose-500 block">no existe</span>}
                     </td>
                     <td className="px-2 py-1.5"><input value={l.concepto} onChange={(e) => set(i, 'concepto', e.target.value)} className="border rounded px-2 py-1 text-sm w-full" /></td>
-                    <td className="px-2 py-1.5"><input type="number" step="0.01" min="0" value={l.cargo} onChange={(e) => set(i, 'cargo', e.target.value)} onKeyDown={(e) => { if (e.key === '-') { e.preventDefault(); cuadrar(i, 'cargo'); } }} title="− para cuadrar" className="border rounded px-2 py-1 text-sm w-full text-right" /></td>
-                    <td className="px-2 py-1.5"><input type="number" step="0.01" min="0" value={l.abono} onChange={(e) => set(i, 'abono', e.target.value)} onKeyDown={(e) => { if (e.key === '-') { e.preventDefault(); cuadrar(i, 'abono'); } }} title="− para cuadrar" className="border rounded px-2 py-1 text-sm w-full text-right" /></td>
+                    <td className="px-2 py-1.5 bg-sky-50/40"><CampoImporte value={l.cargo} onChange={(v) => set(i, 'cargo', v)} onMinus={() => cuadrar(i, 'cargo')} className="border rounded px-2 py-1 text-sm w-full text-right tabular-nums outline-none focus:ring-2 focus:ring-sky-300" /></td>
+                    <td className="px-2 py-1.5 bg-violet-50/40"><CampoImporte value={l.abono} onChange={(v) => set(i, 'abono', v)} onMinus={() => cuadrar(i, 'abono')} className="border rounded px-2 py-1 text-sm w-full text-right tabular-nums outline-none focus:ring-2 focus:ring-violet-300" /></td>
                     <td className="px-1"><button onClick={() => quitar(i)} className="text-gray-300 hover:text-rose-500"><Trash2 size={14} /></button></td>
                   </tr>
                 ))}
-                <tr className="font-semibold bg-gray-50">
-                  <td colSpan={2} className="px-3 py-1.5 text-right">Sumas</td>
-                  <td className="px-3 py-1.5 text-right">{money(sumaCargo)}</td>
-                  <td className="px-3 py-1.5 text-right">{money(sumaAbono)}</td>
+                <tr className="font-semibold bg-indigo-50 border-t border-indigo-200">
+                  <td colSpan={2} className="px-3 py-2 text-right text-indigo-900">Sumas</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-sky-900">{fmt2(sumaCargo)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-violet-900">{fmt2(sumaAbono)}</td>
                   <td />
                 </tr>
               </tbody>
@@ -311,7 +346,7 @@ function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
           <div className="flex flex-wrap items-center gap-3">
             <button onClick={agregar} className="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"><Plus size={14} /> Agregar renglón</button>
             <span className={`text-sm ${cuadra ? 'text-emerald-700' : 'text-gray-500'}`}>
-              {cuadra ? 'Sumas iguales' : sumaCargo === sumaAbono ? 'Captura los importes' : `Diferencia ${money(round2(sumaCargo - sumaAbono))}`}
+              {cuadra ? 'Sumas iguales' : sumaCargo === sumaAbono ? 'Captura los importes' : `Diferencia ${fmt2(round2(sumaCargo - sumaAbono))}`}
             </span>
             <button onClick={guardar} disabled={busy || !cuadra}
               className="ml-auto flex items-center gap-1.5 bg-primary text-white px-4 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
