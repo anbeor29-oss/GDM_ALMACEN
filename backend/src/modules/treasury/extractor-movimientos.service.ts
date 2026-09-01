@@ -519,6 +519,89 @@ function extraerNu(
   };
 }
 
+/**
+ * MercadoPago — "Estado de saldos y movimientos". Cada movimiento son varios
+ * renglones: la fecha sola ("01-07-2026", DD-MM-YYYY), la descripción
+ * ("Liberación de dinero", "Transferencia enviada …"), el ID de la operación
+ * (un número largo que pdf-parse a veces parte en dos), y al final el VALOR y el
+ * SALDO **pegados** con signo de peso: "$ 89.22$ 428.37" (o con el ID pegado
+ * enfrente: "166755449692$ 89.22$ 428.37"). El VALOR viene FIRMADO —negativo es
+ * salida—, así que el lado sale del signo, no de una diferencia de saldos. Trae
+ * saldo por renglón, que se guarda para cotejar. La lectura arranca en "DETALLE
+ * DE MOVIMIENTOS"; los "1/20" de página y los encabezados de columna se ignoran.
+ */
+function extraerMercadoPago(
+  texto: string, opciones: { anio?: number; mes?: number }, avisos: string[]
+): ResultadoExtraccion {
+  const buscar = (re: RegExp): number | null => { const m = re.exec(texto); return m ? aNumero(m[1]) : null; };
+  const saldoInicial = buscar(/Saldo\s*inicial:?\s*\$?\s*(-?[\d,]+\.\d{2})/i);
+  const saldoFinal = buscar(/Saldo\s*final:?\s*\$?\s*(-?[\d,]+\.\d{2})/i);
+
+  const lineas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  let ini = lineas.findIndex((l) => /DETALLE\s+DE\s+MOVIMIENTOS/i.test(l));
+  if (ini < 0) ini = 0;
+
+  const esFecha = (l: string) => /^\d{2}-\d{2}-\d{4}$/.test(l);
+  // El cierre del movimiento: VALOR y SALDO pegados al final del renglón.
+  const RX_VALOR_SALDO = /\$\s*(-?[\d,]+\.\d{2})\s*\$\s*(-?[\d,]+\.\d{2})\s*$/;
+  const esRuido = (l: string) =>
+    /^\d+\/\d+$/.test(l) ||
+    /^Fecha|^Descripci|^ID\s*de\s*la|^operaci[óo]n|^Valor\s*Saldo|^ValorSaldo|^Valor$|^Saldo$/i.test(l);
+
+  const movimientos: MovimientoExtraido[] = [];
+  let orden = 0;
+  let fecha = '';
+  let desc: string[] = [];
+
+  for (let i = ini + 1; i < lineas.length; i++) {
+    const l = lineas[i];
+    if (esRuido(l)) continue;
+    if (esFecha(l)) { fecha = `${l.slice(6, 10)}-${l.slice(3, 5)}-${l.slice(0, 2)}`; desc = []; continue; }
+
+    const m = RX_VALOR_SALDO.exec(l);
+    if (m && fecha) {
+      const valor = aNumero(m[1]);   // firmado: negativo = salida
+      const saldo = aNumero(m[2]);
+      const concepto = desc.filter((d) => /[a-záéíóúñ]/i.test(d)).join(' ').slice(0, 140) || 'Movimiento';
+      // El ID puede venir pegado enfrente del valor, o en las líneas de puros dígitos.
+      const idPref = (l.split('$')[0] || '').replace(/\D/g, '');
+      const idDesc = desc.filter((d) => /^\d+$/.test(d)).join('');
+      movimientos.push({
+        fecha, concepto, referencia: (idPref || idDesc || '').slice(0, 60),
+        retiro: valor < 0 ? pesos(Math.abs(valor)) : 0,
+        deposito: valor > 0 ? pesos(valor) : 0,
+        saldo: pesos(saldo), saldoCalculado: 0, advertencia: '',
+        inferido: false, duda: false, orden: orden++, lineaOrigen: l,
+      });
+      desc = [];
+      continue;
+    }
+    desc.push(l); // descripción o ID (se resuelve al cerrar)
+  }
+
+  // Arrastre desde el saldo inicial y cotejo contra el saldo final declarado.
+  let corriendo = saldoInicial ?? 0;
+  for (const mv of movimientos) { corriendo = pesos(corriendo - mv.retiro + mv.deposito); mv.saldoCalculado = corriendo; }
+  const totalRetiros = pesos(movimientos.reduce((a, m) => a + m.retiro, 0));
+  const totalDepositos = pesos(movimientos.reduce((a, m) => a + m.deposito, 0));
+  const finalCalculado = pesos((saldoInicial ?? 0) - totalRetiros + totalDepositos);
+  const cuadra = saldoFinal !== null && Math.abs(saldoFinal - finalCalculado) <= 0.02;
+
+  if (saldoInicial === null) avisos.push('MercadoPago: no se encontró el saldo inicial.');
+  if (saldoFinal !== null && !cuadra) {
+    avisos.push(
+      `NO CUADRA: MercadoPago declara saldo final ${saldoFinal.toFixed(2)} y los movimientos dan ` +
+      `${finalCalculado.toFixed(2)} (dif ${pesos(saldoFinal - finalCalculado).toFixed(2)}).`);
+  }
+  if (movimientos.length === 0) avisos.push('MercadoPago: no se reconoció ningún movimiento en el detalle.');
+
+  return {
+    banco: 'MercadoPago', saldoInicial, saldoFinal, movimientos,
+    totalRetiros, totalDepositos,
+    conAdvertencia: 0, inferidos: 0, cuadra, avisos,
+  };
+}
+
 /* Parser propio de Bancrea. Su "Detalle de Movimientos" no pone la fila en un
  * renglón: primero imprime los tres importes de la fila (Saldo · Depósito ·
  * Retiro, en ese orden y explícitos —no hay que inferir signo—) y DESPUÉS, en
@@ -870,6 +953,10 @@ export function extraerMovimientos(
    * movimiento en un bloque largo por operación. Se lee por bloques (delimitados
    * por la fecha) y el lado sale de la diferencia del saldo corriente. */
   if (banco === 'Banamex') return extraerBanamex(texto, opciones, avisos);
+
+  /* MercadoPago: fecha, descripción e ID en renglones aparte y el VALOR (firmado)
+   * + SALDO pegados al final ("$ 89.22$ 428.37"). El lado sale del signo del valor. */
+  if (banco === 'MercadoPago') return extraerMercadoPago(texto, opciones, avisos);
 
   const mIni = RX_SALDO_INICIAL.exec(texto);
   const mFin = RX_SALDO_FINAL.exec(texto);
