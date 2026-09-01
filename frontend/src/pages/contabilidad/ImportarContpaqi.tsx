@@ -28,6 +28,7 @@ export function ImportarContpaqiPage() {
   const [error, setError] = useState('');
   const [rfcMismatch, setRfcMismatch] = useState(false);
   const [bajando, setBajando] = useState(false);
+  const [ejerSel, setEjerSel] = useState<Set<number>>(new Set()); // ejercicios elegidos para importar
 
   const descargarHerramienta = async () => {
     setBajando(true); setError('');
@@ -56,11 +57,12 @@ export function ImportarContpaqiPage() {
         leerJson(next.cuentas), leerJson(next.polizas), leerJson(next.movimientos), leerJson(next.cfdi), leerJson(next.poliza_cfdi)]);
       const car = mov.filter((m: any) => m.tm === 0).reduce((a: number, m: any) => a + Number(m.importe || 0), 0);
       const ab = mov.filter((m: any) => m.tm === 1).reduce((a: number, m: any) => a + Number(m.importe || 0), 0);
+      const ejs = ([...new Set(pol.map((p: any) => Number(p.ejercicio)))].filter(Boolean) as number[]).sort((a, b) => a - b);
       setPreview({
         cuentas: cuentas.length, polizas: pol.length, movimientos: mov.length, cfdi: cfdi.length, ligas: pc.length,
-        cargos: Math.round(car * 100) / 100, abonos: Math.round(ab * 100) / 100,
-        ejercicios: [...new Set(pol.map((p: any) => p.ejercicio))].filter(Boolean).sort(),
+        cargos: Math.round(car * 100) / 100, abonos: Math.round(ab * 100) / 100, ejercicios: ejs,
       });
+      setEjerSel(new Set(ejs)); // por omisión, todos
     } else { setPreview(null); }
   };
 
@@ -71,6 +73,10 @@ export function ImportarContpaqiPage() {
       const fd = new FormData();
       ARCHIVOS.forEach((a) => { if (files[a]) fd.append(a, files[a]!); });
       if (forzar) fd.append('forzar', 'true');
+      // Sólo los ejercicios elegidos (vacío/todos = no se manda el filtro).
+      if (preview?.ejercicios?.length && ejerSel.size && ejerSel.size < preview.ejercicios.length) {
+        fd.append('ejercicios', [...ejerSel].join(','));
+      }
       const r: any = await api.importarRespaldo(fd);
       setRep(r.data);
     } catch (e: any) {
@@ -133,10 +139,18 @@ export function ImportarContpaqiPage() {
 
       {rep && <Reporte rep={rep} />}
 
-      {/* Vía técnica, plegada: subir el paquete ya extraído */}
+      {/* Importar aquí mismo (sin salir de NEXO): subir el paquete ya extraído y
+          elegir qué ejercicios cargar. La herramienta sólo lee el .bak una vez. */}
       <details className="bg-white rounded-lg shadow border">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-gray-600">Opción avanzada · para el equipo de sistemas (subir los archivos del paquete)</summary>
+        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-emerald-800">
+          Importar aquí mismo · sube el paquete extraído y elige los datos (sin salir del sistema)
+        </summary>
         <div className="px-4 pb-4 space-y-3 border-t pt-3">
+          <p className="text-xs text-gray-500">
+            Para quien ya tiene el <b>paquete extraído</b> (los archivos <span className="font-mono">.json</span> que deja la
+            herramienta al leer el <span className="font-mono">.bak</span>): súbelos aquí, revisa el previo y elige qué
+            <b> años</b> cargar. Todo se importa en la <b>empresa abierta</b>, sin salir de NEXO.
+          </p>
           {empresa?.rfc && (
             <p className="text-sm text-gray-700">Respaldo de <b>{empresa.nombre || '—'}</b> · RFC <b className="font-mono">{empresa.rfc}</b>. Debe coincidir con la empresa abierta.</p>
           )}
@@ -173,6 +187,28 @@ export function ImportarContpaqiPage() {
               </p>
             </div>
           )}
+          {preview?.ejercicios?.length > 1 && (
+            <div className="border rounded-lg p-3">
+              <p className="text-xs font-semibold text-gray-600 mb-2">¿Qué años importar? (elige uno, varios o todos)</p>
+              <div className="flex flex-wrap gap-2">
+                {preview.ejercicios.map((a: number) => {
+                  const on = ejerSel.has(a);
+                  return (
+                    <button key={a} type="button"
+                      onClick={() => setEjerSel((s) => { const n = new Set(s); if (n.has(a)) n.delete(a); else n.add(a); return n; })}
+                      className={`px-3 py-1 rounded-full text-sm border ${on ? 'bg-emerald-700 text-white border-emerald-700' : 'text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                      {on ? '✓ ' : ''}{a}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1.5">
+                {ejerSel.size === preview.ejercicios.length
+                  ? 'Se importarán todos los años.'
+                  : ejerSel.size === 0 ? 'Elige al menos un año.' : `Se importarán ${ejerSel.size} de ${preview.ejercicios.length} años.`}
+              </p>
+            </div>
+          )}
           {rfcMismatch && (
             <label className="flex items-center gap-2 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
               <input type="checkbox" checked={forzar} onChange={(e) => setForzar(e.target.checked)} />
@@ -180,7 +216,8 @@ export function ImportarContpaqiPage() {
             </label>
           )}
           <div className="flex items-center gap-3">
-            <button onClick={importar} disabled={busy || faltan.length > 0}
+            <button onClick={importar}
+              disabled={busy || faltan.length > 0 || (preview?.ejercicios?.length > 1 && ejerSel.size === 0)}
               className="flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
               <PlayCircle size={16} /> {busy ? 'Importando…' : 'Importar a la empresa activa'}
             </button>

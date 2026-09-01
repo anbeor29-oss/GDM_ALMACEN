@@ -107,7 +107,8 @@ function fechaCt(s: string): string | null {
 }
 
 export async function importarContpaqi(
-  companyId: string, paquete: PaqueteContpaqi, userId?: string, opciones?: { forzar?: boolean }
+  companyId: string, paquete: PaqueteContpaqi, userId?: string,
+  opciones?: { forzar?: boolean; ejercicios?: number[] }
 ): Promise<ReporteImport> {
   const emp = await query<any>('SELECT rfc FROM companies WHERE id=$1', [companyId]);
   const rfcEmpresa = String(emp.rows[0]?.rfc || '').toUpperCase().trim();
@@ -134,15 +135,23 @@ export async function importarContpaqi(
     avisos: [],
   };
 
+  // Si el usuario eligió ejercicios (años) desde NEXO, sólo esos se importan;
+  // el catálogo de cuentas entra completo (no depende del ejercicio).
+  const ejerciciosSel = opciones?.ejercicios?.length ? new Set(opciones.ejercicios) : null;
+  const polizasSel = ejerciciosSel
+    ? (paquete.polizas || []).filter((p) => ejerciciosSel.has(p.ejercicio))
+    : (paquete.polizas || []);
+  const paqueteSel: PaqueteContpaqi = { ...paquete, polizas: polizasSel };
+
   // 1. Activar los ejercicios que tocan las pólizas (crea los 12 periodos c/u; NO siembra catálogo).
-  const ejercicios = Array.from(new Set((paquete.polizas || []).map((p) => p.ejercicio))).filter(Boolean).sort();
+  const ejercicios = Array.from(new Set(polizasSel.map((p) => p.ejercicio))).filter(Boolean).sort();
   for (const anio of ejercicios) {
     try { await activarContabilidad(companyId, { anio, sembrarCatalogo: false } as any); rep.ejerciciosActivados.push(anio); }
     catch (e: any) { rep.avisos.push(`Ejercicio ${anio}: ${e?.message || 'no se pudo activar'}`); }
   }
 
   await importarCuentas(companyId, paquete.cuentas || [], rep);
-  await importarPolizas(companyId, paquete, userId, rep);
+  await importarPolizas(companyId, paqueteSel, userId, rep);
   await importarCfdis(companyId, paquete.cfdi || [], rfcEmpresa, rep);
 
   return rep;
