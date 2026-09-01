@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, Info, TrendingUp, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, TrendingUp, X, FileSpreadsheet, FileDown } from 'lucide-react';
 import api from '@/services/api';
 import {
   MarcoEstado, SeccionBalance, Total, ListaRubros, NoDisponible, Cuadre,
@@ -51,6 +51,12 @@ export function BalanzaPage() {
     finally { setBusy(false); }
   };
 
+  const hayDatos = d && !d.vacio && (d.filas?.length || 0) > 0;
+  const descargar = async (fn: () => Promise<void>) => {
+    setMsg('');
+    try { await fn(); } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo descargar.'); }
+  };
+
   return (
     <div className="p-6 space-y-4 max-w-6xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -67,6 +73,18 @@ export function BalanzaPage() {
             className="flex items-center gap-1.5 bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
             {busy ? 'Actualizando…' : 'Actualizar desde pólizas'}
           </button>
+          {hayDatos && (
+            <>
+              <button onClick={() => descargar(() => api.descargarBalanzaExcel(anio, mes))} title="Descargar Excel"
+                className="flex items-center gap-1 border text-emerald-700 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 text-sm">
+                <FileSpreadsheet size={16} /> Excel
+              </button>
+              <button onClick={() => descargar(() => api.descargarBalanzaPdf(anio, mes))} title="Descargar PDF"
+                className="flex items-center gap-1 border text-rose-600 px-2.5 py-1.5 rounded-lg hover:bg-rose-50 text-sm">
+                <FileDown size={16} /> PDF
+              </button>
+            </>
+          )}
           <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input">
             {MESES.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
@@ -171,7 +189,23 @@ function AuxiliarModal({ codigo, anio, mes, onClose }: {
             </h3>
             <p className="text-xs text-gray-500">{MESES[mes]} {anio} · doble clic en un renglón para abrir su póliza</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+          <div className="flex items-center gap-2">
+            {d?.cuenta && (
+              <>
+                <button onClick={() => api.descargarAuxiliarExcel(d.cuenta.codigo, anio, mes).catch(() => {})}
+                  title="Descargar Excel"
+                  className="flex items-center gap-1 border text-emerald-700 px-2 py-1 rounded hover:bg-emerald-50 text-xs">
+                  <FileSpreadsheet size={14} /> Excel
+                </button>
+                <button onClick={() => api.descargarAuxiliarPdf(d.cuenta.codigo, anio, mes).catch(() => {})}
+                  title="Descargar PDF"
+                  className="flex items-center gap-1 border text-rose-600 px-2 py-1 rounded hover:bg-rose-50 text-xs">
+                  <FileDown size={14} /> PDF
+                </button>
+              </>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+          </div>
         </div>
 
         <div className="overflow-auto">

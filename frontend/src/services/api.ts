@@ -1148,6 +1148,26 @@ class APIClient {
       `/accounting/estados/${anio}/${mes}/auxiliar`, { params: { cuenta } });
     return r.data;
   }
+
+  /* ── Descargas de reportes contables (Excel / PDF, con encabezado de la casa) ── */
+  async descargarBalanzaExcel(anio: number, mes: number) {
+    const r = await this.client.get(`/accounting/estados/${anio}/${mes}/balanza/excel`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Balanza_${anio}-${String(mes).padStart(2, '0')}.xlsx`);
+  }
+  async descargarBalanzaPdf(anio: number, mes: number) {
+    const r = await this.client.get(`/accounting/estados/${anio}/${mes}/balanza/pdf`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Balanza_${anio}-${String(mes).padStart(2, '0')}.pdf`);
+  }
+  async descargarAuxiliarExcel(cuenta: string, anio: number, mes: number) {
+    const r = await this.client.get(`/accounting/estados/${anio}/${mes}/auxiliar/excel`,
+      { params: { cuenta }, responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Auxiliar_${cuenta}_${anio}-${String(mes).padStart(2, '0')}.xlsx`);
+  }
+  async descargarAuxiliarPdf(cuenta: string, anio: number, mes: number) {
+    const r = await this.client.get(`/accounting/estados/${anio}/${mes}/auxiliar/pdf`,
+      { params: { cuenta }, responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Auxiliar_${cuenta}_${anio}-${String(mes).padStart(2, '0')}.pdf`);
+  }
   /** Deriva/actualiza la balanza del mes desde las pólizas (journal_lines). */
   async actualizarBalanzaDesdePolizas(anio: number, mes: number) {
     const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/${mes}/desde-polizas`);

@@ -25,6 +25,7 @@ import * as terceros from './catalogo-terceros.service';
 import * as ventas from './ventas-cuentas.service';
 import * as compras from './compras-cuentas.service';
 import * as activos from './activos-fijos.service';
+import * as reportesExport from './reportes-export.service';
 import * as contpaqi from './contpaqi-import.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
@@ -512,6 +513,60 @@ router.get(
       companyId(req), cuenta, Number(req.params.anio), Number(req.params.mes));
     if (!data) { res.status(404).json({ success: false, message: 'No se encontró la cuenta' }); return; }
     res.json({ success: true, data });
+  })
+);
+
+/* ── Descargas (Excel / PDF) de los reportes contables, con encabezado de la casa ── */
+
+/** GET /accounting/estados/:anio/:mes/balanza/excel */
+router.get(
+  '/estados/:anio/:mes/balanza/excel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await reportesExport.balanzaExcel(
+      companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
+/** GET /accounting/estados/:anio/:mes/balanza/pdf */
+router.get(
+  '/estados/:anio/:mes/balanza/pdf',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await reportesExport.balanzaPdf(
+      companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
+/** GET /accounting/estados/:anio/:mes/auxiliar/excel?cuenta=CODIGO */
+router.get(
+  '/estados/:anio/:mes/auxiliar/excel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const cuenta = String(req.query.cuenta || '').trim();
+    if (!cuenta) throw new ValidationError('Falta la cuenta.');
+    const { buffer, nombre } = await reportesExport.auxiliarExcel(
+      companyId(req), cuenta, Number(req.params.anio), Number(req.params.mes));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
+/** GET /accounting/estados/:anio/:mes/auxiliar/pdf?cuenta=CODIGO */
+router.get(
+  '/estados/:anio/:mes/auxiliar/pdf',
+  asyncHandler(async (req: Request, res: Response) => {
+    const cuenta = String(req.query.cuenta || '').trim();
+    if (!cuenta) throw new ValidationError('Falta la cuenta.');
+    const { buffer, nombre } = await reportesExport.auxiliarPdf(
+      companyId(req), cuenta, Number(req.params.anio), Number(req.params.mes));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
   })
 );
 
