@@ -42,7 +42,11 @@ export interface ReporteImport {
   rfc: { respaldo: string; empresaActiva: string; coincide: boolean };
   ejerciciosActivados: number[];
   cuentas: { creadas: number; omitidas: number; sinAgrupador: number };
-  polizas: { creadas: number; yaExistian: number; omitidas: number; motivos: Array<{ guid: string; motivo: string }> };
+  polizas: {
+    creadas: number; yaExistian: number; omitidas: number;
+    conTemporal: Array<{ guid: string; folio: string; motivo: string }>;
+    motivos: Array<{ guid: string; motivo: string }>;
+  };
   cfdi: { creados: number; emitidos: number; recibidos: number };
   avisos: string[];
 }
@@ -96,7 +100,7 @@ export async function importarContpaqi(
     rfc: { respaldo: rfcRespaldo || '(no venía en el paquete)', empresaActiva: rfcEmpresa, coincide },
     ejerciciosActivados: [],
     cuentas: { creadas: 0, omitidas: 0, sinAgrupador: 0 },
-    polizas: { creadas: 0, yaExistian: 0, omitidas: 0, motivos: [] },
+    polizas: { creadas: 0, yaExistian: 0, omitidas: 0, conTemporal: [], motivos: [] },
     cfdi: { creados: 0, emitidos: 0, recibidos: 0 },
     avisos: [],
   };
@@ -187,30 +191,50 @@ async function importarPolizas(companyId: string, paquete: PaqueteContpaqi, user
     [companyId]);
   const importados = new Set<string>(ya.rows.map((r: any) => r.origen_uuid));
 
+  // La cuenta temporal se crea la PRIMERA vez que hace falta (no antes).
+  let tempId: string | null = null;
+  const cuentaTemporal = async (): Promise<string> => {
+    if (!tempId) tempId = await asegurarCuentaTemporal(companyId);
+    return tempId;
+  };
+
   for (const p of paquete.polizas || []) {
     if (importados.has(p.guid)) { rep.polizas.yaExistian++; continue; }
+    const folioTxt = `${p.ejercicio}/${p.periodo}/${p.folio}`;
     const movs = (movsPorPol.get(p.id) || []).sort((a, b) => a.num - b.num);
     if (movs.length < 2) { rep.polizas.omitidas++; if (movs.length) rep.polizas.motivos.push({ guid: p.guid, motivo: `sólo ${movs.length} movimiento(s)` }); continue; }
+
+    const fecha = fechaCt(p.fecha);
+    if (!fecha) { rep.polizas.omitidas++; rep.polizas.motivos.push({ guid: p.guid, motivo: `fecha inválida (${p.fecha})` }); continue; }
 
     const uuids = uuidsPorPol.get(p.id) || [];
     const uuidLinea = uuids.length === 1 ? uuids[0] : null; // línea a línea sólo si es un único CFDI
     const lineas: any[] = [];
-    let faltaCuenta: string | null = null;
+    const cuentasFaltantes = new Set<string>();
     for (const m of movs) {
       const cta = idCta.get(m.cuenta);
-      if (!cta || !cta.mov) { faltaCuenta = m.cuenta; break; }
+      let accountId: string;
+      if (cta && cta.mov) { accountId = cta.id; }
+      else { accountId = await cuentaTemporal(); cuentasFaltantes.add(m.cuenta); } // cuenta faltante → temporal, no se pierde
       lineas.push({
-        account_id: cta.id,
+        account_id: accountId,
         cargo: m.tm === 0 ? round2(m.importe) : 0,
         abono: m.tm === 1 ? round2(m.importe) : 0,
-        concepto: (m.concepto || '').toString().slice(0, 200) || null,
+        concepto: ((cuentasFaltantes.has(m.cuenta) ? `[${m.cuenta}] ` : '') + (m.concepto || '')).slice(0, 200) || null,
         uuid_cfdi: uuidLinea,
       });
     }
-    if (faltaCuenta) { rep.polizas.omitidas++; rep.polizas.motivos.push({ guid: p.guid, motivo: `cuenta ${faltaCuenta} no migrada` }); continue; }
 
-    const fecha = fechaCt(p.fecha);
-    if (!fecha) { rep.polizas.omitidas++; rep.polizas.motivos.push({ guid: p.guid, motivo: `fecha inválida (${p.fecha})` }); continue; }
+    // Si NO cuadra (descuadre de origen), una partida de ajuste a la cuenta temporal
+    // para que entre completa; se reporta para revisarla.
+    const sc = round2(lineas.reduce((a, l) => a + (l.cargo || 0), 0));
+    const sa = round2(lineas.reduce((a, l) => a + (l.abono || 0), 0));
+    let motivoTemp = cuentasFaltantes.size ? `cuenta ${[...cuentasFaltantes].join(', ')} → temporal` : '';
+    if (sc !== sa) {
+      const dif = round2(sc - sa);
+      lineas.push({ account_id: await cuentaTemporal(), cargo: dif < 0 ? -dif : 0, abono: dif > 0 ? dif : 0, concepto: 'Ajuste de cuadre (migración)', uuid_cfdi: null });
+      motivoTemp = (motivoTemp ? motivoTemp + '; ' : '') + `descuadre ${dif} ajustado`;
+    }
 
     try {
       await crearPoliza(companyId, {
@@ -221,13 +245,31 @@ async function importarPolizas(companyId: string, paquete: PaqueteContpaqi, user
         lineas,
       }, userId);
       rep.polizas.creadas++;
+      if (motivoTemp) rep.polizas.conTemporal.push({ guid: p.guid, folio: folioTxt, motivo: motivoTemp });
     } catch (e: any) {
       rep.polizas.omitidas++;
       rep.polizas.motivos.push({ guid: p.guid, motivo: (e?.message || 'error').toString().slice(0, 140) });
     }
   }
-  // Sólo se guardan los primeros motivos, para no inflar el reporte.
+  // Sólo se guardan los primeros, para no inflar el reporte.
   if (rep.polizas.motivos.length > 50) rep.polizas.motivos = rep.polizas.motivos.slice(0, 50);
+  if (rep.polizas.conTemporal.length > 200) rep.polizas.conTemporal = rep.polizas.conTemporal.slice(0, 200);
+}
+
+/** La cuenta temporal de migración (suspense): las partidas que no tienen cuenta
+ *  o el descuadre de una póliza caen aquí para no perder nada; se reasignan luego. */
+async function asegurarCuentaTemporal(companyId: string): Promise<string> {
+  const cod = 'MIG-TEMPORAL';
+  const ya = await query<any>('SELECT id FROM accounting_accounts WHERE company_id=$1 AND codigo=$2', [companyId, cod]);
+  if (ya.rows[0]) return ya.rows[0].id;
+  const r = await query<any>(
+    `INSERT INTO accounting_accounts
+       (company_id, codigo, nombre, tipo, naturaleza, nivel, permite_movimientos, requiere_tercero, moneda, activa)
+     VALUES ($1,$2,$3,'ACTIVO','DEUDORA',1,true,false,'MXN',true)
+     ON CONFLICT (company_id, codigo) DO UPDATE SET updated_at=NOW()
+     RETURNING id`,
+    [companyId, cod, 'CUENTA TEMPORAL DE MIGRACIÓN (reasignar)']);
+  return r.rows[0].id;
 }
 
 /* ── 3. CFDI recibidos/emitidos ────────────────────────────────────────────── */

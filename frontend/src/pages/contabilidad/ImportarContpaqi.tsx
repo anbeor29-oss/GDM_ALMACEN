@@ -205,6 +205,15 @@ export function ImportarContpaqiPage() {
             <Tarjeta titulo="CFDI" valor={`${rep.cfdi?.creados ?? 0} nuevos (${rep.cfdi?.emitidos ?? 0} emitidos / ${rep.cfdi?.recibidos ?? 0} recibidos)`} />
           </div>
 
+          {rep.polizas?.conTemporal?.length > 0 && (
+            <details className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2" open>
+              <summary className="cursor-pointer font-semibold">⚠ {rep.polizas.conTemporal.length} póliza(s) usaron la cuenta temporal «MIG-TEMPORAL» — hay que reasignarles la cuenta</summary>
+              <p className="mt-1">Entraron completas (no se perdió nada), pero una partida quedó en la cuenta temporal. Revísalas en <b>Pólizas</b> y cámbiales la cuenta correcta.</p>
+              <ul className="mt-1 list-disc pl-5 space-y-0.5">
+                {rep.polizas.conTemporal.slice(0, 40).map((m: any, i: number) => <li key={i}><b>{m.folio}</b> <span className="font-mono">{String(m.guid).slice(0, 8)}</span>: {m.motivo}</li>)}
+              </ul>
+            </details>
+          )}
           {rep.polizas?.motivos?.length > 0 && (
             <details className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
               <summary className="cursor-pointer">{rep.polizas.motivos.length} póliza(s) omitida(s) — ver por qué</summary>
