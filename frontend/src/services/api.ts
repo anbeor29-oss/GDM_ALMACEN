@@ -1168,6 +1168,14 @@ class APIClient {
       { params: { cuenta }, responseType: 'blob' });
     await this.downloadFile(r.data as Blob, `Auxiliar_${cuenta}_${anio}-${String(mes).padStart(2, '0')}.pdf`);
   }
+  async descargarSituacion(anio: number, mes: number, formato: 'excel' | 'pdf') {
+    const r = await this.client.get(`/accounting/estados/${anio}/${mes}/situacion/${formato}`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Situacion_${anio}-${String(mes).padStart(2, '0')}.${formato === 'pdf' ? 'pdf' : 'xlsx'}`);
+  }
+  async descargarResultados(anio: number, mes: number, formato: 'excel' | 'pdf') {
+    const r = await this.client.get(`/accounting/estados/${anio}/${mes}/resultados/${formato}`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Resultados_${anio}-${String(mes).padStart(2, '0')}.${formato === 'pdf' ? 'pdf' : 'xlsx'}`);
+  }
   /** Deriva/actualiza la balanza del mes desde las pólizas (journal_lines). */
   async actualizarBalanzaDesdePolizas(anio: number, mes: number) {
     const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/${mes}/desde-polizas`);

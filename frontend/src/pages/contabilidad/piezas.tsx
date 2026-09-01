@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ChevronLeft, ChevronRight, Lock, AlertTriangle, CheckCircle2, Info,
-  Inbox, ChevronDown, ChevronsRight,
+  Inbox, ChevronDown, ChevronsRight, FileSpreadsheet, FileDown,
 } from 'lucide-react';
 import api from '@/services/api';
 
@@ -37,9 +37,11 @@ export function usePeriodo(anio: number, mes: number) {
 
 /* ═══════════ EL MARCO ═══════════ */
 
-export function MarcoEstado({ titulo, norma, descripcion, children }: {
+export function MarcoEstado({ titulo, norma, descripcion, children, descargas }: {
   titulo: string; norma?: string; descripcion: string;
   children: (d: any) => React.ReactNode;
+  /** Si se pasa, muestra los botones de Excel y PDF (con el ícono rojo) del estado. */
+  descargas?: { excel: (a: number, m: number) => Promise<void>; pdf: (a: number, m: number) => Promise<void> };
 }) {
   const hoy = new Date();
   const [anio, setAnio] = useState(hoy.getFullYear());
@@ -68,17 +70,31 @@ export function MarcoEstado({ titulo, norma, descripcion, children }: {
           <p className="text-sm text-gray-500 mt-0.5">{descripcion}</p>
         </div>
 
-        {/* El mes. Todos los estados se cortan por mes. */}
-        <div className="flex items-center gap-1 bg-white rounded-lg border shadow-sm px-1">
-          <button onClick={() => mover(-1)} className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
-            <ChevronLeft size={16} />
-          </button>
-          <span className="font-semibold text-gray-900 w-40 text-center text-sm">
-            {MESES[mes]} {anio}
-          </span>
-          <button onClick={() => mover(1)} className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
-            <ChevronRight size={16} />
-          </button>
+        <div className="flex items-center gap-2">
+          {descargas && d && !d.vacio && (
+            <>
+              <button onClick={() => descargas.excel(anio, mes).catch(() => {})} title="Descargar Excel"
+                className="flex items-center gap-1 border bg-white text-emerald-700 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 text-sm">
+                <FileSpreadsheet size={16} /> Excel
+              </button>
+              <button onClick={() => descargas.pdf(anio, mes).catch(() => {})} title="Descargar PDF"
+                className="flex items-center gap-1 border bg-white text-rose-600 px-2.5 py-1.5 rounded-lg hover:bg-rose-50 text-sm">
+                <FileDown size={16} /> PDF
+              </button>
+            </>
+          )}
+          {/* El mes. Todos los estados se cortan por mes. */}
+          <div className="flex items-center gap-1 bg-white rounded-lg border shadow-sm px-1">
+            <button onClick={() => mover(-1)} className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
+              <ChevronLeft size={16} />
+            </button>
+            <span className="font-semibold text-gray-900 w-40 text-center text-sm">
+              {MESES[mes]} {anio}
+            </span>
+            <button onClick={() => mover(1)} className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       </div>
 

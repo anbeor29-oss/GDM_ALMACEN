@@ -11,7 +11,8 @@
 
 import { query } from '../../config/database';
 import { NotFoundError } from '../../middleware/errorHandler';
-import { balanzaDelPeriodo, auxiliarDeCuenta, nombreMes } from './periodos.service';
+import { balanzaDelPeriodo, auxiliarDeCuenta, contextoDelPeriodo, nombreMes } from './periodos.service';
+import { situacionFinanciera, resultadoIntegral } from './estados-financieros.service';
 import {
   ExcelJS, C, titulo, dato, encabezado, celda, totales, anchos, aBuffer,
 } from '../nomina/estilo-excel';
@@ -167,4 +168,107 @@ export async function auxiliarPdf(companyId: string, codigo: string, anio: numbe
     totales: { fecha: '', folio: '', concepto: 'TOTALES', cargo: Math.round(sumC * 100) / 100, abono: Math.round(sumA * 100) / 100, saldo: '' },
   });
   return { buffer, nombre: `Auxiliar_${aux.cuenta.codigo}_${anio}-${String(mes).padStart(2, '0')}.pdf` };
+}
+
+/* ── Estados financieros (Situación financiera y Estado de resultados) ─────── */
+
+/** Una fila de un estado a dos columnas: concepto e importe. */
+interface FilaEstado { concepto: string; importe: number | ''; bold?: boolean; sombra?: boolean; }
+
+async function ctxDe(companyId: string, anio: number, mes: number) {
+  const ctx = await contextoDelPeriodo(companyId, anio, mes);
+  if (!ctx) throw new NotFoundError(`${nombreMes(mes)} ${anio} todavía no tiene saldos cargados.`);
+  return ctx;
+}
+
+async function estadoExcel(emp: Empresa, tituloReporte: string, subtitulo: string, filas: FilaEstado[]): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'GDM NEXO';
+  const ws = wb.addWorksheet(tituloReporte.slice(0, 28), { views: [{ state: 'frozen', ySplit: 6 }] });
+  titulo(ws, tituloReporte, 2);
+  dato(ws, 3, 1, `Empresa:   ${emp.business_name}`, true);
+  dato(ws, 4, 1, `RFC:   ${emp.rfc}`);
+  dato(ws, 4, 2, `Generado:   ${fechaGen()}`);
+  dato(ws, 5, 1, subtitulo);
+  encabezado(ws, 6, [{ texto: 'CONCEPTO', color: C.identidad }, { texto: 'IMPORTE', color: C.identidad }]);
+  let fila = 7;
+  for (const f of filas) {
+    const fondo = f.sombra ? C.totalAzul : undefined;
+    celda(ws, fila, 1, f.concepto, { negrita: f.bold, fondo });
+    celda(ws, fila, 2, f.importe === '' ? '' : Number(f.importe), { negrita: f.bold, fondo });
+    fila++;
+  }
+  anchos(ws, [58, 20]);
+  return aBuffer(wb);
+}
+
+function estadoPdf(emp: Empresa, tituloReporte: string, subtitulo: string, filas: FilaEstado[]): Promise<Buffer> {
+  return reporteTablaPdf({
+    titulo: tituloReporte, empresa: emp.business_name, rfc: emp.rfc, subtitulos: [subtitulo],
+    orientacion: 'portrait',
+    columnas: [
+      { titulo: 'Concepto', clave: 'concepto', ancho: 62 },
+      { titulo: 'Importe', clave: 'importe', ancho: 22, pesos: true },
+    ],
+    filas: filas.map((f) => ({
+      concepto: f.concepto, importe: f.importe, _bold: f.bold, _fondo: f.sombra ? '#DCE6F5' : undefined,
+    })),
+  });
+}
+
+function filasSituacion(sf: any): FilaEstado[] {
+  const filas: FilaEstado[] = [];
+  const seccion = (sec: any) => {
+    filas.push({ concepto: String(sec.nombre).toUpperCase(), importe: sec.total, bold: true });
+    for (const r of sec.rubros) if (Math.abs(r.importe) >= 1) filas.push({ concepto: `    ${r.nombre}`, importe: r.importe });
+  };
+  seccion(sf.activoCirculante);
+  seccion(sf.activoNoCirculante);
+  filas.push({ concepto: 'ACTIVO TOTAL', importe: sf.activoTotal, bold: true, sombra: true });
+  seccion(sf.pasivoCorto);
+  seccion(sf.pasivoLargo);
+  filas.push({ concepto: 'PASIVO TOTAL', importe: sf.pasivoTotal, bold: true, sombra: true });
+  seccion(sf.capital);
+  filas.push({ concepto: 'CAPITAL CONTABLE', importe: sf.capitalTotal, bold: true, sombra: true });
+  filas.push({ concepto: 'PASIVO + CAPITAL', importe: Math.round((sf.pasivoTotal + sf.capitalTotal) * 100) / 100, bold: true, sombra: true });
+  return filas;
+}
+
+function filasResultados(ri: any): FilaEstado[] {
+  return ri.renglones
+    .filter((r: any) => Math.abs(r.importe) >= 1 || !r.codigos) // subtotales siempre; rubros con cifra
+    .map((r: any) => ({
+      concepto: r.codigos ? `    ${r.nombre}` : String(r.nombre).toUpperCase(),
+      importe: r.importe,
+      bold: !r.codigos,
+      sombra: r.clave === 'UTILIDAD_NETA',
+    }));
+}
+
+export async function situacionExcel(companyId: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {
+  const [emp, ctx] = await Promise.all([empresaDe(companyId), ctxDe(companyId, anio, mes)]);
+  const sf = situacionFinanciera(ctx);
+  const buffer = await estadoExcel(emp, 'Estado de situación financiera', `Al cierre de ${nombreMes(mes)} ${anio}`, filasSituacion(sf));
+  return { buffer, nombre: `Situacion_${anio}-${String(mes).padStart(2, '0')}.xlsx` };
+}
+
+export async function situacionPdf(companyId: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {
+  const [emp, ctx] = await Promise.all([empresaDe(companyId), ctxDe(companyId, anio, mes)]);
+  const sf = situacionFinanciera(ctx);
+  const buffer = await estadoPdf(emp, 'Estado de situación financiera', `Al cierre de ${nombreMes(mes)} ${anio}`, filasSituacion(sf));
+  return { buffer, nombre: `Situacion_${anio}-${String(mes).padStart(2, '0')}.pdf` };
+}
+
+export async function resultadosExcel(companyId: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {
+  const [emp, ctx] = await Promise.all([empresaDe(companyId), ctxDe(companyId, anio, mes)]);
+  const ri = resultadoIntegral(ctx);
+  const buffer = await estadoExcel(emp, 'Estado de resultados', `Del período de ${nombreMes(mes)} ${anio}`, filasResultados(ri));
+  return { buffer, nombre: `Resultados_${anio}-${String(mes).padStart(2, '0')}.xlsx` };
+}
+
+export async function resultadosPdf(companyId: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {
+  const [emp, ctx] = await Promise.all([empresaDe(companyId), ctxDe(companyId, anio, mes)]);
+  const ri = resultadoIntegral(ctx);
+  const buffer = await estadoPdf(emp, 'Estado de resultados', `Del período de ${nombreMes(mes)} ${anio}`, filasResultados(ri));
+  return { buffer, nombre: `Resultados_${anio}-${String(mes).padStart(2, '0')}.pdf` };
 }

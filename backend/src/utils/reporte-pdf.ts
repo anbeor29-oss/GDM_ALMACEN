@@ -96,7 +96,9 @@ export async function reporteTablaPdf(o: ReportePdfOpts): Promise<Buffer> {
     doc.moveTo(M, y).lineTo(M + contentW, y).strokeColor(LINEA).lineWidth(0.3).stroke();
   };
 
-  for (const f of o.filas) fila(f);
+  // Cada fila puede pedir negrita/fondo propios con `_bold` / `_fondo` (útil en
+  // estados financieros: encabezados de sección y subtotales). No son columnas.
+  for (const f of o.filas) fila(f, { bold: !!f._bold, fondo: f._fondo });
   if (o.totales) fila(o.totales, { bold: true, fondo: TOTAL_FONDO });
 
   if (o.nota) {

@@ -277,7 +277,8 @@ function AuxiliarModal({ codigo, anio, mes, onClose }: {
 export function SituacionFinancieraPage() {
   return (
     <MarcoEstado titulo="Estado de situación financiera" norma="B-6"
-      descripcion="Lo que la empresa tiene, lo que debe y lo que es de los socios, a la fecha de corte.">
+      descripcion="Lo que la empresa tiene, lo que debe y lo que es de los socios, a la fecha de corte."
+      descargas={{ excel: (a, m) => api.descargarSituacion(a, m, 'excel'), pdf: (a, m) => api.descargarSituacion(a, m, 'pdf') }}>
       {(d) => (
         <>
           <Cuadre ok={d.situacionFinanciera.cuadra}
@@ -314,7 +315,8 @@ const SUBTOTALES = ['INGRESOS_NETOS', 'UTILIDAD_BRUTA', 'UTILIDAD_OPERACION', 'U
 export function ResultadoIntegralPage() {
   return (
     <MarcoEstado titulo="Estado de resultado integral" norma="B-3"
-      descripcion="Cómo se llegó del ingreso del periodo a la utilidad, renglón por renglón.">
+      descripcion="Cómo se llegó del ingreso del periodo a la utilidad, renglón por renglón."
+      descargas={{ excel: (a, m) => api.descargarResultados(a, m, 'excel'), pdf: (a, m) => api.descargarResultados(a, m, 'pdf') }}>
       {(d) => (
         <div className="bg-white rounded-lg shadow border overflow-hidden max-w-3xl">
           <table className="w-full text-sm">

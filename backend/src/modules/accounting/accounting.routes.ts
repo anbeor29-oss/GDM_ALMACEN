@@ -570,6 +570,39 @@ router.get(
   })
 );
 
+const EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+function enviarDescarga(res: Response, formato: string, r: { buffer: Buffer; nombre: string }) {
+  res.setHeader('Content-Type', formato === 'pdf' ? 'application/pdf' : EXCEL_MIME);
+  res.setHeader('Content-Disposition', `attachment; filename="${r.nombre}"`);
+  res.send(r.buffer);
+}
+
+/** GET /accounting/estados/:anio/:mes/situacion/:formato — Estado de situación financiera (excel|pdf) */
+router.get(
+  '/estados/:anio/:mes/situacion/:formato',
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = req.params.formato;
+    if (f !== 'pdf' && f !== 'excel') throw new ValidationError('Formato no válido (excel|pdf).');
+    const anio = Number(req.params.anio), mes = Number(req.params.mes);
+    enviarDescarga(res, f, f === 'pdf'
+      ? await reportesExport.situacionPdf(companyId(req), anio, mes)
+      : await reportesExport.situacionExcel(companyId(req), anio, mes));
+  })
+);
+
+/** GET /accounting/estados/:anio/:mes/resultados/:formato — Estado de resultados (excel|pdf) */
+router.get(
+  '/estados/:anio/:mes/resultados/:formato',
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = req.params.formato;
+    if (f !== 'pdf' && f !== 'excel') throw new ValidationError('Formato no válido (excel|pdf).');
+    const anio = Number(req.params.anio), mes = Number(req.params.mes);
+    enviarDescarga(res, f, f === 'pdf'
+      ? await reportesExport.resultadosPdf(companyId(req), anio, mes)
+      : await reportesExport.resultadosExcel(companyId(req), anio, mes));
+  })
+);
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MOTOR NIF
    ═══════════════════════════════════════════════════════════════════════════ */
