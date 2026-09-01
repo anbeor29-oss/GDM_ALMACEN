@@ -1135,6 +1135,13 @@ class APIClient {
     return r.data;
   }
 
+  /** Descarga la herramienta de importación de respaldos, ya configurada con la
+   *  dirección de ESTE servidor (nexo.txt dentro del zip). */
+  async descargarHerramientaRespaldo() {
+    const r = await this.client.get('/accounting/contpaqi/herramienta', { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, 'Importar respaldo NEXO.zip');
+  }
+
   /** El auxiliar de una cuenta en el mes: sus movimientos con folio de póliza. */
   async getAuxiliarCuenta(cuenta: string, anio: number, mes: number) {
     const r = await this.client.get<APIResponse<any>>(

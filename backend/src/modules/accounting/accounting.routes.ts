@@ -29,6 +29,9 @@ import * as contpaqi from './contpaqi-import.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
+import archiver from 'archiver';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const router = Router();
 router.use(authenticateToken);
@@ -951,6 +954,32 @@ router.post(
     const forzar = req.body?.forzar === 'true' || req.body?.forzar === true;
     const rep = await contpaqi.importarContpaqi(companyId(req), paquete, req.user?.userId, { forzar });
     res.json({ success: true, data: rep });
+  })
+);
+
+/**
+ * GET /accounting/contpaqi/herramienta — descarga la herramienta local para
+ * importar respaldos .bak, YA configurada con la URL de ESTE servidor (así el
+ * usuario no la teclea y sirve aunque la URL cambie en producción).
+ */
+router.get(
+  '/contpaqi/herramienta',
+  asyncHandler(async (req: Request, res: Response) => {
+    const dir = path.resolve(__dirname, '../../../scripts/contpaqi');
+    const origin = `https://${req.get('host')}`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="Importar respaldo NEXO.zip"');
+    // @types/archiver v8 no tipa el default como callable, aunque en runtime lo es.
+    const zip = (archiver as unknown as (f: string, o?: any) => import('archiver').Archiver)(
+      'zip', { zlib: { level: 9 } });
+    zip.on('error', (e: Error) => { res.destroy(e); });
+    zip.pipe(res);
+    for (const f of ['importar-respaldo.ps1', 'extraer-contpaqi.ps1', 'Importar respaldo.cmd']) {
+      const p = path.join(dir, f);
+      if (fs.existsSync(p)) zip.file(p, { name: f });
+    }
+    zip.append(origin, { name: 'nexo.txt' });    // la dirección de este servidor, para la herramienta
+    await zip.finalize();
   })
 );
 

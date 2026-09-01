@@ -10,7 +10,7 @@
  * usa el equipo de sistemas.
  */
 import { useState } from 'react';
-import { Database, Upload, PlayCircle, CheckCircle2, FileJson, MousePointerClick } from 'lucide-react';
+import { Database, Upload, PlayCircle, CheckCircle2, FileJson, MousePointerClick, Download } from 'lucide-react';
 import api from '@/services/api';
 
 const ARCHIVOS = ['empresa', 'cuentas', 'polizas', 'movimientos', 'poliza_cfdi', 'cfdi', 'saldos'] as const;
@@ -27,6 +27,14 @@ export function ImportarContpaqiPage() {
   const [rep, setRep] = useState<any>(null);
   const [error, setError] = useState('');
   const [rfcMismatch, setRfcMismatch] = useState(false);
+  const [bajando, setBajando] = useState(false);
+
+  const descargarHerramienta = async () => {
+    setBajando(true); setError('');
+    try { await api.descargarHerramientaRespaldo(); }
+    catch (e: any) { setError(e?.response?.data?.message || e?.message || 'No se pudo descargar la herramienta.'); }
+    finally { setBajando(false); }
+  };
 
   const leerJson = async (f?: File): Promise<any[]> => {
     if (!f) return [];
@@ -88,10 +96,23 @@ export function ImportarContpaqiPage() {
         <p className="text-base font-semibold text-gray-800 flex items-center gap-2">
           <MousePointerClick size={18} className="text-emerald-700" /> En 3 pasos, desde la computadora
         </p>
+
+        {/* Paso 0: descargar la herramienta ya configurada con la dirección de este servidor */}
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <button onClick={descargarHerramienta} disabled={bajando}
+            className="flex items-center gap-2 bg-emerald-700 text-white px-4 py-2.5 rounded-lg hover:bg-emerald-800 disabled:opacity-50 text-sm font-semibold shrink-0">
+            <Download size={18} /> {bajando ? 'Preparando…' : 'Descargar la herramienta'}
+          </button>
+          <p className="text-xs text-emerald-900">
+            Se descarga <b>ya lista</b> para conectarse a este NEXO (no hay que escribir ninguna dirección).
+            Sólo se baja <b>una vez</b> por computadora. Al abrir el archivo, <b>descomprímelo</b> y verás la herramienta <b>«Importar respaldo»</b>.
+          </p>
+        </div>
+
         <ol className="space-y-3 text-sm text-gray-700">
           <li className="flex gap-3">
             <span className="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold grid place-items-center">1</span>
-            <span>Abre la herramienta <b>«Importar respaldo»</b> en la computadora (el ícono <b>Importar respaldo</b>).</span>
+            <span>Da <b>doble clic</b> en <b>«Importar respaldo»</b> (dentro de la carpeta que descargaste).</span>
           </li>
           <li className="flex gap-3">
             <span className="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold grid place-items-center">2</span>

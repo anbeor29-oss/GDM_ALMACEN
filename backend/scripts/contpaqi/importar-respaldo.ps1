@@ -95,8 +95,10 @@ function Invoke-Full {
     if ($DryRun) { & $Log "Solo previo (-DryRun): no se subio nada."; return @{ preview = $preview; report = $null } }
 
     & $Log "4/6  Entrando a NEXO..."
-    if (-not $Nexo) { throw "Falta la URL de NEXO." }
-    $api = $Nexo.TrimEnd('/') + '/api/v1'
+    if (-not $Nexo) { throw "Falta la direccion de NEXO." }
+    # Se queda solo con el origen (https://host), por si pegaron una URL con ruta.
+    try { $uu = [Uri]$Nexo; $base = $uu.Scheme + '://' + $uu.Authority } catch { $base = $Nexo.TrimEnd('/') }
+    $api = $base + '/api/v1'
     if (-not $Token) {
       if (-not $Email -or -not $Pass) { throw "Falta correo o contrasena de NEXO." }
       $login = Invoke-RestMethod -Uri "$api/auth/login" -Method Post -ContentType 'application/json' -Body (@{ email = $Email; password = $Pass } | ConvertTo-Json)
@@ -166,6 +168,11 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 $cfg = @{ nexo = ''; email = '' }
 if (Test-Path $CfgPath) { try { $cfg = Get-Content $CfgPath -Raw | ConvertFrom-Json } catch {} }
+# Si la herramienta se descargo desde NEXO, trae un nexo.txt con la direccion ya
+# puesta (y valida aunque cambie en produccion): tiene prioridad sobre lo guardado.
+$nexoPre = "" + $cfg.nexo
+$nexoTxt = Join-Path $here 'nexo.txt'
+if (Test-Path $nexoTxt) { try { $nexoPre = (Get-Content $nexoTxt -Raw).Trim() } catch {} }
 
 $f = New-Object System.Windows.Forms.Form
 $f.Text = 'Importar respaldo a NEXO'; $f.Size = New-Object Drawing.Size(760, 620); $f.StartPosition = 'CenterScreen'
@@ -176,7 +183,7 @@ $mktb = { param($x, $y, $w, $val, $pw) $t = New-Object Windows.Forms.TextBox; $t
 $tbBak = & $mktb 15 38 560 '' $false; $tbBak.ReadOnly = $true
 $btnBak = New-Object Windows.Forms.Button; $btnBak.Text = 'Elegir...'; $btnBak.Location = New-Object Drawing.Point(585, 36); $btnBak.Width = 140; $f.Controls.Add($btnBak)
 [void](& $mk 'Paso 2 — Datos de NEXO (se recuerdan):' 15 78 400)
-[void](& $mk 'Direccion (URL):' 15 104 120); $tbNexo = & $mktb 140 101 435 $cfg.nexo $false
+[void](& $mk 'Direccion (URL):' 15 104 120); $tbNexo = & $mktb 140 101 435 $nexoPre $false
 [void](& $mk 'Correo:' 15 134 120); $tbEmail = & $mktb 140 131 300 $cfg.email $false
 [void](& $mk 'Contrasena:' 15 164 120); $tbPass = & $mktb 140 161 300 '' $true
 $chkForce = New-Object Windows.Forms.CheckBox; $chkForce.Text = 'Importar aunque el RFC no coincida'; $chkForce.Location = New-Object Drawing.Point(140, 190); $chkForce.AutoSize = $true; $f.Controls.Add($chkForce)
@@ -184,9 +191,11 @@ $chkForce = New-Object Windows.Forms.CheckBox; $chkForce.Text = 'Importar aunque
 $btnPrev = New-Object Windows.Forms.Button; $btnPrev.Text = 'Ver previo'; $btnPrev.Location = New-Object Drawing.Point(15, 220); $btnPrev.Width = 150; $f.Controls.Add($btnPrev)
 $btnImp = New-Object Windows.Forms.Button; $btnImp.Text = 'Importar a NEXO'; $btnImp.Location = New-Object Drawing.Point(175, 220); $btnImp.Width = 200; $btnImp.BackColor = [Drawing.Color]::FromArgb(4, 120, 87); $btnImp.ForeColor = 'White'; $f.Controls.Add($btnImp)
 
-$log = New-Object Windows.Forms.TextBox; $log.Multiline = $true; $log.ScrollBars = 'Vertical'; $log.ReadOnly = $true
-$log.Location = New-Object Drawing.Point(15, 258); $log.Size = New-Object Drawing.Size(710, 305); $log.Font = New-Object Drawing.Font('Consolas', 9); $f.Controls.Add($log)
-$logFn = { param($m) $log.AppendText("$m`r`n"); [Windows.Forms.Application]::DoEvents() }
+$txtLog = New-Object Windows.Forms.TextBox; $txtLog.Multiline = $true; $txtLog.ScrollBars = 'Vertical'; $txtLog.ReadOnly = $true
+$txtLog.Location = New-Object Drawing.Point(15, 258); $txtLog.Size = New-Object Drawing.Size(710, 305); $txtLog.Font = New-Object Drawing.Font('Consolas', 9); $f.Controls.Add($txtLog)
+# .GetNewClosure() fija $txtLog: PowerShell no distingue mayus/minus y el parametro
+# $Log de Invoke-Full colisionaba con un $log dinamico. Con el cierre queda claro.
+$logFn = { param($m) $txtLog.AppendText("$m`r`n"); [Windows.Forms.Application]::DoEvents() }.GetNewClosure()
 
 $btnBak.Add_Click({
     $dlg = New-Object Windows.Forms.OpenFileDialog; $dlg.Filter = 'Respaldos de CONTPAQi (*.bak)|*.bak|Todos|*.*'
@@ -196,7 +205,7 @@ $btnBak.Add_Click({
 $run = {
   param($dry)
   if (-not $tbBak.Text) { [Windows.Forms.MessageBox]::Show('Primero elige el respaldo .bak.'); return }
-  $btnPrev.Enabled = $false; $btnImp.Enabled = $false; $btnBak.Enabled = $false; $log.Clear()
+  $btnPrev.Enabled = $false; $btnImp.Enabled = $false; $btnBak.Enabled = $false; $txtLog.Clear()
   try {
     $res = Invoke-Full -Bak $tbBak.Text -Nexo $tbNexo.Text -Email $tbEmail.Text -Pass $tbPass.Text -Token '' -DryRun:$dry -Force:($chkForce.Checked) -Log $logFn
     if ($res.report) {
