@@ -5,18 +5,16 @@
  * si no cuadra: las sumas de cargo y abono tienen que ser iguales. El UUID es
  * opcional; si se captura, liga la póliza a un CFDI.
  */
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, Plus, Trash2, Save, Scale, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { FileText, Plus, Save, Scale, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
+import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
 
-const money = (n: any) =>
-  new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
 const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 
-interface Linea { codigo: string; concepto: string; cargo: string; abono: string }
-const filaVacia = (): Linea => ({ codigo: '', concepto: '', cargo: '', abono: '' });
+const filaVacia = (): LineaPoliza => ({ codigo: '', nombre: '', concepto: '', cargo: '', abono: '' });
 
 const TIPOS = [
   { id: 'DIARIO', label: 'Diario' },
@@ -30,21 +28,20 @@ export function PolizaManualPage() {
   const [fecha, setFecha] = useState(hoy);
   const [concepto, setConcepto] = useState('');
   const [uuid, setUuid] = useState('');
-  const [lineas, setLineas] = useState<Linea[]>([filaVacia(), filaVacia(), filaVacia()]);
+  const [lineas, setLineas] = useState<LineaPoliza[]>([filaVacia(), filaVacia(), filaVacia()]);
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
   const cuentas: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);
-  const nombreDe = useMemo(() => new Map<string, string>(cuentas.map((c: any) => [c.codigo, c.nombre])), [cuentas]);
 
-  const set = (i: number, campo: keyof Linea, valor: string) => {
+  const onLinea = (i: number, patch: Partial<LineaPoliza>) => {
     setLineas((ls) => ls.map((l, k) => {
       if (k !== i) return l;
-      const nl = { ...l, [campo]: valor };
+      const nl = { ...l, ...patch };
       // Una partida es cargo O abono, no las dos: al escribir una, se limpia la otra.
-      if (campo === 'cargo' && valor) nl.abono = '';
-      if (campo === 'abono' && valor) nl.cargo = '';
+      if (patch.cargo) nl.abono = '';
+      if (patch.abono) nl.cargo = '';
       return nl;
     }));
     setMsg(null);
@@ -125,72 +122,10 @@ export function PolizaManualPage() {
         </label>
       </div>
 
-      {/* Datalist de TODAS las cuentas de movimiento */}
-      <datalist id="ctas-poliza-manual">
-        {cuentas.map((c) => <option key={c.id} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
-      </datalist>
-
-      {/* Partidas */}
-      <div className="bg-white rounded-lg shadow border overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 w-56">No. de cuenta</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Concepto del movimiento</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 w-32">Debe (cargo)</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 w-32">Haber (abono)</th>
-              <th className="w-8" />
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {lineas.map((l, i) => (
-              <tr key={i} className="hover:bg-gray-50">
-                <td className="px-3 py-1.5">
-                  <input list="ctas-poliza-manual" value={l.codigo}
-                    onChange={(e) => set(i, 'codigo', e.target.value)}
-                    placeholder="Cuenta" className="border rounded px-2 py-1 text-sm w-full font-mono" />
-                  {l.codigo && nombreDe.get(l.codigo) && (
-                    <span className="text-[11px] text-gray-500 truncate block">{nombreDe.get(l.codigo)}</span>
-                  )}
-                  {l.codigo && !nombreDe.get(l.codigo) && (
-                    <span className="text-[11px] text-rose-500 block">no está en el catálogo</span>
-                  )}
-                </td>
-                <td className="px-3 py-1.5">
-                  <input value={l.concepto} onChange={(e) => set(i, 'concepto', e.target.value)}
-                    placeholder={concepto || 'Concepto'} className="border rounded px-2 py-1 text-sm w-full" />
-                </td>
-                <td className="px-3 py-1.5">
-                  <input type="number" step="0.01" min="0" value={l.cargo}
-                    onChange={(e) => set(i, 'cargo', e.target.value)}
-                    onKeyDown={(e) => { if (e.key === '-') { e.preventDefault(); cuadrar(i, 'cargo'); } }}
-                    title="Oprime − para cuadrar" placeholder="0.00"
-                    className="border rounded px-2 py-1 text-sm w-full text-right" />
-                </td>
-                <td className="px-3 py-1.5">
-                  <input type="number" step="0.01" min="0" value={l.abono}
-                    onChange={(e) => set(i, 'abono', e.target.value)}
-                    onKeyDown={(e) => { if (e.key === '-') { e.preventDefault(); cuadrar(i, 'abono'); } }}
-                    title="Oprime − para cuadrar" placeholder="0.00"
-                    className="border rounded px-2 py-1 text-sm w-full text-right" />
-                </td>
-                <td className="px-1">
-                  <button onClick={() => quitar(i)} title="Quitar renglón"
-                    className="text-gray-300 hover:text-rose-500"><Trash2 size={14} /></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot className="border-t-2">
-            <tr className="font-semibold bg-gray-50">
-              <td className="px-3 py-2 text-right text-gray-500" colSpan={2}>Sumas</td>
-              <td className="px-3 py-2 text-right">{money(sumaCargo)}</td>
-              <td className="px-3 py-2 text-right">{money(sumaAbono)}</td>
-              <td />
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+      {/* Partidas — misma tabla que el editor de pólizas (uniformidad) */}
+      <PartidasPoliza lineas={lineas} cuentas={cuentas}
+        sumaCargo={sumaCargo} sumaAbono={sumaAbono}
+        onLinea={onLinea} onCuadrar={cuadrar} onQuitar={quitar} idBase="poliza-manual" />
 
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={agregar} className="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
@@ -201,7 +136,7 @@ export function PolizaManualPage() {
           {cuadra ? <CheckCircle2 size={15} /> : <Scale size={15} />}
           {cuadra
             ? 'Sumas iguales'
-            : sumaCargo === sumaAbono ? 'Captura los importes' : `Diferencia ${money(round2(sumaCargo - sumaAbono))}`}
+            : sumaCargo === sumaAbono ? 'Captura los importes' : `Diferencia ${fmt2(round2(sumaCargo - sumaAbono))}`}
         </span>
 
         <button onClick={guardar} disabled={busy || !cuadra || conImporte < 2}

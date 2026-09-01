@@ -11,12 +11,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
+import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
-/** #,###.## con dos decimales, sin símbolo — el formato contable de importes. */
-const fmt2 = (n: any) =>
-  new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n) || 0);
 const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 const fecha = (s?: string) => s ? new Date(s + (String(s).length <= 10 ? 'T12:00:00' : '')).toLocaleDateString('es-MX') : '—';
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
@@ -195,38 +193,14 @@ export function PolizasListaPage() {
 }
 
 /* ── Editor de una póliza (reemplaza sus partidas; cuadra o no se guarda) ── */
-/**
- * Un campo de importe: se ve como #,###.## (dos decimales) cuando no se edita, y
- * en crudo mientras se escribe. Sin los botones de subir/baja (no es `type
- * number`), y con «−» para que el sistema lo cuadre.
- */
-function CampoImporte({ value, onChange, onMinus, className }: {
-  value: string; onChange: (v: string) => void; onMinus: () => void; className?: string;
-}) {
-  const [foco, setFoco] = useState(false);
-  const [draft, setDraft] = useState('');
-  const mostrado = foco ? draft : (value ? fmt2(value) : '');
-  return (
-    <input
-      type="text" inputMode="decimal" value={mostrado}
-      onFocus={() => { setDraft(value); setFoco(true); }}
-      onBlur={() => setFoco(false)}
-      onChange={(e) => { const limpio = e.target.value.replace(/[^\d.]/g, ''); setDraft(limpio); onChange(limpio); }}
-      onKeyDown={(e) => { if (e.key === '-') { e.preventDefault(); onMinus(); (e.target as HTMLInputElement).blur(); } }}
-      title="− para cuadrar"
-      className={className}
-    />
-  );
-}
-
 const TIPO_POLIZA_LABEL: Record<string, string> = { DIARIO: 'Diario', INGRESO: 'Ingreso', EGRESO: 'Egreso' };
 
 function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
   const [fecha, setFecha] = useState<string>(String(poliza.fecha || '').slice(0, 10));
   const [concepto, setConcepto] = useState<string>(poliza.concepto || '');
-  const [lineas, setLineas] = useState<Array<{ codigo: string; concepto: string; cargo: string; abono: string }>>(
+  const [lineas, setLineas] = useState<LineaPoliza[]>(
     (poliza.lineas || []).map((l: any) => ({
-      codigo: l.codigo || '', concepto: l.concepto || '',
+      codigo: l.codigo || '', nombre: l.nombre || '', concepto: l.concepto || '',
       cargo: Number(l.cargo) > 0 ? String(l.cargo) : '',
       abono: Number(l.abono) > 0 ? String(l.abono) : '',
     })));
@@ -235,14 +209,13 @@ function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
 
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
   const cuentas: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);
-  const nombreDe = useMemo(() => new Map<string, string>(cuentas.map((c: any) => [c.codigo, c.nombre])), [cuentas]);
 
-  const set = (i: number, campo: keyof (typeof lineas)[number], valor: string) => {
+  const onLinea = (i: number, patch: Partial<LineaPoliza>) => {
     setLineas((ls) => ls.map((l, k) => {
       if (k !== i) return l;
-      const nl = { ...l, [campo]: valor } as typeof l;
-      if (campo === 'cargo' && valor) nl.abono = '';
-      if (campo === 'abono' && valor) nl.cargo = '';
+      const nl = { ...l, ...patch };
+      if (patch.cargo) nl.abono = '';
+      if (patch.abono) nl.cargo = '';
       return nl;
     }));
     setError('');
@@ -303,45 +276,9 @@ function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
             </label>
           </div>
 
-          <datalist id="ctas-editar-poliza">
-            {cuentas.map((c) => <option key={c.id} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
-          </datalist>
-
-          <div className="border rounded-lg overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-indigo-200 bg-indigo-50/60">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-900 w-64">Cuenta y nombre</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-900">Concepto</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-sky-800 w-36 bg-sky-100/70">Debe</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-violet-800 w-36 bg-violet-100/70">Haber</th>
-                  <th className="w-8" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {lineas.map((l, i) => (
-                  <tr key={i}>
-                    <td className="px-2 py-1.5">
-                      <input list="ctas-editar-poliza" value={l.codigo} onChange={(e) => set(i, 'codigo', e.target.value)}
-                        placeholder="Cuenta" className={`border rounded px-2 py-1 text-sm w-full font-mono ${l.codigo && !nombreDe.has(l.codigo) ? 'border-rose-400 text-rose-700' : ''}`} />
-                      {l.codigo && nombreDe.get(l.codigo) && <span className="text-[11px] text-gray-600 truncate block">{nombreDe.get(l.codigo)}</span>}
-                      {l.codigo && !nombreDe.has(l.codigo) && <span className="text-[11px] text-rose-500 block">no existe</span>}
-                    </td>
-                    <td className="px-2 py-1.5"><input value={l.concepto} onChange={(e) => set(i, 'concepto', e.target.value)} className="border rounded px-2 py-1 text-sm w-full" /></td>
-                    <td className="px-2 py-1.5 bg-sky-50/40"><CampoImporte value={l.cargo} onChange={(v) => set(i, 'cargo', v)} onMinus={() => cuadrar(i, 'cargo')} className="border rounded px-2 py-1 text-sm w-full text-right tabular-nums outline-none focus:ring-2 focus:ring-sky-300" /></td>
-                    <td className="px-2 py-1.5 bg-violet-50/40"><CampoImporte value={l.abono} onChange={(v) => set(i, 'abono', v)} onMinus={() => cuadrar(i, 'abono')} className="border rounded px-2 py-1 text-sm w-full text-right tabular-nums outline-none focus:ring-2 focus:ring-violet-300" /></td>
-                    <td className="px-1"><button onClick={() => quitar(i)} className="text-gray-300 hover:text-rose-500"><Trash2 size={14} /></button></td>
-                  </tr>
-                ))}
-                <tr className="font-semibold bg-indigo-50 border-t border-indigo-200">
-                  <td colSpan={2} className="px-3 py-2 text-right text-indigo-900">Sumas</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-sky-900">{fmt2(sumaCargo)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-violet-900">{fmt2(sumaAbono)}</td>
-                  <td />
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <PartidasPoliza lineas={lineas} cuentas={cuentas}
+            sumaCargo={sumaCargo} sumaAbono={sumaAbono}
+            onLinea={onLinea} onCuadrar={cuadrar} onQuitar={quitar} idBase="editar-poliza" />
 
           <div className="flex flex-wrap items-center gap-3">
             <button onClick={agregar} className="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"><Plus size={14} /> Agregar renglón</button>
