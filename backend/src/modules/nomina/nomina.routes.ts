@@ -499,6 +499,28 @@ router.get(
   })
 );
 
+/** GET /reportes/:que/pdf — el mismo reporte, en PDF (encabezado de la casa). */
+router.get(
+  '/reportes/:que/pdf',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await reportes.generarPdf(
+      companyId(req),
+      req.params.que as reportes.TipoReporte,
+      {
+        anio:  Number(req.query.anio)  || new Date().getFullYear(),
+        tipo:  (req.query.tipo as any) || 'SEMANAL',
+        desde: Number(req.query.desde) || 1,
+        hasta: Number(req.query.hasta) || Number(req.query.desde) || 1,
+        empleadoId: (req.query.empleadoId as string) || undefined,
+        acumulado: req.query.acumulado === 'true',
+      }
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
 
 /**
  * GET /reportes/:que — prenomina | cfdi | isr | imss

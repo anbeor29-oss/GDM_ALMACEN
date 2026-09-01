@@ -17,7 +17,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   FileBarChart, FileSpreadsheet, AlertTriangle, Users, Receipt, Landmark, HeartPulse,
-  Sigma, List, Tag, Check, PlayCircle, CheckCircle2, BookOpen, Download,
+  Sigma, List, Tag, Check, PlayCircle, CheckCircle2, BookOpen, Download, FileDown,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '@/services/api';
@@ -90,6 +90,15 @@ export function NominaReportesPage() {
       await api.descargarReporteNominaExcel(que, { anio, tipo, desde, hasta, acumulado });
     } catch (e: any) {
       setError(e?.response?.data?.message || 'No se pudo generar el Excel');
+    }
+  };
+
+  const exportarPdf = async () => {
+    setError('');
+    try {
+      await api.descargarReporteNominaPdf(que, { anio, tipo, desde, hasta, acumulado });
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo generar el PDF');
     }
   };
 
@@ -204,12 +213,16 @@ export function NominaReportesPage() {
             </div>
           )}
 
-          <button onClick={exportar} disabled={!d}
-            className={`text-sm text-emerald-700 hover:underline flex items-center gap-1 disabled:opacity-40 ${
-              que === 'prenomina' && varios ? '' : 'ml-auto'
-            }`}>
-            <FileSpreadsheet size={15} /> Excel
-          </button>
+          <div className={`flex items-center gap-3 ${que === 'prenomina' && varios ? '' : 'ml-auto'}`}>
+            <button onClick={exportar} disabled={!d}
+              className="text-sm text-emerald-700 hover:underline flex items-center gap-1 disabled:opacity-40">
+              <FileSpreadsheet size={15} /> Excel
+            </button>
+            <button onClick={exportarPdf} disabled={!d}
+              className="text-sm text-rose-600 hover:underline flex items-center gap-1 disabled:opacity-40">
+              <FileDown size={15} /> PDF
+            </button>
+          </div>
         </div>
 
         {cerrados.length === 0 && !dispQ.isLoading && (

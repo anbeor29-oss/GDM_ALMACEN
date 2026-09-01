@@ -24,6 +24,7 @@
 
 import { query } from '../../config/database';
 import { ValidationError } from '../../middleware/errorHandler';
+import { reporteTablaPdf, ColumnaPdf } from '../../utils/reporte-pdf';
 import { MAXIMO_POR_TIPO, TipoPeriodo } from './calendario';
 import * as patronal from './imss-patronal.service';
 import * as ejercicios from './ejercicios.service';
@@ -660,4 +661,96 @@ export async function generarExcel(
     buffer: await aBuffer(wb),
     nombre: `${que}-${f.tipo.toLowerCase()}-${f.desde}a${f.hasta}-${f.anio}.xlsx`,
   };
+}
+
+/**
+ * El mismo reporte, en PDF. Sale de la MISMA función que el Excel y la pantalla
+ * (`generar`), con el encabezado de la casa (empresa · reporte · fecha) y una
+ * fila de totales. Apaisado, porque son tablas anchas.
+ */
+export async function generarPdf(
+  companyId: string,
+  que: TipoReporte,
+  f: Filtro
+): Promise<{ buffer: Buffer; nombre: string }> {
+  const d: any = await generar(companyId, que, f);
+  const emp = await query<any>(
+    `SELECT business_name, rfc, registro_patronal FROM companies WHERE id = $1`, [companyId]);
+  const e = emp.rows[0] || {};
+
+  const TITULOS: Record<TipoReporte, string> = {
+    prenomina: f.acumulado ? 'Prenómina — acumulado por trabajador' : 'Prenómina — detalle de lo pagado',
+    cfdi: 'CFDI de nómina — timbrado',
+    isr: 'ISR retenido por nómina',
+    imss: 'IMSS — cuota obrera y patronal',
+  };
+
+  // Columnas por reporte (título, ancho relativo, y si es importe). Espeja las
+  // del Excel; los conteos/textos no llevan formato de pesos.
+  const COLS: Record<TipoReporte, ColumnaPdf[]> = {
+    prenomina: [
+      { titulo: f.acumulado ? 'Periodos' : 'Periodo', clave: f.acumulado ? 'periodos' : 'periodo', ancho: 9, align: 'center' },
+      { titulo: 'Núm.', clave: 'num_empleado', ancho: 7, align: 'center' },
+      { titulo: 'Trabajador', clave: 'nombre', ancho: 26 },
+      { titulo: 'Días', clave: 'dias', ancho: 7, align: 'center' },
+      { titulo: 'Total percepciones', clave: 'total_percepciones', ancho: 14, pesos: true },
+      { titulo: 'Gravado', clave: 'total_gravado', ancho: 12, pesos: true },
+      { titulo: 'Exento', clave: 'total_exento', ancho: 12, pesos: true },
+      { titulo: 'IMSS obrero', clave: 'imss', ancho: 11, pesos: true },
+      { titulo: 'ISR', clave: 'isr', ancho: 11, pesos: true },
+      { titulo: 'Total desc.', clave: 'total_deducciones', ancho: 13, pesos: true },
+      { titulo: 'Neto', clave: 'neto', ancho: 13, pesos: true },
+    ],
+    cfdi: [
+      { titulo: 'Periodo', clave: 'periodo', ancho: 8, align: 'center' },
+      { titulo: 'Núm.', clave: 'num_empleado', ancho: 7, align: 'center' },
+      { titulo: 'Trabajador', clave: 'nombre', ancho: 24 },
+      { titulo: 'RFC', clave: 'rfc', ancho: 13 },
+      { titulo: 'Folio fiscal (UUID)', clave: 'uuid', ancho: 32 },
+      { titulo: 'Timbrado', clave: 'timbrado_at', ancho: 15, align: 'center' },
+      { titulo: 'Enviado', clave: 'enviado_at', ancho: 15, align: 'center' },
+      { titulo: 'Neto', clave: 'neto', ancho: 12, pesos: true },
+    ],
+    isr: [
+      { titulo: 'Núm.', clave: 'num_empleado', ancho: 7, align: 'center' },
+      { titulo: 'Trabajador', clave: 'nombre', ancho: 26 },
+      { titulo: 'RFC', clave: 'rfc', ancho: 14 },
+      { titulo: 'Periodos', clave: 'periodos', ancho: 9, align: 'center' },
+      { titulo: 'Gravado', clave: 'gravado', ancho: 13, pesos: true },
+      { titulo: 'Exento', clave: 'exento', ancho: 13, pesos: true },
+      { titulo: 'ISR retenido', clave: 'isr', ancho: 13, pesos: true },
+      { titulo: 'Subsidio al empleo', clave: 'subsidio', ancho: 13, pesos: true },
+    ],
+    imss: [
+      { titulo: 'Núm.', clave: 'num_empleado', ancho: 7, align: 'center' },
+      { titulo: 'Trabajador', clave: 'nombre', ancho: 28 },
+      { titulo: 'NSS', clave: 'nss', ancho: 15, align: 'center' },
+      { titulo: 'Periodos', clave: 'periodos', ancho: 9, align: 'center' },
+      { titulo: 'Días', clave: 'dias', ancho: 7, align: 'center' },
+      { titulo: 'Cuota obrera', clave: 'imss', ancho: 14, pesos: true },
+      { titulo: 'Cuota patronal', clave: 'patronal', ancho: 15, pesos: true },
+    ],
+  };
+
+  const columnas = COLS[que];
+  const t = d.totales || {};
+  const totales: Record<string, any> = {
+    nombre: `${d.renglones.length} renglón(es)`,
+    total_percepciones: t.percepciones, total_gravado: t.gravado, total_exento: t.exento,
+    imss: t.imss, isr: t.isr, total_deducciones: t.deducciones, neto: t.neto,
+    gravado: t.gravado, exento: t.exento, subsidio: t.subsidio, dias: t.dias, patronal: t.patronal,
+  };
+
+  const buffer = await reporteTablaPdf({
+    titulo: TITULOS[que], empresa: e.business_name || '', rfc: e.rfc || '',
+    subtitulos: [
+      `Reg. Patronal: ${e.registro_patronal || '(sin capturar)'}`,
+      `Períodos: ${f.tipo} del ${f.desde} al ${f.hasta} de ${f.anio}`,
+      'Sólo periodos cerrados, con los importes tal como se pagaron.',
+    ],
+    orientacion: 'landscape',
+    columnas, filas: d.renglones, totales,
+  });
+
+  return { buffer, nombre: `${que}-${f.tipo.toLowerCase()}-${f.desde}a${f.hasta}-${f.anio}.pdf` };
 }

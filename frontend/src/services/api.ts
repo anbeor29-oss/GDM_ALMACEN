@@ -1803,6 +1803,19 @@ class APIClient {
     );
   }
 
+  /** El mismo reporte, en PDF (encabezado empresa · reporte · fecha). */
+  async descargarReporteNominaPdf(que: string, params: {
+    anio: number; tipo: string; desde: number; hasta: number; acumulado?: boolean;
+  }) {
+    const r = await this.client.get(`/nomina/reportes/${que}/pdf`, {
+      params, responseType: 'blob',
+    });
+    await this.downloadFile(
+      r.data as Blob,
+      `${que}-${params.tipo.toLowerCase()}-${params.desde}a${params.hasta}-${params.anio}.pdf`
+    );
+  }
+
   /** El recibo en PDF, para verlo en pantalla (blob URL). */
   async getReciboPdfBlob(id: string): Promise<string> {
     const r = await this.client.get(`/nomina/recibos/${id}/pdf`, { responseType: 'blob' });
