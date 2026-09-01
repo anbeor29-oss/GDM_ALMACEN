@@ -16,7 +16,7 @@ param(
   [string]$Nexo = $env:NEXO_URL,
   [string]$Email,
   [string]$Token,
-  [string]$Server = '.\SQLEXPRESS',
+  [string]$Server = '',
   [string]$WorkDir = 'E:\ContpaqMig',
   [switch]$DryRun,
   [switch]$Force
@@ -29,6 +29,22 @@ $CfgPath = Join-Path $env:APPDATA 'nexo-importador.json'
 
 function Get-SvcAcct { try { (Get-CimInstance Win32_Service -Filter "Name='MSSQL`$SQLEXPRESS'").StartName } catch { 'NT SERVICE\MSSQL$SQLEXPRESS' } }
 
+# Encuentra un motor SQL para restaurar el .bak. Prefiere SQLEXPRESS; si no,
+# usa LocalDB (gratis, ~45 MB, sin configurar). Devuelve @{ server; localdb }.
+function Resolve-Sql {
+  $ex = Get-Service 'MSSQL$SQLEXPRESS' -ErrorAction SilentlyContinue
+  if ($ex -and $ex.Status -eq 'Running') { return @{ server = '.\SQLEXPRESS'; localdb = $false } }
+  $def = Get-Service 'MSSQLSERVER' -ErrorAction SilentlyContinue
+  if ($def -and $def.Status -eq 'Running') { return @{ server = '.'; localdb = $false } }
+  if (Get-Command SqlLocalDB -ErrorAction SilentlyContinue) {
+    $inst = 'NexoImp'
+    & SqlLocalDB create $inst 2>$null | Out-Null   # si ya existe, no pasa nada
+    & SqlLocalDB start  $inst 2>$null | Out-Null
+    return @{ server = "(localdb)\$inst"; localdb = $true }
+  }
+  throw "No se encontro SQL Server ni LocalDB en esta PC. Instala gratis 'SQL Server Express LocalDB' (~45 MB) y vuelve a intentar. Descarga: https://aka.ms/sqllocaldb"
+}
+
 # Orquesta todo el proceso. $Log es un scriptblock que recibe una linea de texto.
 # Devuelve un hashtable: @{ preview = @{...}; report = <obj o $null> }
 function Invoke-Full {
@@ -38,19 +54,25 @@ function Invoke-Full {
   $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
   $db = "NEXO_IMP_$stamp"; $bakLocal = Join-Path $WorkDir "$db.bak"; $export = Join-Path $WorkDir "export_$stamp"
 
+  $srv = $Server; $useLocalDb = $false
+  if (-not $srv) { $eng = Resolve-Sql; $srv = $eng.server; $useLocalDb = $eng.localdb } elseif ($srv -like '(localdb)*') { $useLocalDb = $true }
+
   try {
-    & $Log "1/6  Copiando y restaurando el respaldo..."
+    & $Log ("1/6  Restaurando el respaldo ({0})..." -f $(if ($useLocalDb) { 'LocalDB' } else { $srv }))
     Copy-Item $Bak $bakLocal -Force
-    icacls $WorkDir /grant "$(Get-SvcAcct):(OI)(CI)(M)" 2>&1 | Out-Null
-    $fl = & $sc -S $Server -E -W -s"|" -Q "SET NOCOUNT ON; RESTORE FILELISTONLY FROM DISK = N'$bakLocal';"
+    if (-not $useLocalDb) { icacls $WorkDir /grant "$(Get-SvcAcct):(OI)(CI)(M)" 2>&1 | Out-Null }  # LocalDB corre como el usuario, no necesita permisos extra
+    $fl = & $sc -S $srv -E -W -s"|" -Q "SET NOCOUNT ON; RESTORE FILELISTONLY FROM DISK = N'$bakLocal';"
     $dataLn = $null; $logLn = $null
     foreach ($line in $fl) { $p = $line -split '\|'; if ($p.Count -ge 3) { if ($p[2].Trim() -eq 'D') { $dataLn = $p[0].Trim() } elseif ($p[2].Trim() -eq 'L') { $logLn = $p[0].Trim() } } }
     if (-not $dataLn -or -not $logLn) { throw "No se pudieron leer los nombres logicos del .bak." }
-    & $sc -S $Server -E -b -Q "SET NOCOUNT ON; IF DB_ID('$db') IS NOT NULL BEGIN ALTER DATABASE [$db] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$db]; END; RESTORE DATABASE [$db] FROM DISK = N'$bakLocal' WITH MOVE '$dataLn' TO N'$WorkDir\$db.mdf', MOVE '$logLn' TO N'$WorkDir\$db._log.ldf', REPLACE, RECOVERY;" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Fallo la restauracion del respaldo." }
+    $rout = & $sc -S $srv -E -b -Q "SET NOCOUNT ON; IF DB_ID('$db') IS NOT NULL BEGIN ALTER DATABASE [$db] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$db]; END; RESTORE DATABASE [$db] FROM DISK = N'$bakLocal' WITH MOVE '$dataLn' TO N'$WorkDir\$db.mdf', MOVE '$logLn' TO N'$WorkDir\$db._log.ldf', REPLACE, RECOVERY;" 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+      if ($rout -match 'incompatible|is running version|backed up on') { throw ("El respaldo es de una version de SQL Server mas NUEVA que el motor de esta PC. Instala SQL Server 2022 Express o LocalDB 2022+ (gratis) y reintenta. Detalle: " + $rout.Trim()) }
+      throw ("Fallo la restauracion del respaldo. Detalle: " + $rout.Trim())
+    }
 
-    & $Log "2/6  Extrayendo el paquete..."
-    & powershell -ExecutionPolicy Bypass -File (Join-Path $here 'extraer-contpaqi.ps1') -Db $db -Server $Server -Out $export | Out-Null
+    & $Log "2/6  Leyendo la informacion..."
+    & powershell -ExecutionPolicy Bypass -File (Join-Path $here 'extraer-contpaqi.ps1') -Db $db -Server $srv -Out $export | Out-Null
 
     & $Log "3/6  Leyendo el previo..."
     $rd = { param($n) $f = Join-Path $export "$n.json"; if (Test-Path $f) { (Get-Content $f -Raw).TrimStart([char]0xFEFF) | ConvertFrom-Json } else { @() } }
@@ -106,7 +128,7 @@ function Invoke-Full {
     return @{ preview = $preview; report = $r.data }
   }
   finally {
-    try { & $sc -S $Server -E -Q "IF DB_ID('$db') IS NOT NULL BEGIN ALTER DATABASE [$db] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$db]; END;" | Out-Null } catch {}
+    try { & $sc -S $srv -E -Q "IF DB_ID('$db') IS NOT NULL BEGIN ALTER DATABASE [$db] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$db]; END;" | Out-Null } catch {}
     Remove-Item $bakLocal -ErrorAction SilentlyContinue
   }
 }
