@@ -97,6 +97,15 @@ async function bootstrap() {
       logger.warn(`No se pudo registrar sat-descarga-cron: ${e.message}`);
     }
 
+    // Depreciación/amortización: al cambio de mes genera la póliza del mes que
+    // cerró y actualiza la balanza (solo si ENABLE_DEPRECIACION_CRON=true)
+    try {
+      const { registerDepreciacionCron } = await import('./jobs/depreciacion-cron');
+      registerDepreciacionCron();
+    } catch (e: any) {
+      logger.warn(`No se pudo registrar depreciacion-cron: ${e.message}`);
+    }
+
     // Graceful shutdown
     const shutdown = async (signal: string) => {
       logger.info(`Received ${signal}, shutting down gracefully...`);

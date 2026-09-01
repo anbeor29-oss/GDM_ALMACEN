@@ -25,8 +25,10 @@ import { ForcePasswordChange } from './ForcePasswordChange';
 import { ImpersonationBanner } from './ImpersonationBanner';
 import { QueVersionEstoyViendo } from './QueVersionEstoyViendo';
 
-/** Minutos de inactividad tras los cuales se cierra la sesión. */
-const IDLE_MINUTES = 10;
+/** Minutos de inactividad tras los cuales se cierra la sesión.
+ *  20 (no 10): da margen a que termine de correr el motor de descarga del XML
+ *  del SAT sin que la sesión se cierre a media bajada. */
+const IDLE_MINUTES = 20;
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -67,7 +69,7 @@ export function Layout() {
 
   const handleLogout = () => doLogout();
 
-  // Cierre automático por inactividad (10 min). El hook reinicia el conteo
+  // Cierre automático por inactividad (20 min). El hook reinicia el conteo
   // con cualquier interacción del usuario.
   useIdleTimeout(() => doLogout('idle'), IDLE_MINUTES * 60 * 1000);
 

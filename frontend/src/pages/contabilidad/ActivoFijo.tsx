@@ -372,7 +372,17 @@ function TabDepreciacion({ anio, mes }: { anio: number; mes: number }) {
       const r: any = await api.generarDepreciacion(anio, mes);
       const d = r.data;
       if (d.yaExiste) setMsg(`Ya existe la póliza de depreciación de ${MESES[mes]} ${anio} (#${d.folio}). Bórrala para regenerar.`);
-      else if (d.creada) setMsg(`Póliza #${d.folio} creada: ${d.activos} activo(s), ${money(d.total)} de depreciación.`);
+      else if (d.creada) {
+        // Con la póliza recién creada, refresca la balanza para que los saldos ya la incluyan.
+        let extra = '';
+        try {
+          const b: any = await api.actualizarBalanzaDesdePolizas(anio, mes);
+          extra = b?.data?.cuadra === false
+            ? ' Saldos actualizados — la balanza NO cuadra, revísala.'
+            : ' Saldos actualizados en la balanza.';
+        } catch { extra = ' (Actualiza los saldos desde Balanza → «Actualizar desde pólizas».)'; }
+        setMsg(`Póliza #${d.folio} creada: ${d.activos} activo(s), ${money(d.total)} de depreciación.${extra}`);
+      }
       else setMsg(`No había activos que depreciar en ${MESES[mes]} ${anio}.`);
       setOmitidos(d.omitidos || []);
       qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
@@ -392,6 +402,9 @@ function TabDepreciacion({ anio, mes }: { anio: number; mes: number }) {
         <p className="text-sm text-gray-600 flex-1 min-w-[16rem]">
           Una póliza con la depreciación de <b>{MESES[mes]} {anio}</b>: cargo al gasto (701/702) y abono a la
           acumulada (171/183), por cada activo que ya arrancó y no esté depreciado ese mes. No duplica.
+          <span className="block text-xs text-gray-500 mt-1">
+            Al <b>cambio de mes</b> esto se genera solo y actualiza los saldos; este botón sirve para adelantarlo o regenerarlo.
+          </span>
         </p>
         <button onClick={generar} disabled={busy}
           className="flex items-center gap-1.5 bg-emerald-700 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-800 disabled:opacity-50 text-sm">

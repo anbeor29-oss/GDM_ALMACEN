@@ -96,6 +96,12 @@ services:
       # aquí cuando alguien lo decide. Ver sat-descarga-cron.ts.
       - key: ENABLE_SAT_DESCARGA_CRON
         value: "false"
+      # Depreciacion/amortizacion automatica: dia 1 de cada mes 03:00 (Mexico)
+      # genera la poliza del mes que cerro para TODAS las empresas y actualiza su
+      # balanza. Apagado por omision porque asienta polizas solo; encenderlo
+      # cuando el contador quiera que corra sin intervencion. Ver depreciacion-cron.ts.
+      - key: ENABLE_DEPRECIACION_CRON
+        value: "false"
       # Padron del 69-B: lo baja del portal del SAT cada domingo 03:30.
       # Apagado por omision porque REEMPLAZA el padron con el que se juzga a los
       # proveedores. Encenderlo cuando se quiera que corra solo.
