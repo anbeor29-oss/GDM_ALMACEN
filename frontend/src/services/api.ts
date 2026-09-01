@@ -1176,6 +1176,18 @@ class APIClient {
     const r = await this.client.get(`/accounting/estados/${anio}/${mes}/resultados/${formato}`, { responseType: 'blob' });
     await this.downloadFile(r.data as Blob, `Resultados_${anio}-${String(mes).padStart(2, '0')}.${formato === 'pdf' ? 'pdf' : 'xlsx'}`);
   }
+  async descargarFlujo(anio: number, mes: number, formato: 'excel' | 'pdf') {
+    const r = await this.client.get(`/accounting/estados/${anio}/${mes}/flujo/${formato}`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Flujo_${anio}-${String(mes).padStart(2, '0')}.${formato === 'pdf' ? 'pdf' : 'xlsx'}`);
+  }
+  async descargarCambios(anio: number, mes: number, formato: 'excel' | 'pdf') {
+    const r = await this.client.get(`/accounting/estados/${anio}/${mes}/cambios/${formato}`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `CambiosCapital_${anio}-${String(mes).padStart(2, '0')}.${formato === 'pdf' ? 'pdf' : 'xlsx'}`);
+  }
+  async descargarRazones(anio: number, mes: number, formato: 'excel' | 'pdf') {
+    const r = await this.client.get(`/accounting/estados/${anio}/${mes}/razones/${formato}`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Razones_${anio}-${String(mes).padStart(2, '0')}.${formato === 'pdf' ? 'pdf' : 'xlsx'}`);
+  }
   /** Deriva/actualiza la balanza del mes desde las pólizas (journal_lines). */
   async actualizarBalanzaDesdePolizas(anio: number, mes: number) {
     const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/${mes}/desde-polizas`);

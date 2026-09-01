@@ -12,7 +12,7 @@
 import { query } from '../../config/database';
 import { NotFoundError } from '../../middleware/errorHandler';
 import { balanzaDelPeriodo, auxiliarDeCuenta, contextoDelPeriodo, nombreMes } from './periodos.service';
-import { situacionFinanciera, resultadoIntegral } from './estados-financieros.service';
+import { situacionFinanciera, resultadoIntegral, juegoCompleto } from './estados-financieros.service';
 import {
   ExcelJS, C, titulo, dato, encabezado, celda, totales, anchos, aBuffer,
 } from '../nomina/estilo-excel';
@@ -271,4 +271,167 @@ export async function resultadosPdf(companyId: string, anio: number, mes: number
   const ri = resultadoIntegral(ctx);
   const buffer = await estadoPdf(emp, 'Estado de resultados', `Del período de ${nombreMes(mes)} ${anio}`, filasResultados(ri));
   return { buffer, nombre: `Resultados_${anio}-${String(mes).padStart(2, '0')}.pdf` };
+}
+
+/* ── Estados analíticos (Flujo, Cambios en capital, Razones) ───────────────── */
+
+const mm = (mes: number) => String(mes).padStart(2, '0');
+
+/** El juego completo del mes (como la pantalla): trae flujo, cambios y razones. */
+async function juegoDe(companyId: string, anio: number, mes: number) {
+  const ctx = await ctxDe(companyId, anio, mes);
+  const mesAnt = mes === 1 ? 12 : mes - 1;
+  const anioAnt = mes === 1 ? anio - 1 : anio;
+  const ctxAnt = (await contextoDelPeriodo(companyId, anioAnt, mesAnt)) ?? undefined;
+  const p = await balanzaDelPeriodo(companyId, anio, mes);
+  const dias = p
+    ? Math.round((new Date(p.fechaFin).getTime() - new Date(p.fechaInicio).getTime()) / 86400000) + 1
+    : 30;
+  return juegoCompleto(ctx, ctxAnt, dias);
+}
+
+/* Flujo de efectivo — dos columnas, por actividad. */
+function filasFlujo(fe: any): FilaEstado[] {
+  const filas: FilaEstado[] = [];
+  const bloque = (nombre: string, rubros: any[], subtotal: number) => {
+    filas.push({ concepto: nombre.toUpperCase(), importe: '', bold: true });
+    for (const r of rubros) filas.push({ concepto: `    ${r.nombre}`, importe: r.importe });
+    filas.push({ concepto: `    Flujo neto de ${nombre.toLowerCase()}`, importe: subtotal, bold: true });
+  };
+  bloque('Actividades de operación', fe.operacion, fe.flujoOperacion);
+  bloque('Actividades de inversión', fe.inversion, fe.flujoInversion);
+  bloque('Actividades de financiamiento', fe.financiamiento, fe.flujoFinanciamiento);
+  filas.push({ concepto: 'INCREMENTO (DISMINUCIÓN) NETO DE EFECTIVO', importe: fe.incrementoNeto, bold: true, sombra: true });
+  filas.push({ concepto: 'Efectivo al inicio del período', importe: fe.efectivoInicial });
+  filas.push({ concepto: 'Efectivo al final del período', importe: fe.efectivoFinal, bold: true });
+  return filas;
+}
+
+function flujoOFalla(fe: any) {
+  if (!fe.disponible) throw new NotFoundError(fe.motivo || 'El flujo de efectivo necesita el mes anterior cargado.');
+}
+
+export async function flujoExcel(companyId: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {
+  const [emp, juego] = await Promise.all([empresaDe(companyId), juegoDe(companyId, anio, mes)]);
+  flujoOFalla(juego.flujoEfectivo);
+  const buffer = await estadoExcel(emp, 'Estado de flujo de efectivo', `Del período de ${nombreMes(mes)} ${anio} (método indirecto)`, filasFlujo(juego.flujoEfectivo));
+  return { buffer, nombre: `Flujo_${anio}-${mm(mes)}.xlsx` };
+}
+
+export async function flujoPdf(companyId: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {
+  const [emp, juego] = await Promise.all([empresaDe(companyId), juegoDe(companyId, anio, mes)]);
+  flujoOFalla(juego.flujoEfectivo);
+  const buffer = await estadoPdf(emp, 'Estado de flujo de efectivo', `Del período de ${nombreMes(mes)} ${anio} (método indirecto)`, filasFlujo(juego.flujoEfectivo));
+  return { buffer, nombre: `Flujo_${anio}-${mm(mes)}.pdf` };
+}
+
+/* Cambios en el capital contable — matriz (columnas dinámicas del capital). */
+function cambiosOFalla(cc: any) {
+  if (!cc.disponible) throw new NotFoundError(cc.motivo || 'Cambios en el capital necesita el mes anterior cargado.');
+}
+
+export async function cambiosExcel(companyId: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {
+  const [emp, juego] = await Promise.all([empresaDe(companyId), juegoDe(companyId, anio, mes)]);
+  const cc = juego.cambiosCapital; cambiosOFalla(cc);
+  const cols = ['CONCEPTO', ...cc.columnas.map((c: string) => c.toUpperCase()), 'TOTAL'];
+  const wb = new ExcelJS.Workbook(); wb.creator = 'GDM NEXO';
+  const ws = wb.addWorksheet('Cambios en capital', { views: [{ state: 'frozen', ySplit: 6 }] });
+  titulo(ws, 'Estado de cambios en el capital contable', cols.length);
+  dato(ws, 3, 1, `Empresa:   ${emp.business_name}`, true);
+  dato(ws, 4, 1, `RFC:   ${emp.rfc}`);
+  dato(ws, 5, 1, `Del período de ${nombreMes(mes)} ${anio}   ·   Generado: ${fechaGen()}`);
+  encabezado(ws, 6, cols.map((t) => ({ texto: t, color: C.identidad })));
+  let fila = 7;
+  for (const r of cc.renglones) {
+    const fondo = r.esSaldo ? C.totalAzul : undefined;
+    celda(ws, fila, 1, r.concepto, { negrita: r.esSaldo, fondo });
+    r.valores.forEach((v: number, i: number) => celda(ws, fila, 2 + i, Number(v), { negrita: r.esSaldo, fondo }));
+    celda(ws, fila, 2 + r.valores.length, Number(r.total), { negrita: true, fondo });
+    fila++;
+  }
+  anchos(ws, [30, ...cc.columnas.map(() => 16), 16]);
+  return { buffer: await aBuffer(wb), nombre: `CambiosCapital_${anio}-${mm(mes)}.xlsx` };
+}
+
+export async function cambiosPdf(companyId: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {
+  const [emp, juego] = await Promise.all([empresaDe(companyId), juegoDe(companyId, anio, mes)]);
+  const cc = juego.cambiosCapital; cambiosOFalla(cc);
+  const columnas: ColumnaPdf[] = [
+    { titulo: 'Concepto', clave: 'concepto', ancho: 26 },
+    ...cc.columnas.map((c: string, i: number) => ({ titulo: c, clave: `c${i}`, ancho: 14, pesos: true })),
+    { titulo: 'Total', clave: 'total', ancho: 14, pesos: true },
+  ];
+  const filas = cc.renglones.map((r: any) => {
+    const row: Record<string, any> = { concepto: r.concepto, total: r.total, _bold: r.esSaldo, _fondo: r.esSaldo ? '#DCE6F5' : undefined };
+    r.valores.forEach((v: number, i: number) => { row[`c${i}`] = v; });
+    return row;
+  });
+  const buffer = await reporteTablaPdf({
+    titulo: 'Estado de cambios en el capital contable', empresa: emp.business_name, rfc: emp.rfc,
+    subtitulos: [`Del período de ${nombreMes(mes)} ${anio}`], orientacion: 'landscape', columnas, filas,
+  });
+  return { buffer, nombre: `CambiosCapital_${anio}-${mm(mes)}.pdf` };
+}
+
+/* Razones financieras — tabla ancha (razón, fórmula, valor, referencia, estado, interpretación). */
+function valorRazon(r: any): string {
+  if (r.valor === null || r.valor === undefined) return '—';
+  const v = Number(r.valor);
+  switch (r.unidad) {
+    case 'VECES': return `${v.toFixed(2)}x`;
+    case 'PORCENTAJE': return `${v.toFixed(2)}%`;
+    case 'DIAS': return `${Math.round(v)} días`;
+    case 'PESOS': return new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+    default: return String(v);
+  }
+}
+const SEMAFORO_TXT: Record<string, string> = { VERDE: 'Bien', AMBAR: 'Atención', ROJO: 'Riesgo', SIN_DATO: 'Sin dato' };
+
+export async function razonesExcel(companyId: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {
+  const [emp, juego] = await Promise.all([empresaDe(companyId), juegoDe(companyId, anio, mes)]);
+  const rz: any[] = juego.razones;
+  const cols = ['RAZÓN', 'FÓRMULA', 'VALOR', 'REFERENCIA', 'ESTADO', 'INTERPRETACIÓN'];
+  const wb = new ExcelJS.Workbook(); wb.creator = 'GDM NEXO';
+  const ws = wb.addWorksheet('Razones', { views: [{ state: 'frozen', ySplit: 6 }] });
+  titulo(ws, 'Razones financieras', cols.length);
+  dato(ws, 3, 1, `Empresa:   ${emp.business_name}`, true);
+  dato(ws, 3, 4, `RFC:   ${emp.rfc}`);
+  dato(ws, 4, 1, `Del período de ${nombreMes(mes)} ${anio}`);
+  dato(ws, 4, 4, `Generado:   ${fechaGen()}`);
+  encabezado(ws, 6, cols.map((t) => ({ texto: t, color: C.identidad })));
+  let fila = 7;
+  for (const r of rz) {
+    celda(ws, fila, 1, r.nombre, { negrita: true });
+    celda(ws, fila, 2, r.formula);
+    celda(ws, fila, 3, valorRazon(r), { centrado: true });
+    celda(ws, fila, 4, r.referencia || '', { centrado: true });
+    celda(ws, fila, 5, SEMAFORO_TXT[r.semaforo] || r.semaforo,
+      { centrado: true, tinta: r.semaforo === 'ROJO' ? 'rojo' : r.semaforo === 'VERDE' ? 'verde' : 'base' });
+    celda(ws, fila, 6, r.interpretacion);
+    fila++;
+  }
+  anchos(ws, [26, 26, 12, 12, 12, 64]);
+  return { buffer: await aBuffer(wb), nombre: `Razones_${anio}-${mm(mes)}.xlsx` };
+}
+
+export async function razonesPdf(companyId: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {
+  const [emp, juego] = await Promise.all([empresaDe(companyId), juegoDe(companyId, anio, mes)]);
+  const rz: any[] = juego.razones;
+  const columnas: ColumnaPdf[] = [
+    { titulo: 'Razón', clave: 'nombre', ancho: 20 },
+    { titulo: 'Fórmula', clave: 'formula', ancho: 22 },
+    { titulo: 'Valor', clave: 'valor', ancho: 10, align: 'center' },
+    { titulo: 'Ref.', clave: 'referencia', ancho: 9, align: 'center' },
+    { titulo: 'Estado', clave: 'estado', ancho: 9, align: 'center' },
+    { titulo: 'Interpretación', clave: 'interpretacion', ancho: 40 },
+  ];
+  const filas = rz.map((r) => ({
+    nombre: r.nombre, formula: r.formula, valor: valorRazon(r),
+    referencia: r.referencia || '', estado: SEMAFORO_TXT[r.semaforo] || r.semaforo, interpretacion: r.interpretacion,
+  }));
+  const buffer = await reporteTablaPdf({
+    titulo: 'Razones financieras', empresa: emp.business_name, rfc: emp.rfc,
+    subtitulos: [`Del período de ${nombreMes(mes)} ${anio}`], orientacion: 'landscape', columnas, filas,
+  });
+  return { buffer, nombre: `Razones_${anio}-${mm(mes)}.pdf` };
 }

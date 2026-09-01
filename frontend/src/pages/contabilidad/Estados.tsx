@@ -364,7 +364,8 @@ export function ResultadoIntegralPage() {
 export function FlujoEfectivoPage() {
   return (
     <MarcoEstado titulo="Estado de flujos de efectivo" norma="B-2"
-      descripcion="De dónde salió y a dónde se fue el efectivo, por método indirecto.">
+      descripcion="De dónde salió y a dónde se fue el efectivo, por método indirecto."
+      descargas={{ excel: (a, m) => api.descargarFlujo(a, m, 'excel'), pdf: (a, m) => api.descargarFlujo(a, m, 'pdf') }}>
       {(d) => {
         const f = d.flujoEfectivo;
         if (!f.disponible) return <NoDisponible motivo={f.motivo} />;
@@ -408,7 +409,8 @@ export function FlujoEfectivoPage() {
 export function CambiosCapitalPage() {
   return (
     <MarcoEstado titulo="Estado de cambios en el capital contable" norma="B-4"
-      descripcion="Cómo se movió el capital de los socios entre el inicio y el fin del periodo.">
+      descripcion="Cómo se movió el capital de los socios entre el inicio y el fin del periodo."
+      descargas={{ excel: (a, m) => api.descargarCambios(a, m, 'excel'), pdf: (a, m) => api.descargarCambios(a, m, 'pdf') }}>
       {(d) => {
         const c = d.cambiosCapital;
         return (
@@ -480,7 +482,8 @@ export function RazonesPage() {
   const [tab, setTab] = useState<'razones' | 'horizontal' | 'nif'>('razones');
   return (
     <MarcoEstado titulo="Razones y análisis"
-      descripcion="Liquidez, apalancamiento, rotaciones y rentabilidad, con las cifras que las sostienen.">
+      descripcion="Liquidez, apalancamiento, rotaciones y rentabilidad, con las cifras que las sostienen."
+      descargas={{ excel: (a, m) => api.descargarRazones(a, m, 'excel'), pdf: (a, m) => api.descargarRazones(a, m, 'pdf') }}>
       {(d) => (
         <>
           <div className="flex gap-1 border-b">

@@ -603,6 +603,45 @@ router.get(
   })
 );
 
+/** GET /accounting/estados/:anio/:mes/flujo/:formato — Estado de flujo de efectivo (excel|pdf) */
+router.get(
+  '/estados/:anio/:mes/flujo/:formato',
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = req.params.formato;
+    if (f !== 'pdf' && f !== 'excel') throw new ValidationError('Formato no válido (excel|pdf).');
+    const anio = Number(req.params.anio), mes = Number(req.params.mes);
+    enviarDescarga(res, f, f === 'pdf'
+      ? await reportesExport.flujoPdf(companyId(req), anio, mes)
+      : await reportesExport.flujoExcel(companyId(req), anio, mes));
+  })
+);
+
+/** GET /accounting/estados/:anio/:mes/cambios/:formato — Cambios en el capital (excel|pdf) */
+router.get(
+  '/estados/:anio/:mes/cambios/:formato',
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = req.params.formato;
+    if (f !== 'pdf' && f !== 'excel') throw new ValidationError('Formato no válido (excel|pdf).');
+    const anio = Number(req.params.anio), mes = Number(req.params.mes);
+    enviarDescarga(res, f, f === 'pdf'
+      ? await reportesExport.cambiosPdf(companyId(req), anio, mes)
+      : await reportesExport.cambiosExcel(companyId(req), anio, mes));
+  })
+);
+
+/** GET /accounting/estados/:anio/:mes/razones/:formato — Razones financieras (excel|pdf) */
+router.get(
+  '/estados/:anio/:mes/razones/:formato',
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = req.params.formato;
+    if (f !== 'pdf' && f !== 'excel') throw new ValidationError('Formato no válido (excel|pdf).');
+    const anio = Number(req.params.anio), mes = Number(req.params.mes);
+    enviarDescarga(res, f, f === 'pdf'
+      ? await reportesExport.razonesPdf(companyId(req), anio, mes)
+      : await reportesExport.razonesExcel(companyId(req), anio, mes));
+  })
+);
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MOTOR NIF
    ═══════════════════════════════════════════════════════════════════════════ */
