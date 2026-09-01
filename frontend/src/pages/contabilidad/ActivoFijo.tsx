@@ -11,15 +11,18 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Sparkles, PlayCircle, FileText, RefreshCw, Check, Pencil, Trash2, X, CalendarClock } from 'lucide-react';
+import { Building2, Sparkles, PlayCircle, FileText, RefreshCw, Check, Pencil, Trash2, X, CalendarClock, Split } from 'lucide-react';
 import api from '@/services/api';
 
 const money = (n: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
 const pct = (n: any) => `${(Math.round((Number(n) || 0) * 10000) / 100)}%`;
+const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 const fecha = (s?: string) => s ? new Date(s + (s.length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('es-MX') : '—';
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const mesAA = (s?: string) => s ? `${MESES[Number(s.slice(5, 7))]} ${s.slice(0, 4)}` : '—';
+/** El agrupador (3 dígitos) de un código: '152.01' → '152'. */
+const agrupador3 = (codigo?: string) => String(codigo || '').split('.')[0].replace(/\D/g, '').slice(0, 3);
 
 export function ActivoFijoPage() {
   const hoy = new Date();
@@ -285,6 +288,7 @@ function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number
   const detectados: any[] = q.data?.data?.detectados || [];
   const [sel, setSel] = useState<Record<number, boolean>>({});
   const [tasas, setTasas] = useState<Record<number, string>>({});
+  const [dividir, setDividir] = useState<any | null>(null); // candidato inmueble a partir en terreno/construcción
 
   // Filtra por rubro conservando el índice original (sel/tasas se llavean por él).
   const visibles = detectados.map((d, i) => ({ d, i })).filter(({ d }) => !!d.intangible === soloIntangibles);
@@ -359,6 +363,12 @@ function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number
                 <td className="px-3 py-2">
                   <p className="text-xs text-gray-700">{d.etiqueta}</p>
                   <p className="font-mono text-[11px] text-gray-400">{d.cuenta_activo}{!d.depreciable ? ' · no se deprecia' : ''}</p>
+                  {['151', '152'].includes(agrupador3(d.cuenta_activo)) && (
+                    <button onClick={() => setDividir(d)}
+                      className="mt-1 inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-900">
+                      <Split size={11} /> Dividir terreno / construcción
+                    </button>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{money(d.moi)}</td>
                 <td className="px-3 py-2 text-center">
@@ -374,6 +384,118 @@ function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number
             ))}
           </tbody>
         </table>
+      </div>
+
+      {dividir && (
+        <ModalDividirInmueble
+          candidato={dividir}
+          onClose={() => setDividir(null)}
+          onHecho={() => {
+            setDividir(null);
+            qc.invalidateQueries({ queryKey: ['activos-detectar', anio, mes] });
+            qc.invalidateQueries({ queryKey: ['activos-fijos'] });
+          }} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Al comprar un inmueble (un solo CFDI), parte el importe en TERRENO (cuenta 151,
+ * no se deprecia) y CONSTRUCCIÓN/edificio (cuenta 152, 5% LISR 34-I). Registra
+ * dos activos con el mismo origen; la pierna que reusa la cuenta del candidato lo
+ * marca como registrado para que no reaparezca.
+ */
+function ModalDividirInmueble({ candidato, onClose, onHecho }:
+  { candidato: any; onClose: () => void; onHecho: () => void }) {
+  const total = round2(candidato.moi);
+  const baseEsTerreno = agrupador3(candidato.cuenta_activo) === '151';
+  const ctasQ = useQuery({ queryKey: ['cuentas-mov-inmueble'], queryFn: () => api.getCuentasContables({ soloMovimientos: true }) });
+  const cuentas: any[] = ctasQ.data?.data?.cuentas || ctasQ.data?.data || [];
+  const ctas151 = cuentas.filter((c) => agrupador3(c.codigo) === '151');
+  const ctas152 = cuentas.filter((c) => agrupador3(c.codigo) === '152');
+
+  const [terrenoMonto, setTerrenoMonto] = useState('');
+  const [ctaTerreno, setCtaTerreno] = useState('');
+  const [ctaConstr, setCtaConstr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  // Defaults: reusa la cuenta del candidato en la pierna que corresponde.
+  const ctaTerrenoSel = ctaTerreno || (baseEsTerreno ? candidato.cuenta_activo : (ctas151[0]?.codigo || ''));
+  const ctaConstrSel = ctaConstr || (!baseEsTerreno ? candidato.cuenta_activo : (ctas152[0]?.codigo || ''));
+
+  const terrenoNum = round2(terrenoMonto);
+  const construNum = round2(total - terrenoNum);
+
+  const registrar = async () => {
+    setErr('');
+    if (terrenoNum <= 0 || construNum <= 0) { setErr('El valor del terreno debe ser mayor a 0 y menor al total.'); return; }
+    if (!ctaTerrenoSel || !ctaConstrSel) { setErr('Elige la cuenta de terreno (151) y la de construcción (152).'); return; }
+    if (ctaTerrenoSel === ctaConstrSel) { setErr('El terreno y la construcción no pueden ir a la misma cuenta.'); return; }
+    setBusy(true);
+    try {
+      const base = {
+        fecha_adquisicion: candidato.fecha_adquisicion, origen_uuid: candidato.origen_uuid,
+        origen_folio: candidato.origen_folio, proveedor_rfc: candidato.proveedor_rfc,
+        proveedor_nombre: candidato.proveedor_nombre, clave_prod_serv: candidato.clave_prod_serv,
+      };
+      await api.registrarActivosDetectados([
+        { ...base, descripcion: `${candidato.descripcion} · Terreno`, cuenta_activo: ctaTerrenoSel, moi: terrenoNum, tasa_anual: 0 },
+        { ...base, descripcion: `${candidato.descripcion} · Construcción`, cuenta_activo: ctaConstrSel, moi: construNum, tasa_anual: 0.05 },
+      ]);
+      onHecho();
+    } catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo registrar la división.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 grid place-items-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Split size={17} className="text-emerald-700" /> Dividir inmueble</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-4 space-y-3 text-sm">
+          <p className="text-gray-600">
+            <b className="text-gray-800">{candidato.descripcion}</b><br />
+            Total del CFDI: <b>{money(total)}</b>. El <b>terreno no se deprecia</b>; la <b>construcción</b> se deprecia al 5%.
+          </p>
+
+          <label className="block">
+            <span className="text-xs text-gray-500">Valor del terreno (del avalúo / escritura)</span>
+            <input type="number" value={terrenoMonto} onChange={(e) => setTerrenoMonto(e.target.value)}
+              placeholder="0.00" className="input w-full py-1.5 mt-0.5" />
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-50 border rounded p-2">
+              <p className="text-[11px] text-gray-500">Terreno (no se deprecia)</p>
+              <p className="font-semibold">{money(terrenoNum)}</p>
+              <select value={ctaTerrenoSel} onChange={(e) => setCtaTerreno(e.target.value)} className="input w-full py-1 mt-1 text-xs">
+                {ctas151.length === 0 && <option value="">(sin cuentas 151)</option>}
+                {ctas151.map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo} · {c.nombre}</option>)}
+              </select>
+            </div>
+            <div className="bg-emerald-50 border border-emerald-200 rounded p-2">
+              <p className="text-[11px] text-emerald-700">Construcción (5%)</p>
+              <p className="font-semibold">{money(construNum)}</p>
+              <select value={ctaConstrSel} onChange={(e) => setCtaConstr(e.target.value)} className="input w-full py-1 mt-1 text-xs">
+                {ctas152.length === 0 && <option value="">(sin cuentas 152)</option>}
+                {ctas152.map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo} · {c.nombre}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {err && <p className="text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2 text-xs">{err}</p>}
+        </div>
+        <div className="flex justify-end gap-2 px-4 py-3 border-t">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800">Cancelar</button>
+          <button onClick={registrar} disabled={busy}
+            className="flex items-center gap-1.5 bg-emerald-700 text-white px-4 py-1.5 rounded-lg hover:bg-emerald-800 disabled:opacity-50 text-sm">
+            <Check size={15} /> {busy ? 'Registrando…' : 'Registrar los dos'}
+          </button>
+        </div>
       </div>
     </div>
   );
