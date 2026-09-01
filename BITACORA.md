@@ -4379,3 +4379,59 @@ le **adjunta el acuse (PDF)** que devuelve el portal del IDSE; se guarda en la B
 Así queda junto el envío y su confirmación. Tablas `nomina_idse_lotes` +
 `nomina_idse_lote_movimientos`; el lote lo graban `generarMixto` y
 `generarDesdePendientes`.
+
+---
+
+## 2026-08-31 — Importar respaldo: migración de contabilidad CONTPAQi a NEXO (y la herramienta que NEXO entrega ya configurada)
+
+**Para qué.** Rescatar la contabilidad histórica de un respaldo de CONTPAQi y
+pasarla a la empresa activa de NEXO. **Reutilizable para cualquier RFC** — es el
+camino para dar de alta clientes nuevos con sus ejercicios anteriores. Decisión:
+**todos los ejercicios** (no sólo saldos); **CFDI = metadato + UUID** por ahora (el
+XML completo se rescata después, del ADD o de la descarga del SAT que ya funciona).
+
+**El límite honesto de un `.bak`.** Un `.bak` de CONTPAQi es un respaldo **binario de
+SQL Server**, no un zip: no se puede abrir en el navegador ni en el servidor de NEXO
+(Render corre Linux, sin motor SQL). Por eso la lectura **tiene que correr en la PC**
+del usuario. Para quien no tiene SQL instalado: **SQL Server LocalDB** (gratis, ~45 MB,
+sin configurar). Ojo con la versión: el motor debe ser **>=** la del respaldo (CONTPAQi
+2022 = SQL v16; un LocalDB v15 no restaura un v16 → mensaje claro para instalar 2022+).
+
+**Hechos de CONTPAQi verificados (no asumidos).** `MovimientosPoliza.TipoMovto`
+**0 = Cargo, 1 = Abono** (comprobado con pólizas reales y el cuadre global).
+`Cuentas.IdAgrupadorSAT` → agrupador SAT → naturaleza. Códigos de 8 dígitos, jerarquía
+por ceros a la derecha. Las tablas de XML (`XMLDocs*`) viven en el schema **`ais`**, las
+contables en `dbo`. Cuentas de sistema con prefijo `_` (p.ej. `_CUADRE`) se omiten.
+
+**El pipeline.** Extractor (`extraer-contpaqi.ps1`, `sqlcmd -E` + `FOR JSON`, sin
+dependencias) produce un paquete plano de JSON → importador
+(`contpaqi-import.service.ts`, ruta `POST /accounting/contpaqi/importar`) que carga en
+la empresa **activa**: activa ejercicios, catálogo (naturaleza por agrupador SAT),
+pólizas reusando `crearPoliza`, **idempotente por `Guid`** (`origen='CONTPAQI'`, migración
+`2026-08-31b_contpaqi_origen.sql`). **Valida el RFC como primer paso** (el del respaldo
+vs la empresa abierta; se detiene si no coinciden, se puede forzar). Pólizas sin cuenta
+o descuadradas **no se pierden**: caen en una cuenta temporal **`MIG-TEMPORAL`** (se crea
+al vuelo) y se **reportan** para reasignarles la cuenta correcta.
+
+**La herramienta, y cómo NEXO la entrega (los "detallitos" de hoy).** Todo el proceso
+—restaurar el `.bak`, extraer, subir— vive en una herramienta de **una ventana**
+(`importar-respaldo.ps1`): el usuario elige el `.bak` y lo demás corre solo hasta un
+resumen. Para que **no salga de NEXO a conseguirla** y para resolver que **la dirección
+será dinámica en producción**, NEXO ahora la **entrega ya configurada**: el endpoint
+`GET /accounting/contpaqi/herramienta` arma un `.zip` (la herramienta + un `nexo.txt`
+con la dirección de **ese** servidor) y la pantalla *Contabilidad → Importar respaldo*
+tiene el botón **«Descargar la herramienta»**. La herramienta lee ese `nexo.txt` y trae
+la dirección puesta. Dos correcciones de hoy: (1) la ventana tronaba con *"AppendText"*
+—choque entre la caja de bitácora `$log` y un parámetro `$Log` (PowerShell no distingue
+mayúsculas)→ renombrada a `$txtLog`; (2) **la dirección**: el API no es el frontend
+(`gdm-almacen-frontend`) sino el **backend** (`gdm-almacen-backend`, que es lo que vale
+`VITE_API_BASE`); la herramienta ahora **normaliza** la URL a sólo origen (tira rutas
+como `/dashboard`).
+
+**Datos reales que cuadran.** GRUPO HCGM (GHC1707275Y0) 2018-2024: **472 cuentas, 7,674
+pólizas, 29,100 movimientos** con **cargos = abonos = $137,942,105.80**, 5,261 CFDI.
+
+**Deploy** `84f1f9f`. **Pendiente (mañana):** probar el importador contra el NEXO real
+(la BD de NEXO no está en local), y el `.bak` de **nómina por empresa** — sólo apareció
+`nomGenerales.bak` (config compartida), falta el de recibos/percepciones/deducciones.
+Salieron más detallitos; se retoma mañana.

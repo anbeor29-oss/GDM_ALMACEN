@@ -123,6 +123,18 @@ Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
   cuelga de Contabilidad; **Asignación de cuenta** como puente.
   Pendiente: **balanza derivada** (pasar los saldos de `journal_lines` a la balanza
   de comprobación) y la póliza de apertura (balanza anterior).
+- **Contabilidad — importar respaldo (migración CONTPAQi)**: pasa la contabilidad
+  histórica de un respaldo `.bak` a la empresa activa, **reutilizable para cualquier
+  RFC**. Un `.bak` es binario de SQL Server: no se abre en el navegador ni en Render
+  (Linux) → se lee **en la PC** con una herramienta (sin SQL instalado, usa **SQL Server
+  LocalDB**). Para el usuario final es un paso: *Contabilidad → Importar respaldo*, botón
+  **«Descargar la herramienta»** (baja ya configurada con la dirección de ESE servidor —
+  `nexo.txt` dentro del `.zip`, resuelve la URL dinámica de producción—), doble clic,
+  elige el `.bak`, **Importar** → resumen. Por dentro: extractor (`sqlcmd` + `FOR JSON`)
+  → importador idempotente (por `Guid`, `origen='CONTPAQI'`); **valida el RFC** primero;
+  pólizas sin cuenta o descuadradas caen en **`MIG-TEMPORAL`** y se reportan. Probado con
+  HCGM 2018-2024: 7,674 pólizas / 29,100 movimientos que **cuadran**. Pendiente: probar
+  contra NEXO real y el `.bak` de **nómina** por empresa.
 - **Tesorería**: "Remesas de pago" → **Pagos programados**; pestaña nueva de
   **Conciliación bancaria** consolidada, con export a Excel.
 
