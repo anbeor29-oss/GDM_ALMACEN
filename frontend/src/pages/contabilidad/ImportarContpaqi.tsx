@@ -198,7 +198,7 @@ function Reporte({ rep }: { rep: any }) {
       <h2 className="font-semibold text-gray-800 flex items-center gap-2"><CheckCircle2 size={18} className="text-emerald-600" /> Resumen de la importación</h2>
       <div className="grid sm:grid-cols-2 gap-3 text-sm">
         <Tarjeta titulo="Ejercicios" valor={(rep.ejerciciosActivados || []).join(', ') || '—'} />
-        <Tarjeta titulo="Cuentas" valor={`${rep.cuentas?.creadas ?? 0} nuevas`} />
+        <Tarjeta titulo="Cuentas" valor={`${rep.cuentas?.creadas ?? 0} nuevas${rep.cuentas?.agrupadorRellenado ? ` · ${rep.cuentas.agrupadorRellenado} con agrupador SAT rellenado` : ''}${rep.cuentas?.sinAgrupador ? ` · ${rep.cuentas.sinAgrupador} aún sin agrupador` : ''}`} />
         <Tarjeta titulo="Pólizas" valor={`${rep.polizas?.creadas ?? 0} creadas · ${rep.polizas?.yaExistian ?? 0} ya estaban · ${rep.polizas?.omitidas ?? 0} omitidas`} />
         <Tarjeta titulo="Comprobantes (CFDI)" valor={`${rep.cfdi?.creados ?? 0} nuevos`} />
       </div>

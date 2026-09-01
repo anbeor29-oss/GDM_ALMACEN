@@ -41,7 +41,7 @@ export interface PaqueteContpaqi {
 export interface ReporteImport {
   rfc: { respaldo: string; empresaActiva: string; coincide: boolean };
   ejerciciosActivados: number[];
-  cuentas: { creadas: number; omitidas: number; sinAgrupador: number };
+  cuentas: { creadas: number; omitidas: number; sinAgrupador: number; agrupadorRellenado: number };
   polizas: {
     creadas: number; yaExistian: number; omitidas: number;
     conTemporal: Array<{ guid: string; folio: string; motivo: string }>;
@@ -57,6 +57,35 @@ const TIPO_POR_DIGITO: Record<string, string> = {
 };
 const naturalezaPorTipo = (tipo: string) => (['ACTIVO', 'COSTO', 'GASTO'].includes(tipo) ? 'DEUDORA' : 'ACREEDORA');
 const TIPO_POL: Record<number, 'DIARIO' | 'INGRESO' | 'EGRESO'> = { 1: 'DIARIO', 2: 'INGRESO', 3: 'EGRESO' };
+
+/**
+ * Acomoda la póliza migrada en la clasificación de NEXO (ventas / compras /
+ * cobros-pagos / nómina / manual) para que caiga en su filtro como las que
+ * genera NEXO — así el respaldo importado no queda todo en «otras». Es SÓLO para
+ * presentar: no cambia el asiento. Decide por el concepto y, si no basta, por el
+ * AGRUPADOR SAT de las cuentas que toca (estándar, no por el número de cuenta que
+ * varía entre empresas) y por el tipo de póliza. La `categoria()` del frontend
+ * lee este prefijo de `regla`.
+ */
+function clasificarRegla(concepto: string, tipoPol: number, agrupadores: string[]): string {
+  const c = (concepto || '').toLowerCase();
+  if (/n[oó]mina|sueldos?|raya|finiquito|aguinaldo|asimilad/.test(c)) return 'nomina_migrado';
+  if (/\bcobro|cobranza|dep[oó]sito de cliente/.test(c)) return 'cobro_migrado';
+  if (/\bpago\b/.test(c)) return 'pago_migrado';
+  if (/venta|factura de venta/.test(c)) return 'ventas_migrado';
+  if (/compra|adquisici/.test(c)) return 'compras_migrado';
+
+  const agr = agrupadores.filter(Boolean).map(String);
+  const toca = (pref: string) => agr.some((x) => x.startsWith(pref));
+  const banco = toca('102') || toca('101');   // bancos / caja
+  if (banco && toca('105')) return 'cobro_migrado';   // banco + clientes
+  if (banco && toca('201')) return 'pago_migrado';    // banco + proveedores
+  if (toca('40')) return 'ventas_migrado';            // ingresos (401/402)
+  if (toca('50') || toca('60') || toca('115')) return 'compras_migrado'; // costo / gasto / inventario
+  if (tipoPol === 2) return 'cobro_migrado';          // Ingreso
+  if (tipoPol === 3) return 'pago_migrado';           // Egreso
+  return 'manual';                                     // Diario sin señal
+}
 
 /** El padre de un código CONTPAQi (8 díg., ceros a la derecha): el ancestro
  *  existente más cercano al zerear el sufijo. */
@@ -99,7 +128,7 @@ export async function importarContpaqi(
   const rep: ReporteImport = {
     rfc: { respaldo: rfcRespaldo || '(no venía en el paquete)', empresaActiva: rfcEmpresa, coincide },
     ejerciciosActivados: [],
-    cuentas: { creadas: 0, omitidas: 0, sinAgrupador: 0 },
+    cuentas: { creadas: 0, omitidas: 0, sinAgrupador: 0, agrupadorRellenado: 0 },
     polizas: { creadas: 0, yaExistian: 0, omitidas: 0, conTemporal: [], motivos: [] },
     cfdi: { creados: 0, emitidos: 0, recibidos: 0 },
     avisos: [],
@@ -132,15 +161,26 @@ async function importarCuentas(companyId: string, cuentas: CuentaCt[], rep: Repo
   // Se insertan en orden de código: así el padre ya existe cuando llega el hijo.
   const ordenadas = [...utiles].sort((a, b) => a.codigo.localeCompare(b.codigo));
   const idPorCodigo = new Map<string, { id: string; nivel: number }>();
+  const agrupadorPorCodigo = new Map<string, string | null>();
 
   for (const c of ordenadas) {
     const tipo = TIPO_POR_DIGITO[c.codigo[0]] || 'ORDEN';
-    const agrupadorValido = c.agrupador && natDeAgr.has(c.agrupador) ? c.agrupador : null;
+    const padreCod = codigoPadre(c.codigo, codigos);
+
+    // Agrupador propio si es válido; si no, se HEREDA del mayor. En CONTPAQi la
+    // subcuenta comparte el agrupador de su cuenta mayor, y las que se crearon en
+    // automático por otro sistema suelen venir sin él: se rellena (y se reporta)
+    // en vez de dejar la cuenta sin código agrupador del SAT.
+    const propio = c.agrupador && natDeAgr.has(c.agrupador) ? c.agrupador : null;
+    const heredado = !propio && padreCod ? (agrupadorPorCodigo.get(padreCod) || null) : null;
+    const agrupadorValido = propio || heredado;
+    if (heredado) rep.cuentas.agrupadorRellenado++;
     if (!agrupadorValido && c.afectable === 1) rep.cuentas.sinAgrupador++;
+    agrupadorPorCodigo.set(c.codigo, agrupadorValido);
+
     const naturaleza = agrupadorValido ? natDeAgr.get(agrupadorValido)! : naturalezaPorTipo(tipo);
     const esComplementaria = agrupadorValido != null && naturaleza !== naturalezaPorTipo(tipo);
 
-    const padreCod = codigoPadre(c.codigo, codigos);
     const padre = padreCod ? idPorCodigo.get(padreCod) : undefined;
     const nivel = padre ? padre.nivel + 1 : 1;
 
@@ -169,9 +209,11 @@ async function importarCuentas(companyId: string, cuentas: CuentaCt[], rep: Repo
 async function importarPolizas(companyId: string, paquete: PaqueteContpaqi, userId: string | undefined, rep: ReporteImport) {
   // Códigos → id (ya migrados) para armar las partidas.
   const ctas = await query<any>(
-    'SELECT codigo, id, permite_movimientos FROM accounting_accounts WHERE company_id=$1', [companyId]);
+    'SELECT codigo, id, permite_movimientos, codigo_agrupador FROM accounting_accounts WHERE company_id=$1', [companyId]);
   const idCta = new Map<string, { id: string; mov: boolean }>(
     ctas.rows.map((c: any) => [c.codigo, { id: c.id, mov: c.permite_movimientos }]));
+  const agrDe = new Map<string, string>(
+    ctas.rows.filter((c: any) => c.codigo_agrupador).map((c: any) => [c.codigo, c.codigo_agrupador]));
 
   // Movimientos y UUIDs agrupados por póliza.
   const movsPorPol = new Map<number, MovimientoCt[]>();
@@ -199,7 +241,17 @@ async function importarPolizas(companyId: string, paquete: PaqueteContpaqi, user
   };
 
   for (const p of paquete.polizas || []) {
-    if (importados.has(p.guid)) { rep.polizas.yaExistian++; continue; }
+    if (importados.has(p.guid)) {
+      rep.polizas.yaExistian++;
+      // Reclasifica las que se importaron ANTES de esta mejora (regla 'contpaqi_v1'),
+      // para que también caigan en su filtro. Sólo toca esas; no reasienta nada.
+      const agrsE = (movsPorPol.get(p.id) || []).map((m) => agrDe.get(m.cuenta)).filter(Boolean) as string[];
+      await query(
+        `UPDATE journal_entries SET regla=$3
+          WHERE company_id=$1 AND origen='CONTPAQI' AND origen_uuid=$2 AND regla='contpaqi_v1'`,
+        [companyId, p.guid, clasificarRegla(p.concepto, p.tipoPol, agrsE)]);
+      continue;
+    }
     const folioTxt = `${p.ejercicio}/${p.periodo}/${p.folio}`;
     const movs = (movsPorPol.get(p.id) || []).sort((a, b) => a.num - b.num);
     if (movs.length < 2) { rep.polizas.omitidas++; if (movs.length) rep.polizas.motivos.push({ guid: p.guid, motivo: `sólo ${movs.length} movimiento(s)` }); continue; }
@@ -237,11 +289,12 @@ async function importarPolizas(companyId: string, paquete: PaqueteContpaqi, user
     }
 
     try {
+      const agrupadores = movs.map((m) => agrDe.get(m.cuenta)).filter(Boolean) as string[];
       await crearPoliza(companyId, {
         tipo: TIPO_POL[p.tipoPol] || 'DIARIO',
         fecha,
         concepto: `${(p.concepto || '').toString().slice(0, 180)}${uuids.length > 1 ? ` · ${uuids.length} CFDI` : ''}`.trim() || 'Póliza CONTPAQi',
-        origen: 'CONTPAQI', origen_uuid: p.guid, regla: 'contpaqi_v1',
+        origen: 'CONTPAQI', origen_uuid: p.guid, regla: clasificarRegla(p.concepto, p.tipoPol, agrupadores),
         lineas,
       }, userId);
       rep.polizas.creadas++;
