@@ -4435,3 +4435,61 @@ pólizas, 29,100 movimientos** con **cargos = abonos = $137,942,105.80**, 5,261 
 (la BD de NEXO no está en local), y el `.bak` de **nómina por empresa** — sólo apareció
 `nomGenerales.bak` (config compartida), falta el de recibos/percepciones/deducciones.
 Salieron más detallitos; se retoma mañana.
+
+---
+
+## 2026-09-01 — Migración de nómina de NomiPaq a NEXO: comparación, importador y herramienta
+
+**Qué.** Traer la nómina histórica de un respaldo de **NomiPaq (CONTPAQ Nóminas)**
+a NEXO —empleados, periodos y recibos— reutilizable para cualquier empresa, como
+se hizo con la contabilidad. Empresa de prueba: HUGO ANDRÉS MUÑOZ MACIAS.
+
+**Se restauró el `.bak` real y se comparó de verdad** (no por el nombre de las
+tablas, que el propio plan del cliente advierte no asumir). Restaurado en
+SQLEXPRESS como `NEXO_MIG_NOM`; el mapeo REAL se sacó por las COLUMNAS: `nom10001`
+= empleados (8), `nom10002` = periodos (211), `nom10004` = conceptos con fórmula y
+**clave SAT** (`ClaveAgrupadoraSAT`, `TipoClaveSAT`; tipo P/D/O/N), `nom10007` =
+movimientos (importe por empleado×periodo×concepto), `nom10043` = CFDI (UUID). Ojo:
+`nom10000` (1 fila) es la EMPRESA/config, no empleados.
+
+**¿Falta algo de bases en NEXO? No, nada grande.** NEXO ya cubre todas las
+entidades: `nomina_empleados`, `nomina_periodos`, `nomina_recibos` (percep./deduc.
+en JSONB + uuid/xml/estatus del CFDI + total_otros_pagos), créditos, cuotas IMSS,
+IDSE, deptos/puestos. Lo único que se agregó: un **marcador de origen**
+(`origen` en empleados/periodos/recibos, migración `2026-09-01_nomina_origen.sql`).
+Decisiones del usuario: **todo el histórico con selección de años**, y **conceptos
+sólo en el recibo** (sin catálogo `nomina_conceptos`; NEXO calcula lo nuevo con su
+motor y el recibo guarda el desglose ya calculado).
+
+**Detalles que se resolvieron contra los datos reales:**
+- **RFC/CURP partidos.** NomiPaq guarda `rfc`=iniciales, `homoclave`=3 finales, y la
+  FECHA (yyMMdd) NO se almacena; se reconstruye `iniciales + fecha(nacimiento) +
+  homoclave`. La empresa saca la fecha de su CURP. Fechas centinela `1899-12-30` =
+  null.
+- **Gravado/exento.** En una PERCEPCIÓN, `importe1` = gravado e `importe2` = exento
+  (comprobado 361/361 de los recibos armados). El neto AUTORITATIVO es el concepto
+  tipo N («Neto»); `total_otros_pagos` se ajusta a `neto − percep + deduc` porque
+  algunos conceptos «O» de CONTPAQ son informativos (subsidio causado, etc.) y no
+  deben sumarse dos veces. ISR = deducción con clave SAT 002; IMSS = clave 001.
+- **El XML timbrado NO está en el `.bak`** (`nom10043.vComprobante` sólo trae "4.0"),
+  por eso el recibo se arma de los movimientos; queda estatus TIMBRADO con su UUID
+  pero sin el XML.
+
+**Lo entregado (commits e6aa300, 718e096, 3af6092, 39cc483):**
+- **Extractor** `backend/scripts/nomina/extraer-nomina.ps1` (sqlcmd + FOR JSON).
+- **Importador** `nomina-import.service.ts` + `POST /nomina/importar` (multipart):
+  empleados (upsert por num_empleado, mapea códigos a SAT), periodos (tipo por
+  días: ≤8 semanal / ≤16 quincenal / más mensual; omite los de días 0), y recibos
+  (agrupa movimientos → percep./deduc. JSONB, totales, ISR/IMSS, neto, UUID).
+  Idempotente; todo `origen='CONTPAQ'`. Filtra por ejercicios.
+- **Herramienta de un clic** `importar-respaldo-nomina.ps1` (GUI): elige el `.bak`,
+  restaura, extrae y deja un **paquete `.zip`** en el Escritorio; NO sube nada.
+  Endpoint `GET /nomina/herramienta` la entrega.
+- **Pantalla** Nómina → **Importar respaldo** (`/nomina/importar`): botón
+  «Descargar la herramienta», acepta el **`.zip`** (lo descomprime en el navegador
+  con `fflate`), muestra el previo, deja **elegir años** e importa.
+
+**Validado** con el respaldo real: 8 empleados, 211 periodos, 361 recibos (350 con
+UUID), gravado+exento = percepciones al 100%, la herramienta produce el `.zip` con
+los 8 JSON. **Pendiente:** la corrida final contra la base de NEXO real (Claude no
+tiene esa BD en local); subir el `.zip` en la pantalla y cotejar contra NomiPaq.
