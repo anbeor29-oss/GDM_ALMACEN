@@ -1277,12 +1277,13 @@ router.post(
 
 /**
  * GET /nomina/herramienta — descarga la herramienta local que lee el .bak de
- * NomiPaq y deja un paquete .zip para subir aquí. No sube nada (la subida es por
- * la pantalla), así que no necesita la dirección de NEXO.
+ * NomiPaq y deja un paquete .zip para subir aquí. Incluye nexo.txt con la
+ * dirección de NEXO y el correo del usuario (para pre-llenar y confirmar su
+ * identidad antes de generar el paquete). La subida sigue siendo por pantalla.
  */
 router.get(
   '/herramienta',
-  asyncHandler(async (_req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     const dir = path.resolve(__dirname, '../../../scripts/nomina');
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename="Importar respaldo nomina NEXO.zip"');
@@ -1293,6 +1294,8 @@ router.get(
       const p = path.join(dir, f);
       if (fs.existsSync(p)) zip.file(p, { name: f });
     }
+    const baseUrl = process.env.RENDER_EXTERNAL_URL || `https://${req.get('host')}`;
+    zip.append(`url=${baseUrl}\nemail=${req.user?.email ?? ''}\n`, { name: 'nexo.txt' });
     await zip.finalize();
   })
 );

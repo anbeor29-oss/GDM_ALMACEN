@@ -117,8 +117,9 @@ export function ImportarContpaqiPage() {
             <Download size={18} /> {bajando ? 'Preparando…' : 'Descargar la herramienta'}
           </button>
           <p className="text-xs text-emerald-900">
-            Se baja <b>una vez</b> por computadora. Al abrirla, <b>descomprímela</b>, da doble clic en
-            <b> «Importar respaldo»</b>, elige el <b>.bak</b> de CONTPAQi y genera el <b>paquete .zip</b>.
+            Se baja <b>una vez</b> por computadora. <b>Descomprímela</b> y da doble clic en
+            <b> «Importar respaldo»</b>: trae tu <b>dirección</b> y <b>correo</b> ya puestos; elige el
+            <b> .bak</b> de CONTPAQi, <b>confirma con tu contraseña de NEXO</b> y genera el <b>paquete .zip</b>.
           </p>
         </div>
         <ol className="space-y-2 text-sm text-gray-700">
