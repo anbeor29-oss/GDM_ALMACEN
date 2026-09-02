@@ -43,6 +43,8 @@ function Resolve-Sql {
 function Invoke-Paquete {
   param([string]$Bak, [scriptblock]$Log)
   if (-not (Test-Path $Bak)) { throw "No existe el respaldo: $Bak" }
+  $ext = [IO.Path]::GetExtension($Bak)
+  if ($ext -and $ext -ne '.bak') { throw ("El archivo que elegiste termina en '$ext', no en '.bak'. Esta herramienta necesita el respaldo .bak que genera NomiPaq / CONTPAQ Nóminas (un backup de SQL Server), NO una descarga de XML del SAT ni un .zip. Elegiste: " + (Split-Path $Bak -Leaf)) }
   if (-not (Test-Path $WorkDir)) { New-Item -ItemType Directory -Path $WorkDir | Out-Null }
   $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
   $db = "NEXO_NOM_$stamp"; $bakLocal = Join-Path $WorkDir "$db.bak"; $export = Join-Path $WorkDir "export_$stamp"
@@ -57,7 +59,7 @@ function Invoke-Paquete {
     $fl = & $sc -S $srv -E -W -s"|" -Q "SET NOCOUNT ON; RESTORE FILELISTONLY FROM DISK = N'$bakLocal';"
     $dataLn = $null; $logLn = $null
     foreach ($line in $fl) { $p = $line -split '\|'; if ($p.Count -ge 3) { if ($p[2].Trim() -eq 'D') { $dataLn = $p[0].Trim() } elseif ($p[2].Trim() -eq 'L') { $logLn = $p[0].Trim() } } }
-    if (-not $dataLn -or -not $logLn) { throw "No se pudieron leer los nombres lógicos del .bak." }
+    if (-not $dataLn -or -not $logLn) { throw ("El archivo no es un respaldo .bak válido de SQL Server. Elige el .bak de NomiPaq / CONTPAQ Nóminas (no una descarga de XML del SAT ni un .zip). Detalle de SQL: " + (($fl | Out-String).Trim())) }
     $rout = & $sc -S $srv -E -b -Q "SET NOCOUNT ON; IF DB_ID('$db') IS NOT NULL BEGIN ALTER DATABASE [$db] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$db]; END; RESTORE DATABASE [$db] FROM DISK = N'$bakLocal' WITH MOVE '$dataLn' TO N'$WorkDir\$db.mdf', MOVE '$logLn' TO N'$WorkDir\$db._log.ldf', REPLACE, RECOVERY;" 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
       if ($rout -match 'incompatible|is running version|backed up on') { throw ("El respaldo es de una versión de SQL Server más NUEVA que el motor de esta PC. Instala SQL Server 2022 Express o LocalDB 2022+ (gratis) y reintenta. Detalle: " + $rout.Trim()) }
