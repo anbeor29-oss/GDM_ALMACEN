@@ -1056,7 +1056,7 @@ router.post(
  */
 router.post(
   '/contpaqi/importar',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:capturar'),
   subir.fields([
     { name: 'empresa', maxCount: 1 }, { name: 'cuentas', maxCount: 1 }, { name: 'polizas', maxCount: 1 },
     { name: 'movimientos', maxCount: 1 }, { name: 'poliza_cfdi', maxCount: 1 },

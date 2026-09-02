@@ -1244,7 +1244,7 @@ router.post(
  */
 router.post(
   '/importar',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  soloAdmin,
   subirNomina.fields([
     { name: 'empresa', maxCount: 1 }, { name: 'departamentos', maxCount: 1 }, { name: 'puestos', maxCount: 1 },
     { name: 'empleados', maxCount: 1 }, { name: 'periodos', maxCount: 1 }, { name: 'conceptos', maxCount: 1 },
