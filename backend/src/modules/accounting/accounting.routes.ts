@@ -781,7 +781,7 @@ router.get(
 /** PUT /accounting/ventas/productos — asigna la cuenta 401 a una ClaveProdServ */
 router.put(
   '/ventas/productos',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:catalogo'),
   asyncHandler(async (req: Request, res: Response) => {
     await ventas.asignarCuentaProducto(
       companyId(req), String(req.body?.clave), req.body?.descripcion ?? null, req.body?.cuenta ?? null);
@@ -802,7 +802,7 @@ router.get(
 /** PUT /accounting/compras/productos — asigna la cuenta (115/601) a una ClaveProdServ */
 router.put(
   '/compras/productos',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:catalogo'),
   asyncHandler(async (req: Request, res: Response) => {
     await compras.asignarCuentaProductoCompra(
       companyId(req), String(req.body?.clave), req.body?.descripcion ?? null, req.body?.cuenta ?? null);
@@ -822,7 +822,7 @@ router.get(
 /** PUT /accounting/subcuentas/:id/codigo — captura/override manual del código */
 router.put(
   '/subcuentas/:id/codigo',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:catalogo'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await terceros.fijarCodigoSubcuenta(companyId(req), req.params.id, String(req.body?.codigo || ''));
     if ('error' in r) { res.status(400).json({ success: false, message: r.error }); return; }
@@ -833,7 +833,7 @@ router.put(
 /** POST /accounting/subcuentas/generar — da de alta la subcuenta de cada tercero */
 router.post(
   '/subcuentas/generar',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:catalogo'),
   asyncHandler(async (req: Request, res: Response) => {
     const dir = req.body?.direccion === 'recibidos' ? 'recibidos' : 'emitidos';
     res.json({ success: true, data: await terceros.generarSubcuentasDeComprobantes(companyId(req), dir) });
@@ -852,7 +852,7 @@ router.get(
 /** POST /accounting/polizas/generar-ventas — arma las pólizas de venta del mes */
 router.post(
   '/polizas/generar-ventas',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await polizas.generarVentasDelMes(
       companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
@@ -868,7 +868,7 @@ router.post(
  */
 router.post(
   '/compras/subir-xml',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:capturar'),
   subir.array('archivos', 60),
   asyncHandler(async (req: Request, res: Response) => {
     const files = ((req as any).files || []) as Array<{ originalname: string; buffer: Buffer }>;
@@ -900,7 +900,7 @@ router.post(
 /** POST /accounting/polizas/generar-compras — arma las pólizas de compra del mes */
 router.post(
   '/polizas/generar-compras',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await polizas.generarComprasDelMes(
       companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
@@ -911,7 +911,7 @@ router.post(
 /** POST /accounting/polizas/generar-cobros-pagos — cobros y pagos (del complemento) del mes */
 router.post(
   '/polizas/generar-cobros-pagos',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await polizas.generarCobrosPagosDelMes(
       companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
@@ -922,7 +922,7 @@ router.post(
 /** POST /accounting/polizas/manual — una póliza capturada a mano (cargos/abonos) */
 router.post(
   '/polizas/manual',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await polizas.crearPolizaManual(companyId(req), req.body || {}, req.user?.userId);
     res.json({ success: true, data: { poliza: r } });
@@ -932,7 +932,7 @@ router.post(
 /** DELETE /accounting/polizas/cfdi?anio&mes — borra las de origen CFDI (re-generar) */
 router.delete(
   '/polizas/cfdi',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
     const borradas = await polizas.borrarVentasDelMes(companyId(req), Number(req.query.anio), Number(req.query.mes));
     res.json({ success: true, data: { borradas } });
@@ -942,7 +942,7 @@ router.delete(
 /** PUT /accounting/polizas/:id — edita las partidas/encabezado de una póliza */
 router.put(
   '/polizas/:id',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await polizas.editarPoliza(companyId(req), req.params.id, req.body || {});
     res.json({ success: true, data: { poliza: r } });
@@ -952,7 +952,7 @@ router.put(
 /** DELETE /accounting/polizas/:id — borra UNA póliza (cualquier origen) */
 router.delete(
   '/polizas/:id',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
     const ok = await polizas.borrarPoliza(companyId(req), req.params.id);
     if (!ok) { res.status(404).json({ success: false, message: 'No se encontró la póliza' }); return; }
@@ -1037,7 +1037,7 @@ router.delete(
 /** POST /accounting/polizas/generar-depreciacion — la póliza de depreciación del mes */
 router.post(
   '/polizas/generar-depreciacion',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await activos.generarDepreciacionDelMes(
       companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
