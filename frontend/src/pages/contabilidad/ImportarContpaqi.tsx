@@ -1,34 +1,32 @@
 /**
  * Importar respaldo — pasa la contabilidad de un respaldo a la empresa activa.
  *
- * Para el usuario final es UN paso: en la computadora abre la herramienta, elige
- * el archivo del respaldo, y todo lo demás corre solo hasta un resumen. Un
- * respaldo .bak es de SQL Server y sólo se puede abrir en la PC (no en el
- * servidor), por eso el proceso vive en la herramienta.
- *
- * Abajo, plegado, queda la vía técnica (subir el paquete ya extraído): sólo la
- * usa el equipo de sistemas.
+ * Un respaldo `.bak` es binario de SQL Server y sólo se puede abrir en la PC (no
+ * en el servidor). Por eso una HERRAMIENTA local lo lee y deja un PAQUETE `.zip`;
+ * ese `.zip` se sube AQUÍ, se elige qué años cargar, y todo entra sin salir de
+ * NEXO. La pantalla descomprime el `.zip` en el navegador. No duplica: repetirlo
+ * es seguro. (Mismo flujo que el importador de nómina.)
  */
 import { useState } from 'react';
-import { Database, Upload, PlayCircle, CheckCircle2, FileJson, MousePointerClick, Download } from 'lucide-react';
+import { unzipSync, strFromU8 } from 'fflate';
+import { Database, Download, Upload, PlayCircle, CheckCircle2, FileArchive } from 'lucide-react';
 import api from '@/services/api';
 
 const ARCHIVOS = ['empresa', 'cuentas', 'polizas', 'movimientos', 'poliza_cfdi', 'cfdi', 'saldos'] as const;
 type Archivo = typeof ARCHIVOS[number];
-const OPCIONALES: Archivo[] = ['saldos'];
 const mx = (n: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
 
 export function ImportarContpaqiPage() {
-  const [files, setFiles] = useState<Partial<Record<Archivo, File>>>({});
+  const [datos, setDatos] = useState<Partial<Record<Archivo, any[]>>>({});
   const [empresa, setEmpresa] = useState<{ rfc?: string; nombre?: string } | null>(null);
   const [preview, setPreview] = useState<any>(null);
+  const [ejerSel, setEjerSel] = useState<Set<number>>(new Set());
   const [forzar, setForzar] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [bajando, setBajando] = useState(false);
   const [rep, setRep] = useState<any>(null);
   const [error, setError] = useState('');
   const [rfcMismatch, setRfcMismatch] = useState(false);
-  const [bajando, setBajando] = useState(false);
-  const [ejerSel, setEjerSel] = useState<Set<number>>(new Set()); // ejercicios elegidos para importar
 
   const descargarHerramienta = async () => {
     setBajando(true); setError('');
@@ -37,43 +35,55 @@ export function ImportarContpaqiPage() {
     finally { setBajando(false); }
   };
 
-  const leerJson = async (f?: File): Promise<any[]> => {
-    if (!f) return [];
-    try { const j = JSON.parse((await f.text()).replace(/^﻿/, '')); return Array.isArray(j) ? j : [j]; } catch { return []; }
+  const parseJson = (txt: string): any[] => {
+    try { const j = JSON.parse(txt.replace(/^﻿/, '')); return Array.isArray(j) ? j : [j]; } catch { return []; }
   };
 
   const recibir = async (lista: FileList | null) => {
-    if (!lista) return;
-    const next: Partial<Record<Archivo, File>> = { ...files };
-    for (const f of Array.from(lista)) {
-      const base = f.name.replace(/\.json$/i, '').toLowerCase();
-      const match = ARCHIVOS.find((a) => a === base);
-      if (match) next[match] = f;
-    }
-    setFiles(next); setError(''); setRep(null); setRfcMismatch(false); setForzar(false);
-    if (next.empresa) { const j = await leerJson(next.empresa); setEmpresa(j[0] || null); }
-    if (next.cuentas && next.polizas && next.movimientos) {
-      const [cuentas, pol, mov, cfdi, pc] = await Promise.all([
-        leerJson(next.cuentas), leerJson(next.polizas), leerJson(next.movimientos), leerJson(next.cfdi), leerJson(next.poliza_cfdi)]);
+    if (!lista || !lista.length) return;
+    setError(''); setRep(null); setRfcMismatch(false); setForzar(false);
+    const next: Partial<Record<Archivo, any[]>> = { ...datos };
+    try {
+      for (const f of Array.from(lista)) {
+        if (/\.zip$/i.test(f.name)) {
+          const entradas = unzipSync(new Uint8Array(await f.arrayBuffer()));
+          for (const [nombre, bytes] of Object.entries(entradas)) {
+            const base = nombre.replace(/^.*[\\/]/, '').replace(/\.json$/i, '').toLowerCase();
+            const match = ARCHIVOS.find((a) => a === base);
+            if (match) next[match] = parseJson(strFromU8(bytes as Uint8Array));
+          }
+        } else if (/\.json$/i.test(f.name)) {
+          const base = f.name.replace(/\.json$/i, '').toLowerCase();
+          const match = ARCHIVOS.find((a) => a === base);
+          if (match) next[match] = parseJson(await f.text());
+        }
+      }
+    } catch { setError('No se pudo leer el paquete (.zip). Genera uno nuevo con la herramienta.'); return; }
+
+    setDatos(next);
+    setEmpresa(next.empresa?.[0] || null);
+    const cuentas = next.cuentas || []; const pol = next.polizas || []; const mov = next.movimientos || [];
+    if (cuentas.length && pol.length && mov.length) {
       const car = mov.filter((m: any) => m.tm === 0).reduce((a: number, m: any) => a + Number(m.importe || 0), 0);
       const ab = mov.filter((m: any) => m.tm === 1).reduce((a: number, m: any) => a + Number(m.importe || 0), 0);
       const ejs = ([...new Set(pol.map((p: any) => Number(p.ejercicio)))].filter(Boolean) as number[]).sort((a, b) => a - b);
       setPreview({
-        cuentas: cuentas.length, polizas: pol.length, movimientos: mov.length, cfdi: cfdi.length, ligas: pc.length,
+        cuentas: cuentas.length, polizas: pol.length, movimientos: mov.length,
+        cfdi: (next.cfdi || []).length, ligas: (next.poliza_cfdi || []).length,
         cargos: Math.round(car * 100) / 100, abonos: Math.round(ab * 100) / 100, ejercicios: ejs,
       });
-      setEjerSel(new Set(ejs)); // por omisión, todos
+      setEjerSel(new Set(ejs));
     } else { setPreview(null); }
   };
 
-  const faltan = ARCHIVOS.filter((a) => !OPCIONALES.includes(a) && !files[a]);
   const importar = async () => {
     setBusy(true); setError(''); setRep(null); setRfcMismatch(false);
     try {
       const fd = new FormData();
-      ARCHIVOS.forEach((a) => { if (files[a]) fd.append(a, files[a]!); });
+      ARCHIVOS.forEach((a) => {
+        if (datos[a]) fd.append(a, new Blob([JSON.stringify(datos[a])], { type: 'application/json' }), `${a}.json`);
+      });
       if (forzar) fd.append('forzar', 'true');
-      // Sólo los ejercicios elegidos (vacío/todos = no se manda el filtro).
       if (preview?.ejercicios?.length && ejerSel.size && ejerSel.size < preview.ejercicios.length) {
         fd.append('ejercicios', [...ejerSel].join(','));
       }
@@ -86,6 +96,8 @@ export function ImportarContpaqiPage() {
     } finally { setBusy(false); }
   };
 
+  const cuadra = preview && Math.abs(preview.cargos - preview.abonos) < 0.01;
+
   return (
     <div className="p-6 space-y-4 max-w-3xl">
       <div>
@@ -97,134 +109,95 @@ export function ImportarContpaqiPage() {
         </p>
       </div>
 
-      {/* Instrucción simple para el usuario final */}
+      {/* Pasos + descargar herramienta */}
       <div className="bg-white rounded-lg shadow border p-5 space-y-4">
-        <p className="text-base font-semibold text-gray-800 flex items-center gap-2">
-          <MousePointerClick size={18} className="text-emerald-700" /> En 3 pasos, desde la computadora
-        </p>
-
-        {/* Paso 0: descargar la herramienta ya configurada con la dirección de este servidor */}
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
           <button onClick={descargarHerramienta} disabled={bajando}
             className="flex items-center gap-2 bg-emerald-700 text-white px-4 py-2.5 rounded-lg hover:bg-emerald-800 disabled:opacity-50 text-sm font-semibold shrink-0">
             <Download size={18} /> {bajando ? 'Preparando…' : 'Descargar la herramienta'}
           </button>
           <p className="text-xs text-emerald-900">
-            Se descarga <b>ya lista</b> para conectarse a este NEXO (no hay que escribir ninguna dirección).
-            Sólo se baja <b>una vez</b> por computadora. Al abrir el archivo, <b>descomprímelo</b> y verás la herramienta <b>«Importar respaldo»</b>.
+            Se baja <b>una vez</b> por computadora. Al abrirla, <b>descomprímela</b>, da doble clic en
+            <b> «Importar respaldo»</b>, elige el <b>.bak</b> de CONTPAQi y genera el <b>paquete .zip</b>.
           </p>
         </div>
-
-        <ol className="space-y-3 text-sm text-gray-700">
-          <li className="flex gap-3">
-            <span className="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold grid place-items-center">1</span>
-            <span>Da <b>doble clic</b> en <b>«Importar respaldo»</b> (dentro de la carpeta que descargaste).</span>
-          </li>
-          <li className="flex gap-3">
-            <span className="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold grid place-items-center">2</span>
-            <span>Da clic en <b>«Elegir…»</b> y selecciona el <b>archivo del respaldo</b> (termina en <span className="font-mono">.bak</span>).</span>
-          </li>
-          <li className="flex gap-3">
-            <span className="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold grid place-items-center">3</span>
-            <span>Da clic en <b>«Importar»</b> y espera. Al terminar verás un <b>resumen</b> de lo que entró.</span>
-          </li>
+        <ol className="space-y-2 text-sm text-gray-700">
+          <li className="flex gap-3"><span className="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold grid place-items-center">1</span>
+            <span>Con la herramienta, lee el <b>respaldo</b> (<span className="font-mono">.bak</span>) → deja un <b>paquete</b> <span className="font-mono">.zip</span>.</span></li>
+          <li className="flex gap-3"><span className="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold grid place-items-center">2</span>
+            <span>Sube el <b>.zip</b> aquí abajo y elige qué <b>años</b> cargar.</span></li>
+          <li className="flex gap-3"><span className="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold grid place-items-center">3</span>
+            <span>Da <b>«Importar»</b> — verás el resumen de cuentas, pólizas y CFDI.</span></li>
         </ol>
-        <p className="text-xs text-gray-500 border-t pt-3">
-          Todo corre solo: la herramienta lee el respaldo y lo carga en la <b>empresa que tengas abierta aquí</b>.
-          Antes de escribir, revisa que sea la empresa correcta (se confirma por su RFC).
-        </p>
       </div>
 
       {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-lg px-4 py-3 text-sm">{error}</div>}
-
       {rep && <Reporte rep={rep} />}
 
-      {/* Importar aquí mismo (sin salir de NEXO): subir el paquete ya extraído y
-          elegir qué ejercicios cargar. La herramienta sólo lee el .bak una vez. */}
-      <details className="bg-white rounded-lg shadow border">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-emerald-800">
-          Importar aquí mismo · sube el paquete extraído y elige los datos (sin salir del sistema)
-        </summary>
-        <div className="px-4 pb-4 space-y-3 border-t pt-3">
-          <p className="text-xs text-gray-500">
-            Para quien ya tiene el <b>paquete extraído</b> (los archivos <span className="font-mono">.json</span> que deja la
-            herramienta al leer el <span className="font-mono">.bak</span>): súbelos aquí, revisa el previo y elige qué
-            <b> años</b> cargar. Todo se importa en la <b>empresa abierta</b>, sin salir de NEXO.
-          </p>
-          {empresa?.rfc && (
-            <p className="text-sm text-gray-700">Respaldo de <b>{empresa.nombre || '—'}</b> · RFC <b className="font-mono">{empresa.rfc}</b>. Debe coincidir con la empresa abierta.</p>
-          )}
-          <label className="flex items-center gap-2 bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 text-sm cursor-pointer w-fit">
-            <Upload size={16} />
-            <input type="file" accept=".json" multiple className="hidden"
-              onChange={(e) => { recibir(e.target.files); e.currentTarget.value = ''; }} />
-            Seleccionar los archivos del paquete
+      {/* Subir el paquete .zip */}
+      <div className="bg-white rounded-lg shadow border p-4 space-y-3">
+        {empresa?.rfc && (
+          <p className="text-sm text-gray-700">Respaldo de <b>{empresa.nombre || '—'}</b> · RFC <b className="font-mono">{empresa.rfc}</b>. Debe coincidir con la empresa abierta.</p>
+        )}
+        <label className="flex items-center gap-2 bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 text-sm cursor-pointer w-fit">
+          <Upload size={16} />
+          <input type="file" accept=".zip,.json" multiple className="hidden"
+            onChange={(e) => { recibir(e.target.files); e.currentTarget.value = ''; }} />
+          Seleccionar el paquete (.zip)
+        </label>
+
+        {preview && (
+          <div className="border border-sky-200 bg-sky-50 rounded-lg p-3 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-sky-700 mb-1 flex items-center gap-1"><FileArchive size={13} /> Previo · lo que se va a importar</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-gray-700">
+              <span>Ejercicios: <b>{(preview.ejercicios || []).join(', ') || '—'}</b></span>
+              <span>Cuentas: <b>{preview.cuentas}</b></span>
+              <span>Pólizas: <b>{preview.polizas}</b></span>
+              <span>Movimientos: <b>{preview.movimientos}</b></span>
+              <span>CFDI: <b>{preview.cfdi}</b></span>
+              <span>Ligas póliza-UUID: <b>{preview.ligas}</b></span>
+            </div>
+            <p className={`text-xs mt-1 ${cuadra ? 'text-emerald-700' : 'text-rose-700'}`}>
+              Cargos {mx(preview.cargos)} {cuadra ? '=' : '≠'} Abonos {mx(preview.abonos)}
+              {cuadra ? ' · cuadra' : ` · dif ${mx(preview.cargos - preview.abonos)}`}
+            </p>
+          </div>
+        )}
+
+        {preview?.ejercicios?.length > 1 && (
+          <div className="border rounded-lg p-3">
+            <p className="text-xs font-semibold text-gray-600 mb-2">¿Qué años importar? (elige uno, varios o todos)</p>
+            <div className="flex flex-wrap gap-2">
+              {preview.ejercicios.map((a: number) => {
+                const on = ejerSel.has(a);
+                return (
+                  <button key={a} type="button"
+                    onClick={() => setEjerSel((s) => { const n = new Set(s); if (n.has(a)) n.delete(a); else n.add(a); return n; })}
+                    className={`px-3 py-1 rounded-full text-sm border ${on ? 'bg-emerald-700 text-white border-emerald-700' : 'text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                    {on ? '✓ ' : ''}{a}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {rfcMismatch && (
+          <label className="flex items-center gap-2 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+            <input type="checkbox" checked={forzar} onChange={(e) => setForzar(e.target.checked)} />
+            El RFC no coincide — <b>importar de todos modos</b>.
           </label>
-          <div className="grid sm:grid-cols-3 gap-2">
-            {ARCHIVOS.map((a) => (
-              <div key={a} className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded border ${
-                files[a] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-gray-200 text-gray-400'}`}>
-                {files[a] ? <CheckCircle2 size={14} /> : <FileJson size={14} />}
-                <span className="font-mono">{a}.json</span>
-                {OPCIONALES.includes(a) && !files[a] && <span className="text-[10px]">(opcional)</span>}
-              </div>
-            ))}
-          </div>
-          {preview && (
-            <div className="border border-sky-200 bg-sky-50 rounded-lg p-3 text-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-sky-700 mb-1">Previo · lo que se va a importar</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-gray-700">
-                <span>Ejercicios: <b>{(preview.ejercicios || []).join(', ') || '—'}</b></span>
-                <span>Cuentas: <b>{preview.cuentas}</b></span>
-                <span>Pólizas: <b>{preview.polizas}</b></span>
-                <span>Movimientos: <b>{preview.movimientos}</b></span>
-                <span>CFDI: <b>{preview.cfdi}</b></span>
-                <span>Ligas póliza-UUID: <b>{preview.ligas}</b></span>
-              </div>
-              <p className={`text-xs mt-1 ${Math.abs(preview.cargos - preview.abonos) < 0.01 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                Cargos {mx(preview.cargos)} {Math.abs(preview.cargos - preview.abonos) < 0.01 ? '=' : '≠'} Abonos {mx(preview.abonos)}
-                {Math.abs(preview.cargos - preview.abonos) < 0.01 ? ' · cuadra' : ` · dif ${mx(preview.cargos - preview.abonos)}`}
-              </p>
-            </div>
-          )}
-          {preview?.ejercicios?.length > 1 && (
-            <div className="border rounded-lg p-3">
-              <p className="text-xs font-semibold text-gray-600 mb-2">¿Qué años importar? (elige uno, varios o todos)</p>
-              <div className="flex flex-wrap gap-2">
-                {preview.ejercicios.map((a: number) => {
-                  const on = ejerSel.has(a);
-                  return (
-                    <button key={a} type="button"
-                      onClick={() => setEjerSel((s) => { const n = new Set(s); if (n.has(a)) n.delete(a); else n.add(a); return n; })}
-                      className={`px-3 py-1 rounded-full text-sm border ${on ? 'bg-emerald-700 text-white border-emerald-700' : 'text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-                      {on ? '✓ ' : ''}{a}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] text-gray-400 mt-1.5">
-                {ejerSel.size === preview.ejercicios.length
-                  ? 'Se importarán todos los años.'
-                  : ejerSel.size === 0 ? 'Elige al menos un año.' : `Se importarán ${ejerSel.size} de ${preview.ejercicios.length} años.`}
-              </p>
-            </div>
-          )}
-          {rfcMismatch && (
-            <label className="flex items-center gap-2 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
-              <input type="checkbox" checked={forzar} onChange={(e) => setForzar(e.target.checked)} />
-              El RFC no coincide — <b>importar de todos modos</b>.
-            </label>
-          )}
-          <div className="flex items-center gap-3">
-            <button onClick={importar}
-              disabled={busy || faltan.length > 0 || (preview?.ejercicios?.length > 1 && ejerSel.size === 0)}
-              className="flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
-              <PlayCircle size={16} /> {busy ? 'Importando…' : 'Importar a la empresa activa'}
-            </button>
-            {faltan.length > 0 && <span className="text-xs text-amber-700">Faltan: {faltan.map((a) => `${a}.json`).join(', ')}</span>}
-          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button onClick={importar}
+            disabled={busy || !preview || (preview?.ejercicios?.length > 1 && ejerSel.size === 0)}
+            className="flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
+            <PlayCircle size={16} /> {busy ? 'Importando…' : 'Importar a la empresa activa'}
+          </button>
+          {!preview && <span className="text-xs text-amber-700">Sube el paquete .zip que dejó la herramienta.</span>}
         </div>
-      </details>
+      </div>
     </div>
   );
 }

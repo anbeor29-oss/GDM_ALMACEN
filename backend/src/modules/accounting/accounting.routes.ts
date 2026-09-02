@@ -1088,15 +1088,14 @@ router.post(
 );
 
 /**
- * GET /accounting/contpaqi/herramienta — descarga la herramienta local para
- * importar respaldos .bak, YA configurada con la URL de ESTE servidor (así el
- * usuario no la teclea y sirve aunque la URL cambie en producción).
+ * GET /accounting/contpaqi/herramienta — descarga la herramienta local que lee
+ * el .bak de CONTPAQi y deja un paquete .zip para subir aquí. No sube nada (la
+ * subida es por la pantalla), así que no necesita la dirección de NEXO.
  */
 router.get(
   '/contpaqi/herramienta',
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (_req: Request, res: Response) => {
     const dir = path.resolve(__dirname, '../../../scripts/contpaqi');
-    const origin = `https://${req.get('host')}`;
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename="Importar respaldo NEXO.zip"');
     // @types/archiver v8 no tipa el default como callable, aunque en runtime lo es.
@@ -1108,7 +1107,6 @@ router.get(
       const p = path.join(dir, f);
       if (fs.existsSync(p)) zip.file(p, { name: f });
     }
-    zip.append(origin, { name: 'nexo.txt' });    // la dirección de este servidor, para la herramienta
     await zip.finalize();
   })
 );
