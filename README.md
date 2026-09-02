@@ -127,10 +127,11 @@ Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
   histórica de un respaldo `.bak` a la empresa activa, **reutilizable para cualquier
   RFC**. Un `.bak` es binario de SQL Server: no se abre en el navegador ni en Render
   (Linux) → se lee **en la PC** con una herramienta (sin SQL instalado, usa **SQL Server
-  LocalDB**). Para el usuario final es un paso: *Contabilidad → Importar respaldo*, botón
-  **«Descargar la herramienta»** (baja ya configurada con la dirección de ESE servidor —
-  `nexo.txt` dentro del `.zip`, resuelve la URL dinámica de producción—), doble clic,
-  elige el `.bak`, **Importar** → resumen. Por dentro: extractor (`sqlcmd` + `FOR JSON`)
+  LocalDB**). Flujo (idéntico al de nómina): *Contabilidad → Importar respaldo*, botón
+  **«Descargar la herramienta»**; la herramienta lee el `.bak` y deja un **paquete `.zip`**;
+  ese `.zip` se **sube en la pantalla** (se descomprime en el navegador con `fflate`), se
+  eligen los **años** y se importa —sin salir de NEXO y sin teclear contraseñas en la
+  herramienta—. Por dentro: extractor (`sqlcmd` + `FOR JSON`)
   → importador idempotente (por `Guid`, `origen='CONTPAQI'`); **valida el RFC** primero;
   pólizas sin cuenta o descuadradas caen en **`MIG-TEMPORAL`** y se reportan. Probado con
   HCGM 2018-2024: 7,674 pólizas / 29,100 movimientos que **cuadran**. Pendiente: probar

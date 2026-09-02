@@ -4493,3 +4493,23 @@ motor y el recibo guarda el desglose ya calculado).
 UUID), gravado+exento = percepciones al 100%, la herramienta produce el `.zip` con
 los 8 JSON. **Pendiente:** la corrida final contra la base de NEXO real (Claude no
 tiene esa BD en local); subir el `.zip` en la pantalla y cotejar contra NomiPaq.
+
+---
+
+## 2026-09-01 — Los dos importadores (contabilidad y nómina) unificados al flujo `.zip`
+
+Antes eran distintos: la herramienta de **contabilidad** subía sola a NEXO (pedía
+URL, correo y contraseña), y la de **nómina** dejaba un `.zip` que se subía en la
+pantalla. El usuario pidió dejarlos **iguales, los dos con `.zip`**.
+
+Ahora, en los dos: la **herramienta local sólo hace el `.zip`** (restaura el `.bak`
+en la PC, extrae y deja `CONTABILIDAD_*.zip` / `NOMINA_*.zip` en el Escritorio; ya
+no sube ni pide contraseña). La **pantalla** («Importar respaldo» de contabilidad
+y de nómina) tiene «Descargar la herramienta» y **acepta el `.zip`**: lo
+descomprime en el navegador con `fflate` y sube los JSON con la sesión ya abierta.
+Ventaja: una sola forma de trabajar y sin credenciales en la herramienta. El
+`.bak` sigue leyéndose en la PC (es binario de SQL Server; el servidor no lo abre)
+— eso no cambia. Se quitó `nexo.txt` del paquete de la herramienta de contabilidad
+(ya no hay subida directa). Probado el extract+zip de contabilidad con
+NEXO_MIG_CONT (472 cuentas, 7674 pólizas, 29100 movimientos → `.zip`). Commit
+48d21cc.
