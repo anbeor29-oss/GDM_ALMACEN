@@ -4576,3 +4576,27 @@ Cambios (commit `1453a85`):
 Nota honesta: la contraseña es una **confirmación** (los datos ya están en el `.bak`
 de la PC), no un candado fuerte. La subida sigue por la pantalla (`fflate`). El
 usuario debe **re-descargar** la herramienta (las copias viejas no traen esto).
+
+## 2026-09-02 — Copia íntegra del `.bak`, `.zip` junto al `.bak`, y permisos por departamento
+
+**Copia íntegra + ubicación del `.zip` (commit `7362114`).** Con C:/D: llenos y
+respaldos en OneDrive, la copia del `.bak` al temp salía a medias → SQL decía
+«media family incorrectly formed». Ahora la herramienta **compara tamaño origen vs
+copia** y, si no cuadran, lo dice claro (disco lleno en C: / OneDrive sin bajar);
+avisa si el `.bak` está «sólo en línea». Y el **`.zip` se deja junto al `.bak`**
+(misma unidad/carpeta; respaldo al Escritorio si no deja escribir), como pidió el
+usuario. Tras esto el previo de GRUPO HCGM salió perfecto (469 cuentas, 7223
+pólizas, cuadra $135,318,409.76).
+
+**Permisos: importar respaldo lo hace el DEPARTAMENTO, no sólo ADMIN (commit
+`1edc911`).** El import de contabilidad exigía `authorize('ADMIN','SUPER_ADMIN')` →
+un usuario de contabilidad recibía «Insufficient permissions». Ahora usa
+**`requireCapability('contabilidad:capturar')`**: pasan el **grupo CONTABILIDAD** y
+el **administrador** (ADMIN/SUPER_ADMIN tienen todas las capacidades). El import de
+**nómina** era la única ruta de nómina que seguía con `authorize(...)` en vez de
+`soloAdmin` (= `requireCapability('nomina:manage')`) como el resto del módulo; se
+**alineó**: pasan **RECURSOS_HUMANOS** + admin (nómina NO la hereda MANAGER; el dato
+sensible sigue protegido). El frontend ya dejaba VER la pantalla al grupo
+(`GROUP_MODULES.CONTABILIDAD` incluye `contabilidad`). Ojo: si la cuenta de prueba
+sigue bloqueada, es que su grupo no es Contabilidad — asignarlo en Usuarios, o usar
+el admin.
