@@ -15,6 +15,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Tag, Truck, HeartPulse, ArrowLeftRight, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
+import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { TabIngresos } from './PolizasVenta';
 import { TabCargos } from './PolizasCompra';
 import { ConceptosCuentasNomina } from '../nomina/NominaReportes';
@@ -97,6 +98,7 @@ export function AsignacionCuentasPage() {
  * Aquí sólo se comprueba que existan (si falta una, la póliza de cobro/pago se
  * omite). */
 function PagosInfo({ cuentas }: { cuentas: any[] }) {
+  const mascara = useMascara();
   const porAgrup = useMemo(() => {
     const m = new Map<string, any>();
     for (const c of cuentas) if (c.codigo_agrupador) m.set(c.codigo_agrupador, c);
@@ -125,7 +127,7 @@ function PagosInfo({ cuentas }: { cuentas: any[] }) {
               <span className="text-gray-600 flex-1">{desc}</span>
               {c ? (
                 <span className="flex items-center gap-1.5 text-emerald-700 text-xs">
-                  <CheckCircle2 size={14} /> {c.codigo} · {c.nombre}
+                  <CheckCircle2 size={14} /> {formatCuenta(c.codigo, mascara)} · {c.nombre}
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5 text-rose-600 text-xs">

@@ -13,6 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Tag, Truck, FileText, PlayCircle, RefreshCw, Check, Pencil, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
 import { CuentaPicker } from '@/components/CuentaPicker';
+import { formatCuenta, useMascara } from '@/utils/cuenta';
 
 const money = (n: any, m = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: (m || 'MXN').trim() || 'MXN' }).format(Number(n) || 0);
@@ -284,6 +285,7 @@ function RenglonProveedor({ s, onListo }: { s: any; onListo: () => void }) {
 /* ── Tab 3: Pólizas de compra ─────────────────────────────────────────────── */
 function TabPolizasCompra({ anio, mes }: { anio: number; mes: number }) {
   const qc = useQueryClient();
+  const mascara = useMascara();
   const [msg, setMsg] = useState('');
   const [omitidas, setOmitidas] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
@@ -345,7 +347,7 @@ function TabPolizasCompra({ anio, mes }: { anio: number; mes: number }) {
                 <tbody>
                   {(p.lineas || []).map((l: any, i: number) => (
                     <tr key={i} className="border-b last:border-0">
-                      <td className="px-3 py-1 font-mono text-gray-500 w-24">{l.codigo}</td>
+                      <td className="px-3 py-1 font-mono text-gray-500 w-24">{formatCuenta(l.codigo, mascara)}</td>
                       <td className="px-2 py-1">{l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}</td>
                       <td className="px-3 py-1 text-right w-28">{Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
                       <td className="px-3 py-1 text-right w-28">{Number(l.abono) > 0 ? money(l.abono) : ''}</td>

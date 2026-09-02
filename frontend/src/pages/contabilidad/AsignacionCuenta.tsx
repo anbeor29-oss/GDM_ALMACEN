@@ -16,6 +16,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Tag, Check, Users, RefreshCw, FileText, PlayCircle, Trash2, X } from 'lucide-react';
 import { api } from '@/services/api';
+import { formatCuenta, useMascara } from '@/utils/cuenta';
 
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -223,6 +224,7 @@ function PolizasPanel({ anio, mes }: { anio: number; mes: number }) {
 }
 
 function PolizasModal({ anio, mes, onClose }: { anio: number; mes: number; onClose: () => void }) {
+  const mascara = useMascara();
   const q = useQuery({ queryKey: ['polizas', anio, mes], queryFn: () => api.getPolizas(anio, mes) });
   const polizas: any[] = q.data?.data?.polizas || [];
 
@@ -254,7 +256,7 @@ function PolizasModal({ anio, mes, onClose }: { anio: number; mes: number; onClo
                   <tbody>
                     {(p.lineas || []).map((l: any, i: number) => (
                       <tr key={i} className="border-b last:border-0">
-                        <td className="px-3 py-1 font-mono text-gray-500 w-20">{l.codigo}</td>
+                        <td className="px-3 py-1 font-mono text-gray-500 w-20">{formatCuenta(l.codigo, mascara)}</td>
                         <td className="px-2 py-1">{l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}</td>
                         <td className="px-3 py-1 text-right w-28">{Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
                         <td className="px-3 py-1 text-right w-28">{Number(l.abono) > 0 ? money(l.abono) : ''}</td>

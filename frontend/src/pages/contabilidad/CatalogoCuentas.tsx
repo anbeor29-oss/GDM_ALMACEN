@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
-import { formatCuenta } from '@/utils/cuenta';
+import { formatCuenta, useMascara } from '@/utils/cuenta';
 
 const TIPO_COLOR: Record<string, string> = {
   ACTIVO:  'bg-sky-100 text-sky-800',
@@ -462,6 +462,7 @@ function VistaRespaldo({ res }: any) {
 }
 
 function VistaCatalogos({ res }: any) {
+  const mascara = useMascara();
   const rm = res.resumenMapeo || {};
   const filas: any[] = res.mapeo || res.porRevisar || [];
   if (!filas.length && !rm.total) {
@@ -491,7 +492,7 @@ function VistaCatalogos({ res }: any) {
             {filas.map((p: any, i: number) => (
               <tr key={i} className="border-b last:border-0 align-top">
                 <td className="py-1 pr-2">
-                  <span className="font-mono text-gray-800">{p.cuenta}</span>
+                  <span className="font-mono text-gray-800">{formatCuenta(p.cuenta, mascara)}</span>
                   <span className="text-gray-500 ml-1.5">{p.nombre}</span>
                 </td>
                 <td className="py-1 pr-2">

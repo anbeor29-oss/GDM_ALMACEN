@@ -172,6 +172,7 @@ function AuxiliarModal({ codigo, anio, mes, onClose }: {
   codigo: string; anio: number; mes: number; onClose: () => void;
 }) {
   const navigate = useNavigate();
+  const mascara = useMascara();
   const q = useQuery({
     queryKey: ['auxiliar', codigo, anio, mes],
     queryFn: () => api.getAuxiliarCuenta(codigo, anio, mes),
@@ -187,7 +188,7 @@ function AuxiliarModal({ codigo, anio, mes, onClose }: {
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <div>
             <h3 className="font-semibold text-gray-900">
-              Auxiliar · <span className="font-mono">{d?.cuenta?.codigo || codigo}</span> {d?.cuenta?.nombre || ''}
+              Auxiliar · <span className="font-mono">{formatCuenta(d?.cuenta?.codigo || codigo, mascara)}</span> {d?.cuenta?.nombre || ''}
             </h3>
             <p className="text-xs text-gray-500">{MESES[mes]} {anio} · doble clic en un renglón para abrir su póliza</p>
           </div>
