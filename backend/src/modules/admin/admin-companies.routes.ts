@@ -717,14 +717,17 @@ router.delete('/:id/full-delete', asyncHandler(async (req: Request, res: Respons
   await query(`DELETE FROM stamp_transactions  WHERE company_id = $1`, [id]).catch(() => {});
   await query(`DELETE FROM audit_log WHERE target_type = 'company' AND target_id = $1`, [id]).catch(() => {});
 
-  // 3) Usuarios de la empresa (dejan de poder loguearse)
+  // 3) Tokens de sesión de sus usuarios (refresh_tokens no cuelga de companies,
+  //    así que se limpia aparte antes de que los usuarios desaparezcan).
   await query(`DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM users WHERE company_id = $1)`, [id]).catch(() => {});
-  await query(`DELETE FROM users WHERE company_id = $1`, [id]);
 
-  // 4) La empresa misma — libera RFC para que pueda re-registrarse si aplica.
-  //    El CSD (BYTEA), logo (BYTEA), config de plan, etc. se borran con la
-  //    fila; no requieren limpieza separada porque están en columnas de
-  //    `companies`, no en tablas hijas.
+  // 4) La empresa. Sus USUARIOS y todas las tablas con company_id se borran EN
+  //    CASCADA con ella, en UN SOLO statement. Eso es clave: las columnas de
+  //    auditoría que apuntan a users (created_by, cerrado_por…, todas NO ACTION)
+  //    NO bloquean, porque su fila se va en el mismo statement que el usuario y
+  //    el chequeo NO ACTION se difiere al final. Borrar los usuarios en un
+  //    statement aparte ANTES sí fallaba (p.ej. accounting_period_sources_created_by_fkey).
+  //    El CSD/logo (BYTEA), plan, etc. se van con la fila de `companies`.
   await query(`DELETE FROM companies WHERE id = $1`, [id]);
 
   await audit(req, {
