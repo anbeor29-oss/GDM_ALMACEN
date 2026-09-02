@@ -4551,3 +4551,28 @@ pudieron leer los nombres lógicos del .bak»* (o leía 0 cuentas / RFC vacío �
 extensión no es `.bak` (aclarando que necesitan el backup de SQL Server, no un XML
 del SAT ni un `.zip`), y (2) muestran el detalle real de SQL si no lo reconoce.
 Commit `3a382b2`.
+
+## 2026-09-02 — Herramienta de respaldo: confirma identidad con NEXO y regresa al paso 2
+
+El usuario pidió recuperar la pantalla tipo «imagen 1» (URL/correo/contraseña) pero
+dentro del flujo `.zip`. **Aclaración técnica clave: una página web no puede abrir
+sola una ventana de escritorio** (el navegador no lanza programas de la PC); por eso
+el botón de NEXO **descarga** la herramienta y el usuario la abre (doble clic). Todo
+lo demás de su idea sí se hizo. Decisiones del usuario: abrir = **descargar y abrir**;
+contraseña = **verificar contra NEXO**.
+
+Cambios (commit `1453a85`):
+- Las dos herramientas (contabilidad y nómina) vuelven a mostrar **URL y correo**
+  (pre-llenados) + **contraseña en blanco**. Botones: **«Ver previo»** (sin
+  contraseña, sólo inspecciona el `.bak` con `Invoke-Paquete -PreviewOnly`),
+  **«Generar el .zip»** (verifica la contraseña con `POST /api/v1/auth/login`
+  **antes** de generar; TLS 1.2) y **«Salir»**. Al terminar: mensaje que **regresa
+  al paso 2** (subir el `.zip` en NEXO) y abre la carpeta del `.zip`.
+- Backend: `GET /accounting/contpaqi/herramienta` y `GET /nomina/herramienta` ahora
+  incluyen **`nexo.txt`** (`url` = `RENDER_EXTERNAL_URL` o el host del request;
+  `email` = usuario autenticado); las herramientas lo leen para pre-llenar.
+- Las pantallas avisan que la herramienta **pedirá la contraseña de NEXO**.
+
+Nota honesta: la contraseña es una **confirmación** (los datos ya están en el `.bak`
+de la PC), no un candado fuerte. La subida sigue por la pantalla (`fflate`). El
+usuario debe **re-descargar** la herramienta (las copias viejas no traen esto).
