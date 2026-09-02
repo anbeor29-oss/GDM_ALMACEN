@@ -69,7 +69,15 @@ export function NominaImportarPage() {
         movimientos: (next.movimientos || []).length, cfdi: (next.cfdi || []).length, ejercicios: ejs,
       });
       setEjerSel(new Set(ejs));
-    } else { setPreview(null); }
+    } else {
+      setPreview(null);
+      const leidos = ARCHIVOS.filter((a) => (next[a]?.length || 0) > 0);
+      if (leidos.length === 0) {
+        setError('No reconocí archivos de nómina en el paquete. Sube el .zip de NÓMINA (NOMINA_*.zip) que dejó la herramienta — el de contabilidad (CONTABILIDAD_*.zip) no sirve aquí.');
+      } else {
+        setError(`El paquete se leyó (${leidos.join(', ')}) pero le faltan EMPLEADOS y/o PERIODOS, que son los que habilitan «Importar». Vuelve a generar el .zip de nómina con la herramienta.`);
+      }
+    }
   };
 
   const importar = async () => {
