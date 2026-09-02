@@ -957,6 +957,11 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>('/accounting/mascara', { mascara });
     return r.data?.data?.mascara || '';
   }
+  /** Años (ejercicios) de la empresa, del más nuevo al más viejo, para el combo de año. */
+  async getEjerciciosContables(): Promise<number[]> {
+    const r = await this.client.get<APIResponse<any>>('/accounting/ejercicios');
+    return r.data?.data?.anios || [];
+  }
   async getArbolDeCuentas() {
     const r = await this.client.get<APIResponse<any>>('/accounting/cuentas/arbol');
     return r.data;

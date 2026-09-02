@@ -133,6 +133,23 @@ router.put(
   })
 );
 
+/**
+ * GET /accounting/ejercicios — los años (ejercicios) de la empresa, del más nuevo
+ * al más viejo, para llenar el combo de año. Incluye siempre el año en curso.
+ */
+router.get(
+  '/ejercicios',
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await query<{ anio: number }>(
+      'SELECT DISTINCT anio FROM accounting_fiscal_years WHERE company_id = $1 ORDER BY anio DESC',
+      [companyId(req)]);
+    const set = new Set<number>(r.rows.map((x) => Number(x.anio)));
+    set.add(new Date().getFullYear());
+    const anios = [...set].sort((a, b) => b - a);
+    res.json({ success: true, data: { anios } });
+  })
+);
+
 /* ═══════════════════════════════════════════════════════════════════════════
    CATÁLOGO
    ═══════════════════════════════════════════════════════════════════════════ */

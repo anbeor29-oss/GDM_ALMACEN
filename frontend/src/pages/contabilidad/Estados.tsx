@@ -15,6 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Info, TrendingUp, X, FileSpreadsheet, FileDown } from 'lucide-react';
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { SelectorPeriodo } from '@/components/SelectorPeriodo';
 import {
   MarcoEstado, SeccionBalance, Total, ListaRubros, NoDisponible, Cuadre,
   mx, pct, MESES,
@@ -87,11 +88,7 @@ export function BalanzaPage() {
               </button>
             </>
           )}
-          <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input">
-            {MESES.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
-          <input type="number" value={anio} onChange={(e) => setAnio(Number(e.target.value))}
-            className="input w-24" />
+          <SelectorPeriodo anio={anio} mes={mes} onAnio={setAnio} onMes={setMes} />
         </div>
       </div>
 

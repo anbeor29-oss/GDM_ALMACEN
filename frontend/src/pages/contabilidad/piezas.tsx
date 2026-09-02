@@ -13,10 +13,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  ChevronLeft, ChevronRight, Lock, AlertTriangle, CheckCircle2, Info,
+  ChevronRight, Lock, AlertTriangle, CheckCircle2, Info,
   Inbox, ChevronDown, ChevronsRight, FileSpreadsheet, FileDown,
 } from 'lucide-react';
 import api from '@/services/api';
+import { SelectorPeriodo } from '@/components/SelectorPeriodo';
 
 export const mx = (n: number) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -49,12 +50,6 @@ export function MarcoEstado({ titulo, norma, descripcion, children, descargas }:
   const q = usePeriodo(anio, mes);
   const d: any = q.data?.data;
 
-  const mover = (n: number) => {
-    let m = mes + n, a = anio;
-    if (m < 1) { m = 12; a--; } else if (m > 12) { m = 1; a++; }
-    setMes(m); setAnio(a);
-  };
-
   return (
     <div className="p-6 space-y-4 max-w-6xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -83,18 +78,8 @@ export function MarcoEstado({ titulo, norma, descripcion, children, descargas }:
               </button>
             </>
           )}
-          {/* El mes. Todos los estados se cortan por mes. */}
-          <div className="flex items-center gap-1 bg-white rounded-lg border shadow-sm px-1">
-            <button onClick={() => mover(-1)} className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
-              <ChevronLeft size={16} />
-            </button>
-            <span className="font-semibold text-gray-900 w-40 text-center text-sm">
-              {MESES[mes]} {anio}
-            </span>
-            <button onClick={() => mover(1)} className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
-              <ChevronRight size={16} />
-            </button>
-          </div>
+          {/* Mes + año — mismo selector que la Balanza (combo de año con los ejercicios). */}
+          <SelectorPeriodo anio={anio} mes={mes} onAnio={setAnio} onMes={setMes} />
         </div>
       </div>
 
