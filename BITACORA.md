@@ -4600,3 +4600,14 @@ sensible sigue protegido). El frontend ya dejaba VER la pantalla al grupo
 (`GROUP_MODULES.CONTABILIDAD` incluye `contabilidad`). Ojo: si la cuenta de prueba
 sigue bloqueada, es que su grupo no es Contabilidad — asignarlo en Usuarios, o usar
 el admin.
+
+**Barrido de las demás rutas de contabilidad (commit `7b81b1c`).** Al editar una
+póliza salió el mismo «Insufficient permissions»: `PUT /polizas/:id` seguía en
+`authorize('ADMIN','SUPER_ADMIN')`. Se revisaron TODAS las rutas de
+`accounting.routes.ts` y se pasaron a capacidad las **operativas**: pólizas
+(editar, borrar, generar-ventas/compras/cobros-pagos/depreciación, manual, cfdi) y
+subir-xml de compras → `contabilidad:capturar`; asignar cuenta a producto de
+venta/compra y subcuentas de terceros (código, generar) → `contabilidad:catalogo`.
+Quedan en **ADMIN sólo las de plataforma/arranque**: sembrar referencias, activar
+contabilidad y sincronizar NIF. Así el grupo CONTABILIDAD y el administrador hacen
+todo el trabajo diario del módulo.
