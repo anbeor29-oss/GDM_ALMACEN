@@ -10,18 +10,26 @@ const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio
  * más el año en curso; el MES, los 12 meses. Reemplaza al viejo input de año a mano
  * y al stepper ◀▶, para que todos los estados se elijan igual.
  */
-export function SelectorPeriodo({ anio, mes, onAnio, onMes }: {
-  anio: number; mes: number;
-  onAnio: (a: number) => void; onMes: (m: number) => void;
-}) {
+/**
+ * Los años (ejercicios) de la empresa para llenar un combo de año. Si se pasa
+ * `anioActual`, se asegura de que esté en la lista aunque el servidor no lo traiga.
+ */
+export function useEjercicios(anioActual?: number): number[] {
   const [anios, setAnios] = useState<number[]>([]);
   useEffect(() => {
     let alive = true;
     api.getEjerciciosContables().then((a) => { if (alive) setAnios(a); }).catch(() => {});
     return () => { alive = false; };
   }, []);
-  // El año elegido siempre debe estar en la lista, aunque el servidor no lo devuelva.
-  const lista = anios.includes(anio) ? anios : [anio, ...anios].sort((a, b) => b - a);
+  if (anioActual && !anios.includes(anioActual)) return [anioActual, ...anios].sort((a, b) => b - a);
+  return anios;
+}
+
+export function SelectorPeriodo({ anio, mes, onAnio, onMes }: {
+  anio: number; mes: number;
+  onAnio: (a: number) => void; onMes: (m: number) => void;
+}) {
+  const lista = useEjercicios(anio);
 
   return (
     <div className="flex items-center gap-2">

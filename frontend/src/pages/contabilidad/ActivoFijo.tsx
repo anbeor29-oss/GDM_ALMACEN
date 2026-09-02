@@ -14,6 +14,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Sparkles, PlayCircle, FileText, RefreshCw, Check, Pencil, Trash2, X, CalendarClock, Split } from 'lucide-react';
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { useEjercicios } from '@/components/SelectorPeriodo';
 
 const money = (n: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
 const pct = (n: any) => `${(Math.round((Number(n) || 0) * 10000) / 100)}%`;
@@ -31,7 +32,7 @@ export function ActivoFijoPage() {
   const [tab, setTab] = useState<'cedula' | 'detectar' | 'depreciacion'>('cedula');
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mes, setMes] = useState(hoy.getMonth() + 1);
-  const anios = Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i);
+  const anios = useEjercicios(anio);
   const amort = modo === 'amortizacion';
 
   return (

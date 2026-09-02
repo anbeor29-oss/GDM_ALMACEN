@@ -13,6 +13,7 @@ import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { useEjercicios } from '@/components/SelectorPeriodo';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -56,7 +57,7 @@ export function PolizasListaPage() {
   /* Si se llegó desde el auxiliar de la balanza, al cerrar/guardar el editor se
    * regresa allá (no a esta lista): es donde estaba trabajando el usuario. */
   const [volverBalanza, setVolverBalanza] = useState(false);
-  const anios = Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i);
+  const anios = useEjercicios(anio);
 
   const q = useQuery({ queryKey: ['polizas', anio, mes], queryFn: () => api.getPolizas(anio, mes) });
   const todas: any[] = q.data?.data?.polizas || [];
