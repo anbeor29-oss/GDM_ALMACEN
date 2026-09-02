@@ -15,7 +15,7 @@ param(
   [string]$Bak,
   [string]$Server = '',
   [string]$WorkDir = "$env:TEMP\NexoContImp",
-  [string]$OutDir = "$([Environment]::GetFolderPath('Desktop'))"
+  [string]$OutDir = ''  # vacío = deja el .zip junto al .bak (misma unidad/carpeta)
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -54,7 +54,11 @@ function Invoke-Paquete {
 
   try {
     & $Log ("1/4  Restaurando el respaldo ({0})..." -f $(if ($useLocalDb) { 'LocalDB' } else { $srv }))
+    $src = Get-Item $Bak
+    if ([int]$src.Attributes -band 0x400000) { & $Log "  (El respaldo está en OneDrive 'sólo en línea'; si tarda, se está descargando...)" }
     Copy-Item $Bak $bakLocal -Force
+    $cpLen = 0; try { $cpLen = (Get-Item $bakLocal).Length } catch {}
+    if ($cpLen -ne $src.Length) { throw ("La copia del respaldo quedó INCOMPLETA: origen " + [math]::Round($src.Length/1MB,1) + " MB, copia " + [math]::Round($cpLen/1MB,1) + " MB. Suele ser disco lleno en C: (ahí se copia el .bak para leerlo) o un archivo de OneDrive sin terminar de descargar. Libera espacio en C:, o baja el .bak con 'Conservar siempre en este dispositivo', y reintenta.") }
     if (-not $useLocalDb) { icacls $WorkDir /grant "$(Get-SvcAcct):(OI)(CI)(M)" 2>&1 | Out-Null }
     $fl = & $sc -S $srv -E -W -s"|" -Q "SET NOCOUNT ON; RESTORE FILELISTONLY FROM DISK = N'$bakLocal';"
     $dataLn = $null; $logLn = $null
@@ -81,10 +85,12 @@ function Invoke-Paquete {
       return $null
     }
     & $Log "3/4  Empaquetando..."
-    if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
-    $zip = Join-Path $OutDir ("CONTABILIDAD_" + $stamp + ".zip")
+    $dest = if ($OutDir) { $OutDir } else { Split-Path $Bak -Parent }
+    if (-not (Test-Path $dest)) { try { New-Item -ItemType Directory -Path $dest -ErrorAction Stop | Out-Null } catch { $dest = [Environment]::GetFolderPath('Desktop') } }
+    $zip = Join-Path $dest ("CONTABILIDAD_" + $stamp + ".zip")
     if (Test-Path $zip) { Remove-Item $zip -Force }
-    Compress-Archive -Path (Join-Path $export '*.json') -DestinationPath $zip -Force
+    try { Compress-Archive -Path (Join-Path $export '*.json') -DestinationPath $zip -Force -ErrorAction Stop }
+    catch { $dest = [Environment]::GetFolderPath('Desktop'); $zip = Join-Path $dest ("CONTABILIDAD_" + $stamp + ".zip"); if (Test-Path $zip) { Remove-Item $zip -Force }; Compress-Archive -Path (Join-Path $export '*.json') -DestinationPath $zip -Force; & $Log "  (No pude escribir junto al .bak; guardé en el Escritorio.)" }
 
     & $Log "4/4  Listo."
     & $Log ""
