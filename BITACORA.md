@@ -4611,3 +4611,26 @@ venta/compra y subcuentas de terceros (código, generar) → `contabilidad:catal
 Quedan en **ADMIN sólo las de plataforma/arranque**: sembrar referencias, activar
 contabilidad y sincronizar NIF. Así el grupo CONTABILIDAD y el administrador hacen
 todo el trabajo diario del módulo.
+
+## 2026-09-02 — Roadmap de contabilidad del usuario + máscara del código de cuenta (1ª parte)
+
+El usuario pidió un paquete grande para contabilidad. Orden acordado: **D → A/B →
+F → C → E** (ver detalle en la memoria `contabilidad-roadmap-import-reportes`):
+- **D.** Máscara de despliegue del **código de cuenta**, configurable por el usuario
+  por empresa.
+- **A/B.** Combo de **año** con todos los años del respaldo (2018→) y el formato de
+  selectores de la Balanza aplicado a todos los estados.
+- **C.** Agregar **«Estado de resultados»** + modo **anual acumulado** (mes 01-12).
+- **E.** Generar **Ventas/Compras/Nómina** desde la pantalla de **Pólizas** y quitar
+  las pantallas separadas.
+- **F.** Importador que además reconstruya catálogo, y que los **terceros aparezcan
+  con su cuenta en «asignar cuenta»** de ventas/compras (no tocar las maestras de
+  clientes/proveedores).
+
+**D — 1ª parte LISTA (commit `6e158d2`).** El código guardado NO cambia (`21030026`);
+una máscara de **sólo despliegue** que **define el usuario** (ej. `##-##-##-##` →
+`21-03-00-26`) dice cómo se ve. `companies.mascara_cuenta`; `GET/PUT
+/accounting/mascara`; `utils/cuenta.ts` (`formatCuenta` + `useMascara`). Se
+configura en el **Catálogo** (con vista previa) y ya se muestra formateado en
+**Catálogo, Pólizas y Balanza**. Códigos no numéricos (`MIG-TEMPORAL`) tal cual.
+Falta propagar a generar-pólizas, auxiliar y demás estados.
