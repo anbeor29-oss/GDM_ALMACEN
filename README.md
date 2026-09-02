@@ -1074,7 +1074,7 @@ accesos funcionando desde `hcgm.com.mx/erp`. Lo que falta para operar en real:
 ### 📱 Cliente móvil (Android/iOS) — pendiente prioritario
 
 **Estado**: cero código. Decisiones tomadas y documentadas en
-[READMEAPIFAC.md](READMEAPIFAC.md) y [bitacoraapifac.md](bitacoraapifac.md):
+[READMEAPIFAC.md](docs/movil/READMEAPIFAC.md) y [bitacoraapifac.md](docs/movil/bitacoraapifac.md):
 
 - Tecnología: **Capacitor 8.4.2** (reusa el React actual)
 - Alcance: solo facturación (respeta separación GDM_FAC / GDM_ALMACEN)

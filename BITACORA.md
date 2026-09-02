@@ -3124,7 +3124,7 @@ alinearlos en una sesión futura.
 - Orden de campos en Cargar CSD: número entre password y vigencia
 - Datos ya pegados en BD de GRUPOHCGM: se corrigen con UPDATE directo
 
-**Aplicación móvil (Android/iOS)** — `READMEAPIFAC.md` y `bitacoraapifac.md`
+**Aplicación móvil (Android/iOS)** — `docs/movil/READMEAPIFAC.md` y `docs/movil/bitacoraapifac.md`
 mantienen el estado: **cero código**, decisiones tomadas (Capacitor 8.4.2,
 solo facturación, caché de lectura). La Fase 4 móvil ya está desbloqueada
 porque el timbrado idempotente se subió hoy. **El usuario pidió expresamente
