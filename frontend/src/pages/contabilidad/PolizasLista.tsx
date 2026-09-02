@@ -12,6 +12,7 @@ import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X } from 'lucide-r
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
+import { formatCuenta, useMascara } from '@/utils/cuenta';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -41,6 +42,7 @@ const FILTROS = [
 export function PolizasListaPage() {
   const hoy = new Date();
   const qc = useQueryClient();
+  const mascara = useMascara();
   /* Se puede llegar desde el auxiliar de la balanza con ?editar=<id>&anio&mes:
    * el mes/año arrancan en los del enlace y, al cargar, se abre el editor de esa
    * póliza. Es el «doble clic en la póliza → editarla» pedido desde la balanza. */
@@ -150,7 +152,7 @@ export function PolizasListaPage() {
                 <tbody>
                   {(p.lineas || []).map((l: any, i: number) => (
                     <tr key={i} className="border-b last:border-0">
-                      <td className="px-3 py-1 font-mono text-gray-500 w-24">{l.codigo}</td>
+                      <td className="px-3 py-1 font-mono text-gray-500 w-24">{formatCuenta(l.codigo, mascara)}</td>
                       <td className="px-2 py-1">{l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}</td>
                       <td className="px-3 py-1 text-right w-28">{Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
                       <td className="px-3 py-1 text-right w-28">{Number(l.abono) > 0 ? money(l.abono) : ''}</td>

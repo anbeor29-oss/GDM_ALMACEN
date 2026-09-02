@@ -948,6 +948,15 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/cuentas', { params });
     return r.data;
   }
+  /** Máscara de despliegue del código de cuenta (por empresa). */
+  async getMascaraCuenta(): Promise<string> {
+    const r = await this.client.get<APIResponse<any>>('/accounting/mascara');
+    return r.data?.data?.mascara || '';
+  }
+  async setMascaraCuenta(mascara: string): Promise<string> {
+    const r = await this.client.put<APIResponse<any>>('/accounting/mascara', { mascara });
+    return r.data?.data?.mascara || '';
+  }
   async getArbolDeCuentas() {
     const r = await this.client.get<APIResponse<any>>('/accounting/cuentas/arbol');
     return r.data;

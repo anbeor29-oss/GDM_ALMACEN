@@ -13,7 +13,7 @@
  * modos: el día que se re-numere el catálogo propio, ver el agrupador al lado
  * es lo que permite comprobar que la equivalencia con el SAT no se movió.
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight, ChevronDown, Search, Plus, AlertTriangle, CheckCircle2,
@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
+import { formatCuenta } from '@/utils/cuenta';
 
 const TIPO_COLOR: Record<string, string> = {
   ACTIVO:  'bg-sky-100 text-sky-800',
@@ -37,6 +38,14 @@ export function CatalogoCuentasPage() {
   const qc = useQueryClient();
   const { puede } = useCapacidades();
   const puedeEditar = puede(CAP.ctaCatalogo);
+  const [mascara, setMascara] = useState('');
+  const [guardandoMascara, setGuardandoMascara] = useState(false);
+  useEffect(() => { api.getMascaraCuenta().then(setMascara).catch(() => {}); }, []);
+  const guardarMascara = async () => {
+    setGuardandoMascara(true);
+    try { setMascara(await api.setMascaraCuenta(mascara)); } catch { /* noop */ }
+    finally { setGuardandoMascara(false); }
+  };
 
   const [busqueda, setBusqueda] = useState('');
   const [tipo, setTipo] = useState('');
@@ -208,6 +217,25 @@ export function CatalogoCuentasPage() {
                 </button>
               </div>
 
+              {puedeEditar && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-gray-500">Formato del código:</span>
+                  <input
+                    value={mascara}
+                    onChange={(e) => setMascara(e.target.value)}
+                    placeholder="sin máscara (ej. ##-##-##-##)"
+                    className="input w-52 font-mono"
+                  />
+                  <button onClick={guardarMascara} disabled={guardandoMascara}
+                    className="border px-3 py-1 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-40">
+                    {guardandoMascara ? 'Guardando…' : 'Guardar'}
+                  </button>
+                  <span className="text-gray-400">
+                    Ejemplo: <span className="font-mono text-gray-600">{formatCuenta('21030026', mascara)}</span>
+                  </span>
+                </div>
+              )}
+
               {/* ── El árbol ── */}
               <div className="bg-white rounded-lg shadow border divide-y">
                 {filtrado.length === 0 && (
@@ -216,7 +244,7 @@ export function CatalogoCuentasPage() {
                   </p>
                 )}
                 {filtrado.map((n: any) => (
-                  <Rama key={n.id} nodo={n} nivel={0}
+                  <Rama key={n.id} nodo={n} nivel={0} mascara={mascara}
                     abiertos={abiertos} buscando={buscando}
                     onAlternar={alternar} onDetalle={setDetalle}
                     onAgregar={puedeEditar ? (p: any) => setAlta({ parentId: p.id, padre: p }) : undefined} />
@@ -508,7 +536,7 @@ function Chip({ n, t, c }: any) {
 
 /* ═══════════ UNA RAMA DEL ÁRBOL ═══════════ */
 
-function Rama({ nodo, nivel, abiertos, buscando, onAlternar, onDetalle, onAgregar }: any) {
+function Rama({ nodo, nivel, abiertos, buscando, onAlternar, onDetalle, onAgregar, mascara }: any) {
   const hijos = nodo.hijosLista || [];
   /* Al buscar se abre todo: si el resultado quedara colapsado habría que ir
      destapando ramas para ver lo que ya se encontró. */
@@ -530,7 +558,7 @@ function Rama({ nodo, nivel, abiertos, buscando, onAlternar, onDetalle, onAgrega
 
         <button onClick={() => onDetalle(nodo.id)}
           className="flex-1 min-w-0 flex items-baseline gap-2 text-left">
-          <span className="font-mono text-xs text-gray-900 shrink-0">{nodo.codigo}</span>
+          <span className="font-mono text-xs text-gray-900 shrink-0">{formatCuenta(nodo.codigo, mascara)}</span>
           <span className="text-sm text-gray-700 truncate">{nodo.nombre}</span>
 
           {/* El agrupador, sólo cuando difiere del código propio: mientras sean
@@ -575,7 +603,7 @@ function Rama({ nodo, nivel, abiertos, buscando, onAlternar, onDetalle, onAgrega
       </div>
 
       {abierto && hijos.map((h: any) => (
-        <Rama key={h.id} nodo={h} nivel={nivel + 1}
+        <Rama key={h.id} nodo={h} nivel={nivel + 1} mascara={mascara}
           abiertos={abiertos} buscando={buscando}
           onAlternar={onAlternar} onDetalle={onDetalle} onAgregar={onAgregar} />
       ))}

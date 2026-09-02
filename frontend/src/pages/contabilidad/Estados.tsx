@@ -14,6 +14,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Info, TrendingUp, X, FileSpreadsheet, FileDown } from 'lucide-react';
 import api from '@/services/api';
+import { formatCuenta, useMascara } from '@/utils/cuenta';
 import {
   MarcoEstado, SeccionBalance, Total, ListaRubros, NoDisponible, Cuadre,
   mx, pct, MESES,
@@ -26,6 +27,7 @@ import {
 export function BalanzaPage() {
   const hoy = new Date();
   const qc = useQueryClient();
+  const mascara = useMascara();
   /* Se puede volver aquí desde el editor de una póliza (que se abrió por el
    * auxiliar): el mes/año llegan en la URL para reabrir en el mismo periodo. */
   const [params] = useSearchParams();
@@ -131,7 +133,7 @@ export function BalanzaPage() {
                   <tr key={f.codigo} className="hover:bg-sky-50 cursor-pointer"
                     onDoubleClick={() => setAuxiliar(f.codigo)}
                     title="Doble clic para ver el auxiliar de la cuenta">
-                    <td className="px-3 py-1 font-mono text-xs whitespace-nowrap">{f.codigo}</td>
+                    <td className="px-3 py-1 font-mono text-xs whitespace-nowrap">{formatCuenta(f.codigo, mascara)}</td>
                     <td className="px-3 py-1">{f.nombre}</td>
                     <td className="px-2 py-1 text-center text-xs text-gray-500">
                       {f.naturaleza === 'ACREEDORA' ? 'A' : 'D'}

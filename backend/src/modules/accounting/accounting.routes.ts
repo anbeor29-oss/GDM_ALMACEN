@@ -109,6 +109,30 @@ router.post(
   })
 );
 
+/**
+ * GET /accounting/mascara — máscara de DESPLIEGUE del código de cuenta (por empresa).
+ * PUT /accounting/mascara — la fija. Sólo cambia cómo se VE el código (ej.
+ * 21030026 -> 21-03-00-26); el código guardado no se toca. La define el usuario.
+ */
+router.get(
+  '/mascara',
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await query<{ mascara_cuenta: string | null }>(
+      'SELECT mascara_cuenta FROM companies WHERE id = $1', [companyId(req)]);
+    res.json({ success: true, data: { mascara: r.rows[0]?.mascara_cuenta || '' } });
+  })
+);
+router.put(
+  '/mascara',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const m = String(req.body?.mascara ?? '').trim().slice(0, 40);
+    await query('UPDATE companies SET mascara_cuenta = $2 WHERE id = $1',
+      [companyId(req), m || null]);
+    res.json({ success: true, data: { mascara: m } });
+  })
+);
+
 /* ═══════════════════════════════════════════════════════════════════════════
    CATÁLOGO
    ═══════════════════════════════════════════════════════════════════════════ */
