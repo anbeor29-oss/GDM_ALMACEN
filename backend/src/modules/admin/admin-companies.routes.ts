@@ -698,6 +698,31 @@ router.delete('/:id/full-delete', asyncHandler(async (req: Request, res: Respons
   }
 
   // Borrado en cascada respetando FKs.
+  //
+  // 0) HIJOS con FK RESTRICT / NO ACTION hacia tablas que se borran DESPUÉS
+  //    (cuentas contables, empleados, facturas, productos). En operación normal
+  //    esas FK PROTEGEN —no dejan borrar una cuenta con movimientos, un empleado
+  //    con recibos, etc.—; SÓLO en el borrado TOTAL de la empresa se limpian sus
+  //    hijos primero para que el cascade final no choque. Cada uno tolera que la
+  //    tabla no exista (.catch), para no depender de qué módulos tenga la empresa.
+  const q0 = (sql: string) => query(sql, [id]).catch(() => {});
+  // Contabilidad — se limpia COMPLETA y en orden hijo→padre (de aquí salieron los
+  // errores). La jerarquía de cuentas se apunta a sí misma (parent_id RESTRICT):
+  // se rompe con NULL antes de borrar las cuentas.
+  await q0(`DELETE FROM journal_lines WHERE entry_id IN (SELECT id FROM journal_entries WHERE company_id = $1)`);
+  await q0(`DELETE FROM journal_entries WHERE company_id = $1`);
+  await q0(`DELETE FROM accounting_period_balances WHERE company_id = $1`);
+  await q0(`DELETE FROM accounting_period_sources WHERE company_id = $1`);
+  await q0(`DELETE FROM accounting_periods WHERE company_id = $1`);
+  await q0(`UPDATE accounting_accounts SET parent_id = NULL WHERE company_id = $1`);
+  await q0(`DELETE FROM accounting_accounts WHERE company_id = $1`);
+  // Nómina: los recibos bloquean al empleado (RESTRICT); el resto de sus hijos es
+  // CASCADE/SET NULL y se va con el empleado en el cascade de la empresa.
+  await q0(`DELETE FROM nomina_recibos WHERE company_id = $1`);
+  // Facturación (pago multi-factura) y punto de venta (RESTRICT hacia invoices/products).
+  await q0(`DELETE FROM payment_invoices WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = $1)`);
+  await q0(`DELETE FROM pos_sale_items WHERE product_id IN (SELECT id FROM products WHERE company_id = $1)`);
+
   // 1) Datos operativos (mismo orden que reset-operations)
   await query(`DELETE FROM pac_stamps  WHERE company_id = $1`, [id]).catch(() => {});
   await query(`DELETE FROM xml_imports WHERE company_id = $1`, [id]).catch(() => {});
