@@ -4513,3 +4513,41 @@ Ventaja: una sola forma de trabajar y sin credenciales en la herramienta. El
 (ya no hay subida directa). Probado el extract+zip de contabilidad con
 NEXO_MIG_CONT (472 cuentas, 7674 pólizas, 29100 movimientos → `.zip`). Commit
 48d21cc.
+
+## 2026-09-02 — Borrado de empresa robusto para cualquier empresa, y aviso claro si el `.bak` no es un `.bak`
+
+**Nómina: importar respaldo YA FUNCIONA de punta a punta** (confirmado por el
+usuario): la herramienta hace el `NOMINA_*.zip` y la pantalla lo sube. Con eso los
+dos importadores (flujo `.zip`) quedan probados en real.
+
+**Borrado total de empresa — que sirva para TODAS.** Al eliminar una empresa el
+cascade chocaba con FKs que en operación normal están BIEN (no dejar borrar una
+cuenta con movimientos, un empleado con recibos, una factura con pagos, un
+producto vendido, ni una cuenta padre con subcuentas). Dos errores reales en
+pruebas: `accounting_period_sources_created_by_fkey` (hacia `users`) y
+`journal_lines_account_id_fkey` (hacia `accounting_accounts`). No se debilitan
+esas reglas; **sólo en el borrado TOTAL** se limpian primero los hijos que
+bloquean:
+- Se quitó el `DELETE FROM users` explícito (fallaba por las FK de auditoría
+  NO ACTION); ahora los usuarios se van en el mismo `DELETE FROM companies`
+  (`users.company_id` CASCADE), así las NO ACTION se difieren. Commit `c25cab6`.
+- Antes del borrado se limpia la **contabilidad completa** hijo→padre
+  (`journal_lines`, `journal_entries`, balances, sources, periodos y las cuentas
+  rompiendo el `parent_id` self-ref), **`nomina_recibos`** (RESTRICT hacia
+  empleados), **`payment_invoices`** y **`pos_sale_items`**. Cada limpieza tolera
+  que la tabla no exista → funciona con o sin contabilidad/nómina/POS.
+  Commit `58ab565`.
+
+Verificado el árbol de FKs: los únicos RESTRICT que bloquean son esos; el resto de
+hijos de `nomina_empleados` es CASCADE/SET NULL (sólo `nomina_recibos` es
+RESTRICT). Probado: GRUPO HCGM se borró y liberó su RFC para re-probar el
+importador.
+
+**Herramientas de respaldo: mensaje claro si el archivo no es `.bak`.** El usuario
+eligió por error una **descarga de XML del SAT** (`xml_…comprobantes-nomina….zip`)
+en vez del `.bak`; SQL no lo reconoce como backup y salía el críptico *«No se
+pudieron leer los nombres lógicos del .bak»* (o leía 0 cuentas / RFC vacío →
+«crea la empresa»). Ahora las dos herramientas: (1) avisan **temprano** si la
+extensión no es `.bak` (aclarando que necesitan el backup de SQL Server, no un XML
+del SAT ni un `.zip`), y (2) muestran el detalle real de SQL si no lo reconoce.
+Commit `3a382b2`.

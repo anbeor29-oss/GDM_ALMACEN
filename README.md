@@ -12,7 +12,7 @@ SW Sapien.
 > quedó de antes y **se conserva a propósito**: renombrarlos en Render crea un
 > par vacío y deja colgado el actual, con su inventario dentro.
 
-**Estado** (al 2026-08-24):
+**Estado** (al 2026-09-02):
 - 🟢 **Desplegado y respondiendo** en `gdm-almacen-*` (multi-empresa, pagos
   multi-factura, CSD en base).
 - 🟢 **Nómina completa**: expediente (con Vacaciones y ModifSal), cálculo,
@@ -993,7 +993,7 @@ cd frontend && node scripts/revisar-rutas-auditoria.mjs
 | Empresas | ✅ | CRUD + lector CIF SAT + selector de plan + carga de CSD cifrado |
 | Editar empresa completa | ✅ | Modal con datos generales, domicilio y contacto + acceso directo a actualizar CSD |
 | Reset operacional | ✅ | `POST /admin/companies/:id/reset-operations` (confirmRfc + dryRun) — vacía operación conservando empresa/usuarios |
-| Eliminar empresa (2 pasos) | ✅ | Borrado total (usuarios, CSD, todo) con doble confirmación server-side: RFC exacto + palabra ELIMINAR |
+| Eliminar empresa (2 pasos) | ✅ | Borrado total (usuarios, CSD, todo) con doble confirmación server-side: RFC exacto + palabra ELIMINAR. Antes de borrar la empresa se limpian los hijos con FK que la protegen en operación normal (cuentas con movimientos, empleados con recibos, facturas con pagos, productos vendidos) → funciona para **cualquier** empresa, tenga o no contabilidad/nómina/POS |
 
 ### 🔴 Infraestructura
 
