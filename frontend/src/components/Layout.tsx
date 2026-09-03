@@ -301,6 +301,7 @@ export function Layout() {
                           { to: '/contabilidad/razones',    icon: emoji3D('🔍'), label: 'Razones y análisis' },
                         ],
                       },
+                      { to: '/contabilidad/cambio-cuenta', icon: emoji3D('🔀'), label: 'Cambio de cuenta' },
                       /* Auditoría cuelga de Contabilidad, después de Reportes: es
                          quien revisa lo timbrado contra lo contabilizado antes del
                          cierre del mes. La ruta sigue siendo /auditoria. */

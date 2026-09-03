@@ -27,6 +27,7 @@ import * as compras from './compras-cuentas.service';
 import * as activos from './activos-fijos.service';
 import * as reportesExport from './reportes-export.service';
 import * as contpaqi from './contpaqi-import.service';
+import * as cambioCuenta from './cambio-cuenta.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
@@ -147,6 +148,45 @@ router.get(
     set.add(new Date().getFullYear());
     const anios = [...set].sort((a, b) => b - a);
     res.json({ success: true, data: { anios } });
+  })
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CAMBIO DE CUENTA — sustituir la temporal (MIG-TEMPORAL) y unificar duplicadas
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** POST /accounting/cuentas/reasignar — mueve las partidas de una cuenta a otra
+ *  (opcional por rango de fechas). Para sustituir la cuenta temporal por la real. */
+router.post(
+  '/cuentas/reasignar',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { origenId, destinoId, desde, hasta } = req.body || {};
+    const r = await cambioCuenta.reasignarMovimientos(companyId(req), origenId, destinoId,
+      { desde: desde || undefined, hasta: hasta || undefined, userId: req.user?.userId });
+    res.json({ success: true, data: r, message: `${r.partidas} partida(s) reasignada(s).` });
+  })
+);
+
+/** POST /accounting/cuentas/fusionar — unifica dos cuentas duplicadas: mueve todo
+ *  de la origen a la destino y borra la origen. */
+router.post(
+  '/cuentas/fusionar',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { origenId, destinoId } = req.body || {};
+    const r = await cambioCuenta.fusionarCuenta(companyId(req), origenId, destinoId, req.user?.userId);
+    res.json({ success: true, data: r, message: `Cuentas unificadas: ${r.partidas} partida(s) movida(s).` });
+  })
+);
+
+/** GET /accounting/cuentas/duplicadas?q= — grupos de cuentas con el mismo nombre
+ *  (posibles duplicados por typo/mayúsculas). */
+router.get(
+  '/cuentas/duplicadas',
+  asyncHandler(async (req: Request, res: Response) => {
+    const grupos = await cambioCuenta.candidatasDuplicadas(companyId(req), req.query.q as string | undefined);
+    res.json({ success: true, data: { grupos } });
   })
 );
 

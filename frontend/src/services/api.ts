@@ -962,6 +962,20 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/ejercicios');
     return r.data?.data?.anios || [];
   }
+  /** Cambio de cuenta: reasignar partidas (sustituir temporal), fusionar duplicadas. */
+  async reasignarCuenta(origenId: string, destinoId: string, desde?: string, hasta?: string) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/reasignar',
+      { origenId, destinoId, desde, hasta });
+    return r.data;
+  }
+  async fusionarCuenta(origenId: string, destinoId: string) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/fusionar', { origenId, destinoId });
+    return r.data;
+  }
+  async cuentasDuplicadas(q?: string) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/cuentas/duplicadas', { params: { q } });
+    return r.data;
+  }
   async getArbolDeCuentas() {
     const r = await this.client.get<APIResponse<any>>('/accounting/cuentas/arbol');
     return r.data;
