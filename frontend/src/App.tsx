@@ -235,8 +235,8 @@ export function App() {
             <Route path="dashboard"    element={<ModuleRoute module="dashboard"><DashboardPage /></ModuleRoute>} />
             {/* Facturación */}
             <Route path="invoices"     element={<ModuleRoute module="invoices"><InvoicesPage /></ModuleRoute>} />
-            <Route path="invoices/polizas-venta" element={<ModuleRoute module="invoices"><PolizasVentaPage /></ModuleRoute>} />
-            <Route path="compras/polizas"        element={<ModuleRoute module="suppliers"><PolizasCompraPage /></ModuleRoute>} />
+            <Route path="invoices/polizas-venta" element={<ModuleRoute module="contabilidad"><PolizasVentaPage /></ModuleRoute>} />
+            <Route path="compras/polizas"        element={<ModuleRoute module="contabilidad"><PolizasCompraPage /></ModuleRoute>} />
             <Route path="invoices/new"       element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
             <Route path="invoices/:id/edit"  element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
             <Route path="credit-notes" element={<ModuleRoute module="credit_notes"><CreditNotesPage /></ModuleRoute>} />

@@ -108,7 +108,7 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
    * concepto, que es justo lo que necesita. El sueldo de cada trabajador con
    * nombre y apellido no. */
   CONTABILIDAD: [
-    'contabilidad', 'auditoria', 'invoices', 'purchasing', 'treasury', 'inventory',
+    'contabilidad', 'auditoria', 'treasury', 'inventory',
     'customers', 'suppliers', 'xml_reader', 'exchange_rates', 'mensajes',
   ],};
 

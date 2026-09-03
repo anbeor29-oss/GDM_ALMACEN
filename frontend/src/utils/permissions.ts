@@ -73,7 +73,7 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
    * NO ve nómina: el asiento le llega en totales por concepto, que es lo que
    * necesita. El sueldo con nombre y apellido, no. */
   CONTABILIDAD: [
-    'contabilidad', 'auditoria', 'invoices', 'purchasing', 'treasury', 'inventory',
+    'contabilidad', 'auditoria', 'treasury', 'inventory',
     'customers', 'suppliers', 'xml_reader', 'exchange_rates', 'mensajes',
   ],
 };
