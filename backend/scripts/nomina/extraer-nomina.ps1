@@ -26,6 +26,14 @@ $sc = 'C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn\SQLC
 if (-not (Test-Path $sc)) { $sc = 'sqlcmd' }
 if (-not (Test-Path $Out)) { New-Item -ItemType Directory -Path $Out | Out-Null }
 
+# Guard: ¿es un respaldo de NomiPaq? Si falta nom10001 (empleados) casi seguro se
+# eligió el .bak de CONTABILIDAD por error; se avisa claro en vez de dejar un
+# paquete de JSON vacíos que la pantalla no puede importar.
+$hayNom = & $sc -S $Server -E -d $Db -h -1 -W -Q "SET NOCOUNT ON; SELECT CASE WHEN EXISTS(SELECT 1 FROM sys.tables WHERE name='nom10001') THEN 1 ELSE 0 END"
+if (($hayNom -join '') -notmatch '1') {
+  throw "Este respaldo NO tiene tablas de NomiPaq (nómina): falta nom10001 (empleados). ¿Elegiste el .bak de CONTABILIDAD por error? Genera el paquete con el .bak de NÓMINA (NomiPaq)."
+}
+
 function Export-Json([string]$name, [string]$query) {
   $raw = Join-Path $Out "$name.raw"
   & $sc -S $Server -E -d $Db -y 0 -o $raw -Q "SET NOCOUNT ON; $query" | Out-Null

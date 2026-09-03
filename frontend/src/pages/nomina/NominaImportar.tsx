@@ -41,20 +41,25 @@ export function NominaImportarPage() {
     if (!lista || !lista.length) return;
     setError(''); setRep(null); setRfcMismatch(false); setForzar(false);
     const next: Partial<Record<Archivo, any[]>> = { ...datos };
+    const vistos: string[] = [];
+    const matched = new Set<string>();
     try {
       for (const f of Array.from(lista)) {
         if (/\.zip$/i.test(f.name)) {
           const buf = new Uint8Array(await f.arrayBuffer());
           const entradas = unzipSync(buf);
           for (const [nombre, bytes] of Object.entries(entradas)) {
-            const base = nombre.replace(/^.*[\\/]/, '').replace(/\.json$/i, '').toLowerCase();
+            const fn = nombre.replace(/^.*[\\/]/, '');
+            vistos.push(fn);
+            const base = fn.replace(/\.json$/i, '').toLowerCase();
             const match = ARCHIVOS.find((a) => a === base);
-            if (match) next[match] = parseJson(strFromU8(bytes as Uint8Array));
+            if (match) { next[match] = parseJson(strFromU8(bytes as Uint8Array)); matched.add(match); }
           }
         } else if (/\.json$/i.test(f.name)) {
+          vistos.push(f.name);
           const base = f.name.replace(/\.json$/i, '').toLowerCase();
           const match = ARCHIVOS.find((a) => a === base);
-          if (match) next[match] = parseJson(await f.text());
+          if (match) { next[match] = parseJson(await f.text()); matched.add(match); }
         }
       }
     } catch { setError('No se pudo leer el paquete (.zip). Genera uno nuevo con la herramienta.'); return; }
@@ -71,11 +76,13 @@ export function NominaImportarPage() {
       setEjerSel(new Set(ejs));
     } else {
       setPreview(null);
-      const leidos = ARCHIVOS.filter((a) => (next[a]?.length || 0) > 0);
-      if (leidos.length === 0) {
-        setError('No reconocí archivos de nómina en el paquete. Sube el .zip de NÓMINA (NOMINA_*.zip) que dejó la herramienta — el de contabilidad (CONTABILIDAD_*.zip) no sirve aquí.');
+      const conDatos = ARCHIVOS.filter((a) => (next[a]?.length || 0) > 0);
+      if (matched.size === 0) {
+        setError(`El .zip no trae archivos de nómina${vistos.length ? ` (trae: ${vistos.slice(0, 12).join(', ')})` : ''}. Sube el NOMINA_*.zip que dejó la herramienta — el de contabilidad (CONTABILIDAD_*.zip) no sirve aquí.`);
+      } else if (conDatos.length === 0) {
+        setError(`El .zip trae los archivos de nómina pero VACÍOS (${[...matched].join(', ')}). Casi seguro el .bak que elegiste NO es de NomiPaq (nómina) o no tiene datos — genera el paquete con el .bak de NÓMINA.`);
       } else {
-        setError(`El paquete se leyó (${leidos.join(', ')}) pero le faltan EMPLEADOS y/o PERIODOS, que son los que habilitan «Importar». Vuelve a generar el .zip de nómina con la herramienta.`);
+        setError(`El paquete se leyó (${conDatos.join(', ')}) pero faltan EMPLEADOS y/o PERIODOS, que habilitan «Importar». Vuelve a generar el .zip de nómina con la herramienta.`);
       }
     }
   };
