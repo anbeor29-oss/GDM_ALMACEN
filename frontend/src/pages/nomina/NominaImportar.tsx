@@ -215,7 +215,7 @@ function Reporte({ rep }: { rep: any }) {
       <h2 className="font-semibold text-gray-800 flex items-center gap-2"><CheckCircle2 size={18} className="text-emerald-600" /> Resumen de la importación</h2>
       <div className="grid sm:grid-cols-2 gap-3 text-sm">
         <Tarjeta titulo="Ejercicios" valor={(rep.ejercicios || []).join(', ') || '—'} />
-        <Tarjeta titulo="Empleados" valor={`${rep.empleados?.creados ?? 0} nuevos · ${rep.empleados?.actualizados ?? 0} actualizados`} />
+        <Tarjeta titulo="Empleados" valor={`${rep.empleados?.creados ?? 0} nuevos · ${rep.empleados?.actualizados ?? 0} actualizados${rep.empleados?.omitidos ? ` · ⚠ ${rep.empleados.omitidos} NO entraron (RFC/CURP inválido o repetido — ver avisos)` : ''}`} />
         <Tarjeta titulo="Periodos" valor={`${rep.periodos?.creados ?? 0} creados · ${rep.periodos?.yaExistian ?? 0} ya estaban · ${rep.periodos?.omitidos ?? 0} omitidos`} />
         <Tarjeta titulo="Recibos" valor={`${rep.recibos?.creados ?? 0} creados · ${rep.recibos?.yaExistian ?? 0} ya estaban · ${rep.recibos?.omitidos ?? 0} omitidos`} />
       </div>

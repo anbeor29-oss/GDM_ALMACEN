@@ -48,7 +48,7 @@ export interface PaqueteNomina {
 
 export interface ReporteNomina {
   rfc: { respaldo: string; empresaActiva: string; coincide: boolean };
-  empleados: { creados: number; actualizados: number };
+  empleados: { creados: number; actualizados: number; omitidos: number };
   periodos: { creados: number; yaExistian: number; omitidos: number };
   recibos: { creados: number; yaExistian: number; omitidos: number };
   ejercicios: number[];
@@ -83,7 +83,7 @@ export async function importarNomina(
 
   const rep: ReporteNomina = {
     rfc: { respaldo: rfcRespaldo || '(no venía en el paquete)', empresaActiva: rfcEmpresa, coincide },
-    empleados: { creados: 0, actualizados: 0 },
+    empleados: { creados: 0, actualizados: 0, omitidos: 0 },
     periodos: { creados: 0, yaExistian: 0, omitidos: 0 },
     recibos: { creados: 0, yaExistian: 0, omitidos: 0 },
     ejercicios: [], avisos: [],
@@ -157,7 +157,8 @@ export async function importarNomina(
       }
       empId.set(e.id, { id: empleadoId, num: num.slice(0, 15), nombre: nombreCompleto, rfc: String(e.rfc || '').toUpperCase().slice(0, 13), curp: String(e.curp || '').toUpperCase().slice(0, 18), nss: String(e.nss || '').replace(/\D/g, '').slice(0, 11) });
     } catch (err: any) {
-      rep.avisos.push(`Empleado ${num}: ${(err?.message || 'no se pudo').toString().slice(0, 140)}`);
+      rep.empleados.omitidos++;
+      rep.avisos.push(`Empleado ${num} (RFC ${String(e.rfc || '?')}): ${(err?.message || 'no se pudo').toString().slice(0, 140)}`);
     }
   }
 
