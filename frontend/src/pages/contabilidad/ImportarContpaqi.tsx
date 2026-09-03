@@ -212,6 +212,7 @@ function Reporte({ rep }: { rep: any }) {
         <Tarjeta titulo="Cuentas" valor={`${rep.cuentas?.creadas ?? 0} nuevas${rep.cuentas?.agrupadorRellenado ? ` · ${rep.cuentas.agrupadorRellenado} con agrupador SAT rellenado` : ''}${rep.cuentas?.sinAgrupador ? ` · ${rep.cuentas.sinAgrupador} aún sin agrupador` : ''}`} />
         <Tarjeta titulo="Pólizas" valor={`${rep.polizas?.creadas ?? 0} creadas · ${rep.polizas?.yaExistian ?? 0} ya estaban · ${rep.polizas?.omitidas ?? 0} omitidas`} />
         <Tarjeta titulo="Comprobantes (CFDI)" valor={`${rep.cfdi?.creados ?? 0} nuevos`} />
+        <Tarjeta titulo="Balanza" valor={`${rep.balanzaPeriodos ?? 0} periodo(s) actualizados`} />
       </div>
       {rep.polizas?.conTemporal?.length > 0 && (
         <details className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2" open>

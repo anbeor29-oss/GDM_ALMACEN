@@ -21,6 +21,7 @@
 import { query, transaction } from '../../config/database';
 import { crearPoliza } from './polizas.service';
 import { activarContabilidad } from './catalogo.service';
+import { alimentarDesdePolizas } from './periodos.service';
 
 /* ── El paquete que sube la pantalla (los JSON del extractor) ── */
 export interface CuentaCt { codigo: string; nombre: string; agrupador: string | null; afectable: number; ctaMayor: number; baja: number; }
@@ -48,6 +49,7 @@ export interface ReporteImport {
     motivos: Array<{ guid: string; motivo: string }>;
   };
   cfdi: { creados: number; emitidos: number; recibidos: number };
+  balanzaPeriodos: number;
   avisos: string[];
 }
 
@@ -129,6 +131,7 @@ export async function importarContpaqi(
   const rep: ReporteImport = {
     rfc: { respaldo: rfcRespaldo || '(no venía en el paquete)', empresaActiva: rfcEmpresa, coincide },
     ejerciciosActivados: [],
+    balanzaPeriodos: 0,
     cuentas: { creadas: 0, omitidas: 0, sinAgrupador: 0, agrupadorRellenado: 0 },
     polizas: { creadas: 0, yaExistian: 0, omitidas: 0, conTemporal: [], motivos: [] },
     cfdi: { creados: 0, emitidos: 0, recibidos: 0 },
@@ -153,6 +156,19 @@ export async function importarContpaqi(
   await importarCuentas(companyId, paquete.cuentas || [], rep);
   await importarPolizas(companyId, paqueteSel, userId, rep);
   await importarCfdis(companyId, paquete.cfdi || [], rfcEmpresa, rep);
+
+  // QUINTO: actualizar la balanza de TODOS los periodos del respaldo, en orden
+  // (año↑, ene→dic) porque el saldo inicial de cada mes es el saldo final del
+  // anterior. Así, al entrar a la balanza por año, ya están todos al día sin dar
+  // «Actualizar desde pólizas» mes por mes. Los meses cerrados o vacíos se saltan.
+  for (const anio of ejercicios) {
+    for (let mes = 1; mes <= 12; mes++) {
+      try {
+        const r = await alimentarDesdePolizas(companyId, anio, mes, { userId });
+        if (r.cuentas > 0) rep.balanzaPeriodos++;
+      } catch { /* periodo cerrado o sin activar: se ignora */ }
+    }
+  }
 
   return rep;
 }
