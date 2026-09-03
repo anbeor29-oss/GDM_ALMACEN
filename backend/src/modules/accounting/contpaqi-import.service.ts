@@ -113,7 +113,7 @@ function fechaCt(s: string): string | null {
 
 export async function importarContpaqi(
   companyId: string, paquete: PaqueteContpaqi, userId?: string,
-  opciones?: { forzar?: boolean; ejercicios?: number[] }
+  opciones?: { forzar?: boolean; ejercicios?: number[]; soloCatalogo?: boolean }
 ): Promise<ReporteImport> {
   const emp = await query<any>('SELECT rfc FROM companies WHERE id=$1', [companyId]);
   const rfcEmpresa = String(emp.rows[0]?.rfc || '').toUpperCase().trim();
@@ -158,6 +158,12 @@ export async function importarContpaqi(
   }
 
   await importarCuentas(companyId, paquete.cuentas || [], rep);
+  // Import en DOS PASOS: sólo el catálogo, para revisarlo/corregirlo (el respaldo trae
+  // errores) antes de traer las pólizas. Luego se vuelve a importar SIN esta opción.
+  if (opciones?.soloCatalogo) {
+    rep.avisos.push('Sólo se importó el CATÁLOGO. Revísalo/corrígelo en «Catálogo de cuentas» y vuelve a importar (sin «sólo catálogo») para traer las pólizas.');
+    return rep;
+  }
   await importarPolizas(companyId, paqueteSel, userId, rep);
   await importarCfdis(companyId, paquete.cfdi || [], rfcEmpresa, rep);
 

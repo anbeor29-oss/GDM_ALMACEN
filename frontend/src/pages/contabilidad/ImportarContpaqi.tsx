@@ -22,6 +22,7 @@ export function ImportarContpaqiPage() {
   const [preview, setPreview] = useState<any>(null);
   const [ejerSel, setEjerSel] = useState<Set<number>>(new Set());
   const [forzar, setForzar] = useState(false);
+  const [soloCatalogo, setSoloCatalogo] = useState(false);
   const [busy, setBusy] = useState(false);
   const [bajando, setBajando] = useState(false);
   const [rep, setRep] = useState<any>(null);
@@ -84,6 +85,7 @@ export function ImportarContpaqiPage() {
         if (datos[a]) fd.append(a, new Blob([JSON.stringify(datos[a])], { type: 'application/json' }), `${a}.json`);
       });
       if (forzar) fd.append('forzar', 'true');
+      if (soloCatalogo) fd.append('soloCatalogo', 'true');
       if (preview?.ejercicios?.length && ejerSel.size && ejerSel.size < preview.ejercicios.length) {
         fd.append('ejercicios', [...ejerSel].join(','));
       }
@@ -190,12 +192,17 @@ export function ImportarContpaqiPage() {
           </label>
         )}
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button onClick={importar}
             disabled={busy || !preview || (preview?.ejercicios?.length > 1 && ejerSel.size === 0)}
             className="flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
-            <PlayCircle size={16} /> {busy ? 'Importando…' : 'Importar a la empresa activa'}
+            <PlayCircle size={16} /> {busy ? 'Importando…' : soloCatalogo ? 'Importar SÓLO el catálogo' : 'Importar a la empresa activa'}
           </button>
+          <label className="flex items-center gap-1.5 text-sm text-gray-600"
+            title="Trae sólo el catálogo de cuentas para revisarlo/corregirlo; luego re-importas SIN esto para las pólizas">
+            <input type="checkbox" checked={soloCatalogo} onChange={(e) => setSoloCatalogo(e.target.checked)} />
+            Sólo el catálogo (revisarlo antes de las pólizas)
+          </label>
           {!preview && <span className="text-xs text-amber-700">Sube el paquete .zip que dejó la herramienta.</span>}
         </div>
       </div>

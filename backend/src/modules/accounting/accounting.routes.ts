@@ -1176,10 +1176,11 @@ router.post(
       throw new ValidationError('El paquete necesita al menos cuentas.json y polizas.json.');
     }
     const forzar = req.body?.forzar === 'true' || req.body?.forzar === true;
+    const soloCatalogo = req.body?.soloCatalogo === 'true' || req.body?.soloCatalogo === true;
     // ejercicios (años) elegidos desde NEXO: lista separada por comas; vacío = todos.
     const ejercicios = String(req.body?.ejercicios || '')
       .split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0);
-    const rep = await contpaqi.importarContpaqi(companyId(req), paquete, req.user?.userId, { forzar, ejercicios });
+    const rep = await contpaqi.importarContpaqi(companyId(req), paquete, req.user?.userId, { forzar, ejercicios, soloCatalogo });
     res.json({ success: true, data: rep });
   })
 );
