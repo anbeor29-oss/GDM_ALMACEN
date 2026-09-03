@@ -23,6 +23,7 @@ import { crearPoliza } from './polizas.service';
 import { activarContabilidad } from './catalogo.service';
 import { alimentarDesdePolizas } from './periodos.service';
 import { generarSubcuentasDeComprobantes } from './catalogo-terceros.service';
+import { crearTrabajo, credencialDeEmpresa } from '../sat-descarga/descarga.service';
 
 /* ── El paquete que sube la pantalla (los JSON del extractor) ── */
 export interface CuentaCt { codigo: string; nombre: string; agrupador: string | null; afectable: number; ctaMayor: number; baja: number; }
@@ -51,6 +52,7 @@ export interface ReporteImport {
   };
   cfdi: { creados: number; emitidos: number; recibidos: number };
   balanzaPeriodos: number;
+  satDescarga: number;
   avisos: string[];
 }
 
@@ -133,6 +135,7 @@ export async function importarContpaqi(
     rfc: { respaldo: rfcRespaldo || '(no venía en el paquete)', empresaActiva: rfcEmpresa, coincide },
     ejerciciosActivados: [],
     balanzaPeriodos: 0,
+    satDescarga: 0,
     cuentas: { creadas: 0, omitidas: 0, sinAgrupador: 0, agrupadorRellenado: 0 },
     polizas: { creadas: 0, yaExistian: 0, omitidas: 0, conTemporal: [], motivos: [] },
     cfdi: { creados: 0, emitidos: 0, recibidos: 0 },
@@ -176,6 +179,29 @@ export async function importarContpaqi(
       } catch { /* periodo cerrado o sin activar: se ignora */ }
     }
   }
+
+  // SEXTO (2): tras recuperar el respaldo, disparar la descarga de XML del SAT desde
+  // la fecha en que arranca el respaldo (recibidos + emitidos). Necesita e.firma; si
+  // no está, se avisa. No bloquea el import.
+  try {
+    if (ejercicios.length) {
+      const desde = `${ejercicios[0]}-01-01`;
+      const hasta = new Date().toISOString().slice(0, 10);
+      const cred = await credencialDeEmpresa(companyId);
+      if (!cred) {
+        rep.avisos.push(`Para traer del SAT los XML del respaldo (desde ${desde}), carga tu e.firma en «Descargar del SAT» y pídelos.`);
+      } else {
+        for (const direccion of ['recibidos', 'emitidos'] as const) {
+          try {
+            await crearTrabajo(companyId, { desde, hasta, direccion, tipo: 'CFDI' }, userId, { origen: 'MANUAL' });
+            rep.satDescarga++;
+          } catch (e: any) {
+            rep.avisos.push(`Descarga SAT ${direccion}: ${(e?.message || 'no se pudo').toString().slice(0, 150)}`);
+          }
+        }
+      }
+    }
+  } catch { /* la descarga SAT es un extra: nunca tumba el import */ }
 
   return rep;
 }

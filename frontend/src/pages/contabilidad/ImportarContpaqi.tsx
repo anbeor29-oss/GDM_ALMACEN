@@ -213,6 +213,7 @@ function Reporte({ rep }: { rep: any }) {
         <Tarjeta titulo="Pólizas" valor={`${rep.polizas?.creadas ?? 0} creadas · ${rep.polizas?.yaExistian ?? 0} ya estaban · ${rep.polizas?.omitidas ?? 0} omitidas`} />
         <Tarjeta titulo="Comprobantes (CFDI)" valor={`${rep.cfdi?.creados ?? 0} nuevos`} />
         <Tarjeta titulo="Balanza" valor={`${rep.balanzaPeriodos ?? 0} periodo(s) actualizados`} />
+        <Tarjeta titulo="XML del SAT" valor={rep.satDescarga > 0 ? `${rep.satDescarga} descarga(s) iniciada(s) desde el SAT` : 'no iniciada (revisa e.firma en los avisos)'} />
       </div>
       {rep.polizas?.conTemporal?.length > 0 && (
         <details className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2" open>
