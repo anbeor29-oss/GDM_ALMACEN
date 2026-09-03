@@ -22,6 +22,10 @@ const esExtranjero = (rfc: string) => /^XEXX/i.test(rfc || '');
 const agrupadorDe = (tipo: 'cliente' | 'proveedor', rfc: string) =>
   AGRUP[tipo][esExtranjero(rfc) ? 'extranjero' : 'nacional'];
 
+// Normaliza un nombre para comparar: mayúsculas, sin acentos, espacios colapsados.
+const norm = (s: string) => (s || '').toUpperCase().normalize('NFD')
+  .replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+
 async function cuentaControl(companyId: string, agrupador: string) {
   const r = await query<any>(
     `SELECT * FROM accounting_accounts
@@ -48,6 +52,26 @@ export async function resolverOCrearSubcuentaTercero(
       WHERE company_id=$1 AND parent_id=$2 AND tercero_rfc=$3 LIMIT 1`,
     [companyId, control.id, rfcU]);
   if (ya.rows[0]) return { id: ya.rows[0].id, codigo: ya.rows[0].codigo, creada: false };
+
+  // Antes de INVENTAR: si el respaldo ya trajo la cuenta del tercero (una hoja con
+  // el mismo agrupador de control y el MISMO nombre, aún sin RFC), se LIGA esa —con
+  // su código real del respaldo— en vez de crear un 105-01-00x nuevo (evita el
+  // duplicado 11002074-001 que reportó el usuario).
+  const nombreNorm = norm(nombre);
+  if (nombreNorm) {
+    const cand = await query<any>(
+      `SELECT id, codigo, nombre FROM accounting_accounts
+        WHERE company_id=$1 AND codigo_agrupador=$2 AND tercero_rfc IS NULL
+          AND permite_movimientos=true AND id<>$3`,
+      [companyId, agrup, control.id]);
+    const hit = cand.rows.find((c: any) => norm(c.nombre) === nombreNorm);
+    if (hit) {
+      await query(
+        `UPDATE accounting_accounts SET tercero_rfc=$2, requiere_tercero=false WHERE id=$1`,
+        [hit.id, rfcU]);
+      return { id: hit.id, codigo: hit.codigo, creada: false };
+    }
+  }
 
   // Siguiente número: el mayor sufijo de las subcuentas + 1.
   const hijos = await query<any>(
