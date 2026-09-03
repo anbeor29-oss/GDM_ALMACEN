@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X } from 'lucide-react';
+import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
@@ -53,6 +53,7 @@ export function PolizasListaPage() {
   const [mes, setMes] = useState(Number(params.get('mes')) || hoy.getMonth() + 1);
   const [filtro, setFiltro] = useState<string>('');
   const [msg, setMsg] = useState('');
+  const [generando, setGenerando] = useState('');
   const [editar, setEditar] = useState<any>(null);
   /* Si se llegó desde el auxiliar de la balanza, al cerrar/guardar el editor se
    * regresa allá (no a esta lista): es donde estaba trabajando el usuario. */
@@ -63,6 +64,24 @@ export function PolizasListaPage() {
   const todas: any[] = q.data?.data?.polizas || [];
 
   const aBalanza = () => navigate(`/contabilidad/balanza?anio=${anio}&mes=${mes}`);
+
+  // Generar las pólizas del mes desde AQUÍ: todo se concentra en Contabilidad. La
+  // asignación de cuentas de cada tipo se hace en su pantalla de «asignar cuenta».
+  const generar = async (tipo: string, fn: () => Promise<any>) => {
+    setGenerando(tipo); setMsg('');
+    try {
+      const r: any = await fn();
+      setMsg(r?.message || r?.data?.message || 'Pólizas generadas.');
+      await qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
+    } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo generar.'); }
+    finally { setGenerando(''); }
+  };
+  const GENERADORES: Array<[string, string, () => Promise<any>]> = [
+    ['ventas', 'Ventas', () => api.generarVentas(anio, mes)],
+    ['compras', 'Compras', () => api.generarCompras(anio, mes)],
+    ['cobros', 'Cobros/Pagos', () => api.generarCobrosPagos(anio, mes)],
+    ['deprec', 'Depreciación', () => api.generarDepreciacion(anio, mes)],
+  ];
 
   // Abre el editor de la póliza que venga en ?editar=<id> una vez que cargó la lista.
   const editarId = params.get('editar');
@@ -119,6 +138,16 @@ export function PolizasListaPage() {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 bg-gray-50 border rounded-lg px-3 py-2">
+        <span className="text-xs text-gray-500">Generar del mes:</span>
+        {GENERADORES.map(([k, label, fn]) => (
+          <button key={k} onClick={() => generar(k, fn)} disabled={!!generando}
+            className="flex items-center gap-1 border bg-white px-2.5 py-1 rounded-lg text-xs text-gray-700 hover:bg-primary hover:text-white disabled:opacity-40">
+            <PlayCircle size={13} /> {generando === k ? 'Generando…' : label}
+          </button>
+        ))}
       </div>
 
       {msg && <p className="text-sm text-emerald-700">{msg}</p>}

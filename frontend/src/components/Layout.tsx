@@ -167,10 +167,6 @@ export function Layout() {
                         { to: '/tipos-de-cambio',      icon: emoji3D('🪙'), label: 'Tipos de cambio' },
                         { to: '/diferencia-cambiaria', icon: emoji3D('⚖️'), label: 'Diferencia cambiaria' },
                       ] : []),
-                      /* La contabilización de las ventas: ingresos por producto,
-                         clientes y la póliza por factura. Cuelga de Facturas, que
-                         es de donde salen los datos. */
-                      { to: '/invoices/polizas-venta', icon: emoji3D('📗'), label: 'Pólizas de venta' },
                     ]}
                   />
                 )}
@@ -231,7 +227,6 @@ export function Layout() {
                     show('purchasing') && { to: '/purchase-orders', icon: emoji3D('📝'), label: 'Órdenes de compra' },
                     show('purchasing') && { to: '/compras/xml',     icon: emoji3D('📥'), label: 'Recibir XML' },
                     show('suppliers')  && { to: '/suppliers',       icon: emoji3D('🚚'), label: 'Proveedores' },
-                    show('suppliers')  && { to: '/compras/polizas',  icon: emoji3D('📕'), label: 'Pólizas de compra' },
                   ].filter(Boolean) as Array<{ to: string; icon: JSX.Element; label: string }>;
                   if (hijas.length === 0) return null;
                   return (
@@ -287,6 +282,8 @@ export function Layout() {
                       { to: '/contabilidad/asignacion',     icon: emoji3D('🏷️'), label: 'Asignación de cuentas' },
                       { to: '/contabilidad/poliza-manual',  icon: emoji3D('✍️'), label: 'Póliza manual' },
                       { to: '/contabilidad/polizas',       icon: emoji3D('📔'), label: 'Pólizas' },
+                      { to: '/invoices/polizas-venta',     icon: emoji3D('📗'), label: 'Pólizas de venta' },
+                      { to: '/compras/polizas',            icon: emoji3D('📕'), label: 'Pólizas de compra' },
                       { to: '/contabilidad/activo-fijo',   icon: emoji3D('🏗️'), label: 'Activo fijo · Depreciación' },
                       { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },
                       {
