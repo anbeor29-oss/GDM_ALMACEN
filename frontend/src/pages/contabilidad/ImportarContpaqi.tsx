@@ -7,10 +7,11 @@
  * NEXO. La pantalla descomprime el `.zip` en el navegador. No duplica: repetirlo
  * es seguro. (Mismo flujo que el importador de nómina.)
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { unzipSync, strFromU8 } from 'fflate';
 import { Database, Download, Upload, PlayCircle, CheckCircle2, FileArchive } from 'lucide-react';
 import api from '@/services/api';
+import { formatCuenta } from '@/utils/cuenta';
 
 const ARCHIVOS = ['empresa', 'cuentas', 'polizas', 'movimientos', 'poliza_cfdi', 'cfdi', 'saldos'] as const;
 type Archivo = typeof ARCHIVOS[number];
@@ -23,6 +24,10 @@ export function ImportarContpaqiPage() {
   const [ejerSel, setEjerSel] = useState<Set<number>>(new Set());
   const [forzar, setForzar] = useState(false);
   const [soloCatalogo, setSoloCatalogo] = useState(false);
+  // Formato del código de cuenta. Precarga el de la empresa si ya lo fijó; si no,
+  // arranca en '#-##-##-###' (1-10-25-050). Define los niveles del catálogo.
+  const [mascara, setMascara] = useState('#-##-##-###');
+  useEffect(() => { api.getMascaraCuenta().then((m: string) => { if (m) setMascara(m); }).catch(() => {}); }, []);
   const [busy, setBusy] = useState(false);
   const [bajando, setBajando] = useState(false);
   const [rep, setRep] = useState<any>(null);
@@ -86,6 +91,7 @@ export function ImportarContpaqiPage() {
       });
       if (forzar) fd.append('forzar', 'true');
       if (soloCatalogo) fd.append('soloCatalogo', 'true');
+      if (mascara.trim().includes('#')) fd.append('mascara', mascara.trim());
       if (preview?.ejercicios?.length && ejerSel.size && ejerSel.size < preview.ejercicios.length) {
         fd.append('ejercicios', [...ejerSel].join(','));
       }
@@ -191,6 +197,20 @@ export function ImportarContpaqiPage() {
             El RFC no coincide — <b>importar de todos modos</b>.
           </label>
         )}
+
+        {/* Formato del código: define los NIVELES del catálogo (cada '#' es un
+            dígito). Con él, los terceros cuelgan de su control al mismo nivel en
+            vez de unos de otros. Se guarda en la empresa al importar. */}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <label className="text-gray-600">Formato del código</label>
+          <input value={mascara} onChange={(e) => setMascara(e.target.value)}
+            placeholder="#-##-##-###" spellCheck={false}
+            className="border rounded px-2 py-1 font-mono w-40" />
+          <span className="text-xs text-gray-500">
+            ej. <b className="font-mono">11025050</b> → <b className="font-mono">{formatCuenta('11025050', mascara)}</b>
+            &nbsp;· cada <b>#</b> es un dígito
+          </span>
+        </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <button onClick={importar}

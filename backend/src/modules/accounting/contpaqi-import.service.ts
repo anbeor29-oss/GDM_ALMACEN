@@ -153,7 +153,7 @@ function fechaCt(s: string): string | null {
 
 export async function importarContpaqi(
   companyId: string, paquete: PaqueteContpaqi, userId?: string,
-  opciones?: { forzar?: boolean; ejercicios?: number[]; soloCatalogo?: boolean }
+  opciones?: { forzar?: boolean; ejercicios?: number[]; soloCatalogo?: boolean; mascara?: string }
 ): Promise<ReporteImport> {
   const emp = await query<any>('SELECT rfc FROM companies WHERE id=$1', [companyId]);
   const rfcEmpresa = String(emp.rows[0]?.rfc || '').toUpperCase().trim();
@@ -195,6 +195,18 @@ export async function importarContpaqi(
   for (const anio of ejercicios) {
     try { await activarContabilidad(companyId, { anio, sembrarCatalogo: false } as any); rep.ejerciciosActivados.push(anio); }
     catch (e: any) { rep.avisos.push(`Ejercicio ${anio}: ${e?.message || 'no se pudo activar'}`); }
+  }
+
+  // Formato del código que INDICA el usuario en el import (ej. '#-##-##-###'):
+  // se guarda en la empresa ANTES de importar el catálogo, porque define los
+  // niveles (segmentos) con los que se calcula el padre de cada cuenta y cómo se
+  // despliega el código en todo NEXO. Vacío = no se toca la máscara existente.
+  const masc = String(opciones?.mascara || '').trim().slice(0, 40);
+  if (masc && masc.includes('#')) {
+    try {
+      await query('UPDATE companies SET mascara_cuenta=$2 WHERE id=$1', [companyId, masc]);
+      rep.avisos.push(`Formato del código fijado en «${masc}».`);
+    } catch (e: any) { rep.avisos.push(`No se pudo fijar el formato del código: ${e?.message || 'error'}`); }
   }
 
   await importarCuentas(companyId, paquete.cuentas || [], rep);

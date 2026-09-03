@@ -1177,10 +1177,13 @@ router.post(
     }
     const forzar = req.body?.forzar === 'true' || req.body?.forzar === true;
     const soloCatalogo = req.body?.soloCatalogo === 'true' || req.body?.soloCatalogo === true;
+    // Formato del código que indica el usuario (ej. '#-##-##-###'): define los
+    // niveles del catálogo y cómo se despliega. Vacío = no tocar la de la empresa.
+    const mascara = String(req.body?.mascara || '').trim().slice(0, 40) || undefined;
     // ejercicios (años) elegidos desde NEXO: lista separada por comas; vacío = todos.
     const ejercicios = String(req.body?.ejercicios || '')
       .split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0);
-    const rep = await contpaqi.importarContpaqi(companyId(req), paquete, req.user?.userId, { forzar, ejercicios, soloCatalogo });
+    const rep = await contpaqi.importarContpaqi(companyId(req), paquete, req.user?.userId, { forzar, ejercicios, soloCatalogo, mascara });
     res.json({ success: true, data: rep });
   })
 );

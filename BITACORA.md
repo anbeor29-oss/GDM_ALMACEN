@@ -4758,3 +4758,11 @@ Además el `INSERT … ON CONFLICT` del catálogo ahora **actualiza `parent_id` 
 el import con **«Sólo el catálogo»** para recomponer el árbol sin volver a bajar pólizas
 ni CFDIs. El árbol (`arbolDeCuentas`) se arma desde `parent_id`, de modo que al corregirlo
 la pantalla del catálogo queda bien sola.
+
+**Máscara indicada en el import (mismo día).** Como el formato define los niveles, ahora la
+pantalla de import trae un campo **«Formato del código»** precargado con la máscara de la
+empresa o, si no hay, con **`#-##-##-###`** (a pedido del usuario). Al importar se **guarda
+en `companies.mascara_cuenta` ANTES** de armar el catálogo, así la jerarquía usa esos
+segmentos y el código se ve igual en todo NEXO (`11025050` → `1-10-25-050`). Vacío = no
+toca la máscara existente. `opciones.mascara` en `importarContpaqi`; `req.body.mascara` en
+la ruta; campo con vista previa en `ImportarContpaqi.tsx`.
