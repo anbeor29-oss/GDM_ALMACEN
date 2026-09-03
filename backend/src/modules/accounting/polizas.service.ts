@@ -566,7 +566,7 @@ export async function borrarPoliza(companyId: string, id: string): Promise<boole
 /** Las pólizas del mes, con sus partidas, para revisarlas. */
 export async function listarPolizas(companyId: string, anio: number, mes: number) {
   const r = await query<any>(
-    `SELECT e.id, e.folio, e.tipo, e.fecha, e.concepto, e.estado, e.origen, e.regla,
+    `SELECT e.id, e.folio, e.tipo, e.fecha, e.concepto, e.estado, e.origen, e.regla, e.origen_uuid,
             COALESCE(json_agg(json_build_object(
               'codigo', a.codigo, 'nombre', a.nombre,
               'cargo', l.cargo, 'abono', l.abono, 'concepto', l.concepto

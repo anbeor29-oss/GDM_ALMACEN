@@ -7,7 +7,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { authenticateToken, authorize } from '../../middleware/authentication';
+import { authenticateToken, authorize, requireCapability } from '../../middleware/authentication';
 import { asyncHandler, ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import * as service from './auditoria.service';
@@ -126,7 +126,7 @@ router.get(
  */
 router.post(
   '/69b/importar',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:catalogo'),
   subidaLista.single('archivo'),
   asyncHandler(async (req: Request, res: Response) => {
     const f = req.file;
@@ -148,7 +148,7 @@ router.post(
  */
 router.post(
   '/69b/actualizar',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  requireCapability('contabilidad:catalogo'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await descarga69b.actualizarDesdeElSat(req.user?.userId);
     res.json({ success: true, data: r });

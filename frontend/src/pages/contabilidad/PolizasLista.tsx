@@ -299,6 +299,11 @@ function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
               {TIPO_POLIZA_LABEL[poliza.tipo] || poliza.tipo || 'Diario'}
             </span>
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/15">{ETIQUETA[categoria(poliza)]}</span>
+            {poliza.origen_uuid && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/15 font-mono" title="UUID del CFDI que originó la póliza">
+                UUID: {poliza.origen_uuid}
+              </span>
+            )}
           </div>
           <button onClick={onCerrar} className="text-white/80 hover:text-white"><X size={18} /></button>
         </div>

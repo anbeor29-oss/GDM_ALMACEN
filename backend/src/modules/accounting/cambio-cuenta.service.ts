@@ -54,11 +54,16 @@ export async function reasignarMovimientos(
   const dest = ctas.rows.find((c: any) => c.id === destinoId);
   if (dest && !dest.permite_movimientos) throw new Error('La cuenta destino no admite movimientos (elige una cuenta de detalle).');
 
-  const anios = await aniosDeCuenta(companyId, origenId, opts.desde, opts.hasta);
+  // Fechas de rango válidas (año 2000-2199). Una fecha malformada —p.ej. «0026» por
+  // teclear el año a 2 dígitos— se ignora, para no dejar el rango vacío y reasignar 0.
+  const okFecha = (d?: string) => (d && /^(20|21)\d{2}-\d{2}-\d{2}$/.test(d)) ? d : undefined;
+  const desde = okFecha(opts.desde);
+  const hasta = okFecha(opts.hasta);
+  const anios = await aniosDeCuenta(companyId, origenId, desde, hasta);
   const cond = ['e.company_id=$1', 'l.account_id=$2'];
   const params: any[] = [companyId, origenId, destinoId];
-  if (opts.desde) { params.push(opts.desde); cond.push(`e.fecha >= $${params.length}::date`); }
-  if (opts.hasta) { params.push(opts.hasta); cond.push(`e.fecha <= $${params.length}::date`); }
+  if (desde) { params.push(desde); cond.push(`e.fecha >= $${params.length}::date`); }
+  if (hasta) { params.push(hasta); cond.push(`e.fecha <= $${params.length}::date`); }
   const r = await query(
     `UPDATE journal_lines l SET account_id = $3
        FROM journal_entries e

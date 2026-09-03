@@ -24,6 +24,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Scale, Upload, AlertOctagon, Clock, CheckCircle2, DownloadCloud } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { useCapacidades, CAP } from '@/utils/capacidades';
 import { fechaMx } from '@/utils/fecha';
 
 const money = (n: any) =>
@@ -41,6 +42,9 @@ export function Lista69B() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const esAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(user?.role || '');
+  const { puede } = useCapacidades();
+  // Contabilidad también puede cargar/actualizar el padrón (además del admin).
+  const puedeCargar = esAdmin || puede(CAP.ctaCatalogo);
   const [subiendo, setSubiendo] = useState(false);
   const [aviso, setAviso] = useState('');
   const [error, setError] = useState('');
@@ -118,7 +122,7 @@ export function Lista69B() {
               </p>
             )}
           </div>
-          {esAdmin && (
+          {puedeCargar && (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={bajarDelSat}

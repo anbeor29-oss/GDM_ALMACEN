@@ -17,6 +17,7 @@ import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wallet, Ban, FileText, X, RefreshCw, Search, Circle, Check, Pencil } from 'lucide-react';
 import { api } from '@/services/api';
+import { useEjercicios } from '@/components/SelectorPeriodo';
 
 type Direccion = 'emitidos' | 'recibidos';
 type Modo = 'representacion' | 'pago' | 'cancelacion' | 'ficha';
@@ -70,7 +71,11 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
     : porTab;
 
   const emitidos = direccion === 'emitidos';
-  const anios = Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i);
+  // Los años del respaldo (2018→) si hay contabilidad; si no, los últimos 6.
+  const ejercicios = useEjercicios(anio);
+  const anios = ejercicios.length > 1
+    ? ejercicios
+    : Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i);
 
   return (
     <div className="space-y-3">
