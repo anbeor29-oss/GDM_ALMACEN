@@ -88,6 +88,11 @@ export function BalanzaPage() {
               </button>
             </>
           )}
+          <button onClick={() => descargar(() => api.descargarReporteAnual(anio, 'balanza'))}
+            title="Excel del ejercicio: 12 columnas (una por mes)"
+            className="flex items-center gap-1 border text-teal-700 px-2.5 py-1.5 rounded-lg hover:bg-teal-50 text-sm">
+            <FileSpreadsheet size={16} /> Anual
+          </button>
           <SelectorPeriodo anio={anio} mes={mes} onAnio={setAnio} onMes={setMes} />
         </div>
       </div>
@@ -278,7 +283,7 @@ export function SituacionFinancieraPage() {
   return (
     <MarcoEstado titulo="Estado de situación financiera" norma="B-6"
       descripcion="Lo que la empresa tiene, lo que debe y lo que es de los socios, a la fecha de corte."
-      descargas={{ excel: (a, m) => api.descargarSituacion(a, m, 'excel'), pdf: (a, m) => api.descargarSituacion(a, m, 'pdf') }}>
+      descargas={{ excel: (a, m) => api.descargarSituacion(a, m, 'excel'), pdf: (a, m) => api.descargarSituacion(a, m, 'pdf'), anual: (a) => api.descargarReporteAnual(a, 'situacion') }}>
       {(d) => (
         <>
           <Cuadre ok={d.situacionFinanciera.cuadra}
@@ -365,7 +370,7 @@ export function EstadoResultadosPage() {
   return (
     <MarcoEstado titulo="Estado de resultados" norma="B-3"
       descripcion="Ingresos menos costos y gastos, hasta la utilidad neta. En diciembre son del ejercicio completo (acumulado ene-dic)."
-      descargas={{ excel: (a, m) => api.descargarResultados(a, m, 'excel'), pdf: (a, m) => api.descargarResultados(a, m, 'pdf') }}>
+      descargas={{ excel: (a, m) => api.descargarResultados(a, m, 'excel'), pdf: (a, m) => api.descargarResultados(a, m, 'pdf'), anual: (a) => api.descargarReporteAnual(a, 'resultados') }}>
       {(d) => {
         const renglones: any[] = d.resultadoIntegral?.renglones || [];
         const iNeta = renglones.findIndex((x: any) => x.clave === 'UTILIDAD_NETA');

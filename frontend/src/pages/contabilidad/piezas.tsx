@@ -42,7 +42,7 @@ export function MarcoEstado({ titulo, norma, descripcion, children, descargas }:
   titulo: string; norma?: string; descripcion: string;
   children: (d: any) => React.ReactNode;
   /** Si se pasa, muestra los botones de Excel y PDF (con el ícono rojo) del estado. */
-  descargas?: { excel: (a: number, m: number) => Promise<void>; pdf: (a: number, m: number) => Promise<void> };
+  descargas?: { excel: (a: number, m: number) => Promise<void>; pdf: (a: number, m: number) => Promise<void>; anual?: (a: number) => Promise<void> };
 }) {
   const hoy = new Date();
   const [anio, setAnio] = useState(hoy.getFullYear());
@@ -76,6 +76,12 @@ export function MarcoEstado({ titulo, norma, descripcion, children, descargas }:
                 className="flex items-center gap-1 border bg-white text-rose-600 px-2.5 py-1.5 rounded-lg hover:bg-rose-50 text-sm">
                 <FileDown size={16} /> PDF
               </button>
+              {descargas.anual && (
+                <button onClick={() => descargas.anual!(anio).catch(() => {})} title="Excel del ejercicio: 12 columnas (una por mes)"
+                  className="flex items-center gap-1 border bg-white text-teal-700 px-2.5 py-1.5 rounded-lg hover:bg-teal-50 text-sm">
+                  <FileSpreadsheet size={16} /> Anual
+                </button>
+              )}
             </>
           )}
           {/* Mes + año — mismo selector que la Balanza (combo de año con los ejercicios). */}

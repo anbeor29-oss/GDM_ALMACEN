@@ -611,6 +611,21 @@ router.get(
   })
 );
 
+/** GET /accounting/estados/:anio/anual/excel?tipo=balanza|situacion|resultados
+ *  — el reporte del ejercicio con 12 columnas (una por mes). */
+router.get(
+  '/estados/:anio/anual/excel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const t = req.query.tipo as string;
+    const tipo = (t === 'situacion' || t === 'resultados') ? t : 'balanza';
+    const { buffer, nombre } = await reportesExport.reporteAnualExcel(
+      companyId(req), Number(req.params.anio), tipo as any);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
 /** GET /accounting/estados/:anio/:mes/balanza/pdf */
 router.get(
   '/estados/:anio/:mes/balanza/pdf',

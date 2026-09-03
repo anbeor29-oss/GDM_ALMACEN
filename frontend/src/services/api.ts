@@ -1182,6 +1182,12 @@ class APIClient {
     const r = await this.client.get(`/accounting/estados/${anio}/${mes}/balanza/excel`, { responseType: 'blob' });
     await this.downloadFile(r.data as Blob, `Balanza_${anio}-${String(mes).padStart(2, '0')}.xlsx`);
   }
+  /** Reporte del ejercicio con 12 columnas (una por mes): balanza / situacion / resultados. */
+  async descargarReporteAnual(anio: number, tipo: 'balanza' | 'situacion' | 'resultados') {
+    const r = await this.client.get(`/accounting/estados/${anio}/anual/excel`, { params: { tipo }, responseType: 'blob' });
+    const base = tipo === 'resultados' ? 'Estado_de_resultados' : tipo === 'situacion' ? 'Situacion_financiera' : 'Balanza';
+    await this.downloadFile(r.data as Blob, `${base}_anual_${anio}.xlsx`);
+  }
   async descargarBalanzaPdf(anio: number, mes: number) {
     const r = await this.client.get(`/accounting/estados/${anio}/${mes}/balanza/pdf`, { responseType: 'blob' });
     await this.downloadFile(r.data as Blob, `Balanza_${anio}-${String(mes).padStart(2, '0')}.pdf`);

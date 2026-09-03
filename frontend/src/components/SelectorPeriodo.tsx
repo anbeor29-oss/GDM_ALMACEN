@@ -39,11 +39,6 @@ export function SelectorPeriodo({ anio, mes, onAnio, onMes }: {
       <select value={anio} onChange={(e) => onAnio(Number(e.target.value))} className="input">
         {lista.map((a) => <option key={a} value={a}>{a}</option>)}
       </select>
-      <button type="button" onClick={() => onMes(12)}
-        title="Ejercicio completo: en diciembre los saldos son acumulados de enero a diciembre"
-        className={`border rounded-lg px-2.5 py-1.5 text-sm ${mes === 12 ? 'bg-primary text-white border-primary' : 'text-gray-600 hover:bg-gray-50'}`}>
-        Anual
-      </button>
     </div>
   );
 }

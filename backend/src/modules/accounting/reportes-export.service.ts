@@ -68,6 +68,104 @@ export async function balanzaExcel(companyId: string, anio: number, mes: number)
   return { buffer: await aBuffer(wb), nombre: `Balanza_${anio}-${String(mes).padStart(2, '0')}.xlsx` };
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   REPORTES ANUALES — 12 columnas (ene…dic), una por mes. Para trabajar el año de
+   corrido: balanza (saldo final por cuenta), estado de resultados y situación
+   financiera (por rubro). Mismo encabezado (empresa · reporte · fecha/hora).
+   ═══════════════════════════════════════════════════════════════════════════ */
+const MES3 = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+
+/** Junta los 12 meses de una extracción {clave, concepto, importe} en filas con 12
+ *  valores, conservando el orden en que aparecen. */
+async function matrizAnual(
+  companyId: string, anio: number,
+  extractor: (ctx: any) => Array<{ clave: string; concepto: string; importe: number }>,
+): Promise<Array<{ concepto: string; valores: number[] }>> {
+  const orden: string[] = [];
+  const filas = new Map<string, { concepto: string; valores: number[] }>();
+  for (let m = 1; m <= 12; m++) {
+    const ctx = await contextoDelPeriodo(companyId, anio, m);
+    if (!ctx) continue;
+    for (const r of extractor(ctx)) {
+      let f = filas.get(r.clave);
+      if (!f) { f = { concepto: r.concepto, valores: new Array(12).fill(0) }; filas.set(r.clave, f); orden.push(r.clave); }
+      f.valores[m - 1] = Number(r.importe) || 0;
+    }
+  }
+  return orden.map((k) => filas.get(k)!);
+}
+
+function rubrosSituacion(ctx: any): Array<{ clave: string; concepto: string; importe: number }> {
+  const sf: any = situacionFinanciera(ctx);
+  const secs = [sf.activoCirculante, sf.activoNoCirculante, sf.pasivoCorto, sf.pasivoLargo, sf.capital];
+  const out: Array<{ clave: string; concepto: string; importe: number }> = [];
+  for (const sec of secs) {
+    if (!sec) continue;
+    for (const r of sec.rubros || []) out.push({ clave: r.clave, concepto: `${sec.nombre} · ${r.nombre}`, importe: Number(r.importe) || 0 });
+  }
+  return out;
+}
+
+async function armarExcelAnual(
+  emp: any, anio: number, tituloRep: string, nombreBase: string, colsPre: string[],
+  filas: Array<{ pre: (string | number)[]; valores: number[] }>, anchosPre: number[],
+): Promise<{ buffer: Buffer; nombre: string }> {
+  const cols = [...colsPre, ...MES3];
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'GDM NEXO';
+  const ws = wb.addWorksheet('Anual', { views: [{ state: 'frozen', xSplit: colsPre.length, ySplit: 6 }] });
+  titulo(ws, tituloRep, cols.length);
+  dato(ws, 3, 1, `Empresa:   ${emp.business_name}`, true);
+  dato(ws, 3, 4, `RFC:   ${emp.rfc}`);
+  dato(ws, 4, 1, `Ejercicio:   ${anio} (enero a diciembre)`);
+  dato(ws, 4, 4, `Generado:   ${fechaGen()}`);
+  encabezado(ws, 6, cols.map((t) => ({ texto: t, color: C.identidad })));
+  let fila = 7;
+  for (const f of filas) {
+    let col = 1;
+    for (const p of f.pre) { celda(ws, fila, col, p, { centrado: false }); col++; }
+    for (const v of f.valores) { celda(ws, fila, col, v); col++; }
+    fila++;
+  }
+  anchos(ws, [...anchosPre, ...new Array(12).fill(14)]);
+  return { buffer: await aBuffer(wb), nombre: `${nombreBase}_anual_${anio}.xlsx` };
+}
+
+export async function reporteAnualExcel(
+  companyId: string, anio: number, tipo: 'balanza' | 'situacion' | 'resultados',
+): Promise<{ buffer: Buffer; nombre: string }> {
+  const emp = await empresaDe(companyId);
+
+  if (tipo === 'balanza') {
+    const cuentas = new Map<string, { codigo: string; nombre: string; valores: number[] }>();
+    for (let m = 1; m <= 12; m++) {
+      const bal = await balanzaDelPeriodo(companyId, anio, m);
+      if (!bal) continue;
+      for (const f of bal.filas) {
+        let c = cuentas.get(f.codigo);
+        if (!c) { c = { codigo: f.codigo, nombre: f.nombre, valores: new Array(12).fill(0) }; cuentas.set(f.codigo, c); }
+        c.valores[m - 1] = Number(f.saldo_final);
+      }
+    }
+    if (cuentas.size === 0) throw new NotFoundError(`No hay balanza cargada en ${anio}.`);
+    const arr = [...cuentas.values()].sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)));
+    return armarExcelAnual(emp, anio, 'Balanza de comprobación — anual (saldo final por mes)', 'Balanza',
+      ['CÓDIGO', 'CUENTA'], arr.map((c) => ({ pre: [c.codigo, c.nombre], valores: c.valores })), [16, 40]);
+  }
+
+  const filas = tipo === 'resultados'
+    ? await matrizAnual(companyId, anio, (ctx) =>
+        (resultadoIntegral(ctx) as any).renglones.map((r: any) => ({ clave: r.clave, concepto: r.nombre, importe: Number(r.importe) || 0 })))
+    : await matrizAnual(companyId, anio, rubrosSituacion);
+  if (filas.length === 0) throw new NotFoundError(`No hay datos cargados en ${anio}.`);
+  const tit = tipo === 'resultados'
+    ? 'Estado de resultados — anual (acumulado por mes)'
+    : 'Estado de situación financiera — anual (saldo por mes)';
+  const base = tipo === 'resultados' ? 'Estado_de_resultados' : 'Situacion_financiera';
+  return armarExcelAnual(emp, anio, tit, base, ['CONCEPTO'],
+    filas.map((f) => ({ pre: [f.concepto], valores: f.valores })), [50]);
+}
+
 export async function balanzaPdf(companyId: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {
   const [emp, bal] = await Promise.all([empresaDe(companyId), balanzaDelPeriodo(companyId, anio, mes)]);
   if (!bal) throw new NotFoundError(`No hay balanza cargada para ${nombreMes(mes)} ${anio}.`);
