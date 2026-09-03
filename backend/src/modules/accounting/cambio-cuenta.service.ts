@@ -16,7 +16,7 @@ import type { PoolClient } from 'pg';
 import { alimentarDesdePolizas } from './periodos.service';
 
 const norm = (s: string) => (s || '').toUpperCase().normalize('NFD')
-  .replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+  .replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 
 /** Los años que tocan las partidas de una cuenta (para recalcular su balanza). */
 async function aniosDeCuenta(

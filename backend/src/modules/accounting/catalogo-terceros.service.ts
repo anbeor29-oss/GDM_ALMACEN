@@ -22,9 +22,11 @@ const esExtranjero = (rfc: string) => /^XEXX/i.test(rfc || '');
 const agrupadorDe = (tipo: 'cliente' | 'proveedor', rfc: string) =>
   AGRUP[tipo][esExtranjero(rfc) ? 'extranjero' : 'nacional'];
 
-// Normaliza un nombre para comparar: mayúsculas, sin acentos, espacios colapsados.
+// Normaliza un nombre para comparar: mayúsculas, sin acentos, SIN puntuación
+// (comas/puntos) y espacios colapsados. Así «VALENZUELA DELFIN, SA DE CV» empata con
+// «VALENZUELA DELFIN SA DE CV».
 const norm = (s: string) => (s || '').toUpperCase().normalize('NFD')
-  .replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+  .replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 
 async function cuentaControl(companyId: string, agrupador: string) {
   const r = await query<any>(
