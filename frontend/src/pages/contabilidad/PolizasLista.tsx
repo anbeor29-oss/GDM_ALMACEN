@@ -148,6 +148,12 @@ export function PolizasListaPage() {
             <PlayCircle size={13} /> {generando === k ? 'Generando…' : label}
           </button>
         ))}
+        <span className="mx-1 h-4 w-px bg-gray-300" />
+        <span className="text-xs text-gray-500">Asignar cuentas:</span>
+        <button onClick={() => navigate('/invoices/polizas-venta')}
+          className="border bg-white px-2.5 py-1 rounded-lg text-xs text-gray-700 hover:bg-gray-100">Ventas</button>
+        <button onClick={() => navigate('/compras/polizas')}
+          className="border bg-white px-2.5 py-1 rounded-lg text-xs text-gray-700 hover:bg-gray-100">Compras</button>
       </div>
 
       {msg && <p className="text-sm text-emerald-700">{msg}</p>}
@@ -166,7 +172,8 @@ export function PolizasListaPage() {
           return (
             <div key={p.id} className="bg-white border rounded-lg overflow-hidden">
               <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-gray-50 border-b text-sm">
-                <b>#{p.folio}</b>
+                <button onClick={() => setEditar(p)} title="Editar esta póliza"
+                  className="font-bold text-blue-600 hover:underline">#{p.folio}</button>
                 <span className="text-gray-500">{fecha(p.fecha)}</span>
                 <span className="text-gray-700 truncate">{p.concepto}</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">{ETIQUETA[categoria(p)]}</span>

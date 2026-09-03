@@ -18,15 +18,22 @@ export function formatCuenta(
 ): string {
   if (codigo === null || codigo === undefined) return '';
   const s = String(codigo);
-  if (!mascara || !/^\d+$/.test(s)) return s;
-  let out = '';
-  let di = 0;
-  for (const ch of mascara) {
-    if (ch === '#') { if (di < s.length) out += s[di++]; }
-    else out += ch;
-  }
-  if (di < s.length) out += s.slice(di);
-  return out;
+  if (!mascara) return s;
+  const fmt = (d: string) => {
+    let out = '';
+    let di = 0;
+    for (const ch of mascara) {
+      if (ch === '#') { if (di < d.length) out += d[di++]; }
+      else out += ch;
+    }
+    if (di < d.length) out += d.slice(di);
+    return out;
+  };
+  // Subcuenta de tercero (ej. 11002074-001): formatea la base y conserva el sufijo.
+  const t = /^(\d+)(-\d+)$/.exec(s);
+  if (t) return fmt(t[1]) + t[2];
+  if (!/^\d+$/.test(s)) return s;
+  return fmt(s);
 }
 
 /**

@@ -22,6 +22,7 @@ import { query, transaction } from '../../config/database';
 import { crearPoliza } from './polizas.service';
 import { activarContabilidad } from './catalogo.service';
 import { alimentarDesdePolizas } from './periodos.service';
+import { generarSubcuentasDeComprobantes } from './catalogo-terceros.service';
 
 /* ── El paquete que sube la pantalla (los JSON del extractor) ── */
 export interface CuentaCt { codigo: string; nombre: string; agrupador: string | null; afectable: number; ctaMayor: number; baja: number; }
@@ -156,6 +157,12 @@ export async function importarContpaqi(
   await importarCuentas(companyId, paquete.cuentas || [], rep);
   await importarPolizas(companyId, paqueteSel, userId, rep);
   await importarCfdis(companyId, paquete.cfdi || [], rfcEmpresa, rep);
+
+  // Auto-generar las subcuentas de cada cliente/proveedor, para que aparezcan solas
+  // en «asignar cuenta» (con su cuenta REAL del respaldo si el nombre empata, en vez
+  // de una 105-01-00x inventada — ver resolverOCrearSubcuentaTercero).
+  try { await generarSubcuentasDeComprobantes(companyId, 'emitidos'); } catch { /* sin clientes */ }
+  try { await generarSubcuentasDeComprobantes(companyId, 'recibidos'); } catch { /* sin proveedores */ }
 
   // QUINTO: actualizar la balanza de TODOS los periodos del respaldo, en orden
   // (año↑, ene→dic) porque el saldo inicial de cada mes es el saldo final del

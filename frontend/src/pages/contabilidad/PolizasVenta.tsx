@@ -145,6 +145,7 @@ function RenglonProducto({ p, nombreCta, onGuardar }: {
 /* ── Tab 2: Clientes (subcuentas 000-00-000, auto + captura) ───────────────── */
 function TabClientes() {
   const qc = useQueryClient();
+  const mascara = useMascara();
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const q = useQuery({ queryKey: ['subcuentas-cliente'], queryFn: () => api.getSubcuentasTercero('cliente') });
@@ -194,7 +195,7 @@ function TabClientes() {
                 Aún no hay subcuentas. Dale «Generar subcuentas» (necesita clientes en los emitidos).
               </td></tr>
             )}
-            {subs.map((s) => <RenglonCliente key={s.id} s={s} onListo={() => qc.invalidateQueries({ queryKey: ['subcuentas-cliente'] })} />)}
+            {subs.map((s) => <RenglonCliente key={s.id} s={s} mascara={mascara} onListo={() => qc.invalidateQueries({ queryKey: ['subcuentas-cliente'] })} />)}
           </tbody>
         </table>
       </div>
@@ -202,7 +203,7 @@ function TabClientes() {
   );
 }
 
-function RenglonCliente({ s, onListo }: { s: any; onListo: () => void }) {
+function RenglonCliente({ s, onListo, mascara }: { s: any; onListo: () => void; mascara?: string }) {
   const [edit, setEdit] = useState(false);
   const [val, setVal] = useState(s.codigo);
   const [err, setErr] = useState('');
@@ -227,7 +228,7 @@ function RenglonCliente({ s, onListo }: { s: any; onListo: () => void }) {
         ) : (
           <button onClick={() => { setVal(s.codigo); setEdit(true); }}
             className="group flex items-center gap-1 font-mono text-sm text-gray-800 hover:text-gray-900" title="Capturar/override">
-            {s.codigo} <Pencil size={12} className="opacity-0 group-hover:opacity-100 text-gray-400" />
+            {formatCuenta(s.codigo, mascara)} <Pencil size={12} className="opacity-0 group-hover:opacity-100 text-gray-400" />
           </button>
         )}
         {err && <p className="text-[11px] text-rose-600">{err}</p>}
