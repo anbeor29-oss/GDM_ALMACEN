@@ -99,16 +99,17 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
 
   /* Contabilidad: el catálogo, las pólizas y los estados financieros.
    *
-   * Ve 'contabilidad' y, en sólo lectura, los módulos de donde salen las
-   * cifras que tiene que explicar: facturas, compras, tesorería e inventario.
-   * Un contador que no puede abrir la factura que originó una póliza no puede
-   * hacer su trabajo — y perseguirla por correo es peor control, no mejor.
+   * Su trabajo es el CONTROL contable, no capturar comprobantes: por eso NO ve
+   * facturación, compras ni almacén (se retiraron a pedido). Conserva, en sólo
+   * lectura, lo que necesita para explicar sus cifras y ligar terceros a sus
+   * cuentas: clientes, proveedores, tesorería, el lector de XML y la auditoría
+   * 69-B. El catálogo de Clientes se alcanza suelto (sin el menú de Facturas).
    *
    * NO ve 'nomina': el asiento de nómina le llega en cifras totales por
    * concepto, que es justo lo que necesita. El sueldo de cada trabajador con
    * nombre y apellido no. */
   CONTABILIDAD: [
-    'contabilidad', 'auditoria', 'treasury', 'inventory',
+    'contabilidad', 'auditoria', 'treasury',
     'customers', 'suppliers', 'xml_reader', 'exchange_rates', 'mensajes',
   ],};
 

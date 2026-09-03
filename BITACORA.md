@@ -4729,3 +4729,32 @@ Las pantallas **Pólizas de venta** y **Pólizas de compra** viven en el menú d
 aparece sola en el menú, porque ese enlace se muestra a quien tiene `exchange_rates` sin
 `invoices`, que ahora es el caso de Contabilidad. Sigue viendo tesorería, inventario,
 clientes, proveedores, XML y auditoría (69-B) para poder explicar sus cifras.
+
+## 2026-09-03 (contabilidad) — La jerarquía del catálogo por SEGMENTO, no por dígito: una cuenta de movimiento nunca es padre
+
+Dos cosas a pedido. **(1) Menú:** se quita `inventory` (Almacén) del grupo CONTABILIDAD
+y, como Clientes vivía dentro del menú de Facturas (que Contabilidad ya no ve), se saca
+**Clientes suelto** cuando el grupo trae `customers` sin `invoices` — para ligar el
+tercero a su cuenta sin abrir toda la facturación. Se actualizaron los textos del alta.
+
+**(2) El bug de la jerarquía (imágenes 1 y 2).** Al importar, `codigoPadre` buscaba al
+padre **zereando dígito a dígito** y tomaba el primer código existente. Con proveedores
+`2-10-10-011` eso daba `2-10-10-010` (¡un proveedor real!) en vez de `2-10-10-000`; con
+clientes, `1-10-25-051` se colgaba de `1-10-25-050`. Resultado: cuentas de movimiento
+tratadas como **cuentas padre** (las verdes con flecha), cuando todos los terceros deben
+colgar del **control acumulativo** al mismo nivel (clientes de `1-10-25-000`, proveedores
+de `2-10-10-000`, gastos de `6-10-00-000`).
+
+La causa: mezclar dos ideas. El padre no se halla quitando dígitos sino **zereando el
+último SEGMENTO** de la máscara (`#-##-##-###` → niveles `1 / 10 / 25 / 050`), y una
+cuenta **afectable** (de movimiento) **nunca** puede ser padre. `codigoPadre` ahora
+recorre los ancestros por segmento (del más cercano al más lejano) y **salta las hojas**
+(afectables); sin máscara, cae al modo dígito pero conserva el salto de hojas. Probado
+con 16 casos de las imágenes (clientes, proveedores 21010010/011/020, gastos 61010010/020
+y los controles 11025000→11000000, etc.): 16/16.
+
+Además el `INSERT … ON CONFLICT` del catálogo ahora **actualiza `parent_id` y `nivel`**
+(antes sólo nombre/agrupador), así que **re-importar repara lo ya cargado** — basta correr
+el import con **«Sólo el catálogo»** para recomponer el árbol sin volver a bajar pólizas
+ni CFDIs. El árbol (`arbolDeCuentas`) se arma desde `parent_id`, de modo que al corregirlo
+la pantalla del catálogo queda bien sola.

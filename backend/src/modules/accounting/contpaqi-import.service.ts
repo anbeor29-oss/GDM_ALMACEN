@@ -92,13 +92,53 @@ function clasificarRegla(concepto: string, tipoPol: number, agrupadores: string[
   return 'manual';                                     // Diario sin señal
 }
 
-/** El padre de un código CONTPAQi (8 díg., ceros a la derecha): el ancestro
- *  existente más cercano al zerear el sufijo. */
-function codigoPadre(codigo: string, existentes: Set<string>): string | null {
-  const n = codigo.length;
-  for (let k = 1; k < n; k++) {
-    const cand = codigo.slice(0, n - k) + '0'.repeat(k);
-    if (cand !== codigo && existentes.has(cand)) return cand;
+/** Anchos de segmento de la máscara de despliegue: '#-##-##-###' → [1,2,2,3].
+ *  Es lo que define los NIVELES del catálogo. Sin máscara (o si no suma la
+ *  longitud del código) devuelve null y se cae al modo dígito-a-dígito. */
+function anchosDeMascara(mascara: string | null | undefined): number[] | null {
+  if (!mascara) return null;
+  const anchos = (mascara.match(/#+/g) || []).map((g) => g.length);
+  return anchos.length >= 2 ? anchos : null;
+}
+
+/** Candidatos de ancestro de un código, del más cercano al más lejano.
+ *  CON máscara: zerea el ÚLTIMO segmento no-cero, luego el anterior, etc. — así
+ *  1-10-25-050 sube a 1-10-25-000 (control), no a 1-10-25-000 vía dígitos.
+ *  SIN máscara (o si no cuadra la longitud): dígito a dígito, como antes. */
+function ancestrosDe(codigo: string, anchos: number[] | null): string[] {
+  const out: string[] = [];
+  if (anchos && anchos.reduce((a, b) => a + b, 0) === codigo.length) {
+    const segs: Array<[number, number]> = [];
+    let ini = 0;
+    for (const w of anchos) { segs.push([ini, ini + w]); ini += w; }
+    let ultimo = -1;               // índice del último segmento con dígitos no-cero
+    for (let i = 0; i < segs.length; i++) {
+      if (!/^0+$/.test(codigo.slice(segs[i][0], segs[i][1]))) ultimo = i;
+    }
+    for (let i = ultimo; i >= 1; i--) {           // zerea del segmento `i` al final
+      const ch = codigo.split('');
+      for (let s = i; s < segs.length; s++) {
+        for (let p = segs[s][0]; p < segs[s][1]; p++) ch[p] = '0';
+      }
+      out.push(ch.join(''));
+    }
+  } else {
+    const n = codigo.length;
+    for (let k = 1; k < n; k++) out.push(codigo.slice(0, n - k) + '0'.repeat(k));
+  }
+  return out;
+}
+
+/** El padre de un código: el ancestro EXISTENTE más cercano que además sea
+ *  ACUMULATIVO (no afectable). Una cuenta de movimiento nunca es padre — por eso
+ *  1-10-25-050 y 1-10-25-051 son HERMANOS bajo 1-10-25-000, no una bajo la otra,
+ *  y todos los proveedores cuelgan de 2-10-10-000 al mismo nivel. */
+function codigoPadre(
+  codigo: string, existentes: Set<string>,
+  esHoja: (c: string) => boolean, anchos: number[] | null
+): string | null {
+  for (const cand of ancestrosDe(codigo, anchos)) {
+    if (cand !== codigo && existentes.has(cand) && !esHoja(cand)) return cand;
   }
   return null;
 }
@@ -218,6 +258,14 @@ async function importarCuentas(companyId: string, cuentas: CuentaCt[], rep: Repo
   const utiles = cuentas.filter((c) => c.codigo && !c.codigo.startsWith('_'));
   const codigos = new Set(utiles.map((c) => c.codigo));
 
+  // Para armar la JERARQUÍA: la máscara define los niveles (segmentos) y el flag
+  // 'afectable' dice quién es cuenta de movimiento (hoja). Una hoja nunca es
+  // padre — así los terceros no se cuelgan unos de otros, sino todos del control.
+  const empMasc = await query<any>('SELECT mascara_cuenta FROM companies WHERE id=$1', [companyId]);
+  const anchos = anchosDeMascara(empMasc.rows[0]?.mascara_cuenta);
+  const hojaPorCodigo = new Map<string, boolean>(utiles.map((c) => [c.codigo, c.afectable === 1]));
+  const esHoja = (cod: string) => hojaPorCodigo.get(cod) === true;
+
   // Agrupadores válidos en NEXO (para no violar el FK) con su naturaleza/complementaria.
   const agrs = await query<any>('SELECT codigo, naturaleza FROM sat_codigos_agrupadores');
   const natDeAgr = new Map<string, string>(agrs.rows.map((a: any) => [a.codigo, a.naturaleza]));
@@ -229,7 +277,7 @@ async function importarCuentas(companyId: string, cuentas: CuentaCt[], rep: Repo
 
   for (const c of ordenadas) {
     const tipo = TIPO_POR_DIGITO[c.codigo[0]] || 'ORDEN';
-    const padreCod = codigoPadre(c.codigo, codigos);
+    const padreCod = codigoPadre(c.codigo, codigos, esHoja, anchos);
 
     // Agrupador propio si es válido; si no, se HEREDA del mayor. En CONTPAQi la
     // subcuenta comparte el agrupador de su cuenta mayor, y las que se crearon en
@@ -257,6 +305,8 @@ async function importarCuentas(companyId: string, cuentas: CuentaCt[], rep: Repo
          ON CONFLICT (company_id, codigo) DO UPDATE
            SET nombre = EXCLUDED.nombre,
                codigo_agrupador = COALESCE(EXCLUDED.codigo_agrupador, accounting_accounts.codigo_agrupador),
+               parent_id = EXCLUDED.parent_id,
+               nivel = EXCLUDED.nivel,
                updated_at = NOW()
          RETURNING id, (xmax = 0) AS creada`,
         [companyId, padre?.id || null, c.codigo, (c.nombre || c.codigo).slice(0, 250),

@@ -73,7 +73,7 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
    * NO ve nómina: el asiento le llega en totales por concepto, que es lo que
    * necesita. El sueldo con nombre y apellido, no. */
   CONTABILIDAD: [
-    'contabilidad', 'auditoria', 'treasury', 'inventory',
+    'contabilidad', 'auditoria', 'treasury',
     'customers', 'suppliers', 'xml_reader', 'exchange_rates', 'mensajes',
   ],
 };
@@ -108,8 +108,8 @@ export const WORK_GROUP_DETAIL: Record<WorkGroup, string> = {
                'parámetros y reportes), Lector de XML y Reportes. No ve ' +
                'facturación, clientes, almacén ni tesorería.',
   CONTABILIDAD: 'Catálogo de cuentas, pólizas, balanza y estados financieros. '
-    + 'Ve facturas, compras, tesorería e inventario para poder explicar sus '
-    + 'cifras; NO ve nómina con nombre y apellido.',
+    + 'Ve Clientes, Proveedores, Tesorería, Lector de XML y Auditoría (69-B) '
+    + 'para explicar sus cifras; NO ve facturación, compras, almacén ni nómina.',
 };
 
 export function canAccess(group: string | undefined, mod: ModuleKey): boolean {

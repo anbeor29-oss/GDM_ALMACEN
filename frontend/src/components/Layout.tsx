@@ -170,6 +170,12 @@ export function Layout() {
                     ]}
                   />
                 )}
+                {/* Contabilidad necesita el catálogo de Clientes —para ligar el
+                    tercero a su cuenta— pero NO el resto de Facturas. Cuando el
+                    grupo trae 'customers' sin 'invoices', Clientes sale suelto. */}
+                {show('customers') && !show('invoices') && (
+                  <NavItem to="/customers" icon={emoji3D('👥')} accent="amber" label="Clientes" open={sidebarOpen} />
+                )}
                 {show('carta_porte') && (
                   <NavGroup
                     to="/carta-porte"
