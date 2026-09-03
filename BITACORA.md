@@ -4714,3 +4714,18 @@ Al probar el ejercicio completo salieron más ajustes; se fueron resolviendo:
   contabilidad, si hay e.firma cargada, se crean los trabajos de descarga masiva del SAT
   (recibidos+emitidos, CFDI) desde el 1-ene del primer ejercicio del respaldo hasta hoy
   (`crearTrabajo` de `sat-descarga`). Sin e.firma, se avisa. Nunca tumba el import.
+
+## 2026-09-03 (contabilidad) — El grupo CONTABILIDAD deja de ver Facturas y Compras (commit `0963f5f`)
+
+A pedido: «que contabilidad tenga el control contable». Se retiran `invoices` y
+`purchasing` de `GROUP_MODULES.CONTABILIDAD` en el backend
+(`middleware/permissions.ts`) y su espejo del frontend (`utils/permissions.ts`).
+Consecuencia: el grupo ya **no** ve el menú de **Facturas** ni el de **Compras**
+(órdenes, faltantes, recibir XML) — captura comprobantes no es su trabajo, contabilizar sí.
+
+Las pantallas **Pólizas de venta** y **Pólizas de compra** viven en el menú de
+**Contabilidad**, así que se regatean con `ModuleRoute module="contabilidad"` (antes
+`invoices`/`suppliers`) para que sigan alcanzables. Efecto colateral buscado: **Monedas**
+aparece sola en el menú, porque ese enlace se muestra a quien tiene `exchange_rates` sin
+`invoices`, que ahora es el caso de Contabilidad. Sigue viendo tesorería, inventario,
+clientes, proveedores, XML y auditoría (69-B) para poder explicar sus cifras.
