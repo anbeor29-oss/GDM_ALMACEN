@@ -22,10 +22,13 @@ SW Sapien.
   modificaciones (07) mezcladas en un archivo, más validador de TXT.
 - 🟢 **Motor de identidad fiscal (RFC)**: control de consistencia del RFC de
   personas físicas en captura (empleados y clientes).
-- 🟢 **Contabilidad**: catálogo de cuentas, pólizas (venta/compra/cobro-pago),
-  **activo fijo y su depreciación en automático** (línea recta LISR 33-35, desde
-  el XML de compra), periodos y cierre, balanza, los estados financieros y
-  razones —agrupados en el submenú **Reportes**—.
+- 🟢 **Contabilidad**: catálogo de cuentas (con **máscara de código configurable por
+  empresa**, ej. `21-03-00-26`), pólizas (venta/compra/cobro-pago, generables **desde
+  la propia pantalla de Pólizas**), **activo fijo y su depreciación en automático**
+  (línea recta LISR 33-35, desde el XML de compra), periodos y cierre, balanza (con
+  **selector de año 2018→ del respaldo**), estados financieros —incluye **Estado de
+  resultados** y modo **anual**— y razones, más **«Cambio de cuenta»** (sustituir la
+  cuenta temporal de migración y unificar cuentas duplicadas).
 - 🟢 **Tesorería**: cuentas por pagar, pagos programados, bancos y
   **conciliación bancaria** (con export a Excel).
 - 🟢 **Permisos por grupo de trabajo**: siete grupos, cada uno con sus módulos,
@@ -133,9 +136,12 @@ Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
   eligen los **años** y se importa —sin salir de NEXO y sin teclear contraseñas en la
   herramienta—. Por dentro: extractor (`sqlcmd` + `FOR JSON`)
   → importador idempotente (por `Guid`, `origen='CONTPAQI'`); **valida el RFC** primero;
-  pólizas sin cuenta o descuadradas caen en **`MIG-TEMPORAL`** y se reportan. Probado con
-  HCGM 2018-2024: 7,674 pólizas / 29,100 movimientos que **cuadran**. Pendiente: probar
-  contra NEXO real y el `.bak` de **nómina** por empresa.
+  pólizas sin cuenta o descuadradas caen en **`MIG-TEMPORAL`** (se reasigna después en
+  **Cambio de cuenta**). Al terminar **actualiza la balanza de todos los periodos** del
+  respaldo (para no dar «Actualizar desde pólizas» mes por mes) y liga a cada
+  **cliente/proveedor con su cuenta real** del respaldo. Probado con HCGM 2018-2024:
+  7,674 pólizas / 29,100 movimientos que **cuadran**. Pendiente: el `.bak` de **nómina**
+  por empresa (el de contabilidad ya se importó en real).
 - **Tesorería**: "Remesas de pago" → **Pagos programados**; pestaña nueva de
   **Conciliación bancaria** consolidada, con export a Excel.
 

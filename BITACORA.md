@@ -4634,3 +4634,50 @@ una máscara de **sólo despliegue** que **define el usuario** (ej. `##-##-##-##
 configura en el **Catálogo** (con vista previa) y ya se muestra formateado en
 **Catálogo, Pólizas y Balanza**. Códigos no numéricos (`MIG-TEMPORAL`) tal cual.
 Falta propagar a generar-pólizas, auxiliar y demás estados.
+
+## 2026-09-02 — Roadmap de contabilidad COMPLETO (máscara, combos de año, terceros, balanza masiva, Cambio de cuenta, generar en Pólizas, Estado de resultados)
+
+Se ejecutó de corrido todo el roadmap que pidió el usuario. Orden D→A/B→F→C→E.
+
+- **D — máscara del código de cuenta, PROPAGADA (commit `6ed454a`).** Además del
+  Catálogo/Pólizas/Balanza, `formatCuenta` ya se aplica en los previos de pólizas de
+  **Ventas/Compras**, la **depreciación** (Activo Fijo), **Asignar cuenta**, el chip
+  de cuenta y el **Auxiliar**. Pendiente menor: los códigos plurales por rubro en los
+  estados (`piezas.tsx`), que son por-renglón.
+- **A/B — combo de año + selector unificado (commits `105a669`, `55fb11f`).**
+  `GET /accounting/ejercicios` = años de `accounting_fiscal_years` + año en curso.
+  Componente **`SelectorPeriodo`** (mes + año) reemplaza el input de año a mano de la
+  Balanza y el stepper de los estados. Hook **`useEjercicios`** también arregla
+  **Pólizas** y **Activo Fijo**, que arrancaban en 2021 (rango fijo) — ahora 2018 en
+  adelante según el respaldo.
+- **F/SEXTO — terceros del respaldo con su cuenta real (commit `bbb9a5d`).** Al
+  generar subcuentas, NEXO inventaba `11002074-001` aunque el respaldo ya trajera la
+  cuenta del cliente/proveedor. Ahora, antes de inventar, `resolverOCrearSubcuentaTercero`
+  busca una hoja con el mismo agrupador de control (105.01/201.01) y el mismo **nombre
+  normalizado** (mayúsculas, sin acentos) aún sin RFC, y la **liga** con su código real.
+  Lo que no empate por nombre se arregla con el tool de Cambio de cuenta.
+- **QUINTO — balanza de todos los periodos al importar (commit `826ad83`).** El
+  import corre `alimentarDesdePolizas` por cada ejercicio × 12 meses **en orden**
+  (año, ene a dic, porque el saldo inicial de cada mes es el final del anterior). Así,
+  al entrar a la balanza por año, ya están todos al día sin dar «Actualizar desde
+  pólizas» mes por mes. El reporte del import dice cuántos periodos se actualizaron.
+- **CUARTO — submenú «Cambio de cuenta» (commit `136f431`).** Entre Reportes y
+  Auditoría. Dos operaciones: (1) **sustituir** las partidas de una cuenta (por
+  defecto `MIG-TEMPORAL`) por otra real, opcional por rango de fechas; (2) **unificar
+  duplicadas** (mismo tercero por typo/mayúsculas): funde una cuenta en otra —mueve
+  partidas, reengancha hijos, borra la origen— con un buscador que agrupa por nombre
+  normalizado. Servicio `cambio-cuenta.service.ts`, 3 rutas (`contabilidad:catalogo`),
+  página `CambioCuenta.tsx`. Tras cualquiera recalcula la balanza de los años tocados.
+- **E/SEPTIMO — generar pólizas desde la pantalla de Pólizas (commit `64b60b0`).**
+  Botones «Generar del mes» (Ventas, Compras, Cobros/Pagos, Depreciación) en Pólizas,
+  que llaman los endpoints existentes y refrescan la lista. Las entradas de menú
+  «Pólizas de venta/compra» se movieron de Facturas/Compras al submenú de Contabilidad
+  (todo se concentra ahí, sin duplicar).
+- **C — «Estado de resultados» + modo anual (commit `d294755`).** Nueva pantalla
+  «Estado de resultados» (NIF B-3) hasta la utilidad neta. Botón **«Anual»** en el
+  selector: como `contextoDelPeriodo` usa `saldo_final` (acumulado), **diciembre YA es
+  el ejercicio completo** (acumulado ene-dic) para situación financiera y estado de
+  resultados; el botón salta a diciembre.
+- **PRIMERO — importar nómina, botón gris (commit `1346e4c`).** El botón «Importar»
+  queda gris si el paquete no trae empleados+periodos. Ahora la pantalla AVISA (probable
+  causa: se subió el `.zip` de contabilidad en vez del de nómina).
