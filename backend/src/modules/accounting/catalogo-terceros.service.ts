@@ -29,10 +29,18 @@ const norm = (s: string) => (s || '').toUpperCase().normalize('NFD')
   .replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 
 async function cuentaControl(companyId: string, agrupador: string) {
+  // El control verdadero es la cuenta con ese agrupador que YA TIENE las subcuentas
+  // de tercero colgando (105-01-001, …). Antes se tomaba la primera por nivel, y en
+  // un respaldo hay varias cuentas con el mismo agrupador SAT (la de control y sus
+  // subcuentas heredan el agrupador), así que caía en la equivocada e inventaba una
+  // serie nueva. Ahora gana la que MÁS hijos tiene; a igualdad, la de menor nivel.
   const r = await query<any>(
-    `SELECT * FROM accounting_accounts
-      WHERE company_id=$1 AND codigo_agrupador=$2 AND tercero_rfc IS NULL
-      ORDER BY nivel LIMIT 1`, [companyId, agrupador]);
+    `SELECT a.*, (SELECT COUNT(*) FROM accounting_accounts h WHERE h.parent_id = a.id) AS hijos
+       FROM accounting_accounts a
+      WHERE a.company_id=$1 AND a.codigo_agrupador=$2 AND a.tercero_rfc IS NULL
+      ORDER BY (SELECT COUNT(*) FROM accounting_accounts h WHERE h.parent_id = a.id) DESC,
+               a.nivel ASC
+      LIMIT 1`, [companyId, agrupador]);
   return r.rows[0] || null;
 }
 

@@ -127,6 +127,11 @@ async function armarExcelAnual(
     for (const v of f.valores) { celda(ws, fila, col, v); col++; }
     fila++;
   }
+  // Sumas por columna (una por mes) al pie, para verificar de un vistazo.
+  const sumas = new Array(12).fill(0);
+  for (const f of filas) f.valores.forEach((v, j) => { sumas[j] += Number(v) || 0; });
+  const preTot = colsPre.map((_, i) => ({ valor: i === 0 ? 'TOTALES' : '', centrado: false }));
+  totales(ws, fila, [...preTot, ...sumas.map((s) => ({ valor: Math.round(s * 100) / 100 }))]);
   anchos(ws, [...anchosPre, ...new Array(12).fill(14)]);
   return { buffer: await aBuffer(wb), nombre: `${nombreBase}_anual_${anio}.xlsx` };
 }
@@ -137,17 +142,25 @@ export async function reporteAnualExcel(
   const emp = await empresaDe(companyId);
 
   if (tipo === 'balanza') {
-    const cuentas = new Map<string, { codigo: string; nombre: string; valores: number[] }>();
+    const cuentas = new Map<string, { codigo: string; nombre: string; valores: number[]; presente: boolean[] }>();
     for (let m = 1; m <= 12; m++) {
       const bal = await balanzaDelPeriodo(companyId, anio, m);
       if (!bal) continue;
       for (const f of bal.filas) {
         let c = cuentas.get(f.codigo);
-        if (!c) { c = { codigo: f.codigo, nombre: f.nombre, valores: new Array(12).fill(0) }; cuentas.set(f.codigo, c); }
+        if (!c) { c = { codigo: f.codigo, nombre: f.nombre, valores: new Array(12).fill(0), presente: new Array(12).fill(false) }; cuentas.set(f.codigo, c); }
         c.valores[m - 1] = Number(f.saldo_final);
+        c.presente[m - 1] = true;
       }
     }
     if (cuentas.size === 0) throw new NotFoundError(`No hay balanza cargada en ${anio}.`);
+    // Arrastre: una vez que la cuenta aparece, los meses sin movimiento conservan el
+    // saldo del mes anterior, para que TODAS las cuentas estén en todas las columnas.
+    for (const c of cuentas.values()) {
+      for (let i = 1; i < 12; i++) {
+        if (!c.presente[i] && c.presente.slice(0, i).some(Boolean)) c.valores[i] = c.valores[i - 1];
+      }
+    }
     const arr = [...cuentas.values()].sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)));
     return armarExcelAnual(emp, anio, 'Balanza de comprobación — anual (saldo final por mes)', 'Balanza',
       ['CÓDIGO', 'CUENTA'], arr.map((c) => ({ pre: [c.codigo, c.nombre], valores: c.valores })), [16, 40]);
