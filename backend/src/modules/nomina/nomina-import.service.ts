@@ -104,8 +104,28 @@ export async function importarNomina(
 
   // ── 1. Empleados ──────────────────────────────────────────────────────────
   const empId = new Map<number, { id: string; num: string; nombre: string; rfc: string; curp: string; nss: string }>();
+  // Prioridad del usuario: recuperar el EXPEDIENTE aunque el respaldo traiga el RFC/CURP
+  // reconstruido mal. Si no pasa el formato (CHECK de nomina_empleados), se guarda con
+  // un MARCADOR válido (RFC único por empleado) en vez de tirar al trabajador; se avisa
+  // para corregirlo después. Así entran los 6, no 3.
+  const rfcOk = (r: string) => /^[A-ZÑ&]{4}[0-9]{6}[A-Z0-9]{3}$/.test(r);
+  const curpOk = (c: string) => /^[A-Z]{4}[0-9]{6}[HM][A-Z]{5}[A-Z0-9][0-9]$/.test(c);
+  const marcadoresRfc = new Set<string>();
+  let phRfc = 0;
+  const rfcMarcador = () => {
+    let c = '';
+    do { phRfc++; c = `XAXX${String(phRfc).padStart(6, '0').slice(-6)}X01`; } while (marcadoresRfc.has(c));
+    marcadoresRfc.add(c);
+    return c;
+  };
   for (const e of paquete.empleados || []) {
     const num = String(e.codigo || e.id).trim();
+    let rfc = String(e.rfc || '').toUpperCase().slice(0, 13);
+    let curp = String(e.curp || '').toUpperCase().slice(0, 18);
+    const marcas: string[] = [];
+    if (!rfcOk(rfc)) { marcas.push(rfc ? `RFC inválido (${rfc})` : 'sin RFC'); rfc = rfcMarcador(); }
+    if (!curpOk(curp)) { marcas.push(curp ? 'CURP inválido' : 'sin CURP'); curp = 'XAXX010101HDFXXX01'; }
+    if (marcas.length) rep.avisos.push(`Empleado ${num}: ${marcas.join(', ')} en el respaldo -> se guardó con marcador; corrígelo en su expediente.`);
     const nombreCompleto = [e.nombre, e.apPaterno, e.apMaterno].map((x) => String(x || '').trim()).filter(Boolean).join(' ').slice(0, 100);
     const zona = String(e.zonaSalario || '').toUpperCase().startsWith('B') ? 'frontera' : 'general';
     const perTipo = tipoDeIdTipo.get(e.idTipoPeriodo);
@@ -114,7 +134,7 @@ export async function importarNomina(
     const vals = [
       companyId, num.slice(0, 15), (e.nombre || nombreCompleto).slice(0, 100),
       (e.apPaterno || '·').slice(0, 100), (e.apMaterno || '').slice(0, 100) || null,
-      String(e.rfc || '').toUpperCase().slice(0, 13), String(e.curp || '').toUpperCase().slice(0, 18),
+      rfc, curp,
       String(e.nss || '').replace(/\D/g, '').slice(0, 11) || null,
       fechaOk(e.fechaNacimiento), (e.correo || '').slice(0, 255) || null, (e.cp || '').slice(0, 5) || null,
       (puestoNombre.get(e.idPuesto) || '').slice(0, 100) || null,
@@ -155,7 +175,7 @@ export async function importarNomina(
         empleadoId = r.rows[0].id;
         rep.empleados.creados++;
       }
-      empId.set(e.id, { id: empleadoId, num: num.slice(0, 15), nombre: nombreCompleto, rfc: String(e.rfc || '').toUpperCase().slice(0, 13), curp: String(e.curp || '').toUpperCase().slice(0, 18), nss: String(e.nss || '').replace(/\D/g, '').slice(0, 11) });
+      empId.set(e.id, { id: empleadoId, num: num.slice(0, 15), nombre: nombreCompleto, rfc, curp, nss: String(e.nss || '').replace(/\D/g, '').slice(0, 11) });
     } catch (err: any) {
       rep.empleados.omitidos++;
       rep.avisos.push(`Empleado ${num} (RFC ${String(e.rfc || '?')}): ${(err?.message || 'no se pudo').toString().slice(0, 140)}`);
