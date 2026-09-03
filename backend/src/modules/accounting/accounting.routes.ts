@@ -1074,7 +1074,8 @@ router.get(
   '/activos/detectar',
   asyncHandler(async (req: Request, res: Response) => {
     const data = await activos.detectarDesdeCompras(
-      companyId(req), Number(req.query.anio), Number(req.query.mes));
+      companyId(req), Number(req.query.anio), Number(req.query.mes),
+      { desde: req.query.desde as string | undefined, hasta: req.query.hasta as string | undefined });
     res.json({ success: true, data: { detectados: data } });
   })
 );

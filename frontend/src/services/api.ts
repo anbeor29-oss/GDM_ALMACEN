@@ -1098,8 +1098,8 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/activos');
     return r.data;
   }
-  async detectarActivos(anio: number, mes: number) {
-    const r = await this.client.get<APIResponse<any>>('/accounting/activos/detectar', { params: { anio, mes } });
+  async detectarActivos(anio: number, mes: number, desde?: string, hasta?: string) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/activos/detectar', { params: { anio, mes, desde, hasta } });
     return r.data;
   }
   async getCedulaActivo(id: string) {

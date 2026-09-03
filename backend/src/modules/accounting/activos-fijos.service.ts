@@ -119,8 +119,10 @@ export interface ActivoDetectado {
  * registrados (mismo CFDI + cuenta). No asienta nada: sólo propone.
  */
 export async function detectarDesdeCompras(
-  companyId: string, anio: number, mes: number
+  companyId: string, anio: number, mes: number, opts: { desde?: string; hasta?: string } = {}
 ): Promise<ActivoDetectado[]> {
+  const desde = opts.desde || iniDeMes(anio, mes);
+  const hasta = opts.hasta || finDeMes(anio, mes);
   const mapaProd = await mapaProductoCuentaCompra(companyId);
   const r = await query<any>(
     `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision,'YYYY-MM-DD') AS fecha,
@@ -132,7 +134,7 @@ export async function detectarDesdeCompras(
         AND c.xml IS NOT NULL
         AND c.fecha_emision::date BETWEEN $2 AND $3
       ORDER BY c.fecha_emision`,
-    [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
+    [companyId, desde, hasta]);
 
   // Los ya registrados (CFDI + cuenta) para no proponerlos de nuevo.
   const yaReg = await query<any>(

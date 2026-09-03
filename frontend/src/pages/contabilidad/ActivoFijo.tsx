@@ -286,7 +286,19 @@ function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number
   const qc = useQueryClient();
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
-  const q = useQuery({ queryKey: ['activos-detectar', anio, mes], queryFn: () => api.detectarActivos(anio, mes) });
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
+  const anios = useEjercicios(anio);
+  const rango = !!(desde || hasta);
+  const todoElRespaldo = () => {
+    const min = anios.length ? Math.min(...anios) : anio;
+    setDesde(`${min}-01-01`);
+    setHasta(new Date().toISOString().slice(0, 10));
+  };
+  const q = useQuery({
+    queryKey: ['activos-detectar', anio, mes, desde, hasta],
+    queryFn: () => api.detectarActivos(anio, mes, desde || undefined, hasta || undefined),
+  });
   const detectados: any[] = q.data?.data?.detectados || [];
   const [sel, setSel] = useState<Record<number, boolean>>({});
   const [tasas, setTasas] = useState<Record<number, string>>({});
@@ -306,7 +318,7 @@ function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number
       const r: any = await api.registrarActivosDetectados(payload);
       setMsg(`${r.data?.registrados || 0} activo(s) registrado(s) en la cédula.`);
       setSel({});
-      qc.invalidateQueries({ queryKey: ['activos-detectar', anio, mes] });
+      qc.invalidateQueries({ queryKey: ['activos-detectar'] });
       qc.invalidateQueries({ queryKey: ['activos-fijos'] });
     } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo registrar'); }
     finally { setBusy(false); }
@@ -316,10 +328,20 @@ function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number
     <div className="space-y-3">
       <div className="bg-white rounded-lg shadow border p-4 flex flex-wrap items-center gap-3">
         <p className="text-sm text-gray-600 flex-1 min-w-[16rem]">
-          Toma las compras de <b>{MESES[mes]} {anio}</b> con XML y propone como activo cada partida cuya cuenta sea de{' '}
+          Toma las compras {rango
+            ? <>del <b>{desde || '…'}</b> al <b>{hasta || '…'}</b></>
+            : <>de <b>{MESES[mes]} {anio}</b></>} con XML y propone como activo cada partida cuya cuenta sea de{' '}
           {soloIntangibles ? 'intangible o diferido (17x)' : 'activo fijo (15x)'}. La <b>tasa</b> viene del máximo LISR;
           ajústala antes de registrar.
         </p>
+        <div className="flex items-center gap-1 text-xs">
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="input py-1 text-xs" title="Desde" />
+          <span className="text-gray-400">a</span>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="input py-1 text-xs" title="Hasta" />
+          <button onClick={todoElRespaldo} className="border px-2 py-1 rounded text-gray-600 hover:bg-gray-50"
+            title="Barrer desde el primer ejercicio del respaldo hasta hoy">Todo el respaldo</button>
+          {rango && <button onClick={() => { setDesde(''); setHasta(''); }} className="text-gray-400 hover:text-rose-600" title="Volver al mes">✕</button>}
+        </div>
         <button onClick={() => q.refetch()} disabled={q.isFetching}
           className="flex items-center gap-1.5 bg-white border text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50 disabled:opacity-50 text-sm">
           <RefreshCw size={15} className={q.isFetching ? 'animate-spin' : ''} /> Detectar
@@ -394,7 +416,7 @@ function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number
           onClose={() => setDividir(null)}
           onHecho={() => {
             setDividir(null);
-            qc.invalidateQueries({ queryKey: ['activos-detectar', anio, mes] });
+            qc.invalidateQueries({ queryKey: ['activos-detectar'] });
             qc.invalidateQueries({ queryKey: ['activos-fijos'] });
           }} />
       )}
