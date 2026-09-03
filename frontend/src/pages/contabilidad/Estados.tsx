@@ -358,6 +358,44 @@ export function ResultadoIntegralPage() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   ESTADO DE RESULTADOS — el clásico: ingresos − costos y gastos = utilidad neta
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export function EstadoResultadosPage() {
+  return (
+    <MarcoEstado titulo="Estado de resultados" norma="B-3"
+      descripcion="Ingresos menos costos y gastos, hasta la utilidad neta. En diciembre son del ejercicio completo (acumulado ene-dic)."
+      descargas={{ excel: (a, m) => api.descargarResultados(a, m, 'excel'), pdf: (a, m) => api.descargarResultados(a, m, 'pdf') }}>
+      {(d) => {
+        const renglones: any[] = d.resultadoIntegral?.renglones || [];
+        const iNeta = renglones.findIndex((x: any) => x.clave === 'UTILIDAD_NETA');
+        const lista = iNeta >= 0 ? renglones.slice(0, iNeta + 1) : renglones;
+        return (
+          <div className="bg-white rounded-lg shadow border overflow-hidden max-w-3xl">
+            <table className="w-full text-sm">
+              <tbody className="divide-y">
+                {lista
+                  .filter((x: any) => Math.abs(x.importe) >= 1 || SUBTOTALES.includes(x.clave))
+                  .map((x: any) => {
+                    const st = SUBTOTALES.includes(x.clave);
+                    return (
+                      <tr key={x.clave} className={st ? 'bg-gray-50 font-semibold' : ''}>
+                        <td className={`px-4 py-1.5 ${st ? '' : 'pl-8'}`}>{x.nombre}</td>
+                        <td className={`px-4 py-1.5 text-right tabular-nums whitespace-nowrap ${x.importe < 0 ? 'text-rose-700' : 'text-gray-900'}`}>{mx(x.importe)}</td>
+                        <td className="px-3 py-1.5 text-right text-xs text-gray-400 w-16">{pct(x.vertical)}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        );
+      }}
+    </MarcoEstado>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    FLUJOS DE EFECTIVO — B-2
    ═══════════════════════════════════════════════════════════════════════════ */
 

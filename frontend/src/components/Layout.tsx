@@ -293,6 +293,7 @@ export function Layout() {
                           { to: '/contabilidad/balanza',    icon: emoji3D('⚖️'), label: 'Balanza de comprobación' },
                           { to: '/contabilidad/situacion',  icon: emoji3D('🏛️'), label: 'Situación financiera' },
                           { to: '/contabilidad/resultados', icon: emoji3D('📈'), label: 'Resultado integral' },
+                          { to: '/contabilidad/estado-resultados', icon: emoji3D('📈'), label: 'Estado de resultados' },
                           { to: '/contabilidad/flujo',      icon: emoji3D('💧'), label: 'Flujos de efectivo' },
                           { to: '/contabilidad/capital',    icon: emoji3D('🧾'), label: 'Cambios en el capital' },
                           { to: '/contabilidad/razones',    icon: emoji3D('🔍'), label: 'Razones y análisis' },
