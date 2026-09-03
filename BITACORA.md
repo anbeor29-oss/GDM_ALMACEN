@@ -4681,3 +4681,36 @@ Se ejecutó de corrido todo el roadmap que pidió el usuario. Orden D→A/B→F�
 - **PRIMERO — importar nómina, botón gris (commit `1346e4c`).** El botón «Importar»
   queda gris si el paquete no trae empleados+periodos. Ahora la pantalla AVISA (probable
   causa: se subió el `.zip` de contabilidad en vez del de nómina).
+
+## 2026-09-03 — Segunda tanda de pruebas: terceros del respaldo, Excel anual, activo fijo por rango, nómina y descarga SAT
+
+Al probar el ejercicio completo salieron más ajustes; se fueron resolviendo:
+
+- **Terceros del respaldo en «asignar cuenta».** (1) El import **auto-genera** las
+  subcuentas de clientes/proveedores al terminar (commit `2c998bb`), y `formatCuenta`
+  ahora aplica la máscara también al código de tercero (`11002074-001` → base con
+  máscara + sufijo). (2) `resolverOCrearSubcuentaTercero` **liga la cuenta REAL del
+  respaldo** por nombre (bajo el agrupador de control) en vez de inventar; el
+  normalizador ignora acentos, mayúsculas **y puntuación** (commit `3e1d530`) para que
+  empaten más («VALENZUELA DELFIN, SA DE CV» = «… SA DE CV»). Lo que no empate se une
+  con «Cambio de cuenta». Pendiente: casos que aún no empatan (pedidos ejemplos) y el
+  orden de numeración de los inventados.
+- **Pólizas (imagen 3):** el **número `#folio` es enlace azul** que abre el editor;
+  se agregaron accesos «Asignar cuentas: Ventas/Compras» en la pantalla (commit `2c998bb`).
+- **Nómina:** (1) diagnóstico preciso del `.zip` — distingue «no trae archivos»,
+  «los trae VACÍOS» (el `.bak` no es de NomiPaq) y «faltan empleados/periodos»; el
+  extractor verifica `nom10001` (commit `fcf6c38`). (2) Los empleados que **no entran**
+  (RFC/CURP inválido por reconstrucción, o RFC repetido — CHECK/UNIQUE de
+  `nomina_empleados`) ya se **cuentan como omitidos** y se explican en la tarjeta y en
+  los avisos con su RFC (commit `46c09f4`). Falta la causa exacta (pedidos los avisos).
+- **Excel ANUAL (12 columnas) (commit `cc5df56`).** Botón «Anual» en Balanza, Situación
+  financiera y Estado de resultados → Excel con una fila por cuenta/rubro y **12 columnas
+  ene-dic**, encabezado empresa/reporte/fecha-hora. `reporteAnualExcel` + `matrizAnual` +
+  `GET /accounting/estados/:anio/anual/excel?tipo=`.
+- **Activo fijo por RANGO (commit `1f9013c`).** «Detectar desde compras» acepta
+  desde/hasta + botón «Todo el respaldo» (barre desde el primer ejercicio) para hallar
+  activos mal codificados en ejercicios anteriores.
+- **Descarga SAT tras el import (commit `aec1610`).** Al terminar el import de
+  contabilidad, si hay e.firma cargada, se crean los trabajos de descarga masiva del SAT
+  (recibidos+emitidos, CFDI) desde el 1-ene del primer ejercicio del respaldo hasta hoy
+  (`crearTrabajo` de `sat-descarga`). Sin e.firma, se avisa. Nunca tumba el import.

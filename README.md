@@ -28,7 +28,9 @@ SW Sapien.
   (línea recta LISR 33-35, desde el XML de compra), periodos y cierre, balanza (con
   **selector de año 2018→ del respaldo**), estados financieros —incluye **Estado de
   resultados** y modo **anual**— y razones, más **«Cambio de cuenta»** (sustituir la
-  cuenta temporal de migración y unificar cuentas duplicadas).
+  cuenta temporal de migración y unificar cuentas duplicadas). Los estados salen
+  también en **Excel anual** (12 columnas, una por mes), y el **activo fijo** se
+  detecta por **rango de fechas** (2018→).
 - 🟢 **Tesorería**: cuentas por pagar, pagos programados, bancos y
   **conciliación bancaria** (con export a Excel).
 - 🟢 **Permisos por grupo de trabajo**: siete grupos, cada uno con sus módulos,
@@ -138,10 +140,11 @@ Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
   → importador idempotente (por `Guid`, `origen='CONTPAQI'`); **valida el RFC** primero;
   pólizas sin cuenta o descuadradas caen en **`MIG-TEMPORAL`** (se reasigna después en
   **Cambio de cuenta**). Al terminar **actualiza la balanza de todos los periodos** del
-  respaldo (para no dar «Actualizar desde pólizas» mes por mes) y liga a cada
-  **cliente/proveedor con su cuenta real** del respaldo. Probado con HCGM 2018-2024:
-  7,674 pólizas / 29,100 movimientos que **cuadran**. Pendiente: el `.bak` de **nómina**
-  por empresa (el de contabilidad ya se importó en real).
+  respaldo (para no dar «Actualizar desde pólizas» mes por mes), **da de alta las
+  subcuentas de cada cliente/proveedor** ligándolas a su cuenta real del respaldo (por
+  nombre), y **dispara la descarga de XML del SAT** del rango del respaldo si hay e.firma.
+  Probado con HCGM 2018-2024: 7,674 pólizas / 29,100 movimientos que **cuadran**.
+  Pendiente: el `.bak` de **nómina** por empresa (el de contabilidad ya se importó en real).
 - **Tesorería**: "Remesas de pago" → **Pagos programados**; pestaña nueva de
   **Conciliación bancaria** consolidada, con export a Excel.
 
