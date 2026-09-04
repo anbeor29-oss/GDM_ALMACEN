@@ -313,11 +313,11 @@ function TabPolizasCompra({ anio, mes }: { anio: number; mes: number }) {
   const q = useQuery({ queryKey: ['polizas', anio, mes], queryFn: () => api.getPolizas(anio, mes) });
   const polizas: any[] = (q.data?.data?.polizas || []).filter((p: any) => String(p.regla || '').startsWith('compras'));
 
-  const generar = async () => {
+  const generar = async (todoAnio = false) => {
     setBusy(true); setMsg(''); setOmitidas([]);
     try {
-      const r: any = await api.generarCompras(anio, mes);
-      setMsg(`${r.data.creadas} póliza(s) de compra creada(s).`);
+      const r: any = await api.generarCompras(anio, mes, todoAnio);
+      setMsg(`${r.data.creadas} póliza(s) de compra creada(s)${todoAnio ? ` en todo ${anio}` : ''}.`);
       setOmitidas(r.data.omitidas || []);
       qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
     } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo generar'); }
@@ -332,10 +332,12 @@ function TabPolizasCompra({ anio, mes }: { anio: number; mes: number }) {
           Una póliza por factura recibida de <b>{MESES[mes]} {anio}</b> con XML: cargo a
           inventario/gasto (por producto) y al IVA acreditable, abono al proveedor. No duplica.
         </p>
-        <button onClick={generar} disabled={busy}
+        <button onClick={() => generar(false)} disabled={busy}
           className="flex items-center gap-1.5 bg-emerald-700 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-800 disabled:opacity-50 text-sm">
-          <PlayCircle size={15} /> {busy ? 'Generando…' : 'Generar pólizas'}
+          <PlayCircle size={15} /> {busy ? 'Generando…' : 'Generar pólizas del mes'}
         </button>
+        <button onClick={() => generar(true)} disabled={busy} title={`Genera las pólizas de compra de todos los meses de ${anio}`}
+          className="border border-emerald-300 px-3 py-1.5 rounded-lg hover:bg-emerald-50 text-sm text-emerald-700 disabled:opacity-50">Todo el año</button>
       </div>
       {msg && <p className="text-sm text-emerald-700">{msg}</p>}
       {omitidas.length > 0 && (

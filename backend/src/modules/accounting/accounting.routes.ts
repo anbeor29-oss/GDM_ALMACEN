@@ -956,8 +956,10 @@ router.post(
   '/polizas/generar-ventas',
   requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
-    const r = await polizas.generarVentasDelMes(
-      companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
+    const anio = Number(req.body?.anio);
+    const r = req.body?.todoElAnio
+      ? await polizas.generarVentasDelAnio(companyId(req), anio, req.user?.userId)
+      : await polizas.generarVentasDelMes(companyId(req), anio, Number(req.body?.mes), req.user?.userId);
     res.json({ success: true, data: r });
   })
 );
@@ -1004,8 +1006,10 @@ router.post(
   '/polizas/generar-compras',
   requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
-    const r = await polizas.generarComprasDelMes(
-      companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
+    const anio = Number(req.body?.anio);
+    const r = req.body?.todoElAnio
+      ? await polizas.generarComprasDelAnio(companyId(req), anio, req.user?.userId)
+      : await polizas.generarComprasDelMes(companyId(req), anio, Number(req.body?.mes), req.user?.userId);
     res.json({ success: true, data: r });
   })
 );
@@ -1015,8 +1019,10 @@ router.post(
   '/polizas/generar-cobros-pagos',
   requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
-    const r = await polizas.generarCobrosPagosDelMes(
-      companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
+    const anio = Number(req.body?.anio);
+    const r = req.body?.todoElAnio
+      ? await polizas.generarCobrosPagosDelAnio(companyId(req), anio, req.user?.userId)
+      : await polizas.generarCobrosPagosDelMes(companyId(req), anio, Number(req.body?.mes), req.user?.userId);
     res.json({ success: true, data: r });
   })
 );

@@ -270,11 +270,11 @@ function TabPolizas({ anio, mes }: { anio: number; mes: number }) {
   const q = useQuery({ queryKey: ['polizas', anio, mes], queryFn: () => api.getPolizas(anio, mes) });
   const polizas: any[] = q.data?.data?.polizas || [];
 
-  const generar = async () => {
+  const generar = async (todoAnio = false) => {
     setBusy(true); setMsg(''); setOmitidas([]);
     try {
-      const r: any = await api.generarVentas(anio, mes);
-      setMsg(`${r.data.creadas} póliza(s) de venta creada(s).`);
+      const r: any = await api.generarVentas(anio, mes, todoAnio);
+      setMsg(`${r.data.creadas} póliza(s) de venta creada(s)${todoAnio ? ` en todo ${anio}` : ''}.`);
       setOmitidas(r.data.omitidas || []);
       qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
     } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo generar'); }
@@ -294,10 +294,12 @@ function TabPolizas({ anio, mes }: { anio: number; mes: number }) {
           Una póliza por factura de <b>{MESES[mes]} {anio}</b>: cargo al cliente, abono a ventas
           (por producto) y al IVA. No duplica.
         </p>
-        <button onClick={generar} disabled={busy}
+        <button onClick={() => generar(false)} disabled={busy}
           className="flex items-center gap-1.5 bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:opacity-50 text-sm">
-          <PlayCircle size={15} /> {busy ? 'Generando…' : 'Generar pólizas'}
+          <PlayCircle size={15} /> {busy ? 'Generando…' : 'Generar pólizas del mes'}
         </button>
+        <button onClick={() => generar(true)} disabled={busy} title={`Genera las pólizas de venta de todos los meses de ${anio}`}
+          className="border border-amber-300 px-3 py-1.5 rounded-lg hover:bg-amber-50 text-sm text-amber-700 disabled:opacity-50">Todo el año</button>
         <button onClick={regenerar} disabled={busy} title="Borrar CFDI del mes y regenerar"
           className="border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600">Regenerar</button>
       </div>

@@ -4829,3 +4829,12 @@ El usuario reporta que el motor no baja seguido y «no trabaja a las 6am». Diag
 Acción del usuario (en RENDER, no en su PowerShell): poner `ENABLE_SAT_DESCARGA_CRON=true` y
 reiniciar. La descarga diaria pide 3 días atrás (traslape que el índice descarta por UUID); un
 ejercicio histórico tarda varios días a propósito (no apaga la diaria).
+
+## 2026-09-03 (contabilidad) — "Todo el año" al generar pólizas de venta/compra (y cobros/pagos)
+
+El selector sólo dejaba generar mes por mes. Ahora hay opción de **todo el año**: en
+`PolizasVenta`/`PolizasCompra`, botón «Todo el año» junto a «Generar pólizas del mes»; en
+la pantalla de `Pólizas` (lista), un check «todo el año» que aplica a Ventas/Compras/Cobros
+(la Depreciación sigue siendo mensual). Backend: `generarVentasDelAnio`/`generarComprasDelAnio`/
+`generarCobrosPagosDelAnio` en `polizas.service.ts` recorren los meses (del año en curso, sólo
+hasta el mes actual) y suman; las rutas aceptan `todoElAnio`. Idempotente: cada mes no duplica.

@@ -1057,12 +1057,12 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>('/accounting/compras/productos', { clave, descripcion, cuenta });
     return r.data;
   }
-  async generarCompras(anio: number, mes: number) {
-    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-compras', { anio, mes });
+  async generarCompras(anio: number, mes: number, todoElAnio = false) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-compras', { anio, mes, todoElAnio });
     return r.data;
   }
-  async generarCobrosPagos(anio: number, mes: number) {
-    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-cobros-pagos', { anio, mes });
+  async generarCobrosPagos(anio: number, mes: number, todoElAnio = false) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-cobros-pagos', { anio, mes, todoElAnio });
     return r.data;
   }
 
@@ -1071,8 +1071,8 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas', { params: { anio, mes } });
     return r.data;
   }
-  async generarVentas(anio: number, mes: number) {
-    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-ventas', { anio, mes });
+  async generarVentas(anio: number, mes: number, todoElAnio = false) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-ventas', { anio, mes, todoElAnio });
     return r.data;
   }
   async borrarPolizasCfdi(anio: number, mes: number) {

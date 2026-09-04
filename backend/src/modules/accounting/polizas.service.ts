@@ -593,3 +593,34 @@ export async function borrarVentasDelMes(companyId: string, anio: number, mes: n
     [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
   return r.rowCount || 0;
 }
+
+/* ── "Todo el año" ──────────────────────────────────────────────────────────
+ * Recorre los meses y suma. Del año EN CURSO sólo hasta el mes actual (los meses
+ * que aún no pasan no traen comprobantes); de años pasados, los 12. No duplica:
+ * cada mes es idempotente por sí mismo. */
+function mesesDelAnio(anio: number): number[] {
+  const hoy = new Date();
+  const ultimo = anio >= hoy.getFullYear() ? hoy.getMonth() + 1 : 12;
+  return Array.from({ length: ultimo }, (_, i) => i + 1);
+}
+type ResultadoGen = { creadas: number; omitidas: Array<{ folio: string; motivo: string }> };
+async function porTodoElAnio(
+  anio: number, gen: (mes: number) => Promise<ResultadoGen>,
+): Promise<ResultadoGen & { porMes: Array<{ mes: number; creadas: number }> }> {
+  let creadas = 0;
+  const omitidas: Array<{ folio: string; motivo: string }> = [];
+  const porMes: Array<{ mes: number; creadas: number }> = [];
+  for (const mes of mesesDelAnio(anio)) {
+    const r = await gen(mes);
+    creadas += r.creadas;
+    for (const o of r.omitidas) omitidas.push({ folio: `${String(mes).padStart(2, '0')}·${o.folio}`, motivo: o.motivo });
+    porMes.push({ mes, creadas: r.creadas });
+  }
+  return { creadas, omitidas, porMes };
+}
+export const generarVentasDelAnio = (companyId: string, anio: number, userId?: string) =>
+  porTodoElAnio(anio, (mes) => generarVentasDelMes(companyId, anio, mes, userId));
+export const generarComprasDelAnio = (companyId: string, anio: number, userId?: string) =>
+  porTodoElAnio(anio, (mes) => generarComprasDelMes(companyId, anio, mes, userId));
+export const generarCobrosPagosDelAnio = (companyId: string, anio: number, userId?: string) =>
+  porTodoElAnio(anio, (mes) => generarCobrosPagosDelMes(companyId, anio, mes, userId));

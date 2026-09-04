@@ -54,6 +54,7 @@ export function PolizasListaPage() {
   const [filtro, setFiltro] = useState<string>('');
   const [msg, setMsg] = useState('');
   const [generando, setGenerando] = useState('');
+  const [todoAnio, setTodoAnio] = useState(false);
   const [editar, setEditar] = useState<any>(null);
   /* Si se llegó desde el auxiliar de la balanza, al cerrar/guardar el editor se
    * regresa allá (no a esta lista): es donde estaba trabajando el usuario. */
@@ -77,9 +78,11 @@ export function PolizasListaPage() {
     finally { setGenerando(''); }
   };
   const GENERADORES: Array<[string, string, () => Promise<any>]> = [
-    ['ventas', 'Ventas', () => api.generarVentas(anio, mes)],
-    ['compras', 'Compras', () => api.generarCompras(anio, mes)],
-    ['cobros', 'Cobros/Pagos', () => api.generarCobrosPagos(anio, mes)],
+    ['ventas', 'Ventas', () => api.generarVentas(anio, mes, todoAnio)],
+    ['compras', 'Compras', () => api.generarCompras(anio, mes, todoAnio)],
+    ['cobros', 'Cobros/Pagos', () => api.generarCobrosPagos(anio, mes, todoAnio)],
+    /* La depreciación es un cálculo MENSUAL (no acumula por año aquí): ignora el
+       toggle y siempre corre el mes elegido. */
     ['deprec', 'Depreciación', () => api.generarDepreciacion(anio, mes)],
   ];
 
@@ -141,7 +144,10 @@ export function PolizasListaPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 bg-gray-50 border rounded-lg px-3 py-2">
-        <span className="text-xs text-gray-500">Generar del mes:</span>
+        <span className="text-xs text-gray-500">{todoAnio ? `Generar todo ${anio}:` : 'Generar del mes:'}</span>
+        <label className="flex items-center gap-1 text-xs text-gray-600" title="Genera Ventas/Compras/Cobros de todos los meses del año (la depreciación sigue siendo mensual)">
+          <input type="checkbox" checked={todoAnio} onChange={(e) => setTodoAnio(e.target.checked)} /> todo el año
+        </label>
         {GENERADORES.map(([k, label, fn]) => (
           <button key={k} onClick={() => generar(k, fn)} disabled={!!generando}
             className="flex items-center gap-1 border bg-white px-2.5 py-1 rounded-lg text-xs text-gray-700 hover:bg-primary hover:text-white disabled:opacity-40">
