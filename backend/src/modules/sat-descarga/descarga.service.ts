@@ -721,33 +721,40 @@ async function descargarPaquete(cred: soap.Credencial, token: soap.Token, p: any
     return;
   }
 
-  let guardados = 0;
+  let extraidos = 0, nuevos = 0;
   for (const a of archivos) {
     try {
       if (/\.xml$/i.test(a.nombre)) {
-        if (await indexarCfdi(p.company_id, cred.rfc, p.direccion, a.contenido, p.id)) guardados++;
+        extraidos++;                                   // el XML VINO en el paquete
+        if (await indexarCfdi(p.company_id, cred.rfc, p.direccion, a.contenido, p.id)) nuevos++;
       } else if (/\.txt$/i.test(a.nombre)) {
         /* Metadatos: un CSV con el UUID y el estatus. Es la ÚNICA vía para los
-         * comprobantes cancelados, que el SAT no deja bajar como XML. */
-        guardados += await indexarMetadata(p.company_id, cred.rfc, p.direccion, a.contenido, p.id);
+         * comprobantes cancelados, que el SAT no deja bajar como XML. No es XML,
+         * así que cuenta como novedad pero no como 'extraído'. */
+        nuevos += await indexarMetadata(p.company_id, cred.rfc, p.direccion, a.contenido, p.id);
       }
     } catch (e) {
       logger.warn(`[sat-descarga] ${a.nombre}: ${(e as Error).message}`);
     }
   }
 
+  /* 'xml_extraidos' cuenta lo que TRAJO el paquete, no sólo lo nuevo. Antes se
+   * guardaba 'nuevos', y como los EMITIDOS ya están en el sistema (los timbramos
+   * o ya se bajaron), 'nuevos' era 0 y la pantalla mostraba «13 paquetes, 0 XML»
+   * aunque el XML sí bajó. Mostrar lo extraído dice la verdad; el log conserva
+   * cuántos eran realmente nuevos. */
   await query(
     `UPDATE sat_paquetes
         SET estado = 'EXTRAIDO', sha256 = $1, bytes = $2, xml_extraidos = $3,
             descargado_at = NOW(), mensaje = NULL
       WHERE id = $4`,
-    [sha, r.zip.length, guardados, p.id]
+    [sha, r.zip.length, extraidos, p.id]
   );
   await query(
     `UPDATE sat_trabajos SET xml_total = xml_total + $1 WHERE id = $2`,
-    [guardados, p.trabajo_id]
+    [extraidos, p.trabajo_id]
   );
-  logger.info(`[sat-descarga] paquete ${p.id_paquete_sat}: ${guardados} CFDI indexados de ${archivos.length} archivo(s)`);
+  logger.info(`[sat-descarga] paquete ${p.id_paquete_sat}: ${extraidos} XML extraído(s) (${nuevos} nuevo(s)) de ${archivos.length} archivo(s)`);
 }
 
 /* ─────────────────────────  INDEXADO  ───────────────────────── */

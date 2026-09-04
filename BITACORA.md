@@ -4802,3 +4802,30 @@ El código propuesto usa formato con guion, que pasa el check `startsWith` de `c
 Además ese check ahora compara **sin separadores** (`105-01-001` cuelga de `105.01` igual que
 `11025000-001` de `11025000`): el estilo de puntos/guiones no decide la validez, sólo los
 dígitos. Sin cambios de BD.
+
+## 2026-09-03 (SAT descarga) — Diagnóstico: por qué no baja con frecuencia + contador de XML honesto
+
+El usuario reporta que el motor no baja seguido y «no trabaja a las 6am». Diagnóstico
+(sin tocar la e.firma, que sí funciona):
+
+1. **La causa de las 6am: el cron está APAGADO.** `registerSatDescargaCron` se auto-desactiva
+   si `ENABLE_SAT_DESCARGA_CRON !== 'true'`. Como la e.firma valida, `SAT_VAULT_KEY` ya está;
+   el único switch faltante es **`ENABLE_SAT_DESCARGA_CRON=true`** en Render. Sin él no se
+   registran ni el job de 6:00 (CDMX) ni la red de 15 min → nada avanza solo; sólo avanza al
+   pulsar el botón, y cada pulsada hace 5 solicitudes (`POR_CORRIDA`). De ahí «no baja seguido».
+2. **«13 paquetes, 0 XML» en emitidos NO es falla.** `descargarPaquete` contaba `guardados`
+   (filas NUEVAS): `indexarCfdi` sólo cuenta si el `ON CONFLICT … WHERE xml IS NULL` inserta/
+   rellena. Los emitidos ya están en el sistema → 0 nuevos → 0 en la pantalla, aunque el XML sí
+   bajó. **Arreglado:** ahora `xml_extraidos` = XML **extraídos** del paquete (lo que trajo), y
+   el log conserva cuántos eran nuevos. (Aplica a descargas NUEVAS; los trabajos ya EXTRAIDOS
+   no se recalculan salvo re-descarga.)
+3. **«Con errores» = un paquete del lote falló** (12 de 13, 4 de 5): `actualizarTotales` marca
+   `CON_ERRORES` si alguna partición quedó RECHAZADA/FALLIDA; el resto sí entró. Se re-arma con
+   **«Reintentar»** (`reintentarAtoradas`), sin borrar nada.
+4. **Metadata «0/13»:** las particiones de metadata están PENDIENTE, no rechazadas — no han
+   tenido turno porque el cron está apagado y cada pulsada manual atiende primero las CFDI. Con
+   el cron encendido, avanzan dentro del presupuesto (40 solicitudes/día por defecto).
+
+Acción del usuario (en RENDER, no en su PowerShell): poner `ENABLE_SAT_DESCARGA_CRON=true` y
+reiniciar. La descarga diaria pide 3 días atrás (traslape que el índice descarta por UUID); un
+ejercicio histórico tarda varios días a propósito (no apaga la diaria).
