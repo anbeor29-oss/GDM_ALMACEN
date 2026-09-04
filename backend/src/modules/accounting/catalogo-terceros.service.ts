@@ -93,25 +93,32 @@ async function codigosUsados(companyId: string): Promise<Set<string>> {
   return new Set<string>(r.rows.map((x: any) => String(x.codigo)));
 }
 
-async function cuentaControl(companyId: string, agrupador: string) {
-  /* El control verdadero es una cuenta ACUMULATIVA (no de movimiento) del MISMO
-   * RUBRO que su agrupador: los clientes 105.xx cuelgan del activo (código que
-   * empieza con 1…), los proveedores 201.xx del pasivo (empieza con 2…).
-   *
-   * El respaldo traía cuentas MAL clasificadas —p.ej. «112-00-003 Uber», que es
-   * una hoja del ACTIVO con agrupador 201.01—; tomarla de control amontonaba
-   * TODOS los terceros (proveedores y clientes) bajo Uber. Ahora el orden hace
-   * ganar a la que ES control y ES del rubro correcto; el conteo de hijos y el
-   * nivel sólo desempatan. Sólo si no hay ninguna se cae en lo que haya. */
+async function cuentaControl(companyId: string, agrupador: string, mascara?: string | null) {
+  /* El control verdadero es el MAYOR «redondo» del rubro: el que termina en ceros
+   * en el último segmento de la máscara (1-10-25-000 para clientes, 2-10-10-000
+   * para proveedores). Esa preferencia va PRIMERO —arriba de acumulativa y de
+   * rubro— porque el respaldo a veces deja el mayor como afectable y convierte por
+   * error a un tercero (1-10-25-001) en «control» al colgarle subcuentas; sin este
+   * orden ganaba 1-10-25-001 y numeraba 1-10-25-001-001. Luego: acumulativa (no
+   * hoja), mismo rubro (1xx cliente / 2xx proveedor) y código ASC como desempate. */
+  const anchos = anchosDeMascara(mascara ?? null);
+  const W = anchos ? anchos[anchos.length - 1] : 0;
+  const params: any[] = [companyId, agrupador];
+  let redondo = 'FALSE';
+  if (W > 0) {
+    params.push('0'.repeat(W));
+    redondo = `(a.codigo ~ '^[0-9]+$' AND RIGHT(a.codigo, ${W}) = $3)`;
+  }
   const r = await query<any>(
     `SELECT a.*, (SELECT COUNT(*) FROM accounting_accounts h WHERE h.parent_id = a.id) AS hijos
        FROM accounting_accounts a
       WHERE a.company_id=$1 AND a.codigo_agrupador=$2 AND a.tercero_rfc IS NULL
-      ORDER BY (a.permite_movimientos = false) DESC,      -- un control acumula, no es hoja
-               (LEFT(a.codigo, 1) = LEFT($2, 1)) DESC,     -- mismo rubro: 1xx cliente / 2xx proveedor
-               a.codigo ASC,                               -- el mayor «redondo» (…-000) gana sobre …-001
+      ORDER BY (${redondo}) DESC,                          -- el mayor «redondo» (…-000) primero
+               (a.permite_movimientos = false) DESC,       -- un control acumula, no es hoja
+               (LEFT(a.codigo, 1) = LEFT($2, 1)) DESC,      -- mismo rubro: 1xx cliente / 2xx proveedor
+               a.codigo ASC,
                a.nivel ASC
-      LIMIT 1`, [companyId, agrupador]);
+      LIMIT 1`, params);
   return r.rows[0] || null;
 }
 
@@ -125,8 +132,9 @@ export async function resolverOCrearSubcuentaTercero(
   const rfcU = (rfc || '').toUpperCase().trim();
   if (!rfcU) return { error: 'sin RFC' };
 
+  const mascara = ctx ? ctx.mascara : await mascaraDe(companyId);
   const agrup = agrupadorDe(tipo, rfcU);
-  const control = await cuentaControl(companyId, agrup);
+  const control = await cuentaControl(companyId, agrup, mascara);
   if (!control) return { error: `falta la cuenta de control (agrupador ${agrup})` };
 
   const ya = await query<any>(
@@ -157,7 +165,6 @@ export async function resolverOCrearSubcuentaTercero(
 
   // Siguiente número: en formato de la MÁSCARA (1-10-25-001, 1-10-25-002…), como
   // el catálogo del respaldo — no el viejo <control>-NNN (un segmento de más).
-  const mascara = ctx?.mascara ?? await mascaraDe(companyId);
   const usados = ctx?.usados ?? await codigosUsados(companyId);
   const codigo = codigoSiguienteTercero(control, mascara, usados);
   usados.add(codigo);
@@ -311,7 +318,7 @@ export async function reorganizarTerceros(
       if (c.hijos > 0) continue;                         // aún es padre: no se mueve todavía
       let control = controlPorAgr.get(c.codigo_agrupador);
       if (control === undefined) {
-        control = await cuentaControl(companyId, c.codigo_agrupador);
+        control = await cuentaControl(companyId, c.codigo_agrupador, mascara);
         controlPorAgr.set(c.codigo_agrupador, control);
       }
       if (!control || control.id === c.id) continue;     // no hay control, o ES el control

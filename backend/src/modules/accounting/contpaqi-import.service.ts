@@ -20,7 +20,7 @@
  */
 import { query, transaction } from '../../config/database';
 import { crearPoliza } from './polizas.service';
-import { activarContabilidad } from './catalogo.service';
+import { activarContabilidad, asignarAgrupadorFaltante } from './catalogo.service';
 import { alimentarDesdePolizas } from './periodos.service';
 import { generarSubcuentasDeComprobantes } from './catalogo-terceros.service';
 import { crearTrabajo, credencialDeEmpresa } from '../sat-descarga/descarga.service';
@@ -335,6 +335,13 @@ async function importarCuentas(companyId: string, cuentas: CuentaCt[], rep: Repo
       rep.avisos.push(`Cuenta ${c.codigo}: ${e?.message || 'no se pudo'}`.slice(0, 160));
     }
   }
+
+  // Al terminar el catálogo, rellena el agrupador del SAT que quedó vacío
+  // heredándolo del padre (varias pasadas) — como pulsar «Asignar agrupador».
+  try {
+    const ag = await asignarAgrupadorFaltante(companyId);
+    if (ag.rellenadas) rep.cuentas.agrupadorRellenado += ag.rellenadas;
+  } catch { /* no crítico: el import no se cae por esto */ }
 }
 
 /* ── 2. Pólizas ────────────────────────────────────────────────────────────── */
@@ -400,10 +407,17 @@ async function importarPolizas(companyId: string, paquete: PaqueteContpaqi, user
       let accountId: string;
       if (cta && cta.mov) { accountId = cta.id; }
       else { accountId = await cuentaTemporal(); cuentasFaltantes.add(m.cuenta); } // cuenta faltante → temporal, no se pierde
+      // El importe puede venir NEGATIVO en CONTPAQi (una corrección). Un cargo
+      // negativo ES un abono y al revés: se pasa al lado correcto para no violar
+      // el CHECK (cargo>=0, abono>=0) —era la causa de las pólizas omitidas por
+      // «jl_no_negativos»— y para que el asiento siga cuadrando.
+      const imp = round2(m.importe);
+      const esCargo = m.tm === 0;
+      const cargo = imp >= 0 ? (esCargo ? imp : 0) : (esCargo ? 0 : -imp);
+      const abono = imp >= 0 ? (esCargo ? 0 : imp) : (esCargo ? -imp : 0);
       lineas.push({
         account_id: accountId,
-        cargo: m.tm === 0 ? round2(m.importe) : 0,
-        abono: m.tm === 1 ? round2(m.importe) : 0,
+        cargo, abono,
         concepto: ((cuentasFaltantes.has(m.cuenta) ? `[${m.cuenta}] ` : '') + (m.concepto || '')).slice(0, 200) || null,
         uuid_cfdi: uuidLinea,
       });

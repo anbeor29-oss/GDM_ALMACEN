@@ -310,6 +310,21 @@ export async function crearTrabajo(
   }
   if (hasta < desde) throw new ValidationError('La fecha final es anterior a la inicial.');
 
+  /* El SAT rechaza solicitudes de más de 6 años de antigüedad ("La solicitud de
+   * XML no puede contener información mayor a 6 años"). Se recorta el inicio a ese
+   * tope; si TODO el rango es más viejo, se rechaza aquí con un mensaje claro en
+   * vez de gastar la solicitud y recibir el error del SAT. */
+  const limite6 = new Date();
+  limite6.setFullYear(limite6.getFullYear() - 6);
+  limite6.setDate(limite6.getDate() + 7);          // margen por el redondeo del SAT
+  if (hasta < limite6) {
+    throw new ValidationError(
+      `El SAT no entrega comprobantes de más de 6 años de antigüedad. Ese rango ya ` +
+      `quedó fuera; lo más viejo que se puede pedir es ${limite6.toISOString().slice(0, 10)}.`);
+  }
+  let desdeStr = d.desde;
+  if (desde < limite6) { desde.setTime(limite6.getTime()); desdeStr = desde.toISOString().slice(0, 10); }
+
   const cred = await credencialUsable(companyId);   // valida antes de crear nada
   const tipo = d.tipo === 'Metadata' ? 'Metadata' : 'CFDI';
 
@@ -330,7 +345,7 @@ export async function crearTrabajo(
         AND estado IN ('CREADO','EN_PROCESO')
         AND fecha_desde <= $5::date AND fecha_hasta >= $4::date
       LIMIT 1`,
-    [companyId, d.direccion, tipo, d.desde, d.hasta]
+    [companyId, d.direccion, tipo, desdeStr, d.hasta]
   );
   if (vivo.rows.length) {
     const v = vivo.rows[0];
@@ -350,7 +365,7 @@ export async function crearTrabajo(
           creado_por, origen, ejercicio)
        VALUES ($1,$2,$3::date,$4::date,$5,$6,$7,$8,$9,$10)
        RETURNING *`,
-      [companyId, cred.rfc, d.desde, d.hasta, d.direccion, tipo,
+      [companyId, cred.rfc, desdeStr, d.hasta, d.direccion, tipo,
        d.filtros ? JSON.stringify(d.filtros) : null, userId || null,
        meta.origen || 'MANUAL', meta.ejercicio ?? null]
     );

@@ -8,7 +8,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarDays, Download, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { CalendarDays, Download, RefreshCw } from 'lucide-react';
 import api from '@/services/api';
 
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -81,13 +81,10 @@ export function CalendarioSatPage() {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setAnio((a) => Math.max(anioMin, a - 1))} disabled={anio <= anioMin}
-            className="p-1.5 border rounded-lg hover:bg-gray-50 disabled:opacity-40"><ChevronLeft size={16} /></button>
-          <span className="font-mono text-sm w-14 text-center">{anio}</span>
-          <button onClick={() => setAnio((a) => Math.min(hoy.getFullYear(), a + 1))} disabled={anio >= hoy.getFullYear()}
-            className="p-1.5 border rounded-lg hover:bg-gray-50 disabled:opacity-40"><ChevronRight size={16} /></button>
-        </div>
+        <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-28">
+          {Array.from({ length: Math.max(1, hoy.getFullYear() - anioMin + 1) }, (_, i) => hoy.getFullYear() - i)
+            .map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
         <button onClick={() => q.refetch()} title="Actualizar" className="p-1.5 text-gray-500 hover:text-gray-700">
           <RefreshCw size={16} className={q.isFetching ? 'animate-spin' : ''} />
         </button>

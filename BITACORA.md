@@ -4939,3 +4939,20 @@ Dos arreglos a pedido (imágenes 2 y 3: los terceros salían `1-10-25-001-001`, 
   que usa `PUT /admin/users/:id` (ya existía) para cambiar rol —p.ej. convertir un USER de
   contabilidad en ADMIN, para que pueda cargar la e.firma— sin ser super administrador. Sólo
   super-admin (el router de admin/users ya lo exige).
+
+## 2026-09-03 (contabilidad + SAT) — Pólizas negativas, agrupador automático, control redondo, combos y límite de 6 años
+
+- **`jl_no_negativos` (95 pólizas omitidas).** El importe de un movimiento CONTPAQi puede venir
+  NEGATIVO (correcciones); un cargo negativo viola el CHECK. En `importarPolizas` ahora un cargo
+  negativo se pasa a abono y al revés (el asiento sigue cuadrando). Recupera las 95.
+- **Agrupador automático al importar.** `importarCuentas` corre `asignarAgrupadorFaltante` al
+  terminar (varias pasadas, hereda del padre) — como pulsar «Asignar agrupador».
+- **Control de tercero «redondo».** `cuentaControl` ahora prefiere PRIMERO el mayor que termina en
+  ceros del último segmento (1-10-25-000), usando la máscara — antes ganaba 1-10-25-001 (afectable
+  que acumuló subcuentas) y numeraba 1-10-25-001-001. Se pasa la máscara desde resolverOCrear y
+  reorganizar. (Correr «Reorganizar terceros» renumera lo viejo a 1-10-25-002, 003…)
+- **Calendario: combo de año** en vez de flechas ‹ ›.
+- **Descarga: límite de 6 años del SAT.** `crearTrabajo` recorta el inicio a 6 años atrás y rechaza
+  con mensaje claro si TODO el rango es más viejo (antes el SAT devolvía «XML Mal Formado … mayor a
+  6 años»). Cubre todos los caminos (ejercicio, diario, llenar-huecos, manual). En «Traer
+  comprobantes» los botones de año se volvieron **combo de año** (últimos 6) + botón **«Todos (6 años)»**.

@@ -41,12 +41,12 @@ function atajos(hoy: Date): Array<{ nombre: string; desde: string; hasta: string
   const a = hoy.getFullYear();
   const m = hoy.getMonth();
   const finDeMes = (anio: number, mes: number) => iso(new Date(anio, mes + 1, 0));
+  // Los años completos se eligen con el combo de abajo (el SAT sólo entrega los
+  // últimos ~6 años), así que aquí quedan sólo los cortes cortos del día a día.
   return [
     { nombre: 'Este mes',      desde: iso(new Date(a, m, 1)),      hasta: iso(hoy) },
     { nombre: 'Mes pasado',    desde: iso(new Date(a, m - 1, 1)),  hasta: finDeMes(a, m - 1) },
     { nombre: 'Últimos 3 meses', desde: iso(new Date(a, m - 2, 1)), hasta: iso(hoy) },
-    { nombre: `Año ${a}`,      desde: iso(new Date(a, 0, 1)),      hasta: iso(hoy) },
-    { nombre: `Año ${a - 1}`,  desde: iso(new Date(a - 1, 0, 1)),  hasta: finDeMes(a - 1, 11) },
   ];
 }
 
@@ -234,6 +234,28 @@ export function XmlRecibidos({ direccionInicial }: {
                 </button>
               );
             })}
+            {/* Año completo — sólo los últimos 6, que es lo que el SAT entrega. */}
+            <select value="" title="Elegir un año completo"
+              onChange={(e) => {
+                const y = Number(e.target.value); if (!y) return;
+                setDesde(iso(new Date(y, 0, 1)));
+                setHasta(y === hoy.getFullYear() ? iso(hoy) : iso(new Date(y, 11, 31)));
+              }}
+              className="input text-xs py-1 h-auto rounded-full w-36">
+              <option value="">Año completo…</option>
+              {Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i).map((y) => (
+                <option key={y} value={y}>Año {y}</option>
+              ))}
+            </select>
+            {/* «Todos»: los 6 años que el SAT conserva, de una. */}
+            <button onClick={() => {
+                const d0 = new Date(); d0.setFullYear(d0.getFullYear() - 6); d0.setDate(d0.getDate() + 7);
+                setDesde(iso(d0)); setHasta(iso(hoy));
+              }}
+              title="Pide todo lo que el SAT conserva (últimos 6 años)"
+              className="px-3 py-1 rounded-full text-xs border border-gray-300 text-gray-600 hover:bg-gray-50">
+              Todos (6 años)
+            </button>
           </div>
 
           <div className="flex flex-wrap items-end gap-3">
