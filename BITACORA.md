@@ -4905,3 +4905,22 @@ que ya está en NEXO). Implementado:
   trabajos SÓLO para los meses con días en 'falta' (no re-pide lo cubierto, cuida la cuota del
   SAT); el motor los baja dentro del presupuesto. Requiere el cron encendido
   (`ENABLE_SAT_DESCARGA_CRON=true`) para que avancen solos.
+
+## 2026-09-03 (contabilidad) — Terceros con el FORMATO del catálogo + capturar clientes/proveedores
+
+Dos arreglos a pedido (imágenes 2 y 3: los terceros salían `1-10-25-001-001`, guion de más):
+
+- **Numeración de terceros en el formato de la MÁSCARA.** `codigoSiguienteTercero` rellena el
+  ÚLTIMO segmento del control: `1-10-25-000` → `1-10-25-001`, `1-10-25-002`… (como el respaldo),
+  no el viejo `<control>-NNN`. Sin máscara cae a dash. Se usa en `resolverOCrearSubcuentaTercero`
+  (con ctx {mascara, usados} compartido por lote) y en `reorganizarTerceros`, que además ahora
+  **renumera** los que están bajo el control correcto pero con formato viejo (`esFormatoMascara`),
+  y marca el tercero movido como `permite_movimientos=true`. Probado con 6 casos: OK.
+- **`cuentaControl` elige el control «redondo».** Antes ordenaba por MÁS HIJOS y caía en
+  `1-10-25-001` (que había acumulado terceros) en vez de `1-10-25-000`. Ahora: acumulativa +
+  rubro + **código ASC** (el `…-000` gana) + nivel. Así los terceros cuelgan del mayor correcto.
+- **Capturar clientes/proveedores en su catálogo** (`capturarTercerosEnCatalogo`,
+  `POST /accounting/terceros/capturar-catalogo`): mete en `customers` (rol es_cliente/es_proveedor)
+  los terceros conocidos por CFDI (receptor/emisor) y subcuentas — RFC + nombre, sin pisar nombres
+  curados. Botón «Capturar en catálogo» en las pestañas Clientes (Pólizas de venta) y Proveedores
+  (Pólizas de compra); aparecen luego en las pantallas de Clientes/Proveedores.

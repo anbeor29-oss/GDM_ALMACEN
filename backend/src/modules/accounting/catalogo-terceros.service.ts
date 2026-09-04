@@ -28,6 +28,71 @@ const agrupadorDe = (tipo: 'cliente' | 'proveedor', rfc: string) =>
 const norm = (s: string) => (s || '').toUpperCase().normalize('NFD')
   .replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 
+function anchosDeMascara(m?: string | null): number[] | null {
+  if (!m) return null;
+  const a = (m.match(/#+/g) || []).map((g) => g.length);
+  return a.length >= 2 ? a : null;
+}
+
+/**
+ * El siguiente código de una subcuenta de tercero bajo su control.
+ *
+ * CON máscara (y control numérico que cuadra la longitud): rellena el ÚLTIMO
+ * segmento como el catálogo del respaldo — control `1-10-25-000` da `1-10-25-001`,
+ * `1-10-25-002`… en vez del viejo `1-10-25-000-001` (guion, un segmento de más).
+ * Si se llena el segmento (>999 con 3 dígitos) o no hay máscara, cae al `<control>-NNN`.
+ * `usados` trae TODOS los códigos de la empresa (para no chocar); el llamador le
+ * agrega el nuevo tras usarlo.
+ */
+function codigoSiguienteTercero(control: any, mascara: string | null, usados: Set<string>): string {
+  const code = String(control.codigo);
+  const anchos = anchosDeMascara(mascara);
+  if (anchos && /^\d+$/.test(code) && anchos.reduce((a, b) => a + b, 0) === code.length) {
+    const W = anchos[anchos.length - 1];
+    const pref = code.slice(0, code.length - W);
+    const maxN = Math.pow(10, W) - 1;
+    let n = 0;
+    for (const u of usados) {
+      if (u.length === code.length && /^\d+$/.test(u) && u.slice(0, pref.length) === pref) {
+        n = Math.max(n, Number(u.slice(pref.length)));
+      }
+    }
+    for (n = n + 1; n <= maxN; n++) {
+      const cod = pref + String(n).padStart(W, '0');
+      if (!usados.has(cod)) return cod;
+    }
+  }
+  // Fallback: <control con guiones>-NNN
+  const base = code.replace(/\./g, '-');
+  let n = 0;
+  for (const u of usados) { const m = /^(.+)-(\d+)$/.exec(u); if (m && m[1] === base) n = Math.max(n, Number(m[2])); }
+  let cod: string;
+  do { n++; cod = `${base}-${String(n).padStart(3, '0')}`; } while (usados.has(cod));
+  return cod;
+}
+
+/** ¿El código YA está en el formato de máscara de su control (mismo largo, numérico,
+ *  mismo prefijo)? Sin máscara no se fuerza (devuelve true). Sirve para NO renumerar
+ *  los que ya están bien y sí los que quedaron con guion (`1-10-25-000-001`). */
+function esFormatoMascara(codigo: string, control: any, mascara: string | null): boolean {
+  const anchos = anchosDeMascara(mascara);
+  const cc = String(control.codigo);
+  if (!(anchos && /^\d+$/.test(cc) && anchos.reduce((a, b) => a + b, 0) === cc.length)) return true;
+  const W = anchos[anchos.length - 1];
+  const pref = cc.slice(0, cc.length - W);
+  const c = String(codigo);
+  return c.length === cc.length && /^\d+$/.test(c) && c.slice(0, pref.length) === pref;
+}
+
+async function mascaraDe(companyId: string): Promise<string | null> {
+  const r = await query<any>('SELECT mascara_cuenta FROM companies WHERE id=$1', [companyId]);
+  return r.rows[0]?.mascara_cuenta || null;
+}
+async function codigosUsados(companyId: string): Promise<Set<string>> {
+  const r = await query<any>('SELECT codigo FROM accounting_accounts WHERE company_id=$1', [companyId]);
+  return new Set<string>(r.rows.map((x: any) => String(x.codigo)));
+}
+
 async function cuentaControl(companyId: string, agrupador: string) {
   /* El control verdadero es una cuenta ACUMULATIVA (no de movimiento) del MISMO
    * RUBRO que su agrupador: los clientes 105.xx cuelgan del activo (código que
@@ -44,7 +109,7 @@ async function cuentaControl(companyId: string, agrupador: string) {
       WHERE a.company_id=$1 AND a.codigo_agrupador=$2 AND a.tercero_rfc IS NULL
       ORDER BY (a.permite_movimientos = false) DESC,      -- un control acumula, no es hoja
                (LEFT(a.codigo, 1) = LEFT($2, 1)) DESC,     -- mismo rubro: 1xx cliente / 2xx proveedor
-               (SELECT COUNT(*) FROM accounting_accounts h WHERE h.parent_id = a.id) DESC,
+               a.codigo ASC,                               -- el mayor «redondo» (…-000) gana sobre …-001
                a.nivel ASC
       LIMIT 1`, [companyId, agrupador]);
   return r.rows[0] || null;
@@ -54,7 +119,8 @@ export type SubcuentaResuelta = { id: string; codigo: string; creada: boolean } 
 
 /** Encuentra (o crea) la subcuenta del tercero bajo su cuenta de control. */
 export async function resolverOCrearSubcuentaTercero(
-  companyId: string, tipo: 'cliente' | 'proveedor', rfc: string, nombre: string
+  companyId: string, tipo: 'cliente' | 'proveedor', rfc: string, nombre: string,
+  ctx?: { mascara: string | null; usados: Set<string> }
 ): Promise<SubcuentaResuelta> {
   const rfcU = (rfc || '').toUpperCase().trim();
   if (!rfcU) return { error: 'sin RFC' };
@@ -89,17 +155,12 @@ export async function resolverOCrearSubcuentaTercero(
     }
   }
 
-  // Siguiente número: el mayor sufijo de las subcuentas + 1.
-  const hijos = await query<any>(
-    `SELECT codigo FROM accounting_accounts WHERE company_id=$1 AND parent_id=$2`,
-    [companyId, control.id]);
-  let max = 0;
-  for (const h of hijos.rows) {
-    const m = /(\d+)\s*$/.exec(String(h.codigo));
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  const base = String(control.codigo).replace(/\./g, '-');           // 105.01 → 105-01
-  const codigo = `${base}-${String(max + 1).padStart(3, '0')}`;      // 105-01-001
+  // Siguiente número: en formato de la MÁSCARA (1-10-25-001, 1-10-25-002…), como
+  // el catálogo del respaldo — no el viejo <control>-NNN (un segmento de más).
+  const mascara = ctx?.mascara ?? await mascaraDe(companyId);
+  const usados = ctx?.usados ?? await codigosUsados(companyId);
+  const codigo = codigoSiguienteTercero(control, mascara, usados);
+  usados.add(codigo);
 
   const ins = await query<any>(
     `INSERT INTO accounting_accounts
@@ -162,10 +223,14 @@ export async function generarSubcuentasDeComprobantes(
   for (const row of deCfdi.rows) porRfc.set(String(row.rfc).toUpperCase().trim(), row.nombre);
   for (const row of deCatalogo.rows) porRfc.set(String(row.rfc).toUpperCase().trim(), row.nombre);
 
+  // Máscara + códigos usados UNA vez (no por tercero): así la numeración va en el
+  // formato del catálogo y no choca entre sí dentro del mismo lote.
+  const ctx = { mascara: await mascaraDe(companyId), usados: await codigosUsados(companyId) };
+
   let creadas = 0, existentes = 0;
   const errores: Array<{ rfc: string; motivo: string }> = [];
   for (const [rfc, nombre] of porRfc) {
-    const res = await resolverOCrearSubcuentaTercero(companyId, tipo, rfc, nombre);
+    const res = await resolverOCrearSubcuentaTercero(companyId, tipo, rfc, nombre, ctx);
     if ('error' in res) { errores.push({ rfc, motivo: res.error }); continue; }
     await guardarCuentaEnTercero(companyId, tipo, rfc, res.codigo);
     if (res.creada) creadas++; else existentes++;
@@ -210,9 +275,10 @@ export async function fijarCodigoSubcuenta(
 /**
  * Reorganiza los terceros MAL COLOCADOS: cada cuenta con agrupador de tercero
  * (105.xx cliente / 201.xx proveedor) que sea HOJA y NO cuelgue del control
- * correcto se MUEVE bajo su control y se RENUMERA (`<control>-NNN`), heredando el
- * tipo/naturaleza del control. Sus partidas la siguen (es la misma cuenta, sólo
- * cambia padre y código).
+ * correcto —o que cuelgue de él pero con número viejo de guion— se MUEVE/RENUMERA
+ * bajo su control en el FORMATO de la máscara (1-10-25-001, 1-10-25-002…),
+ * heredando el tipo/naturaleza del control. Sus partidas la siguen (es la misma
+ * cuenta, sólo cambia padre y código).
  *
  * Resuelve el desorden del respaldo (24 terceros colgando de «112-…-… Uber»,
  * clientes y proveedores mezclados): tras correrlo, los clientes quedan bajo el
@@ -227,7 +293,7 @@ export async function reorganizarTerceros(
   let movidas = 0;
   const detalle: Array<{ de: string; a: string; nombre: string }> = [];
   const controlPorAgr = new Map<string, any>();
-  const contador = new Map<string, number>();          // control.id → último sufijo usado
+  const mascara = await mascaraDe(companyId);
   const usados = new Set<string>(
     (await query<any>('SELECT codigo FROM accounting_accounts WHERE company_id=$1', [companyId]))
       .rows.map((r: any) => r.codigo));
@@ -249,24 +315,17 @@ export async function reorganizarTerceros(
         controlPorAgr.set(c.codigo_agrupador, control);
       }
       if (!control || control.id === c.id) continue;     // no hay control, o ES el control
-      if (c.parent_id === control.id) continue;          // ya está bien colocada
+      // Ya está bien SÓLO si cuelga del control correcto Y su código está en el
+      // formato de la máscara. Si no (mal padre, o número con guion), se renumera.
+      if (c.parent_id === control.id && esFormatoMascara(c.codigo, control, mascara)) continue;
 
-      const base = String(control.codigo).replace(/\./g, '-');
-      let n = contador.get(control.id);
-      if (n === undefined) {
-        const hijos = await query<any>(
-          `SELECT codigo FROM accounting_accounts WHERE company_id=$1 AND parent_id=$2`, [companyId, control.id]);
-        n = 0;
-        for (const h of hijos.rows) { const m = /-(\d+)\s*$/.exec(String(h.codigo)); if (m) n = Math.max(n, Number(m[1])); }
-      }
-      let cod: string;
-      do { n++; cod = `${base}-${String(n).padStart(3, '0')}`; } while (usados.has(cod));
-      contador.set(control.id, n);
+      const cod = codigoSiguienteTercero(control, mascara, usados);
       usados.add(cod);
 
       await query(
         `UPDATE accounting_accounts
-            SET parent_id=$2, codigo=$3, tipo=$4, naturaleza=$5, nivel=$6, updated_at=NOW()
+            SET parent_id=$2, codigo=$3, tipo=$4, naturaleza=$5, nivel=$6,
+                permite_movimientos=true, updated_at=NOW()
           WHERE id=$1`,
         [c.id, control.id, cod, control.tipo, control.naturaleza, (control.nivel || 1) + 1]);
       // El control deja de recibir movimientos: la hoja es el tercero.
@@ -280,4 +339,63 @@ export async function reorganizarTerceros(
     if (enPasada === 0) break;
   }
   return { movidas, detalle };
+}
+
+/**
+ * Captura en el catálogo de CLIENTES/PROVEEDORES (`customers`) los terceros que
+ * conocemos por los CFDI y las subcuentas de tercero — con los datos que se
+ * puedan: RFC y nombre. Así el cliente/proveedor aparece en su pantalla (Clientes
+ * o Proveedores) sin recapturarlo a mano. No pisa nombres ya curados; sólo marca
+ * el rol (es_cliente / es_proveedor) y rellena el nombre si estaba vacío.
+ */
+export async function capturarTercerosEnCatalogo(
+  companyId: string, tipo: 'cliente' | 'proveedor',
+): Promise<{ creados: number; actualizados: number; omitidos: number }> {
+  const rol = tipo === 'cliente' ? 'es_cliente' : 'es_proveedor';
+  const direccion = tipo === 'cliente' ? 'emitidos' : 'recibidos';
+  const colRfc = tipo === 'cliente' ? 'rfc_receptor' : 'rfc_emisor';
+  const colNom = tipo === 'cliente' ? 'nombre_receptor' : 'nombre_emisor';
+  const agrups = tipo === 'cliente' ? ['105.01', '105.02'] : ['201.01', '201.02'];
+
+  const emp = await query<any>('SELECT UPPER(rfc) AS rfc FROM companies WHERE id=$1', [companyId]);
+  const rfcEmpresa = String(emp.rows[0]?.rfc || '').trim();
+
+  // Fuente 1: los CFDI (por RFC, el nombre más reciente). Fuente 2: las subcuentas
+  // de tercero (nombre curado del respaldo).
+  const deCfdi = await query<any>(
+    `SELECT DISTINCT ON (UPPER(${colRfc})) UPPER(${colRfc}) AS rfc, ${colNom} AS nombre
+       FROM cfdi_recibidos
+      WHERE company_id=$1 AND direccion=$2 AND ${colRfc} IS NOT NULL AND ${colRfc} <> ''
+      ORDER BY UPPER(${colRfc}), fecha_emision DESC`, [companyId, direccion]);
+  const deCtas = await query<any>(
+    `SELECT DISTINCT ON (UPPER(tercero_rfc)) UPPER(tercero_rfc) AS rfc, nombre
+       FROM accounting_accounts
+      WHERE company_id=$1 AND tercero_rfc IS NOT NULL AND codigo_agrupador = ANY($2)
+      ORDER BY UPPER(tercero_rfc)`, [companyId, agrups]);
+
+  const porRfc = new Map<string, string>();
+  for (const r of deCfdi.rows) porRfc.set(String(r.rfc).trim(), r.nombre);
+  for (const r of deCtas.rows) if (r.nombre) porRfc.set(String(r.rfc).trim(), r.nombre);
+
+  let creados = 0, actualizados = 0, omitidos = 0;
+  for (const [rfc, nombre] of porRfc) {
+    const rfcU = rfc.toUpperCase().trim();
+    if (!rfcU || rfcU.length > 13 || rfcU === rfcEmpresa) { omitidos++; continue; }
+    const nom = (String(nombre || '').trim() || rfcU).slice(0, 255);
+    try {
+      const r = await query<any>(
+        `INSERT INTO customers (company_id, rfc, business_name, ${rol})
+         VALUES ($1,$2,$3,true)
+         ON CONFLICT (company_id, rfc) DO UPDATE SET
+           ${rol} = true,
+           business_name = CASE
+             WHEN customers.business_name IS NULL OR customers.business_name = ''
+               THEN EXCLUDED.business_name ELSE customers.business_name END,
+           updated_at = NOW()
+         RETURNING (xmax = 0) AS creado`,
+        [companyId, rfcU, nom]);
+      if (r.rows[0].creado) creados++; else actualizados++;
+    } catch { omitidos++; }
+  }
+  return { creados, actualizados, omitidos };
 }

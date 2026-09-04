@@ -224,14 +224,25 @@ function TabProveedores() {
     finally { setBusy(false); }
   };
 
+  const capturar = async () => {
+    setBusy(true); setMsg('');
+    try { const r: any = await api.capturarTercerosCatalogo('proveedor'); setMsg(r?.message || 'Proveedores capturados en el catálogo.'); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo capturar en el catálogo.'); }
+    finally { setBusy(false); }
+  };
+
   return (
     <div className="space-y-3">
       <div className="bg-white rounded-lg shadow border p-4 flex flex-wrap items-center gap-3">
         <p className="text-sm text-gray-600 flex-1 min-w-[16rem]">
-          Cada proveedor tiene su subcuenta bajo 201.01 (nacional) o 201.02 (extranjero), numerada
-          <b> 201-01-001, 201-01-002…</b> Se generan solas —de los recibidos <b>y del catálogo de
-          proveedores</b>— y el código se guarda en el expediente del tercero. Puedes capturar/override.
+          Cada proveedor tiene su subcuenta bajo 201.01 (nacional) o 201.02 (extranjero). Se generan
+          solas —de los recibidos <b>y del catálogo de proveedores</b>—. «Capturar en catálogo» los
+          mete en la pantalla de Proveedores.
         </p>
+        <button onClick={capturar} disabled={busy}
+          className="flex items-center gap-1.5 border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-50 disabled:opacity-50 text-sm">
+          <Truck size={15} /> Capturar en catálogo
+        </button>
         <button onClick={generar} disabled={busy}
           className="flex items-center gap-1.5 bg-emerald-700 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-800 disabled:opacity-50 text-sm">
           <PlayCircle size={15} /> {busy ? 'Generando…' : 'Generar subcuentas'}

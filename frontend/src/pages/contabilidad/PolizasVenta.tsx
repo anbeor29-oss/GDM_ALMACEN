@@ -182,13 +182,24 @@ function TabClientes() {
     finally { setBusy(false); }
   };
 
+  const capturar = async () => {
+    setBusy(true); setMsg('');
+    try { const r: any = await api.capturarTercerosCatalogo('cliente'); setMsg(r?.message || 'Clientes capturados en el catálogo.'); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo capturar en el catálogo.'); }
+    finally { setBusy(false); }
+  };
+
   return (
     <div className="space-y-3">
       <div className="bg-white rounded-lg shadow border p-4 flex flex-wrap items-center gap-3">
         <p className="text-sm text-gray-600 flex-1 min-w-[16rem]">
-          Cada cliente tiene su subcuenta bajo 105.01 (nacional) o 105.02 (extranjero), numerada
-          <b> 105-01-001, 105-01-002…</b> Se generan solas; puedes capturar/override el código de una.
+          Cada cliente tiene su subcuenta bajo 105.01 (nacional) o 105.02 (extranjero). Se generan
+          solas; puedes capturar/override el código. «Capturar en catálogo» los mete en la pantalla de Clientes.
         </p>
+        <button onClick={capturar} disabled={busy}
+          className="flex items-center gap-1.5 border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50 disabled:opacity-50 text-sm">
+          <Users size={15} /> Capturar en catálogo
+        </button>
         <button onClick={generar} disabled={busy}
           className="flex items-center gap-1.5 bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:opacity-50 text-sm">
           <PlayCircle size={15} /> {busy ? 'Generando…' : 'Generar subcuentas'}

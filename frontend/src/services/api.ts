@@ -1039,6 +1039,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/subcuentas/generar', { direccion });
     return r.data;
   }
+  /** Mete en el catálogo de clientes/proveedores los terceros conocidos (RFC + nombre). */
+  async capturarTercerosCatalogo(tipo: 'cliente' | 'proveedor') {
+    const r = await this.client.post<APIResponse<any>>('/accounting/terceros/capturar-catalogo', { tipo });
+    return r.data;
+  }
   async getSubcuentasTercero(tipo: 'cliente' | 'proveedor') {
     const r = await this.client.get<APIResponse<any>>('/accounting/subcuentas', { params: { tipo } });
     return r.data;

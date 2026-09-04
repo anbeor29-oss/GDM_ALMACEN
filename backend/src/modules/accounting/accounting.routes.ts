@@ -965,6 +965,21 @@ router.post(
   })
 );
 
+/** POST /accounting/terceros/capturar-catalogo — mete en el catálogo de clientes/
+ *  proveedores los terceros conocidos por CFDI y subcuentas (RFC + nombre). */
+router.post(
+  '/terceros/capturar-catalogo',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tipo = req.body?.tipo === 'proveedor' ? 'proveedor' : 'cliente';
+    const r = await terceros.capturarTercerosEnCatalogo(companyId(req), tipo);
+    res.json({
+      success: true, data: r,
+      message: `${r.creados} ${tipo}(s) nuevo(s) en el catálogo · ${r.actualizados} ya existían${r.omitidos ? ` · ${r.omitidos} omitido(s)` : ''}.`,
+    });
+  })
+);
+
 /** GET /accounting/polizas?anio&mes — las pólizas del mes con sus partidas */
 router.get(
   '/polizas',
