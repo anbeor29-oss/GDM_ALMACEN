@@ -4785,5 +4785,20 @@ Auditoría suma una 3ª pestaña **«Resultados»** que lista SÓLO las coincide
 contador en la pestaña (rojo si hay algún DEFINITIVO). Reusa la misma `queryKey` (`lista-69b`),
 sin segunda consulta.
 
-Pendientes de la misma tanda: (C) las 4 pestañas de asignación ya existían; (D) alta rápida
-de subcuenta cuando la cuenta no existe (mayor + subcuenta prellenada) — EN CURSO.
+Pendientes de la misma tanda: (C) las 4 pestañas de asignación ya existían.
+
+## 2026-09-03 (contabilidad) — Alta rápida de subcuenta cuando la cuenta no existe (parte D)
+
+Al asignar un producto a una cuenta que no está en el catálogo, `CuentaPicker` marcaba
+«no existe» y ahí quedaba (y la póliza salía descuadrada). Ahora aparece un botón **«crear»**
+que abre una pantallita (`ModalCrearSubcuenta`): muestra la **cuenta de MAYOR** de la que
+colgará —adivinada del código tecleado por segmentos de la máscara, o elegible en un combo—,
+propone la **subcuenta con su número automático** (`<mayor>-001`, como los terceros) y un
+**nombre ya puesto** (la descripción del producto). Se crea y se asigna en el acto. Cableado
+en ventas (`TabIngresos`/`RenglonProducto`) y compras (`TabCargos`/`RenglonProducto`), que
+son los mismos tableros que usa **Asignación de cuentas**, así que cubre las dos pantallas.
+
+El código propuesto usa formato con guion, que pasa el check `startsWith` de `crearCuenta`.
+Además ese check ahora compara **sin separadores** (`105-01-001` cuelga de `105.01` igual que
+`11025000-001` de `11025000`): el estilo de puntos/guiones no decide la validez, sólo los
+dígitos. Sin cambios de BD.

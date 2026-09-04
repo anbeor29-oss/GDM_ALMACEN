@@ -12,15 +12,17 @@
  * opciones por renglón.
  */
 import { useEffect, useState } from 'react';
-import { Check, AlertTriangle } from 'lucide-react';
+import { Check, AlertTriangle, PlusCircle } from 'lucide-react';
 
 export function CuentaPicker({
-  listId, nombreCta, value, onSave, placeholder, ancho = 'w-60',
+  listId, nombreCta, value, onSave, onCrear, placeholder, ancho = 'w-60',
 }: {
   listId: string;
   nombreCta: Map<string, string>;
   value: string | null | undefined;
   onSave: (codigo: string) => void;
+  /** Si se pasa, cuando el código NO existe aparece un botón para crearlo en el acto. */
+  onCrear?: (codigo: string) => void;
   placeholder?: string;
   ancho?: string;
 }) {
@@ -49,7 +51,13 @@ export function CuentaPicker({
         </span>
       ) : val ? (
         <span className="text-xs text-rose-600 whitespace-nowrap flex items-center gap-1">
-          <AlertTriangle size={12} className="shrink-0" /> no existe en el catálogo
+          <AlertTriangle size={12} className="shrink-0" /> no existe
+          {onCrear && (
+            <button onClick={() => onCrear(val)} title="Crear esta cuenta y asignarla"
+              className="ml-1 inline-flex items-center gap-1 text-primary hover:underline">
+              <PlusCircle size={12} /> crear
+            </button>
+          )}
         </span>
       ) : null}
     </div>

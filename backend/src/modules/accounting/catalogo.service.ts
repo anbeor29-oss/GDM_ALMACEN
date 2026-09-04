@@ -403,7 +403,11 @@ export async function crearCuenta(companyId: string, d: DatosCuenta) {
     padre = r.rows[0];
     if (!padre) throw new Error('La cuenta padre no existe en esta empresa.');
 
-    if (!codigo.startsWith(padre.codigo)) {
+    // El prefijo se compara SIN separadores: así '105-01-001' cuelga de '105.01'
+    // igual que '11025000-001' de '11025000' — el estilo de puntos/guiones no
+    // debe decidir si una subcuenta es válida, sólo los dígitos.
+    const soloDig = (s: string) => String(s).replace(/[.\-\s]/g, '');
+    if (!soloDig(codigo).startsWith(soloDig(padre.codigo))) {
       throw new Error(
         `El código "${codigo}" no cuelga de "${padre.codigo}". Una subcuenta ` +
         `tiene que empezar con el código de su cuenta padre, o el catálogo ` +

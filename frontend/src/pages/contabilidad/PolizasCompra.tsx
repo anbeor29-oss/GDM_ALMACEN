@@ -13,6 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Tag, Truck, FileText, PlayCircle, RefreshCw, Check, Pencil, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
 import { CuentaPicker } from '@/components/CuentaPicker';
+import { ModalCrearSubcuenta } from '@/components/ModalCrearSubcuenta';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 
 const money = (n: any, m = 'MXN') =>
@@ -90,6 +91,8 @@ export function PolizasCompraPage() {
 /* ── Tab 1: Cargos (ClaveProdServ → 115/601) ──────────────────────────────── */
 export function TabCargos({ anio, mes, cuentas }: { anio: number; mes: number; cuentas: any[] }) {
   const qc = useQueryClient();
+  const mascara = useMascara();
+  const [crear, setCrear] = useState<{ p: any; codigo: string } | null>(null);
   const clave = ['compras-productos', anio, mes];
   const q = useQuery({ queryKey: clave, queryFn: () => api.getComprasProductos(anio, mes) });
   const productos: any[] = q.data?.data?.productos || [];
@@ -158,17 +161,34 @@ export function TabCargos({ anio, mes, cuentas }: { anio: number; mes: number; c
               </td></tr>
             )}
             {productos.map((p) => (
-              <RenglonProducto key={p.clave} p={p} nombreCta={nombreCta} onGuardar={guardar} />
+              <RenglonProducto key={p.clave} p={p} nombreCta={nombreCta} onGuardar={guardar}
+                onCrear={(codigo: string) => setCrear({ p, codigo })} />
             ))}
           </tbody>
         </table>
       </div>
+
+      {crear && (
+        <ModalCrearSubcuenta
+          codigo={crear.codigo}
+          sugerirNombre={crear.p.descripcion || crear.p.clave}
+          mascara={mascara}
+          onCerrar={() => setCrear(null)}
+          onHecho={async (cod) => {
+            await guardar(crear.p, cod);
+            qc.invalidateQueries({ queryKey: ['ctas-mov'] });
+            qc.invalidateQueries({ queryKey: ['ctas-todas'] });
+            setCrear(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function RenglonProducto({ p, nombreCta, onGuardar }: {
+function RenglonProducto({ p, nombreCta, onGuardar, onCrear }: {
   p: any; nombreCta: Map<string, string>; onGuardar: (p: any, codigo: string) => void;
+  onCrear: (codigo: string) => void;
 }) {
   return (
     <tr className="hover:bg-gray-50">
@@ -178,7 +198,7 @@ function RenglonProducto({ p, nombreCta, onGuardar }: {
       <td className="px-4 py-2 text-right text-sm">{money(p.importe)}</td>
       <td className="px-4 py-2">
         <CuentaPicker listId="ctas-compras" nombreCta={nombreCta} value={p.cuenta}
-          onSave={(codigo) => onGuardar(p, codigo)} placeholder="115/601…" ancho="w-64" />
+          onSave={(codigo) => onGuardar(p, codigo)} onCrear={onCrear} placeholder="115/601…" ancho="w-64" />
       </td>
     </tr>
   );
