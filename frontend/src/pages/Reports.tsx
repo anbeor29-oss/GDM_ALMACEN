@@ -21,54 +21,46 @@ import { fechaMx } from '@/utils/fecha';
 type Tab = 'collections' | 'receivables' | 'sales' | 'tax';
 
 export function ReportsPage() {
-  const [tab, setTab] = useState<Tab>('collections');
+  /* Cobranza detallada se movió a Facturas; Cobranza, Ventas y Fiscal quedan
+   * DESHABILITADOS a pedido del usuario (se reubicarán). Se conservan sus
+   * componentes para reactivarlos donde toque: poner MOSTRAR_OTROS = true los
+   * devuelve. Por eso el tab arranca en 'receivables'. */
+  const [tab, setTab] = useState<Tab>('receivables');
+  const MOSTRAR_OTROS = false;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-4xl font-bold text-gray-900">Reportes</h1>
-        <p className="text-gray-600 mt-2">Cobranza, ventas y reportes fiscales</p>
+        <p className="text-gray-600 mt-2">Cobranza detallada</p>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-gray-200">
-        <TabButton
-          active={tab === 'collections'}
-          onClick={() => setTab('collections')}
-          icon={<DollarSign size={18} />}
-          label="Cobranza"
-        />
         <TabButton
           active={tab === 'receivables'}
           onClick={() => setTab('receivables')}
           icon={<ClipboardList size={18} />}
           label="Cobranza detallada"
         />
-        <TabButton
-          active={tab === 'sales'}
-          onClick={() => setTab('sales')}
-          icon={<TrendingUp size={18} />}
-          label="Ventas"
-        />
-        <TabButton
-          active={tab === 'tax'}
-          onClick={() => setTab('tax')}
-          icon={<Receipt size={18} />}
-          label="Fiscal"
-        />
+        {MOSTRAR_OTROS && (<>
+          <TabButton active={tab === 'collections'} onClick={() => setTab('collections')} icon={<DollarSign size={18} />} label="Cobranza" />
+          <TabButton active={tab === 'sales'} onClick={() => setTab('sales')} icon={<TrendingUp size={18} />} label="Ventas" />
+          <TabButton active={tab === 'tax'} onClick={() => setTab('tax')} icon={<Receipt size={18} />} label="Fiscal" />
+        </>)}
       </div>
 
-      {tab === 'collections' && <CollectionsReport />}
       {tab === 'receivables' && <ReceivablesReport />}
-      {tab === 'sales' && <SalesReport />}
-      {tab === 'tax' && <TaxReport />}
+      {MOSTRAR_OTROS && tab === 'collections' && <CollectionsReport />}
+      {MOSTRAR_OTROS && tab === 'sales' && <SalesReport />}
+      {MOSTRAR_OTROS && tab === 'tax' && <TaxReport />}
     </div>
   );
 }
 
 /* ─────────────── Cobranza detallada — facturas con saldo > 0.20 ─────────────── */
 
-function ReceivablesReport() {
+export function ReceivablesReport() {
   const [customerId, setCustomerId] = useState<string>('');
   const { data: customersResp } = useQuery({
     queryKey: ['customers-for-receivables'],

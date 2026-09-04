@@ -156,6 +156,7 @@ export function Layout() {
                     pathPrefix="/invoices"
                     children={[
                       { to: '/invoices',             icon: emoji3D('🧾'), label: 'Facturas' },
+                      { to: '/invoices/cobranza-detallada', icon: emoji3D('📋'), label: 'Cobranza detallada' },
                       ...(show('credit_notes') ? [
                         { to: '/credit-notes',       icon: emoji3D('📉'), label: 'Notas de Crédito' },
                         { to: '/payments',           icon: emoji3D('💵'), label: 'Complementos de Pago' },

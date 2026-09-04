@@ -16,6 +16,7 @@ import { NewInvoicePage } from '@/pages/NewInvoice';
 import { CustomersPage } from '@/pages/Customers';
 import { ProductsPage } from '@/pages/Products';
 import { ReportsPage } from '@/pages/Reports';
+import { CobranzaDetalladaPage } from '@/pages/CobranzaDetallada';
 import { CreditNotesPage } from '@/pages/CreditNotes';
 import PaymentsPage from '@/pages/Payments';
 import { AdminPackagesPage } from '@/pages/AdminPackages';
@@ -242,6 +243,7 @@ export function App() {
             <Route path="credit-notes" element={<ModuleRoute module="credit_notes"><CreditNotesPage /></ModuleRoute>} />
             <Route path="payments" element={<ModuleRoute module="credit_notes"><PaymentsPage /></ModuleRoute>} />
             <Route path="customers"    element={<ModuleRoute module="customers"><CustomersPage /></ModuleRoute>} />
+            <Route path="invoices/cobranza-detallada" element={<ModuleRoute module="invoices"><CobranzaDetalladaPage /></ModuleRoute>} />
             <Route path="reports"      element={<ModuleRoute module="reports"><ReportsPage /></ModuleRoute>} />
             <Route path="products" element={<ModuleRoute module="products"><ProductsPage /></ModuleRoute>} />
             {/* Equipo: el ADMIN de la empresa gestiona a sus USER. */}

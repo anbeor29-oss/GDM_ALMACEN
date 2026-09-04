@@ -4878,3 +4878,12 @@ y quitar las mal capturadas):
 
 Flujo de limpieza sugerido: Asignar agrupador → Reorganizar terceros → filtro «Mal capturadas»
 para revisar/borrar lo que siga raro (el borrado ya persiste y manda partidas a MIG-TEMPORAL).
+
+## 2026-09-03 (reportes) — Cobranza detallada en Facturas; se deshabilitan Cobranza/Ventas/Fiscal
+
+`Reports.tsx` tenía 4 tabs (Cobranza, Cobranza detallada, Ventas, Fiscal). A pedido:
+- **Cobranza detallada** se expone también en **Facturas**: `ReceivablesReport` ahora se exporta
+  y se reutiliza en `CobranzaDetallada.tsx` (ruta `/invoices/cobranza-detallada`, módulo
+  invoices, item en el menú Facturas). Misma lógica y PDF, sin duplicar.
+- **Cobranza, Ventas y Fiscal quedan DESHABILITADOS** (flag `MOSTRAR_OTROS=false` en la página
+  de Reportes) — se conservan sus componentes para reubicarlos donde el usuario diga.
