@@ -1004,6 +1004,11 @@ class APIClient {
     const r = await this.client.delete<APIResponse<any>>(`/accounting/cuentas/${id}`);
     return r.data;
   }
+  /** Borrado REAL (para limpiar el catálogo importado). Falla si tiene subcuentas o movimientos. */
+  async eliminarCuentaContable(id: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/accounting/cuentas/${id}`, { params: { duro: 1 } });
+    return r.data;
+  }
   async fijarEquivalenciaCuenta(id: string, datos: any) {
     const r = await this.client.put<APIResponse<any>>(`/accounting/cuentas/${id}/equivalencia`, datos);
     return r.data;

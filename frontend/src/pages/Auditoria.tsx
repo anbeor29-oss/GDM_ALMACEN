@@ -43,7 +43,7 @@ export function AuditoriaPage() {
    * La descarga de XML también vive en su propio menú, "XML del SAT". Aquí se
    * queda porque es donde se revisa junto con lo demás: la misma persona que
    * mira los comprobantes propios mira los recibidos. */
-  const [tab, setTab] = useState<'emitidos' | 'lista69b'>('emitidos');
+  const [tab, setTab] = useState<'emitidos' | 'lista69b' | 'resultados'>('emitidos');
   const [soloDiferencias, setSoloDiferencias] = useState(false);
   const [revisando, setRevisando] = useState(false);
   const [aviso, setAviso] = useState('');
@@ -57,6 +57,12 @@ export function AuditoriaPage() {
     queryFn: () => api.getAuditoria({ soloDiscrepancias: soloDiferencias || undefined }),
   });
   const comprobantes: any[] = listaQ.data?.data?.comprobantes || [];
+
+  // Sólo para el contador de la pestaña «Resultados»: reusa la misma clave que
+  // Lista69B, así no dispara una segunda consulta.
+  const cruceQ = useQuery({ queryKey: ['lista-69b'], queryFn: () => api.get69B() });
+  const coincidencias: any[] = (cruceQ.data as any)?.data?.coincidencias || [];
+  const nDefinitivos = coincidencias.filter((c: any) => c.situacion === 'DEFINITIVO').length;
 
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ['auditoria'] });
@@ -120,9 +126,26 @@ export function AuditoriaPage() {
             {label}
           </button>
         ))}
+        {/* Tercera parte: los resultados del cruce — a quién de los nuestros lo
+            señala el 69-B. El número avisa sin tener que entrar; rojo si hay
+            alguno DEFINITIVO. */}
+        <button onClick={() => setTab('resultados')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-1.5 ${
+            tab === 'resultados'
+              ? 'border-emerald-600 text-emerald-700'
+              : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          Resultados
+          {coincidencias.length > 0 && (
+            <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-semibold ${
+              nDefinitivos > 0 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+              {coincidencias.length}
+            </span>
+          )}
+        </button>
       </div>
 
-      {tab === 'lista69b' && <Lista69B />}
+      {tab === 'lista69b' && <Lista69B vista="padron" />}
+      {tab === 'resultados' && <Lista69B vista="resultados" />}
 
       {tab === 'emitidos' && (<>
       {aviso && <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">{aviso}</div>}

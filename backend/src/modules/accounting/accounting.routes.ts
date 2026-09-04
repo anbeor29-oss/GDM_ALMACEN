@@ -271,8 +271,14 @@ router.delete(
   '/cuentas/:id',
   requireCapability('contabilidad:catalogo'),
   asyncHandler(async (req: Request, res: Response) => {
+    // ?duro=1 → borrado REAL (para limpiar el catálogo importado con errores);
+    // sin él, baja lógica que conserva la historia.
+    if (req.query.duro === '1' || req.query.duro === 'true') {
+      const cuenta = await catalogo.eliminarCuenta(companyId(req), req.params.id);
+      return res.json({ success: true, data: { cuenta }, message: `Cuenta ${cuenta.codigo} borrada.` });
+    }
     const cuenta = await catalogo.desactivarCuenta(companyId(req), req.params.id);
-    res.json({
+    return res.json({
       success: true,
       data: { cuenta },
       message: 'La cuenta quedó desactivada. No se borra: sus pólizas la siguen usando.',

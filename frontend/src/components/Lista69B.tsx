@@ -38,7 +38,12 @@ const SITUACION: Record<string, { label: string; cls: string; icono: any }> = {
   SENTENCIA_FAVORABLE: { label: 'Sentencia favorable', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300', icono: CheckCircle2 },
 };
 
-export function Lista69B() {
+export function Lista69B({ vista }: { vista?: 'padron' | 'resultados' } = {}) {
+  // La página de Auditoría reparte esta pantalla en dos pestañas: 'padron' (cargar
+  // el listado y ver su estado) y 'resultados' (el cruce con nuestros terceros).
+  // Sin prop, muestra todo (compatibilidad).
+  const verPadron = vista !== 'resultados';
+  const verResultados = vista !== 'padron';
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const esAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(user?.role || '');
@@ -98,10 +103,11 @@ export function Lista69B() {
 
   return (
     <div className="space-y-6">
-      {aviso && <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">{aviso}</div>}
-      {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
+      {verPadron && aviso && <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">{aviso}</div>}
+      {verPadron && error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
       {/* Estado de la lista */}
+      {verPadron && (
       <div className="bg-white rounded-lg shadow border p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -149,9 +155,10 @@ export function Lista69B() {
           de la publicación oficial.
         </p>
       </div>
+      )}
 
       {/* El resultado del cruce */}
-      {definitivos.length > 0 && (
+      {verResultados && definitivos.length > 0 && (
         <div className="bg-rose-50 border border-rose-300 text-rose-900 px-4 py-3 rounded-lg text-sm">
           <strong>{definitivos.length} de tus terceros están en la lista DEFINITIVA.</strong>{' '}
           Los comprobantes que te hayan emitido no producen efecto fiscal: hay 30 días
@@ -159,6 +166,7 @@ export function Lista69B() {
         </div>
       )}
 
+      {verResultados && (<>
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50 border-b">
@@ -237,6 +245,7 @@ export function Lista69B() {
         haya traído la descarga masiva. Si aún no la has corrido, esa columna puede estar
         en blanco aunque sí existan operaciones.
       </p>
+      </>)}
     </div>
   );
 }

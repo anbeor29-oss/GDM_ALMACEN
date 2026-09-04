@@ -17,7 +17,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight, ChevronDown, Search, Plus, AlertTriangle, CheckCircle2,
-  Link2, BookOpen, X, Info, Layers, Upload, Loader2, Scale, Pencil,
+  Link2, BookOpen, X, Info, Layers, Upload, Loader2, Scale, Pencil, Trash2,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
@@ -55,6 +55,8 @@ export function CatalogoCuentasPage() {
   /* Colapsa TODO el catálogo a un solo renglón, para dejar la pantalla entera
      al panel de análisis (respaldo del cliente, catálogos). */
   const [arbolColapsado, setArbolColapsado] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [soloSinAgrupador, setSoloSinAgrupador] = useState(false);
 
   const arbolQ = useQuery({
     queryKey: ['cuentas-arbol'],
@@ -79,10 +81,11 @@ export function CatalogoCuentasPage() {
    * coincide: una cuenta sin su rama encima no dice de qué cuelga. */
   const filtrado = useMemo(() => {
     const b = busqueda.trim().toLowerCase();
-    if (!b && !tipo) return arbol;
+    if (!b && !tipo && !soloSinAgrupador) return arbol;
 
     const coincide = (n: any): boolean =>
       (!tipo || n.tipo === tipo) &&
+      (!soloSinAgrupador || (!n.codigo_agrupador && n.permite_movimientos)) &&
       (!b || n.codigo.toLowerCase().includes(b) || n.nombre.toLowerCase().includes(b));
 
     const podar = (n: any): any | null => {
@@ -91,9 +94,9 @@ export function CatalogoCuentasPage() {
       return null;
     };
     return arbol.map(podar).filter(Boolean);
-  }, [arbol, busqueda, tipo]);
+  }, [arbol, busqueda, tipo, soloSinAgrupador]);
 
-  const buscando = !!busqueda.trim() || !!tipo;
+  const buscando = !!busqueda.trim() || !!tipo || soloSinAgrupador;
 
   /* Los id de las ramas que TIENEN hijos: es lo que "Expandir todo" abre. */
   const idsConHijos = useMemo(() => {
@@ -109,6 +112,21 @@ export function CatalogoCuentasPage() {
     const s = new Set(abiertos);
     s.has(id) ? s.delete(id) : s.add(id);
     setAbiertos(s);
+  };
+
+  /* Borrar de verdad (limpieza del catálogo importado). El backend rechaza si la
+     cuenta tiene subcuentas o movimientos; ahí se avisa y no pasa nada. */
+  const eliminar = async (nodo: any) => {
+    if ((nodo.hijosLista || []).length) { setMsg(`«${nodo.codigo}» tiene subcuentas: bórralas primero.`); return; }
+    if (!window.confirm(`¿Borrar la cuenta ${nodo.codigo} — ${nodo.nombre}?\nSe elimina del catálogo. No se puede si tiene movimientos en pólizas.`)) return;
+    setMsg('');
+    try {
+      const r: any = await api.eliminarCuentaContable(nodo.id);
+      setMsg(r?.message || `Cuenta ${nodo.codigo} borrada.`);
+      refrescar();
+    } catch (e: any) {
+      setMsg(e?.response?.data?.message || 'No se pudo borrar la cuenta.');
+    }
   };
 
   if (arbolQ.isLoading) {
@@ -170,6 +188,13 @@ export function CatalogoCuentasPage() {
         </p>
       )}
 
+      {msg && (
+        <p className="text-sm bg-sky-50 border border-sky-200 text-sky-900 rounded px-3 py-2 flex items-center justify-between gap-2">
+          <span>{msg}</span>
+          <button onClick={() => setMsg('')} className="text-sky-400 hover:text-sky-700"><X size={14} /></button>
+        </p>
+      )}
+
       {/* ── Dos paneles: el catálogo (colapsable a un solo renglón) y el análisis ──
           Al colapsar el catálogo, el panel de análisis ocupa toda la pantalla. */}
       <div className={`grid gap-4 items-start ${
@@ -203,6 +228,16 @@ export function CatalogoCuentasPage() {
                   <option value="">Todos los tipos</option>
                   {Object.keys(TIPO_COLOR).map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
+                {/* El import HEREDA el agrupador del padre para las cuentas que no
+                    lo traen; esto lista las que quedaron de movimiento SIN agrupador
+                    del SAT, para revisarlas o borrarlas. */}
+                <button
+                  onClick={() => setSoloSinAgrupador((v) => !v)}
+                  title="Sólo cuentas de movimiento sin código agrupador del SAT"
+                  className={`border px-3 rounded-lg text-sm flex items-center gap-1.5 ${
+                    soloSinAgrupador ? 'bg-amber-100 border-amber-300 text-amber-800' : 'hover:bg-gray-50 text-gray-600'}`}>
+                  <AlertTriangle size={14} /> Sin agrupador
+                </button>
                 {/* Toggle real: el árbol arranca compactado, así que estando colapsado el
                     botón OFRECE expandir; ya expandido, re-colapsa para liberar la pantalla
                     —útil cuando un respaldo trae cientos de subcuentas por cliente. Con una
@@ -247,7 +282,8 @@ export function CatalogoCuentasPage() {
                   <Rama key={n.id} nodo={n} nivel={0} mascara={mascara}
                     abiertos={abiertos} buscando={buscando}
                     onAlternar={alternar} onDetalle={setDetalle}
-                    onAgregar={puedeEditar ? (p: any) => setAlta({ parentId: p.id, padre: p }) : undefined} />
+                    onAgregar={puedeEditar ? (p: any) => setAlta({ parentId: p.id, padre: p }) : undefined}
+                    onEliminar={puedeEditar ? eliminar : undefined} />
                 ))}
               </div>
             </>
@@ -537,7 +573,7 @@ function Chip({ n, t, c }: any) {
 
 /* ═══════════ UNA RAMA DEL ÁRBOL ═══════════ */
 
-function Rama({ nodo, nivel, abiertos, buscando, onAlternar, onDetalle, onAgregar, mascara }: any) {
+function Rama({ nodo, nivel, abiertos, buscando, onAlternar, onDetalle, onAgregar, onEliminar, mascara }: any) {
   const hijos = nodo.hijosLista || [];
   /* Al buscar se abre todo: si el resultado quedara colapsado habría que ir
      destapando ramas para ver lo que ya se encontró. */
@@ -600,13 +636,21 @@ function Rama({ nodo, nivel, abiertos, buscando, onAlternar, onDetalle, onAgrega
               <Plus size={13} />
             </button>
           )}
+          {/* Borrar sólo en hojas: una cuenta con subcuentas se limpia de abajo
+              hacia arriba, para no tirar un grupo entero por error. */}
+          {onEliminar && hijos.length === 0 && (
+            <button onClick={() => onEliminar(nodo)} title="Borrar cuenta"
+              className="text-gray-300 hover:text-rose-600">
+              <Trash2 size={13} />
+            </button>
+          )}
         </div>
       </div>
 
       {abierto && hijos.map((h: any) => (
         <Rama key={h.id} nodo={h} nivel={nivel + 1} mascara={mascara}
           abiertos={abiertos} buscando={buscando}
-          onAlternar={onAlternar} onDetalle={onDetalle} onAgregar={onAgregar} />
+          onAlternar={onAlternar} onDetalle={onDetalle} onAgregar={onAgregar} onEliminar={onEliminar} />
       ))}
     </>
   );

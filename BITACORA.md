@@ -4766,3 +4766,24 @@ en `companies.mascara_cuenta` ANTES** de armar el catálogo, así la jerarquía 
 segmentos y el código se ve igual en todo NEXO (`11025050` → `1-10-25-050`). Vacío = no
 toca la máscara existente. `opciones.mascara` en `importarContpaqi`; `req.body.mascara` en
 la ruta; campo con vista previa en `ImportarContpaqi.tsx`.
+
+## 2026-09-03 (contabilidad + auditoría) — Borrar cuentas del catálogo, filtro «sin agrupador» y 3ª pestaña de Auditoría (coincidencias 69-B)
+
+Tanda pedida por el usuario, primera parte (de un pedido de 5). **(A/B) Limpiar el catálogo
+importado.** El respaldo «trae errores», así que el Catálogo ahora deja **borrar** cuentas
+(papelera en cada hoja): `eliminarCuenta` en `catalogo.service.ts` — borrado REAL, guardado
+(rechaza si la cuenta tiene subcuentas o movimientos en pólizas; los saldos por periodo,
+derivados, sí se quitan; equivalencias caen por CASCADE). Ruta: `DELETE /accounting/cuentas/:id?duro=1`
+(sin `duro`, sigue la baja lógica de antes). Con movimientos manda a «Cambio de cuenta».
+Además, filtro **«Sin agrupador»** en el buscador para hallar las cuentas de movimiento que
+el import dejó sin código agrupador del SAT (ya se marcaban con badge; ahora se filtran).
+
+**(E) Auditoría: tercera parte = Resultados.** La página `/auditoria` tenía 2 pestañas
+(Nuestros comprobantes, Listas 69-B) y el **cruce** con nuestros terceros vivía dentro de la
+de padrón. Se separó: `Lista69B` toma una prop `vista` (`'padron'` | `'resultados'`), y
+Auditoría suma una 3ª pestaña **«Resultados»** que lista SÓLO las coincidencias, con un
+contador en la pestaña (rojo si hay algún DEFINITIVO). Reusa la misma `queryKey` (`lista-69b`),
+sin segunda consulta.
+
+Pendientes de la misma tanda: (C) las 4 pestañas de asignación ya existían; (D) alta rápida
+de subcuenta cuando la cuenta no existe (mayor + subcuenta prellenada) — EN CURSO.

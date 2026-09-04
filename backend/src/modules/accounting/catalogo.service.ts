@@ -538,6 +538,40 @@ export async function desactivarCuenta(companyId: string, id: string) {
   return r.rows[0];
 }
 
+/**
+ * Borrado REAL — para limpiar el catálogo recién importado, que "trae errores".
+ *
+ * A diferencia de desactivar, la cuenta desaparece. Sólo cuando es SEGURO: sin
+ * subcuentas y sin movimientos en pólizas. Si tiene pólizas se rechaza y se manda
+ * a «Cambio de cuenta» para reasignar primero — nunca se borra historia. Los
+ * saldos por periodo son derivados (se recalculan de las pólizas), así que esos
+ * sí se quitan; las equivalencias caen solas (ON DELETE CASCADE).
+ */
+export async function eliminarCuenta(companyId: string, id: string) {
+  const cta = await obtenerCuenta(companyId, id);
+  if (!cta) throw new Error('La cuenta no existe.');
+
+  const hijos = await query<any>(
+    `SELECT COUNT(*)::int AS n FROM accounting_accounts WHERE parent_id = $1`, [id]);
+  if (hijos.rows[0].n > 0) {
+    throw new Error(
+      `No se puede borrar «${cta.codigo}»: tiene ${hijos.rows[0].n} subcuenta(s). ` +
+      `Bórralas primero — así no se borra un grupo entero por error.`);
+  }
+
+  const movs = await query<any>(
+    `SELECT COUNT(*)::int AS n FROM journal_lines WHERE account_id = $1`, [id]);
+  if (movs.rows[0].n > 0) {
+    throw new Error(
+      `No se puede borrar «${cta.codigo}»: tiene ${movs.rows[0].n} movimiento(s) en pólizas. ` +
+      `Usa «Cambio de cuenta» para reasignarlos y luego bórrala.`);
+  }
+
+  await query('DELETE FROM accounting_period_balances WHERE account_id = $1', [id]);
+  await query('DELETE FROM accounting_accounts WHERE company_id = $1 AND id = $2', [companyId, id]);
+  return { id, codigo: cta.codigo, nombre: cta.nombre };
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    5. EQUIVALENCIAS CON OTROS CATÁLOGOS
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -721,7 +755,7 @@ export async function revisarCatalogo(companyId: string) {
 export default {
   sembrarReferencias, faltantesDelAnexo24, activarContabilidad,
   listarCuentas, arbolDeCuentas, obtenerCuenta,
-  crearCuenta, actualizarCuenta, desactivarCuenta,
+  crearCuenta, actualizarCuenta, desactivarCuenta, eliminarCuenta,
   listarCatalogosExternos, fijarEquivalencia, equivalenciasDeCuenta,
   revisarCatalogo,
 };
