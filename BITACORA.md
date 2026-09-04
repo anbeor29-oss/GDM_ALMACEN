@@ -4963,3 +4963,16 @@ Los clientes quedaban en su catálogo pero los proveedores no. Ahora `importarCo
 generar las subcuentas, corre `capturarTercerosEnCatalogo` para **cliente Y proveedor** (RFC +
 nombre en `customers`, es_cliente/es_proveedor). Para lo ya importado sin re-importar: botón
 «Capturar en catálogo» en Pólizas de compra → Proveedores.
+
+## 2026-09-03 (contabilidad + SAT) — Pólizas pendientes (nada se pierde) + cadencia 45 min con agresivo nocturno
+
+- **Pantalla «Pólizas pendientes».** Tabla `contpaqi_polizas_pendientes` (migración 2026-09-03b):
+  cuando una póliza del respaldo no entra (movs<2, fecha inválida, o error como jl_no_negativos),
+  `importarPolizas` la guarda CRUDA (con sus movimientos) + el motivo, en vez de sólo contarla. Al
+  re-importar, la que ya entra se borra de ahí (borrarPend en éxito y en ya-existía). Ruta
+  `GET /accounting/polizas-pendientes` + `DELETE .../:guid`; pantalla `PolizasPendientes.tsx` bajo
+  el subgrupo Pólizas del menú. Así se cumple «que nada se pierda».
+- **Motor: cadencia 45 min + agresivo de noche.** El cron pasó de `*/15` a `*/45`. `avanzar` acepta
+  un `factor`; el cron lo pone en **4 de noche (22:00–06:59 CDMX)** —cuando el SAT está menos
+  saturado— y 1 de día, escalando paquetes/verificaciones/solicitudes por corrida. «Avanzar ahora»
+  (manual) sigue con factor 1.

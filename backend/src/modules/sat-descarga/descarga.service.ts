@@ -418,9 +418,17 @@ export async function crearTrabajo(
  * función, porque tener dos caminos para lo mismo garantiza que uno de los dos
  * se quede atrás.
  */
-export async function avanzar(companyId: string, trabajoId?: string): Promise<any> {
+export async function avanzar(companyId: string, trabajoId?: string, factor = 1): Promise<any> {
   const cred = await credencialUsable(companyId);
   const token = await soap.autenticar(cred);
+  /* Cuánto se atiende por corrida. De noche el cron manda `factor` alto para
+   * aprovechar que el SAT está menos saturado (10PM–7AM); a mano y de día, 1. */
+  const f = Math.max(1, Math.floor(factor));
+  const cupo = {
+    paquetes: POR_CORRIDA.paquetes * f,
+    verificaciones: POR_CORRIDA.verificaciones * f,
+    solicitudes: POR_CORRIDA.solicitudes * f,
+  };
   const hecho = {
     descargados: 0, verificados: 0, solicitados: 0, divididos: 0,
     errores: [] as string[],
@@ -447,7 +455,7 @@ export async function avanzar(companyId: string, trabajoId?: string): Promise<an
         AND p.estado IN ('PENDIENTE', 'DESCARGANDO')
         AND p.intentos < 8
       ORDER BY p.created_at ASC
-      LIMIT ${POR_CORRIDA.paquetes}`,
+      LIMIT ${cupo.paquetes}`,
     params
   );
   for (const p of paquetes.rows) {
@@ -472,7 +480,7 @@ export async function avanzar(companyId: string, trabajoId?: string): Promise<an
         AND pa.estado IN ('SOLICITADA', 'EN_PROCESO')
         AND (pa.proxima_consulta_at IS NULL OR pa.proxima_consulta_at <= NOW())
       ORDER BY pa.proxima_consulta_at ASC NULLS FIRST
-      LIMIT ${POR_CORRIDA.verificaciones}`,
+      LIMIT ${cupo.verificaciones}`,
     params
   );
   for (const pa of enCurso.rows) {
@@ -493,7 +501,7 @@ export async function avanzar(companyId: string, trabajoId?: string): Promise<an
   }
 
   /* Se piden como maximo las que quepan en lo que queda del cupo. */
-  const cupoSolicitudes = Math.min(POR_CORRIDA.solicitudes, presupuesto.quedanSolicitudes);
+  const cupoSolicitudes = Math.min(cupo.solicitudes, presupuesto.quedanSolicitudes);
   const pendientes = await query<any>(
     `SELECT pa.*, t.direccion, t.tipo, t.filtros, t.company_id
        FROM sat_particiones pa

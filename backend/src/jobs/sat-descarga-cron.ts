@@ -37,23 +37,22 @@ export function registerSatDescargaCron(): void {
     return;
   }
 
-  /* Cada quince minutos: asegura el trabajo del día y avanza lo que ya está
-   * pedido.
+  /* Cada 45 minutos: asegura el trabajo del día y avanza lo que ya está pedido.
    *
    * (La expresión cron va abajo, en el código. Escribirla aquí dentro
    * cerraría este comentario: lleva una barra y un asterisco juntos.)
    *
+   * DE DÍA basta con 45 min: el SAT tarda minutos u horas en dejar un paquete y
+   * preguntar más seguido sólo gasta cuota. DE NOCHE (10PM–7AM, hora de México),
+   * cuando el SAT está menos saturado, `correrPendientes` empuja con un FACTOR
+   * alto (atiende más paquetes/solicitudes por corrida) para vaciar el rezago.
+   *
    * ── POR QUÉ TAMBIÉN AQUÍ, SI YA HAY UNO A LAS 6:00 ──
    * Un reloj con una sola oportunidad al día es frágil: si el servicio está
    * reiniciando a las 6:00 —un despliegue, un reinicio de Render— ese día se
-   * pierde entero y nadie se entera hasta que alguien note el hueco meses
-   * después.
-   *
-   * Como crearTrabajoDiario es idempotente por día, llamarlo cada cuarto de
-   * hora no crea nada de más: el primer tick que encuentre el día sin trabajo
-   * lo crea, y los 95 restantes no hacen nada. El de las 6:00 sigue estando
-   * para que la descarga ocurra a una hora predecible; éste es la red. */
-  cron.schedule('*/15 * * * *', () => {
+   * pierde entero. Como crearTrabajoDiario es idempotente por día, llamarlo cada
+   * rato no crea nada de más; el de las 6:00 sigue por previsibilidad, éste es la red. */
+  cron.schedule('*/45 * * * *', () => {
     (async () => {
       await crearDiarios();
       await correrPendientes();
@@ -134,6 +133,15 @@ async function crearDiarios(): Promise<void> {
   }
 }
 
+/** Factor de agresividad por hora de México: de noche (22:00–06:59, cuando el SAT
+ *  está menos saturado) atiende ~4× por corrida; de día, normal. Render corre en
+ *  UTC, y CDMX es UTC−6. */
+function factorNocturno(): number {
+  const horaCdmx = (new Date().getUTCHours() - 6 + 24) % 24;
+  const esNoche = horaCdmx >= 22 || horaCdmx < 7;
+  return esNoche ? 4 : 1;
+}
+
 async function correrPendientes(): Promise<void> {
   const empresas = await query<any>(
     `SELECT DISTINCT t.company_id
@@ -142,9 +150,10 @@ async function correrPendientes(): Promise<void> {
   );
   if (empresas.rows.length === 0) return;
 
+  const factor = factorNocturno();
   for (const e of empresas.rows) {
     try {
-      const r = await avanzar(e.company_id);
+      const r = await avanzar(e.company_id, undefined, factor);
       if (r.descargados || r.verificados || r.solicitados || r.divididos) {
         logger.info(
           `[sat-descarga-cron] ${e.company_id}: ${r.solicitados} solicitud(es), ` +

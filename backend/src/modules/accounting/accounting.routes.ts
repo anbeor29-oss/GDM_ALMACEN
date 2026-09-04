@@ -1248,6 +1248,24 @@ router.post(
   })
 );
 
+/** GET /accounting/polizas-pendientes — las pólizas del respaldo que no entraron. */
+router.get(
+  '/polizas-pendientes',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await contpaqi.listarPolizasPendientes(companyId(req)) });
+  })
+);
+
+/** DELETE /accounting/polizas-pendientes/:guid — descarta una pendiente. */
+router.delete(
+  '/polizas-pendientes/:guid',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    await contpaqi.descartarPolizaPendiente(companyId(req), req.params.guid);
+    res.json({ success: true, message: 'Pendiente descartada.' });
+  })
+);
+
 /**
  * GET /accounting/contpaqi/herramienta — descarga la herramienta local que lee
  * el .bak de CONTPAQi y deja un paquete .zip para subir aquí. Incluye nexo.txt

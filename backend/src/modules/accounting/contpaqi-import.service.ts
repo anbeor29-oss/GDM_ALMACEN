@@ -384,9 +384,23 @@ async function importarPolizas(companyId: string, paquete: PaqueteContpaqi, user
     return tempId;
   };
 
+  /* Pólizas que no entran → se GUARDAN crudas (con sus movimientos) en pendientes,
+   * para no perder nada; al re-importar, la que ya entró se borra de ahí. */
+  const guardarPend = (p: any, motivo: string, movs: any[]) => query(
+    `INSERT INTO contpaqi_polizas_pendientes (company_id, guid, folio, fecha, concepto, motivo, datos)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (company_id, guid) DO UPDATE SET motivo=EXCLUDED.motivo, datos=EXCLUDED.datos, created_at=NOW()`,
+    [companyId, p.guid, `${p.ejercicio}/${p.periodo}/${p.folio}`, String(p.fecha || ''),
+     (p.concepto || '').toString().slice(0, 200), String(motivo).slice(0, 300), JSON.stringify({ p, movs })],
+  ).catch(() => {});
+  const borrarPend = (guid: string) => query(
+    `DELETE FROM contpaqi_polizas_pendientes WHERE company_id=$1 AND guid=$2`, [companyId, guid],
+  ).catch(() => {});
+
   for (const p of paquete.polizas || []) {
     if (importados.has(p.guid)) {
       rep.polizas.yaExistian++;
+      await borrarPend(p.guid);   // ya entró: sale de pendientes
       // Reclasifica las que se importaron ANTES de esta mejora (regla 'contpaqi_v1'),
       // para que también caigan en su filtro. Sólo toca esas; no reasienta nada.
       const agrsE = (movsPorPol.get(p.id) || []).map((m) => agrDe.get(m.cuenta)).filter(Boolean) as string[];
@@ -398,10 +412,10 @@ async function importarPolizas(companyId: string, paquete: PaqueteContpaqi, user
     }
     const folioTxt = `${p.ejercicio}/${p.periodo}/${p.folio}`;
     const movs = (movsPorPol.get(p.id) || []).sort((a, b) => a.num - b.num);
-    if (movs.length < 2) { rep.polizas.omitidas++; if (movs.length) rep.polizas.motivos.push({ guid: p.guid, motivo: `sólo ${movs.length} movimiento(s)` }); continue; }
+    if (movs.length < 2) { rep.polizas.omitidas++; const mot = `sólo ${movs.length} movimiento(s)`; if (movs.length) rep.polizas.motivos.push({ guid: p.guid, motivo: mot }); await guardarPend(p, mot, movs); continue; }
 
     const fecha = fechaCt(p.fecha);
-    if (!fecha) { rep.polizas.omitidas++; rep.polizas.motivos.push({ guid: p.guid, motivo: `fecha inválida (${p.fecha})` }); continue; }
+    if (!fecha) { rep.polizas.omitidas++; const mot = `fecha inválida (${p.fecha})`; rep.polizas.motivos.push({ guid: p.guid, motivo: mot }); await guardarPend(p, mot, movs); continue; }
 
     const uuids = uuidsPorPol.get(p.id) || [];
     const uuidLinea = uuids.length === 1 ? uuids[0] : null; // línea a línea sólo si es un único CFDI
@@ -449,15 +463,35 @@ async function importarPolizas(companyId: string, paquete: PaqueteContpaqi, user
         lineas,
       }, userId);
       rep.polizas.creadas++;
+      await borrarPend(p.guid);   // entró bien: sale de pendientes
       if (motivoTemp) rep.polizas.conTemporal.push({ guid: p.guid, folio: folioTxt, motivo: motivoTemp });
     } catch (e: any) {
       rep.polizas.omitidas++;
-      rep.polizas.motivos.push({ guid: p.guid, motivo: (e?.message || 'error').toString().slice(0, 140) });
+      const mot = (e?.message || 'error').toString().slice(0, 140);
+      rep.polizas.motivos.push({ guid: p.guid, motivo: mot });
+      await guardarPend(p, mot, movs);   // no se pierde: queda pendiente para revisar/reintentar
     }
   }
   // Sólo se guardan los primeros, para no inflar el reporte.
   if (rep.polizas.motivos.length > 50) rep.polizas.motivos = rep.polizas.motivos.slice(0, 50);
   if (rep.polizas.conTemporal.length > 200) rep.polizas.conTemporal = rep.polizas.conTemporal.slice(0, 200);
+}
+
+/** Las pólizas del respaldo que no se pudieron importar (pantalla de pendientes). */
+export async function listarPolizasPendientes(companyId: string) {
+  const r = await query<any>(
+    `SELECT guid, folio, fecha, concepto, motivo, created_at,
+            COALESCE(jsonb_array_length(datos->'movs'), 0) AS movimientos
+       FROM contpaqi_polizas_pendientes
+      WHERE company_id=$1 ORDER BY created_at DESC, folio LIMIT 500`, [companyId]);
+  const total = await query<any>(
+    `SELECT COUNT(*)::int AS n FROM contpaqi_polizas_pendientes WHERE company_id=$1`, [companyId]);
+  return { pendientes: r.rows, total: total.rows[0]?.n ?? 0 };
+}
+
+/** Descarta una pendiente (el usuario decidió que no va). */
+export async function descartarPolizaPendiente(companyId: string, guid: string): Promise<void> {
+  await query(`DELETE FROM contpaqi_polizas_pendientes WHERE company_id=$1 AND guid=$2`, [companyId, guid]);
 }
 
 /** La cuenta temporal de migración (suspense): las partidas que no tienen cuenta

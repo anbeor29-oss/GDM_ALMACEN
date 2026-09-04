@@ -1014,6 +1014,15 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/cuentas/${id}/partidas`);
     return r.data;
   }
+  /** Pólizas del respaldo que no se pudieron importar (pendientes). */
+  async getPolizasPendientes() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/polizas-pendientes');
+    return r.data;
+  }
+  async descartarPolizaPendiente(guid: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/accounting/polizas-pendientes/${guid}`);
+    return r.data;
+  }
   /** Mueve los terceros mal colocados a su control correcto (105 cliente / 201 proveedor), renumerados. */
   async reorganizarTerceros() {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/reorganizar-terceros', {});
