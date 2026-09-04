@@ -13,8 +13,69 @@ import { useState, useEffect } from 'react';
 import api from '@/services/api';
 import { ArrowLeftRight, GitMerge, Search, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { fechaMx } from '@/utils/fecha';
 
 type Cuenta = { id: string; codigo: string; nombre: string; permite_movimientos?: boolean };
+
+const money = (n: any) => Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+
+/** Las partidas (renglones de póliza) que tocan una cuenta, con su rango de fechas.
+ *  Para ver qué hay en MIG-TEMPORAL —y desde cuándo— o en la cuenta origen. */
+function PartidasDe({ cuentaId }: { cuentaId?: string }) {
+  const [data, setData] = useState<any>(null);
+  const [cargando, setCargando] = useState(false);
+  useEffect(() => {
+    if (!cuentaId) { setData(null); return; }
+    let alive = true; setCargando(true);
+    api.getPartidasCuenta(cuentaId)
+      .then((r: any) => { if (alive) setData(r?.data || null); })
+      .catch(() => { if (alive) setData(null); })
+      .finally(() => { if (alive) setCargando(false); });
+    return () => { alive = false; };
+  }, [cuentaId]);
+  if (!cuentaId) return null;
+  if (cargando) return <p className="text-sm text-gray-400">Cargando pólizas…</p>;
+  if (!data) return null;
+
+  return (
+    <div className="bg-white rounded-lg shadow border p-4 space-y-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <span className="font-semibold text-gray-800">{data.total} partida(s)</span>
+        {data.total > 0 && <span className="text-gray-500">del <b>{fechaMx(data.desde)}</b> al <b>{fechaMx(data.hasta)}</b></span>}
+        {data.total > 0 && <span className="text-gray-500">cargos {money(data.cargo)} · abonos {money(data.abono)}</span>}
+      </div>
+      {data.total === 0 ? (
+        <p className="text-sm text-gray-400">Sin partidas en esta cuenta.</p>
+      ) : (
+        <div className="overflow-x-auto max-h-96 overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 border-b text-gray-500 sticky top-0">
+              <tr>
+                <th className="text-left px-2 py-1">Fecha</th>
+                <th className="text-left px-2 py-1">Póliza</th>
+                <th className="text-left px-2 py-1">Concepto</th>
+                <th className="text-right px-2 py-1">Cargo</th>
+                <th className="text-right px-2 py-1">Abono</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {data.partidas.map((x: any, i: number) => (
+                <tr key={i} className="hover:bg-gray-50">
+                  <td className="px-2 py-1 whitespace-nowrap">{fechaMx(x.fecha)}</td>
+                  <td className="px-2 py-1 whitespace-nowrap">#{x.folio ?? '—'} <span className="text-gray-400">{x.origen}</span></td>
+                  <td className="px-2 py-1 truncate max-w-xs">{x.concepto || x.linea_concepto || '—'}</td>
+                  <td className="px-2 py-1 text-right">{Number(x.cargo) > 0 ? money(x.cargo) : ''}</td>
+                  <td className="px-2 py-1 text-right">{Number(x.abono) > 0 ? money(x.abono) : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {data.truncado && <p className="text-xs text-gray-400 mt-1">Se muestran las primeras {data.partidas.length}. Reasigna por rango de fechas si son muchas.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Buscador de cuenta que devuelve la cuenta elegida (id, código, nombre). */
 function BuscarCuenta({ etiqueta, elegida, onElegir, soloMovimientos }: {
@@ -100,6 +161,7 @@ export function CambioCuentaPage() {
   const [q, setQ] = useState('');
   const [grupos, setGrupos] = useState<Cuenta[][]>([]);
   const [cargando, setCargando] = useState(false);
+  const [verId, setVerId] = useState<string | null>(null);   // cuenta cuyas pólizas se ven
   const buscarDuplicadas = async () => {
     setCargando(true); setError(''); setMsg('');
     try {
@@ -170,6 +232,15 @@ export function CambioCuentaPage() {
         </div>
       )}
 
+      {tab === 'temporal' && origen && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-gray-700">
+            Pólizas en «{origen.nombre}» — para saber qué reasignar y desde qué fecha:
+          </p>
+          <PartidasDe cuentaId={origen.id} />
+        </div>
+      )}
+
       {tab === 'unificar' && (
         <div className="bg-white rounded-lg shadow border p-5 space-y-4">
           <div className="flex gap-2">
@@ -193,18 +264,25 @@ export function CambioCuentaPage() {
             <div key={i} className="border rounded-lg p-3 space-y-2">
               <p className="text-xs text-gray-500">Mismo nombre — <b>{g[0].nombre}</b>. Deja una y funde las demás en ella:</p>
               {g.map((c) => (
-                <div key={c.id} className="flex items-center gap-2 text-sm">
-                  <span className="font-mono text-gray-700 w-40">{formatCuenta(c.codigo, mascara)}</span>
-                  <span className="text-gray-600 flex-1 truncate">{c.nombre}</span>
-                  <div className="flex gap-1">
-                    {g.filter((o) => o.id !== c.id).map((o) => (
-                      <button key={o.id} onClick={() => fusionar(c.id, o.id)} disabled={busy}
-                        title={`Mover «${c.codigo}» a «${o.codigo}» y borrar «${c.codigo}»`}
-                        className="flex items-center gap-1 border px-2 py-0.5 rounded text-xs text-gray-600 hover:bg-sky-50 disabled:opacity-40">
-                        <GitMerge size={12} /> fundir en {formatCuenta(o.codigo, mascara)}
-                      </button>
-                    ))}
+                <div key={c.id}>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-mono text-gray-700 w-40">{formatCuenta(c.codigo, mascara)}</span>
+                    <span className="text-gray-600 flex-1 truncate">{c.nombre}</span>
+                    <button onClick={() => setVerId(verId === c.id ? null : c.id)}
+                      className="text-xs text-gray-500 hover:text-primary underline whitespace-nowrap">
+                      {verId === c.id ? 'ocultar' : 'ver pólizas'}
+                    </button>
+                    <div className="flex gap-1">
+                      {g.filter((o) => o.id !== c.id).map((o) => (
+                        <button key={o.id} onClick={() => fusionar(c.id, o.id)} disabled={busy}
+                          title={`Mover «${c.codigo}» a «${o.codigo}» y borrar «${c.codigo}»`}
+                          className="flex items-center gap-1 border px-2 py-0.5 rounded text-xs text-gray-600 hover:bg-sky-50 disabled:opacity-40">
+                          <GitMerge size={12} /> fundir en {formatCuenta(o.codigo, mascara)}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+                  {verId === c.id && <div className="mt-2"><PartidasDe cuentaId={c.id} /></div>}
                 </div>
               ))}
             </div>

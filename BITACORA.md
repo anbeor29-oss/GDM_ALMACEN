@@ -4924,3 +4924,18 @@ Dos arreglos a pedido (imágenes 2 y 3: los terceros salían `1-10-25-001-001`, 
   los terceros conocidos por CFDI (receptor/emisor) y subcuentas — RFC + nombre, sin pisar nombres
   curados. Botón «Capturar en catálogo» en las pestañas Clientes (Pólizas de venta) y Proveedores
   (Pólizas de compra); aparecen luego en las pantallas de Clientes/Proveedores.
+
+## 2026-09-03 (contabilidad + admin) — Partidas en Cambio de cuenta, Pólizas anidadas, editar rol de usuario
+
+- **Cambio de cuenta ahora muestra las PARTIDAS de la cuenta.** `partidasDeCuenta`
+  (cambio-cuenta.service) + `GET /accounting/cuentas/:id/partidas` devuelven los renglones de
+  póliza de una cuenta con su rango de fechas y sumas. En la pantalla, la pestaña «Sustituir
+  temporal» lista las pólizas de la cuenta origen (por defecto MIG-TEMPORAL) —para saber desde
+  qué fecha reasignar—, y en «Unificar duplicadas» cada cuenta tiene «ver pólizas». Componente
+  `PartidasDe`.
+- **Pólizas de venta/compra anidadas bajo «Pólizas».** En el menú de Contabilidad, «Pólizas» pasó
+  a ser subgrupo (como Reportes) con hijos: Todas las pólizas, Pólizas de venta, Pólizas de compra.
+- **Editar usuario (rol/grupo/nombre) en Usuarios.** Botón ✏️ por usuario → `EditarUsuarioModal`
+  que usa `PUT /admin/users/:id` (ya existía) para cambiar rol —p.ej. convertir un USER de
+  contabilidad en ADMIN, para que pueda cargar la e.firma— sin ser super administrador. Sólo
+  super-admin (el router de admin/users ya lo exige).

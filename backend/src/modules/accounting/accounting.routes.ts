@@ -213,6 +213,16 @@ router.get(
   })
 );
 
+/** GET /accounting/cuentas/:id/partidas — renglones de póliza que tocan la cuenta
+ *  (para ver qué hay en MIG-TEMPORAL / en la cuenta origen antes de reasignar). */
+router.get(
+  '/cuentas/:id/partidas',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await cambioCuenta.partidasDeCuenta(companyId(req), req.params.id);
+    res.json({ success: true, data });
+  })
+);
+
 /* ═══════════════════════════════════════════════════════════════════════════
    CATÁLOGO
    ═══════════════════════════════════════════════════════════════════════════ */

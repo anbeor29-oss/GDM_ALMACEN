@@ -1009,6 +1009,11 @@ class APIClient {
     const r = await this.client.delete<APIResponse<any>>(`/accounting/cuentas/${id}`, { params: { duro: 1 } });
     return r.data;
   }
+  /** Las partidas (renglones de póliza) que tocan una cuenta — para Cambio de cuenta. */
+  async getPartidasCuenta(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/cuentas/${id}/partidas`);
+    return r.data;
+  }
   /** Mueve los terceros mal colocados a su control correcto (105 cliente / 201 proveedor), renumerados. */
   async reorganizarTerceros() {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/reorganizar-terceros', {});

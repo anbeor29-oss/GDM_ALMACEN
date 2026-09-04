@@ -31,6 +31,7 @@ export function AdminUsersPage() {
    * para pintar un encabezado sería trabajo de más. */
   const [empresasDe, setEmpresasDe] = useState<any | null>(null);
   const [permsUser, setPermsUser] = useState<any | null>(null);
+  const [editUser, setEditUser] = useState<any | null>(null);   // editar rol/grupo/nombre
 
   if (user?.role !== 'SUPER_ADMIN') {
     return (
@@ -145,6 +146,14 @@ export function AdminUsersPage() {
                 </td>
                 <td className="px-4 py-2">
                   <div className="flex items-center justify-center gap-1">
+                    {/* Editar rol y grupo: p.ej. convertir un USER de contabilidad
+                        en ADMIN para que pueda cargar la e.firma. */}
+                    {u.role !== 'SUPER_ADMIN' && (
+                      <IconBtn title="Editar usuario (rol, grupo, nombre)" color="green"
+                        onClick={() => setEditUser(u)}>
+                        <Emoji3D e="✏️" size="base" />
+                      </IconBtn>
+                    )}
                     {/* Los permisos no aplican al SUPER_ADMIN: opera la
                         plataforma y ve todo por definición. */}
                     {u.role !== 'SUPER_ADMIN' && (
@@ -221,6 +230,88 @@ export function AdminUsersPage() {
           onDone={() => { setPermsUser(null); qc.invalidateQueries({ queryKey: ['admin-users'] }); }}
         />
       )}
+
+      {editUser && (
+        <EditarUsuarioModal
+          user={editUser}
+          onClose={() => setEditUser(null)}
+          onDone={() => { setEditUser(null); qc.invalidateQueries({ queryKey: ['admin-users'] }); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Editar un usuario: rol, grupo de trabajo y nombre. Sirve, entre otras cosas,
+ * para convertir un USER de contabilidad en ADMIN (así puede cargar la e.firma).
+ * No ofrece SUPER_ADMIN: ese rol se maneja aparte (opera la plataforma).
+ */
+function EditarUsuarioModal({ user, onClose, onDone }: { user: any; onClose: () => void; onDone: () => void }) {
+  const [firstName, setFirstName] = useState(user.first_name || '');
+  const [lastName, setLastName] = useState(user.last_name || '');
+  const [role, setRole] = useState(user.role || 'USER');
+  const [workGroup, setWorkGroup] = useState<string>(user.work_group || 'CONTABILIDAD');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const rolesEditables = ROLES.filter((r) => r.value !== 'SUPER_ADMIN');
+
+  const guardar = async () => {
+    setBusy(true); setError('');
+    try {
+      await api.adminUpdateUser(user.id, { firstName, lastName, role, workGroup });
+      onDone();
+    } catch (e: any) { setError(e?.response?.data?.message || e?.message || 'No se pudo guardar.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <h3 className="font-semibold text-gray-900">Editar usuario</h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-xs text-gray-500 font-mono">{user.email}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-xs font-medium text-gray-600">Nombre</span>
+              <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="input w-full mt-1 text-sm" />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-gray-600">Apellido</span>
+              <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="input w-full mt-1 text-sm" />
+            </label>
+          </div>
+          <label className="block">
+            <span className="text-xs font-medium text-gray-600">Rol</span>
+            <select value={role} onChange={(e) => setRole(e.target.value)} className="input w-full mt-1 text-sm">
+              {rolesEditables.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-gray-600">Grupo de trabajo</span>
+            <select value={workGroup} onChange={(e) => setWorkGroup(e.target.value)} className="input w-full mt-1 text-sm">
+              {(Object.keys(WORK_GROUP_LABELS) as WorkGroup[]).map((g) => (
+                <option key={g} value={g}>{WORK_GROUP_LABELS[g]}</option>
+              ))}
+            </select>
+          </label>
+          <p className="text-[11px] text-gray-500">
+            Convertir a <b>Admin (empresa)</b> le da acceso completo dentro de su empresa —incluida la carga de la e.firma— sin ser super administrador.
+          </p>
+          {error && <p className="text-sm text-rose-600">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800">Cancelar</button>
+          <button onClick={guardar} disabled={busy}
+            className="bg-primary text-white px-4 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
+            {busy ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

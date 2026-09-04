@@ -120,3 +120,37 @@ export async function candidatasDuplicadas(companyId: string, q?: string) {
   }
   return [...grupos.values()].filter((g) => g.length > 1).slice(0, 100);
 }
+
+/**
+ * Las PARTIDAS (renglones de póliza) que hoy tocan una cuenta. Para el pie de la
+ * pantalla de Cambio de cuenta: ver qué hay en MIG-TEMPORAL (y desde qué fecha)
+ * antes de reasignar, o qué trae la cuenta de origen antes de unificar.
+ */
+export async function partidasDeCuenta(companyId: string, accountId: string, limite = 300) {
+  const res = await query<any>(
+    `SELECT COUNT(*)::int AS total,
+            MIN(e.fecha)::date AS desde, MAX(e.fecha)::date AS hasta,
+            COALESCE(SUM(l.cargo), 0) AS cargo, COALESCE(SUM(l.abono), 0) AS abono
+       FROM journal_lines l
+       JOIN journal_entries e ON e.id = l.entry_id
+      WHERE e.company_id = $1 AND l.account_id = $2`, [companyId, accountId]);
+  const resumen = res.rows[0] || { total: 0 };
+
+  const filas = await query<any>(
+    `SELECT e.id AS poliza_id, e.folio, e.fecha::date AS fecha, e.tipo, e.origen,
+            e.concepto AS concepto, l.concepto AS linea_concepto,
+            l.cargo, l.abono, l.party_rfc, l.uuid_cfdi
+       FROM journal_lines l
+       JOIN journal_entries e ON e.id = l.entry_id
+      WHERE e.company_id = $1 AND l.account_id = $2
+      ORDER BY e.fecha ASC, e.folio ASC
+      LIMIT $3`, [companyId, accountId, limite]);
+
+  return {
+    total: resumen.total,
+    desde: resumen.desde, hasta: resumen.hasta,
+    cargo: Number(resumen.cargo), abono: Number(resumen.abono),
+    partidas: filas.rows,
+    truncado: resumen.total > filas.rows.length,
+  };
+}
