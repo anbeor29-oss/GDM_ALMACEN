@@ -22,7 +22,7 @@ import { query, transaction } from '../../config/database';
 import { crearPoliza } from './polizas.service';
 import { activarContabilidad, asignarAgrupadorFaltante } from './catalogo.service';
 import { alimentarDesdePolizas } from './periodos.service';
-import { generarSubcuentasDeComprobantes } from './catalogo-terceros.service';
+import { generarSubcuentasDeComprobantes, capturarTercerosEnCatalogo } from './catalogo-terceros.service';
 import { crearTrabajo, credencialDeEmpresa } from '../sat-descarga/descarga.service';
 
 /* ── El paquete que sube la pantalla (los JSON del extractor) ── */
@@ -224,6 +224,11 @@ export async function importarContpaqi(
   // de una 105-01-00x inventada — ver resolverOCrearSubcuentaTercero).
   try { await generarSubcuentasDeComprobantes(companyId, 'emitidos'); } catch { /* sin clientes */ }
   try { await generarSubcuentasDeComprobantes(companyId, 'recibidos'); } catch { /* sin proveedores */ }
+
+  // Y capturar sus DATOS en los catálogos de Clientes y Proveedores (RFC + nombre),
+  // para que aparezcan en sus pantallas sin recapturarlos. Los dos, no sólo clientes.
+  try { await capturarTercerosEnCatalogo(companyId, 'cliente'); } catch { /* no crítico */ }
+  try { await capturarTercerosEnCatalogo(companyId, 'proveedor'); } catch { /* no crítico */ }
 
   // QUINTO: actualizar la balanza de TODOS los periodos del respaldo, en orden
   // (año↑, ene→dic) porque el saldo inicial de cada mes es el saldo final del

@@ -4956,3 +4956,10 @@ Dos arreglos a pedido (imágenes 2 y 3: los terceros salían `1-10-25-001-001`, 
   con mensaje claro si TODO el rango es más viejo (antes el SAT devolvía «XML Mal Formado … mayor a
   6 años»). Cubre todos los caminos (ejercicio, diario, llenar-huecos, manual). En «Traer
   comprobantes» los botones de año se volvieron **combo de año** (últimos 6) + botón **«Todos (6 años)»**.
+
+## 2026-09-03 (contabilidad) — El import captura AMBOS catálogos: clientes y proveedores
+
+Los clientes quedaban en su catálogo pero los proveedores no. Ahora `importarContpaqi`, tras
+generar las subcuentas, corre `capturarTercerosEnCatalogo` para **cliente Y proveedor** (RFC +
+nombre en `customers`, es_cliente/es_proveedor). Para lo ya importado sin re-importar: botón
+«Capturar en catálogo» en Pólizas de compra → Proveedores.
