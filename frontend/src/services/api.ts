@@ -1009,6 +1009,16 @@ class APIClient {
     const r = await this.client.delete<APIResponse<any>>(`/accounting/cuentas/${id}`, { params: { duro: 1 } });
     return r.data;
   }
+  /** Mueve los terceros mal colocados a su control correcto (105 cliente / 201 proveedor), renumerados. */
+  async reorganizarTerceros() {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/reorganizar-terceros', {});
+    return r.data;
+  }
+  /** Rellena el agrupador SAT de las cuentas que no lo tienen, heredándolo del padre. */
+  async asignarAgrupadorFaltante() {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/asignar-agrupador', {});
+    return r.data;
+  }
   async fijarEquivalenciaCuenta(id: string, datos: any) {
     const r = await this.client.put<APIResponse<any>>(`/accounting/cuentas/${id}/equivalencia`, datos);
     return r.data;

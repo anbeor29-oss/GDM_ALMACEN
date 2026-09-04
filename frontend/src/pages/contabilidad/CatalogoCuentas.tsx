@@ -18,6 +18,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight, ChevronDown, Search, Plus, AlertTriangle, CheckCircle2,
   Link2, BookOpen, X, Info, Layers, Upload, Loader2, Scale, Pencil, Trash2,
+  Users, Tag,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
@@ -57,6 +58,8 @@ export function CatalogoCuentasPage() {
   const [arbolColapsado, setArbolColapsado] = useState(false);
   const [msg, setMsg] = useState('');
   const [soloSinAgrupador, setSoloSinAgrupador] = useState(false);
+  const [soloMalCapturadas, setSoloMalCapturadas] = useState(false);
+  const [herr, setHerr] = useState('');   // herramienta de mantenimiento en curso
 
   const arbolQ = useQuery({
     queryKey: ['cuentas-arbol'],
@@ -81,11 +84,18 @@ export function CatalogoCuentasPage() {
    * coincide: una cuenta sin su rama encima no dice de qué cuelga. */
   const filtrado = useMemo(() => {
     const b = busqueda.trim().toLowerCase();
-    if (!b && !tipo && !soloSinAgrupador) return arbol;
+    if (!b && !tipo && !soloSinAgrupador && !soloMalCapturadas) return arbol;
 
+    // "Mal capturada": el rubro del código no coincide con el del agrupador SAT
+    // (código de activo 1… con agrupador de pasivo 2…, como «Uber» 201.01).
+    const mal = (n: any): boolean => {
+      const cod = String(n.codigo || ''); const agr = String(n.codigo_agrupador || '');
+      return /^\d/.test(cod) && /^\d/.test(agr) && cod[0] !== agr[0];
+    };
     const coincide = (n: any): boolean =>
       (!tipo || n.tipo === tipo) &&
       (!soloSinAgrupador || (!n.codigo_agrupador && n.permite_movimientos)) &&
+      (!soloMalCapturadas || mal(n)) &&
       (!b || n.codigo.toLowerCase().includes(b) || n.nombre.toLowerCase().includes(b));
 
     const podar = (n: any): any | null => {
@@ -94,9 +104,9 @@ export function CatalogoCuentasPage() {
       return null;
     };
     return arbol.map(podar).filter(Boolean);
-  }, [arbol, busqueda, tipo, soloSinAgrupador]);
+  }, [arbol, busqueda, tipo, soloSinAgrupador, soloMalCapturadas]);
 
-  const buscando = !!busqueda.trim() || !!tipo || soloSinAgrupador;
+  const buscando = !!busqueda.trim() || !!tipo || soloSinAgrupador || soloMalCapturadas;
 
   /* Los id de las ramas que TIENEN hijos: es lo que "Expandir todo" abre. */
   const idsConHijos = useMemo(() => {
@@ -130,6 +140,22 @@ export function CatalogoCuentasPage() {
     }
   };
 
+  /* Mueve los terceros mal colocados (mezclados) a su control correcto. */
+  const reorganizar = async () => {
+    if (!window.confirm('¿Reorganizar los terceros?\n\nLos clientes/proveedores que quedaron bajo un control equivocado se mueven a su control correcto (105 cliente / 201 proveedor) y se renumeran. Sus partidas los siguen (misma cuenta).')) return;
+    setHerr('reorg'); setMsg('');
+    try { const r: any = await api.reorganizarTerceros(); setMsg(r?.message || 'Terceros reorganizados.'); refrescar(); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo reorganizar.'); }
+    finally { setHerr(''); }
+  };
+  /* Rellena el agrupador SAT que falta, heredándolo del padre. */
+  const asignarAgrupador = async () => {
+    setHerr('agrup'); setMsg('');
+    try { const r: any = await api.asignarAgrupadorFaltante(); setMsg(r?.message || 'Agrupadores asignados.'); refrescar(); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo asignar el agrupador.'); }
+    finally { setHerr(''); }
+  };
+
   if (arbolQ.isLoading) {
     return <div className="p-6 text-gray-500">Cargando el catálogo…</div>;
   }
@@ -156,10 +182,22 @@ export function CatalogoCuentasPage() {
           </p>
         </div>
         {puedeEditar && (
-          <button onClick={() => setAlta({ parentId: null })}
-            className="btn-primary flex items-center gap-1.5 text-sm">
-            <Plus size={15} /> Nueva cuenta
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={reorganizar} disabled={!!herr}
+              title="Mueve los terceros mezclados (bajo un control equivocado) a su control correcto: clientes a 105, proveedores a 201, renumerados. Las partidas los siguen."
+              className="border border-indigo-300 text-indigo-700 px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-50 disabled:opacity-50 flex items-center gap-1.5">
+              <Users size={14} /> {herr === 'reorg' ? 'Reorganizando…' : 'Reorganizar terceros'}
+            </button>
+            <button onClick={asignarAgrupador} disabled={!!herr}
+              title="Rellena el agrupador del SAT de las cuentas que no lo tienen, heredándolo del padre"
+              className="border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg text-sm hover:bg-amber-50 disabled:opacity-50 flex items-center gap-1.5">
+              <Tag size={14} /> {herr === 'agrup' ? 'Asignando…' : 'Asignar agrupador'}
+            </button>
+            <button onClick={() => setAlta({ parentId: null })}
+              className="btn-primary flex items-center gap-1.5 text-sm">
+              <Plus size={15} /> Nueva cuenta
+            </button>
+          </div>
         )}
       </div>
 
@@ -238,6 +276,15 @@ export function CatalogoCuentasPage() {
                   className={`border px-3 rounded-lg text-sm flex items-center gap-1.5 ${
                     soloSinAgrupador ? 'bg-amber-100 border-amber-300 text-amber-800' : 'hover:bg-gray-50 text-gray-600'}`}>
                   <AlertTriangle size={14} /> Sin agrupador
+                </button>
+                {/* Rubro del código ≠ rubro del agrupador (mal capturadas, como
+                    «Uber» código 1… con agrupador 201.01). Para hallarlas y borrarlas. */}
+                <button
+                  onClick={() => setSoloMalCapturadas((v) => !v)}
+                  title="Cuentas cuyo rubro del código no coincide con el del agrupador del SAT"
+                  className={`border px-3 rounded-lg text-sm flex items-center gap-1.5 ${
+                    soloMalCapturadas ? 'bg-rose-100 border-rose-300 text-rose-800' : 'hover:bg-gray-50 text-gray-600'}`}>
+                  <AlertTriangle size={14} /> Mal capturadas
                 </button>
                 {/* Toggle real: el árbol arranca compactado, así que estando colapsado el
                     botón OFRECE expandir; ya expandido, re-colapsa para liberar la pantalla

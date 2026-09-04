@@ -180,6 +180,29 @@ router.post(
   })
 );
 
+/** POST /accounting/cuentas/reorganizar-terceros — mueve cada tercero mal colocado
+ *  (bajo un control equivocado) a su control correcto (105 cliente / 201 proveedor),
+ *  renumerado. Sus partidas lo siguen (es la misma cuenta). */
+router.post(
+  '/cuentas/reorganizar-terceros',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await terceros.reorganizarTerceros(companyId(req));
+    res.json({ success: true, data: r, message: `${r.movidas} tercero(s) reubicado(s) en su control correcto.` });
+  })
+);
+
+/** POST /accounting/cuentas/asignar-agrupador — rellena el agrupador SAT de las
+ *  cuentas que no lo tienen, heredándolo del padre. */
+router.post(
+  '/cuentas/asignar-agrupador',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await catalogo.asignarAgrupadorFaltante(companyId(req));
+    res.json({ success: true, data: r, message: `${r.rellenadas} cuenta(s) recibieron agrupador del padre.` });
+  })
+);
+
 /** GET /accounting/cuentas/duplicadas?q= — grupos de cuentas con el mismo nombre
  *  (posibles duplicados por typo/mayúsculas). */
 router.get(

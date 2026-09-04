@@ -206,3 +206,78 @@ export async function fijarCodigoSubcuenta(
   }
   return { codigo: r.rows[0].codigo };
 }
+
+/**
+ * Reorganiza los terceros MAL COLOCADOS: cada cuenta con agrupador de tercero
+ * (105.xx cliente / 201.xx proveedor) que sea HOJA y NO cuelgue del control
+ * correcto se MUEVE bajo su control y se RENUMERA (`<control>-NNN`), heredando el
+ * tipo/naturaleza del control. Sus partidas la siguen (es la misma cuenta, sólo
+ * cambia padre y código).
+ *
+ * Resuelve el desorden del respaldo (24 terceros colgando de «112-…-… Uber»,
+ * clientes y proveedores mezclados): tras correrlo, los clientes quedan bajo el
+ * control 105.xx y los proveedores bajo el 201.xx, al mismo nivel. Se hace en
+ * varias pasadas porque al vaciar un padre mal usado, ése también puede tocar
+ * moverse.
+ */
+export async function reorganizarTerceros(
+  companyId: string,
+): Promise<{ movidas: number; detalle: Array<{ de: string; a: string; nombre: string }> }> {
+  const AGR = ['105.01', '105.02', '201.01', '201.02'];
+  let movidas = 0;
+  const detalle: Array<{ de: string; a: string; nombre: string }> = [];
+  const controlPorAgr = new Map<string, any>();
+  const contador = new Map<string, number>();          // control.id → último sufijo usado
+  const usados = new Set<string>(
+    (await query<any>('SELECT codigo FROM accounting_accounts WHERE company_id=$1', [companyId]))
+      .rows.map((r: any) => r.codigo));
+
+  for (let pasada = 0; pasada < 6; pasada++) {
+    const cand = await query<any>(
+      `SELECT a.id, a.codigo, a.nombre, a.codigo_agrupador, a.parent_id,
+              (SELECT COUNT(*) FROM accounting_accounts h WHERE h.parent_id=a.id)::int AS hijos
+         FROM accounting_accounts a
+        WHERE a.company_id=$1 AND a.codigo_agrupador = ANY($2)`,
+      [companyId, AGR]);
+
+    let enPasada = 0;
+    for (const c of cand.rows) {
+      if (c.hijos > 0) continue;                         // aún es padre: no se mueve todavía
+      let control = controlPorAgr.get(c.codigo_agrupador);
+      if (control === undefined) {
+        control = await cuentaControl(companyId, c.codigo_agrupador);
+        controlPorAgr.set(c.codigo_agrupador, control);
+      }
+      if (!control || control.id === c.id) continue;     // no hay control, o ES el control
+      if (c.parent_id === control.id) continue;          // ya está bien colocada
+
+      const base = String(control.codigo).replace(/\./g, '-');
+      let n = contador.get(control.id);
+      if (n === undefined) {
+        const hijos = await query<any>(
+          `SELECT codigo FROM accounting_accounts WHERE company_id=$1 AND parent_id=$2`, [companyId, control.id]);
+        n = 0;
+        for (const h of hijos.rows) { const m = /-(\d+)\s*$/.exec(String(h.codigo)); if (m) n = Math.max(n, Number(m[1])); }
+      }
+      let cod: string;
+      do { n++; cod = `${base}-${String(n).padStart(3, '0')}`; } while (usados.has(cod));
+      contador.set(control.id, n);
+      usados.add(cod);
+
+      await query(
+        `UPDATE accounting_accounts
+            SET parent_id=$2, codigo=$3, tipo=$4, naturaleza=$5, nivel=$6, updated_at=NOW()
+          WHERE id=$1`,
+        [c.id, control.id, cod, control.tipo, control.naturaleza, (control.nivel || 1) + 1]);
+      // El control deja de recibir movimientos: la hoja es el tercero.
+      await query(
+        `UPDATE accounting_accounts SET permite_movimientos=false WHERE id=$1 AND permite_movimientos=true`,
+        [control.id]);
+
+      movidas++; enPasada++;
+      if (detalle.length < 300) detalle.push({ de: c.codigo, a: cod, nombre: c.nombre });
+    }
+    if (enPasada === 0) break;
+  }
+  return { movidas, detalle };
+}

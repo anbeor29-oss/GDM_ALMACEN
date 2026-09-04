@@ -512,6 +512,32 @@ export async function actualizarCuenta(companyId: string, id: string, d: Partial
   return r.rows[0];
 }
 
+/**
+ * Rellena el AGRUPADOR de las cuentas que no lo tienen, heredándolo del padre.
+ *
+ * El respaldo trae subcuentas sin agrupador del SAT (el import ya hereda lo que
+ * puede, pero quedan huecos cuando el padre tampoco lo traía y se llenó después).
+ * Esto propaga hacia abajo en varias pasadas: en cuanto un padre tiene agrupador,
+ * la siguiente pasada se lo pone a sus hijas vacías. Sólo toca las VACÍAS.
+ */
+export async function asignarAgrupadorFaltante(companyId: string): Promise<{ rellenadas: number }> {
+  let total = 0;
+  for (let pasada = 0; pasada < 12; pasada++) {
+    const r = await query(
+      `UPDATE accounting_accounts a
+          SET codigo_agrupador = p.codigo_agrupador, updated_at = NOW()
+         FROM accounting_accounts p
+        WHERE a.parent_id = p.id AND a.company_id = $1
+          AND (a.codigo_agrupador IS NULL OR a.codigo_agrupador = '')
+          AND p.codigo_agrupador IS NOT NULL AND p.codigo_agrupador <> ''`,
+      [companyId]);
+    const n = r.rowCount || 0;
+    total += n;
+    if (n === 0) break;
+  }
+  return { rellenadas: total };
+}
+
 /** Los códigos agrupadores del Anexo 24 (referencia), para el desplegable. */
 export async function listarAgrupadoresSat(): Promise<Array<{ codigo: string; nombre: string; nivel: number; tipo: string; naturaleza: string }>> {
   const r = await query<any>(

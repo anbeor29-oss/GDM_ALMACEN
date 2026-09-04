@@ -4859,3 +4859,22 @@ Tres arreglos sobre el mismo problema («el respaldo trae errores y quiero un bu
    proveedores 2xx); hijos y nivel sólo desempatan. Efecto: los terceros nuevos se numeran bajo
    el control correcto (105.xx / 201.xx). Para lo YA mezclado: borrar esas cuentas (sus partidas
    van a MIG) y re-generar subcuentas — ahora caen bien.
+
+## 2026-09-03 (contabilidad) — Herramientas para "hacer un buen catálogo": reorganizar terceros, asignar agrupador, filtro mal capturadas
+
+A pedido del usuario (aclaró que «anexo 20» era: asignar agrupadores a las que no los tienen
+y quitar las mal capturadas):
+
+- **Reorganizar terceros** (botón en Catálogo). `reorganizarTerceros` (catalogo-terceros):
+  cada cuenta con agrupador de tercero (105.xx cliente / 201.xx proveedor) que sea HOJA y NO
+  cuelgue de su control correcto se MUEVE bajo él y se RENUMERA (`<control>-NNN`), heredando
+  tipo/naturaleza del control. Sus partidas la siguen (misma cuenta: sólo cambia padre y
+  código). Varias pasadas (al vaciar un padre mal usado, ése también toca moverse). Resuelve
+  el «112-…-… Uber» con 24 terceros mezclados. Ruta `POST /cuentas/reorganizar-terceros`.
+- **Asignar agrupador** (botón). `asignarAgrupadorFaltante` (catalogo): rellena el agrupador
+  vacío heredándolo del padre, propagando hacia abajo en pasadas. Ruta `POST /cuentas/asignar-agrupador`.
+- **Filtro «Mal capturadas»** en el buscador: cuentas cuyo rubro del código ≠ rubro del
+  agrupador (activo 1… con agrupador 2…, como Uber) — para hallarlas y borrarlas.
+
+Flujo de limpieza sugerido: Asignar agrupador → Reorganizar terceros → filtro «Mal capturadas»
+para revisar/borrar lo que siga raro (el borrado ya persiste y manda partidas a MIG-TEMPORAL).
