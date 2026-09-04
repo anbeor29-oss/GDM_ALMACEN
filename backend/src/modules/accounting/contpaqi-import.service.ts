@@ -267,7 +267,13 @@ export async function importarContpaqi(
 /* ── 1. Catálogo ───────────────────────────────────────────────────────────── */
 async function importarCuentas(companyId: string, cuentas: CuentaCt[], rep: ReporteImport) {
   // Las de sistema ('_ORDEN', '_UTILIDAD'…) no se migran.
-  const utiles = cuentas.filter((c) => c.codigo && !c.codigo.startsWith('_'));
+  // Y las que el usuario BORRÓ a mano tampoco: sin esto, re-importar el respaldo
+  // las resucitaba. La lápida vive en accounting_cuentas_excluidas.
+  const excl = await query<any>(
+    'SELECT codigo FROM accounting_cuentas_excluidas WHERE company_id=$1', [companyId]);
+  const excluidas = new Set<string>(excl.rows.map((r: any) => r.codigo));
+  const utiles = cuentas.filter((c) => c.codigo && !c.codigo.startsWith('_') && !excluidas.has(c.codigo));
+  if (excluidas.size) rep.avisos.push(`${excluidas.size} cuenta(s) que borraste no se recrearon (se respetó tu catálogo).`);
   const codigos = new Set(utiles.map((c) => c.codigo));
 
   // Para armar la JERARQUÍA: la máscara define los niveles (segmentos) y el flag
@@ -437,7 +443,7 @@ async function importarPolizas(companyId: string, paquete: PaqueteContpaqi, user
 
 /** La cuenta temporal de migración (suspense): las partidas que no tienen cuenta
  *  o el descuadre de una póliza caen aquí para no perder nada; se reasignan luego. */
-async function asegurarCuentaTemporal(companyId: string): Promise<string> {
+export async function asegurarCuentaTemporal(companyId: string): Promise<string> {
   const cod = 'MIG-TEMPORAL';
   const ya = await query<any>('SELECT id FROM accounting_accounts WHERE company_id=$1 AND codigo=$2', [companyId, cod]);
   if (ya.rows[0]) return ya.rows[0].id;

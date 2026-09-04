@@ -29,16 +29,22 @@ const norm = (s: string) => (s || '').toUpperCase().normalize('NFD')
   .replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 
 async function cuentaControl(companyId: string, agrupador: string) {
-  // El control verdadero es la cuenta con ese agrupador que YA TIENE las subcuentas
-  // de tercero colgando (105-01-001, …). Antes se tomaba la primera por nivel, y en
-  // un respaldo hay varias cuentas con el mismo agrupador SAT (la de control y sus
-  // subcuentas heredan el agrupador), así que caía en la equivocada e inventaba una
-  // serie nueva. Ahora gana la que MÁS hijos tiene; a igualdad, la de menor nivel.
+  /* El control verdadero es una cuenta ACUMULATIVA (no de movimiento) del MISMO
+   * RUBRO que su agrupador: los clientes 105.xx cuelgan del activo (código que
+   * empieza con 1…), los proveedores 201.xx del pasivo (empieza con 2…).
+   *
+   * El respaldo traía cuentas MAL clasificadas —p.ej. «112-00-003 Uber», que es
+   * una hoja del ACTIVO con agrupador 201.01—; tomarla de control amontonaba
+   * TODOS los terceros (proveedores y clientes) bajo Uber. Ahora el orden hace
+   * ganar a la que ES control y ES del rubro correcto; el conteo de hijos y el
+   * nivel sólo desempatan. Sólo si no hay ninguna se cae en lo que haya. */
   const r = await query<any>(
     `SELECT a.*, (SELECT COUNT(*) FROM accounting_accounts h WHERE h.parent_id = a.id) AS hijos
        FROM accounting_accounts a
       WHERE a.company_id=$1 AND a.codigo_agrupador=$2 AND a.tercero_rfc IS NULL
-      ORDER BY (SELECT COUNT(*) FROM accounting_accounts h WHERE h.parent_id = a.id) DESC,
+      ORDER BY (a.permite_movimientos = false) DESC,      -- un control acumula, no es hoja
+               (LEFT(a.codigo, 1) = LEFT($2, 1)) DESC,     -- mismo rubro: 1xx cliente / 2xx proveedor
+               (SELECT COUNT(*) FROM accounting_accounts h WHERE h.parent_id = a.id) DESC,
                a.nivel ASC
       LIMIT 1`, [companyId, agrupador]);
   return r.rows[0] || null;

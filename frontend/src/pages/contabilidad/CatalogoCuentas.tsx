@@ -118,11 +118,12 @@ export function CatalogoCuentasPage() {
      cuenta tiene subcuentas o movimientos; ahí se avisa y no pasa nada. */
   const eliminar = async (nodo: any) => {
     if ((nodo.hijosLista || []).length) { setMsg(`«${nodo.codigo}» tiene subcuentas: bórralas primero.`); return; }
-    if (!window.confirm(`¿Borrar la cuenta ${nodo.codigo} — ${nodo.nombre}?\nSe elimina del catálogo. No se puede si tiene movimientos en pólizas.`)) return;
+    if (!window.confirm(`¿Borrar la cuenta ${nodo.codigo} — ${nodo.nombre}?\n\nSi tiene partidas, se pasan a MIG-TEMPORAL para reasignarlas luego. Al reimportar el respaldo NO volverá a aparecer.`)) return;
     setMsg('');
     try {
       const r: any = await api.eliminarCuentaContable(nodo.id);
-      setMsg(r?.message || `Cuenta ${nodo.codigo} borrada.`);
+      const mov = r?.data?.cuenta?.partidasMovidas || 0;
+      setMsg((r?.message || `Cuenta ${nodo.codigo} borrada.`) + (mov ? ` ${mov} partida(s) pasaron a MIG-TEMPORAL.` : ''));
       refrescar();
     } catch (e: any) {
       setMsg(e?.response?.data?.message || 'No se pudo borrar la cuenta.');

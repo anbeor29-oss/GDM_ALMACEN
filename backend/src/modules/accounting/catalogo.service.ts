@@ -467,6 +467,9 @@ export async function crearCuenta(companyId: string, d: DatosCuenta) {
       d.moneda ?? 'MXN', d.notas ?? null,
     ],
   );
+  /* Si este código estaba en la lápida (se había borrado), quitarlo: el usuario
+   * lo está re-creando a propósito y el import ya puede volver a tocarlo. */
+  await query('DELETE FROM accounting_cuentas_excluidas WHERE company_id=$1 AND codigo=$2', [companyId, codigo]);
   return r.rows[0];
 }
 
@@ -551,6 +554,22 @@ export async function desactivarCuenta(companyId: string, id: string) {
  * saldos por periodo son derivados (se recalculan de las pólizas), así que esos
  * sí se quitan; las equivalencias caen solas (ON DELETE CASCADE).
  */
+/** La cuenta temporal de migración (suspense) — donde caen las partidas de una
+ *  cuenta que se borra, para no perderlas y reasignarlas luego. */
+async function asegurarCuentaTemporal(companyId: string): Promise<string> {
+  const cod = 'MIG-TEMPORAL';
+  const ya = await query<any>('SELECT id FROM accounting_accounts WHERE company_id=$1 AND codigo=$2', [companyId, cod]);
+  if (ya.rows[0]) return ya.rows[0].id;
+  const r = await query<any>(
+    `INSERT INTO accounting_accounts
+       (company_id, codigo, nombre, tipo, naturaleza, nivel, permite_movimientos, requiere_tercero, moneda, activa)
+     VALUES ($1,$2,$3,'ACTIVO','DEUDORA',1,true,false,'MXN',true)
+     ON CONFLICT (company_id, codigo) DO UPDATE SET updated_at=NOW()
+     RETURNING id`,
+    [companyId, cod, 'CUENTA TEMPORAL DE MIGRACIÓN (reasignar)']);
+  return r.rows[0].id;
+}
+
 export async function eliminarCuenta(companyId: string, id: string) {
   const cta = await obtenerCuenta(companyId, id);
   if (!cta) throw new Error('La cuenta no existe.');
@@ -563,17 +582,31 @@ export async function eliminarCuenta(companyId: string, id: string) {
       `Bórralas primero — así no se borra un grupo entero por error.`);
   }
 
+  /* Las partidas NO se pierden: se pasan a la cuenta temporal de migración
+   * (MIG-TEMPORAL), como pediste, para reasignarlas luego con «Cambio de cuenta».
+   * Antes se rechazaba el borrado; ahora se limpia y la cuenta se puede quitar. */
+  let partidasMovidas = 0;
   const movs = await query<any>(
     `SELECT COUNT(*)::int AS n FROM journal_lines WHERE account_id = $1`, [id]);
   if (movs.rows[0].n > 0) {
-    throw new Error(
-      `No se puede borrar «${cta.codigo}»: tiene ${movs.rows[0].n} movimiento(s) en pólizas. ` +
-      `Usa «Cambio de cuenta» para reasignarlos y luego bórrala.`);
+    const tempId = await asegurarCuentaTemporal(companyId);
+    const r = await query(
+      `UPDATE journal_lines SET account_id = $2 WHERE account_id = $1`, [id, tempId]);
+    partidasMovidas = r.rowCount || 0;
   }
 
   await query('DELETE FROM accounting_period_balances WHERE account_id = $1', [id]);
   await query('DELETE FROM accounting_accounts WHERE company_id = $1 AND id = $2', [companyId, id]);
-  return { id, codigo: cta.codigo, nombre: cta.nombre };
+
+  /* Lápida: que el import del respaldo NO la vuelva a crear (era el reclamo
+   * «te vuelve a poner la cuenta que eliminaste»). */
+  await query(
+    `INSERT INTO accounting_cuentas_excluidas (company_id, codigo, motivo)
+     VALUES ($1, $2, $3) ON CONFLICT (company_id, codigo) DO NOTHING`,
+    [companyId, cta.codigo,
+     `Borrada a mano${partidasMovidas ? `; ${partidasMovidas} partida(s) a MIG-TEMPORAL` : ''}`]);
+
+  return { id, codigo: cta.codigo, nombre: cta.nombre, partidasMovidas };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -4838,3 +4838,24 @@ la pantalla de `Pólizas` (lista), un check «todo el año» que aplica a Ventas
 (la Depreciación sigue siendo mensual). Backend: `generarVentasDelAnio`/`generarComprasDelAnio`/
 `generarCobrosPagosDelAnio` en `polizas.service.ts` recorren los meses (del año en curso, sólo
 hasta el mes actual) y suman; las rutas aceptan `todoElAnio`. Idempotente: cada mes no duplica.
+
+## 2026-09-03 (contabilidad) — Catálogo que se respeta: borrados que persisten, partidas a MIG, y control de tercero por rubro
+
+Tres arreglos sobre el mismo problema («el respaldo trae errores y quiero un buen catálogo»):
+
+1. **Borrar ya no revive al reimportar (B).** Nueva tabla `accounting_cuentas_excluidas`
+   (lápida por empresa+código). `eliminarCuenta` la registra al borrar; `importarCuentas`
+   salta cualquier código en ella (y avisa cuántas respetó). `crearCuenta` la quita si el
+   usuario re-crea ese código a propósito. Migración `2026-09-03_cuentas_excluidas.sql`
+   (corre sola en el arranque de Render).
+2. **Partidas → MIG-TEMPORAL al borrar (D).** Antes `eliminarCuenta` se NEGABA si la cuenta
+   tenía movimientos. Ahora, como pediste, las **pasa a la cuenta temporal de migración**
+   (`MIG-TEMPORAL`) y borra la cuenta; el mensaje dice cuántas partidas movió. Se reasignan
+   luego con «Cambio de cuenta».
+3. **Terceros ya no se mezclan (C).** `cuentaControl` (catalogo-terceros) tomaba de control la
+   cuenta con MÁS hijos y caía en una hoja mal clasificada del respaldo («112-00-003 Uber»,
+   activo con agrupador 201.01), amontonando proveedores y clientes bajo Uber. Ahora ordena
+   para que gane una cuenta **acumulativa (no hoja)** y del **rubro correcto** (clientes 1xx /
+   proveedores 2xx); hijos y nivel sólo desempatan. Efecto: los terceros nuevos se numeran bajo
+   el control correcto (105.xx / 201.xx). Para lo YA mezclado: borrar esas cuentas (sus partidas
+   van a MIG) y re-generar subcuentas — ahora caen bien.
