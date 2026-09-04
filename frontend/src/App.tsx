@@ -50,6 +50,7 @@ import { PointOfSalePage }            from '@/pages/PointOfSale';
 import { TreasuryPage }               from '@/pages/Treasury';
 import { AuditoriaPage }              from '@/pages/Auditoria';
 import { XmlDelSatPage }             from '@/pages/XmlDelSat';
+import { CalendarioSatPage }         from '@/pages/CalendarioSat';
 import { MensajesPage }               from '@/pages/Mensajes';
 import { NominaDashboardPage }        from '@/pages/nomina/NominaDashboard';
 import { EmpleadosPage }              from '@/pages/nomina/Empleados';
@@ -292,6 +293,7 @@ export function App() {
             <Route path="xml-sat"                         element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
             <Route path="xml-sat/recibidos"               element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
             <Route path="xml-sat/emitidos"                element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
+            <Route path="xml-sat/calendario"              element={<ModuleRoute module="auditoria"><CalendarioSatPage /></ModuleRoute>} />
             <Route path="mensajes"                        element={<ModuleRoute module="mensajes"><MensajesPage /></ModuleRoute>} />
             {/* Nómina. El gateo real lo hace el backend (requireModule) — esto
                 sólo evita que la URL escrita a mano pinte una pantalla vacía. */}

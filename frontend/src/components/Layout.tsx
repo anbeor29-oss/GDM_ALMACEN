@@ -340,6 +340,7 @@ export function Layout() {
                     pathPrefix="/xml-sat"
                     children={[
                       { to: '/xml-sat',           icon: emoji3D('🛰️'), label: 'XML del SAT' },
+                      { to: '/xml-sat/calendario', icon: emoji3D('📅'), label: 'Calendario' },
                       { to: '/xml-sat/emitidos',  icon: emoji3D('⬆️'), label: 'Emitidos' },
                       { to: '/xml-sat/recibidos', icon: emoji3D('⬇️'), label: 'Recibidos' },
                     ]}

@@ -4887,3 +4887,21 @@ para revisar/borrar lo que siga raro (el borrado ya persiste y manda partidas a 
   invoices, item en el menú Facturas). Misma lógica y PDF, sin duplicar.
 - **Cobranza, Ventas y Fiscal quedan DESHABILITADOS** (flag `MOSTRAR_OTROS=false` en la página
   de Reportes) — se conservan sus componentes para reubicarlos donde el usuario diga.
+
+## 2026-09-03 (SAT descarga) — Calendario de cobertura de XML (paso 1-3)
+
+Diseño aprobado por el usuario (calendario día a día desde el inicio del respaldo, marcando lo
+que ya está en NEXO). Implementado:
+
+- **Endpoint de cobertura** (sólo lectura): `GET /sat-descarga/cobertura?anio=&direccion=` →
+  `coberturaDelAnio` (programacion.service) cruza `cfdi_recibidos` (CFDI por día) con
+  `sat_particiones` CFDI (rangos pedidos + estado). Estado por día: **nexo** (hay CFDI),
+  **proceso** (solicitud en vuelo), **sincomp** (SIN_DATOS: pedido y contestado vacío), **falta**
+  (nadie lo pidió). TZ-safe con UTC. Devuelve días + resumen + anioMin (para el navegador).
+- **Pantalla** `CalendarioSat.tsx` (ruta `/xml-sat/calendario`, item «Calendario» en el menú XML):
+  heatmap mensual, toggle recibidos/emitidos, navegación de año (desde anioMin), leyenda con
+  conteos, tooltip por día (estado + nº CFDI).
+- **Acción «Llenar huecos del año»**: `POST /sat-descarga/llenar-huecos` → `llenarHuecos` crea
+  trabajos SÓLO para los meses con días en 'falta' (no re-pide lo cubierto, cuida la cuota del
+  SAT); el motor los baja dentro del presupuesto. Requiere el cron encendido
+  (`ENABLE_SAT_DESCARGA_CRON=true`) para que avancen solos.

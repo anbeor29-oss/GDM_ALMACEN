@@ -438,7 +438,124 @@ export async function comoVa(companyId: string) {
   };
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   6. COBERTURA POR DÍA (para el calendario)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export type EstadoDia = 'nexo' | 'proceso' | 'sincomp' | 'falta';
+export interface DiaCobertura { dia: string; estado: EstadoDia; cfdi: number; }
+
+/**
+ * Estado de cada día del año, para pintar el calendario:
+ *   nexo    — ya hay ≥1 CFDI de ese día en NEXO (verde).
+ *   proceso — no hay CFDI, pero una solicitud CFDI que cubre el día está en vuelo
+ *             (PENDIENTE/SOLICITADA/EN_PROCESO/TERMINADA/DIVIDIDA) (ámbar).
+ *   sincomp — no hay CFDI y el SAT confirmó que no había (partición SIN_DATOS) (azul).
+ *   falta   — nadie lo ha pedido (o sólo quedó rechazado/fallido) (gris).
+ *
+ * "Pedido y contestado" (no sólo "tiene XML"): un día legítimamente sin facturas,
+ * ya consultado, sale en azul y no se persigue para siempre.
+ */
+export async function coberturaDelAnio(
+  companyId: string, anio: number, direccion: 'recibidos' | 'emitidos',
+): Promise<{
+  anio: number; direccion: string; anioMin: number; hoy: string;
+  dias: DiaCobertura[]; resumen: Record<EstadoDia, number>;
+}> {
+  const desde = `${anio}-01-01`;
+  const finExcl = `${anio + 1}-01-01`;
+
+  // 1. CFDI por día (lo que YA está en NEXO).
+  const cfdi = await query<any>(
+    `SELECT fecha_emision::date AS dia, COUNT(*)::int AS n
+       FROM cfdi_recibidos
+      WHERE company_id=$1 AND direccion=$2
+        AND fecha_emision >= $3 AND fecha_emision < $4
+      GROUP BY 1`, [companyId, direccion, desde, finExcl]);
+  const porDia = new Map<string, number>();
+  for (const r of cfdi.rows) porDia.set(String(r.dia).slice(0, 10), r.n);
+
+  // 2. Particiones CFDI que tocan el año, con su estado → marca días pedidos.
+  const parts = await query<any>(
+    `SELECT pa.desde::date AS d, pa.hasta::date AS h, pa.estado
+       FROM sat_particiones pa
+       JOIN sat_trabajos t ON t.id = pa.trabajo_id
+      WHERE t.company_id=$1 AND t.direccion=$2 AND t.tipo='CFDI'
+        AND pa.hasta >= $3 AND pa.desde < $4`, [companyId, direccion, desde, finExcl]);
+  const EN_VUELO = new Set(['PENDIENTE', 'SOLICITADA', 'EN_PROCESO', 'TERMINADA', 'DIVIDIDA']);
+  const enVuelo = new Set<string>();
+  const vacio = new Set<string>();
+  const clave = (d: Date) => d.toISOString().slice(0, 10);
+  for (const p of parts.rows) {
+    const d0 = new Date(`${String(p.d).slice(0, 10)}T00:00:00Z`);
+    const d1 = new Date(`${String(p.h).slice(0, 10)}T00:00:00Z`);
+    for (const d = new Date(d0); d <= d1; d.setUTCDate(d.getUTCDate() + 1)) {
+      const k = clave(d);
+      if (!k.startsWith(String(anio))) continue;
+      if (p.estado === 'SIN_DATOS') vacio.add(k);
+      else if (EN_VUELO.has(p.estado)) enVuelo.add(k);
+    }
+  }
+
+  // 3. Un renglón por día, hasta hoy (del año en curso) o 31-dic (años pasados).
+  const hoy = new Date();
+  const hoyIso = hoy.toISOString().slice(0, 10);
+  const ultimo = anio >= hoy.getUTCFullYear()
+    ? new Date(`${hoyIso}T00:00:00Z`)
+    : new Date(Date.UTC(anio, 11, 31));
+  const dias: DiaCobertura[] = [];
+  const resumen: Record<EstadoDia, number> = { nexo: 0, proceso: 0, sincomp: 0, falta: 0 };
+  for (const d = new Date(Date.UTC(anio, 0, 1)); d <= ultimo; d.setUTCDate(d.getUTCDate() + 1)) {
+    const k = clave(d);
+    const n = porDia.get(k) || 0;
+    const estado: EstadoDia = n > 0 ? 'nexo' : enVuelo.has(k) ? 'proceso' : vacio.has(k) ? 'sincomp' : 'falta';
+    resumen[estado]++;
+    dias.push({ dia: k, estado, cfdi: n });
+  }
+
+  // Año mínimo para el navegador del calendario (respaldo o primer CFDI).
+  const minR = await query<any>(
+    `SELECT LEAST(
+        (SELECT MIN(anio) FROM accounting_fiscal_years WHERE company_id=$1),
+        (SELECT MIN(EXTRACT(YEAR FROM fecha_emision))::int FROM cfdi_recibidos WHERE company_id=$1)
+      ) AS m`, [companyId]);
+  const anioMin = Number(minR.rows[0]?.m) || anio;
+
+  return { anio, direccion, anioMin, hoy: hoyIso, dias, resumen };
+}
+
+/**
+ * Llena los HUECOS del año: crea trabajos SÓLO para los meses que tienen al menos
+ * un día en 'falta' (gris). Los meses ya cubiertos no se re-piden — así no se gasta
+ * cuota del SAT en lo que ya está. El motor los baja dentro del presupuesto diario.
+ */
+export async function llenarHuecos(
+  companyId: string, anio: number, direccion: 'recibidos' | 'emitidos', userId?: string,
+): Promise<{ creados: number; meses: number[]; omitidos: string[] }> {
+  const cob = await coberturaDelAnio(companyId, anio, direccion);
+  const mesesFalta = new Set<number>();
+  for (const d of cob.dias) if (d.estado === 'falta') mesesFalta.add(Number(d.dia.slice(5, 7)));
+
+  const out = { creados: 0, meses: [] as number[], omitidos: [] as string[] };
+  for (const { mes, desde, hasta } of mesesDelEjercicio(anio)) {
+    if (!mesesFalta.has(mes)) continue;
+    let algo = false;
+    for (const tipo of ['CFDI', 'Metadata'] as Array<'CFDI' | 'Metadata'>) {
+      if (await trabajoVivoEn(companyId, desde, hasta, direccion, tipo)) {
+        out.omitidos.push(`${direccion}·${tipo} mes ${mes}: ya hay un trabajo vivo.`);
+        continue;
+      }
+      try {
+        await crearTrabajo(companyId, { desde, hasta, direccion, tipo }, userId, { origen: 'EJERCICIO', ejercicio: anio });
+        out.creados++; algo = true;
+      } catch (e: any) { out.omitidos.push(`${direccion}·${tipo} mes ${mes}: ${e.message}`); }
+    }
+    if (algo) out.meses.push(mes);
+  }
+  return out;
+}
+
 export default {
   configDe, guardarConfig, presupuestoDeHoy, consumir,
-  crearTrabajoDiario, crearTrabajoEjercicio, comoVa,
+  crearTrabajoDiario, crearTrabajoEjercicio, comoVa, coberturaDelAnio, llenarHuecos,
 };

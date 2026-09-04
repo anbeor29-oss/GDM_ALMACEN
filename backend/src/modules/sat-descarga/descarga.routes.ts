@@ -110,6 +110,17 @@ router.get(
   })
 );
 
+/** GET /sat-descarga/cobertura?anio=&direccion= — estado por día para el calendario. */
+router.get(
+  '/cobertura',
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = Number(req.query.anio) || new Date().getFullYear();
+    const direccion = req.query.direccion === 'emitidos' ? 'emitidos' : 'recibidos';
+    const data = await programacion.coberturaDelAnio(companyId(req), anio, direccion);
+    res.json({ success: true, data });
+  })
+);
+
 /** PUT /sat-descarga/programacion — cada cuánto y cuánto por día */
 router.put(
   '/programacion',
@@ -172,6 +183,24 @@ router.post(
       req.user?.userId
     );
     res.json({ success: true, data: r, message: r.aviso });
+  })
+);
+
+/** POST /sat-descarga/llenar-huecos — crea trabajos sólo para los meses del año
+ *  con días en 'falta' (desde el calendario). No re-pide lo ya cubierto. */
+router.post(
+  '/llenar-huecos',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = Number(req.body.anio) || new Date().getFullYear();
+    const direccion = req.body.direccion === 'emitidos' ? 'emitidos' : 'recibidos';
+    const r = await programacion.llenarHuecos(companyId(req), anio, direccion, req.user?.userId);
+    res.json({
+      success: true, data: r,
+      message: r.creados
+        ? `${r.creados} trabajo(s) creados para ${r.meses.length} mes(es) con huecos. El motor los bajará dentro del presupuesto.`
+        : 'No había huecos que pedir en este año (o ya hay trabajos vivos sobre ellos).',
+    });
   })
 );
 
