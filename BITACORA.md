@@ -4976,3 +4976,13 @@ nombre en `customers`, es_cliente/es_proveedor). Para lo ya importado sin re-imp
   un `factor`; el cron lo pone en **4 de noche (22:00–06:59 CDMX)** —cuando el SAT está menos
   saturado— y 1 de día, escalando paquetes/verificaciones/solicitudes por corrida. «Avanzar ahora»
   (manual) sigue con factor 1.
+
+## 2026-09-03 (contabilidad) — Sugerencia automática de cuenta por clave SAT (el motor propone, tú confirmas)
+
+En Asignación de cuentas (pestañas Ventas/Compras), para cada producto SIN cuenta el motor sugiere
+una: `sugerenciasCuenta` (ventas-cuentas.service) devuelve las claves ya asignadas + la cuenta
+dominante; el frontend casa la ClaveProdServ por **prefijo** con las asignadas (misma familia del
+SAT → misma cuenta, ≥4 dígitos comunes) y, si no, usa la dominante. En el renglón sale «sugerido:
+<cuenta> · usar» y arriba un botón «Aplicar sugerencia a los N que faltan». El usuario confirma;
+nunca se asigna solo. Ruta `GET /accounting/sugerencias-cuenta?direccion=`. Primer paso del patrón
+de contabilización por clave (siguiente: afinarlo con Anexo 24/NIF por categoría del SAT).

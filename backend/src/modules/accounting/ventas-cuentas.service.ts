@@ -93,3 +93,24 @@ export async function mapaProductoCuenta(companyId: string): Promise<Map<string,
       WHERE company_id=$1 AND cuenta_codigo IS NOT NULL`, [companyId]);
   return new Map<string, string>(r.rows.map((x: any) => [x.clave_prod_serv, x.cuenta_codigo]));
 }
+
+/**
+ * Base para SUGERIR la cuenta de un producto nuevo: el motor propone, el usuario
+ * confirma. Devuelve las claves YA asignadas (para casar por prefijo de la
+ * ClaveProdServ — misma familia del SAT, misma cuenta) y la cuenta DOMINANTE (la
+ * más usada) como respaldo. El match por prefijo lo hace el frontend, que ya tiene
+ * la lista de productos del mes.
+ */
+export async function sugerenciasCuenta(companyId: string, direccion: 'ventas' | 'compras') {
+  const tabla = direccion === 'compras' ? 'compra_producto_cuenta' : 'venta_producto_cuenta';
+  const r = await query<any>(
+    `SELECT clave_prod_serv AS clave, cuenta_codigo AS cuenta
+       FROM ${tabla}
+      WHERE company_id=$1 AND cuenta_codigo IS NOT NULL AND cuenta_codigo <> ''`, [companyId]);
+  const asignadas: Array<{ clave: string; cuenta: string }> = r.rows;
+  const cuenta = new Map<string, number>();
+  for (const a of asignadas) cuenta.set(a.cuenta, (cuenta.get(a.cuenta) || 0) + 1);
+  let dominante: string | null = null, max = 0;
+  for (const [c, n] of cuenta) if (n > max) { max = n; dominante = c; }
+  return { asignadas, dominante };
+}

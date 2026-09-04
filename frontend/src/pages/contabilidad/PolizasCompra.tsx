@@ -106,6 +106,26 @@ export function TabCargos({ anio, mes, cuentas }: { anio: number; mes: number; c
     qc.invalidateQueries({ queryKey: clave });
   };
 
+  // Sugerencia de cuenta por prefijo de ClaveProdServ (misma familia SAT → misma
+  // cuenta); si no, la dominante. El usuario confirma.
+  const sugQ = useQuery({ queryKey: ['sug-cuenta', 'compras'], queryFn: () => api.getSugerenciasCuenta('compras') });
+  const sug: any = sugQ.data?.data || { asignadas: [], dominante: null };
+  const sugerir = (clave: string): string | null => {
+    let best: string | null = null, bestLen = -1;
+    for (const a of (sug.asignadas || [])) {
+      const k = String(clave), c = String(a.clave); let i = 0;
+      while (i < k.length && i < c.length && k[i] === c[i]) i++;
+      if (i > bestLen) { bestLen = i; best = a.cuenta; }
+    }
+    const s = bestLen >= 4 ? best : (sug.dominante || best);
+    return s && nombreCta.has(s) ? s : null;
+  };
+  const conSug = productos.filter((p) => !p.cuenta && sugerir(p.clave));
+  const aplicarSugerencias = async () => {
+    for (const p of conSug) { const s = sugerir(p.clave); if (s) await api.setCompraProducto(p.clave, p.descripcion || null, s); }
+    qc.invalidateQueries({ queryKey: clave });
+  };
+
   const subir = async (files: FileList | null) => {
     if (!files || !files.length) return;
     setSubiendo(true); setSubMsg('');
@@ -142,6 +162,12 @@ export function TabCargos({ anio, mes, cuentas }: { anio: number; mes: number; c
         (119.01)</b>, contra el proveedor.
         {faltan > 0 && <b className="text-amber-700"> Faltan {faltan} por asignar.</b>}
       </p>
+      {conSug.length > 0 && (
+        <button onClick={aplicarSugerencias}
+          className="flex items-center gap-1.5 border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-50 text-sm">
+          <Check size={15} /> Aplicar sugerencia a {conSug.length} que falta(n)
+        </button>
+      )}
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50 border-b">
@@ -162,7 +188,8 @@ export function TabCargos({ anio, mes, cuentas }: { anio: number; mes: number; c
             )}
             {productos.map((p) => (
               <RenglonProducto key={p.clave} p={p} nombreCta={nombreCta} onGuardar={guardar}
-                onCrear={(codigo: string) => setCrear({ p, codigo })} />
+                onCrear={(codigo: string) => setCrear({ p, codigo })}
+                sugerencia={!p.cuenta ? sugerir(p.clave) : null} />
             ))}
           </tbody>
         </table>
@@ -186,9 +213,9 @@ export function TabCargos({ anio, mes, cuentas }: { anio: number; mes: number; c
   );
 }
 
-function RenglonProducto({ p, nombreCta, onGuardar, onCrear }: {
+function RenglonProducto({ p, nombreCta, onGuardar, onCrear, sugerencia }: {
   p: any; nombreCta: Map<string, string>; onGuardar: (p: any, codigo: string) => void;
-  onCrear: (codigo: string) => void;
+  onCrear: (codigo: string) => void; sugerencia?: string | null;
 }) {
   return (
     <tr className="hover:bg-gray-50">
@@ -199,6 +226,13 @@ function RenglonProducto({ p, nombreCta, onGuardar, onCrear }: {
       <td className="px-4 py-2">
         <CuentaPicker listId="ctas-compras" nombreCta={nombreCta} value={p.cuenta}
           onSave={(codigo) => onGuardar(p, codigo)} onCrear={onCrear} placeholder="115/601…" ancho="w-64" />
+        {!p.cuenta && sugerencia && (
+          <button onClick={() => onGuardar(p, sugerencia)}
+            className="mt-1 text-[11px] text-emerald-700 hover:underline flex items-center gap-1"
+            title={nombreCta.get(sugerencia)}>
+            sugerido: <span className="font-mono">{sugerencia}</span> · usar
+          </button>
+        )}
       </td>
     </tr>
   );

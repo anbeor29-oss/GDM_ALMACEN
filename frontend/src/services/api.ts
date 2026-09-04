@@ -1014,6 +1014,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/cuentas/${id}/partidas`);
     return r.data;
   }
+  /** Base para sugerir cuenta por clave SAT (claves asignadas + dominante). */
+  async getSugerenciasCuenta(direccion: 'ventas' | 'compras') {
+    const r = await this.client.get<APIResponse<any>>('/accounting/sugerencias-cuenta', { params: { direccion } });
+    return r.data;
+  }
   /** Pólizas del respaldo que no se pudieron importar (pendientes). */
   async getPolizasPendientes() {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas-pendientes');

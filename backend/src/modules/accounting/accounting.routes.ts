@@ -903,6 +903,16 @@ router.get(
    PÓLIZAS — paso 1: ventas (de facturas emitidas asignadas)
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/** GET /accounting/sugerencias-cuenta?direccion=ventas|compras — base para que el
+ *  motor SUGIERA la cuenta de un producto nuevo (claves ya asignadas + dominante). */
+router.get(
+  '/sugerencias-cuenta',
+  asyncHandler(async (req: Request, res: Response) => {
+    const direccion = req.query.direccion === 'compras' ? 'compras' : 'ventas';
+    res.json({ success: true, data: await ventas.sugerenciasCuenta(companyId(req), direccion) });
+  })
+);
+
 /** GET /accounting/ventas/productos?anio&mes — ClaveProdServ de emitidos con su 401 */
 router.get(
   '/ventas/productos',
