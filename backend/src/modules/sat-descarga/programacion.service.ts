@@ -471,18 +471,21 @@ export async function coberturaDelAnio(
   // bajó no desaparece del calendario por un dato faltante —era justo lo que el
   // usuario veía: días bajados que no se reflejaban—.
   const cfdi = await query<any>(
-    `SELECT COALESCE(fecha_emision, fecha_timbrado)::date AS dia, COUNT(*)::int AS n
+    `SELECT TO_CHAR(COALESCE(fecha_emision, fecha_timbrado), 'YYYY-MM-DD') AS dia, COUNT(*)::int AS n
        FROM cfdi_recibidos
       WHERE company_id=$1 AND direccion=$2
         AND COALESCE(fecha_emision, fecha_timbrado) >= $3
         AND COALESCE(fecha_emision, fecha_timbrado) <  $4
       GROUP BY 1`, [companyId, direccion, desde, finExcl]);
   const porDia = new Map<string, number>();
+  // OJO: `::date` regresa un Date de JS (node-postgres), y String(Date).slice(0,10)
+  // daba «Wed Jan 0» —clave basura que NUNCA casaba con el día del calendario, por
+  // eso salía todo gris—. Con TO_CHAR viene ya como 'YYYY-MM-DD'.
   for (const r of cfdi.rows) porDia.set(String(r.dia).slice(0, 10), r.n);
 
   // 2. Particiones CFDI que tocan el año, con su estado → marca días pedidos.
   const parts = await query<any>(
-    `SELECT pa.desde::date AS d, pa.hasta::date AS h, pa.estado
+    `SELECT TO_CHAR(pa.desde, 'YYYY-MM-DD') AS d, TO_CHAR(pa.hasta, 'YYYY-MM-DD') AS h, pa.estado
        FROM sat_particiones pa
        JOIN sat_trabajos t ON t.id = pa.trabajo_id
       WHERE t.company_id=$1 AND t.direccion=$2 AND t.tipo='CFDI'
@@ -509,7 +512,7 @@ export async function coberturaDelAnio(
   // hay trabajo vivo» —la queja del usuario: el calendario no reflejaba lo
   // solicitado—. Se marca 'proceso' por el rango del trabajo.
   const trabajos = await query<any>(
-    `SELECT fecha_desde::date AS d, fecha_hasta::date AS h
+    `SELECT TO_CHAR(fecha_desde, 'YYYY-MM-DD') AS d, TO_CHAR(fecha_hasta, 'YYYY-MM-DD') AS h
        FROM sat_trabajos
       WHERE company_id=$1 AND direccion=$2 AND tipo='CFDI'
         AND estado IN ('CREADO','EN_PROCESO')

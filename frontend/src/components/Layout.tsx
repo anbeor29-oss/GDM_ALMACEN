@@ -313,7 +313,7 @@ export function Layout() {
                         ],
                       },
                       { to: '/contabilidad/cambio-cuenta', icon: emoji3D('🔀'), label: 'Cambio de cuenta' },
-                      { to: '/contabilidad/conciliacion',  icon: emoji3D('🏦'), label: 'Conciliación bancaria' },
+                      { to: '/contabilidad/conciliacion',  icon: emoji3D('🏦'), label: 'Conciliación contable' },
                       /* Auditoría cuelga de Contabilidad, después de Reportes: es
                          quien revisa lo timbrado contra lo contabilizado antes del
                          cierre del mes. La ruta sigue siendo /auditoria. */
