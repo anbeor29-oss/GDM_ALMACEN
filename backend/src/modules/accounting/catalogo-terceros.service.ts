@@ -117,20 +117,25 @@ async function cuentaControl(companyId: string, agrupador: string, mascara?: str
   const anchos = anchosDeMascara(mascara ?? null);
   const W = anchos ? anchos[anchos.length - 1] : 0;
   const params: any[] = [companyId, agrupador];
-  let redondo = 'FALSE';
+  /* El ORDER BY se ARMA por partes: si NO hay máscara (W=0) NO se puede saber cuál
+   * es el mayor «redondo», y meter un `ORDER BY (FALSE)` hace que Postgres truene
+   * con «non-integer constant in ORDER BY» —era lo que omitía TODAS las pólizas de
+   * venta/compra en una empresa sin máscara—. Sin máscara se ordena sólo por
+   * acumulativa/rubro/código. */
+  const orden: string[] = [];
   if (W > 0) {
     params.push('0'.repeat(W));
-    redondo = `(a.codigo ~ '^[0-9]+$' AND RIGHT(a.codigo, ${W}) = $3)`;
+    orden.push(`(a.codigo ~ '^[0-9]+$' AND RIGHT(a.codigo, ${W}) = $3) DESC`); // el mayor «redondo» (…-000) primero
   }
+  orden.push('(a.permite_movimientos = false) DESC');       // un control acumula, no es hoja
+  orden.push('(LEFT(a.codigo, 1) = LEFT($2, 1)) DESC');     // mismo rubro: 1xx cliente / 2xx proveedor
+  orden.push('a.codigo ASC');
+  orden.push('a.nivel ASC');
   const r = await query<any>(
     `SELECT a.*, (SELECT COUNT(*) FROM accounting_accounts h WHERE h.parent_id = a.id) AS hijos
        FROM accounting_accounts a
       WHERE a.company_id=$1 AND a.codigo_agrupador=$2 AND a.tercero_rfc IS NULL
-      ORDER BY (${redondo}) DESC,                          -- el mayor «redondo» (…-000) primero
-               (a.permite_movimientos = false) DESC,       -- un control acumula, no es hoja
-               (LEFT(a.codigo, 1) = LEFT($2, 1)) DESC,      -- mismo rubro: 1xx cliente / 2xx proveedor
-               a.codigo ASC,
-               a.nivel ASC
+      ORDER BY ${orden.join(', ')}
       LIMIT 1`, params);
   return r.rows[0] || null;
 }
