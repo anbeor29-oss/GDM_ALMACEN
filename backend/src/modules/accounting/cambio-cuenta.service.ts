@@ -104,8 +104,31 @@ export async function fusionarCuenta(
  * Grupos de cuentas con el mismo nombre normalizado (mayúsculas, sin acentos) —
  * posibles duplicados por typo. Devuelve sólo los grupos con 2+ cuentas. `q` filtra
  * por texto en nombre o código.
+ *
+ * Se agrupa por nombre PERO dentro del MISMO rubro (mismo control/mayor): una
+ * persona puede ser cliente (1-10-25), proveedor (2-10-10), acreedor y accionista
+ * a la vez, y esas NO son cuentas duplicadas —son roles distintos—. Sólo son
+ * duplicado dos cuentas del mismo rubro (p.ej. dos clientes 1-10-25 con el mismo
+ * nombre). El rubro se saca de los primeros segmentos de la máscara (el control):
+ * `11025` clientes, `21010` proveedores… Sin máscara, se cae a nombre solo.
  */
+function anchosMasc(m?: string | null): number[] | null {
+  if (!m) return null;
+  const a = (m.match(/#+/g) || []).map((g) => g.length);
+  return a.length >= 2 ? a : null;
+}
+
 export async function candidatasDuplicadas(companyId: string, q?: string) {
+  const mr = await query<any>('SELECT mascara_cuenta FROM companies WHERE id=$1', [companyId]);
+  const anchos = anchosMasc(mr.rows[0]?.mascara_cuenta);
+  const total = anchos ? anchos.reduce((a, b) => a + b, 0) : 0;
+  const rubroW = anchos ? total - anchos[anchos.length - 1] : 0;   // primeros segmentos = control
+  const rubroDe = (codigo: string) => {
+    if (!rubroW) return '';
+    const d = String(codigo).replace(/\D/g, '');
+    return d.length >= rubroW ? d.slice(0, rubroW) : d;            // «11025» / «21010»
+  };
+
   const r = await query<any>(
     `SELECT id, codigo, nombre, codigo_agrupador, tercero_rfc, permite_movimientos
        FROM accounting_accounts WHERE company_id=$1 ORDER BY nombre, codigo`, [companyId]);
@@ -115,8 +138,9 @@ export async function candidatasDuplicadas(companyId: string, q?: string) {
     const nombreN = norm(c.nombre);
     if (!nombreN) continue;
     if (filtro && !nombreN.includes(filtro) && !String(c.codigo).toLowerCase().includes((q || '').toLowerCase())) continue;
-    if (!grupos.has(nombreN)) grupos.set(nombreN, []);
-    grupos.get(nombreN)!.push(c);
+    const key = nombreN + '|' + rubroDe(c.codigo);
+    if (!grupos.has(key)) grupos.set(key, []);
+    grupos.get(key)!.push(c);
   }
   return [...grupos.values()].filter((g) => g.length > 1).slice(0, 100);
 }
