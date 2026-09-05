@@ -18,6 +18,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wallet, Ban, FileText, X, RefreshCw, Search, Circle, Check, Pencil } from 'lucide-react';
 import { api } from '@/services/api';
 import { useEjercicios } from '@/components/SelectorPeriodo';
+import { aniosContables } from '@/utils/anios';
 
 type Direccion = 'emitidos' | 'recibidos';
 type Modo = 'representacion' | 'pago' | 'cancelacion' | 'ficha';
@@ -71,11 +72,13 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
     : porTab;
 
   const emitidos = direccion === 'emitidos';
-  // Los años del respaldo (2018→) si hay contabilidad; si no, los últimos 6.
+  // Rango CONTINUO 2018→año actual (aniosContables), UNIDO a los ejercicios
+  // contables y al año elegido. Antes salía sólo de los ejercicios contables, y un
+  // año con XML pedido pero SIN periodos contables —típico 2025— desaparecía del
+  // combo aunque ya estuviera solicitado; ahora aparece siempre.
   const ejercicios = useEjercicios(anio);
-  const anios = ejercicios.length > 1
-    ? ejercicios
-    : Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i);
+  const anios = [...new Set<number>([...aniosContables(), ...ejercicios, anio])]
+    .sort((a, b) => b - a);
 
   return (
     <div className="space-y-3">

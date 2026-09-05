@@ -502,6 +502,27 @@ export async function coberturaDelAnio(
     }
   }
 
+  // 2b. Trabajos VIVOS (CREADO/EN_PROCESO) que aún no generaron partición: el
+  // período se SOLICITÓ pero el motor todavía no lo partió ni lo pidió al SAT
+  // (típico con el cron apagado, o antes del primer «Avanzar»). Sin esto, un
+  // trabajo recién solicitado se veía «falta» aunque «Llenar huecos» dijera «ya
+  // hay trabajo vivo» —la queja del usuario: el calendario no reflejaba lo
+  // solicitado—. Se marca 'proceso' por el rango del trabajo.
+  const trabajos = await query<any>(
+    `SELECT fecha_desde::date AS d, fecha_hasta::date AS h
+       FROM sat_trabajos
+      WHERE company_id=$1 AND direccion=$2 AND tipo='CFDI'
+        AND estado IN ('CREADO','EN_PROCESO')
+        AND fecha_hasta >= $3 AND fecha_desde < $4`, [companyId, direccion, desde, finExcl]);
+  for (const t of trabajos.rows) {
+    const d0 = new Date(`${String(t.d).slice(0, 10)}T00:00:00Z`);
+    const d1 = new Date(`${String(t.h).slice(0, 10)}T00:00:00Z`);
+    for (const d = new Date(d0); d <= d1; d.setUTCDate(d.getUTCDate() + 1)) {
+      const k = clave(d);
+      if (k.startsWith(String(anio))) enVuelo.add(k);
+    }
+  }
+
   // 3. Un renglón por día, hasta hoy (del año en curso) o 31-dic (años pasados).
   const hoy = new Date();
   const hoyIso = hoy.toISOString().slice(0, 10);
