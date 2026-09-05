@@ -11,12 +11,14 @@ import { revisarRfcPersonaFisica } from '@/utils/rfc';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Edit2, X, FileUp, Loader2 } from 'lucide-react';
 import api from '@/services/api';
+import { formatCuenta, useMascara } from '@/utils/cuenta';
 
 export function CustomersPage() {
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const mascara = useMascara();
 
   const { data: customersData, isLoading } = useQuery({
     queryKey: ['customers', page],
@@ -57,6 +59,7 @@ export function CustomersPage() {
             <tr>
               <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Nombre</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">RFC</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Cuenta contable</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Régimen</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">CP</th>
               <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Saldo</th>
@@ -65,14 +68,17 @@ export function CustomersPage() {
           </thead>
           <tbody className="divide-y divide-gray-200">
             {isLoading ? (
-              <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-600">Cargando…</td></tr>
+              <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-600">Cargando…</td></tr>
             ) : customersData?.data?.customers?.length === 0 ? (
-              <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-600">No hay clientes</td></tr>
+              <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-600">No hay clientes</td></tr>
             ) : (
               customersData?.data?.customers?.map((c: any) => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm font-medium text-gray-900 uppercase">{c.business_name}</td>
                   <td className="px-6 py-4 text-sm text-gray-600 font-mono">{c.rfc}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700 font-mono">
+                    {c.cuenta_contable ? formatCuenta(c.cuenta_contable, mascara) : <span className="text-gray-400">—</span>}
+                  </td>
                   <td className="px-6 py-4 text-sm text-gray-600 font-mono">{c.fiscal_regime || '—'}</td>
                   <td className="px-6 py-4 text-sm text-gray-600 font-mono">{c.postal_code || '—'}</td>
                   <td className="px-6 py-4 text-right">

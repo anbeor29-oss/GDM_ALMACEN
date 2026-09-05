@@ -1028,6 +1028,11 @@ class APIClient {
     const r = await this.client.delete<APIResponse<any>>(`/accounting/polizas-pendientes/${guid}`);
     return r.data;
   }
+  /** Detalle crudo de una pendiente: los movimientos del respaldo, para juzgar si existe / se leyó bien. */
+  async getPolizaPendienteDetalle(guid: string) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/polizas-pendientes/${guid}`);
+    return r.data;
+  }
   /** Mueve los terceros mal colocados a su control correcto (105 cliente / 201 proveedor), renumerados. */
   async reorganizarTerceros() {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/reorganizar-terceros', {});

@@ -27,6 +27,10 @@ const agrupadorDe = (tipo: 'cliente' | 'proveedor', rfc: string) =>
 // «VALENZUELA DELFIN SA DE CV».
 const norm = (s: string) => (s || '').toUpperCase().normalize('NFD')
   .replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+// Nombre con las PALABRAS ordenadas: empata «ADRIANA DELGADO FIGUEROA» (como viene
+// en el CFDI) con «DELGADO FIGUEROA ADRIANA» (como suele venir en CONTPAQi). Sin
+// esto, el mismo tercero con el orden cambiado se ligaba mal y nacía un duplicado.
+const normSorted = (s: string) => norm(s).split(' ').filter(Boolean).sort().join(' ');
 
 function anchosDeMascara(m?: string | null): number[] | null {
   if (!m) return null;
@@ -47,13 +51,22 @@ function anchosDeMascara(m?: string | null): number[] | null {
 function codigoSiguienteTercero(control: any, mascara: string | null, usados: Set<string>): string {
   const code = String(control.codigo);
   const anchos = anchosDeMascara(mascara);
-  if (anchos && /^\d+$/.test(code) && anchos.reduce((a, b) => a + b, 0) === code.length) {
+  const total = anchos ? anchos.reduce((a, b) => a + b, 0) : 0;
+  // Prefijo del MAYOR en puro dígito. Le quitamos separadores y cualquier sufijo
+  // «-NNN» heredado del formato viejo, y tomamos los primeros `total` dígitos: así
+  // el control valga 1-10-25-000, 11025000 o incluso el mal formado 11025001-076,
+  // SIEMPRE sale el mismo prefijo (11025) y el hueco es 1-10-25-0XX —nunca el
+  // segmento de más 1-10-25-001-0XX que reportó el usuario—.
+  const soloDig = code.replace(/\D/g, '');
+  if (anchos && total > 0 && soloDig.length >= total) {
     const W = anchos[anchos.length - 1];
-    const pref = code.slice(0, code.length - W);
+    const pref = soloDig.slice(0, total - W);          // «11025»
     const maxN = Math.pow(10, W) - 1;
     let n = 0;
     for (const u of usados) {
-      if (u.length === code.length && /^\d+$/.test(u) && u.slice(0, pref.length) === pref) {
+      // Sólo cuentan los que YA están en formato de máscara (largo exacto, puro
+      // dígito, mismo prefijo); los mal formados no corren la numeración.
+      if (u.length === total && /^\d+$/.test(u) && u.slice(0, pref.length) === pref) {
         n = Math.max(n, Number(u.slice(pref.length)));
       }
     }
@@ -62,7 +75,7 @@ function codigoSiguienteTercero(control: any, mascara: string | null, usados: Se
       if (!usados.has(cod)) return cod;
     }
   }
-  // Fallback: <control con guiones>-NNN
+  // Fallback SÓLO sin máscara numérica utilizable: <control con guiones>-NNN.
   const base = code.replace(/\./g, '-');
   let n = 0;
   for (const u of usados) { const m = /^(.+)-(\d+)$/.exec(u); if (m && m[1] === base) n = Math.max(n, Number(m[2])); }
@@ -143,22 +156,38 @@ export async function resolverOCrearSubcuentaTercero(
     [companyId, control.id, rfcU]);
   if (ya.rows[0]) return { id: ya.rows[0].id, codigo: ya.rows[0].codigo, creada: false };
 
-  // Antes de INVENTAR: si el respaldo ya trajo la cuenta del tercero (una hoja con
-  // el mismo agrupador de control y el MISMO nombre, aún sin RFC), se LIGA esa —con
-  // su código real del respaldo— en vez de crear un 105-01-00x nuevo (evita el
-  // duplicado 11002074-001 que reportó el usuario).
+  // Antes de INVENTAR: si el respaldo ya trajo la cuenta del tercero, se LIGA esa
+  // —con su código real del respaldo— en vez de crear un 105-01-00x nuevo. Es la
+  // base del catálogo que el usuario pidió respetar: si el cliente ya está en el
+  // catálogo importado, se usa ESE número, no uno alfabético nuevo (evita las
+  // duplicidades ADRIANA 1-10-25-065 vs 1-10-25-001-076 que reportó).
+  //
+  // Se busca una hoja SIN RFC con el mismo nombre entre las candidatas del rubro:
+  // no sólo las del agrupador exacto (105.01) —que muchas cuentas del respaldo NO
+  // traen— sino también las que cuelgan bajo el MAYOR del control (mismo prefijo
+  // 1-10-25…), que es donde el respaldo dejó a los clientes.
   const nombreNorm = norm(nombre);
   if (nombreNorm) {
+    const anchos = anchosDeMascara(mascara);
+    const totalM = anchos ? anchos.reduce((a, b) => a + b, 0) : 0;
+    const digCtrl = String(control.codigo).replace(/\D/g, '');
+    const prefMayor = (anchos && totalM > 0 && digCtrl.length >= totalM)
+      ? digCtrl.slice(0, totalM - anchos[anchos.length - 1]) : null;   // «11025»
     const cand = await query<any>(
       `SELECT id, codigo, nombre FROM accounting_accounts
-        WHERE company_id=$1 AND codigo_agrupador=$2 AND tercero_rfc IS NULL
-          AND permite_movimientos=true AND id<>$3`,
-      [companyId, agrup, control.id]);
-    const hit = cand.rows.find((c: any) => norm(c.nombre) === nombreNorm);
+        WHERE company_id=$1 AND tercero_rfc IS NULL AND permite_movimientos=true AND id<>$3
+          AND (codigo_agrupador=$2 OR ($4 <> '' AND codigo LIKE $4))`,
+      [companyId, agrup, control.id, prefMayor ? prefMayor + '%' : '']);
+    // Primero por nombre EXACTO (ya normalizado); si no, por nombre con las palabras
+    // ordenadas (mismo tercero con apellidos y nombre en distinto orden).
+    const nombreSorted = normSorted(nombre);
+    const hit = cand.rows.find((c: any) => norm(c.nombre) === nombreNorm)
+             || cand.rows.find((c: any) => normSorted(c.nombre) === nombreSorted);
     if (hit) {
       await query(
-        `UPDATE accounting_accounts SET tercero_rfc=$2, requiere_tercero=false WHERE id=$1`,
-        [hit.id, rfcU]);
+        `UPDATE accounting_accounts SET tercero_rfc=$2, requiere_tercero=false,
+           codigo_agrupador=COALESCE(codigo_agrupador,$3) WHERE id=$1`,
+        [hit.id, rfcU, agrup]);
       return { id: hit.id, codigo: hit.codigo, creada: false };
     }
   }

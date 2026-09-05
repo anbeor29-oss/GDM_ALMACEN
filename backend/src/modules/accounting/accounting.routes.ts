@@ -1266,6 +1266,16 @@ router.get(
   })
 );
 
+/** GET /accounting/polizas-pendientes/:guid — el detalle crudo (movimientos del respaldo). */
+router.get(
+  '/polizas-pendientes/:guid',
+  asyncHandler(async (req: Request, res: Response) => {
+    const det = await contpaqi.detallePolizaPendiente(companyId(req), req.params.guid);
+    if (!det) { res.status(404).json({ success: false, message: 'No se encontró la pendiente.' }); return; }
+    res.json({ success: true, data: det });
+  })
+);
+
 /** DELETE /accounting/polizas-pendientes/:guid — descarta una pendiente. */
 router.delete(
   '/polizas-pendientes/:guid',

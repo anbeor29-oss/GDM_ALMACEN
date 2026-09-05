@@ -494,6 +494,41 @@ export async function descartarPolizaPendiente(companyId: string, guid: string):
   await query(`DELETE FROM contpaqi_polizas_pendientes WHERE company_id=$1 AND guid=$2`, [companyId, guid]);
 }
 
+/**
+ * El detalle CRUDO de una pendiente: la póliza y sus movimientos tal como venían
+ * en el respaldo. Sirve para responder «¿esta póliza existe / la estás leyendo
+ * bien?»: el usuario ve los renglones reales, con su cargo/abono y si cuadra o no.
+ * Los importes negativos se muestran ya volteados al lado correcto (igual que al
+ * importar), para que el cuadre coincida con lo que el sistema intentaría asentar.
+ */
+export async function detallePolizaPendiente(companyId: string, guid: string) {
+  const r = await query<any>(
+    `SELECT guid, folio, fecha, concepto, motivo, datos, created_at
+       FROM contpaqi_polizas_pendientes WHERE company_id=$1 AND guid=$2 LIMIT 1`,
+    [companyId, guid]);
+  if (!r.rows[0]) return null;
+  const row = r.rows[0];
+  const datos = row.datos || {};
+  const p = datos.p || {};
+  const movs = Array.isArray(datos.movs) ? datos.movs : [];
+  let cargos = 0, abonos = 0;
+  const movimientos = movs.map((m: any) => {
+    const imp = Number(m.importe) || 0;
+    const esCargo = m.tm === 0;
+    const cargo = imp >= 0 ? (esCargo ? imp : 0) : (esCargo ? 0 : -imp);
+    const abono = imp >= 0 ? (esCargo ? 0 : imp) : (esCargo ? -imp : 0);
+    cargos += cargo; abonos += abono;
+    return { num: m.num, cuenta: m.cuenta, tm: m.tm, importe: imp, cargo, abono, concepto: m.concepto || '' };
+  });
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  return {
+    guid: row.guid, folio: row.folio, fecha: row.fecha, concepto: row.concepto, motivo: row.motivo,
+    poliza: { ejercicio: p.ejercicio, periodo: p.periodo, tipoPol: p.tipoPol, folio: p.folio, concepto: p.concepto },
+    movimientos,
+    cuadre: { cargos: r2(cargos), abonos: r2(abonos), diferencia: r2(cargos - abonos) },
+  };
+}
+
 /** La cuenta temporal de migración (suspense): las partidas que no tienen cuenta
  *  o el descuadre de una póliza caen aquí para no perder nada; se reasignan luego. */
 export async function asegurarCuentaTemporal(companyId: string): Promise<string> {

@@ -465,12 +465,17 @@ export async function coberturaDelAnio(
   const desde = `${anio}-01-01`;
   const finExcl = `${anio + 1}-01-01`;
 
-  // 1. CFDI por día (lo que YA está en NEXO).
+  // 1. CFDI por día (lo que YA está en NEXO). Se cuenta por la fecha del
+  // comprobante, pero si un descargado quedó SIN fecha_emision (metadato con la
+  // columna vacía, o parseo fallido) se cae a fecha_timbrado: así un XML que SÍ
+  // bajó no desaparece del calendario por un dato faltante —era justo lo que el
+  // usuario veía: días bajados que no se reflejaban—.
   const cfdi = await query<any>(
-    `SELECT fecha_emision::date AS dia, COUNT(*)::int AS n
+    `SELECT COALESCE(fecha_emision, fecha_timbrado)::date AS dia, COUNT(*)::int AS n
        FROM cfdi_recibidos
       WHERE company_id=$1 AND direccion=$2
-        AND fecha_emision >= $3 AND fecha_emision < $4
+        AND COALESCE(fecha_emision, fecha_timbrado) >= $3
+        AND COALESCE(fecha_emision, fecha_timbrado) <  $4
       GROUP BY 1`, [companyId, direccion, desde, finExcl]);
   const porDia = new Map<string, number>();
   for (const r of cfdi.rows) porDia.set(String(r.dia).slice(0, 10), r.n);

@@ -25,7 +25,9 @@ interface Supplier {
   credit_used?: number;
   supplier_rating?: number;
   bank_name?: string;
+  bank_account?: string;
   bank_clabe?: string;
+  cuenta_contable?: string;
 }
 
 const money = (n: any) =>
@@ -108,10 +110,19 @@ export function SuppliersPage() {
                 <td className="px-4 py-2 font-mono">{s.rfc}</td>
                 <td className="px-4 py-2 font-medium uppercase">{s.business_name}</td>
                 <td className="px-4 py-2 text-sm">
-                  {s.bank_name ? (
-                    <span className="inline-flex items-center gap-1 text-gray-700">
-                      <Landmark size={13} className="text-emerald-600"/>{s.bank_name}
-                    </span>
+                  {(s.bank_name || s.bank_account || s.bank_clabe) ? (
+                    <div className="leading-tight">
+                      <span className="inline-flex items-center gap-1 text-gray-700">
+                        <Landmark size={13} className="text-emerald-600"/>{s.bank_name || 'Cuenta'}
+                      </span>
+                      {(s.bank_account || s.bank_clabe) && (
+                        <div className="text-[11px] text-gray-500 font-mono mt-0.5">
+                          {s.bank_account
+                            ? s.bank_account
+                            : `CLABE ${String(s.bank_clabe).slice(0, 4)}…${String(s.bank_clabe).slice(-4)}`}
+                        </div>
+                      )}
+                    </div>
                   ) : <span className="text-gray-400 text-xs">sin cuenta</span>}
                 </td>
                 <td className="px-4 py-2 text-center text-sm">{s.credit_days ? `${s.credit_days} d` : '—'}</td>

@@ -287,10 +287,10 @@ export function Layout() {
                     children={[
                       { to: '/contabilidad/cuentas',        icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
                       { to: '/contabilidad/asignacion',     icon: emoji3D('🏷️'), label: 'Asignación de cuentas' },
-                      { to: '/contabilidad/poliza-manual',  icon: emoji3D('✍️'), label: 'Póliza manual' },
                       {
                         icon: emoji3D('📔'), label: 'Pólizas',
                         children: [
+                          { to: '/contabilidad/poliza-manual', icon: emoji3D('✍️'), label: 'Póliza manual' },
                           { to: '/contabilidad/polizas',   icon: emoji3D('📔'), label: 'Todas las pólizas' },
                           { to: '/invoices/polizas-venta', icon: emoji3D('📗'), label: 'Pólizas de venta' },
                           { to: '/compras/polizas',        icon: emoji3D('📕'), label: 'Pólizas de compra' },

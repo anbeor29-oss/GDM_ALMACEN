@@ -12,6 +12,7 @@ import api from '@/services/api';
 import { CuentaPicker } from '@/components/CuentaPicker';
 import { ModalCrearSubcuenta } from '@/components/ModalCrearSubcuenta';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { aniosContables } from '@/utils/anios';
 
 const money = (n: any, m = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: (m || 'MXN').trim() || 'MXN' }).format(Number(n) || 0);
@@ -24,7 +25,7 @@ export function PolizasVentaPage() {
   const [tab, setTab] = useState<'ingresos' | 'clientes' | 'polizas'>('ingresos');
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mes, setMes] = useState(hoy.getMonth() + 1);
-  const anios = Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i);
+  const anios = aniosContables();
 
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
   const cuentas: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);

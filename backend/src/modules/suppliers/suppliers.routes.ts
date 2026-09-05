@@ -115,8 +115,8 @@ router.get(
               -- Condiciones de crédito (§4)
               credit_days, credit_line, credit_used, payment_conditions,
               delivery_days_avg, supplier_rating,
-              -- Datos bancarios (depósito)
-              bank_code, bank_name, bank_clabe,
+              -- Datos bancarios (depósito) + cuenta contable del proveedor
+              bank_code, bank_name, bank_account, bank_clabe, cuenta_contable,
               -- Métricas útiles
               (SELECT COUNT(*)::int FROM xml_imports xi
                  WHERE xi.company_id = customers.company_id

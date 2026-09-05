@@ -14,11 +14,12 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ChevronLeft, ChevronRight, Upload, Lock, Unlock, CheckCircle2,
+  Upload, Lock, Unlock, CheckCircle2,
   AlertTriangle, FileSpreadsheet, X,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
+import { aniosContables } from '@/utils/anios';
 import { mx, MESES, ETIQUETA_FUENTE } from './piezas';
 
 export function PeriodosPage() {
@@ -66,13 +67,11 @@ export function PeriodosPage() {
             salen de estos saldos.
           </p>
         </div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setAnio(anio - 1)}
-            className="p-1.5 rounded hover:bg-gray-100 text-gray-500"><ChevronLeft size={16} /></button>
-          <span className="font-semibold text-lg w-16 text-center">{anio}</span>
-          <button onClick={() => setAnio(anio + 1)}
-            className="p-1.5 rounded hover:bg-gray-100 text-gray-500"><ChevronRight size={16} /></button>
-        </div>
+        <select value={anio} onChange={(e) => setAnio(Number(e.target.value))}
+          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-semibold
+            focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+          {aniosContables().map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
       </div>
 
       {error && (
