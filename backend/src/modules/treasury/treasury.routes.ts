@@ -13,6 +13,7 @@ import * as remesas from './remesas.service';
 import { generarPdfRemesa } from './pdf-remesa.service';
 import multer from 'multer';
 import * as bancos from './bancos.service';
+import * as concil from './conciliacion-contable.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { textoDePdf } from './extractor-movimientos.service';
 
@@ -363,6 +364,80 @@ router.get(
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
     res.send(buffer);
+  })
+);
+
+/* ─────────────  CONCILIACIÓN BANCO → CONTABILIDAD  ───────────── */
+
+/** Las cuentas fijas de comisiones/IVA de la empresa. */
+router.get(
+  '/bancos/config',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await concil.getConfig(companyId(req)) });
+  })
+);
+
+/** Elegir la cuenta de comisiones y la de su IVA (una vez, se aplican a todas). */
+router.put(
+  '/bancos/config/comisiones',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await concil.setCuentasComisiones(
+      companyId(req), req.body?.comisionesId || null, req.body?.ivaId || null);
+    res.json({ success: true, data });
+  })
+);
+
+/** Los movimientos de un estado con su match y su póliza. */
+router.get(
+  '/bancos/estados/:id/conciliacion',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: { movimientos: await concil.listarMovimientos(companyId(req), req.params.id) } });
+  })
+);
+
+/** Analiza el estado y propone el match de cada movimiento (importe ±10¢, fecha ±2d). */
+router.post(
+  '/bancos/estados/:id/sugerir',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await concil.sugerir(companyId(req), req.params.id) });
+  })
+);
+
+/** Contabiliza de golpe todo lo confirmado del estado. */
+router.post(
+  '/bancos/estados/:id/contabilizar',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await concil.contabilizarLote(companyId(req), req.params.id, req.user?.userId) });
+  })
+);
+
+/** Marcar a mano un movimiento (confirmar sugerido, omitir, cambiar clasificación/contra). */
+router.put(
+  '/bancos/movimientos/:id/marcar',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await concil.marcar(companyId(req), req.params.id, req.body || {}) });
+  })
+);
+
+/** Contabiliza un solo movimiento. */
+router.post(
+  '/bancos/movimientos/:id/contabilizar',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await concil.contabilizar(companyId(req), req.params.id, { contraCuentaId: req.body?.contraCuentaId }, req.user?.userId) });
+  })
+);
+
+/** Deshace la póliza de un movimiento (para rehacerlo). */
+router.post(
+  '/bancos/movimientos/:id/descontabilizar',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await concil.descontabilizar(companyId(req), req.params.id) });
   })
 );
 

@@ -41,6 +41,7 @@ export interface DatosCuenta {
   saldoInicial?: number;
   saldoInicialFecha?: string;
   notas?: string;
+  cuentaContableId?: string | null;
 }
 
 function validarClabe(clabe?: string): string | null {
@@ -96,13 +97,13 @@ export async function crearCuenta(companyId: string, d: DatosCuenta) {
     const r = await query<any>(
       `INSERT INTO bancos_cuentas
          (company_id, banco_clave, banco_nombre, alias, numero_cuenta, clabe,
-          moneda, saldo_inicial, saldo_inicial_fecha, notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10)
+          moneda, saldo_inicial, saldo_inicial_fecha, notas, cuenta_contable_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10,$11)
        RETURNING *`,
       [companyId, d.bancoClave || null, banco, alias,
        String(d.numeroCuenta || '').trim().slice(0, 30) || null, clabe, moneda,
        pesos(d.saldoInicial), d.saldoInicialFecha || null,
-       String(d.notas || '').trim() || null]
+       String(d.notas || '').trim() || null, d.cuentaContableId || null]
     );
     logger.info(`[bancos] cuenta dada de alta: ${alias} (${banco})`);
     return r.rows[0];
@@ -132,6 +133,7 @@ export async function actualizarCuenta(companyId: string, id: string, d: DatosCu
   if (d.clabe !== undefined)        set('clabe', validarClabe(d.clabe));
   if (d.moneda !== undefined)       set('moneda', String(d.moneda).toUpperCase().slice(0, 3));
   if (d.notas !== undefined)        set('notas', String(d.notas).trim() || null);
+  if (d.cuentaContableId !== undefined) set('cuenta_contable_id', d.cuentaContableId || null);
 
   /* El saldo inicial NO se cambia a la ligera: es el punto de partida de todo
    * el arrastre. Cambiarlo con estados ya cargados movería todos los saldos. */
@@ -175,6 +177,7 @@ export async function listarCuentas(companyId: string) {
             u.saldo_final AS saldo_al_corte,
             u.cuadra      AS ultimo_cuadra,
             u.con_advertencia AS ultimo_advertencias,
+            (SELECT a.codigo FROM accounting_accounts a WHERE a.id = c.cuenta_contable_id) AS cuenta_contable_codigo,
             (SELECT COUNT(*)::int FROM bancos_estados_cuenta e
               WHERE e.cuenta_id = c.id) AS estados_cargados
        FROM bancos_cuentas c

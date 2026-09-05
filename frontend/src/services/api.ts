@@ -940,6 +940,47 @@ class APIClient {
     });
     return r.data;
   }
+  async actualizarCuentaBancaria(id: string, datos: any) {
+    const r = await this.client.put<APIResponse<any>>(`/treasury/bancos/cuentas/${id}`, datos);
+    return r.data;
+  }
+  async getEstadosBancarios(cuentaId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/treasury/bancos/cuentas/${cuentaId}/estados`);
+    return r.data;
+  }
+  /* ── Conciliación banco → contabilidad ── */
+  async getBancosConfig() {
+    const r = await this.client.get<APIResponse<any>>('/treasury/bancos/config');
+    return r.data;
+  }
+  async setCuentasComisiones(comisionesId: string | null, ivaId: string | null) {
+    const r = await this.client.put<APIResponse<any>>('/treasury/bancos/config/comisiones', { comisionesId, ivaId });
+    return r.data;
+  }
+  async getConciliacion(estadoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/treasury/bancos/estados/${estadoId}/conciliacion`);
+    return r.data;
+  }
+  async sugerirConciliacion(estadoId: string) {
+    const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/estados/${estadoId}/sugerir`, {});
+    return r.data;
+  }
+  async contabilizarEstado(estadoId: string) {
+    const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/estados/${estadoId}/contabilizar`, {});
+    return r.data;
+  }
+  async marcarMovimiento(id: string, data: any) {
+    const r = await this.client.put<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/marcar`, data);
+    return r.data;
+  }
+  async contabilizarMovimiento(id: string, contraCuentaId?: string) {
+    const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/contabilizar`, { contraCuentaId });
+    return r.data;
+  }
+  async descontabilizarMovimiento(id: string) {
+    const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/descontabilizar`, {});
+    return r.data;
+  }
   /* ═══════════ CONTABILIDAD ═══════════ */
 
   async getCuentasContables(params?: {
