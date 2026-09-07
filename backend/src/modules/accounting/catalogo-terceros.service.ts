@@ -159,13 +159,21 @@ export async function resolverOCrearSubcuentaTercero(
 
   const mascara = ctx ? ctx.mascara : await mascaraDe(companyId);
   const agrup = agrupadorDe(tipo, rfcU);
+  const rubroAgr = tipo === 'cliente' ? ['105.01', '105.02'] : ['201.01', '201.02'];
   const control = await cuentaControl(companyId, agrup, mascara);
   if (!control) return { error: `falta la cuenta de control (agrupador ${agrup})` };
 
+  /* ¿YA existe la subcuenta de este tercero? Se busca por RFC en TODO el rubro
+   * (105.xx cliente / 201.xx proveedor), NO sólo bajo el control de hoy: al subir
+   * un SEGUNDO respaldo, `cuentaControl` puede elegir un control distinto y, si sólo
+   * mirara `parent_id`, no encontraría la que creó el primer respaldo y la
+   * DUPLICARÍA. Prefiere la que cuelga del control actual si hay varias. */
   const ya = await query<any>(
     `SELECT id, codigo FROM accounting_accounts
-      WHERE company_id=$1 AND parent_id=$2 AND tercero_rfc=$3 LIMIT 1`,
-    [companyId, control.id, rfcU]);
+      WHERE company_id=$1 AND tercero_rfc=$3
+        AND (parent_id=$2 OR codigo_agrupador = ANY($4))
+      ORDER BY (parent_id=$2) DESC, codigo ASC LIMIT 1`,
+    [companyId, control.id, rfcU, rubroAgr]);
   if (ya.rows[0]) return { id: ya.rows[0].id, codigo: ya.rows[0].codigo, creada: false };
 
   // Antes de INVENTAR: si el respaldo ya trajo la cuenta del tercero, se LIGA esa
