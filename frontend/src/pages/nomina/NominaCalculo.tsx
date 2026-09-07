@@ -81,6 +81,25 @@ export function NominaCalculoPage() {
       .reduce((s: number, d: any) => s + (Number(d.importe) || 0), 0);
   const totalDed = (clave: string) =>
     (pre?.renglones || []).reduce((a: number, r: any) => a + dedDe(r, clave), 0);
+
+  /* Lo mismo del lado de INGRESOS: una columna por percepción del Anexo 20 que
+   * aparezca (menos el sueldo del periodo, que es la columna «Ingresos»). */
+  const clavesPercep = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of (pre?.renglones || [])) {
+      for (const p of (r.percepciones || [])) {
+        if (p.esSueldoDelPeriodo) continue;
+        if (!m.has(p.clave)) m.set(p.clave, p.concepto || `P${p.clave}`);
+      }
+    }
+    return [...m.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  }, [pre]);
+  const percDe = (r: any, clave: string) =>
+    (r.percepciones || []).filter((p: any) => p.clave === clave && !p.esSueldoDelPeriodo)
+      .reduce((s: number, p: any) => s + (Number(p.importe) || 0), 0);
+  const totalPerc = (clave: string) =>
+    (pre?.renglones || []).reduce((a: number, r: any) => a + percDe(r, clave), 0);
+  const extraCols = clavesDeduc.length + clavesPercep.length;
   const [exportando, setExportando] = useState(false);
   const [cerrando, setCerrando] = useState(false);
 
@@ -522,6 +541,9 @@ export function NominaCalculoPage() {
                     <th className="px-1.5 py-1.5 text-left w-0">Nombre</th>
                     <th className="px-1.5 py-1.5 text-center w-12">Días</th>
                     <th className="px-1.5 py-1.5 text-right w-24">Ingresos</th>
+                    {clavesPercep.map(([k, n]) => (
+                      <th key={k} title={n} className="px-1.5 py-1.5 text-right text-emerald-700 whitespace-nowrap max-w-[110px] truncate">{n}</th>
+                    ))}
                     <th className="px-1.5 py-1.5 text-right w-24">Otros ing.</th>
                     <th className="px-1.5 py-1.5 text-right w-24 border-r">Percepciones</th>
                     <th className="px-1.5 py-1.5 text-right w-20">IMSS</th>
@@ -536,7 +558,7 @@ export function NominaCalculoPage() {
                 </thead>
                 <tbody className="divide-y">
                   {pre.renglones.length === 0 && (
-                    <tr><td colSpan={11 + clavesDeduc.length} className="px-4 py-8 text-center text-gray-500 italic">
+                    <tr><td colSpan={11 + extraCols} className="px-4 py-8 text-center text-gray-500 italic">
                       Ningún trabajador con esa periodicidad estuvo activo en este periodo.
                     </td></tr>
                   )}
@@ -578,6 +600,13 @@ export function NominaCalculoPage() {
 
                         {/* Ingresos = el sueldo del periodo (clave 001). */}
                         <td className="px-1.5 py-1 text-right">{money(r.sueldo)}</td>
+
+                        {/* Una columna por cada percepción del Anexo 20 presente. */}
+                        {clavesPercep.map(([k]) => (
+                          <td key={k} className="px-1.5 py-1 text-right text-emerald-700">
+                            {percDe(r, k) ? money(percDe(r, k)) : '—'}
+                          </td>
+                        ))}
 
                         {/* Otros ingresos: doble clic para capturar, mouse encima
                             para ver el desglose con su gravado y su exento. */}
@@ -648,6 +677,9 @@ export function NominaCalculoPage() {
                       </td>
                       <td></td>
                       <td className="px-1.5 py-1.5 text-right">{money(pre.totales.sueldo)}</td>
+                      {clavesPercep.map(([k]) => (
+                        <td key={k} className="px-1.5 py-1.5 text-right text-emerald-700">{money(totalPerc(k))}</td>
+                      ))}
                       <td className="px-1.5 py-1.5 text-right">{money(pre.totales.otrosIngresos)}</td>
                       <td className="px-1.5 py-1.5 text-right border-r">{money(pre.totales.totalPercepciones)}</td>
                       <td className="px-1.5 py-1.5 text-right text-rose-700">{money(pre.totales.imss)}</td>
@@ -665,7 +697,7 @@ export function NominaCalculoPage() {
                         cuadra el CFDI, y en una sola línea con los consejos de
                         uso se leían como parte del texto de ayuda. */}
                     <tr className="text-[11px]">
-                      <td className="px-1.5 pb-2 pt-1" colSpan={11 + clavesDeduc.length}>
+                      <td className="px-1.5 pb-2 pt-1" colSpan={11 + extraCols}>
                         <div className="flex flex-wrap gap-x-8 gap-y-1">
                           <Cifra rotulo="Gravado" valor={money(pre.totales.gravado)} />
                           <Cifra rotulo="Exento" valor={money(pre.totales.exento)} />
