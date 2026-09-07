@@ -175,7 +175,8 @@ export async function contabilizar(
   companyId: string, movId: string, opts?: { contraCuentaId?: string }, userId?: string,
 ): Promise<{ ok: true; folio: number } | { yaContabilizado: true } | { error: string }> {
   const m = (await query<any>(
-    `SELECT bm.*, bc.cuenta_contable_id AS banco_cuenta_id
+    `SELECT bm.*, TO_CHAR(bm.fecha,'YYYY-MM-DD') AS fecha_ymd,
+            bc.cuenta_contable_id AS banco_cuenta_id
        FROM bancos_movimientos bm
        JOIN bancos_cuentas bc ON bc.id = bm.cuenta_id
       WHERE bm.id=$1 AND bm.company_id=$2`, [movId, companyId])).rows[0];
@@ -185,7 +186,10 @@ export async function contabilizar(
 
   const dep = round2(m.deposito), ret = round2(m.retiro);
   const bankId = m.banco_cuenta_id;
-  const fecha = String(m.fecha).slice(0, 10);
+  // OJO: bm.fecha llega como Date de JS del lado servidor; String(Date) da
+  // «Tue Jan 02» y truena el INSERT (invalid input syntax for type date). Se usa
+  // el TO_CHAR de la consulta.
+  const fecha = m.fecha_ymd || String(m.fecha).slice(0, 10);
   const concepto = (m.concepto || 'Movimiento bancario').toString().slice(0, 180);
   const cfg = await getConfig(companyId);
   const lineas: any[] = [];

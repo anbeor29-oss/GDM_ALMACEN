@@ -46,6 +46,7 @@ export function PolizasVentaPage() {
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500">Mes calendario:</span>
           <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 text-sm">
+            <option value={0}>Todo el año</option>
             {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
           </select>
           <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
@@ -319,8 +320,9 @@ function TabPolizas({ anio, mes }: { anio: number; mes: number }) {
   const generar = async (todoAnio = false) => {
     setBusy(true); setMsg(''); setOmitidas([]);
     try {
-      const r: any = await api.generarVentas(anio, mes, todoAnio);
-      setMsg(`${r.data.creadas} póliza(s) de venta creada(s)${todoAnio ? ` en todo ${anio}` : ''}.`);
+      const anual = todoAnio || mes === 0;
+      const r: any = await api.generarVentas(anio, mes, anual);
+      setMsg(`${r.data.creadas} póliza(s) de venta creada(s)${anual ? ` en todo ${anio}` : ''}.`);
       setOmitidas(r.data.omitidas || []);
       qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
     } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo generar'); }

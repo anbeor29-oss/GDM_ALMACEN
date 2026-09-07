@@ -127,7 +127,9 @@ export async function importarNomina(
     if (!curpOk(curp)) { marcas.push(curp ? 'CURP inválido' : 'sin CURP'); curp = 'XAXX010101HDFXXX01'; }
     if (marcas.length) rep.avisos.push(`Empleado ${num}: ${marcas.join(', ')} en el respaldo -> se guardó con marcador; corrígelo en su expediente.`);
     const nombreCompleto = [e.nombre, e.apPaterno, e.apMaterno].map((x) => String(x || '').trim()).filter(Boolean).join(' ').slice(0, 100);
-    const zona = String(e.zonaSalario || '').toUpperCase().startsWith('B') ? 'frontera' : 'general';
+    // El check de la BD sólo acepta 'general' | 'frontera_norte' (no 'frontera'):
+    // por eso 4 empleados NO entraban (nomina_empleados_zona_ck).
+    const zona = String(e.zonaSalario || '').toUpperCase().startsWith('B') ? 'frontera_norte' : 'general';
     const perTipo = tipoDeIdTipo.get(e.idTipoPeriodo);
     const periodicidad = (perTipo && PERIODICIDAD_SAT[perTipo]) || '02';
     const activo = !fechaOk(e.fechaBaja);
@@ -239,16 +241,22 @@ export async function importarNomina(
       for (const m of movs) {
         const c = concepto.get(m.idConcepto); if (!c) continue;
         const imp = n2(m.importe);
-        if (c.tipo === 'P') {
-          const grav = n2(m.imp1);
-          const exent = Math.max(0, Math.abs((m.imp1 + m.imp2) - m.importe) <= 0.01 ? n2(m.imp2) : n2(m.importe - m.imp1));
-          percepciones.push({ clave: c.claveSat || '', concepto: c.descripcion, importe: imp, gravado: grav, exento: exent });
-          tp = n2(tp + imp); tg = n2(tg + grav); te = n2(te + exent);
-        } else if (c.tipo === 'D') {
-          deducciones.push({ clave: c.claveSat || '', concepto: c.descripcion, importe: imp });
-          td = n2(td + imp);
-          if (c.claveSat === '002' || /I\.?S\.?R/i.test(c.descripcion)) isr = n2(isr + imp);
-          if (c.claveSat === '001' || /IMSS|Enf|Cesant|Invalidez|Vejez|Guarder/i.test(c.descripcion)) imss = n2(imss + imp);
+        // Un importe NEGATIVO en una percepción ES en realidad una deducción (y al
+        // revés): un ajuste que resta. Se pasa al lado correcto para que los totales
+        // no queden negativos —era la causa de nomina_recibos_montos_ck (total >= 0)—
+        // y para que el neto siga cuadrando.
+        const tipoEfectivo = imp < 0 ? (c.tipo === 'P' ? 'D' : c.tipo === 'D' ? 'P' : c.tipo) : c.tipo;
+        const abs = Math.abs(imp);
+        if (tipoEfectivo === 'P') {
+          const grav = imp < 0 ? 0 : n2(m.imp1);
+          const exent = imp < 0 ? abs : Math.max(0, Math.abs((m.imp1 + m.imp2) - m.importe) <= 0.01 ? n2(m.imp2) : n2(m.importe - m.imp1));
+          percepciones.push({ clave: c.claveSat || '', concepto: c.descripcion, importe: abs, gravado: grav, exento: exent });
+          tp = n2(tp + abs); tg = n2(tg + grav); te = n2(te + exent);
+        } else if (tipoEfectivo === 'D') {
+          deducciones.push({ clave: c.claveSat || '', concepto: c.descripcion, importe: abs });
+          td = n2(td + abs);
+          if (c.claveSat === '002' || /I\.?S\.?R/i.test(c.descripcion)) isr = n2(isr + abs);
+          if (c.claveSat === '001' || /IMSS|Enf|Cesant|Invalidez|Vejez|Guarder/i.test(c.descripcion)) imss = n2(imss + abs);
         } else if (c.tipo === 'O') {
           to = n2(to + imp);
         } else if (c.tipo === 'N') {

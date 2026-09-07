@@ -18,10 +18,11 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Upload, FileText, CheckCircle2, AlertTriangle, Trash2,
-  ChevronLeft, ChevronRight, TrendingUp, TrendingDown,
+  TrendingUp, TrendingDown,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
+import { aniosContables } from '@/utils/anios';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -61,13 +62,11 @@ export function BancosAnio({ cuenta, onCargar }: {
     <div className="space-y-4">
       {/* ── El año ── */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1">
-          <button onClick={() => setAnio(anio - 1)}
-            className="p-1.5 rounded hover:bg-gray-100 text-gray-500"><ChevronLeft size={16} /></button>
-          <span className="font-semibold text-lg text-gray-900 w-16 text-center">{anio}</span>
-          <button onClick={() => setAnio(anio + 1)}
-            className="p-1.5 rounded hover:bg-gray-100 text-gray-500"><ChevronRight size={16} /></button>
-        </div>
+        <select value={anio} onChange={(e) => setAnio(Number(e.target.value))}
+          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-semibold
+            focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+          {aniosContables().map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
 
         {/* La conciliación del año: lo que entró, lo que salió, con cuánto se
             cierra. Es la lectura que se cuadra contra contabilidad. */}
