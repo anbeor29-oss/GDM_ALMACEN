@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { aniosContables } from '@/utils/anios';
 
 const money = (n: any) =>
   Number(n || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -60,7 +61,6 @@ export function ConciliacionContablePage() {
   const [busy, setBusy] = useState(false);
   const [modalComis, setModalComis] = useState(false);
   const [modalSubir, setModalSubir] = useState(false);
-  const [verLibro, setVerLibro] = useState(false);
 
   const cuentasQ = useQuery({ queryKey: ['bancos-cuentas'], queryFn: () => api.getCuentasBancarias() });
   const cuentas: any[] = cuentasQ.data?.data?.cuentas || [];
@@ -80,7 +80,7 @@ export function ConciliacionContablePage() {
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
   const ctas: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);
 
-  const libroQ = useQuery({ queryKey: ['libro', eid], queryFn: () => api.getLibroBanco(eid), enabled: !!eid && verLibro });
+  const libroQ = useQuery({ queryKey: ['libro', eid], queryFn: () => api.getLibroBanco(eid), enabled: !!eid });
   const libro: any[] = libroQ.data?.data?.lineas || [];
 
   const sel = movs.find((m) => m.id === selMov) || null;
@@ -164,10 +164,6 @@ export function ConciliacionContablePage() {
             className="flex items-center gap-1 text-sm bg-emerald-600 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
             <PlayCircle size={14} /> Contabilizar confirmados
           </button>
-          <button onClick={() => setVerLibro((v) => !v)} disabled={!eid}
-            className="flex items-center gap-1 text-sm border rounded px-2 py-1.5 hover:bg-gray-50 disabled:opacity-50">
-            <BookOpen size={14} /> {verLibro ? 'Ocultar libro' : 'Ver libro (102)'}
-          </button>
         </div>
       </div>
 
@@ -233,63 +229,61 @@ export function ConciliacionContablePage() {
           </div>
         </div>
 
-        {/* Derecha: contabilización del seleccionado */}
-        <div className="bg-white rounded-lg border shadow-sm p-4">
-          {!sel ? (
-            <p className="text-sm text-gray-500">Elige un movimiento de la izquierda para contabilizarlo.</p>
-          ) : (
-            <DetalleMov sel={sel} ctas={ctas} cfg={cfg} mascara={mascara} busy={busy}
-              onConfirmar={() => marcar(sel.id, { concilEstado: 'confirmado' })}
-              onOmitir={() => marcar(sel.id, { concilEstado: 'omitido' })}
-              onContabilizar={(contraId?: string) => contabilizar(sel, contraId)}
-              onDeshacer={() => deshacer(sel.id)}
-              onAbrirComis={() => setModalComis(true)} />
+        {/* Derecha: la CONTABILIDAD de la 102 (cargos/abonos) para cotejar; arriba,
+            la acción del movimiento elegido de la izquierda. */}
+        <div className="space-y-3">
+          {sel && (
+            <div className="bg-white rounded-lg border shadow-sm p-4">
+              <DetalleMov sel={sel} ctas={ctas} cfg={cfg} mascara={mascara} busy={busy}
+                onConfirmar={() => marcar(sel.id, { concilEstado: 'confirmado' })}
+                onOmitir={() => marcar(sel.id, { concilEstado: 'omitido' })}
+                onContabilizar={(contraId?: string) => contabilizar(sel, contraId)}
+                onDeshacer={() => deshacer(sel.id)}
+                onAbrirComis={() => setModalComis(true)} />
+            </div>
           )}
+          <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+            <div className="px-3 py-2 border-b text-xs text-gray-500 flex items-center gap-2">
+              <BookOpen size={13} /> Contabilidad de la 102 · {libro.length} mov. ·
+              <span className="text-teal-700">✓ empatado</span> / <span className="text-amber-600">en tránsito</span>
+            </div>
+            <div className="overflow-y-auto max-h-[70vh]">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-600 sticky top-0">
+                  <tr>
+                    <th className="px-2 py-1.5 text-left text-xs font-semibold">Fecha</th>
+                    <th className="px-2 py-1.5 text-left text-xs font-semibold">Folio</th>
+                    <th className="px-2 py-1.5 text-left text-xs font-semibold">Concepto</th>
+                    <th className="px-2 py-1.5 text-right text-xs font-semibold">Cargo</th>
+                    <th className="px-2 py-1.5 text-right text-xs font-semibold">Abono</th>
+                    <th className="px-2 py-1.5 text-center text-xs font-semibold">Cotejo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {libro.length === 0 && (
+                    <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-500">
+                      {!cuenta?.cuenta_contable_id ? 'Asigna la cuenta contable del banco (102) arriba.'
+                        : libroQ.isFetching ? 'Cargando…' : 'La 102 no tiene movimientos en este periodo (aún no hay pólizas que la toquen).'}
+                    </td></tr>
+                  )}
+                  {libro.map((l) => (
+                    <tr key={l.id} className={l.empatado_con ? 'bg-teal-50/50' : ''}>
+                      <td className="px-2 py-1.5 text-xs whitespace-nowrap">{l.fecha}</td>
+                      <td className="px-2 py-1.5 text-xs text-gray-500">#{l.folio}</td>
+                      <td className="px-2 py-1.5 text-xs truncate max-w-[200px]" title={l.concepto || l.poliza_concepto}>{l.concepto || l.poliza_concepto}</td>
+                      <td className="px-2 py-1.5 text-right text-xs">{Number(l.cargo) ? money(l.cargo) : ''}</td>
+                      <td className="px-2 py-1.5 text-right text-xs">{Number(l.abono) ? money(l.abono) : ''}</td>
+                      <td className="px-2 py-1.5 text-center text-xs">
+                        {l.empatado_con ? <span className="text-teal-700">✓</span> : <span className="text-amber-600">tránsito</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
-
-      {/* El libro (cuenta 102): lo asentado en contabilidad, y qué ya empató. */}
-      {verLibro && (
-        <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-          <div className="px-3 py-2 border-b text-xs text-gray-500 flex items-center gap-2">
-            <BookOpen size={13} /> Contabilidad de la cuenta del banco (102) · {libro.length} movimiento(s).
-            El que no está <span className="text-teal-700 font-medium">empatado</span> está en el libro pero no en el banco (en tránsito).
-          </div>
-          <div className="overflow-x-auto max-h-[50vh]">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-600 sticky top-0">
-                <tr>
-                  <th className="px-2 py-1.5 text-left text-xs font-semibold">Fecha</th>
-                  <th className="px-2 py-1.5 text-left text-xs font-semibold">Folio</th>
-                  <th className="px-2 py-1.5 text-left text-xs font-semibold">Concepto</th>
-                  <th className="px-2 py-1.5 text-right text-xs font-semibold">Cargo</th>
-                  <th className="px-2 py-1.5 text-right text-xs font-semibold">Abono</th>
-                  <th className="px-2 py-1.5 text-center text-xs font-semibold">Cotejo</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {libro.length === 0 && (
-                  <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-500">
-                    {libroQ.isFetching ? 'Cargando…' : 'Sin movimientos en la 102 (¿ya asignaste la cuenta contable del banco?).'}
-                  </td></tr>
-                )}
-                {libro.map((l) => (
-                  <tr key={l.id} className={l.empatado_con ? 'bg-teal-50/50' : ''}>
-                    <td className="px-2 py-1.5 text-xs whitespace-nowrap">{l.fecha}</td>
-                    <td className="px-2 py-1.5 text-xs text-gray-500">#{l.folio}</td>
-                    <td className="px-2 py-1.5 text-xs truncate max-w-[220px]">{l.concepto || l.poliza_concepto}</td>
-                    <td className="px-2 py-1.5 text-right text-xs">{Number(l.cargo) ? money(l.cargo) : ''}</td>
-                    <td className="px-2 py-1.5 text-right text-xs">{Number(l.abono) ? money(l.abono) : ''}</td>
-                    <td className="px-2 py-1.5 text-center text-xs">
-                      {l.empatado_con ? <span className="text-teal-700">✓ empatado</span> : <span className="text-amber-600">en tránsito</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {modalComis && <ModalComisiones ctas={ctas} cfg={cfg} onClose={() => setModalComis(false)}
         onSave={async (com: string | null, iva: string | null) => { await correr(() => api.setCuentasComisiones(com, iva), () => { qc.invalidateQueries({ queryKey: ['bancos-config'] }); }); setModalComis(false); }} />}
@@ -446,7 +440,9 @@ function ModalSubir({ cid, onClose, onDone }: any) {
           <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm flex-1">
             {MESES.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
-          <input type="number" value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-24" />
+          <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-28">
+            {aniosContables().map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
         </div>
         <input type="file" accept=".pdf,.csv,.txt" onChange={(e) => setArchivo(e.target.files?.[0] || null)} className="text-sm" />
         {err && <p className="text-xs text-rose-600">{err}</p>}

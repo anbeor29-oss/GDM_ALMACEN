@@ -23,6 +23,7 @@ import {
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { aniosContables } from '@/utils/anios';
 
 const TIPO_COLOR: Record<string, string> = {
   ACTIVO:  'bg-sky-100 text-sky-800',
@@ -1055,8 +1056,9 @@ function SinCatalogo({ onListo }: any) {
 
       <label className="block mb-3">
         <span className="text-xs text-gray-600">Ejercicio</span>
-        <input type="number" value={anio} onChange={(e) => setAnio(Number(e.target.value))}
-          className="input w-32" />
+        <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input w-32">
+          {aniosContables().map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
       </label>
 
       {error && (

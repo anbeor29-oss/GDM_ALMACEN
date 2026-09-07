@@ -20,6 +20,7 @@ import {
   CheckCircle2, FileText, X,
 } from 'lucide-react';
 import api from '@/services/api';
+import { aniosContables } from '@/utils/anios';
 import { CampoFecha } from '@/components/CampoFecha';
 import { fechaMx } from '@/utils/fecha';
 import { useCapacidades, CAP } from '@/utils/capacidades';
@@ -416,8 +417,9 @@ function ModalCargarEstado({ cuenta, mesInicial, anioInicial, onCerrar, onListo 
             </label>
             <label className="block">
               <span className="text-xs text-gray-600">Año</span>
-              <input type="number" min={2000} max={2100} value={anio}
-                onChange={(e) => setAnio(Number(e.target.value))} className="input w-full" />
+              <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input w-full">
+                {aniosContables().map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
             </label>
           </div>
 
