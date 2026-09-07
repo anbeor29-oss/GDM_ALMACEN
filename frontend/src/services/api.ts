@@ -1033,6 +1033,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/cuentas/${id}`);
     return r.data;
   }
+  /** Mayor auxiliar de una cuenta en un rango de fechas (con saldo corriente). */
+  async getAuxiliarRango(id: string, desde: string, hasta: string) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/cuentas/${id}/auxiliar`, { params: { desde, hasta } });
+    return r.data;
+  }
   async crearCuentaContable(datos: any) {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas', datos);
     return r.data;
@@ -1268,10 +1273,13 @@ class APIClient {
     await this.downloadFile(r.data as Blob, `Balanza_${anio}-${String(mes).padStart(2, '0')}.xlsx`);
   }
   /** Reporte del ejercicio con 12 columnas (una por mes): balanza / situacion / resultados. */
-  async descargarReporteAnual(anio: number, tipo: 'balanza' | 'situacion' | 'resultados') {
+  async descargarReporteAnual(anio: number, tipo: 'balanza' | 'situacion' | 'resultados' | 'flujo' | 'capital' | 'razones') {
     const r = await this.client.get(`/accounting/estados/${anio}/anual/excel`, { params: { tipo }, responseType: 'blob' });
-    const base = tipo === 'resultados' ? 'Estado_de_resultados' : tipo === 'situacion' ? 'Situacion_financiera' : 'Balanza';
-    await this.downloadFile(r.data as Blob, `${base}_anual_${anio}.xlsx`);
+    const bases: Record<string, string> = {
+      resultados: 'Estado_de_resultados', situacion: 'Situacion_financiera', balanza: 'Balanza',
+      flujo: 'Flujo_de_efectivo', capital: 'Cambios_en_el_capital', razones: 'Razones_financieras',
+    };
+    await this.downloadFile(r.data as Blob, `${bases[tipo] || 'Reporte'}_anual_${anio}.xlsx`);
   }
   async descargarBalanzaPdf(anio: number, mes: number) {
     const r = await this.client.get(`/accounting/estados/${anio}/${mes}/balanza/pdf`, { responseType: 'blob' });

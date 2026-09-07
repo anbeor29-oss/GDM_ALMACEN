@@ -223,6 +223,19 @@ router.get(
   })
 );
 
+/** GET /accounting/cuentas/:id/auxiliar?desde=&hasta= — mayor auxiliar de la cuenta
+ *  en un rango de fechas, con saldo corriente. */
+router.get(
+  '/cuentas/:id/auxiliar',
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = new Date().getFullYear();
+    const desde = String(req.query.desde || `${anio}-01-01`);
+    const hasta = String(req.query.hasta || `${anio}-12-31`);
+    const data = await cambioCuenta.auxiliarDeCuentaRango(companyId(req), req.params.id, desde, hasta);
+    res.json({ success: true, data });
+  })
+);
+
 /* ═══════════════════════════════════════════════════════════════════════════
    CATÁLOGO
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -656,7 +669,8 @@ router.get(
   '/estados/:anio/anual/excel',
   asyncHandler(async (req: Request, res: Response) => {
     const t = req.query.tipo as string;
-    const tipo = (t === 'situacion' || t === 'resultados') ? t : 'balanza';
+    const validos = ['situacion', 'resultados', 'flujo', 'capital', 'razones'];
+    const tipo = validos.includes(t) ? t : 'balanza';
     const { buffer, nombre } = await reportesExport.reporteAnualExcel(
       companyId(req), Number(req.params.anio), tipo as any);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

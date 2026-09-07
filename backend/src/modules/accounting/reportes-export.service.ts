@@ -12,7 +12,8 @@
 import { query } from '../../config/database';
 import { NotFoundError } from '../../middleware/errorHandler';
 import { balanzaDelPeriodo, auxiliarDeCuenta, contextoDelPeriodo, nombreMes } from './periodos.service';
-import { situacionFinanciera, resultadoIntegral, juegoCompleto } from './estados-financieros.service';
+import { situacionFinanciera, resultadoIntegral, juegoCompleto,
+  flujoEfectivo, cambiosCapital, razones } from './estados-financieros.service';
 import {
   ExcelJS, C, titulo, dato, encabezado, celda, totales, anchos, aBuffer,
 } from '../nomina/estilo-excel';
@@ -95,6 +96,51 @@ async function matrizAnual(
   return orden.map((k) => filas.get(k)!);
 }
 
+/** Como matrizAnual, pero le pasa al extractor el mes ANTERIOR (para flujo y
+ *  cambios en el capital, que se leen de variaciones). Enero compara contra
+ *  diciembre del año previo. */
+async function matrizAnualConAnterior(
+  companyId: string, anio: number,
+  extractor: (ctx: any, anterior: any) => Array<{ clave: string; concepto: string; importe: number }>,
+): Promise<Array<{ concepto: string; valores: number[] }>> {
+  const orden: string[] = [];
+  const filas = new Map<string, { concepto: string; valores: number[] }>();
+  let prev = await contextoDelPeriodo(companyId, anio - 1, 12);
+  for (let m = 1; m <= 12; m++) {
+    const ctx = await contextoDelPeriodo(companyId, anio, m);
+    if (!ctx) continue;
+    for (const r of extractor(ctx, prev)) {
+      let f = filas.get(r.clave);
+      if (!f) { f = { concepto: r.concepto, valores: new Array(12).fill(0) }; filas.set(r.clave, f); orden.push(r.clave); }
+      f.valores[m - 1] = Number(r.importe) || 0;
+    }
+    prev = ctx;
+  }
+  return orden.map((k) => filas.get(k)!);
+}
+
+const rubrosFlujo = (ctx: any, ant: any) => {
+  const f = flujoEfectivo(ctx, ant);
+  if (!f.disponible) return [];
+  return [
+    { clave: 'OPER', concepto: 'Flujo de operación', importe: f.flujoOperacion },
+    { clave: 'INV', concepto: 'Flujo de inversión', importe: f.flujoInversion },
+    { clave: 'FIN', concepto: 'Flujo de financiamiento', importe: f.flujoFinanciamiento },
+    { clave: 'INC', concepto: 'Incremento neto de efectivo', importe: f.incrementoNeto },
+    { clave: 'EINI', concepto: 'Efectivo al inicio', importe: f.efectivoInicial },
+    { clave: 'EFIN', concepto: 'Efectivo al final', importe: f.efectivoFinal },
+  ];
+};
+const rubrosCapital = (ctx: any, ant: any) => {
+  const cc = cambiosCapital(ctx, ant);
+  if (!cc.disponible) return [];
+  return cc.renglones.map((r: any) => ({ clave: r.concepto, concepto: r.concepto, importe: r.total }));
+};
+const rubrosRazones = (ctx: any) => {
+  const rs = razones(situacionFinanciera(ctx), resultadoIntegral(ctx), ctx);
+  return rs.map((r: any) => ({ clave: r.clave, concepto: `${r.nombre} (${r.unidad.toLowerCase()})`, importe: r.valor ?? 0 }));
+};
+
 function rubrosSituacion(ctx: any): Array<{ clave: string; concepto: string; importe: number }> {
   const sf: any = situacionFinanciera(ctx);
   const secs = [sf.activoCirculante, sf.activoNoCirculante, sf.pasivoCorto, sf.pasivoLargo, sf.capital];
@@ -137,9 +183,27 @@ async function armarExcelAnual(
 }
 
 export async function reporteAnualExcel(
-  companyId: string, anio: number, tipo: 'balanza' | 'situacion' | 'resultados',
+  companyId: string, anio: number,
+  tipo: 'balanza' | 'situacion' | 'resultados' | 'flujo' | 'capital' | 'razones',
 ): Promise<{ buffer: Buffer; nombre: string }> {
   const emp = await empresaDe(companyId);
+
+  // Estados que se leen de VARIACIONES (necesitan el mes anterior) o de razones.
+  if (tipo === 'flujo' || tipo === 'capital' || tipo === 'razones') {
+    const filas = tipo === 'flujo'
+      ? await matrizAnualConAnterior(companyId, anio, rubrosFlujo)
+      : tipo === 'capital'
+        ? await matrizAnualConAnterior(companyId, anio, rubrosCapital)
+        : await matrizAnualConAnterior(companyId, anio, (ctx) => rubrosRazones(ctx));
+    if (filas.length === 0) throw new NotFoundError(`No hay datos suficientes en ${anio} para el reporte anual.`);
+    const tit = tipo === 'flujo' ? 'Flujo de efectivo — anual (por mes)'
+      : tipo === 'capital' ? 'Cambios en el capital contable — anual (por mes)'
+        : 'Razones financieras — anual (por mes)';
+    const base = tipo === 'flujo' ? 'Flujo_de_efectivo'
+      : tipo === 'capital' ? 'Cambios_en_el_capital' : 'Razones_financieras';
+    return armarExcelAnual(emp, anio, tit, base, ['CONCEPTO'],
+      filas.map((f) => ({ pre: [f.concepto], valores: f.valores })), [50]);
+  }
 
   if (tipo === 'balanza') {
     const cuentas = new Map<string, { codigo: string; nombre: string; valores: number[]; presente: boolean[] }>();

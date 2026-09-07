@@ -178,3 +178,48 @@ export async function partidasDeCuenta(companyId: string, accountId: string, lim
     truncado: resumen.total > filas.rows.length,
   };
 }
+
+/**
+ * Auxiliar de una cuenta en un RANGO de fechas: todos sus movimientos con saldo
+ * corriente. El saldo INICIAL es la suma de lo anterior a `desde` (según su
+ * naturaleza: deudora suma cargos−abonos, acreedora al revés). Es el mayor
+ * auxiliar clásico —para revisar una cuenta de punta a punta—.
+ */
+export async function auxiliarDeCuentaRango(
+  companyId: string, accountId: string, desde: string, hasta: string,
+) {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const cta = (await query<any>(
+    `SELECT id, codigo, nombre, naturaleza FROM accounting_accounts WHERE id=$1 AND company_id=$2`,
+    [accountId, companyId])).rows[0];
+  if (!cta) return { error: 'no se encontró la cuenta' };
+  const signo = cta.naturaleza === 'ACREEDORA' ? -1 : 1;
+
+  const ini = (await query<any>(
+    `SELECT COALESCE(SUM(l.cargo),0)::float AS c, COALESCE(SUM(l.abono),0)::float AS a
+       FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id
+      WHERE e.company_id=$1 AND l.account_id=$2 AND e.fecha < $3`,
+    [companyId, accountId, desde])).rows[0];
+  const saldoInicial = r2(signo * (Number(ini.c) - Number(ini.a)));
+
+  const filas = (await query<any>(
+    `SELECT e.id AS poliza_id, e.folio, TO_CHAR(e.fecha,'YYYY-MM-DD') AS fecha, e.tipo, e.origen,
+            e.concepto AS poliza_concepto, l.concepto AS concepto, l.cargo::float AS cargo,
+            l.abono::float AS abono, l.party_rfc, l.uuid_cfdi
+       FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id
+      WHERE e.company_id=$1 AND l.account_id=$2 AND e.fecha BETWEEN $3 AND $4
+      ORDER BY e.fecha ASC, e.folio ASC`,
+    [companyId, accountId, desde, hasta])).rows;
+
+  let saldo = saldoInicial, cargos = 0, abonos = 0;
+  const movimientos = filas.map((f: any) => {
+    const c = Number(f.cargo) || 0, a = Number(f.abono) || 0;
+    cargos += c; abonos += a; saldo = r2(saldo + signo * (c - a));
+    return { ...f, cargo: c, abono: a, saldo };
+  });
+  return {
+    cuenta: { codigo: cta.codigo, nombre: cta.nombre, naturaleza: cta.naturaleza },
+    desde, hasta, saldoInicial, cargos: r2(cargos), abonos: r2(abonos),
+    saldoFinal: saldo, movimientos, total: movimientos.length,
+  };
+}

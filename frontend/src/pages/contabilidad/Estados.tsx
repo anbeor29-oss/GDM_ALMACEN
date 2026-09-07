@@ -408,7 +408,7 @@ export function FlujoEfectivoPage() {
   return (
     <MarcoEstado titulo="Estado de flujos de efectivo" norma="B-2"
       descripcion="De dónde salió y a dónde se fue el efectivo, por método indirecto."
-      descargas={{ excel: (a, m) => api.descargarFlujo(a, m, 'excel'), pdf: (a, m) => api.descargarFlujo(a, m, 'pdf') }}>
+      descargas={{ excel: (a, m) => api.descargarFlujo(a, m, 'excel'), pdf: (a, m) => api.descargarFlujo(a, m, 'pdf'), anual: (a) => api.descargarReporteAnual(a, 'flujo') }}>
       {(d) => {
         const f = d.flujoEfectivo;
         if (!f.disponible) return <NoDisponible motivo={f.motivo} />;
@@ -453,7 +453,7 @@ export function CambiosCapitalPage() {
   return (
     <MarcoEstado titulo="Estado de cambios en el capital contable" norma="B-4"
       descripcion="Cómo se movió el capital de los socios entre el inicio y el fin del periodo."
-      descargas={{ excel: (a, m) => api.descargarCambios(a, m, 'excel'), pdf: (a, m) => api.descargarCambios(a, m, 'pdf') }}>
+      descargas={{ excel: (a, m) => api.descargarCambios(a, m, 'excel'), pdf: (a, m) => api.descargarCambios(a, m, 'pdf'), anual: (a) => api.descargarReporteAnual(a, 'capital') }}>
       {(d) => {
         const c = d.cambiosCapital;
         return (
@@ -526,7 +526,7 @@ export function RazonesPage() {
   return (
     <MarcoEstado titulo="Razones y análisis"
       descripcion="Liquidez, apalancamiento, rotaciones y rentabilidad, con las cifras que las sostienen."
-      descargas={{ excel: (a, m) => api.descargarRazones(a, m, 'excel'), pdf: (a, m) => api.descargarRazones(a, m, 'pdf') }}>
+      descargas={{ excel: (a, m) => api.descargarRazones(a, m, 'excel'), pdf: (a, m) => api.descargarRazones(a, m, 'pdf'), anual: (a) => api.descargarReporteAnual(a, 'razones') }}>
       {(d) => (
         <>
           <div className="flex gap-1 border-b">
