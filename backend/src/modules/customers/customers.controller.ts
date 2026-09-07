@@ -167,6 +167,7 @@ export async function updateCustomer(req: Request, res: Response) {
     creditLimit: 'credit_limit',
     creditDays: 'credit_days',
     isActive: 'is_active',
+    cuentaContable: 'cuenta_contable',
   };
   for (const [cam, sn] of Object.entries(map)) {
     if (b[cam] !== undefined) updateData[sn] = b[cam];

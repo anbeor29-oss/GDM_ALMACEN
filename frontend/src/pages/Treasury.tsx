@@ -18,7 +18,6 @@ import { fechaMx } from '@/utils/fecha';
 import { CampoFecha } from '@/components/CampoFecha';
 import { useCapacidades, CAP } from '@/utils/capacidades';
 import { BancosCuentas } from '@/components/BancosCuentas';
-import { ConciliacionBancaria } from '@/components/ConciliacionBancaria';
 import { PolizasCobroPago } from '@/components/PolizasCobroPago';
 
 const money = (n: any) =>
@@ -41,7 +40,7 @@ export function TreasuryPage() {
    * enterado. */
   const { puede } = useCapacidades();
   const canManage = puede(CAP.pagar);
-  const [tab, setTab] = useState<'pagos' | 'remesas' | 'bancos' | 'conciliacion' | 'cobrospagos'>('pagos');
+  const [tab, setTab] = useState<'pagos' | 'remesas' | 'bancos' | 'cobrospagos'>('pagos');
   const [statusFilter, setStatusFilter] = useState('PENDING');
   const [showManual, setShowManual] = useState(false);
   const [error, setError] = useState('');
@@ -108,7 +107,7 @@ export function TreasuryPage() {
         {/* Bancos va al final porque es el respaldo de lo demás: primero se ve
             qué se debe y cómo se va a pagar, y luego con qué. */}
         {([['pagos', 'Cuentas por pagar'], ['remesas', 'Pagos programados'],
-           ['bancos', 'Bancos'], ['conciliacion', 'Conciliación bancaria'],
+           ['bancos', 'Bancos'],
            ['cobrospagos', 'Cobros y pagos']] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
@@ -122,7 +121,6 @@ export function TreasuryPage() {
 
       {tab === 'remesas' && <RemesasDePago canManage={canManage} />}
       {tab === 'bancos'  && <BancosCuentas />}
-      {tab === 'conciliacion' && <ConciliacionBancaria />}
       {tab === 'cobrospagos' && <PolizasCobroPago />}
 
       {tab === 'pagos' && (<>

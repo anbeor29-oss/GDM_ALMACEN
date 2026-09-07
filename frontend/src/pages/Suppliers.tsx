@@ -11,6 +11,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Truck, Search, Edit2, X, Star, Plus, Landmark } from 'lucide-react';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
+import { formatCuenta, useMascara } from '@/utils/cuenta';
 
 interface Supplier {
   id: string;
@@ -40,6 +41,7 @@ export function SuppliersPage() {
    * vacía o los días de crédito equivocados. */
   const { puede } = useCapacidades();
   const canEdit = puede(CAP.proveedores);
+  const mascara = useMascara();
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -84,6 +86,7 @@ export function SuppliersPage() {
             <tr>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">RFC</th>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Razón social</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Cuenta contable</th>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Banco</th>
               <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Días créd.</th>
               <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">Línea</th>
@@ -94,10 +97,10 @@ export function SuppliersPage() {
           </thead>
           <tbody className="divide-y">
             {q.isLoading && (
-              <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>
+              <tr><td colSpan={9} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>
             )}
             {!q.isLoading && rows.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500 italic">
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-500 italic">
                 Sin proveedores. Créalos aquí o se agregan solos al importar XMLs de compra en "Compras XML".
               </td></tr>
             )}
@@ -109,6 +112,9 @@ export function SuppliersPage() {
               <tr key={s.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => canEdit && setEditingId(s.id)}>
                 <td className="px-4 py-2 font-mono">{s.rfc}</td>
                 <td className="px-4 py-2 font-medium uppercase">{s.business_name}</td>
+                <td className="px-4 py-2 text-sm font-mono text-gray-700">
+                  {s.cuenta_contable ? formatCuenta(s.cuenta_contable, mascara) : <span className="text-gray-400">—</span>}
+                </td>
                 <td className="px-4 py-2 text-sm">
                   {(s.bank_name || s.bank_account || s.bank_clabe) ? (
                     <div className="leading-tight">
@@ -185,6 +191,7 @@ interface SupplierForm {
   email: string; phone: string; contactPerson: string;
   creditDays: number; creditLine: number;
   bankCode: string; bankAccount: string; bankClabe: string; bankAccountHolder: string;
+  cuentaContable: string;
 }
 
 const empty: SupplierForm = {
@@ -194,6 +201,7 @@ const empty: SupplierForm = {
   email: '', phone: '', contactPerson: '',
   creditDays: 30, creditLine: 0,
   bankCode: '', bankAccount: '', bankClabe: '', bankAccountHolder: '',
+  cuentaContable: '',
 };
 
 function SupplierModal({ mode, supplierId, onClose, onSaved }: {
@@ -228,6 +236,7 @@ function SupplierModal({ mode, supplierId, onClose, onSaved }: {
         creditDays: Number(c.credit_days) || 0, creditLine: Number(c.credit_line) || 0,
         bankCode: c.bank_code || '', bankAccount: c.bank_account || '',
         bankClabe: c.bank_clabe || '', bankAccountHolder: (c.bank_account_holder || '').toUpperCase(),
+        cuentaContable: c.cuenta_contable || '',
       });
     }
   }, [existing, mode]);
@@ -376,6 +385,11 @@ function SupplierModal({ mode, supplierId, onClose, onSaved }: {
             <Field label="Línea de crédito (MXN)">
               <input type="number" min={0} step="0.01" value={form.creditLine}
                 onChange={(e) => setForm({ ...form, creditLine: parseFloat(e.target.value) || 0 })} className="input text-right"/>
+            </Field>
+            <Field label="Cuenta contable" hint="Su subcuenta de proveedor (ej. 2-10-10-076)">
+              <input value={form.cuentaContable}
+                onChange={(e) => setForm({ ...form, cuentaContable: e.target.value })}
+                placeholder="2-10-10-076" className="input font-mono"/>
             </Field>
           </div>
 

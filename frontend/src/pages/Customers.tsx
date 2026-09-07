@@ -171,6 +171,7 @@ interface CustomerForm {
   phone: string;
   creditLimit: number;
   creditDays: number;
+  cuentaContable: string;
 }
 
 const emptyForm: CustomerForm = {
@@ -189,6 +190,7 @@ const emptyForm: CustomerForm = {
   phone: '',
   creditLimit: 0,
   creditDays: 30,
+  cuentaContable: '',
 };
 
 function CustomerModal({
@@ -264,6 +266,7 @@ function CustomerModal({
         phone: c.phone || '',
         creditLimit: Number(c.credit_limit) || 0,
         creditDays: Number(c.credit_days) || 30,
+        cuentaContable: c.cuenta_contable || '',
       });
     }
   }, [existing, mode]);
@@ -559,6 +562,15 @@ function CustomerModal({
                 value={form.creditDays}
                 onChange={(e) => setForm({ ...form, creditDays: parseInt(e.target.value, 10) || 0 })}
                 className="input"
+              />
+            </Field>
+            <Field label="Cuenta contable">
+              <input
+                type="text"
+                value={form.cuentaContable}
+                onChange={(e) => setForm({ ...form, cuentaContable: e.target.value })}
+                placeholder="1-10-25-076"
+                className="input font-mono"
               />
             </Field>
           </div>

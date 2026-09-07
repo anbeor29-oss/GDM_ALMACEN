@@ -75,7 +75,7 @@ router.put(
       email: 'email', phone: 'phone', contactPerson: 'contact_person',
       creditLimit: 'credit_limit', creditDays: 'credit_days', creditLine: 'credit_line',
       bankCode: 'bank_code', bankAccount: 'bank_account', bankClabe: 'bank_clabe',
-      bankAccountHolder: 'bank_account_holder',
+      bankAccountHolder: 'bank_account_holder', cuentaContable: 'cuenta_contable',
     };
     for (const [camel, snake] of Object.entries(map)) {
       if (b[camel] !== undefined) patch[snake] = b[camel];

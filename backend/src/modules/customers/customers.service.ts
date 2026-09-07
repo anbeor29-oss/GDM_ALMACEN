@@ -468,7 +468,7 @@ export async function updateCustomer(
     'default_cfdi_use','postal_code','state','municipality','city',
     'neighborhood','street','ext_number','address',
     'bank_code','bank_name','bank_account','bank_clabe','bank_account_holder',
-    'credit_line',
+    'credit_line','cuenta_contable',
   ]) {
     if ((data as any)[f] !== undefined) {
       fields.push(`${f} = $${paramCount++}`);
