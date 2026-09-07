@@ -17,7 +17,7 @@
  * significa que la periodicidad quedó mal capturada, y verlo antes ahorra
  * generar 53 periodos que nadie va a usar.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   CalendarPlus, Users, AlertTriangle, RefreshCw, Plus, X, Info, FileSpreadsheet, Lock,
@@ -62,6 +62,25 @@ export function NominaCalculoPage() {
   const [captura, setCaptura] = useState<Record<string, { otrosIngresos: Linea[]; otrasDeducciones: Linea[] }>>({});
   const [capturando, setCapturando] = useState<{ lado: 'ingresos' | 'egresos'; renglon: any } | null>(null);
   const [pre, setPre] = useState<any>(null);
+
+  /* Una COLUMNA por cada deducción del Anexo 20 que aparezca (las que no son
+   * IMSS/ISR/préstamos/INFONAVIT, que ya tienen su columna fija). Así cada
+   * descuento se ve por separado en vez de amontonado en «Otras ded.». */
+  const clavesDeduc = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of (pre?.renglones || [])) {
+      for (const d of (r.deducciones || [])) {
+        if (['001', '002', '011', '012'].includes(d.clave)) continue;
+        if (!m.has(d.clave)) m.set(d.clave, d.concepto || `D${d.clave}`);
+      }
+    }
+    return [...m.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  }, [pre]);
+  const dedDe = (r: any, clave: string) =>
+    (r.deducciones || []).filter((d: any) => d.clave === clave)
+      .reduce((s: number, d: any) => s + (Number(d.importe) || 0), 0);
+  const totalDed = (clave: string) =>
+    (pre?.renglones || []).reduce((a: number, r: any) => a + dedDe(r, clave), 0);
   const [exportando, setExportando] = useState(false);
   const [cerrando, setCerrando] = useState(false);
 
@@ -508,13 +527,16 @@ export function NominaCalculoPage() {
                     <th className="px-1.5 py-1.5 text-right w-20">IMSS</th>
                     <th className="px-1.5 py-1.5 text-right w-20">ISR</th>
                     <th className="px-1.5 py-1.5 text-right w-20">Préstamos</th>
+                    {clavesDeduc.map(([k, n]) => (
+                      <th key={k} title={n} className="px-1.5 py-1.5 text-right text-rose-700 whitespace-nowrap max-w-[110px] truncate">{n}</th>
+                    ))}
                     <th className="px-1.5 py-1.5 text-right w-24 border-r">Otras ded.</th>
                     <th className="px-1.5 py-1.5 text-right w-24">Neto a cobrar</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {pre.renglones.length === 0 && (
-                    <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-500 italic">
+                    <tr><td colSpan={11 + clavesDeduc.length} className="px-4 py-8 text-center text-gray-500 italic">
                       Ningún trabajador con esa periodicidad estuvo activo en este periodo.
                     </td></tr>
                   )}
@@ -587,8 +609,14 @@ export function NominaCalculoPage() {
                           {r.prestamos > 0 ? money(r.prestamos) : '—'}
                         </td>
 
-                        {/* Otras deducciones: faltas, pensión, INFONAVIT. También
-                            se capturan con doble clic. */}
+                        {/* Una columna por cada descuento del Anexo 20 presente. */}
+                        {clavesDeduc.map(([k]) => (
+                          <td key={k} className="px-1.5 py-1 text-right text-rose-700">
+                            {dedDe(r, k) ? money(dedDe(r, k)) : '—'}
+                          </td>
+                        ))}
+
+                        {/* Otras deducciones: el total capturable (doble clic). */}
                         <CeldaDeConceptos
                           importe={r.otrasDeducciones}
                           detalle={r.deducciones.filter(
@@ -625,6 +653,9 @@ export function NominaCalculoPage() {
                       <td className="px-1.5 py-1.5 text-right text-rose-700">{money(pre.totales.imss)}</td>
                       <td className="px-1.5 py-1.5 text-right text-rose-700">{money(pre.totales.isr)}</td>
                       <td className="px-1.5 py-1.5 text-right text-rose-700">{money(pre.totales.prestamos)}</td>
+                      {clavesDeduc.map(([k]) => (
+                        <td key={k} className="px-1.5 py-1.5 text-right text-rose-700">{money(totalDed(k))}</td>
+                      ))}
                       <td className="px-1.5 py-1.5 text-right text-rose-700 border-r">{money(pre.totales.otrasDeducciones)}</td>
                       <td className="px-1.5 py-1.5 text-right">{money(pre.totales.neto)}</td>
                     </tr>
@@ -634,7 +665,7 @@ export function NominaCalculoPage() {
                         cuadra el CFDI, y en una sola línea con los consejos de
                         uso se leían como parte del texto de ayuda. */}
                     <tr className="text-[11px]">
-                      <td className="px-1.5 pb-2 pt-1" colSpan={11}>
+                      <td className="px-1.5 pb-2 pt-1" colSpan={11 + clavesDeduc.length}>
                         <div className="flex flex-wrap gap-x-8 gap-y-1">
                           <Cifra rotulo="Gravado" valor={money(pre.totales.gravado)} />
                           <Cifra rotulo="Exento" valor={money(pre.totales.exento)} />
