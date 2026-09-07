@@ -207,8 +207,10 @@ export function BancosCuentas() {
 function ModalCuenta({ onCerrar, onListo }: any) {
   const [f, setF] = useState({
     bancoClave: '', bancoNombre: '', alias: '', numeroCuenta: '', clabe: '',
-    moneda: 'MXN', saldoInicial: '', saldoInicialFecha: '',
+    moneda: 'MXN', saldoInicial: '', saldoInicialFecha: '', cuentaContableId: '',
   });
+  const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
+  const ctas: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);
 
   /* Los bancos del catálogo SPEI, con su clave de 3 dígitos. Tecleados a mano
    * nacen "Bancrea", "BANCREA" y "Banco Bancrea" como tres bancos distintos —y
@@ -311,6 +313,17 @@ function ModalCuenta({ onCerrar, onListo }: any) {
               )}
             </label>
           </div>
+
+          {/* Cuenta contable del banco (102-xx): con ella, la Conciliación contable
+              puede contabilizar cada movimiento (cargo/abono del lado banco). */}
+          <label className="block">
+            <span className="text-xs text-gray-600">Cuenta contable (102-xx)</span>
+            <select value={f.cuentaContableId} onChange={(e) => setF({ ...f, cuentaContableId: e.target.value })}
+              className="input w-full">
+              <option value="">— opcional, para la conciliación contable —</option>
+              {ctas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+            </select>
+          </label>
 
           {/* El punto de partida: sin él, el primer estado no tiene contra qué
               cuadrar y todos los saldos salen desfasados. */}

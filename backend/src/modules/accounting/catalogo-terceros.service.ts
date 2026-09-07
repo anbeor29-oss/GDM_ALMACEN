@@ -248,6 +248,12 @@ async function guardarCuentaEnTercero(
 export async function generarSubcuentasDeComprobantes(
   companyId: string, direccion: 'emitidos' | 'recibidos'
 ): Promise<{ creadas: number; existentes: number; errores: Array<{ rfc: string; motivo: string }> }> {
+  // Primero endereza los terceros con número viejo (formato <control>-NNN →
+  // 1-10-25-001-076) al formato de la máscara (1-10-25-076). Así «Generar
+  // subcuentas» TAMBIÉN arregla los que ya estaban feos, no sólo crea nuevos —era
+  // la queja recurrente del usuario—.
+  try { await reorganizarTerceros(companyId); } catch { /* no crítico */ }
+
   const esCliente = direccion === 'emitidos';
   const tipo = esCliente ? 'cliente' : 'proveedor';
   const colRfc = esCliente ? 'rfc_receptor' : 'rfc_emisor';

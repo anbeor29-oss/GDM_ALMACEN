@@ -565,6 +565,10 @@ export async function borrarPoliza(companyId: string, id: string): Promise<boole
 
 /** Las pólizas del mes, con sus partidas, para revisarlas. */
 export async function listarPolizas(companyId: string, anio: number, mes: number) {
+  // mes 0 (o fuera de 1..12) = TODO EL AÑO: el usuario ve el libro diario completo.
+  const anioValido = mes >= 1 && mes <= 12;
+  const desde = anioValido ? iniDeMes(anio, mes) : `${anio}-01-01`;
+  const hasta = anioValido ? finDeMes(anio, mes) : `${anio}-12-31`;
   const r = await query<any>(
     `SELECT e.id, e.folio, e.tipo, e.fecha, e.concepto, e.estado, e.origen, e.regla, e.origen_uuid,
             COALESCE(json_agg(json_build_object(
@@ -577,7 +581,7 @@ export async function listarPolizas(companyId: string, anio: number, mes: number
       WHERE e.company_id=$1 AND e.fecha BETWEEN $2 AND $3
       GROUP BY e.id
       ORDER BY e.fecha, e.folio`,
-    [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
+    [companyId, desde, hasta]);
   return r.rows;
 }
 

@@ -13,7 +13,7 @@ import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
-import { useEjercicios } from '@/components/SelectorPeriodo';
+import { aniosContables } from '@/utils/anios';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -59,7 +59,7 @@ export function PolizasListaPage() {
   /* Si se llegó desde el auxiliar de la balanza, al cerrar/guardar el editor se
    * regresa allá (no a esta lista): es donde estaba trabajando el usuario. */
   const [volverBalanza, setVolverBalanza] = useState(false);
-  const anios = useEjercicios(anio);
+  const anios = aniosContables();
 
   const q = useQuery({ queryKey: ['polizas', anio, mes], queryFn: () => api.getPolizas(anio, mes) });
   const todas: any[] = q.data?.data?.polizas || [];
@@ -78,9 +78,9 @@ export function PolizasListaPage() {
     finally { setGenerando(''); }
   };
   const GENERADORES: Array<[string, string, () => Promise<any>]> = [
-    ['ventas', 'Ventas', () => api.generarVentas(anio, mes, todoAnio)],
-    ['compras', 'Compras', () => api.generarCompras(anio, mes, todoAnio)],
-    ['cobros', 'Cobros/Pagos', () => api.generarCobrosPagos(anio, mes, todoAnio)],
+    ['ventas', 'Ventas', () => api.generarVentas(anio, mes, todoAnio || mes === 0)],
+    ['compras', 'Compras', () => api.generarCompras(anio, mes, todoAnio || mes === 0)],
+    ['cobros', 'Cobros/Pagos', () => api.generarCobrosPagos(anio, mes, todoAnio || mes === 0)],
     /* La depreciación es un cálculo MENSUAL (no acumula por año aquí): ignora el
        toggle y siempre corre el mes elegido. */
     ['deprec', 'Depreciación', () => api.generarDepreciacion(anio, mes)],
@@ -127,6 +127,7 @@ export function PolizasListaPage() {
 
       <div className="flex flex-wrap items-center gap-2">
         <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 text-sm">
+          <option value={0}>Todo el año</option>
           {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
         </select>
         <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">

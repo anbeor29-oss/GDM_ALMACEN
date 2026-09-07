@@ -131,7 +131,9 @@ export function ConciliacionContablePage() {
           {estados.length === 0 && <option value="">— sin estados —</option>}
           {estados.map((e) => <option key={e.id} value={e.id}>{MESES[e.mes]} {e.anio}</option>)}
         </select>
-        <button onClick={() => setModalSubir(true)} className="flex items-center gap-1 text-sm border rounded px-2 py-1.5 hover:bg-gray-50">
+        <button onClick={() => setModalSubir(true)} disabled={!cid}
+          className="flex items-center gap-1 text-sm border rounded px-2 py-1.5 hover:bg-gray-50 disabled:opacity-50"
+          title={cid ? 'Subir un estado de cuenta' : 'Primero crea una cuenta de banco en Tesorería → Bancos'}>
           <Upload size={14} /> Subir estado
         </button>
 
@@ -149,6 +151,13 @@ export function ConciliacionContablePage() {
           </button>
         </div>
       </div>
+
+      {cuentas.length === 0 && (
+        <p className="text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded px-3 py-2">
+          No hay cuentas de banco. Créalas en <b>Tesorería → Bancos</b> (con su cuenta contable 102-xx),
+          sube ahí o aquí el estado de cuenta, y regresa a contabilizar.
+        </p>
+      )}
 
       {/* Cuenta contable del banco (102-xx) */}
       <div className="bg-white rounded-lg border shadow-sm p-3 flex flex-wrap items-center gap-2 text-sm">
@@ -351,6 +360,7 @@ function ModalSubir({ cid, onClose, onDone }: any) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const subir = async () => {
+    if (!cid) { setErr('Primero crea o elige una cuenta de banco (Tesorería → Bancos).'); return; }
     if (!archivo) { setErr('Elige el archivo del estado de cuenta (PDF o CSV).'); return; }
     setBusy(true); setErr('');
     try { await api.cargarEstadoDeCuenta({ cuentaId: cid, anio, mes, archivo }); onDone(); }

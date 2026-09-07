@@ -321,7 +321,7 @@ export function ResultadoIntegralPage() {
   return (
     <MarcoEstado titulo="Estado de resultado integral" norma="B-3"
       descripcion="Cómo se llegó del ingreso del periodo a la utilidad, renglón por renglón."
-      descargas={{ excel: (a, m) => api.descargarResultados(a, m, 'excel'), pdf: (a, m) => api.descargarResultados(a, m, 'pdf') }}>
+      descargas={{ excel: (a, m) => api.descargarResultados(a, m, 'excel'), pdf: (a, m) => api.descargarResultados(a, m, 'pdf'), anual: (a) => api.descargarReporteAnual(a, 'resultados') }}>
       {(d) => (
         <div className="bg-white rounded-lg shadow border overflow-hidden max-w-3xl">
           <table className="w-full text-sm">
