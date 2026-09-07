@@ -107,6 +107,13 @@ export function XmlRecibidos({ direccionInicial }: {
     qc.invalidateQueries({ queryKey: ['sat-credencial'] });
   };
 
+  const terminados = trabajos.filter((t) => t.estado === 'TERMINADO' || t.estado === 'CANCELADO').length;
+  const limpiarTerminados = async () => {
+    if (!window.confirm(`¿Quitar de la lista los ${terminados} trabajo(s) terminados?\n\nSus comprobantes YA están en el sistema: no se pierde nada, sólo se limpia la lista.`)) return;
+    try { const r: any = await api.limpiarTrabajosTerminados(); setAviso(r?.message || 'Lista limpia.'); refrescar(); }
+    catch (e: any) { setError(e?.response?.data?.message || 'No se pudo limpiar.'); }
+  };
+
   const avanzar = async () => {
     setCargando(true); setError(''); setAviso('');
     try {
@@ -309,9 +316,17 @@ export function XmlRecibidos({ direccionInicial }: {
       {/* ── Trabajos ───────────────────────────────────────────────────── */}
       {trabajos.length > 0 && (
         <div className="bg-white rounded-lg shadow overflow-x-auto">
-          <p className="px-4 pt-3 text-xs text-gray-500">
-            Toca un renglón para ver, solicitud por solicitud, qué contestó el SAT.
-          </p>
+          <div className="px-4 pt-3 flex items-center justify-between gap-2">
+            <p className="text-xs text-gray-500">
+              Toca un renglón para ver, solicitud por solicitud, qué contestó el SAT.
+            </p>
+            {terminados > 0 && (
+              <button onClick={limpiarTerminados}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-rose-600 border rounded px-2 py-1 hover:bg-rose-50 whitespace-nowrap">
+                <Trash2 size={13} /> Limpiar terminados ({terminados})
+              </button>
+            )}
+          </div>
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>

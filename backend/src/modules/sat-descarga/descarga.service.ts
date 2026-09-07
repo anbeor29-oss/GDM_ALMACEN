@@ -150,6 +150,22 @@ export async function reiniciarDescarga(companyId: string): Promise<{ trabajos: 
 }
 
 /**
+ * Limpia de la lista los trabajos ya TERMINADOS (y cancelados): su descarga acabó
+ * y sus XML YA están en `cfdi_recibidos`, así que borrar el registro del trabajo no
+ * pierde nada —el ON DELETE CASCADE quita sus particiones/paquetes y el paquete_id
+ * de los CFDI queda en NULL (los comprobantes se conservan)—. Sirve para dejar la
+ * consola de descarga sólo con lo que sigue en curso.
+ */
+export async function limpiarTrabajosTerminados(companyId: string): Promise<{ trabajos: number }> {
+  const r = await query(
+    `DELETE FROM sat_trabajos WHERE company_id = $1 AND estado IN ('TERMINADO','CANCELADO')`,
+    [companyId]);
+  const trabajos = r.rowCount || 0;
+  logger.info(`[sat-descarga] limpieza de terminados (empresa ${companyId}): ${trabajos} trabajo(s) borrados`);
+  return { trabajos };
+}
+
+/**
  * Vuelve a armar las solicitudes atoradas (RECHAZADA / FALLIDA) para que el motor
  * las pida otra vez. Se usa después de corregir la causa del rechazo —p. ej. el
  * filtro de cancelados—: sin esto habría que borrar TODO y empezar de cero,

@@ -969,6 +969,16 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/estados/${estadoId}/contabilizar`, {});
     return r.data;
   }
+  /** Cateja los movimientos del banco contra la contabilidad ya asentada (102). */
+  async cotejarConLibro(estadoId: string) {
+    const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/estados/${estadoId}/cotejar`, {});
+    return r.data;
+  }
+  /** Movimientos de la cuenta 102 del banco en el periodo (el "libro"). */
+  async getLibroBanco(estadoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/treasury/bancos/estados/${estadoId}/libro`);
+    return r.data;
+  }
   async marcarMovimiento(id: string, data: any) {
     const r = await this.client.put<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/marcar`, data);
     return r.data;
@@ -1336,6 +1346,11 @@ class APIClient {
   }
   async reiniciarSatDescarga() {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/reiniciar');
+    return r.data;
+  }
+  /** Quita de la lista los trabajos terminados/cancelados (los XML se conservan). */
+  async limpiarTrabajosTerminados() {
+    const r = await this.client.post<APIResponse<any>>('/sat-descarga/limpiar-terminados');
     return r.data;
   }
   async reintentarSatAtoradas() {

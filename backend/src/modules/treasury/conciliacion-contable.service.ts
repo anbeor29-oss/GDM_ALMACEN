@@ -252,14 +252,124 @@ export async function contabilizarLote(companyId: string, estadoId: string, user
   return { contabilizadas, errores };
 }
 
-/* ── Deshacer: borra la póliza de un movimiento (para rehacerlo) ────────────── */
+/* ── Deshacer: borra la póliza CREADA (o desliga el cotejo) ─────────────────── */
 export async function descontabilizar(companyId: string, movId: string) {
-  const m = (await query<any>(`SELECT poliza_id FROM bancos_movimientos WHERE id=$1 AND company_id=$2`, [movId, companyId])).rows[0];
+  const m = (await query<any>(
+    `SELECT poliza_id, concil_estado, conciliado_line_id FROM bancos_movimientos WHERE id=$1 AND company_id=$2`,
+    [movId, companyId])).rows[0];
   if (!m) return { error: 'no se encontró el movimiento' };
+  // Si era un COTEJO con el libro (la póliza ya existía), sólo se desliga; NO se
+  // borra la póliza —es de la contabilidad, no la creó la conciliación—.
+  if (m.concil_estado === 'conciliado') {
+    await query(`UPDATE bancos_movimientos SET poliza_id=NULL, conciliado_line_id=NULL, concil_estado='confirmado' WHERE id=$1`, [movId]);
+    return { ok: true };
+  }
   if (m.poliza_id) {
     await query(`DELETE FROM journal_lines WHERE entry_id=$1`, [m.poliza_id]);
     await query(`DELETE FROM journal_entries WHERE id=$1 AND company_id=$2`, [m.poliza_id, companyId]);
   }
-  await query(`UPDATE bancos_movimientos SET poliza_id=NULL, concil_estado='confirmado' WHERE id=$1`, [movId]);
+  await query(`UPDATE bancos_movimientos SET poliza_id=NULL, conciliado_line_id=NULL, concil_estado='confirmado' WHERE id=$1`, [movId]);
   return { ok: true };
+}
+
+/* ── Rango de fechas del estado (min/max de sus movimientos, ±2 días) ──────── */
+async function rangoDelEstado(companyId: string, estadoId: string): Promise<{ desde: string; hasta: string } | null> {
+  const r = (await query<any>(
+    `SELECT TO_CHAR(MIN(fecha),'YYYY-MM-DD') AS mn, TO_CHAR(MAX(fecha),'YYYY-MM-DD') AS mx
+       FROM bancos_movimientos WHERE company_id=$1 AND estado_id=$2 AND inferido=false`,
+    [companyId, estadoId])).rows[0];
+  if (!r?.mn) return null;
+  const desde = new Date(new Date(r.mn + 'T00:00:00Z').getTime() - 2 * DIA).toISOString().slice(0, 10);
+  const hasta = new Date(new Date(r.mx + 'T00:00:00Z').getTime() + 2 * DIA).toISOString().slice(0, 10);
+  return { desde, hasta };
+}
+
+/**
+ * COTEJO banco ↔ contabilidad: empata cada movimiento del banco con un movimiento
+ * YA ASENTADO en la cuenta 102 del banco (por importe ±10¢ y fecha ±2 días), en vez
+ * de crear una póliza nueva. Depósito ↔ cargo a la 102; retiro ↔ abono. Lo empatado
+ * queda 'conciliado' (apunta a la póliza existente, sin duplicar).
+ */
+export async function cotejarConLibro(companyId: string, estadoId: string) {
+  const est = (await query<any>(
+    `SELECT bc.cuenta_contable_id AS banco_cuenta_id
+       FROM bancos_estados_cuenta e JOIN bancos_cuentas bc ON bc.id = e.cuenta_id
+      WHERE e.id=$1 AND e.company_id=$2`, [estadoId, companyId])).rows[0];
+  if (!est) return { error: 'no se encontró el estado de cuenta' };
+  if (!est.banco_cuenta_id) return { error: 'define la cuenta contable (102-xx) del banco antes de cotejar' };
+  const rango = await rangoDelEstado(companyId, estadoId);
+  if (!rango) return { conciliados: 0, enLibroSinBanco: 0 };
+
+  const movs = (await query<any>(
+    `SELECT id, fecha, retiro, deposito, poliza_id, concil_estado
+       FROM bancos_movimientos
+      WHERE company_id=$1 AND estado_id=$2 AND inferido=false
+      ORDER BY orden, fecha`, [companyId, estadoId])).rows;
+
+  const lines = (await query<any>(
+    `SELECT l.id, TO_CHAR(e.fecha,'YYYY-MM-DD') AS fecha, l.cargo::float AS cargo, l.abono::float AS abono,
+            e.id AS entry_id
+       FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id
+      WHERE e.company_id=$1 AND l.account_id=$2 AND e.fecha BETWEEN $3 AND $4
+        AND NOT EXISTS (SELECT 1 FROM bancos_movimientos bm WHERE bm.conciliado_line_id = l.id)
+      ORDER BY e.fecha`, [companyId, est.banco_cuenta_id, rango.desde, rango.hasta])).rows;
+
+  const usados = new Set<string>();
+  const buscar = (monto: number, fechaMov: Date, lado: 'cargo' | 'abono') => {
+    let best: any = null, bd = Infinity, bday = Infinity;
+    for (const ln of lines) {
+      if (usados.has(ln.id)) continue;
+      const val = lado === 'cargo' ? Number(ln.cargo) : Number(ln.abono);
+      const diff = Math.abs(round2(val) - round2(monto));
+      if (diff > TOL) continue;
+      const dd = Math.abs(fechaMov.getTime() - new Date(ln.fecha + 'T00:00:00Z').getTime()) / DIA;
+      if (dd > 2) continue;
+      if (diff < bd - 1e-4 || (Math.abs(diff - bd) < 1e-4 && dd < bday)) { best = ln; bd = diff; bday = dd; }
+    }
+    return best;
+  };
+
+  let conciliados = 0;
+  for (const m of movs) {
+    if (m.poliza_id || ['omitido', 'contabilizado', 'conciliado'].includes(m.concil_estado)) continue;
+    const dep = round2(m.deposito), ret = round2(m.retiro);
+    const fecha = new Date(String(m.fecha).slice(0, 10) + 'T00:00:00Z');
+    let ln: any = null;
+    if (dep > 0) ln = buscar(dep, fecha, 'cargo');
+    else if (ret > 0) ln = buscar(ret, fecha, 'abono');
+    if (ln) {
+      usados.add(ln.id);
+      await query(
+        `UPDATE bancos_movimientos SET concil_estado='conciliado', poliza_id=$2, conciliado_line_id=$3 WHERE id=$1`,
+        [m.id, ln.entry_id, ln.id]);
+      conciliados++;
+    }
+  }
+  const enLibroSinBanco = lines.filter((l: any) => !usados.has(l.id)).length;
+  return { conciliados, enLibroSinBanco };
+}
+
+/**
+ * Los movimientos de la CUENTA 102 del banco en el rango del estado (el "libro"),
+ * marcando cuáles ya empataron con un movimiento bancario. Sirve para ver el otro
+ * lado de la conciliación: lo que está en la contabilidad pero no en el banco (en
+ * tránsito) queda sin marca.
+ */
+export async function movimientosDelLibro(companyId: string, estadoId: string) {
+  const est = (await query<any>(
+    `SELECT bc.cuenta_contable_id AS banco_cuenta_id, aa.codigo, aa.nombre
+       FROM bancos_estados_cuenta e JOIN bancos_cuentas bc ON bc.id = e.cuenta_id
+       LEFT JOIN accounting_accounts aa ON aa.id = bc.cuenta_contable_id
+      WHERE e.id=$1 AND e.company_id=$2`, [estadoId, companyId])).rows[0];
+  if (!est || !est.banco_cuenta_id) return { cuenta: null, lineas: [] };
+  const rango = await rangoDelEstado(companyId, estadoId);
+  if (!rango) return { cuenta: { codigo: est.codigo, nombre: est.nombre }, lineas: [] };
+  const lineas = (await query<any>(
+    `SELECT l.id, TO_CHAR(e.fecha,'YYYY-MM-DD') AS fecha, e.folio, e.concepto AS poliza_concepto,
+            l.concepto, l.cargo::float AS cargo, l.abono::float AS abono,
+            (SELECT bm.id FROM bancos_movimientos bm WHERE bm.conciliado_line_id = l.id LIMIT 1) AS empatado_con
+       FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id
+      WHERE e.company_id=$1 AND l.account_id=$2 AND e.fecha BETWEEN $3 AND $4
+      ORDER BY e.fecha, e.folio`, [companyId, est.banco_cuenta_id, rango.desde, rango.hasta])).rows;
+  return { cuenta: { codigo: est.codigo, nombre: est.nombre }, lineas };
 }

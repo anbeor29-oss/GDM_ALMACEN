@@ -55,6 +55,21 @@ router.post(
   })
 );
 
+/** POST /sat-descarga/limpiar-terminados — quita de la lista los trabajos ya
+ *  terminados/cancelados (los XML ya están en el sistema, no se pierde nada). */
+router.post(
+  '/limpiar-terminados',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await service.limpiarTrabajosTerminados(companyId(req));
+    res.json({
+      success: true,
+      message: `${r.trabajos} trabajo(s) terminados quitados de la lista. Los comprobantes se conservan.`,
+      data: r,
+    });
+  })
+);
+
 /**
  * POST /sat-descarga/reintentar — re-arma las solicitudes atoradas (rechazadas o
  * fallidas) sin borrar nada más. Para usar tras corregir la causa del rechazo:

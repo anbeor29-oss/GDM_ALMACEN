@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Landmark, RefreshCw, Wand2, PlayCircle, Check, X, Upload, Settings2, Undo2, FileText,
+  Landmark, RefreshCw, Wand2, PlayCircle, Check, X, Upload, Settings2, Undo2, FileText, Link2, BookOpen,
 } from 'lucide-react';
 import { api } from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
@@ -33,6 +33,7 @@ const EST: Record<string, { txt: string; color: string }> = {
   sugerido:      { txt: 'Revisar ±10¢', color: 'text-amber-600' },
   confirmado:    { txt: 'Listo',        color: 'text-emerald-600' },
   contabilizado: { txt: 'Contabilizado', color: 'text-sky-700' },
+  conciliado:    { txt: 'Conciliado',   color: 'text-teal-700' },
   omitido:       { txt: 'Omitido',      color: 'text-gray-400 line-through' },
 };
 
@@ -59,6 +60,7 @@ export function ConciliacionContablePage() {
   const [busy, setBusy] = useState(false);
   const [modalComis, setModalComis] = useState(false);
   const [modalSubir, setModalSubir] = useState(false);
+  const [verLibro, setVerLibro] = useState(false);
 
   const cuentasQ = useQuery({ queryKey: ['bancos-cuentas'], queryFn: () => api.getCuentasBancarias() });
   const cuentas: any[] = cuentasQ.data?.data?.cuentas || [];
@@ -78,6 +80,9 @@ export function ConciliacionContablePage() {
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
   const ctas: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);
 
+  const libroQ = useQuery({ queryKey: ['libro', eid], queryFn: () => api.getLibroBanco(eid), enabled: !!eid && verLibro });
+  const libro: any[] = libroQ.data?.data?.lineas || [];
+
   const sel = movs.find((m) => m.id === selMov) || null;
   const refetch = () => {
     qc.invalidateQueries({ queryKey: ['concil', eid] });
@@ -95,6 +100,11 @@ export function ConciliacionContablePage() {
   });
   const contabilizarTodo = () => correr(() => api.contabilizarEstado(eid), (r) => {
     const d = r?.data || {}; setMsg(`${d.contabilizadas} contabilizada(s).${d.errores?.length ? ` ${d.errores.length} con detalle pendiente.` : ''}`);
+  });
+  const cotejar = () => correr(() => api.cotejarConLibro(eid), (r) => {
+    const d = r?.data || {}; setMsg(d.error ? d.error
+      : `${d.conciliados} movimiento(s) empatados con la contabilidad. ${d.enLibroSinBanco} en el libro sin banco (en tránsito).`);
+    qc.invalidateQueries({ queryKey: ['libro', eid] });
   });
   const setBancoCuenta = (id: string) => correr(() => api.actualizarCuentaBancaria(cid, { cuentaContableId: id || null }));
   const marcar = (id: string, data: any) => correr(() => api.marcarMovimiento(id, data));
@@ -141,6 +151,11 @@ export function ConciliacionContablePage() {
           <button onClick={() => setModalComis(true)} className="flex items-center gap-1 text-sm border rounded px-2 py-1.5 hover:bg-gray-50">
             <Settings2 size={14} /> Cuentas de comisiones
           </button>
+          <button onClick={cotejar} disabled={busy || !eid}
+            className="flex items-center gap-1 text-sm bg-teal-600 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50"
+            title="Empata los movimientos del banco con lo ya asentado en la contabilidad (102)">
+            <Link2 size={14} /> Cotejar contabilidad
+          </button>
           <button onClick={sugerirTodo} disabled={busy || !eid}
             className="flex items-center gap-1 text-sm bg-amber-500 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
             <Wand2 size={14} /> Sugerir todo
@@ -148,6 +163,10 @@ export function ConciliacionContablePage() {
           <button onClick={contabilizarTodo} disabled={busy || !eid}
             className="flex items-center gap-1 text-sm bg-emerald-600 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
             <PlayCircle size={14} /> Contabilizar confirmados
+          </button>
+          <button onClick={() => setVerLibro((v) => !v)} disabled={!eid}
+            className="flex items-center gap-1 text-sm border rounded px-2 py-1.5 hover:bg-gray-50 disabled:opacity-50">
+            <BookOpen size={14} /> {verLibro ? 'Ocultar libro' : 'Ver libro (102)'}
           </button>
         </div>
       </div>
@@ -229,6 +248,49 @@ export function ConciliacionContablePage() {
         </div>
       </div>
 
+      {/* El libro (cuenta 102): lo asentado en contabilidad, y qué ya empató. */}
+      {verLibro && (
+        <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+          <div className="px-3 py-2 border-b text-xs text-gray-500 flex items-center gap-2">
+            <BookOpen size={13} /> Contabilidad de la cuenta del banco (102) · {libro.length} movimiento(s).
+            El que no está <span className="text-teal-700 font-medium">empatado</span> está en el libro pero no en el banco (en tránsito).
+          </div>
+          <div className="overflow-x-auto max-h-[50vh]">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-600 sticky top-0">
+                <tr>
+                  <th className="px-2 py-1.5 text-left text-xs font-semibold">Fecha</th>
+                  <th className="px-2 py-1.5 text-left text-xs font-semibold">Folio</th>
+                  <th className="px-2 py-1.5 text-left text-xs font-semibold">Concepto</th>
+                  <th className="px-2 py-1.5 text-right text-xs font-semibold">Cargo</th>
+                  <th className="px-2 py-1.5 text-right text-xs font-semibold">Abono</th>
+                  <th className="px-2 py-1.5 text-center text-xs font-semibold">Cotejo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {libro.length === 0 && (
+                  <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-500">
+                    {libroQ.isFetching ? 'Cargando…' : 'Sin movimientos en la 102 (¿ya asignaste la cuenta contable del banco?).'}
+                  </td></tr>
+                )}
+                {libro.map((l) => (
+                  <tr key={l.id} className={l.empatado_con ? 'bg-teal-50/50' : ''}>
+                    <td className="px-2 py-1.5 text-xs whitespace-nowrap">{l.fecha}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-500">#{l.folio}</td>
+                    <td className="px-2 py-1.5 text-xs truncate max-w-[220px]">{l.concepto || l.poliza_concepto}</td>
+                    <td className="px-2 py-1.5 text-right text-xs">{Number(l.cargo) ? money(l.cargo) : ''}</td>
+                    <td className="px-2 py-1.5 text-right text-xs">{Number(l.abono) ? money(l.abono) : ''}</td>
+                    <td className="px-2 py-1.5 text-center text-xs">
+                      {l.empatado_con ? <span className="text-teal-700">✓ empatado</span> : <span className="text-amber-600">en tránsito</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {modalComis && <ModalComisiones ctas={ctas} cfg={cfg} onClose={() => setModalComis(false)}
         onSave={async (com: string | null, iva: string | null) => { await correr(() => api.setCuentasComisiones(com, iva), () => { qc.invalidateQueries({ queryKey: ['bancos-config'] }); }); setModalComis(false); }} />}
       {modalSubir && <ModalSubir cid={cid} onClose={() => setModalSubir(false)}
@@ -257,12 +319,21 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, onConfirmar, onOmitir, onCo
       </div>
 
       {sel.poliza_id ? (
-        <div className="bg-sky-50 border border-sky-200 rounded p-3">
-          <p className="text-sky-900 flex items-center gap-1.5"><FileText size={15} /> Contabilizado — póliza #{sel.poliza_folio}</p>
-          <button onClick={onDeshacer} disabled={busy} className="mt-2 flex items-center gap-1 text-xs text-rose-600 hover:underline">
-            <Undo2 size={13} /> Deshacer (borra la póliza)
-          </button>
-        </div>
+        sel.concil_estado === 'conciliado' ? (
+          <div className="bg-teal-50 border border-teal-200 rounded p-3">
+            <p className="text-teal-900 flex items-center gap-1.5"><Link2 size={15} /> Conciliado con la contabilidad — póliza #{sel.poliza_folio} (ya estaba asentada)</p>
+            <button onClick={onDeshacer} disabled={busy} className="mt-2 flex items-center gap-1 text-xs text-rose-600 hover:underline">
+              <Undo2 size={13} /> Deshacer el cotejo (no borra la póliza)
+            </button>
+          </div>
+        ) : (
+          <div className="bg-sky-50 border border-sky-200 rounded p-3">
+            <p className="text-sky-900 flex items-center gap-1.5"><FileText size={15} /> Contabilizado — póliza #{sel.poliza_folio}</p>
+            <button onClick={onDeshacer} disabled={busy} className="mt-2 flex items-center gap-1 text-xs text-rose-600 hover:underline">
+              <Undo2 size={13} /> Deshacer (borra la póliza)
+            </button>
+          </div>
+        )
       ) : (
         <>
           {/* Match de XML para cobro/pago */}

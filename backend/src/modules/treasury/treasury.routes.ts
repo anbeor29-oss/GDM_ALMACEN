@@ -405,6 +405,23 @@ router.post(
   })
 );
 
+/** Cateja los movimientos del banco contra la contabilidad ya asentada (102). */
+router.post(
+  '/bancos/estados/:id/cotejar',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await concil.cotejarConLibro(companyId(req), req.params.id) });
+  })
+);
+
+/** Los movimientos de la cuenta 102 del banco en el periodo (el "libro"). */
+router.get(
+  '/bancos/estados/:id/libro',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await concil.movimientosDelLibro(companyId(req), req.params.id) });
+  })
+);
+
 /** Contabiliza de golpe todo lo confirmado del estado. */
 router.post(
   '/bancos/estados/:id/contabilizar',
