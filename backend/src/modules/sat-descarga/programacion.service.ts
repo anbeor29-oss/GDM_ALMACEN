@@ -554,6 +554,41 @@ export async function coberturaDelAnio(
 }
 
 /**
+ * Cobertura COMBINADA del año: emitidos + recibidos en UN solo calendario. Cada día
+ * trae el desglose de las dos direcciones (para el doble-clic) y un color combinado
+ * = el PEOR de las dos (falta > sincomp > proceso > nexo): un día sólo sale verde si
+ * las dos direcciones están cubiertas, y cualquier hueco lo delata. `total` es la
+ * suma de comprobantes del día (lo que se pinta en la celda).
+ */
+export interface DiaCombinado {
+  dia: string; estado: EstadoDia; total: number;
+  emi: { estado: EstadoDia; cfdi: number };
+  rec: { estado: EstadoDia; cfdi: number };
+}
+export async function coberturaAnioCombinada(companyId: string, anio: number) {
+  const [emi, rec] = await Promise.all([
+    coberturaDelAnio(companyId, anio, 'emitidos'),
+    coberturaDelAnio(companyId, anio, 'recibidos'),
+  ]);
+  const rmap = new Map(rec.dias.map((d) => [d.dia, d]));
+  const peso: Record<EstadoDia, number> = { falta: 3, sincomp: 2, proceso: 1, nexo: 0 };
+  const peor = (a: EstadoDia, b: EstadoDia): EstadoDia => (peso[a] >= peso[b] ? a : b);
+  const dias: DiaCombinado[] = emi.dias.map((de) => {
+    const dr = rmap.get(de.dia) || { estado: 'falta' as EstadoDia, cfdi: 0 };
+    return {
+      dia: de.dia,
+      estado: peor(de.estado, dr.estado),
+      total: (de.cfdi || 0) + (dr.cfdi || 0),
+      emi: { estado: de.estado, cfdi: de.cfdi || 0 },
+      rec: { estado: dr.estado, cfdi: dr.cfdi || 0 },
+    };
+  });
+  const resumen: Record<EstadoDia, number> = { nexo: 0, proceso: 0, sincomp: 0, falta: 0 };
+  for (const d of dias) resumen[d.estado]++;
+  return { anio, anioMin: Math.min(emi.anioMin, rec.anioMin), hoy: emi.hoy, dias, resumen };
+}
+
+/**
  * Llena los HUECOS del año: crea trabajos SÓLO para los meses que tienen al menos
  * un día en 'falta' (gris). Los meses ya cubiertos no se re-piden — así no se gasta
  * cuota del SAT en lo que ya está. El motor los baja dentro del presupuesto diario.

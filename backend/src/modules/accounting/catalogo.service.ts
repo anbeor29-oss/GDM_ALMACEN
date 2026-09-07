@@ -483,6 +483,21 @@ export async function actualizarCuenta(companyId: string, id: string, d: Partial
 
   if (d.nombre !== undefined) set('nombre', d.nombre.trim());
   if (d.moneda !== undefined) set('moneda', (d.moneda || 'MXN').toString().trim().slice(0, 3).toUpperCase() || 'MXN');
+  // El NÚMERO de cuenta también se puede corregir (lo pidió el usuario). Se valida
+  // que no choque con otra cuenta; las partidas apuntan al id, no al código, así que
+  // no se rompen. Si estaba en la lista de excluidas (se borró antes), se saca de ahí.
+  let codigoNuevo: string | null = null;
+  if (d.codigo !== undefined) {
+    const nuevo = String(d.codigo).trim();
+    if (nuevo && nuevo !== actual.codigo) {
+      const dup = await query<any>(
+        `SELECT 1 FROM accounting_accounts WHERE company_id=$1 AND codigo=$2 AND id<>$3`, [companyId, nuevo, id]);
+      if (dup.rows.length) throw new Error(`Ya existe una cuenta con el código ${nuevo}.`);
+      set('codigo', nuevo);
+      codigoNuevo = nuevo;
+      await query(`DELETE FROM accounting_cuentas_excluidas WHERE company_id=$1 AND codigo=$2`, [companyId, nuevo]).catch(() => {});
+    }
+  }
   if (d.codigoAgrupador !== undefined) {
     if (d.codigoAgrupador) {
       const s = await query<any>(`SELECT codigo FROM sat_codigos_agrupadores WHERE codigo=$1`,
@@ -509,6 +524,12 @@ export async function actualizarCuenta(companyId: string, id: string, d: Partial
       RETURNING *`,
     par,
   );
+  // Espeja el nuevo código en el expediente del tercero (si es cliente/proveedor).
+  if (codigoNuevo && actual.tercero_rfc) {
+    await query(
+      `UPDATE customers SET cuenta_contable=$3 WHERE company_id=$1 AND UPPER(rfc)=UPPER($2)`,
+      [companyId, actual.tercero_rfc, codigoNuevo]).catch(() => {});
+  }
   return r.rows[0];
 }
 

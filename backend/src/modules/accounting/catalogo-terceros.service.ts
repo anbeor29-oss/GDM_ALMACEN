@@ -97,9 +97,16 @@ function esFormatoMascara(codigo: string, control: any, mascara: string | null):
   return c.length === cc.length && /^\d+$/.test(c) && c.slice(0, pref.length) === pref;
 }
 
-async function mascaraDe(companyId: string): Promise<string | null> {
+/* Máscara por defecto para NUMERAR terceros cuando la empresa no tiene una fijada.
+ * Sin máscara, `codigoSiguienteTercero` no sabe el ancho del último segmento y caía
+ * al formato viejo `<control>-NNN` → `1-10-25-001-076` (el segmento de 3 dígitos de
+ * más que reportó el usuario). Con este default numera `1-10-25-076` aunque nadie
+ * haya puesto la máscara. Es SÓLO para numerar; el DESPLIEGUE bonito sigue pidiendo
+ * que se fije la máscara de la empresa en Catálogo de cuentas. */
+const MASCARA_DEFAULT = '#-##-##-###';
+async function mascaraDe(companyId: string): Promise<string> {
   const r = await query<any>('SELECT mascara_cuenta FROM companies WHERE id=$1', [companyId]);
-  return r.rows[0]?.mascara_cuenta || null;
+  return r.rows[0]?.mascara_cuenta || MASCARA_DEFAULT;
 }
 async function codigosUsados(companyId: string): Promise<Set<string>> {
   const r = await query<any>('SELECT codigo FROM accounting_accounts WHERE company_id=$1', [companyId]);

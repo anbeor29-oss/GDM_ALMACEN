@@ -121,6 +121,16 @@ router.get(
   })
 );
 
+/** GET /sat-descarga/cobertura-combinada?anio= — emitidos + recibidos en un calendario. */
+router.get(
+  '/cobertura-combinada',
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = Number(req.query.anio) || new Date().getFullYear();
+    const data = await programacion.coberturaAnioCombinada(companyId(req), anio);
+    res.json({ success: true, data });
+  })
+);
+
 /** PUT /sat-descarga/programacion — cada cuánto y cuánto por día */
 router.put(
   '/programacion',

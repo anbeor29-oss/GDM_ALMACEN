@@ -713,7 +713,7 @@ function PanelCuenta({ id, onCerrar, puedeEditar, onListo, onAgregarHija }: any)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [editando, setEditando] = useState(false);
-  const [form, setForm] = useState({ nombre: '', moneda: 'MXN', codigoAgrupador: '' });
+  const [form, setForm] = useState({ codigo: '', nombre: '', moneda: 'MXN', codigoAgrupador: '' });
 
   const q = useQuery({ queryKey: ['cuenta', id], queryFn: () => api.getCuentaContable(id) });
   const cuenta = q.data?.data?.cuenta;
@@ -721,6 +721,7 @@ function PanelCuenta({ id, onCerrar, puedeEditar, onListo, onAgregarHija }: any)
 
   const abrirEdicion = () => {
     setForm({
+      codigo: cuenta?.codigo || '',
       nombre: cuenta?.nombre || '',
       moneda: cuenta?.moneda || 'MXN',
       codigoAgrupador: cuenta?.codigo_agrupador || '',
@@ -731,6 +732,7 @@ function PanelCuenta({ id, onCerrar, puedeEditar, onListo, onAgregarHija }: any)
     setError(''); setBusy(true);
     try {
       await api.actualizarCuentaContable(id, {
+        codigo: form.codigo.trim(),
         nombre: form.nombre.trim(),
         moneda: form.moneda.trim() || 'MXN',
         codigoAgrupador: form.codigoAgrupador.trim() || null,
@@ -790,6 +792,12 @@ function PanelCuenta({ id, onCerrar, puedeEditar, onListo, onAgregarHija }: any)
 
             {editando ? (
               <div className="space-y-3 border rounded-lg p-3 bg-gray-50">
+                <label className="block">
+                  <span className="text-[11px] text-gray-600">Número de cuenta</span>
+                  <input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })}
+                    className="input w-full text-sm font-mono" placeholder="1-10-25-076" />
+                  <span className="text-[10px] text-gray-400">Cambia el número de ESTA cuenta (no renumera sus subcuentas). Las pólizas la siguen.</span>
+                </label>
                 <label className="block">
                   <span className="text-[11px] text-gray-600">Nombre</span>
                   <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })}

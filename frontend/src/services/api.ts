@@ -1349,6 +1349,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/sat-descarga/cobertura', { params: { anio, direccion } });
     return r.data;
   }
+  /** Cobertura combinada (emitidos + recibidos) para un solo calendario. */
+  async getCoberturaCombinada(anio: number) {
+    const r = await this.client.get<APIResponse<any>>('/sat-descarga/cobertura-combinada', { params: { anio } });
+    return r.data;
+  }
   /** Crea trabajos para los meses del año con días faltantes. */
   async llenarHuecosSat(anio: number, direccion: 'recibidos' | 'emitidos') {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/llenar-huecos', { anio, direccion });
