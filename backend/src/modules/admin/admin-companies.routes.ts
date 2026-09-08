@@ -449,6 +449,10 @@ router.post('/:id/reset-operations', asyncHandler(async (req: Request, res: Resp
   await query(`DELETE FROM xml_imports WHERE company_id = $1`, [id]).catch(() => {});
   await query(`DELETE FROM payments    WHERE company_id = $1`, [id]);
   await query(`DELETE FROM credit_notes WHERE company_id = $1`, [id]);
+  // Hijos de invoices con FK RESTRICT: limpiar ANTES de borrar invoices o revienta
+  // (stamp_usage_invoice_id_fkey, cfdi_validations).
+  await query(`DELETE FROM stamp_usage      WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = $1)`, [id]).catch(() => {});
+  await query(`DELETE FROM cfdi_validations WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = $1)`, [id]).catch(() => {});
   await query(
     `DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = $1)`,
     [id]
@@ -722,6 +726,13 @@ router.delete('/:id/full-delete', asyncHandler(async (req: Request, res: Respons
   // Facturación (pago multi-factura) y punto de venta (RESTRICT hacia invoices/products).
   await q0(`DELETE FROM payment_invoices WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = $1)`);
   await q0(`DELETE FROM pos_sale_items WHERE product_id IN (SELECT id FROM products WHERE company_id = $1)`);
+  // Facturas: hijos con FK RESTRICT que hay que limpiar ANTES de borrar invoices, o
+  // el borrado revienta (stamp_usage_invoice_id_fkey / cfdi_validations). Esto ya
+  // estaba en wipe-operations v2 pero faltaba aquí, en el borrado TOTAL.
+  await q0(`DELETE FROM stamp_usage      WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = $1)`);
+  await q0(`DELETE FROM cfdi_validations WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = $1)`);
+  await q0(`DELETE FROM pos_sale_items   WHERE sale_id    IN (SELECT id FROM pos_sales WHERE company_id = $1)`);
+  await q0(`DELETE FROM pos_sales        WHERE company_id = $1`);
 
   // 1) Datos operativos (mismo orden que reset-operations)
   await query(`DELETE FROM pac_stamps  WHERE company_id = $1`, [id]).catch(() => {});
