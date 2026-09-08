@@ -284,9 +284,23 @@ export function Layout() {
                     accent="amber"
                     open={sidebarOpen}
                     pathPrefix="/contabilidad"
+                    /* Items ordenados alfabéticamente por etiqueta (petición del
+                       usuario). Dos excepciones a propósito: el submenú "Pólizas"
+                       conserva "Póliza manual" en primer lugar (petición previa
+                       explícita) y "Reportes" conserva la secuencia natural de los
+                       estados financieros; alfabetizar esos dos rompería un orden
+                       que el usuario pidió o que tiene sentido contable. */
                     children={[
-                      { to: '/contabilidad/cuentas',        icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
+                      { to: '/contabilidad/activo-fijo',   icon: emoji3D('🏗️'), label: 'Activo fijo · Depreciación' },
                       { to: '/contabilidad/asignacion',     icon: emoji3D('🏷️'), label: 'Asignación de cuentas' },
+                      /* Auditoría: revisa lo timbrado contra lo contabilizado. La ruta es /auditoria. */
+                      { to: '/auditoria', icon: emoji3D('🛡️'), label: 'Auditoría' },
+                      { to: '/contabilidad/auxiliar',      icon: emoji3D('📒'), label: 'Auxiliar de cuentas' },
+                      { to: '/contabilidad/cambio-cuenta', icon: emoji3D('🔀'), label: 'Cambio de cuenta' },
+                      { to: '/contabilidad/cuentas',        icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
+                      { to: '/contabilidad/conciliacion',  icon: emoji3D('🏦'), label: 'Conciliación contable' },
+                      { to: '/contabilidad/validacion',    icon: emoji3D('🧮'), label: 'Cuadre contable' },
+                      { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },
                       {
                         icon: emoji3D('📔'), label: 'Pólizas',
                         children: [
@@ -297,8 +311,6 @@ export function Layout() {
                           { to: '/contabilidad/polizas-pendientes', icon: emoji3D('⚠️'), label: 'Pendientes' },
                         ],
                       },
-                      { to: '/contabilidad/activo-fijo',   icon: emoji3D('🏗️'), label: 'Activo fijo · Depreciación' },
-                      { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },
                       {
                         icon: emoji3D('📊'), label: 'Reportes',
                         children: [
@@ -312,13 +324,6 @@ export function Layout() {
                           { to: '/contabilidad/razones',    icon: emoji3D('🔍'), label: 'Razones y análisis' },
                         ],
                       },
-                      { to: '/contabilidad/cambio-cuenta', icon: emoji3D('🔀'), label: 'Cambio de cuenta' },
-                      { to: '/contabilidad/auxiliar',      icon: emoji3D('📒'), label: 'Auxiliar de cuentas' },
-                      { to: '/contabilidad/conciliacion',  icon: emoji3D('🏦'), label: 'Conciliación contable' },
-                      /* Auditoría cuelga de Contabilidad, después de Reportes: es
-                         quien revisa lo timbrado contra lo contabilizado antes del
-                         cierre del mes. La ruta sigue siendo /auditoria. */
-                      { to: '/auditoria', icon: emoji3D('🛡️'), label: 'Auditoría' },
                     ]}
                   />
                 )}

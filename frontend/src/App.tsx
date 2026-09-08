@@ -64,6 +64,7 @@ import { CatalogoCuentasPage } from '@/pages/contabilidad/CatalogoCuentas';
 import { AsignacionCuentasPage } from '@/pages/contabilidad/AsignacionCuentas';
 import { ConciliacionContablePage } from '@/pages/contabilidad/ConciliacionContable';
 import { AuxiliarCuentasPage } from '@/pages/contabilidad/AuxiliarCuentas';
+import { ValidacionContablePage } from '@/pages/contabilidad/ValidacionContable';
 import { PolizaManualPage } from '@/pages/contabilidad/PolizaManual';
 import { PolizasListaPage } from '@/pages/contabilidad/PolizasLista';
 import { PolizasPendientesPage } from '@/pages/contabilidad/PolizasPendientes';
@@ -321,6 +322,7 @@ export function App() {
             <Route path="contabilidad/cambio-cuenta"      element={<ModuleRoute module="contabilidad"><CambioCuentaPage /></ModuleRoute>} />
             <Route path="contabilidad/conciliacion"       element={<ModuleRoute module="contabilidad"><ConciliacionContablePage /></ModuleRoute>} />
             <Route path="contabilidad/auxiliar"           element={<ModuleRoute module="contabilidad"><AuxiliarCuentasPage /></ModuleRoute>} />
+            <Route path="contabilidad/validacion"         element={<ModuleRoute module="contabilidad"><ValidacionContablePage /></ModuleRoute>} />
             <Route path="contabilidad/periodos"           element={<ModuleRoute module="contabilidad"><PeriodosPage /></ModuleRoute>} />
             <Route path="contabilidad/balanza"            element={<ModuleRoute module="contabilidad"><BalanzaPage /></ModuleRoute>} />
             <Route path="contabilidad/situacion"          element={<ModuleRoute module="contabilidad"><SituacionFinancieraPage /></ModuleRoute>} />

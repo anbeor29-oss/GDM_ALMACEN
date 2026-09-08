@@ -1256,6 +1256,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/estados/${anio}/${mes}/balanza`);
     return r.data;
   }
+  /** Auditoría de cuadre: pólizas descuadradas, balanza y balance↔resultados. mes=0 = año completo. */
+  async getValidacionContable(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/validacion/${anio}/${mes}`);
+    return r.data;
+  }
   /** Importa un paquete de respaldo (los JSON del extractor) a la empresa activa. */
   async importarRespaldo(fd: FormData) {
     const r = await this.client.post<APIResponse<any>>('/accounting/contpaqi/importar', fd,

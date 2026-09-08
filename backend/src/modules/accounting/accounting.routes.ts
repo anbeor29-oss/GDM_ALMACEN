@@ -28,6 +28,7 @@ import * as activos from './activos-fijos.service';
 import * as reportesExport from './reportes-export.service';
 import * as contpaqi from './contpaqi-import.service';
 import * as cambioCuenta from './cambio-cuenta.service';
+import * as validacion from './validacion-contable.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
@@ -623,6 +624,22 @@ router.get(
         },
       },
     });
+  })
+);
+
+/**
+ * GET /accounting/validacion/:anio/:mes — auditoría de cuadre.
+ *
+ * Revisa póliza por póliza que cada asiento cuadre (cargos = abonos), que la
+ * balanza acumulada cuadre, y que el balance cierre con el estado de resultados.
+ * Con :mes = 0 (o 13) revisa el año completo. No guarda nada: sólo diagnostica.
+ */
+router.get(
+  '/validacion/:anio/:mes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await validacion.validarContabilidad(
+      companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.json({ success: true, data });
   })
 );
 
