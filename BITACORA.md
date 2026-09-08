@@ -5140,3 +5140,34 @@ nómina también pide sus CFDIs al SAT, se extiende. Ambos builds (backend/front
 **Pendientes que siguen:** (2) rastrear el descuadre de 760.67 en Dic-2017 con Cuadre
 contable (Nov→Dic); (3) confirmar `ENABLE_SAT_DESCARGA_CRON=true` en Render para que la
 descarga masiva corra sola; luego, la normalización/limpieza de clientes.
+
+---
+
+## 2026-09-08 (contabilidad) — Localizador de descuadre + catálogo en columnas + Excel
+
+**Localizador del descuadre (Cuadre contable).** Nov-2017 confirmó que balanza y todas
+las pólizas cuadran pero el balance no ($760.67) y SIN cuentas «sin agrupador». Causa:
+cuentas que SÍ tienen agrupador pero su mayor cae en un HUECO de los rangos con que se
+arma el estado (p.ej. 605/606 mano de obra, o la 305 del resultado). `localizarDescuadre()`
+(validacion-contable.service) reconcilia por SECCIÓN (suma completa del grupo, como la
+regla A5-ECUACION, menos lo presentado → activo/pasivo/capital/resultado) y por CUENTA
+(agrupador fuera de `RANGOS_EN_RUBRO`). La pantalla muestra la sección del hueco y la
+tabla de cuentas culpables. Se calcula sólo si el balance no cuadra.
+
+**Catálogo de cuentas en columnas.** Se reacomodó cada renglón del árbol para que el
+agrupador SAT y la naturaleza queden en COLUMNAS FIJAS (el nombre es flexible y absorbe la
+sangría del árbol; SAT/Nat/Tipo/acciones van pegados al borde derecho con ancho fijo), más
+un renglón de encabezado (Cuenta · Agrupador · Nat · Tipo). Así el agrupador se escanea de
+un vistazo (lo pidió el usuario). El agrupador se muestra SIEMPRE (antes se ocultaba cuando
+era igual al código); «sin» en ámbar cuando falta.
+
+**Exportar / importar el catálogo en Excel.** `catalogoExcel` (reportes-export) baja todo
+el catálogo (código, nombre, agrupador, nombre del agrupador, naturaleza, tipo, nivel,
+movimientos) en orden de código. `importarCatalogoExcel` (catalogo.service) reimporta el
+Excel editado: casa por CÓDIGO contra cuentas existentes y actualiza NOMBRE y AGRUPADOR SAT
+si cambiaron; NO crea, NO borra, NO toca naturaleza/tipo (se heredan del padre). Reusa
+`actualizarCuenta` (valida el agrupador contra el Anexo 24) y devuelve reporte
+(actualizadas / sin cambio / no encontradas / errores). Rutas `GET
+/accounting/cuentas/catalogo/excel` y `POST /accounting/cuentas/catalogo/importar`
+(`contabilidad:catalogo`). Botones en la pantalla: Exportar (todos) e Importar (con
+permiso de catálogo).

@@ -1099,6 +1099,17 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/asignar-agrupador', {});
     return r.data;
   }
+  /** Exporta el catálogo de cuentas completo a Excel (para revisar/corregir agrupadores). */
+  async descargarCatalogoExcel() {
+    const r = await this.client.get('/accounting/cuentas/catalogo/excel', { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, 'Catalogo_de_cuentas.xlsx');
+  }
+  /** Reimporta el catálogo editado en Excel (casa por código; actualiza nombre y agrupador). */
+  async importarCatalogoExcel(fd: FormData) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/catalogo/importar', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
   async fijarEquivalenciaCuenta(id: string, datos: any) {
     const r = await this.client.put<APIResponse<any>>(`/accounting/cuentas/${id}/equivalencia`, datos);
     return r.data;

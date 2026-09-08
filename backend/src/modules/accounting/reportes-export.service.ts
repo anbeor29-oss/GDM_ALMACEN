@@ -18,6 +18,7 @@ import {
   ExcelJS, C, titulo, dato, encabezado, celda, totales, anchos, aBuffer,
 } from '../nomina/estilo-excel';
 import { reporteTablaPdf, ColumnaPdf } from '../../utils/reporte-pdf';
+import { listarCuentas } from './catalogo.service';
 
 interface Empresa { business_name: string; rfc: string; }
 
@@ -311,6 +312,46 @@ export async function auxiliarExcel(companyId: string, codigo: string, anio: num
   anchos(ws, [12, 8, 50, 15, 15, 15]);
 
   return { buffer: await aBuffer(wb), nombre: `Auxiliar_${aux.cuenta.codigo}_${anio}-${String(mes).padStart(2, '0')}.xlsx` };
+}
+
+/**
+ * El CATÁLOGO de cuentas completo a Excel, en orden de código. Sirve para revisar
+ * y corregir los agrupadores en Excel y volver a subirlo (importarCatalogoExcel).
+ * La columna CÓDIGO es la llave del re-import: NOMBRE y AGRUPADOR SAT se pueden
+ * editar; NATURALEZA y TIPO se muestran para analizar pero no se importan (los
+ * hereda del padre y cambiarlos descuadraría la balanza).
+ */
+export async function catalogoExcel(companyId: string): Promise<{ buffer: Buffer; nombre: string }> {
+  const [emp, cuentas] = await Promise.all([empresaDe(companyId), listarCuentas(companyId, { soloActivas: false })]);
+
+  const cols = ['CÓDIGO', 'NOMBRE', 'AGRUPADOR SAT', 'NOMBRE DEL AGRUPADOR', 'NATURALEZA', 'TIPO', 'NIVEL', 'MOVIMIENTOS'];
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'GDM NEXO';
+  const ws = wb.addWorksheet('Catálogo', { views: [{ state: 'frozen', ySplit: 7 }] });
+
+  titulo(ws, 'Catálogo de cuentas', cols.length);
+  dato(ws, 3, 1, `Empresa:   ${emp.business_name}`, true);
+  dato(ws, 3, 5, `RFC:   ${emp.rfc}`);
+  dato(ws, 4, 1, `Cuentas:   ${cuentas.length}`);
+  dato(ws, 4, 5, `Generado:   ${fechaGen()}`);
+  dato(ws, 5, 1, 'Para reimportar conserva la columna CÓDIGO (es la llave); puedes editar NOMBRE y AGRUPADOR SAT.');
+  encabezado(ws, 7, cols.map((t) => ({ texto: t, color: C.identidad })));
+
+  let fila = 8;
+  for (const c of cuentas) {
+    celda(ws, fila, 1, String(c.codigo));
+    celda(ws, fila, 2, c.nombre || '');
+    celda(ws, fila, 3, c.codigo_agrupador || '');
+    celda(ws, fila, 4, c.agrupador_nombre || '');
+    celda(ws, fila, 5, c.naturaleza === 'DEUDORA' ? 'D' : 'A', { centrado: true });
+    celda(ws, fila, 6, c.tipo || '', { centrado: true });
+    celda(ws, fila, 7, String(c.nivel ?? ''), { centrado: true });
+    celda(ws, fila, 8, c.permite_movimientos ? 'Sí' : 'No', { centrado: true });
+    fila++;
+  }
+  anchos(ws, [16, 44, 14, 32, 11, 10, 7, 12]);
+
+  return { buffer: await aBuffer(wb), nombre: `Catalogo_${emp.rfc || 'cuentas'}.xlsx` };
 }
 
 export async function auxiliarPdf(companyId: string, codigo: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {

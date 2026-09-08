@@ -18,6 +18,7 @@
 
 import { query, transaction, transactionQuery } from '../../config/database';
 import type { PoolClient } from 'pg';
+import { ExcelJS } from '../nomina/estilo-excel';
 import { NIF_NORMAS } from './nif-normas.data';
 import { construirCatalogoSat, NIVEL2_PENDIENTE, type CodigoSat } from './catalogo-sat.data';
 import logger from '../../middleware/logger';
@@ -531,6 +532,92 @@ export async function actualizarCuenta(companyId: string, id: string, d: Partial
       [companyId, actual.tercero_rfc, codigoNuevo]).catch(() => {});
   }
   return r.rows[0];
+}
+
+/**
+ * Reimporta un catálogo editado en Excel (el que exporta `catalogoExcel`).
+ *
+ * CONSERVADOR a propósito: casa cada fila por su CÓDIGO contra una cuenta que YA
+ * existe y sólo actualiza NOMBRE y AGRUPADOR SAT si cambiaron. No crea, no borra,
+ * no toca naturaleza ni tipo (los hereda del padre; cambiarlos descuadra la
+ * balanza). Vaciar la celda de agrupador NO lo borra —para no perder agrupadores
+ * por una celda en blanco—. Reusa `actualizarCuenta`, que valida el agrupador
+ * contra el Anexo 24. Devuelve un reporte de lo que pasó.
+ */
+export async function importarCatalogoExcel(companyId: string, buffer: Buffer) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer as any);
+  const ws = wb.worksheets[0];
+  if (!ws) throw new Error('El archivo de Excel no tiene ninguna hoja.');
+
+  const norm = (v: any) => String(v ?? '').trim().toLowerCase()
+    .normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  const textoCelda = (v: any): string => {
+    if (v == null) return '';
+    if (typeof v === 'object') {
+      // ExcelJS puede devolver { text }, { result } (fórmula) o { richText }.
+      if ('text' in v) return String((v as any).text ?? '').trim();
+      if ('result' in v) return String((v as any).result ?? '').trim();
+      if ('richText' in v) return (v as any).richText.map((t: any) => t.text).join('').trim();
+    }
+    return String(v).trim();
+  };
+
+  // Localiza la fila de encabezados y las columnas por su título (tolerante).
+  let headerRow = 0;
+  const idx: { codigo?: number; nombre?: number; agrupador?: number } = {};
+  ws.eachRow((row, n) => {
+    if (headerRow) return;
+    row.eachCell((cell, col) => {
+      const t = norm(cell.value);
+      if (t === 'codigo' || t === 'cuenta') idx.codigo = col;
+      else if (t === 'nombre') idx.nombre = col;                        // el de la cuenta, exacto
+      else if (t.includes('agrupador') && !t.includes('nombre')) idx.agrupador = col; // no "nombre del agrupador"
+    });
+    if (idx.codigo !== undefined) headerRow = n;
+  });
+  if (!headerRow || idx.codigo === undefined) {
+    throw new Error('No se encontró la columna CÓDIGO en el Excel. Exporta el catálogo primero para ver el formato.');
+  }
+
+  const rep = {
+    total: 0, actualizadas: 0, sinCambio: 0,
+    noEncontradas: [] as string[], errores: [] as string[],
+  };
+
+  const filas: Array<{ codigo: string; nombre?: string; agrupador?: string }> = [];
+  ws.eachRow((row, n) => {
+    if (n <= headerRow) return;
+    const codigo = textoCelda(row.getCell(idx.codigo!).value);
+    if (!codigo) return;
+    filas.push({
+      codigo,
+      nombre: idx.nombre ? textoCelda(row.getCell(idx.nombre).value) : undefined,
+      agrupador: idx.agrupador ? textoCelda(row.getCell(idx.agrupador).value) : undefined,
+    });
+  });
+
+  for (const f of filas) {
+    rep.total++;
+    const cta = await query<any>(
+      `SELECT id, codigo, nombre, codigo_agrupador FROM accounting_accounts
+        WHERE company_id = $1 AND codigo = $2`, [companyId, f.codigo]);
+    const row0 = cta.rows[0];
+    if (!row0) { rep.noEncontradas.push(f.codigo); continue; }
+
+    const cambios: Partial<DatosCuenta> = {};
+    if (f.nombre && f.nombre !== row0.nombre) cambios.nombre = f.nombre;
+    if (f.agrupador && f.agrupador !== (row0.codigo_agrupador || '')) cambios.codigoAgrupador = f.agrupador;
+
+    if (!Object.keys(cambios).length) { rep.sinCambio++; continue; }
+    try {
+      await actualizarCuenta(companyId, row0.id, cambios);
+      rep.actualizadas++;
+    } catch (e: any) {
+      rep.errores.push(`${f.codigo}: ${(e?.message || 'no se pudo actualizar').toString().slice(0, 140)}`);
+    }
+  }
+  return rep;
 }
 
 /**

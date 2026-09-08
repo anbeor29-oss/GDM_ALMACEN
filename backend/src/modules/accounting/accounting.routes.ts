@@ -241,6 +241,40 @@ router.get(
    CATÁLOGO
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/** GET /accounting/cuentas/catalogo/excel — el catálogo completo a Excel */
+router.get(
+  '/cuentas/catalogo/excel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await reportesExport.catalogoExcel(companyId(req));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
+/** POST /accounting/cuentas/catalogo/importar — reimporta el catálogo editado en Excel.
+ *  Casa por CÓDIGO contra cuentas existentes; actualiza nombre y agrupador SAT; no crea ni borra. */
+router.post(
+  '/cuentas/catalogo/importar',
+  requireCapability('contabilidad:catalogo'),
+  subir.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = (req as any).file;
+    if (!f) throw new ValidationError('Falta el archivo de Excel.');
+    const nombre = (f.originalname || '').toLowerCase();
+    if (!/\.xlsx?$/.test(nombre) && !/spreadsheet|excel/.test(f.mimetype || '')) {
+      throw new ValidationError('El archivo tiene que ser Excel (.xlsx).');
+    }
+    const rep = await catalogo.importarCatalogoExcel(companyId(req), f.buffer);
+    res.json({
+      success: true, data: rep,
+      message: `Catálogo: ${rep.actualizadas} actualizada(s), ${rep.sinCambio} sin cambio` +
+        (rep.noEncontradas.length ? `, ${rep.noEncontradas.length} código(s) no encontrado(s)` : '') +
+        (rep.errores.length ? `, ${rep.errores.length} con error` : '') + '.',
+    });
+  })
+);
+
 /** GET /accounting/cuentas */
 router.get(
   '/cuentas',

@@ -18,7 +18,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight, ChevronDown, Search, Plus, AlertTriangle, CheckCircle2,
   Link2, BookOpen, X, Info, Layers, Upload, Loader2, Scale, Pencil, Trash2,
-  Users, Tag,
+  Users, Tag, Download,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
@@ -35,6 +35,16 @@ const TIPO_COLOR: Record<string, string> = {
   RIF:     'bg-indigo-100 text-indigo-800',
   ORDEN:   'bg-gray-200 text-gray-700',
 };
+
+/* Anchos FIJOS de las columnas de la derecha del árbol. El nombre es flexible y
+ * absorbe la sangría del árbol; estas columnas quedan pegadas al borde derecho con
+ * ancho fijo, así el agrupador SAT y la naturaleza SIEMPRE caen en la misma posición
+ * vertical y se escanean de un vistazo (lo pidió el usuario). El encabezado del
+ * árbol usa exactamente estas mismas clases para alinear. */
+const COL_SAT = 'w-24 shrink-0';
+const COL_NAT = 'w-7 shrink-0 text-center';
+const COL_TIPO = 'w-20 shrink-0';
+const COL_ACC = 'w-12 shrink-0';
 
 export function CatalogoCuentasPage() {
   const qc = useQueryClient();
@@ -156,6 +166,28 @@ export function CatalogoCuentasPage() {
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo asignar el agrupador.'); }
     finally { setHerr(''); }
   };
+  /* Exporta el catálogo a Excel para revisarlo/corregirlo fuera. */
+  const exportarExcel = async () => {
+    setHerr('excel'); setMsg('');
+    try { await api.descargarCatalogoExcel(); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo exportar el catálogo.'); }
+    finally { setHerr(''); }
+  };
+  /* Reimporta el Excel editado: casa por código y actualiza nombre + agrupador. */
+  const importarExcel = async (file: File) => {
+    setHerr('import'); setMsg('');
+    try {
+      const fd = new FormData(); fd.append('archivo', file);
+      const r: any = await api.importarCatalogoExcel(fd);
+      const d = r?.data || {};
+      let m = r?.message || 'Catálogo importado.';
+      if (d.noEncontradas?.length) m += ` No encontrados: ${d.noEncontradas.slice(0, 6).join(', ')}${d.noEncontradas.length > 6 ? '…' : ''}.`;
+      if (d.errores?.length) m += ` Errores: ${d.errores.slice(0, 3).join(' · ')}${d.errores.length > 3 ? '…' : ''}.`;
+      setMsg(m);
+      refrescar();
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo importar el Excel.'); }
+    finally { setHerr(''); }
+  };
 
   if (arbolQ.isLoading) {
     return <div className="p-6 text-gray-500">Cargando el catálogo…</div>;
@@ -182,24 +214,39 @@ export function CatalogoCuentasPage() {
             {revision?.total} cuentas · {revision?.movimiento} admiten movimientos
           </p>
         </div>
-        {puedeEditar && (
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={reorganizar} disabled={!!herr}
-              title="Mueve los terceros mezclados (bajo un control equivocado) a su control correcto: clientes a 105, proveedores a 201, renumerados. Las partidas los siguen."
-              className="border border-indigo-300 text-indigo-700 px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-50 disabled:opacity-50 flex items-center gap-1.5">
-              <Users size={14} /> {herr === 'reorg' ? 'Reorganizando…' : 'Reorganizar terceros'}
-            </button>
-            <button onClick={asignarAgrupador} disabled={!!herr}
-              title="Rellena el agrupador del SAT de las cuentas que no lo tienen, heredándolo del padre"
-              className="border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg text-sm hover:bg-amber-50 disabled:opacity-50 flex items-center gap-1.5">
-              <Tag size={14} /> {herr === 'agrup' ? 'Asignando…' : 'Asignar agrupador'}
-            </button>
-            <button onClick={() => setAlta({ parentId: null })}
-              className="btn-primary flex items-center gap-1.5 text-sm">
-              <Plus size={15} /> Nueva cuenta
-            </button>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Exportar Excel: disponible para todos (es una descarga de lectura). */}
+          <button onClick={exportarExcel} disabled={!!herr}
+            title="Descarga todo el catálogo a Excel para revisar/corregir los agrupadores"
+            className="border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded-lg text-sm hover:bg-emerald-50 disabled:opacity-50 flex items-center gap-1.5">
+            <Download size={14} /> {herr === 'excel' ? 'Exportando…' : 'Exportar Excel'}
+          </button>
+          {puedeEditar && (
+            <>
+              <label
+                title="Reimporta el catálogo editado en Excel: casa por CÓDIGO y actualiza nombre y agrupador SAT (no crea ni borra cuentas)"
+                className={`border border-sky-300 text-sky-700 px-3 py-1.5 rounded-lg text-sm hover:bg-sky-50 flex items-center gap-1.5 cursor-pointer ${herr ? 'opacity-50 pointer-events-none' : ''}`}>
+                <Upload size={14} /> {herr === 'import' ? 'Importando…' : 'Importar Excel'}
+                <input type="file" accept=".xlsx,.xls" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) importarExcel(f); e.currentTarget.value = ''; }} />
+              </label>
+              <button onClick={reorganizar} disabled={!!herr}
+                title="Mueve los terceros mezclados (bajo un control equivocado) a su control correcto: clientes a 105, proveedores a 201, renumerados. Las partidas los siguen."
+                className="border border-indigo-300 text-indigo-700 px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-50 disabled:opacity-50 flex items-center gap-1.5">
+                <Users size={14} /> {herr === 'reorg' ? 'Reorganizando…' : 'Reorganizar terceros'}
+              </button>
+              <button onClick={asignarAgrupador} disabled={!!herr}
+                title="Rellena el agrupador del SAT de las cuentas que no lo tienen, heredándolo del padre"
+                className="border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg text-sm hover:bg-amber-50 disabled:opacity-50 flex items-center gap-1.5">
+                <Tag size={14} /> {herr === 'agrup' ? 'Asignando…' : 'Asignar agrupador'}
+              </button>
+              <button onClick={() => setAlta({ parentId: null })}
+                className="btn-primary flex items-center gap-1.5 text-sm">
+                <Plus size={15} /> Nueva cuenta
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ── Lo que está mal, arriba y antes de que importe ── */}
@@ -322,6 +369,16 @@ export function CatalogoCuentasPage() {
 
               {/* ── El árbol ── */}
               <div className="bg-white rounded-lg shadow border divide-y">
+                {filtrado.length > 0 && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50/80 text-[10px] uppercase tracking-wide text-gray-400">
+                    <span className="w-[14px] shrink-0" />
+                    <span className="flex-1 min-w-0">Cuenta</span>
+                    <span className={COL_SAT}>Agrupador</span>
+                    <span className={COL_NAT}>Nat</span>
+                    <span className={COL_TIPO}>Tipo</span>
+                    <span className={COL_ACC} />
+                  </div>
+                )}
                 {filtrado.length === 0 && (
                   <p className="p-6 text-center text-gray-500 text-sm">
                     Ninguna cuenta coincide con la búsqueda.
@@ -646,39 +703,42 @@ function Rama({ nodo, nivel, abiertos, buscando, onAlternar, onDetalle, onAgrega
           className="flex-1 min-w-0 flex items-baseline gap-2 text-left">
           <span className="font-mono text-xs text-gray-900 shrink-0">{formatCuenta(nodo.codigo, mascara)}</span>
           <span className="text-sm text-gray-700 truncate">{nodo.nombre}</span>
-
-          {/* El agrupador, sólo cuando difiere del código propio: mientras sean
-              iguales repetirlo en cada renglón es ruido. */}
-          {nodo.codigo_agrupador && nodo.codigo_agrupador !== nodo.codigo && (
-            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 shrink-0">
-              SAT {nodo.codigo_agrupador}
-            </span>
+          {/* Distintivos que describen a la cuenta (raros): van con el nombre, no en
+              las columnas, para no romper la alineación del agrupador y la naturaleza. */}
+          {nodo.es_complementaria && (
+            <span title="Cuenta complementaria: RESTA del rubro que corrige"
+              className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 shrink-0">−</span>
           )}
-          {!nodo.codigo_agrupador && nodo.permite_movimientos && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 shrink-0">
-              sin agrupador
+          {nodo.nif_norma && (
+            <span title={nodo.nif_titulo}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 font-medium shrink-0">
+              {nodo.nif_norma}
             </span>
           )}
         </button>
 
-        <div className="flex items-center gap-1.5 shrink-0">
-          {nodo.es_complementaria && (
-            <span title="Cuenta complementaria: RESTA del rubro que corrige"
-              className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">−</span>
+        {/* ── Columnas FIJAS: agrupador SAT y naturaleza siempre en la misma posición ── */}
+        <span className={`${COL_SAT} font-mono text-[10px]`}>
+          {nodo.codigo_agrupador ? (
+            <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{nodo.codigo_agrupador}</span>
+          ) : nodo.permite_movimientos ? (
+            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">sin</span>
+          ) : (
+            <span className="text-gray-300">—</span>
           )}
-          {nodo.nif_norma && (
-            <span title={nodo.nif_titulo}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 font-medium">
-              {nodo.nif_norma}
-            </span>
-          )}
+        </span>
+        <span className={`${COL_NAT} text-[11px] font-medium`}
+          title={nodo.naturaleza === 'DEUDORA' ? 'Deudora' : 'Acreedora'}>
+          <span className={nodo.naturaleza === 'DEUDORA' ? 'text-sky-600' : 'text-violet-600'}>
+            {nodo.naturaleza === 'DEUDORA' ? 'D' : 'A'}
+          </span>
+        </span>
+        <span className={COL_TIPO}>
           <span className={`text-[10px] px-1.5 py-0.5 rounded ${TIPO_COLOR[nodo.tipo] || ''}`}>
             {nodo.tipo}
           </span>
-          <span className="text-[10px] text-gray-400 w-4 text-center"
-            title={nodo.naturaleza === 'DEUDORA' ? 'Deudora' : 'Acreedora'}>
-            {nodo.naturaleza === 'DEUDORA' ? 'D' : 'A'}
-          </span>
+        </span>
+        <div className={`${COL_ACC} flex items-center justify-end gap-1`}>
           {onAgregar && (
             <button onClick={() => onAgregar(nodo)} title="Agregar subcuenta"
               className="text-gray-300 hover:text-primary">
