@@ -171,6 +171,29 @@ export async function importarContpaqi(
       `Cambia a la empresa correcta en NEXO, o confirma que quieres importar de todos modos.`);
   }
 
+  /* SEGUNDO PASO: exigir la e.firma ANTES de tocar nada. Al importar, el respaldo
+   * solicita al SAT TODOS sus XML (descarga masiva de emitidos + recibidos) para
+   * que la contabilidad quede conectada con sus comprobantes reales. Sin e.firma
+   * —o con una vencida, que no autentica ante el SAT— no hay con qué pedirlos, así
+   * que se detiene aquí con un mensaje claro. El import de sólo-catálogo no baja
+   * XML, por eso no la exige. */
+  if (!opciones?.soloCatalogo) {
+    const cred = await credencialDeEmpresa(companyId);
+    if (!cred) {
+      throw new Error(
+        'Antes de importar el respaldo hay que cargar la e.firma de la empresa: al importar ' +
+        'se solicitan al SAT todos los XML del respaldo, y sin e.firma no hay con qué pedirlos. ' +
+        'Cárgala en «XML del SAT → Descargar del SAT» y vuelve a importar.');
+    }
+    if (cred.vencida) {
+      const vto = cred.vigencia_hasta
+        ? new Date(cred.vigencia_hasta).toLocaleDateString('es-MX') : '(fecha desconocida)';
+      throw new Error(
+        `La e.firma de la empresa venció el ${vto} y no puede autenticar ante el SAT para ` +
+        `traer los XML del respaldo. Renuévala en «XML del SAT → Descargar del SAT» y vuelve a importar.`);
+    }
+  }
+
   const rep: ReporteImport = {
     rfc: { respaldo: rfcRespaldo || '(no venía en el paquete)', empresaActiva: rfcEmpresa, coincide },
     ejerciciosActivados: [],
@@ -244,8 +267,9 @@ export async function importarContpaqi(
   }
 
   // SEXTO (2): tras recuperar el respaldo, disparar la descarga de XML del SAT desde
-  // la fecha en que arranca el respaldo (recibidos + emitidos). Necesita e.firma; si
-  // no está, se avisa. No bloquea el import.
+  // la fecha en que arranca el respaldo (recibidos + emitidos). La e.firma ya se
+  // exigió al inicio (salvo en import de sólo-catálogo), así que aquí normalmente ya
+  // está; se revalida por si acaso y, si faltara, sólo se avisa (no se deshace nada).
   try {
     if (ejercicios.length) {
       const desde = `${ejercicios[0]}-01-01`;

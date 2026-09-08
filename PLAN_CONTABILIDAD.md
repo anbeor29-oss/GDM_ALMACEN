@@ -634,12 +634,14 @@ balanza cuadran siempre**. Por eso un descuadre del estado de situación financi
 puede venir de cuentas con saldo sin agrupador (se caen de los rubros) o de un descuadre
 en la apertura. La pantalla señala exactamente eso.
 
-**DECISIÓN — la e.firma es requisito ANTES de importar un respaldo (pendiente de
-codificar).** El respaldo va a disparar la solicitud de **todos** los XML al SAT
-(descarga masiva de emitidos+recibidos desde el primer ejercicio del respaldo). Para que
-todo quede conectado, el import del respaldo **debe bloquearse si la empresa no tiene
-e.firma cargada** (hoy sólo avisa después y sigue). Cambio a hacer en el flujo de
-importar respaldo + `sat-descarga` (`crearTrabajo`).
+**DECISIÓN — la e.firma es requisito ANTES de importar un respaldo (codificado
+2026-09-08).** El respaldo dispara la solicitud de **todos** los XML al SAT (descarga
+masiva de emitidos+recibidos desde el primer ejercicio del respaldo). Para que todo quede
+conectado, el import de contabilidad **se bloquea si la empresa no tiene e.firma cargada y
+vigente**. Implementado en `contpaqi-import.service.ts` (`importarContpaqi`: guarda con
+`credencialDeEmpresa` al inicio; exime `soloCatalogo`) y en el front `ImportarContpaqi.tsx`
+(banner + botón deshabilitado). El import de **nómina** no baja XML, así que no lleva la
+guarda.
 
 **Numeración de terceros — se RESPETA la del respaldo.** No se renumera ni se inventa: se
 rellena el agrupador faltante para reconocer la cuenta real del respaldo y ligarla por su

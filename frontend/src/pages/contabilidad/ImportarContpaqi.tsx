@@ -9,7 +9,7 @@
  */
 import { useState, useEffect } from 'react';
 import { unzipSync, strFromU8 } from 'fflate';
-import { Database, Download, Upload, PlayCircle, CheckCircle2, FileArchive } from 'lucide-react';
+import { Database, Download, Upload, PlayCircle, CheckCircle2, FileArchive, ShieldAlert } from 'lucide-react';
 import api from '@/services/api';
 import { formatCuenta } from '@/utils/cuenta';
 
@@ -28,6 +28,18 @@ export function ImportarContpaqiPage() {
   // arranca en '#-##-##-###' (1-10-25-050). Define los niveles del catálogo.
   const [mascara, setMascara] = useState('#-##-##-###');
   useEffect(() => { api.getMascaraCuenta().then((m: string) => { if (m) setMascara(m); }).catch(() => {}); }, []);
+  // Estado de la e.firma: es REQUISITO para importar (el respaldo pide al SAT todos
+  // sus XML). Se consulta al abrir para avisar antes de que el usuario haga el trabajo.
+  const [efirma, setEfirma] = useState<{ cargada: boolean; vencida: boolean; vto?: string } | null>(null);
+  useEffect(() => {
+    api.getSatCredencial()
+      .then((r: any) => {
+        const c = r?.data?.credencial;
+        setEfirma({ cargada: !!c, vencida: !!c?.vencida, vto: c?.vigencia_hasta });
+      })
+      .catch(() => setEfirma(null));
+  }, []);
+  const efirmaOk = !!efirma && efirma.cargada && !efirma.vencida;
   const [busy, setBusy] = useState(false);
   const [bajando, setBajando] = useState(false);
   const [rep, setRep] = useState<any>(null);
@@ -141,6 +153,20 @@ export function ImportarContpaqiPage() {
       </div>
 
       {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-lg px-4 py-3 text-sm">{error}</div>}
+
+      {/* La e.firma es requisito: el respaldo va a solicitar al SAT todos sus XML.
+          Se avisa aquí, antes de que el usuario prepare el paquete y elija años. */}
+      {efirma && !efirmaOk && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-4 py-3 text-sm space-y-1">
+          <p className="font-semibold flex items-center gap-1.5"><ShieldAlert size={15} /> Falta la e.firma para importar</p>
+          {efirma.cargada && efirma.vencida ? (
+            <p>Tu e.firma venció{efirma.vto ? ` el ${new Date(efirma.vto).toLocaleDateString('es-MX')}` : ''} y ya no autentica ante el SAT. Renuévala en <b>XML del SAT → Descargar del SAT</b> antes de importar.</p>
+          ) : (
+            <p>Al importar, el respaldo solicita al SAT <b>todos sus XML</b>, así que la e.firma es requisito. Cárgala en <b>XML del SAT → Descargar del SAT</b> y regresa aquí.</p>
+          )}
+          <p className="text-xs text-amber-700">Puedes importar <b>sólo el catálogo</b> sin e.firma (no baja XML); las pólizas sí la necesitan.</p>
+        </div>
+      )}
       {rep && <Reporte rep={rep} />}
 
       {/* Subir el paquete .zip */}
@@ -214,7 +240,8 @@ export function ImportarContpaqiPage() {
 
         <div className="flex flex-wrap items-center gap-3">
           <button onClick={importar}
-            disabled={busy || !preview || (preview?.ejercicios?.length > 1 && ejerSel.size === 0)}
+            disabled={busy || !preview || (preview?.ejercicios?.length > 1 && ejerSel.size === 0) || (!efirmaOk && !soloCatalogo)}
+            title={!efirmaOk && !soloCatalogo ? 'Carga la e.firma en «XML del SAT → Descargar del SAT» para importar (o marca «Sólo el catálogo»)' : undefined}
             className="flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
             <PlayCircle size={16} /> {busy ? 'Importando…' : soloCatalogo ? 'Importar SÓLO el catálogo' : 'Importar a la empresa activa'}
           </button>

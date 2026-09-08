@@ -5105,3 +5105,38 @@ respaldo va a disparar la solicitud de TODOS los XML al SAT, todo debe quedar co
 Cambio a hacer: **bloquear el import del respaldo si la empresa no tiene e.firma
 cargada** (mensaje claro que lleve a cargarla), en vez de sólo avisar después.
 Relacionado con el flujo de `sat-descarga` (`crearTrabajo`) que ya existe.
+
+---
+
+## 2026-09-08 (contabilidad + SAT) — La e.firma es REQUISITO para importar un respaldo de contabilidad
+
+**Contexto.** Cerrando el pendiente de ayer: el import de un respaldo dispara la descarga
+masiva de TODOS sus XML al SAT (emitidos+recibidos, desde el primer ejercicio hasta hoy),
+para que la contabilidad importada quede conectada con sus comprobantes reales. Antes, si
+faltaba la e.firma sólo se **avisaba** al final y el import seguía → contabilidad cargada
+pero sin sus XML, desconectada.
+
+**Decisión.** La e.firma pasa de *sugerencia* a **requisito bloqueante** del import de
+contabilidad.
+
+**Cambio (backend, `contpaqi-import.service.ts` → `importarContpaqi`).** Guarda al INICIO,
+justo tras validar el RFC y **antes de tocar nada**: `credencialDeEmpresa(companyId)`. Si
+no hay credencial, o si está **vencida** (`cred.vencida`, porque una e.firma vencida no
+autentica ante el SAT), lanza Error y detiene el import con un mensaje que manda a «XML del
+SAT → Descargar del SAT». Se **exime** el import de **sólo-catálogo** (`opciones.soloCatalogo`):
+ese no baja XML, así que no necesita e.firma. La comprobación del final (paso 6-2) se
+conserva como defensa y sólo avisa.
+
+**Cambio (frontend, `ImportarContpaqi.tsx`).** Al abrir la pantalla consulta
+`getSatCredencial()`; si falta o venció, muestra un **banner ámbar** explicando el
+requisito (con la fecha de vencimiento si aplica) y **deshabilita el botón Importar**,
+salvo que se marque «Sólo el catálogo». Así el usuario se entera ANTES de preparar el
+paquete y elegir años, no al final.
+
+**Alcance.** Sólo el import de **contabilidad**. El de **nómina** NO dispara descarga de
+XML (no usa `crearTrabajo`), así que se deja sin la guarda; si algún día el import de
+nómina también pide sus CFDIs al SAT, se extiende. Ambos builds (backend/frontend) pasan.
+
+**Pendientes que siguen:** (2) rastrear el descuadre de 760.67 en Dic-2017 con Cuadre
+contable (Nov→Dic); (3) confirmar `ENABLE_SAT_DESCARGA_CRON=true` en Render para que la
+descarga masiva corra sola; luego, la normalización/limpieza de clientes.
