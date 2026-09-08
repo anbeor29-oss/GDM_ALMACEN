@@ -29,6 +29,7 @@ import * as reportesExport from './reportes-export.service';
 import * as contpaqi from './contpaqi-import.service';
 import * as cambioCuenta from './cambio-cuenta.service';
 import * as validacion from './validacion-contable.service';
+import * as especiales from './reportes-especiales.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
@@ -698,6 +699,28 @@ router.get(
   '/validacion/:anio/:mes',
   asyncHandler(async (req: Request, res: Response) => {
     const data = await validacion.validarContabilidad(
+      companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.json({ success: true, data });
+  })
+);
+
+/** GET /accounting/reportes-especiales/balanza/:anio/:mes — balanza agrupada por
+ *  agrupador SAT, con cada cuenta contable (para ver dónde falta/está mal el agrupador). */
+router.get(
+  '/reportes-especiales/balanza/:anio/:mes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await especiales.balanzaEspecial(
+      companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.json({ success: true, data });
+  })
+);
+
+/** GET /accounting/reportes-especiales/situacion/:anio/:mes — situación financiera por
+ *  sección → agrupador → cuenta contable, con las cuentas que caen fuera de rubro. */
+router.get(
+  '/reportes-especiales/situacion/:anio/:mes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await especiales.situacionEspecial(
       companyId(req), Number(req.params.anio), Number(req.params.mes));
     res.json({ success: true, data });
   })

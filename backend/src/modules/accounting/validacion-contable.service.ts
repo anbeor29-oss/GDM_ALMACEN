@@ -33,11 +33,11 @@ const RANGOS_EN_RUBRO: Array<[number, number]> = [
   [701, 704],               // Depreciación, RIF, otros
 ];
 const mayorDe = (agr: string) => parseInt(String(agr || '').split('.')[0], 10);
-const enRubro = (agr: string) => {
+export const enRubro = (agr: string) => {
   const n = mayorDe(agr);
   return Number.isFinite(n) && RANGOS_EN_RUBRO.some(([a, b]) => n >= a && n <= b);
 };
-const seccionDe = (agr: string): string => {
+export const seccionDe = (agr: string): string => {
   const d = String(agr || '').charAt(0);
   return d === '1' ? 'Activo' : d === '2' ? 'Pasivo' : d === '3' ? 'Capital'
     : (d >= '4' && d <= '7') ? 'Resultado' : 'Otro';

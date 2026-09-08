@@ -5229,3 +5229,26 @@ reemplazarla (con ella vencida la descarga está deshabilitada). Sigue existiend
 **Recordatorio operativo:** crear el trabajo (pedir al SAT) funciona en cuanto hay credencial
 válida; para que AVANCE solo hace falta `ENABLE_SAT_DESCARGA_CRON=true` en Render (o usar
 «Avanzar ahora»). Cargar/borrar/lanzar descargas es sólo rol **ADMIN**.
+
+---
+
+## 2026-09-08 (contabilidad) — Reportes ESPECIALES + colores en botones del catálogo
+
+**Reportes especiales (Contabilidad → Reportes → Especiales).** Versiones de
+diagnóstico de la balanza y de la situación financiera, agrupadas por **dígito
+agrupador del SAT** y con cada **cuenta contable**, para ver DÓNDE está el error
+(cuentas sin agrupador o mal agrupadas que descuadran el balance sin descuadrar
+ninguna póliza). No calculan nada nuevo: reusan `balanzaDelPeriodo`,
+`contextoDelPeriodo`, `situacionFinanciera`/`resultadoIntegral` y los helpers
+`enRubro`/`seccionDe` (exportados de `validacion-contable.service`).
+`reportes-especiales.service.ts`: `balanzaEspecial` (agrupa las cuentas por su
+agrupador, subtotales, los «sin agrupador» primero) y `situacionEspecial`
+(encabezado con el cuadre OFICIAL de `situacionFinanciera`; luego sección →
+agrupador → cuenta; y una tabla de «fuera de rubro» = la causa del descuadre).
+Rutas `GET /accounting/reportes-especiales/{balanza,situacion}/:anio/:mes`.
+Pantalla `ReportesEspeciales.tsx` con dos pestañas y combos de año/mes.
+
+**Colores en botones del catálogo.** Guardar/Cancelar (editar cuenta y nueva
+cuenta) salían como texto plano. Ahora Guardar es **verde** (emerald sólido) y
+Cancelar **azul** (contorno sky), para distinguirlos como los colores del
+calendario (`CatalogoCuentas.tsx`).

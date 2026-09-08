@@ -322,6 +322,7 @@ export function Layout() {
                           { to: '/contabilidad/flujo',      icon: emoji3D('💧'), label: 'Flujos de efectivo' },
                           { to: '/contabilidad/capital',    icon: emoji3D('🧾'), label: 'Cambios en el capital' },
                           { to: '/contabilidad/razones',    icon: emoji3D('🔍'), label: 'Razones y análisis' },
+                          { to: '/contabilidad/reportes-especiales', icon: emoji3D('🔎'), label: 'Especiales' },
                         ],
                       },
                     ]}

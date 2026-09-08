@@ -1282,6 +1282,16 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/validacion/${anio}/${mes}`);
     return r.data;
   }
+  /** Reporte especial: balanza agrupada por agrupador SAT, con cada cuenta contable. */
+  async getBalanzaEspecial(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/reportes-especiales/balanza/${anio}/${mes}`);
+    return r.data;
+  }
+  /** Reporte especial: situación financiera por sección → agrupador → cuenta + fuera de rubro. */
+  async getSituacionEspecial(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/reportes-especiales/situacion/${anio}/${mes}`);
+    return r.data;
+  }
   /** Importa un paquete de respaldo (los JSON del extractor) a la empresa activa. */
   async importarRespaldo(fd: FormData) {
     const r = await this.client.post<APIResponse<any>>('/accounting/contpaqi/importar', fd,
