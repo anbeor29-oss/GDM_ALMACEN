@@ -3,7 +3,7 @@
  *
  * Resume TODOS los movimientos de una cuenta (cargos, abonos y saldo corriente)
  * entre dos fechas, partiendo del saldo anterior. El selector de cuenta va en
- * orden alfabético por nombre, para hallarla rápido.
+ * orden de catálogo (por código, como aparecen en la contabilidad).
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -24,10 +24,11 @@ export function AuxiliarCuentasPage() {
   const [hasta, setHasta] = useState(`${hoy.getFullYear()}-12-31`);
 
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
+  // Orden por CÓDIGO (aparición en la contabilidad), no alfabético por nombre.
   const ctas = useMemo(() =>
     (ctasQ.data?.data?.cuentas || [])
       .filter((c: any) => c.permite_movimientos)
-      .sort((a: any, b: any) => String(a.nombre).localeCompare(String(b.nombre), 'es')),
+      .sort((a: any, b: any) => String(a.codigo).localeCompare(String(b.codigo), 'es', { numeric: true })),
     [ctasQ.data]);
   const filtradas = useMemo(() => {
     const t = busca.trim().toLowerCase();
@@ -56,7 +57,7 @@ export function AuxiliarCuentasPage() {
       {/* Controles */}
       <div className="bg-white rounded-lg border shadow-sm p-3 flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[280px]">
-          <label className="text-[11px] text-gray-600">Cuenta (orden alfabético)</label>
+          <label className="text-[11px] text-gray-600">Cuenta (orden de catálogo)</label>
           <div className="relative mb-1">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={busca} onChange={(e) => setBusca(e.target.value)}
