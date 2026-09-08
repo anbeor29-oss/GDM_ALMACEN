@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { BookOpen, Search } from 'lucide-react';
 import { api } from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { CampoFecha } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -72,12 +73,12 @@ export function AuxiliarCuentasPage() {
           </select>
         </div>
         <div>
-          <label className="text-[11px] text-gray-600">Desde</label>
-          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="input text-sm block" />
+          <label className="text-[11px] text-gray-600 block">Desde</label>
+          <CampoFecha value={desde} onChange={setDesde} className="w-36" />
         </div>
         <div>
-          <label className="text-[11px] text-gray-600">Hasta</label>
-          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="input text-sm block" />
+          <label className="text-[11px] text-gray-600 block">Hasta</label>
+          <CampoFecha value={hasta} onChange={setHasta} className="w-36" />
         </div>
       </div>
 

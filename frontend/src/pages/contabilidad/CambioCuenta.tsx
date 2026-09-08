@@ -15,6 +15,7 @@ import api from '@/services/api';
 import { ArrowLeftRight, GitMerge, Search, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { fechaMx } from '@/utils/fecha';
+import { CampoFecha } from '@/components/CampoFecha';
 
 type Cuenta = { id: string; codigo: string; nombre: string; permite_movimientos?: boolean };
 
@@ -269,11 +270,11 @@ export function CambioCuentaPage() {
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <label className="text-xs text-gray-500 block">Desde (opcional)</label>
-              <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="input" />
+              <CampoFecha value={desde} onChange={setDesde} className="w-36" />
             </div>
             <div>
               <label className="text-xs text-gray-500 block">Hasta (opcional)</label>
-              <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="input" />
+              <CampoFecha value={hasta} onChange={setHasta} className="w-36" />
             </div>
             <button onClick={reasignar} disabled={busy || !origen || !destino}
               className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-40 text-sm font-semibold">
