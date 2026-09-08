@@ -10,6 +10,7 @@
  * Tras cualquiera, el backend recalcula la balanza de los años afectados.
  */
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { ArrowLeftRight, GitMerge, Search, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
@@ -22,8 +23,17 @@ const money = (n: any) => Number(n ?? 0).toLocaleString('es-MX', { style: 'curre
 /** Las partidas (renglones de póliza) que tocan una cuenta, con su rango de fechas.
  *  Para ver qué hay en MIG-TEMPORAL —y desde cuándo— o en la cuenta origen. */
 function PartidasDe({ cuentaId }: { cuentaId?: string }) {
+  const navigate = useNavigate();
   const [data, setData] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
+  /* Abre la póliza en el editor (pantalla Pólizas, que ya sabe abrir ?editar=<id>).
+   * El año/mes salen de la fecha de la partida, para caer en el mes correcto. */
+  const editarPoliza = (x: any) => {
+    if (!x.poliza_id) return;
+    const d = String(x.fecha).slice(0, 10);            // 'YYYY-MM-DD', venga Date o string
+    const [yy, mm] = d.split('-');
+    navigate(`/contabilidad/polizas?editar=${x.poliza_id}&anio=${yy}&mes=${Number(mm)}&desde=cambio`);
+  };
   useEffect(() => {
     if (!cuentaId) { setData(null); return; }
     let alive = true; setCargando(true);
@@ -62,7 +72,13 @@ function PartidasDe({ cuentaId }: { cuentaId?: string }) {
               {data.partidas.map((x: any, i: number) => (
                 <tr key={i} className="hover:bg-gray-50">
                   <td className="px-2 py-1 whitespace-nowrap">{fechaMx(x.fecha)}</td>
-                  <td className="px-2 py-1 whitespace-nowrap">#{x.folio ?? '—'} <span className="text-gray-400">{x.origen}</span></td>
+                  <td className="px-2 py-1 whitespace-nowrap">
+                    {x.poliza_id ? (
+                      <button onClick={() => editarPoliza(x)} title="Abrir y editar esta póliza para cuadrarla"
+                        className="text-blue-600 hover:underline font-medium">#{x.folio ?? '—'}</button>
+                    ) : <span>#{x.folio ?? '—'}</span>}
+                    {' '}<span className="text-gray-400">{x.origen}</span>
+                  </td>
                   <td className="px-2 py-1 truncate max-w-xs">{x.concepto || x.linea_concepto || '—'}</td>
                   <td className="px-2 py-1 text-right">{Number(x.cargo) > 0 ? money(x.cargo) : ''}</td>
                   <td className="px-2 py-1 text-right">{Number(x.abono) > 0 ? money(x.abono) : ''}</td>
