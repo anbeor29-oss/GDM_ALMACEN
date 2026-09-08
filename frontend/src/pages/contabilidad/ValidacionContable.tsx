@@ -201,6 +201,69 @@ export function ValidacionContablePage() {
             </div>
           )}
 
+          {/* Localizador del descuadre: cuando balanza y pólizas cuadran pero el balance
+              no, el hueco viene de saldos que no llegan a ningún rubro del estado aunque
+              tengan agrupador (un mayor en un hueco de los rangos, p.ej. 605 o 305). */}
+          {bal && bal.localizador && (bal.localizador.cuentasFuera.length > 0 || bal.localizador.secciones.length > 0) && (
+            <div className="bg-white rounded-lg border border-rose-200 shadow-sm overflow-hidden">
+              <div className="px-4 py-2 border-b bg-rose-50 text-sm font-semibold text-rose-800">
+                Localizador del descuadre — dónde se pierde el balance
+              </div>
+              {bal.localizador.secciones.length > 0 && (
+                <div className="px-4 py-2 border-b text-sm flex flex-wrap items-center gap-x-6 gap-y-1">
+                  <span className="text-gray-500 text-xs">El hueco está en:</span>
+                  {bal.localizador.secciones.map((s: any, i: number) => (
+                    <span key={i}>{s.seccion}: <b className="font-mono text-rose-700">{money(s.dif)}</b></span>
+                  ))}
+                </div>
+              )}
+              {bal.localizador.cuentasFuera.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-semibold">Cuenta</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold">Nombre</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold">Agrupador</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold">Sección</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold">Saldo</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {bal.localizador.cuentasFuera.map((c: any, i: number) => (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className="px-3 py-1.5 font-mono text-xs">{formatCuenta(c.codigo, mascara)}</td>
+                          <td className="px-3 py-1.5 text-xs">{c.nombre}</td>
+                          <td className="px-3 py-1.5 font-mono text-xs">{c.agrupador}</td>
+                          <td className="px-3 py-1.5 text-xs">{c.seccion}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-xs">{money(c.saldo)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 font-semibold bg-gray-50">
+                        <td colSpan={4} className="px-3 py-2 text-right">Suma de saldos fuera de rubro</td>
+                        <td className="px-3 py-2 text-right font-mono">{money(bal.localizador.sumaFuera)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ) : (
+                <p className="px-4 py-3 text-xs text-gray-600">
+                  Ninguna cuenta con agrupador quedó fuera de rango; el hueco viene de la sección de
+                  arriba (revisa saldos traspasados a la cuenta 305 de resultado, o un agrupador mal puesto).
+                </p>
+              )}
+              <p className="px-4 py-2 text-xs text-gray-500 border-t">
+                Estas cuentas <b>sí tienen agrupador SAT</b>, pero su mayor cae en un hueco de los rangos
+                del estado (p.ej. <span className="font-mono">605/606</span> mano de obra, o la
+                <span className="font-mono"> 305</span> del resultado del ejercicio), así que su saldo no
+                entra a ningún rubro y el balance no cierra. Corrige el agrupador en el{' '}
+                <span className="font-medium">Catálogo de cuentas</span>, o avísame para incluir ese rubro en el estado.
+              </p>
+            </div>
+          )}
+
           {/* Pólizas descuadradas */}
           <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
             <div className="px-4 py-2 border-b flex items-center gap-2 text-sm">

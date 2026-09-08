@@ -16,6 +16,65 @@ import { situacionFinanciera, resultadoIntegral } from './estados-financieros.se
 
 const r2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 
+/* Rangos de agrupador (mayor) que los estados financieros SÍ colocan en un rubro.
+ * Van a la par de estados-financieros.service.ts (situacionFinanciera /
+ * resultadoIntegral). Un saldo cuyo mayor cae FUERA de estos rangos tiene agrupador
+ * pero no llega a ningún rubro: descuadra el balance sin descuadrar ninguna póliza
+ * ni la balanza. Es el error que caza el "localizador". OJO con los huecos a
+ * propósito: 305 (es el resultado, ya representado por la utilidad), y 605/606
+ * (que hoy el estado de resultados no suma). */
+const RANGOS_EN_RUBRO: Array<[number, number]> = [
+  [101, 121], [151, 190],   // Activo
+  [201, 218], [251, 260],   // Pasivo
+  [301, 304], [306, 306],   // Capital (305 aparte)
+  [401, 403],               // Ingresos
+  [501, 505],               // Costo
+  [601, 604], [607, 611],   // Gastos e impuestos (605 y 606 quedan fuera)
+  [701, 704],               // Depreciación, RIF, otros
+];
+const mayorDe = (agr: string) => parseInt(String(agr || '').split('.')[0], 10);
+const enRubro = (agr: string) => {
+  const n = mayorDe(agr);
+  return Number.isFinite(n) && RANGOS_EN_RUBRO.some(([a, b]) => n >= a && n <= b);
+};
+const seccionDe = (agr: string): string => {
+  const d = String(agr || '').charAt(0);
+  return d === '1' ? 'Activo' : d === '2' ? 'Pasivo' : d === '3' ? 'Capital'
+    : (d >= '4' && d <= '7') ? 'Resultado' : 'Otro';
+};
+
+/**
+ * Localiza un descuadre del balance cuando las pólizas y la balanza SÍ cuadran.
+ * En ese caso el hueco viene de saldos que no llegan a ningún rubro del estado:
+ *   - por SECCIÓN: la verdad de fondo (suma completa del grupo, como la regla
+ *     A5-ECUACION) menos lo que el estado presentó → dice si el hueco está en
+ *     activo, pasivo, capital o resultado.
+ *   - por CUENTA: las cuentas con agrupador cuyo mayor cae fuera de los rangos que
+ *     el estado coloca. Ésas son la causa concreta (p.ej. un 605 o un 305).
+ */
+function localizarDescuadre(ctx: any, bal: any, res: any) {
+  const resultados = ctx.cuentas('4', '5', '6', '7');
+  const ingresosReal = resultados.filter((x: any) => x.naturaleza === 'A').reduce((a: number, x: any) => a + x.saldo, 0);
+  const egresosReal = resultados.filter((x: any) => x.naturaleza === 'D').reduce((a: number, x: any) => a + x.saldo, 0);
+  const secciones = [
+    { seccion: 'Activo',    dif: r2(ctx.suma('1') - bal.activoTotal) },
+    { seccion: 'Pasivo',    dif: r2(ctx.suma('2') - bal.pasivoTotal) },
+    { seccion: 'Capital',   dif: r2(ctx.suma('3') - (bal.capitalTotal - res.utilidadNeta)) },
+    { seccion: 'Resultado', dif: r2((ingresosReal - egresosReal) - res.utilidadNeta) },
+  ].filter((s) => Math.abs(s.dif) >= 0.5);
+
+  const cuentasFuera = (ctx.saldos || [])
+    .filter((s: any) => s.agrupador && !enRubro(s.agrupador) && Math.abs(Number(s.saldo)) >= 0.5)
+    .map((s: any) => ({
+      codigo: s.cuenta, nombre: s.nombre, agrupador: s.agrupador,
+      naturaleza: s.naturaleza, saldo: r2(s.saldo), seccion: seccionDe(s.agrupador),
+    }))
+    .sort((a: any, b: any) => Math.abs(b.saldo) - Math.abs(a.saldo))
+    .slice(0, 100);
+
+  return { secciones, cuentasFuera, sumaFuera: r2(cuentasFuera.reduce((a: number, c: any) => a + Math.abs(c.saldo), 0)) };
+}
+
 export async function validarContabilidad(companyId: string, anio: number, mes: number) {
   const anioValido = mes >= 1 && mes <= 12;
   const desde = anioValido ? `${anio}-${String(mes).padStart(2, '0')}-01` : `${anio}-01-01`;
@@ -81,13 +140,17 @@ export async function validarContabilidad(companyId: string, anio: number, mes: 
         resultadoEnCapital: res.resultadoSegun305 == null ? null : r2(res.resultadoSegun305),
         difResultado: res.diferenciaCon305 == null ? null : r2(res.diferenciaCon305),
         cuentasSinRubro: sinRubro,
+        // Localizador: sólo tiene sentido calcularlo cuando el balance NO cuadra.
+        localizador: bal.cuadra ? null : localizarDescuadre(ctx, bal, res),
       };
     }
   }
 
+  const localizadorLimpio = !balance?.localizador
+    || (balance.localizador.secciones.length === 0 && balance.localizador.cuentasFuera.length === 0);
   const todoBien = polizasDescuadradas.length === 0 && balanza.cuadra
     && (!balance || (balance.cuadra && (balance.difResultado == null || Math.abs(balance.difResultado) < 0.5)
-      && balance.cuentasSinRubro.length === 0));
+      && balance.cuentasSinRubro.length === 0 && localizadorLimpio));
 
   return { anio, mes, hasta, todoBien, polizasDescuadradas, sumaDescuadres, balanza, balance };
 }
