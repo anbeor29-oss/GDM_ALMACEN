@@ -124,17 +124,21 @@ async function cuentaControl(companyId: string, agrupador: string, mascara?: str
    * hoja), mismo rubro (1xx cliente / 2xx proveedor) y código ASC como desempate. */
   const anchos = anchosDeMascara(mascara ?? null);
   const W = anchos ? anchos[anchos.length - 1] : 0;
-  const params: any[] = [companyId, agrupador];
-  /* El ORDER BY se ARMA por partes: si NO hay máscara (W=0) NO se puede saber cuál
-   * es el mayor «redondo», y meter un `ORDER BY (FALSE)` hace que Postgres truene
-   * con «non-integer constant in ORDER BY» —era lo que omitía TODAS las pólizas de
-   * venta/compra en una empresa sin máscara—. Sin máscara se ordena sólo por
-   * acumulativa/rubro/código. */
+  /* Se busca el control por el agrupador ESPECÍFICO (105.01) Y por su PADRE (105):
+   * el MAYOR de clientes suele venir con el agrupador padre (1-10-25-000 = 105) y
+   * los terceros con el específico (105.01). Si sólo se pidiera 105.01, no se vería
+   * el mayor 1-10-25-000 y ganaba una cuenta suelta con 105.01 (1-10-02-074),
+   * mandando a los clientes a 1-10-02-### —el bug que reportó el usuario—. */
+  const agrupPadre = agrupador.includes('.') ? agrupador.split('.')[0] : agrupador;
+  const params: any[] = [companyId, agrupador, agrupPadre];
   const orden: string[] = [];
   if (W > 0) {
     params.push('0'.repeat(W));
-    orden.push(`(a.codigo ~ '^[0-9]+$' AND RIGHT(a.codigo, ${W}) = $3) DESC`); // el mayor «redondo» (…-000) primero
+    orden.push(`(a.codigo ~ '^[0-9]+$' AND RIGHT(a.codigo, ${W}) = $4) DESC`); // el mayor «redondo» (…-000) primero
   }
+  // El que YA tiene más terceros colgando es el control real en uso; así, entre dos
+  // candidatos, gana el establecido y no una cuenta suelta.
+  orden.push('(SELECT COUNT(*) FROM accounting_accounts h WHERE h.parent_id=a.id AND h.tercero_rfc IS NOT NULL) DESC');
   orden.push('(a.permite_movimientos = false) DESC');       // un control acumula, no es hoja
   orden.push('(LEFT(a.codigo, 1) = LEFT($2, 1)) DESC');     // mismo rubro: 1xx cliente / 2xx proveedor
   orden.push('a.codigo ASC');
@@ -142,7 +146,7 @@ async function cuentaControl(companyId: string, agrupador: string, mascara?: str
   const r = await query<any>(
     `SELECT a.*, (SELECT COUNT(*) FROM accounting_accounts h WHERE h.parent_id = a.id) AS hijos
        FROM accounting_accounts a
-      WHERE a.company_id=$1 AND a.codigo_agrupador=$2 AND a.tercero_rfc IS NULL
+      WHERE a.company_id=$1 AND a.codigo_agrupador IN ($2, $3) AND a.tercero_rfc IS NULL
       ORDER BY ${orden.join(', ')}
       LIMIT 1`, params);
   return r.rows[0] || null;
