@@ -91,6 +91,7 @@ export function XmlRecibidos({ direccionInicial }: {
   const [aviso, setAviso] = useState('');
   const [error, setError] = useState('');
   const [expandido, setExpandido] = useState<string | null>(null);
+  const [reemplazar, setReemplazar] = useState(false);   // mostrar la forma para sustituir la e.firma
 
   const credQ = useQuery({ queryKey: ['sat-credencial'], queryFn: () => api.getSatCredencial() });
   const credencial = credQ.data?.data?.credencial;
@@ -183,21 +184,49 @@ export function XmlRecibidos({ direccionInicial }: {
           <KeyRound className="text-emerald-600" size={20} /> e.firma del contribuyente
         </h2>
         {credencial ? (
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-            <span><strong>{credencial.rfc}</strong></span>
-            <span className="text-gray-500 font-mono text-xs">serie {credencial.numero_serie}</span>
-            <span className={credencial.vencida ? 'text-rose-700 font-semibold' : 'text-gray-600'}>
-              vence {fecha(credencial.vigencia_hasta)}{credencial.vencida && ' · VENCIDA'}
-            </span>
-            {esAdmin && (
-              <button
-                onClick={async () => {
-                  if (!window.confirm('¿Borrar la e.firma guardada? Habrá que cargarla otra vez para descargar.')) return;
-                  await api.borrarSatCredencial(); refrescar();
-                }}
-                className="ml-auto flex items-center gap-1.5 text-rose-600 hover:bg-rose-50 px-2 py-1 rounded text-sm">
-                <Trash2 size={15} /> Borrar
-              </button>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+              <span><strong>{credencial.rfc}</strong></span>
+              <span className="text-gray-500 font-mono text-xs">serie {credencial.numero_serie}</span>
+              <span className={credencial.vencida ? 'text-rose-700 font-semibold' : 'text-gray-600'}>
+                vence {fecha(credencial.vigencia_hasta)}{credencial.vencida && ' · VENCIDA'}
+              </span>
+              {esAdmin && (
+                <div className="ml-auto flex items-center gap-1">
+                  {/* Reemplazar: la e.firma vence, se revoca o caduca; se sustituye subiendo
+                      una nueva (la carga hace ON CONFLICT DO UPDATE, así que reemplaza en
+                      su lugar sin dejar a la empresa sin credencial). */}
+                  <button onClick={() => setReemplazar((v) => !v)}
+                    className="flex items-center gap-1.5 text-emerald-700 hover:bg-emerald-50 px-2 py-1 rounded text-sm">
+                    <KeyRound size={15} /> {reemplazar ? 'Cancelar' : 'Reemplazar'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm('¿Borrar la e.firma guardada? Habrá que cargarla otra vez para descargar.')) return;
+                      await api.borrarSatCredencial(); setReemplazar(false); refrescar();
+                    }}
+                    className="flex items-center gap-1.5 text-rose-600 hover:bg-rose-50 px-2 py-1 rounded text-sm">
+                    <Trash2 size={15} /> Borrar
+                  </button>
+                </div>
+              )}
+            </div>
+            {esAdmin && credencial.vencida && !reemplazar && (
+              <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+                La e.firma está <strong>vencida</strong>: el SAT no la acepta, así que no se puede
+                descargar hasta reemplazarla. Dale <strong>«Reemplazar»</strong> y sube la nueva.
+              </p>
+            )}
+            {esAdmin && reemplazar && (
+              <div className="border-t pt-3">
+                <p className="text-xs text-gray-500 mb-2">
+                  Sube la e.firma <strong>nueva</strong> (.cer + .key + contraseña). Sustituye a la
+                  actual en su lugar; se valida (RFC y vigencia) antes de guardarla cifrada.
+                </p>
+                <FormaEfirma
+                  onCargada={(msg) => { setAviso(msg); setReemplazar(false); refrescar(); }}
+                  onError={setError} />
+              </div>
             )}
           </div>
         ) : bovedaLista === false ? (

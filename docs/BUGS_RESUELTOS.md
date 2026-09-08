@@ -18,7 +18,7 @@ Orden cronológico inverso (más reciente arriba).
 - **Síntoma**: al borrar una empresa de pruebas: `update or delete on table "invoices" violates foreign key constraint "stamp_usage_invoice_id_fkey" on table "stamp_usage"`.
 - **Causa**: la rutina de **borrado total** (`admin-companies.routes` `full-delete`) borraba `invoices` sin limpiar antes sus hijos con FK RESTRICT `stamp_usage` y `cfdi_validations`. El `wipe-operations v2` ya lo hacía bien, pero el full-delete (y el viejo `reset-operations`) se quedaron con el orden incompleto.
 - **Fix**: antes de `DELETE FROM invoices`, borrar `stamp_usage` y `cfdi_validations` (por `invoice_id`), más `pos_sale_items`/`pos_sales` en el full-delete. Aplicado en las dos rutinas.
-- **Commit**: `pendiente` (2026-09-08)
+- **Commit**: `55876c2` (2026-09-08)
 
 ## Contabilidad — numeración, cuadre y fechas
 

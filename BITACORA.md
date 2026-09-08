@@ -5203,3 +5203,29 @@ editable y confianza, y «Aplicar seleccionadas» (ALTA/MEDIA vienen marcadas; B
 **Pendiente por confirmar del usuario:** qué es exactamente el error «serp/17» que quiere
 quitar (mensaje de NEXO, del SAT al validar la balanza, u otro) — para verificar que
 asignar el agrupador realmente lo resuelve.
+
+---
+
+## 2026-09-08 (SAT descarga) — Reemplazar la e.firma + aclaración de las DOS e.firma
+
+**Las dos e.firma (causa de "cargué la e.firma pero no me deja descargar").** En NEXO la
+e.firma se usa en DOS lugares distintos, con almacenes distintos: (1) el **manifiesto PAC**
+(Expediente del emisor) firma un documento para autorizar el timbrado — es una firma
+transitoria; (2) la **descarga del SAT** (menú XML → XML del SAT) guarda .cer+.key+contraseña
+CIFRADOS en la bóveda (`sat_credenciales`) para autenticar ante el SAT y bajar los XML. Firmar
+el manifiesto NO llena la credencial de descarga: hay que subir la e.firma tambien en la
+pantalla de XML. La sección «Traer comprobantes del SAT» sólo aparece con una credencial de
+descarga cargada y **no vencida**.
+
+**Reemplazar la e.firma (commit de hoy).** La e.firma vence, se revoca o caduca, así que hace
+falta sustituirla. Antes, con una credencial cargada, la pantalla sólo ofrecía «Borrar» y la
+forma de carga aparecía únicamente cuando NO había ninguna (reemplazo en dos pasos, poco
+obvio). Ahora, en `XmlRecibidos.tsx`, con credencial cargada y siendo ADMIN aparece un botón
+**«Reemplazar»** que despliega la forma de carga en línea; subir la nueva la sustituye en su
+lugar (`guardarCredencial` hace `INSERT … ON CONFLICT (company_id, rfc) DO UPDATE`, no deja a
+la empresa sin credencial). Si la actual está **vencida**, sale un aviso rojo que empuja a
+reemplazarla (con ella vencida la descarga está deshabilitada). Sigue existiendo «Borrar».
+
+**Recordatorio operativo:** crear el trabajo (pedir al SAT) funciona en cuanto hay credencial
+válida; para que AVANCE solo hace falta `ENABLE_SAT_DESCARGA_CRON=true` en Render (o usar
+«Avanzar ahora»). Cargar/borrar/lanzar descargas es sólo rol **ADMIN**.
