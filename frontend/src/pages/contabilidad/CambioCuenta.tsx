@@ -10,7 +10,7 @@
  * Tras cualquiera, el backend recalcula la balanza de los años afectados.
  */
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/services/api';
 import { ArrowLeftRight, GitMerge, Search, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
@@ -22,17 +22,19 @@ const money = (n: any) => Number(n ?? 0).toLocaleString('es-MX', { style: 'curre
 
 /** Las partidas (renglones de póliza) que tocan una cuenta, con su rango de fechas.
  *  Para ver qué hay en MIG-TEMPORAL —y desde cuándo— o en la cuenta origen. */
-function PartidasDe({ cuentaId }: { cuentaId?: string }) {
+function PartidasDe({ cuentaId, recarga }: { cuentaId?: string; recarga?: number }) {
   const navigate = useNavigate();
   const [data, setData] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
   /* Abre la póliza en el editor (pantalla Pólizas, que ya sabe abrir ?editar=<id>).
-   * El año/mes salen de la fecha de la partida, para caer en el mes correcto. */
+   * El año/mes salen de la fecha de la partida, para caer en el mes correcto; `cuenta`
+   * viaja para que, al guardar, el editor regrese a Cambio de cuenta con ESTA cuenta ya
+   * seleccionada (para seguir cuadrando sin re-buscarla). */
   const editarPoliza = (x: any) => {
     if (!x.poliza_id) return;
     const d = String(x.fecha).slice(0, 10);            // 'YYYY-MM-DD', venga Date o string
     const [yy, mm] = d.split('-');
-    navigate(`/contabilidad/polizas?editar=${x.poliza_id}&anio=${yy}&mes=${Number(mm)}&desde=cambio`);
+    navigate(`/contabilidad/polizas?editar=${x.poliza_id}&anio=${yy}&mes=${Number(mm)}&desde=cambio&cuenta=${cuentaId}`);
   };
   useEffect(() => {
     if (!cuentaId) { setData(null); return; }
@@ -42,7 +44,7 @@ function PartidasDe({ cuentaId }: { cuentaId?: string }) {
       .catch(() => { if (alive) setData(null); })
       .finally(() => { if (alive) setCargando(false); });
     return () => { alive = false; };
-  }, [cuentaId]);
+  }, [cuentaId, recarga]);
   if (!cuentaId) return null;
   if (cargando) return <p className="text-sm text-gray-400">Cargando pólizas…</p>;
   if (!data) return null;
@@ -155,13 +157,24 @@ export function CambioCuentaPage() {
   const [destino, setDestino] = useState<Cuenta | null>(null);
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
+  const [recarga, setRecarga] = useState(0);   // fuerza recargar la lista de partidas
+  const [params] = useSearchParams();
 
-  // Precarga la cuenta temporal (MIG-TEMPORAL) como origen por defecto.
+  // Al volver de editar una póliza (?cuenta=<id>) se reselecciona ESA cuenta como
+  // origen, para seguir cuadrando sin re-buscarla. Si no viene, se precarga la cuenta
+  // temporal de migración (MIG-TEMPORAL) como origen por defecto.
   useEffect(() => {
+    const cid = params.get('cuenta');
+    if (cid) {
+      api.getCuentaContable(cid)
+        .then((r: any) => { const c = r?.data?.cuenta; if (c) setOrigen({ id: c.id, codigo: c.codigo, nombre: c.nombre, permite_movimientos: c.permite_movimientos }); })
+        .catch(() => {});
+      return;
+    }
     api.getCuentasContables({ q: 'MIG-TEMPORAL' })
       .then((r: any) => { const c = (r?.data?.cuentas || [])[0]; if (c) setOrigen(c); })
       .catch(() => {});
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reasignar = async () => {
     if (!origen || !destino) { setError('Elige la cuenta origen y la destino.'); return; }
@@ -169,6 +182,7 @@ export function CambioCuentaPage() {
     try {
       const r: any = await api.reasignarCuenta(origen.id, destino.id, desde || undefined, hasta || undefined);
       setMsg(r?.message || 'Listo.');
+      setRecarga((n) => n + 1);   // recarga la lista de partidas para ver que ya se movieron
     } catch (e: any) { setError(e?.response?.data?.message || e?.message || 'No se pudo reasignar.'); }
     finally { setBusy(false); }
   };
@@ -279,7 +293,7 @@ export function CambioCuentaPage() {
           <p className="text-sm font-medium text-gray-700">
             Pólizas en «{origen.nombre}» — para saber qué reasignar y desde qué fecha:
           </p>
-          <PartidasDe cuentaId={origen.id} />
+          <PartidasDe cuentaId={origen.id} recarga={recarga} />
         </div>
       )}
 

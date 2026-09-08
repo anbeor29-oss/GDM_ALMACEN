@@ -59,12 +59,18 @@ export function PolizasListaPage() {
   /* Si se llegó desde el auxiliar de la balanza, al cerrar/guardar el editor se
    * regresa allá (no a esta lista): es donde estaba trabajando el usuario. */
   const [volverBalanza, setVolverBalanza] = useState(false);
+  /* Igual que volverBalanza, pero para «Cambio de cuenta»: si se llegó a editar desde
+   * ahí (?desde=cambio&cuenta=<id>), al cerrar/guardar se regresa a esa pantalla con
+   * la cuenta ya seleccionada, para seguir cuadrando. */
+  const [volverCambio, setVolverCambio] = useState(false);
+  const [cuentaCambio, setCuentaCambio] = useState('');
   const anios = aniosContables();
 
   const q = useQuery({ queryKey: ['polizas', anio, mes], queryFn: () => api.getPolizas(anio, mes) });
   const todas: any[] = q.data?.data?.polizas || [];
 
   const aBalanza = () => navigate(`/contabilidad/balanza?anio=${anio}&mes=${mes}`);
+  const aCambio = () => navigate(`/contabilidad/cambio-cuenta${cuentaCambio ? `?cuenta=${cuentaCambio}` : ''}`);
 
   // Generar las pólizas del mes desde AQUÍ: todo se concentra en Contabilidad. La
   // asignación de cuentas de cada tipo se hace en su pantalla de «asignar cuenta».
@@ -94,7 +100,8 @@ export function PolizasListaPage() {
     if (p) {
       setEditar(p);
       if (params.get('desde') === 'balanza') setVolverBalanza(true);
-      params.delete('editar'); params.delete('anio'); params.delete('mes'); params.delete('desde');
+      if (params.get('desde') === 'cambio') { setVolverCambio(true); setCuentaCambio(params.get('cuenta') || ''); }
+      params.delete('editar'); params.delete('anio'); params.delete('mes'); params.delete('desde'); params.delete('cuenta');
       setParams(params, { replace: true });
     }
   }, [editarId, todas]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -217,7 +224,11 @@ export function PolizasListaPage() {
       {editar && (
         <EditorPoliza
           poliza={editar}
-          onCerrar={() => { setEditar(null); if (volverBalanza) { setVolverBalanza(false); aBalanza(); } }}
+          onCerrar={() => {
+            setEditar(null);
+            if (volverBalanza) { setVolverBalanza(false); aBalanza(); }
+            else if (volverCambio) { setVolverCambio(false); aCambio(); }
+          }}
           onGuardado={async () => {
             setEditar(null);
             qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
@@ -228,6 +239,13 @@ export function PolizasListaPage() {
               try { await api.actualizarBalanzaDesdePolizas(anio, mes); } catch { /* la balanza se puede actualizar a mano */ }
               qc.invalidateQueries({ queryKey: ['balanza-periodo', anio, mes] });
               aBalanza();
+            } else if (volverCambio) {
+              /* Se editó desde Cambio de cuenta: se regresa allá con la cuenta ya
+               * seleccionada para seguir cuadrando. Se recalcula la balanza del mes
+               * para que el saldo refleje el ajuste. */
+              setVolverCambio(false);
+              try { await api.actualizarBalanzaDesdePolizas(anio, mes); } catch { /* se puede actualizar a mano */ }
+              aCambio();
             } else {
               setMsg('Póliza actualizada.');
             }
