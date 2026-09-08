@@ -71,6 +71,7 @@ export function CatalogoCuentasPage() {
   const [soloSinAgrupador, setSoloSinAgrupador] = useState(false);
   const [soloMalCapturadas, setSoloMalCapturadas] = useState(false);
   const [herr, setHerr] = useState('');   // herramienta de mantenimiento en curso
+  const [proponer, setProponer] = useState(false);   // modal de propuesta de agrupador
 
   const arbolQ = useQuery({
     queryKey: ['cuentas-arbol'],
@@ -240,6 +241,11 @@ export function CatalogoCuentasPage() {
                 className="border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg text-sm hover:bg-amber-50 disabled:opacity-50 flex items-center gap-1.5">
                 <Tag size={14} /> {herr === 'agrup' ? 'Asignando…' : 'Asignar agrupador'}
               </button>
+              <button onClick={() => setProponer(true)} disabled={!!herr}
+                title="Compara el catálogo con el Anexo 24 (por nombre y herencia del padre) y PROPONE el agrupador de las cuentas que no lo tienen, para que lo confirmes"
+                className="border border-teal-300 text-teal-700 px-3 py-1.5 rounded-lg text-sm hover:bg-teal-50 disabled:opacity-50 flex items-center gap-1.5">
+                <Layers size={14} /> Proponer agrupador (SAT)
+              </button>
               <button onClick={() => setAlta({ parentId: null })}
                 className="btn-primary flex items-center gap-1.5 text-sm">
                 <Plus size={15} /> Nueva cuenta
@@ -408,6 +414,10 @@ export function CatalogoCuentasPage() {
       {alta && (
         <ModalNuevaCuenta datos={alta} onCerrar={() => setAlta(null)}
           onListo={() => { setAlta(null); refrescar(); }} />
+      )}
+      {proponer && (
+        <ModalProponerAgrupador mascara={mascara}
+          onCerrar={() => setProponer(false)} onListo={refrescar} />
       )}
     </div>
   );
@@ -965,6 +975,156 @@ function Dato({ r, v }: any) {
     <div>
       <dt className="text-[10px] uppercase tracking-wide text-gray-500">{r}</dt>
       <dd className="text-gray-900">{v}</dd>
+    </div>
+  );
+}
+
+/* ═══════════ PROPONER AGRUPADOR (comparar con el SAT) ═══════════ */
+
+const CONF_PROP: Record<string, string> = {
+  ALTA: 'bg-emerald-100 text-emerald-800',
+  MEDIA: 'bg-sky-100 text-sky-800',
+  BAJA: 'bg-amber-100 text-amber-800',
+};
+
+function ModalProponerAgrupador({ mascara, onCerrar, onListo }: any) {
+  const [cargando, setCargando] = useState(true);
+  const [resumen, setResumen] = useState<any>(null);
+  const [rows, setRows] = useState<any[]>([]);
+  const [aplicando, setAplicando] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      setCargando(true); setError('');
+      try {
+        const r: any = await api.proponerAgrupadores();
+        const d = r?.data || {};
+        setResumen(d.resumen || null);
+        // ALTA y MEDIA vienen marcadas; BAJA se deja para que la revise el usuario.
+        setRows((d.propuestas || []).map((p: any) => ({
+          ...p, sel: p.confianza === 'ALTA' || p.confianza === 'MEDIA', agr: p.agrupador || '',
+        })));
+      } catch (e: any) {
+        setError(e?.response?.data?.message || 'No se pudieron generar las propuestas.');
+      } finally { setCargando(false); }
+    })();
+  }, []);
+
+  const seleccionadas = rows.filter((r) => r.sel && r.agr.trim());
+  const toggle = (i: number) => setRows((rs) => rs.map((r, k) => k === i ? { ...r, sel: !r.sel } : r));
+  const editar = (i: number, v: string) => setRows((rs) => rs.map((r, k) => k === i ? { ...r, agr: v } : r));
+  const marcarTodas = (v: boolean) => setRows((rs) => rs.map((r) => ({ ...r, sel: v })));
+
+  const aplicar = async () => {
+    setAplicando(true); setMsg(''); setError('');
+    try {
+      const items = seleccionadas.map((r) => ({ id: r.id, codigo: r.codigo, agrupador: r.agr.trim() }));
+      const r: any = await api.aplicarAgrupadores(items);
+      const errs: string[] = r?.data?.errores || [];
+      setMsg(r?.message || 'Agrupadores aplicados.');
+      if (errs.length) setError('Errores: ' + errs.slice(0, 5).join(' · '));
+      // Quita de la lista las aplicadas sin error (para ver lo que queda).
+      const conError = new Set(errs.map((e) => e.split(':')[0]));
+      const idsMandados = new Set(items.map((x) => x.id));
+      setRows((rs) => rs.filter((r) => !idsMandados.has(r.id) || conError.has(r.codigo)));
+      onListo?.();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo aplicar.');
+    } finally { setAplicando(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-start justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Layers size={16} className="text-teal-600" /> Proponer agrupador SAT
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5 max-w-xl">
+              Compara el catálogo con el Anexo 24: resuelve las cuentas de agrupación por su
+              nombre y las subcuentas heredan de su padre. Revisa, corrige y aplica lo que confirmes.
+            </p>
+          </div>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+
+        {cargando ? (
+          <p className="p-6 text-sm text-gray-500 flex items-center gap-2">
+            <Loader2 size={15} className="animate-spin" /> Analizando el catálogo…
+          </p>
+        ) : (
+          <>
+            {resumen && (
+              <div className="px-4 py-2 border-b text-xs flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-600">
+                <span><b>{resumen.sinAgrupador}</b> sin agrupador</span>
+                <span className="text-emerald-700">{resumen.alta} alta</span>
+                <span className="text-sky-700">{resumen.media} media</span>
+                <span className="text-amber-700">{resumen.baja} baja</span>
+                {resumen.sinPropuesta > 0 && <span className="text-gray-400">{resumen.sinPropuesta} sin propuesta (a mano)</span>}
+                <span className="ml-auto flex gap-2">
+                  <button onClick={() => marcarTodas(true)} className="underline hover:text-gray-800">Todas</button>
+                  <button onClick={() => marcarTodas(false)} className="underline hover:text-gray-800">Ninguna</button>
+                </span>
+              </div>
+            )}
+            {error && <p className="mx-4 mt-3 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{error}</p>}
+            {msg && <p className="mx-4 mt-3 text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{msg}</p>}
+
+            <div className="overflow-auto flex-1 p-4">
+              {rows.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  {msg ? 'No queda ninguna propuesta pendiente.' : 'No hay propuestas: ninguna cuenta sin agrupador pudo empatarse por nombre/herencia.'}
+                  {resumen?.sinPropuesta ? ' Las que quedan sin propuesta hay que revisarlas a mano.' : ''}
+                </p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="px-2 py-2 w-8"></th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold">Cuenta</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold">Nombre</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold">Agrupador propuesto</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold">Conf.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {rows.map((r, i) => (
+                      <tr key={r.id} className={`hover:bg-gray-50 ${r.sel ? '' : 'opacity-60'}`}>
+                        <td className="px-2 py-1.5 text-center">
+                          <input type="checkbox" checked={r.sel} onChange={() => toggle(i)} />
+                        </td>
+                        <td className="px-2 py-1.5 font-mono text-xs whitespace-nowrap">{formatCuenta(r.codigo, mascara)}</td>
+                        <td className="px-2 py-1.5 text-xs">{r.nombre}</td>
+                        <td className="px-2 py-1.5">
+                          <input list="agrup-sat" value={r.agr} onChange={(e) => editar(i, e.target.value)}
+                            className="input text-xs font-mono w-28" />
+                          {r.agrupadorNombre && <span className="text-[10px] text-gray-400 ml-1.5">{r.agrupadorNombre}</span>}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${CONF_PROP[r.confianza] || ''}`} title={r.razon}>
+                            {r.confianza}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="p-4 border-t flex items-center justify-end gap-2">
+              <button onClick={onCerrar} className="btn-secondary text-sm">Cerrar</button>
+              <button onClick={aplicar} disabled={aplicando || seleccionadas.length === 0}
+                className="btn-primary text-sm disabled:opacity-50">
+                {aplicando ? 'Aplicando…' : `Aplicar seleccionadas (${seleccionadas.length})`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

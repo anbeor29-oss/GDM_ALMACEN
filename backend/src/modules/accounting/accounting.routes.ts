@@ -204,6 +204,32 @@ router.post(
   })
 );
 
+/** GET /accounting/cuentas/agrupador/propuestas — propone el agrupador SAT de las
+ *  cuentas que no lo tienen, comparando el catálogo con el Anexo 24 (por nombre +
+ *  herencia del padre). Sólo propone; no aplica nada. */
+router.get(
+  '/cuentas/agrupador/propuestas',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await catalogo.proponerAgrupadoresDelCatalogo(companyId(req));
+    res.json({ success: true, data });
+  })
+);
+
+/** POST /accounting/cuentas/agrupador/aplicar — aplica los agrupadores que el
+ *  usuario confirmó de la propuesta. Body: { items: [{ id, codigo?, agrupador }] }. */
+router.post(
+  '/cuentas/agrupador/aplicar',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    const r = await catalogo.aplicarAgrupadoresPropuestos(companyId(req), items);
+    res.json({
+      success: true, data: r,
+      message: `${r.aplicadas} agrupador(es) aplicado(s)` + (r.errores.length ? `, ${r.errores.length} con error` : '') + '.',
+    });
+  })
+);
+
 /** GET /accounting/cuentas/duplicadas?q= — grupos de cuentas con el mismo nombre
  *  (posibles duplicados por typo/mayúsculas). */
 router.get(

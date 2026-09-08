@@ -1110,6 +1110,16 @@ class APIClient {
       { headers: { 'Content-Type': 'multipart/form-data' } });
     return r.data;
   }
+  /** Propone el agrupador SAT de las cuentas que no lo tienen (por nombre + herencia). Sólo propone. */
+  async proponerAgrupadores() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/cuentas/agrupador/propuestas');
+    return r.data;
+  }
+  /** Aplica los agrupadores confirmados: items = [{ id, codigo?, agrupador }]. */
+  async aplicarAgrupadores(items: Array<{ id: string; codigo?: string; agrupador: string }>) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/agrupador/aplicar', { items });
+    return r.data;
+  }
   async fijarEquivalenciaCuenta(id: string, datos: any) {
     const r = await this.client.put<APIResponse<any>>(`/accounting/cuentas/${id}/equivalencia`, datos);
     return r.data;

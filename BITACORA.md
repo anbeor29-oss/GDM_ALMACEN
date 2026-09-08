@@ -5171,3 +5171,35 @@ si cambiaron; NO crea, NO borra, NO toca naturaleza/tipo (se heredan del padre).
 /accounting/cuentas/catalogo/excel` y `POST /accounting/cuentas/catalogo/importar`
 (`contabilidad:catalogo`). Botones en la pantalla: Exportar (todos) e Importar (con
 permiso de catálogo).
+
+---
+
+## 2026-09-08 (contabilidad) — «Proponer agrupador (SAT)»: comparar el catálogo con el Anexo 24
+
+**Contexto y el flujo que fijó el usuario.** Para sacar el error de captura del SAT hay que
+tener el agrupador de cada cuenta. El usuario define este flujo: **1) subir catálogo**
+(respaldo con «Sólo el catálogo», ya sin agrupador) → **2) asignar el dígito agrupador**
+(comparando con el catálogo del SAT) → **3) subir respaldo completo** (pólizas + motor de
+nómina + liga de terceros/UUID por nombre y cuenta + motor de cuadre).
+
+**Reconciliación con la regla previa.** Antes se pidió «que NO deduzca el agrupador por el
+número, sólo señalar los que faltan». Esto NO lo contradice: el nuevo motor deduce por
+**nombre** (no por número) contra el Anexo 24 y **sólo PROPONE** —con confianza y razón—;
+el usuario confirma antes de aplicar. Nunca aplica a ciegas ni por el número.
+
+**Cómo (commit de hoy).** Se reusó el mapeador que ya existía para balanzas ajenas
+(`mapeador-sat.service` → `proponerMapeo`): resuelve las cuentas SUMARIAS por su nombre
+contra el Anexo 24 y las hojas HEREDAN del padre (una subcuenta de cliente no se llama como
+un rubro del SAT, pero su mayor «CLIENTES» sí; «MANO DE OBRA» → 605). Como los códigos del
+catálogo propio son puro dígito (sin guiones), se le añadió la opción `yaMarcadas` para no
+recalcular hoja/padre con la heurística de guiones —el parentesco ya se conoce por
+`parent_id`—. `catalogo.service`: `proponerAgrupadoresDelCatalogo` (propone sólo para las
+que hoy no tienen agrupador) y `aplicarAgrupadoresPropuestos` (reusa `actualizarCuenta`, que
+valida cada agrupador contra el Anexo 24). Rutas `GET /accounting/cuentas/agrupador/propuestas`
+y `POST /accounting/cuentas/agrupador/aplicar` (`contabilidad:catalogo`). Pantalla: botón
+«Proponer agrupador (SAT)» → modal con resumen (alta/media/baja), tabla con agrupador
+editable y confianza, y «Aplicar seleccionadas» (ALTA/MEDIA vienen marcadas; BAJA se revisa).
+
+**Pendiente por confirmar del usuario:** qué es exactamente el error «serp/17» que quiere
+quitar (mensaje de NEXO, del SAT al validar la balanza, u otro) — para verificar que
+asignar el agrupador realmente lo resuelve.

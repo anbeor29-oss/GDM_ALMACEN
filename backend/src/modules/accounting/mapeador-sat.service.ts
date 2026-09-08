@@ -271,6 +271,13 @@ export interface OpcionesMapeo {
   convencion?: Record<string, TipoSat>;
   /** Códigos SAT que existen en la base, para no proponer uno inexistente. */
   agrupadoresValidos?: Set<string>;
+  /**
+   * Las filas ya traen `hoja` y `padre` correctos (no recalcular con marcarHojas).
+   * Lo usa el catálogo propio de NEXO, cuyos códigos son puro dígito ('11025074')
+   * y NO llevan guiones: la heurística de prefijo de marcarHojas no aplica ahí, pero
+   * el parentesco ya se conoce por `parent_id` en la base.
+   */
+  yaMarcadas?: boolean;
 }
 
 /**
@@ -292,7 +299,7 @@ export function proponerMapeo(
 ): PropuestaCuenta[] {
   const conv = opciones.convencion ?? CONVENCION_MX;
   const validos = opciones.agrupadoresValidos;
-  const filas = marcarHojas([...filasCrudas]);
+  const filas = opciones.yaMarcadas ? [...filasCrudas] : marcarHojas([...filasCrudas]);
   const porCuenta = new Map(filas.map((f) => [f.cuenta, f]));
 
   /* Un agrupador propuesto que no exista en la base sería un mapeo roto que

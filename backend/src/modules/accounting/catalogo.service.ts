@@ -19,6 +19,8 @@
 import { query, transaction, transactionQuery } from '../../config/database';
 import type { PoolClient } from 'pg';
 import { ExcelJS } from '../nomina/estilo-excel';
+import { proponerMapeo, agrupadoresValidos, conNombresDelSat } from './mapeador-sat.service';
+import type { FilaBalanza } from './balanza-lector.service';
 import { NIF_NORMAS } from './nif-normas.data';
 import { construirCatalogoSat, NIVEL2_PENDIENTE, type CodigoSat } from './catalogo-sat.data';
 import logger from '../../middleware/logger';
@@ -647,6 +649,87 @@ export async function asignarAgrupadorFaltante(companyId: string): Promise<{ rel
 }
 
 /** Los códigos agrupadores del Anexo 24 (referencia), para el desplegable. */
+/**
+ * PROPONE el agrupador SAT de las cuentas que hoy NO lo tienen, comparando el
+ * catálogo con el Anexo 24 (paso 2 del flujo: subir catálogo → asignar agrupador →
+ * subir respaldo). Reusa el mapeador por nombre (`proponerMapeo`): resuelve las
+ * cuentas SUMARIAS por su nombre contra el Anexo 24 y las hojas HEREDAN de su padre
+ * (una subcuenta de cliente no se llama como un rubro del SAT, pero su mayor sí).
+ *
+ * Sólo PROPONE, con su grado de confianza y su razón; el usuario confirma antes de
+ * aplicar (lo pidió así, escaldado por deducciones a ciegas). Los códigos propios
+ * son puro dígito, así que se le pasa el parentesco ya resuelto (`yaMarcadas`).
+ */
+export interface PropuestaAgrupador {
+  id: string; codigo: string; nombre: string;
+  agrupador: string; agrupadorNombre?: string;
+  confianza: string; razon: string;
+}
+export async function proponerAgrupadoresDelCatalogo(companyId: string) {
+  const cuentas = await listarCuentas(companyId, { soloActivas: false });
+  const porId = new Map<string, any>(cuentas.map((c: any) => [c.id, c]));
+  const porCodigo = new Map<string, any>(cuentas.map((c: any) => [c.codigo, c]));
+  const conHijos = new Set<string>(cuentas.map((c: any) => c.parent_id).filter(Boolean));
+
+  const filas: FilaBalanza[] = cuentas.map((c: any) => ({
+    cuenta: c.codigo,
+    nombre: c.nombre,
+    naturaleza: c.naturaleza === 'DEUDORA' ? 'D' : 'A',
+    saldoInicial: 0, debe: 0, haber: 0, saldoFinal: 0,
+    padre: c.parent_id ? (porId.get(c.parent_id)?.codigo ?? null) : null,
+    hoja: !conHijos.has(c.id),
+  }));
+
+  let props = proponerMapeo(filas, { yaMarcadas: true, agrupadoresValidos: await agrupadoresValidos() });
+  props = await conNombresDelSat(props);
+
+  const propuestas: PropuestaAgrupador[] = [];
+  for (const p of props) {
+    const c = porCodigo.get(p.cuenta);
+    if (!c || c.codigo_agrupador) continue;   // ya tiene agrupador: no se toca
+    if (!p.agrupador) continue;               // el motor no logró proponer (conflicto/ninguna)
+    propuestas.push({
+      id: c.id, codigo: c.codigo, nombre: c.nombre,
+      agrupador: p.agrupador, agrupadorNombre: p.agrupadorNombre,
+      confianza: p.confianza, razon: p.razon,
+    });
+  }
+  const por = (k: string) => propuestas.filter((x) => x.confianza === k).length;
+  const sinAgrupador = cuentas.filter((c: any) => !c.codigo_agrupador).length;
+  return {
+    propuestas,
+    resumen: {
+      sinAgrupador,
+      conPropuesta: propuestas.length,
+      sinPropuesta: sinAgrupador - propuestas.length,
+      alta: por('ALTA'), media: por('MEDIA'), baja: por('BAJA'),
+      conAgrupador: cuentas.length - sinAgrupador,
+      total: cuentas.length,
+    },
+  };
+}
+
+/**
+ * Aplica los agrupadores que el usuario CONFIRMÓ de la propuesta. Reusa
+ * `actualizarCuenta`, que valida cada agrupador contra el Anexo 24; nada a ciegas.
+ */
+export async function aplicarAgrupadoresPropuestos(
+  companyId: string, items: Array<{ id: string; codigo?: string; agrupador: string }>,
+): Promise<{ aplicadas: number; errores: string[] }> {
+  let aplicadas = 0;
+  const errores: string[] = [];
+  for (const it of items || []) {
+    if (!it?.id || !it?.agrupador) continue;
+    try {
+      await actualizarCuenta(companyId, it.id, { codigoAgrupador: String(it.agrupador).trim() });
+      aplicadas++;
+    } catch (e: any) {
+      errores.push(`${it.codigo || it.id}: ${(e?.message || 'no se pudo').toString().slice(0, 120)}`);
+    }
+  }
+  return { aplicadas, errores };
+}
+
 export async function listarAgrupadoresSat(): Promise<Array<{ codigo: string; nombre: string; nivel: number; tipo: string; naturaleza: string }>> {
   const r = await query<any>(
     `SELECT codigo, nombre, nivel, tipo, naturaleza FROM sat_codigos_agrupadores ORDER BY codigo`);
