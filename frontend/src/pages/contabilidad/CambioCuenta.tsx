@@ -157,6 +157,24 @@ export function CambioCuentaPage() {
     finally { setBusy(false); }
   };
 
+  /* Fusión MANUAL de dos cuentas cualesquiera (para una cuenta mal ubicada, como
+   * un cliente que quedó en 1-10-02-074 en vez de 1-10-25-074): mueve TODAS sus
+   * partidas a la destino, reengancha sus hijas y BORRA la origen. A diferencia de
+   * «Unificar duplicadas», aquí se eligen a mano —no tienen que compartir nombre
+   * ni rubro—. */
+  const fusionarManual = async () => {
+    if (!origen || !destino) { setError('Elige la cuenta origen y la destino.'); return; }
+    if (origen.id === destino.id) { setError('La origen y la destino no pueden ser la misma cuenta.'); return; }
+    if (!confirm(`¿Fusionar «${origen.nombre}» (${origen.codigo}) en «${destino.nombre}» (${destino.codigo})?\n\nSe mueven TODAS sus partidas a la destino y se BORRA la cuenta origen. No se puede deshacer.`)) return;
+    setBusy(true); setError(''); setMsg('');
+    try {
+      const r: any = await api.fusionarCuenta(origen.id, destino.id);
+      setMsg(r?.message || 'Cuentas fusionadas: las partidas se movieron y la origen se borró.');
+      setOrigen(null); setDestino(null);
+    } catch (e: any) { setError(e?.response?.data?.message || e?.message || 'No se pudo fusionar.'); }
+    finally { setBusy(false); }
+  };
+
   // ── Unificar duplicadas ──
   const [q, setQ] = useState('');
   const [grupos, setGrupos] = useState<Cuenta[][]>([]);
@@ -209,7 +227,10 @@ export function CambioCuentaPage() {
         <div className="bg-white rounded-lg shadow border p-5 space-y-4">
           <p className="text-sm text-gray-600">
             Mueve las partidas de la cuenta <b>origen</b> (por defecto la temporal de migración)
-            a la cuenta <b>destino</b>. Si pones fechas, sólo mueve las de ese rango.
+            a la cuenta <b>destino</b>. <b>Reasignar</b> sólo mueve las partidas (opcionalmente por
+            rango de fechas) y deja la origen. <b>Fusionar</b> mueve TODO, reengancha sus subcuentas
+            y <b>borra la origen</b> — para una cuenta mal ubicada (p. ej. un cliente que quedó en
+            1-10-02-074 en vez de 1-10-25-074).
           </p>
           <div className="grid sm:grid-cols-2 gap-4">
             <BuscarCuenta etiqueta="Cuenta origen (la que se vacía)" elegida={origen} onElegir={setOrigen} />
@@ -227,6 +248,11 @@ export function CambioCuentaPage() {
             <button onClick={reasignar} disabled={busy || !origen || !destino}
               className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-40 text-sm font-semibold">
               {busy ? <Loader2 size={16} className="animate-spin" /> : <ArrowLeftRight size={16} />} Reasignar
+            </button>
+            <button onClick={fusionarManual} disabled={busy || !origen || !destino}
+              className="flex items-center gap-2 border border-rose-300 text-rose-700 px-4 py-2 rounded-lg hover:bg-rose-50 disabled:opacity-40 text-sm font-semibold"
+              title="Mueve TODAS las partidas a la destino y borra la cuenta origen">
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <GitMerge size={16} />} Fusionar (borra la origen)
             </button>
           </div>
         </div>
