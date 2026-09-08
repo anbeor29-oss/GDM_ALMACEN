@@ -615,4 +615,38 @@ Las fases 4 a 7 y 9 quedan igual.
 
 ---
 
-*Documento de diseño. Nada de esto está codificado todavía.*
+## 10. Estado real y decisiones posteriores (act. 2026-09-07)
+
+> El bosquejo original decía "nada codificado todavía". Ya no: las fases 1-7 están
+> implementadas y en producción (ver **BITACORA.md** y **docs/BUGS_RESUELTOS.md**).
+> Esta sección registra lo que se añadió después del diseño.
+
+**Validación de cuadre — "Cuadre contable" (commit `5f32bd3`).** Auditoría de la
+partida doble que dice DÓNDE está el descuadre. `validacion-contable.service.ts` +
+`GET /accounting/validacion/:anio/:mes` (mes=0 = año completo), pantalla
+`/contabilidad/validacion`. Tres pruebas: (1) póliza por póliza cargos=abonos y ≥2
+renglones (excluye REVERSADA); (2) balanza total; (3) balance ↔ estado de resultados,
+más la lista de cuentas con saldo **sin agrupador SAT**. Sólo diagnostica.
+
+Como el trigger de BD `poliza_cuadra` (DEFERRABLE, en la migración del journal) impide
+guardar pólizas descuadradas, y la balanza se deriva de las pólizas, **pólizas y
+balanza cuadran siempre**. Por eso un descuadre del estado de situación financiera sólo
+puede venir de cuentas con saldo sin agrupador (se caen de los rubros) o de un descuadre
+en la apertura. La pantalla señala exactamente eso.
+
+**DECISIÓN — la e.firma es requisito ANTES de importar un respaldo (pendiente de
+codificar).** El respaldo va a disparar la solicitud de **todos** los XML al SAT
+(descarga masiva de emitidos+recibidos desde el primer ejercicio del respaldo). Para que
+todo quede conectado, el import del respaldo **debe bloquearse si la empresa no tiene
+e.firma cargada** (hoy sólo avisa después y sigue). Cambio a hacer en el flujo de
+importar respaldo + `sat-descarga` (`crearTrabajo`).
+
+**Numeración de terceros — se RESPETA la del respaldo.** No se renumera ni se inventa: se
+rellena el agrupador faltante para reconocer la cuenta real del respaldo y ligarla por su
+número. No se deduce el agrupador por el número (los catálogos difieren del SAT): sólo se
+señalan las cuentas a las que les falta. Detalle en la memoria de numeración de terceros
+y en BITACORA (commits `a0718a3`, `e5460a1`).
+
+---
+
+*Diseño original de 2026-08-20; sección 10 refleja el estado real a 2026-09-07.*

@@ -4986,3 +4986,122 @@ SAT → misma cuenta, ≥4 dígitos comunes) y, si no, usa la dominante. En el r
 <cuenta> · usar» y arriba un botón «Aplicar sugerencia a los N que faltan». El usuario confirma;
 nunca se asigna solo. Ruta `GET /accounting/sugerencias-cuenta?direccion=`. Primer paso del patrón
 de contabilización por clave (siguiente: afinarlo con Anexo 24/NIF por categoría del SAT).
+
+---
+
+## 2026-09-05 → 2026-09-07 (contabilidad + nómina + SAT) — Continuidad de dos respaldos, la raíz del descuadre de terceros, conciliación contable, y el "Cuadre contable"
+
+Tanda larga de afinación sobre la contabilidad importada. El hilo conductor: el
+respaldo trae su propia numeración y su propio orden, y el sistema tiene que
+**respetarlos**, no reinventarlos — y al final poder **certificar** que todo cuadra.
+
+**Dos respaldos con continuidad (2017 + 2018→) (commit `ed27046`).** El usuario tiene
+un respaldo con los últimos 3 meses de **2017** y otro de **2018 en adelante**. Al
+subir el segundo, los combos de año arrancaban en 2018 y los terceros se duplicaban.
+Decisión: `ANIO_MIN_CONTABLE = 2017` (`frontend/src/utils/anios.ts`) y de-dup de
+terceros al ligar (busca la subcuenta existente por RFC en todo el rubro antes de
+crear). Consecuencia: la transición 2017→2018 es coherente y no duplica clientes ni
+proveedores.
+
+**La RAÍZ de "los clientes caen en 1-10-02-### y no en 1-10-25-###" (commit `e5460a1`).**
+Síntoma: una cuenta suelta `1-10-02-074` "se hizo de mayor" y acumulaba clientes que
+debían colgar de `1-10-25-###`. Causa: el mayor de clientes `1-10-25-000` trae el
+agrupador **padre `105`**, y sus terceros el específico `105.01`; `cuentaControl`
+buscaba **sólo** `105.01`, así que NO veía el mayor y agarraba como "control" la primera
+hoja con `105.01` que encontraba. Fix: buscar por `105.01` **O** su padre `105` (igual
+proveedores `201.01`/`201`), preferir el mayor «redondo» (`…-000`) y el que ya tiene más
+terceros. Las cuentas mal ubicadas ya creadas se arreglan con **fusión manual** (commit
+`b906ad0`, Cambio de cuenta → «Fusionar (borra la origen)»: mueve partidas, reengancha
+hijos y borra la origen).
+
+**Filosofía de numeración de terceros — RESPETAR el respaldo (commit `a0718a3`).**
+Corrección del usuario: "no se trata de asignarle un número nuevo, se trata de respetar
+el número de cada cuenta y su orden, y ver las que les falta el dígito agrupador del
+SAT". Antes, al no reconocer un tercero (porque le faltaba agrupador) el sistema
+**inventaba** un código. Ahora «Generar subcuentas» corre `asignarAgrupadorFaltante`
+(hereda el agrupador del padre) en vez de renumerar; con el agrupador puesto, el enlace
+encuentra la cuenta REAL del respaldo y la liga por su número. Además: **no se deduce el
+agrupador por el número de cuenta** (los catálogos no siempre coinciden con el del SAT);
+sólo se **señalan** las cuentas a las que les falta. `reorganizarTerceros` queda como
+botón manual, no corre en automático.
+
+**Una persona = varios roles.** Un mismo RFC puede ser cliente, proveedor, acreedor y
+accionista a la vez; esas cuentas NO son duplicados. `candidatasDuplicadas` agrupa por
+nombre **+ rubro** (commit `000d507`), y el auto-ligado del import es por rubro, así que
+nunca se funden roles distintos.
+
+**Conciliación CONTABLE (commits `fd3832e`, `2b3ac83`, `37d125d`, `78bfd30`).** Pantalla
+50/50: a la izquierda los movimientos del banco (del estado de cuenta), a la derecha la
+**cuenta 102 de la contabilidad** con sus cargos y abonos (el "libro"). Botones
+**Sugerir** (casa por importe ±0.10 y fecha ±2 días), **Cotejar** (empata contra los
+renglones 102 ya asentados) y **Contabilizar**. Bug corregido: `contabilizar` usaba
+`String(m.fecha)` sobre un objeto Date de node-postgres → "invalid input syntax for type
+date: 'Tue Jan 02'"; se cambió a `TO_CHAR(bm.fecha,'YYYY-MM-DD')`. Se eliminó la vieja
+pestaña de conciliación en Tesorería (commit `623ae71`).
+
+**Bug del calendario de descarga SAT todo gris (commit `7a5e1cc`).** Causa idéntica al
+de arriba: una columna `::date` de node-postgres regresa un objeto **Date**, no un
+string; `String(date).slice(0,10)` daba "Wed Jan 02" y NINGÚN día casaba con las claves
+`YYYY-MM-DD`. Fix: `TO_CHAR(...,'YYYY-MM-DD')` en las tres queries de cobertura. Se hizo
+además un calendario **combinado** (emitidos+recibidos, peor color de los dos) con conteo
+por día y doble-clic al detalle (commit `6fa73bb`), y un botón «Limpiar terminados» en el
+monitor XML (commit `37d125d`).
+
+**Bug `ORDER BY (FALSE)` — "non-integer constant in ORDER BY" (commit `c58dffe`).** Cuando
+la empresa no tenía máscara de cuenta fijada, `cuentaControl` construía un `ORDER BY` con
+una constante booleana suelta y Postgres lo rechazaba → se **omitían todas las pólizas de
+venta/compra**. Fix: armar el `ORDER BY` por partes y `MASCARA_DEFAULT = '#-##-##-###'`
+para que la numeración de terceros no dependa de que alguien fije la máscara.
+
+**Nómina (commits `78bfd30`, `c07aa43`, `600df8a`).** (1) La zona era `'frontera'` y
+violaba el `CHECK` de `nomina_empleados_zona` → 4 empleados rechazados (por eso salían 3
+expedientes de 6); corregido a `'frontera_norte'`. (2) Percepciones/deducciones negativas
+violaban el `CHECK` de montos (totales ≥ 0); se voltean al lado correcto. (3) La
+pre-nómina ahora abre **una columna por cada percepción y por cada deducción del Anexo 20**
+(dinámicas), no amontonadas en «Otros»; son los conceptos que se agregan estando ya la
+pre-nómina, antes de timbrar.
+
+**Reportes anuales y Auxiliar (commits `36735d5`, `bfbf459`, `53cea91`).** Se completó el
+reporte **anual** (12 columnas) para Flujo de efectivo, Cambios en el capital y Razones.
+Nuevo **Auxiliar de cuentas** (el mayor de una cuenta en un rango de fechas con saldo
+corriente); su selector va por **código/orden de catálogo**, no alfabético (petición
+explícita: las cuentas se ordenan por aparición, no por nombre). «Todo el año» (mes=0) en
+los combos de pólizas de venta/compra (commit `bfbf459`).
+
+**NUEVO: "Cuadre contable" — el auditor de la partida doble (commit `5f32bd3`).** Backend
+`validacion-contable.service.ts` + `GET /accounting/validacion/:anio/:mes` (mes=0 = año
+completo). Tres pruebas, de lo micro a lo macro: (1) **póliza por póliza** cargos=abonos y
+≥2 renglones —revisa TODA la contabilidad hasta el corte, excluye REVERSADA—; (2)
+**balanza** total; (3) **balance ↔ estado de resultados** (activo = pasivo+capital,
+utilidad vs cuenta 305) y **lista las cuentas con saldo sin agrupador SAT**. Sólo
+diagnostica, no cambia nada. Pantalla `/contabilidad/validacion` con combos, veredicto y
+tablas. **Insight clave:** como el trigger de BD `poliza_cuadra` (DEFERRABLE) impide
+guardar pólizas descuadradas y la balanza se deriva de las pólizas, **ambas cuadran
+siempre**; por eso, si el estado de situación financiera no cuadra, la causa es cuentas
+con saldo **sin agrupador** (se caen de los rubros) o un pequeño descuadre de apertura —
+y eso es justo lo que la pantalla señala.
+
+**Menú de Contabilidad en orden alfabético (commit `5f32bd3`).** Los items del grupo se
+ordenaron A→Z, con dos excepciones a propósito: el submenú «Pólizas» conserva «Póliza
+manual» primero (petición previa) y «Reportes» conserva la secuencia natural de los
+estados financieros.
+
+### Verificación en producción (2017)
+
+Con la balanza de apertura 2017 cargada, **Octubre 2017 cuadra perfecto** en Cuadre
+contable: balanza $1,700,760.61 = $1,700,760.61 (dif $0.00), balance activo $94,505.13 =
+pasivo+capital $94,505.13 (dif $0.00), todas las pólizas cuadran; utilidad del periodo
+−$2,221.54 (pérdida, correcta). El descuadre de **760.67 que aparecía en Diciembre 2017**
+se rastrea mes a mes con la propia pantalla (Oct cuadra → revisar Nov y Dic; la tabla de
+«cuentas sin agrupador» dirá cuál se cae).
+
+### Decisión pendiente para mañana
+
+**Condicionar la e.firma ANTES de importar cualquier respaldo.** Hoy, al importar un
+respaldo, si hay e.firma cargada se crean solos los trabajos de descarga masiva del SAT
+(recibidos+emitidos) desde el primer ejercicio del respaldo hasta hoy; si NO hay e.firma,
+sólo **avisa** y sigue. El usuario quiere que la e.firma sea **requisito**: como el
+respaldo va a disparar la solicitud de TODOS los XML al SAT, todo debe quedar conectado.
+Cambio a hacer: **bloquear el import del respaldo si la empresa no tiene e.firma
+cargada** (mensaje claro que lleve a cargarla), en vez de sólo avisar después.
+Relacionado con el flujo de `sat-descarga` (`crearTrabajo`) que ya existe.

@@ -12,6 +12,46 @@ Orden cronológico inverso (más reciente arriba).
 
 ---
 
+## Contabilidad — numeración, cuadre y fechas
+
+### 🐛 Los clientes caían en `1-10-02-###` en vez de `1-10-25-###` (una cuenta suelta "se hacía de mayor")
+- **Síntoma**: al generar subcuentas de terceros, los clientes se colgaban de una cuenta suelta `1-10-02-074` que acumulaba movimientos como si fuera el control, en lugar del mayor real de clientes `1-10-25-000`.
+- **Causa**: el mayor de clientes `1-10-25-000` trae el agrupador **padre `105`**, y sus terceros el específico `105.01`. `cuentaControl` buscaba **sólo** `105.01`, así que no veía el mayor y tomaba como "control" la primera hoja que tuviera `105.01`.
+- **Fix**: buscar el control por `105.01` **O** su padre `105` (`agrupador.split('.')[0]`), igual proveedores `201.01`/`201`; preferir el mayor «redondo» (`…-000`) y el que ya tiene más terceros. Las cuentas mal ubicadas ya creadas se corrigen con fusión manual (Cambio de cuenta → «Fusionar (borra la origen)», commit `b906ad0`).
+- **Commit**: `e5460a1`
+
+### 🐛 Se inventaban códigos de tercero (`11002074-001`) en vez de ligar la cuenta del respaldo
+- **Síntoma**: aparecían subcuentas duplicadas con un segmento de más (`1-10-25-001-076`) junto a la real del respaldo (`1-10-25-076`).
+- **Causa**: cuando una cuenta del respaldo no se reconocía como tercero **porque le faltaba el agrupador del SAT**, el sistema inventaba un código nuevo en vez de ligar la cuenta existente.
+- **Fix**: «Generar subcuentas» ahora rellena el agrupador faltante heredándolo del padre (`asignarAgrupadorFaltante`) en vez de renumerar; con el agrupador puesto, el enlace encuentra la cuenta real del respaldo y la liga por su número. No se deduce el agrupador por el número de cuenta (los catálogos difieren del SAT): sólo se señalan las que les falta. `MASCARA_DEFAULT='#-##-##-###'` cuando la empresa no fijó máscara.
+- **Commit**: `a0718a3` (máscara por defecto en `6fa73bb`)
+
+### 🐛 `non-integer constant in ORDER BY` → se omitían TODAS las pólizas de venta/compra
+- **Síntoma**: no se generaba ninguna póliza de venta ni de compra en empresas sin máscara de cuenta.
+- **Causa**: `cuentaControl` construía un `ORDER BY` con una constante booleana suelta (`ORDER BY (FALSE)`) cuando el ancho de máscara era 0; Postgres lo rechaza.
+- **Fix**: armar el `ORDER BY` por partes (sólo columnas/expresiones válidas) y usar `MASCARA_DEFAULT`.
+- **Commit**: `c58dffe`
+
+### 🐛 Calendario de descarga SAT todo gris (ningún día marcado)
+- **Síntoma**: el calendario de cobertura de XML salía completamente gris aunque había XML descargados.
+- **Causa**: una columna `::date` de node-postgres regresa un objeto **Date** de JS, no un string. `String(date).slice(0,10)` daba `"Wed Jan 02"`, que nunca casa con las claves `YYYY-MM-DD` del calendario.
+- **Fix**: `TO_CHAR(COALESCE(fecha_emision,fecha_timbrado),'YYYY-MM-DD')` en las tres queries de cobertura. Además calendario combinado (emitidos+recibidos) con conteo por día.
+- **Commit**: `7a5e1cc` (combinado en `6fa73bb`)
+
+### 🐛 Conciliación: `invalid input syntax for type date: 'Tue Jan 02'`
+- **Síntoma**: «Contabilizar» un movimiento del estado de cuenta reventaba con ese error.
+- **Causa**: mismo origen que el calendario — `contabilizar` usaba `String(m.fecha)` sobre un objeto Date de node-postgres.
+- **Fix**: `TO_CHAR(bm.fecha,'YYYY-MM-DD') AS fecha_ymd` y usar ese string para la póliza.
+- **Commit**: `78bfd30`
+
+### 🐛 Nómina: sólo 3 expedientes de 6 trabajadores
+- **Síntoma**: al importar el respaldo de nómina, la mitad de los trabajadores no generaba expediente.
+- **Causa**: la zona se importaba como `'frontera'`, que viola el `CHECK` `nomina_empleados_zona_ck` (el valor válido es `'frontera_norte'`) → los empleados de esa zona se rechazaban.
+- **Fix**: mapear a `'frontera_norte'`. Aparte: percepciones/deducciones negativas violaban el `CHECK` de montos (totales ≥ 0); se voltean al lado correcto.
+- **Commit**: `78bfd30`
+
+---
+
 ## Cancelación
 
 ### 🐛 `SW no encuentra el CFDI en su vault (404)` al reintentar cancelar
