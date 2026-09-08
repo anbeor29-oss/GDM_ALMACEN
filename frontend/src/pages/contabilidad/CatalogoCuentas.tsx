@@ -889,8 +889,9 @@ function PanelCuenta({ id, onCerrar, puedeEditar, onListo, onAgregarHija }: any)
                 <p className="text-[11px] text-gray-500">El tipo y la naturaleza no se editan: los hereda del padre y cambiarlos descuadraría la balanza.</p>
                 <div className="flex gap-2">
                   <button onClick={guardarCambios} disabled={busy || !form.nombre.trim()}
-                    className="btn-primary text-sm px-3 disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar'}</button>
-                  <button onClick={() => setEditando(false)} className="btn-secondary text-sm px-3">Cancelar</button>
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm px-4 py-1.5 rounded-lg disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar'}</button>
+                  <button onClick={() => setEditando(false)}
+                    className="border border-sky-300 text-sky-700 hover:bg-sky-50 font-medium text-sm px-4 py-1.5 rounded-lg">Cancelar</button>
                 </div>
                 {error && <p className="text-xs text-rose-700">{error}</p>}
               </div>
@@ -1233,9 +1234,10 @@ function ModalNuevaCuenta({ datos, onCerrar, onListo }: any) {
         </div>
 
         <div className="flex justify-end gap-2 p-4 border-t">
-          <button onClick={onCerrar} className="btn-secondary text-sm">Cancelar</button>
+          <button onClick={onCerrar}
+            className="border border-sky-300 text-sky-700 hover:bg-sky-50 font-medium text-sm px-4 py-1.5 rounded-lg">Cancelar</button>
           <button onClick={guardar} disabled={busy || !f.codigo.trim() || !f.nombre.trim()}
-            className="btn-primary text-sm disabled:opacity-50">
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm px-4 py-1.5 rounded-lg disabled:opacity-50">
             {busy ? 'Guardando…' : 'Crear cuenta'}
           </button>
         </div>
