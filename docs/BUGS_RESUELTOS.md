@@ -22,6 +22,14 @@ Orden cronológico inverso (más reciente arriba).
 
 ## Contabilidad — numeración, cuadre y fechas
 
+### 🐛 La balanza «desde pólizas» pierde las cuentas SIN movimiento del mes (capital, acumulados) → el balance no cuadra
+- **Síntoma**: en el estado de situación financiera y en la balanza de un mes derivado de pólizas (p.ej. Nov-2017) NO aparecían las cuentas de capital (capital social 301, resultados de ejercicios anteriores 304, etc.) que sí salían en el mes cargado del respaldo de balanza (Oct-2017). El balance quedaba descuadrado (C = A − P daba −4,739.54 pero el capital listado era −5,500.21; dif. 760.67).
+- **Causa**: `alimentarDesdePolizas` (periodos.service) sólo insertaba en `accounting_period_balances` las cuentas **con movimiento del mes** (`HAVING SUM(cargo)<>0 OR SUM(abono)<>0`). Las que traen saldo de apertura/arrastre pero no se mueven cada mes (capital, acumulados) quedaban en el mapa de saldos iniciales pero nunca se insertaban → desaparecían de la balanza y del estado.
+- **Fix**: tras insertar las cuentas con movimiento, se **arrastran** las que traen saldo del mes anterior (`ini`) y no tuvieron movimiento, con `saldo_final = saldo_inicial`. Hay que re-derivar los meses afectados en ORDEN (cada mes arrastra del anterior).
+- **Commit**: `pendiente` (2026-09-08)
+
+
+
 ### 🐛 Los clientes caían en `1-10-02-###` en vez de `1-10-25-###` (una cuenta suelta "se hacía de mayor")
 - **Síntoma**: al generar subcuentas de terceros, los clientes se colgaban de una cuenta suelta `1-10-02-074` que acumulaba movimientos como si fuera el control, en lugar del mayor real de clientes `1-10-25-000`.
 - **Causa**: el mayor de clientes `1-10-25-000` trae el agrupador **padre `105`**, y sus terceros el específico `105.01`. `cuentaControl` buscaba **sólo** `105.01`, así que no veía el mayor y tomaba como "control" la primera hoja que tuviera `105.01`.

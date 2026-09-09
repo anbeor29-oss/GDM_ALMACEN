@@ -477,34 +477,53 @@ export async function alimentarDesdePolizas(
     for (const r of pb.rows) ini.set(r.account_id, r.sf);
   }
 
+  const r2 = (n: number) => Math.round(n * 100) / 100;
   return transaction(async (client: PoolClient) => {
     await transactionQuery(client, `DELETE FROM accounting_period_balances WHERE periodo_id=$1`, [p.id]);
-    let totalCargos = 0, totalAbonos = 0;
-    for (const m of mov.rows) {
-      const si = ini.get(m.account_id) || 0;
-      const sf = m.naturaleza === 'ACREEDORA' ? si - m.cargos + m.abonos : si + m.cargos - m.abonos;
-      await transactionQuery(client,
+    const insertar = (accountId: string, si: number, cargos: number, abonos: number, sf: number) =>
+      transactionQuery(client,
         `INSERT INTO accounting_period_balances
            (company_id, periodo_id, account_id, saldo_inicial, cargos, abonos, saldo_final)
          VALUES ($1,$2,$3,$4,$5,$6,$7)
          ON CONFLICT (periodo_id, account_id) DO UPDATE
            SET saldo_inicial=EXCLUDED.saldo_inicial, cargos=EXCLUDED.cargos,
                abonos=EXCLUDED.abonos, saldo_final=EXCLUDED.saldo_final, updated_at=NOW()`,
-        [companyId, p.id, m.account_id, si, m.cargos, m.abonos, Math.round(sf * 100) / 100]);
+        [companyId, p.id, accountId, r2(si), r2(cargos), r2(abonos), r2(sf)]);
+
+    let totalCargos = 0, totalAbonos = 0;
+    const conMovimiento = new Set<string>();
+    for (const m of mov.rows) {
+      conMovimiento.add(m.account_id);
+      const si = ini.get(m.account_id) || 0;
+      const sf = m.naturaleza === 'ACREEDORA' ? si - m.cargos + m.abonos : si + m.cargos - m.abonos;
+      await insertar(m.account_id, si, m.cargos, m.abonos, sf);
       totalCargos += m.cargos; totalAbonos += m.abonos;
     }
+
+    /* Cuentas con saldo de ARRASTRE (apertura o meses previos) pero SIN movimiento
+     * este mes: se conservan con su saldo (saldo_final = saldo_inicial). Si no, las
+     * cuentas que no se mueven cada mes —capital social, resultados de ejercicios
+     * anteriores, etc.— desaparecen de la balanza y el balance deja de cuadrar. */
+    let arrastradas = 0;
+    for (const [accountId, si] of ini) {
+      if (conMovimiento.has(accountId) || Math.abs(si) < 0.005) continue;
+      await insertar(accountId, si, 0, 0, si);
+      arrastradas++;
+    }
+
+    const cuentas = mov.rows.length + arrastradas;
     await transactionQuery(client,
       `DELETE FROM accounting_period_sources WHERE periodo_id=$1 AND fuente='POLIZAS'`, [p.id]);
     await transactionQuery(client,
       `INSERT INTO accounting_period_sources
          (company_id, periodo_id, fuente, descripcion, cuentas, total_cargos, total_abonos, modo, created_by)
        VALUES ($1,$2,'POLIZAS',$3,$4,$5,$6,'REEMPLAZA',$7)`,
-      [companyId, p.id, `Pólizas de ${nombreMes(mes)} ${anio}`, mov.rows.length, totalCargos, totalAbonos, opciones.userId ?? null]);
-    logger.info(`[contabilidad] ${nombreMes(mes)} ${anio}: balanza derivada de ${mov.rows.length} cuenta(s) con póliza`);
+      [companyId, p.id, `Pólizas de ${nombreMes(mes)} ${anio}`, cuentas, totalCargos, totalAbonos, opciones.userId ?? null]);
+    logger.info(`[contabilidad] ${nombreMes(mes)} ${anio}: balanza derivada de ${mov.rows.length} cuenta(s) con póliza + ${arrastradas} arrastrada(s)`);
     return {
-      periodoId: p.id, cuentas: mov.rows.length,
-      totalCargos: Math.round(totalCargos * 100) / 100,
-      totalAbonos: Math.round(totalAbonos * 100) / 100,
+      periodoId: p.id, cuentas,
+      totalCargos: r2(totalCargos),
+      totalAbonos: r2(totalAbonos),
       cuadra: Math.abs(totalCargos - totalAbonos) <= 0.02,
     };
   });
