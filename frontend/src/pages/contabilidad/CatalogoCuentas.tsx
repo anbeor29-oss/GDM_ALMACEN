@@ -189,7 +189,6 @@ export function CatalogoCuentasPage() {
       const r: any = await api.importarCatalogoExcel(fd);
       const d = r?.data || {};
       let m = r?.message || 'Catálogo importado.';
-      if (d.noEncontradas?.length) m += ` No encontrados: ${d.noEncontradas.slice(0, 6).join(', ')}${d.noEncontradas.length > 6 ? '…' : ''}.`;
       if (d.errores?.length) m += ` Errores: ${d.errores.slice(0, 3).join(' · ')}${d.errores.length > 3 ? '…' : ''}.`;
       setMsg(m);
       refrescar();

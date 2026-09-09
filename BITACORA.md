@@ -5297,3 +5297,25 @@ y botón «Imprimir / PDF» (abre la póliza como documento propio para guardarl
 al montar; se agregó `useEffect` para reabrir los submenús al navegar (así se alcanzan los
 reportes especiales). Ícono 🔬 y **Excel** en Reportes especiales. Inventario de motores en
 `docs/MOTORES_CONTABILIDAD.md`.
+
+---
+
+## 2026-09-08 (contabilidad) — Catálogo: plantilla + importador que CREA cuentas
+
+**Plantilla (commit `bd6a951`).** Botón «Plantilla» en Catálogo (y en la pantalla de "sin
+catálogo") que baja un Excel en blanco (Código, Nombre, Agrupador SAT, Naturaleza, Tipo)
+para armar el catálogo desde cero. Backend `catalogoPlantillaExcel`.
+
+**Importador de catálogo que CREA (además de actualizar).** `importarCatalogoExcel` ahora,
+para los códigos que NO existen, **los crea** armando la jerarquía por la máscara: el padre
+es el ancestro acumulativo más cercano (se copiaron `ancestrosDe`/`codigoPadre` de
+contpaqi-import para no crear un ciclo de imports), el tipo sale del primer dígito, la
+naturaleza del agrupador o del tipo, y `permite_movimientos` = hoja (nadie cuelga de ella).
+Los que existen se actualizan conservador (nombre+agrupador). Al terminar rellena el
+agrupador faltante. Reporte: creadas / actualizadas / sin cambio / errores. Así el flujo
+"desde cero" es: **Plantilla → llenar → Importar (crea) → «Proponer agrupador (SAT)»**.
+
+**Formato de pólizas de CONTPAQi investigado** (para el futuro convertidor de pólizas):
+TXT de ancho fijo, encabezado + renglones `M`+cuenta(30)+ref(10)+TipoMovto(0=cargo/1=abono)
++importe(20)+concepto(100); Aspel COI usa Excel con `FIN_PARTIDAS`. PENDIENTE: conseguir un
+TXT real de CONTPAQi para afinar el lector del convertidor.

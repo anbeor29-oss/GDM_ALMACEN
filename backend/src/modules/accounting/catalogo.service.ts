@@ -536,15 +536,53 @@ export async function actualizarCuenta(companyId: string, id: string, d: Partial
   return r.rows[0];
 }
 
+/* ── Jerarquía por máscara — copia mínima de contpaqi-import (para no crear un ciclo
+   de imports: contpaqi-import ya importa de catalogo.service). Sirven para CREAR una
+   cuenta con su padre correcto al armar un catálogo desde cero en Excel. ── */
+const TIPO_POR_DIGITO_CAT: Record<string, string> = {
+  '1': 'ACTIVO', '2': 'PASIVO', '3': 'CAPITAL', '4': 'INGRESO', '5': 'COSTO', '6': 'GASTO', '7': 'GASTO', '8': 'ORDEN',
+};
+const naturalezaPorTipoCat = (t: string) => (['ACTIVO', 'COSTO', 'GASTO'].includes(t) ? 'DEUDORA' : 'ACREEDORA');
+function anchosDeMascaraCat(m?: string | null): number[] | null {
+  if (!m) return null;
+  const a = (m.match(/#+/g) || []).map((g) => g.length);
+  return a.length >= 2 ? a : null;
+}
+function ancestrosDeCat(codigo: string, anchos: number[] | null): string[] {
+  const out: string[] = [];
+  if (anchos && anchos.reduce((a, b) => a + b, 0) === codigo.length) {
+    const segs: Array<[number, number]> = []; let ini = 0;
+    for (const w of anchos) { segs.push([ini, ini + w]); ini += w; }
+    let ultimo = -1;
+    for (let i = 0; i < segs.length; i++) if (!/^0+$/.test(codigo.slice(segs[i][0], segs[i][1]))) ultimo = i;
+    for (let i = ultimo; i >= 1; i--) {
+      const ch = codigo.split('');
+      for (let s = i; s < segs.length; s++) for (let p = segs[s][0]; p < segs[s][1]; p++) ch[p] = '0';
+      out.push(ch.join(''));
+    }
+  } else {
+    const n = codigo.length;
+    for (let k = 1; k < n; k++) out.push(codigo.slice(0, n - k) + '0'.repeat(k));
+  }
+  return out;
+}
+function codigoPadreCat(codigo: string, existentes: Set<string>, esHoja: (c: string) => boolean, anchos: number[] | null): string | null {
+  for (const cand of ancestrosDeCat(codigo, anchos)) if (cand !== codigo && existentes.has(cand) && !esHoja(cand)) return cand;
+  return null;
+}
+
 /**
- * Reimporta un catálogo editado en Excel (el que exporta `catalogoExcel`).
+ * Importa un catálogo desde Excel (el que exporta `catalogoExcel`, o la plantilla).
  *
- * CONSERVADOR a propósito: casa cada fila por su CÓDIGO contra una cuenta que YA
- * existe y sólo actualiza NOMBRE y AGRUPADOR SAT si cambiaron. No crea, no borra,
- * no toca naturaleza ni tipo (los hereda del padre; cambiarlos descuadra la
- * balanza). Vaciar la celda de agrupador NO lo borra —para no perder agrupadores
- * por una celda en blanco—. Reusa `actualizarCuenta`, que valida el agrupador
- * contra el Anexo 24. Devuelve un reporte de lo que pasó.
+ * - Cuentas que YA existen (por CÓDIGO): actualiza NOMBRE y AGRUPADOR SAT si cambiaron
+ *   (conservador; no toca naturaleza/tipo ni reengancha).
+ * - Cuentas NUEVAS: las CREA armando la jerarquía por la máscara —el padre es el
+ *   ancestro acumulativo más cercano— con su tipo (por el primer dígito), naturaleza
+ *   (del agrupador o del tipo) y `permite_movimientos` (hoja = nadie cuelga de ella).
+ *   Así se puede armar el catálogo desde cero en Excel e importarlo.
+ *
+ * Vaciar la celda de agrupador NO lo borra. Al terminar rellena el agrupador que quede
+ * vacío heredándolo del padre.
  */
 export async function importarCatalogoExcel(companyId: string, buffer: Buffer) {
   const wb = new ExcelJS.Workbook();
@@ -557,7 +595,6 @@ export async function importarCatalogoExcel(companyId: string, buffer: Buffer) {
   const textoCelda = (v: any): string => {
     if (v == null) return '';
     if (typeof v === 'object') {
-      // ExcelJS puede devolver { text }, { result } (fórmula) o { richText }.
       if ('text' in v) return String((v as any).text ?? '').trim();
       if ('result' in v) return String((v as any).result ?? '').trim();
       if ('richText' in v) return (v as any).richText.map((t: any) => t.text).join('').trim();
@@ -565,7 +602,6 @@ export async function importarCatalogoExcel(companyId: string, buffer: Buffer) {
     return String(v).trim();
   };
 
-  // Localiza la fila de encabezados y las columnas por su título (tolerante).
   let headerRow = 0;
   const idx: { codigo?: number; nombre?: number; agrupador?: number } = {};
   ws.eachRow((row, n) => {
@@ -573,24 +609,19 @@ export async function importarCatalogoExcel(companyId: string, buffer: Buffer) {
     row.eachCell((cell, col) => {
       const t = norm(cell.value);
       if (t === 'codigo' || t === 'cuenta') idx.codigo = col;
-      else if (t === 'nombre') idx.nombre = col;                        // el de la cuenta, exacto
-      else if (t.includes('agrupador') && !t.includes('nombre')) idx.agrupador = col; // no "nombre del agrupador"
+      else if (t === 'nombre') idx.nombre = col;
+      else if (t.includes('agrupador') && !t.includes('nombre')) idx.agrupador = col;
     });
     if (idx.codigo !== undefined) headerRow = n;
   });
   if (!headerRow || idx.codigo === undefined) {
-    throw new Error('No se encontró la columna CÓDIGO en el Excel. Exporta el catálogo primero para ver el formato.');
+    throw new Error('No se encontró la columna CÓDIGO en el Excel. Descarga la plantilla o exporta el catálogo para ver el formato.');
   }
-
-  const rep = {
-    total: 0, actualizadas: 0, sinCambio: 0,
-    noEncontradas: [] as string[], errores: [] as string[],
-  };
 
   const filas: Array<{ codigo: string; nombre?: string; agrupador?: string }> = [];
   ws.eachRow((row, n) => {
     if (n <= headerRow) return;
-    const codigo = textoCelda(row.getCell(idx.codigo!).value);
+    const codigo = textoCelda(row.getCell(idx.codigo!).value).replace(/[.\-\s]/g, ''); // dígito puro
     if (!codigo) return;
     filas.push({
       codigo,
@@ -599,26 +630,80 @@ export async function importarCatalogoExcel(companyId: string, buffer: Buffer) {
     });
   });
 
-  for (const f of filas) {
-    rep.total++;
-    const cta = await query<any>(
-      `SELECT id, codigo, nombre, codigo_agrupador FROM accounting_accounts
-        WHERE company_id = $1 AND codigo = $2`, [companyId, f.codigo]);
-    const row0 = cta.rows[0];
-    if (!row0) { rep.noEncontradas.push(f.codigo); continue; }
+  const rep = {
+    total: filas.length, creadas: 0, actualizadas: 0, sinCambio: 0, errores: [] as string[],
+  };
 
+  // Estado del catálogo actual y de la máscara, para calcular padres.
+  const existentesQ = await query<any>(
+    `SELECT id, codigo, nombre, codigo_agrupador, nivel, permite_movimientos FROM accounting_accounts WHERE company_id=$1`, [companyId]);
+  const idPorCodigo = new Map<string, { id: string; nivel: number }>();
+  const permiteMov = new Map<string, boolean>();
+  for (const r of existentesQ.rows) {
+    idPorCodigo.set(r.codigo, { id: r.id, nivel: r.nivel });
+    permiteMov.set(r.codigo, r.permite_movimientos);
+  }
+  const masc = await query<any>(`SELECT mascara_cuenta FROM companies WHERE id=$1`, [companyId]);
+  const anchos = anchosDeMascaraCat(masc.rows[0]?.mascara_cuenta) || anchosDeMascaraCat('#-##-##-###');
+  const agrs = await query<any>(`SELECT codigo, naturaleza FROM sat_codigos_agrupadores`);
+  const natDeAgr = new Map<string, string>(agrs.rows.map((a: any) => [a.codigo, a.naturaleza]));
+
+  const nuevas = filas.filter((f) => !idPorCodigo.has(f.codigo));
+  const todos = new Set<string>([...idPorCodigo.keys(), ...nuevas.map((f) => f.codigo)]);
+  // Hoja = nadie la tiene como ancestro más cercano existente. Para las nuevas se calcula;
+  // para las existentes se respeta su `permite_movimientos`.
+  const esPadre = new Set<string>();
+  for (const c of todos) {
+    const cerc = ancestrosDeCat(c, anchos).find((a) => todos.has(a));
+    if (cerc) esPadre.add(cerc);
+  }
+  const esHoja = (c: string) => idPorCodigo.has(c) ? (permiteMov.get(c) === true) : !esPadre.has(c);
+
+  // 1) ACTUALIZAR las que existen (conservador).
+  for (const f of filas) {
+    if (!idPorCodigo.has(f.codigo)) continue;
+    const row0 = existentesQ.rows.find((r: any) => r.codigo === f.codigo);
     const cambios: Partial<DatosCuenta> = {};
     if (f.nombre && f.nombre !== row0.nombre) cambios.nombre = f.nombre;
     if (f.agrupador && f.agrupador !== (row0.codigo_agrupador || '')) cambios.codigoAgrupador = f.agrupador;
-
     if (!Object.keys(cambios).length) { rep.sinCambio++; continue; }
+    try { await actualizarCuenta(companyId, idPorCodigo.get(f.codigo)!.id, cambios); rep.actualizadas++; }
+    catch (e: any) { rep.errores.push(`${f.codigo}: ${(e?.message || 'no se pudo').toString().slice(0, 140)}`); }
+  }
+
+  // 2) CREAR las nuevas, de arriba hacia abajo (padres primero), con su jerarquía.
+  const agrPorCodigo = new Map<string, string | null>();
+  for (const f of [...nuevas].sort((a, b) => a.codigo.localeCompare(b.codigo, 'es', { numeric: true }))) {
     try {
-      await actualizarCuenta(companyId, row0.id, cambios);
-      rep.actualizadas++;
+      const tipo = TIPO_POR_DIGITO_CAT[f.codigo[0]] || 'ORDEN';
+      const padreCod = codigoPadreCat(f.codigo, todos, esHoja, anchos);
+      const propio = f.agrupador && natDeAgr.has(f.agrupador) ? f.agrupador : null;
+      const heredado = !propio && padreCod ? (agrPorCodigo.get(padreCod) || null) : null;
+      const agrupador = propio || heredado;
+      agrPorCodigo.set(f.codigo, agrupador);
+      const naturaleza = agrupador ? natDeAgr.get(agrupador)! : naturalezaPorTipoCat(tipo);
+      const esComplementaria = agrupador != null && naturaleza !== naturalezaPorTipoCat(tipo);
+      const padre = padreCod ? idPorCodigo.get(padreCod) : undefined;
+      const nivel = padre ? padre.nivel + 1 : 1;
+      const r = await query<any>(
+        `INSERT INTO accounting_accounts
+           (company_id, parent_id, codigo, nombre, codigo_agrupador, tipo, naturaleza,
+            es_complementaria, nivel, permite_movimientos, requiere_tercero, moneda, activa)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false,'MXN',true)
+         ON CONFLICT (company_id, codigo) DO NOTHING
+         RETURNING id`,
+        [companyId, padre?.id || null, f.codigo, (f.nombre || f.codigo).slice(0, 250),
+         agrupador, tipo, naturaleza, esComplementaria, nivel, esHoja(f.codigo)]);
+      if (r.rows[0]) { idPorCodigo.set(f.codigo, { id: r.rows[0].id, nivel }); rep.creadas++; }
+      await query(`DELETE FROM accounting_cuentas_excluidas WHERE company_id=$1 AND codigo=$2`, [companyId, f.codigo]).catch(() => {});
     } catch (e: any) {
-      rep.errores.push(`${f.codigo}: ${(e?.message || 'no se pudo actualizar').toString().slice(0, 140)}`);
+      rep.errores.push(`${f.codigo}: ${(e?.message || 'no se pudo crear').toString().slice(0, 140)}`);
     }
   }
+
+  // Rellena el agrupador que quedó vacío heredándolo del padre (como «Asignar agrupador»).
+  if (rep.creadas > 0) { try { await asignarAgrupadorFaltante(companyId); } catch { /* no crítico */ } }
+
   return rep;
 }
 

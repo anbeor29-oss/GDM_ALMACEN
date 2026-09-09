@@ -309,8 +309,7 @@ router.post(
     const rep = await catalogo.importarCatalogoExcel(companyId(req), f.buffer);
     res.json({
       success: true, data: rep,
-      message: `Catálogo: ${rep.actualizadas} actualizada(s), ${rep.sinCambio} sin cambio` +
-        (rep.noEncontradas.length ? `, ${rep.noEncontradas.length} código(s) no encontrado(s)` : '') +
+      message: `Catálogo: ${rep.creadas} creada(s), ${rep.actualizadas} actualizada(s), ${rep.sinCambio} sin cambio` +
         (rep.errores.length ? `, ${rep.errores.length} con error` : '') + '.',
     });
   })
