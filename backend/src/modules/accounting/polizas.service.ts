@@ -103,10 +103,15 @@ async function cuentaPorCodigo(companyId: string, codigo: string) {
 /** Crea una póliza (encabezado + partidas). El cuadre lo valida la base al COMMIT. */
 export async function crearPoliza(companyId: string, p: NuevaPoliza, userId?: string) {
   return transaction(async (client) => {
+    // Folio que REINICIA en 1 cada MES y por TIPO (Ingreso/Egreso/Diario), como el
+    // Anexo 24 — para no arrastrar consecutivos gigantes (#7000) año con año.
     const f = await client.query(
       `SELECT COALESCE(MAX(folio),0)+1 AS n FROM journal_entries
-        WHERE company_id=$1 AND EXTRACT(YEAR FROM fecha)=EXTRACT(YEAR FROM $2::date)`,
-      [companyId, p.fecha]);
+        WHERE company_id=$1
+          AND EXTRACT(YEAR FROM fecha)=EXTRACT(YEAR FROM $2::date)
+          AND EXTRACT(MONTH FROM fecha)=EXTRACT(MONTH FROM $2::date)
+          AND tipo=$3`,
+      [companyId, p.fecha, p.tipo || 'DIARIO']);
     const folio = Number(f.rows[0].n);
     const e = await client.query(
       `INSERT INTO journal_entries
