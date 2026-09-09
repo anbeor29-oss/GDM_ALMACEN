@@ -95,18 +95,18 @@ export function BalanzaPage() {
           {hayDatos && (
             <>
               <button onClick={() => descargar(() => api.descargarBalanzaExcel(anio, mes))} title="Descargar Excel"
-                className="flex items-center gap-1 border text-emerald-700 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 text-sm">
+                className="btn-export">
                 <FileSpreadsheet size={16} /> Excel
               </button>
               <button onClick={() => descargar(() => api.descargarBalanzaPdf(anio, mes))} title="Descargar PDF"
-                className="flex items-center gap-1 border text-rose-600 px-2.5 py-1.5 rounded-lg hover:bg-rose-50 text-sm">
+                className="btn-export">
                 <FileDown size={16} /> PDF
               </button>
             </>
           )}
           <button onClick={() => descargar(() => api.descargarReporteAnual(anio, 'balanza'))}
             title="Excel del ejercicio: 12 columnas (una por mes)"
-            className="flex items-center gap-1 border text-teal-700 px-2.5 py-1.5 rounded-lg hover:bg-teal-50 text-sm">
+            className="btn-export">
             <FileSpreadsheet size={16} /> Anual
           </button>
           <SelectorPeriodo anio={anio} mes={mes} onAnio={setAnio} onMes={setMes} />
@@ -214,13 +214,11 @@ function AuxiliarModal({ codigo, anio, mes, onClose }: {
             {d?.cuenta && (
               <>
                 <button onClick={() => api.descargarAuxiliarExcel(d.cuenta.codigo, anio, mes).catch(() => {})}
-                  title="Descargar Excel"
-                  className="flex items-center gap-1 border text-emerald-700 px-2 py-1 rounded hover:bg-emerald-50 text-xs">
+                  title="Descargar Excel" className="btn-export text-xs px-2 py-1">
                   <FileSpreadsheet size={14} /> Excel
                 </button>
                 <button onClick={() => api.descargarAuxiliarPdf(d.cuenta.codigo, anio, mes).catch(() => {})}
-                  title="Descargar PDF"
-                  className="flex items-center gap-1 border text-rose-600 px-2 py-1 rounded hover:bg-rose-50 text-xs">
+                  title="Descargar PDF" className="btn-export text-xs px-2 py-1">
                   <FileDown size={14} /> PDF
                 </button>
               </>

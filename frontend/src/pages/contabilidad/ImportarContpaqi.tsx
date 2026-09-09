@@ -242,7 +242,7 @@ export function ImportarContpaqiPage() {
           <button onClick={importar}
             disabled={busy || !preview || (preview?.ejercicios?.length > 1 && ejerSel.size === 0) || (!efirmaOk && !soloCatalogo)}
             title={!efirmaOk && !soloCatalogo ? 'Carga la e.firma en «XML del SAT → Descargar del SAT» para importar (o marca «Sólo el catálogo»)' : undefined}
-            className="flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
+            className="btn-import-solid px-4 py-2">
             <PlayCircle size={16} /> {busy ? 'Importando…' : soloCatalogo ? 'Importar SÓLO el catálogo' : 'Importar a la empresa activa'}
           </button>
           <label className="flex items-center gap-1.5 text-sm text-gray-600"

@@ -15,6 +15,7 @@ import { Building2, Sparkles, PlayCircle, FileText, RefreshCw, Check, Pencil, Tr
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { useEjercicios } from '@/components/SelectorPeriodo';
+import { CampoFecha } from '@/components/CampoFecha';
 
 const money = (n: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
 const pct = (n: any) => `${(Math.round((Number(n) || 0) * 10000) / 100)}%`;
@@ -335,9 +336,9 @@ function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number
           ajústala antes de registrar.
         </p>
         <div className="flex items-center gap-1 text-xs">
-          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="input py-1 text-xs" title="Desde" />
+          <CampoFecha value={desde} onChange={setDesde} className="input py-1 text-xs w-32" />
           <span className="text-gray-400">a</span>
-          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="input py-1 text-xs" title="Hasta" />
+          <CampoFecha value={hasta} onChange={setHasta} className="input py-1 text-xs w-32" />
           <button onClick={todoElRespaldo} className="border px-2 py-1 rounded text-gray-600 hover:bg-gray-50"
             title="Barrer desde el primer ejercicio del respaldo hasta hoy">Todo el respaldo</button>
           {rango && <button onClick={() => { setDesde(''); setHasta(''); }} className="text-gray-400 hover:text-rose-600" title="Volver al mes">✕</button>}

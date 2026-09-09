@@ -59,8 +59,7 @@ export function ReportesEspecialesPage() {
           </select>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={descargarExcel} disabled={bajando}
-            className="flex items-center gap-1.5 border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded-lg text-sm hover:bg-emerald-50 disabled:opacity-50">
+          <button onClick={descargarExcel} disabled={bajando} className="btn-export">
             <Download size={14} /> {bajando ? 'Excel…' : 'Excel'}
           </button>
           <div className="flex gap-1 border rounded-lg p-0.5 bg-gray-50">

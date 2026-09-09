@@ -81,7 +81,7 @@ export function DiferenciaCambiariaPage() {
         <button
           onClick={exportarCsv}
           disabled={!data?.detalle?.length}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium"
+          className="btn-export-solid px-4 py-2"
         >
           <Download size={16} /> Exportar CSV
         </button>

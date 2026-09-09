@@ -69,11 +69,11 @@ export function MarcoEstado({ titulo, norma, descripcion, children, descargas }:
           {descargas && d && !d.vacio && (
             <>
               <button onClick={() => descargas.excel(anio, mes).catch(() => {})} title="Descargar Excel"
-                className="flex items-center gap-1 border bg-white text-emerald-700 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 text-sm">
+                className="btn-export">
                 <FileSpreadsheet size={16} /> Excel
               </button>
               <button onClick={() => descargas.pdf(anio, mes).catch(() => {})} title="Descargar PDF"
-                className="flex items-center gap-1 border bg-white text-rose-600 px-2.5 py-1.5 rounded-lg hover:bg-rose-50 text-sm">
+                className="btn-export">
                 <FileDown size={16} /> PDF
               </button>
               {descargas.anual && (

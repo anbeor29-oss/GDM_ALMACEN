@@ -199,7 +199,7 @@ export function NominaImportarPage() {
         <div className="flex items-center gap-3">
           <button onClick={importar}
             disabled={busy || !preview || (preview?.ejercicios?.length > 1 && ejerSel.size === 0)}
-            className="flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
+            className="btn-import-solid px-4 py-2">
             <PlayCircle size={16} /> {busy ? 'Importando…' : 'Importar a la empresa activa'}
           </button>
           {!preview && <span className="text-xs text-amber-700">Sube el paquete .zip que dejó la herramienta.</span>}

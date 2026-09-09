@@ -88,7 +88,7 @@ export function EmpleadosPage() {
                 en XML no quiere teclear cincuenta expedientes. */}
             <button
               onClick={() => setImportando(true)}
-              className="flex items-center gap-2 bg-violet-600 text-white px-4 py-2 rounded-lg hover:bg-violet-700 text-sm"
+              className="btn-import-solid px-4 py-2"
             >
               <Upload size={16} /> Importar de recibos de nómina
             </button>

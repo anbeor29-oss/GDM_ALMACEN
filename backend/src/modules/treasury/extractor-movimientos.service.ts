@@ -815,7 +815,11 @@ function extraerBanamex(
   const saldoFinal =
     importeTrasEtiqueta(texto, /Saldo\s*al\s*[Cc]orte\s*\$?\s*([\d,]+\.\d{2})/i);
 
-  const RX_FECHA = /^(\d{1,2})\s+([A-Za-zÁÉÍÓÚÑ]{3})\.?$/;
+  /* La fecha va sola en su renglón: "09 JUL" (con espacio) o "07AGO" (pegada, sin
+   * año) según la plantilla. Se valida el mes para no confundir un código con una
+   * fecha. */
+  const RX_FECHA = /^(\d{1,2})\s*([A-Za-zÁÉÍÓÚÑ]{3})\.?$/;
+  const esFechaBmx = (l: string) => { const m = RX_FECHA.exec(l); return !!m && !!MESES_ES[m[2].toUpperCase()]; };
   // La línea de cierre de cada operación lleva "HORA HH:MM" y/o "SUC dddd"; ahí,
   // al final, va el SALDO. Pero el saldo suele venir pegado a la hora o a la
   // sucursal ("HORA 14:52<retiro> <saldo>", "SUC 0511<saldo>"): se desengancha
@@ -835,7 +839,7 @@ function extraerBanamex(
   const idxFecha: number[] = [];
   for (let i = 0; i < lineas.length; i++) {
     if (!enDetalle) { if (/Detalle\s+de\s+Operaciones/i.test(lineas[i])) enDetalle = true; continue; }
-    if (RX_FECHA.test(lineas[i])) idxFecha.push(i);
+    if (esFechaBmx(lineas[i])) idxFecha.push(i);
   }
 
   for (let k = 0; k < idxFecha.length; k++) {

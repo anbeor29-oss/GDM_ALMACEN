@@ -112,8 +112,9 @@ export function Layout() {
           </button>
         </div>
 
-        {/* Navegación */}
-        <nav className="flex-1 p-3 space-y-1">
+        {/* Navegación — scroll vertical propio: al abrir submenús largos
+            (Contabilidad, Pólizas) las opciones ya no se pierden. */}
+        <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
           {/* Operación diaria — SOLO para roles de empresa (no SUPER_ADMIN).
               El SUPER_ADMIN es operador de la plataforma; los módulos operativos
               pertenecen a cada empresa usuaria y aparecen cuando impersona. */}
@@ -186,6 +187,7 @@ export function Layout() {
                     open={sidebarOpen}
                     pathPrefix="/carta-porte"
                     children={[
+                      { to: '/carta-porte/lector-xml',   icon: emoji3D('📥'), label: 'Lector de XML' },
                       { to: '/carta-porte/lugares',      icon: emoji3D('📍'), label: 'Lugares frecuentes' },
                       { to: '/carta-porte/vehiculos',    icon: emoji3D('🚛'), label: 'Vehículos' },
                       { to: '/carta-porte/aseguradoras', icon: emoji3D('🛡️'), label: 'Aseguradoras' },
@@ -361,7 +363,9 @@ export function Layout() {
                   />
                 )}
                 {show('mensajes')     && <NavItem to="/mensajes"     icon={emoji3D('✉️')} accent="sky"     label="Mensajes"         open={sidebarOpen} contador={sinLeer} />}
-                {show('reports')      && <NavItem to="/reports"      icon={emoji3D('📊')} accent="violet"  label="Reportes"         open={sidebarOpen} />}
+                {/* «Reportes» general se oculta a todos: ese mismo reporte ya vive
+                    dentro de Facturas. La ruta /reports sigue existiendo por si se
+                    necesita, pero no se muestra en el menú. */}
                 {/* Monedas sigue existiendo aparte SÓLO para quien no ve
                      facturas —Tesorería, que sí necesita tipos de cambio—. Con
                      facturas, estas dos pantallas ya viven dentro del grupo de

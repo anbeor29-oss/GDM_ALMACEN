@@ -6,6 +6,28 @@
   .input {
     @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white;
   }
+
+  /* ── Botonera homologada ──────────────────────────────────────────────────
+     Un color por FUNCIÓN, para reconocerlos de un vistazo en todo el sistema:
+       · Importar (traer datos)  → violeta
+       · Exportar (bajar datos)  → esmeralda
+       · Acción principal        → azul (crear/guardar/generar)
+       · Peligro (borrar)        → rosa
+       · Secundario (cancelar)   → gris
+     No repetir estos colores para otras funciones. */
+  .btn-base {
+    @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+           transition-colors disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-primary { @apply btn-base bg-blue-600 text-white hover:bg-blue-700 px-4 py-2; }
+  .btn-danger  { @apply btn-base bg-rose-600 text-white hover:bg-rose-700; }
+  .btn-import  { @apply btn-base border border-violet-300 text-violet-700 bg-white hover:bg-violet-50 cursor-pointer; }
+  .btn-export  { @apply btn-base border border-emerald-300 text-emerald-700 bg-white hover:bg-emerald-50 cursor-pointer; }
+  .btn-ghost   { @apply btn-base border border-gray-300 text-gray-600 bg-white hover:bg-gray-50; }
+  /* Rellenos: para el botón PRINCIPAL de una pantalla de importar/exportar. Mismo
+     color que su versión de contorno, sólo cambia la jerarquía. */
+  .btn-import-solid { @apply btn-base bg-violet-600 text-white hover:bg-violet-700 cursor-pointer; }
+  .btn-export-solid { @apply btn-base bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer; }
 }
 
 body {

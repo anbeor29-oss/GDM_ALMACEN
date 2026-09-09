@@ -129,8 +129,7 @@ export function ConciliacionBancaria() {
                     {estado.cuadra === false && <span className="text-rose-600"> · no cuadra</span>}
                   </span>
                 )}
-                <button onClick={exportar}
-                  className="ml-auto flex items-center gap-2 bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 text-sm">
+                <button onClick={exportar} className="btn-export ml-auto">
                   <FileSpreadsheet size={16} /> Exportar a Excel
                 </button>
               </div>

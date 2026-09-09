@@ -5401,3 +5401,38 @@ la conciliación renombran columnas (Cargo/Pago/Adeudo) e invierten colores; el 
 fijas añade la de intereses de tarjeta.
 
 **Stori escaneado:** el extractor lo dice claro (necesita PDF con texto o el CSV de la app).
+
+---
+
+## 2026-09-09 (UI + extractor) — Sidebar, Lector XML de Carta Porte, homologación de botones/fechas y Banamex
+
+**Sidebar con scroll (Layout).** El `<nav>` era `flex-1` sin `overflow-y-auto`, así que al
+abrir submenús largos (Contabilidad, Pólizas) las opciones de abajo se recortaban. Se agregó
+`min-h-0 overflow-y-auto`: ahora la navegación tiene su propio scroll vertical.
+
+**Lector de XML dentro de Carta Porte (sólo CP).** `SuperXMLImportPage` acepta ahora una prop
+`soloCartaPorte`: si el XML detectado NO trae complemento Carta Porte se rechaza (single y
+lote) con aviso. Ruta `/carta-porte/lector-xml` y renglón «Lector de XML» en el submenú de
+Carta Porte. El «Lector de XML» general (`/xml-super-import`) sigue igual.
+
+**«Reportes» general oculto.** Ese reporte ya vive dentro de Facturas; se quitó el renglón del
+sidebar para todos (la ruta `/reports` sigue existiendo).
+
+**Homologación (index.css).** Clases de botón por FUNCIÓN, un color cada una y sin repetir:
+importar → **violeta** (`btn-import` contorno · `btn-import-solid` relleno), exportar →
+**esmeralda** (`btn-export`/`btn-export-solid`), acción principal → **azul** (`btn-primary`),
+peligro → **rosa** (`btn-danger`), secundario → **gris** (`btn-ghost`); base común `btn-base`.
+De paso queda DEFINIDO `btn-primary` (se usaba en 9 lugares sin existir). Aplicado a los
+botones de importar/exportar de Contabilidad (catálogo, pólizas, estados, especiales,
+importar respaldo), Tesorería (conciliación), Nómina (importar, empleados, dashboard),
+Productos y Diferencia cambiaria. **Fechas:** el único `type="date"` nativo que quedaba
+(ActivoFijo, filtro desde/hasta) pasó a `CampoFecha` (DD/MM/AAAA); el resto del sistema ya lo
+usaba. Pendiente de barrer con las clases: botones internos de los asistentes de XML y el
+resto de tipos de botón menos frecuentes.
+
+**Banamex — otra plantilla (extractor).** El estado de RAQUEL LOPEZ DE LA RIVA (ago-2026,
+Banamex MiCuenta) traía la fecha del renglón PEGADA y sin año («07AGO») en vez de «09 JUL»;
+`RX_FECHA` exigía el espacio, así que no encontraba bloques (0 movimientos). Se relajó a
+`\s*` y se **valida el mes** contra `MESES_ES` para no confundir un código con una fecha.
+Ahora cuadra: 38 movimientos (11 dep 146,597.55 + 27 ret 154,332.16), saldo 9,381.30 →
+1,646.69. Compatible con el formato con espacio.

@@ -29,7 +29,7 @@ const TYPE_LABEL: Record<string, { label: string; color: string; icon: string }>
   DESCONOCIDO:    { label: 'Tipo no reconocido',     color: 'gray',    icon: '❓' },
 };
 
-export function SuperXMLImportPage() {
+export function SuperXMLImportPage({ soloCartaPorte = false }: { soloCartaPorte?: boolean } = {}) {
   const navigate = useNavigate();
   const [xml, setXml] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
@@ -81,6 +81,14 @@ export function SuperXMLImportPage() {
   const detectMut = useMutation({
     mutationFn: (xmlContent: string) => api.xmlSuperDetect(xmlContent),
     onSuccess: (data) => {
+      /* Modo Carta Porte: aquí sólo entran CFDI con complemento Carta Porte;
+         cualquier otro tipo se rechaza sin abrir el preview. */
+      if (soloCartaPorte && !data.detection?.hasCartaPorte) {
+        setDetection(null); setDups(null);
+        const t = TYPE_LABEL[data.detection?.type]?.label || 'otro tipo';
+        setErr(`Este XML no trae complemento Carta Porte (es ${t}). Aquí sólo se aceptan CFDI de Carta Porte; los demás se rechazan.`);
+        return;
+      }
       setDetection(data.detection);
       setDups(data.duplicates);
       /* Preselecciones sensatas por regla 2:
@@ -176,6 +184,12 @@ export function SuperXMLImportPage() {
         const xmlText = await q[i].file.text();
         const res = await api.xmlSuperDetect(xmlText);
         const d = res.detection;
+        /* Modo Carta Porte: los XML sin complemento CP se rechazan en el lote. */
+        if (soloCartaPorte && !d.hasCartaPorte) {
+          q[i] = { ...q[i], status: 'error', error: 'No trae Carta Porte — rechazado' };
+          setBatchQueue([...q]);
+          continue;
+        }
         /* parties — SALVO en recibos de nómina.
          *
          * Aquí es donde de verdad entraron los empleados al catálogo de
@@ -396,8 +410,12 @@ export function SuperXMLImportPage() {
         <button onClick={() => navigate(-1)} className="p-2 hover:bg-slate-100 rounded"><ArrowLeft size={20} /></button>
         <div className="p-2 bg-indigo-100 rounded-lg"><FileUp size={26} className="text-indigo-700" /></div>
         <div>
-          <h1 className="text-2xl font-semibold text-slate-800">Super Lector XML</h1>
-          <p className="text-sm text-slate-500">Sube CUALQUIER XML del SAT — CFDI, Carta Porte 3.1, Nómina 1.2, Pagos, NC. Detecta y guarda automáticamente en tus catálogos con deduplicación.</p>
+          <h1 className="text-2xl font-semibold text-slate-800">{soloCartaPorte ? 'Lector de XML · Carta Porte' : 'Super Lector XML'}</h1>
+          <p className="text-sm text-slate-500">
+            {soloCartaPorte
+              ? 'Sube CFDI con complemento Carta Porte 3.1: siembra lugares, vehículos, aseguradoras, operadores y mercancías. Cualquier XML de otro tipo se rechaza.'
+              : 'Sube CUALQUIER XML del SAT — CFDI, Carta Porte 3.1, Nómina 1.2, Pagos, NC. Detecta y guarda automáticamente en tus catálogos con deduplicación.'}
+          </p>
         </div>
       </div>
 

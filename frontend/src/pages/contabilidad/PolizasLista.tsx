@@ -186,7 +186,7 @@ export function PolizasListaPage() {
         <span className="mx-1 h-4 w-px bg-gray-300" />
         <label
           title="Importa las pólizas históricas desde el TXT de CONTPAQi. Casa cada renglón por código de cuenta, así que importa el catálogo primero. No duplica: se salta las que ya tengan el mismo UUID."
-          className={`flex items-center gap-1 border border-violet-300 bg-white text-violet-700 px-2.5 py-1 rounded-lg text-xs hover:bg-violet-50 cursor-pointer ${generando ? 'opacity-40 pointer-events-none' : ''}`}>
+          className={`btn-import text-xs px-2.5 py-1 ${generando ? 'opacity-40 pointer-events-none' : ''}`}>
           <BookOpen size={13} /> {generando === 'txt' ? 'Importando…' : 'Importar CONTPAQi (.txt)'}
           <input type="file" accept=".txt" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />

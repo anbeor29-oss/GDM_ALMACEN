@@ -238,26 +238,26 @@ export function CatalogoCuentasPage() {
           {/* Exportar Excel y Plantilla: disponibles para todos (son descargas). */}
           <button onClick={descargarPlantilla} disabled={!!herr}
             title="Descarga una plantilla en blanco para armar el catálogo desde cero e importarlo"
-            className="border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1.5">
+            className="btn-ghost">
             <Download size={14} /> {herr === 'plantilla' ? 'Bajando…' : 'Plantilla'}
           </button>
           <button onClick={exportarExcel} disabled={!!herr}
             title="Descarga todo el catálogo a Excel para revisar/corregir los agrupadores"
-            className="border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded-lg text-sm hover:bg-emerald-50 disabled:opacity-50 flex items-center gap-1.5">
+            className="btn-export">
             <Download size={14} /> {herr === 'excel' ? 'Exportando…' : 'Exportar Excel'}
           </button>
           {puedeEditar && (
             <>
               <label
                 title="Reimporta el catálogo editado en Excel: casa por CÓDIGO y actualiza nombre y agrupador SAT (no crea ni borra cuentas)"
-                className={`border border-sky-300 text-sky-700 px-3 py-1.5 rounded-lg text-sm hover:bg-sky-50 flex items-center gap-1.5 cursor-pointer ${herr ? 'opacity-50 pointer-events-none' : ''}`}>
+                className={`btn-import ${herr ? 'opacity-50 pointer-events-none' : ''}`}>
                 <Upload size={14} /> {herr === 'import' ? 'Importando…' : 'Importar Excel'}
                 <input type="file" accept=".xlsx,.xls" className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) importarExcel(f); e.currentTarget.value = ''; }} />
               </label>
               <label
                 title="Importa el catálogo desde el TXT de CONTPAQi: crea las cuentas con su jerarquía, naturaleza y agrupador del SAT"
-                className={`border border-violet-300 text-violet-700 px-3 py-1.5 rounded-lg text-sm hover:bg-violet-50 flex items-center gap-1.5 cursor-pointer ${herr ? 'opacity-50 pointer-events-none' : ''}`}>
+                className={`btn-import ${herr ? 'opacity-50 pointer-events-none' : ''}`}>
                 <Upload size={14} /> {herr === 'txt' ? 'Importando…' : 'Importar CONTPAQi (.txt)'}
                 <input type="file" accept=".txt" className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />

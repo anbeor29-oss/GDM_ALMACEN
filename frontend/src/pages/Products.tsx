@@ -260,7 +260,7 @@ function ImportXMLButton({ onDone }: { onDone: () => void }) {
         type="button"
         onClick={() => fileRef.current?.click()}
         disabled={busy}
-        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white px-6 py-3 rounded-lg transition-colors shadow"
+        className="btn-import-solid px-6 py-3 shadow"
         title="Importar productos desde XMLs de CFDIs"
       >
         {busy ? <Loader2 size={20} className="animate-spin" /> : <FileUp size={20} />}

@@ -164,10 +164,10 @@ export function NominaDashboardPage() {
             ya se haya timbrado antes, desde el Lector de XML.
           </p>
           <div className="flex justify-center gap-3 mt-4">
-            <Link to="/nomina/empleados" className="bg-primary text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600">
+            <Link to="/nomina/empleados" className="btn-primary">
               Dar de alta
             </Link>
-            <Link to="/xml-super-import" className="border px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+            <Link to="/xml-super-import" className="btn-import">
               Importar de un XML
             </Link>
           </div>

@@ -273,6 +273,7 @@ export function App() {
             <Route path="carta-porte/operadores"          element={<ModuleRoute module="carta_porte"><CartaPorteOperadoresPage /></ModuleRoute>} />
             <Route path="carta-porte/importar-xml"        element={<ModuleRoute module="carta_porte"><CartaPorteImportarXmlPage /></ModuleRoute>} />
             <Route path="carta-porte/mercancias"          element={<ModuleRoute module="carta_porte"><CartaPorteMercanciasPage /></ModuleRoute>} />
+            <Route path="carta-porte/lector-xml"          element={<ModuleRoute module="carta_porte"><SuperXMLImportPage soloCartaPorte /></ModuleRoute>} />
             <Route path="xml-super-import"                element={<ModuleRoute module="xml_reader"><SuperXMLImportPage /></ModuleRoute>} />
             <Route path="tipos-de-cambio"                 element={<ModuleRoute module="exchange_rates"><TiposDeCambioPage /></ModuleRoute>} />
             <Route path="diferencia-cambiaria"            element={<ModuleRoute module="exchange_rates"><DiferenciaCambiariaPage /></ModuleRoute>} />
