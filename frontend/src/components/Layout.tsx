@@ -15,7 +15,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { canAccess, type ModuleKey } from '@/utils/permissions';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
@@ -322,7 +322,7 @@ export function Layout() {
                           { to: '/contabilidad/flujo',      icon: emoji3D('💧'), label: 'Flujos de efectivo' },
                           { to: '/contabilidad/capital',    icon: emoji3D('🧾'), label: 'Cambios en el capital' },
                           { to: '/contabilidad/razones',    icon: emoji3D('🔍'), label: 'Razones y análisis' },
-                          { to: '/contabilidad/reportes-especiales', icon: emoji3D('🔎'), label: 'Especiales' },
+                          { to: '/contabilidad/reportes-especiales', icon: emoji3D('🔬'), label: 'Especiales' },
                         ],
                       },
                     ]}
@@ -539,6 +539,10 @@ function NavGroup({
   const location = useLocation();
   const isUnderGroup = location.pathname === to || location.pathname.startsWith(pathPrefix + '/');
   const [expanded, setExpanded] = useState<boolean>(isUnderGroup);
+  /* useState sólo lee el valor inicial; al NAVEGAR a una ruta de este grupo (sin
+   * remontar el sidebar) hay que reabrirlo, o el submenú se queda cerrado y no se
+   * llega a sus reportes. */
+  useEffect(() => { if (isUnderGroup) setExpanded(true); }, [isUnderGroup]);
   const parentActive = location.pathname === to;
 
   return (
@@ -612,6 +616,8 @@ function NavSubGroup({ label, icon, items, c }: {
     it => it.to && (location.pathname === it.to || location.pathname.startsWith(it.to + '/'))
   );
   const [abierto, setAbierto] = useState<boolean>(dentro);
+  // Al entrar a una ruta de este subgrupo (p. ej. Reportes → Especiales) se abre solo.
+  useEffect(() => { if (dentro) setAbierto(true); }, [dentro]);
 
   return (
     <div>

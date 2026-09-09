@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileSearch, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { FileSearch, AlertTriangle, CheckCircle2, Download } from 'lucide-react';
 import { api } from '@/services/api';
 import { aniosContables } from '@/utils/anios';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
@@ -22,6 +22,16 @@ export function ReportesEspecialesPage() {
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mes, setMes] = useState(hoy.getMonth() + 1);
   const [tab, setTab] = useState<'balanza' | 'situacion'>('situacion');
+  const [bajando, setBajando] = useState(false);
+
+  const descargarExcel = async () => {
+    setBajando(true);
+    try {
+      if (tab === 'balanza') await api.descargarBalanzaEspecial(anio, mes);
+      else await api.descargarSituacionEspecial(anio, mes);
+    } catch { /* la descarga muestra su propio error si falla */ }
+    finally { setBajando(false); }
+  };
 
   return (
     <div className="p-6 space-y-4 max-w-6xl">
@@ -48,13 +58,19 @@ export function ReportesEspecialesPage() {
             {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
           </select>
         </div>
-        <div className="ml-auto flex gap-1 border rounded-lg p-0.5 bg-gray-50">
-          {([['situacion', 'Situación financiera'], ['balanza', 'Balanza']] as const).map(([k, label]) => (
-            <button key={k} onClick={() => setTab(k)}
-              className={`px-3 py-1.5 rounded-md text-sm ${tab === k ? 'bg-white shadow font-medium text-violet-700' : 'text-gray-600'}`}>
-              {label}
-            </button>
-          ))}
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={descargarExcel} disabled={bajando}
+            className="flex items-center gap-1.5 border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded-lg text-sm hover:bg-emerald-50 disabled:opacity-50">
+            <Download size={14} /> {bajando ? 'Excel…' : 'Excel'}
+          </button>
+          <div className="flex gap-1 border rounded-lg p-0.5 bg-gray-50">
+            {([['situacion', 'Situación financiera'], ['balanza', 'Balanza']] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setTab(k)}
+                className={`px-3 py-1.5 rounded-md text-sm ${tab === k ? 'bg-white shadow font-medium text-violet-700' : 'text-gray-600'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

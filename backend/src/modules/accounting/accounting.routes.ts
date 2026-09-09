@@ -728,6 +728,28 @@ router.get(
   })
 );
 
+/** GET /accounting/reportes-especiales/{balanza,situacion}/:anio/:mes/excel */
+router.get(
+  '/reportes-especiales/balanza/:anio/:mes/excel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await especiales.balanzaEspecialExcel(
+      companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+router.get(
+  '/reportes-especiales/situacion/:anio/:mes/excel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await especiales.situacionEspecialExcel(
+      companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
 /** GET /accounting/estados/:anio/:mes/balanza — la balanza del periodo */
 router.get(
   '/estados/:anio/:mes/balanza',

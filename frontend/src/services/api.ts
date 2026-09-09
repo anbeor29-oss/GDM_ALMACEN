@@ -1292,6 +1292,14 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/reportes-especiales/situacion/${anio}/${mes}`);
     return r.data;
   }
+  async descargarBalanzaEspecial(anio: number, mes: number) {
+    const r = await this.client.get(`/accounting/reportes-especiales/balanza/${anio}/${mes}/excel`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Balanza_especial_${anio}-${String(mes).padStart(2, '0')}.xlsx`);
+  }
+  async descargarSituacionEspecial(anio: number, mes: number) {
+    const r = await this.client.get(`/accounting/reportes-especiales/situacion/${anio}/${mes}/excel`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Situacion_especial_${anio}-${String(mes).padStart(2, '0')}.xlsx`);
+  }
   /** Importa un paquete de respaldo (los JSON del extractor) a la empresa activa. */
   async importarRespaldo(fd: FormData) {
     const r = await this.client.post<APIResponse<any>>('/accounting/contpaqi/importar', fd,
