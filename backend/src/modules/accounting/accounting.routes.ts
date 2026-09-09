@@ -270,6 +270,18 @@ router.get(
    CATÁLOGO
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/** GET /accounting/cuentas/catalogo/plantilla — plantilla en blanco para armar un
+ *  catálogo desde cero en Excel e importarlo. */
+router.get(
+  '/cuentas/catalogo/plantilla',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const { buffer, nombre } = await reportesExport.catalogoPlantillaExcel();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
 /** GET /accounting/cuentas/catalogo/excel — el catálogo completo a Excel */
 router.get(
   '/cuentas/catalogo/excel',

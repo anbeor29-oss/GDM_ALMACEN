@@ -174,6 +174,13 @@ export function CatalogoCuentasPage() {
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo exportar el catálogo.'); }
     finally { setHerr(''); }
   };
+  /* Plantilla en blanco (para armar el catálogo desde cero e importarlo). */
+  const descargarPlantilla = async () => {
+    setHerr('plantilla'); setMsg('');
+    try { await api.descargarPlantillaCatalogo(); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo descargar la plantilla.'); }
+    finally { setHerr(''); }
+  };
   /* Reimporta el Excel editado: casa por código y actualiza nombre + agrupador. */
   const importarExcel = async (file: File) => {
     setHerr('import'); setMsg('');
@@ -216,7 +223,12 @@ export function CatalogoCuentasPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Exportar Excel: disponible para todos (es una descarga de lectura). */}
+          {/* Exportar Excel y Plantilla: disponibles para todos (son descargas). */}
+          <button onClick={descargarPlantilla} disabled={!!herr}
+            title="Descarga una plantilla en blanco para armar el catálogo desde cero e importarlo"
+            className="border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1.5">
+            <Download size={14} /> {herr === 'plantilla' ? 'Bajando…' : 'Plantilla'}
+          </button>
           <button onClick={exportarExcel} disabled={!!herr}
             title="Descarga todo el catálogo a Excel para revisar/corregir los agrupadores"
             className="border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded-lg text-sm hover:bg-emerald-50 disabled:opacity-50 flex items-center gap-1.5">
@@ -1294,9 +1306,20 @@ function SinCatalogo({ onListo }: any) {
         </p>
       )}
 
-      <button onClick={arrancar} disabled={busy} className="btn-primary disabled:opacity-50">
-        {busy ? 'Preparando…' : 'Arrancar contabilidad'}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={arrancar} disabled={busy} className="btn-primary disabled:opacity-50">
+          {busy ? 'Preparando…' : 'Arrancar contabilidad'}
+        </button>
+        <button onClick={() => api.descargarPlantillaCatalogo().catch(() => {})}
+          title="Descarga una plantilla en blanco para armar tu catálogo desde cero en Excel"
+          className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-1.5">
+          <Download size={15} /> Descargar plantilla
+        </button>
+      </div>
+      <p className="text-xs text-gray-500 mt-2">
+        ¿Vienes de otro sistema? Importa tu respaldo en <a href="/contabilidad/importar-contpaqi" className="text-primary hover:underline">Importar respaldo</a>,
+        o arma el catálogo con la plantilla y luego asígnale el agrupador SAT.
+      </p>
     </div>
   );
 }

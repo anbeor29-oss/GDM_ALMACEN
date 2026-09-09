@@ -1104,6 +1104,11 @@ class APIClient {
     const r = await this.client.get('/accounting/cuentas/catalogo/excel', { responseType: 'blob' });
     await this.downloadFile(r.data as Blob, 'Catalogo_de_cuentas.xlsx');
   }
+  /** Descarga la plantilla en blanco del catálogo (para armarlo desde cero e importarlo). */
+  async descargarPlantillaCatalogo() {
+    const r = await this.client.get('/accounting/cuentas/catalogo/plantilla', { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, 'Plantilla_catalogo_cuentas.xlsx');
+  }
   /** Reimporta el catálogo editado en Excel (casa por código; actualiza nombre y agrupador). */
   async importarCatalogoExcel(fd: FormData) {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/catalogo/importar', fd,

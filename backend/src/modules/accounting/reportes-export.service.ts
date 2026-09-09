@@ -354,6 +354,31 @@ export async function catalogoExcel(companyId: string): Promise<{ buffer: Buffer
   return { buffer: await aBuffer(wb), nombre: `Catalogo_${emp.rfc || 'cuentas'}.xlsx` };
 }
 
+/**
+ * PLANTILLA en blanco del catálogo — para armar un catálogo desde cero en Excel y
+ * luego importarlo. Trae los encabezados, unas filas de ejemplo y la nota de cómo
+ * llenarlo. El CÓDIGO es la llave; el agrupador puede ir vacío y asignarse después.
+ */
+export async function catalogoPlantillaExcel(): Promise<{ buffer: Buffer; nombre: string }> {
+  const cols = ['CÓDIGO', 'NOMBRE', 'AGRUPADOR SAT', 'NATURALEZA (D/A)', 'TIPO'];
+  const wb = new ExcelJS.Workbook(); wb.creator = 'GDM NEXO';
+  const ws = wb.addWorksheet('Catálogo (plantilla)', { views: [{ state: 'frozen', ySplit: 6 }] });
+  titulo(ws, 'Plantilla de catálogo de cuentas', cols.length);
+  dato(ws, 3, 1, 'Llena una fila por cuenta. El CÓDIGO es la llave (dígitos, sin guiones).', true);
+  dato(ws, 4, 1, 'El AGRUPADOR SAT puede ir vacío: se asigna después con «Proponer agrupador (SAT)».');
+  encabezado(ws, 6, cols.map((t) => ({ texto: t, color: C.identidad })));
+  const ejemplos = [
+    ['10100000', 'CAJA', '101.01', 'D', 'ACTIVO'],
+    ['10200001', 'BANCOS NACIONALES', '102.01', 'D', 'ACTIVO'],
+    ['20100001', 'PROVEEDORES NACIONALES', '201.01', 'A', 'PASIVO'],
+    ['40100000', 'VENTAS', '401.01', 'A', 'INGRESO'],
+  ];
+  let fila = 7;
+  for (const e of ejemplos) { e.forEach((v, i) => celda(ws, fila, i + 1, v)); fila++; }
+  anchos(ws, [16, 44, 16, 16, 12]);
+  return { buffer: await aBuffer(wb), nombre: 'Plantilla_catalogo_cuentas.xlsx' };
+}
+
 export async function auxiliarPdf(companyId: string, codigo: string, anio: number, mes: number): Promise<{ buffer: Buffer; nombre: string }> {
   const [emp, aux] = await Promise.all([empresaDe(companyId), auxiliarDeCuenta(companyId, codigo, anio, mes)]);
   if (!aux) throw new NotFoundError(`No existe la cuenta ${codigo}.`);
