@@ -529,6 +529,37 @@ export async function alimentarDesdePolizas(
   });
 }
 
+/**
+ * Reconstruye la balanza de los 12 meses del año desde las pólizas, EN ORDEN
+ * (enero→diciembre), para no dar «Actualizar desde pólizas» mes por mes. El orden
+ * importa: cada mes arrastra del anterior.
+ *
+ * SEGURIDAD: los meses que NO tienen pólizas se DEJAN INTACTOS —típicamente la
+ * apertura cargada de un «Respaldo de balanza», que no tiene pólizas y cuyos saldos
+ * NO deben borrarse—. Sólo se re-derivan los meses con pólizas.
+ */
+export async function alimentarAnioDesdePolizas(companyId: string, anio: number, userId?: string) {
+  const mm = await query<any>(
+    `SELECT DISTINCT EXTRACT(MONTH FROM e.fecha)::int AS mes
+       FROM journal_entries e JOIN journal_lines l ON l.entry_id = e.id
+      WHERE e.company_id = $1 AND EXTRACT(YEAR FROM e.fecha) = $2`, [companyId, anio]);
+  const conPolizas = new Set<number>(mm.rows.map((r: any) => Number(r.mes)));
+
+  const meses: Array<{ mes: number; cuentas?: number; cuadra?: boolean; saltado?: boolean; error?: string }> = [];
+  for (let mes = 1; mes <= 12; mes++) {
+    if (!conPolizas.has(mes)) { meses.push({ mes, saltado: true }); continue; }
+    try {
+      const r = await alimentarDesdePolizas(companyId, anio, mes, { userId });
+      meses.push({ mes, cuentas: r.cuentas, cuadra: r.cuadra });
+    } catch (e: any) {
+      meses.push({ mes, error: (e?.message || 'no se pudo').toString().slice(0, 120) });
+    }
+  }
+  const reconstruidos = meses.filter((x) => x.cuentas !== undefined).length;
+  logger.info(`[contabilidad] ${anio}: balanza anual reconstruida (${reconstruidos} mes(es) con pólizas)`);
+  return { anio, meses, reconstruidos };
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    4. CIERRE
    ═══════════════════════════════════════════════════════════════════════════ */

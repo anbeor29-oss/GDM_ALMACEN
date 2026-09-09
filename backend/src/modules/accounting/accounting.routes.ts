@@ -599,6 +599,21 @@ router.post(
   })
 );
 
+/** POST /accounting/periodos/:anio/desde-polizas-anual — reconstruye los 12 meses del
+ *  año desde las pólizas, en orden (salta los meses sin pólizas, p.ej. la apertura). */
+router.post(
+  '/periodos/:anio/desde-polizas-anual',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await periodos.alimentarAnioDesdePolizas(
+      companyId(req), Number(req.params.anio), req.user?.userId);
+    res.json({
+      success: true, data: r,
+      message: `${req.params.anio}: ${r.reconstruidos} mes(es) reconstruido(s) desde pólizas (en orden).`,
+    });
+  })
+);
+
 /** POST /accounting/periodos/:anio/:mes/cerrar */
 router.post(
   '/periodos/:anio/:mes/cerrar',

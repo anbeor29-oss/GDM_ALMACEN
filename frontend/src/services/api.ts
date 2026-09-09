@@ -1374,6 +1374,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/${mes}/desde-polizas`);
     return r.data;
   }
+  /** Reconstruye la balanza de los 12 meses del año desde las pólizas, en orden. */
+  async actualizarBalanzaAnualDesdePolizas(anio: number) {
+    const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/desde-polizas-anual`);
+    return r.data;
+  }
 
   /* ── Programación de la descarga del SAT ── */
   async getProgramacionSat() {

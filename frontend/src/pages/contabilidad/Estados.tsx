@@ -54,6 +54,17 @@ export function BalanzaPage() {
     finally { setBusy(false); }
   };
 
+  const reconstruirAnio = async () => {
+    if (!window.confirm(`¿Reconstruir la balanza de los 12 meses de ${anio} desde las pólizas?\n\nSe re-deriva cada mes EN ORDEN (cada mes arrastra del anterior). Los meses SIN pólizas —como la apertura cargada de un respaldo de balanza— se dejan intactos.`)) return;
+    setBusy(true); setMsg('');
+    try {
+      const r: any = await api.actualizarBalanzaAnualDesdePolizas(anio);
+      setMsg(r.message || 'Año reconstruido.');
+      qc.invalidateQueries({ queryKey: ['balanza-periodo', anio, mes] });
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo reconstruir el año.'); }
+    finally { setBusy(false); }
+  };
+
   const hayDatos = d && !d.vacio && (d.filas?.length || 0) > 0;
   const descargar = async (fn: () => Promise<void>) => {
     setMsg('');
@@ -75,6 +86,11 @@ export function BalanzaPage() {
             title="Recalcula la balanza del mes con lo contabilizado en las pólizas"
             className="flex items-center gap-1.5 bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
             {busy ? 'Actualizando…' : 'Actualizar desde pólizas'}
+          </button>
+          <button onClick={reconstruirAnio} disabled={busy}
+            title="Reconstruye los 12 meses del año desde las pólizas, en orden (salta los meses sin pólizas, como la apertura)"
+            className="flex items-center gap-1.5 border border-primary text-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 disabled:opacity-50 text-sm">
+            {busy ? 'Reconstruyendo…' : 'Reconstruir año'}
           </button>
           {hayDatos && (
             <>
