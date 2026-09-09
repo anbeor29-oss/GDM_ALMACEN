@@ -150,14 +150,26 @@ export async function candidatasDuplicadas(companyId: string, q?: string) {
  * pantalla de Cambio de cuenta: ver qué hay en MIG-TEMPORAL (y desde qué fecha)
  * antes de reasignar, o qué trae la cuenta de origen antes de unificar.
  */
-export async function partidasDeCuenta(companyId: string, accountId: string, limite = 300) {
+export async function partidasDeCuenta(
+  companyId: string, accountId: string, limite = 300, desde?: string, hasta?: string,
+) {
+  // El MISMO rango de fechas que se usa para reasignar filtra también la vista, para
+  // que se vea exactamente lo que se va a mover. Una fecha malformada se ignora.
+  const cond = ['e.company_id = $1', 'l.account_id = $2'];
+  const par: any[] = [companyId, accountId];
+  const okFecha = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) ? d : undefined;
+  const dd = okFecha(desde), hh = okFecha(hasta);
+  if (dd) { par.push(dd); cond.push(`e.fecha >= $${par.length}::date`); }
+  if (hh) { par.push(hh); cond.push(`e.fecha <= $${par.length}::date`); }
+  const where = cond.join(' AND ');
+
   const res = await query<any>(
     `SELECT COUNT(*)::int AS total,
             MIN(e.fecha)::date AS desde, MAX(e.fecha)::date AS hasta,
             COALESCE(SUM(l.cargo), 0) AS cargo, COALESCE(SUM(l.abono), 0) AS abono
        FROM journal_lines l
        JOIN journal_entries e ON e.id = l.entry_id
-      WHERE e.company_id = $1 AND l.account_id = $2`, [companyId, accountId]);
+      WHERE ${where}`, par);
   const resumen = res.rows[0] || { total: 0 };
 
   const filas = await query<any>(
@@ -166,9 +178,9 @@ export async function partidasDeCuenta(companyId: string, accountId: string, lim
             l.cargo, l.abono, l.party_rfc, l.uuid_cfdi
        FROM journal_lines l
        JOIN journal_entries e ON e.id = l.entry_id
-      WHERE e.company_id = $1 AND l.account_id = $2
+      WHERE ${where}
       ORDER BY e.fecha ASC, e.folio ASC
-      LIMIT $3`, [companyId, accountId, limite]);
+      LIMIT $${par.length + 1}`, [...par, limite]);
 
   return {
     total: resumen.total,

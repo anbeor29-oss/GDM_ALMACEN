@@ -23,7 +23,7 @@ const money = (n: any) => Number(n ?? 0).toLocaleString('es-MX', { style: 'curre
 
 /** Las partidas (renglones de póliza) que tocan una cuenta, con su rango de fechas.
  *  Para ver qué hay en MIG-TEMPORAL —y desde cuándo— o en la cuenta origen. */
-function PartidasDe({ cuentaId, recarga }: { cuentaId?: string; recarga?: number }) {
+function PartidasDe({ cuentaId, recarga, desde, hasta }: { cuentaId?: string; recarga?: number; desde?: string; hasta?: string }) {
   const navigate = useNavigate();
   const [data, setData] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
@@ -40,12 +40,12 @@ function PartidasDe({ cuentaId, recarga }: { cuentaId?: string; recarga?: number
   useEffect(() => {
     if (!cuentaId) { setData(null); return; }
     let alive = true; setCargando(true);
-    api.getPartidasCuenta(cuentaId)
+    api.getPartidasCuenta(cuentaId, desde || undefined, hasta || undefined)
       .then((r: any) => { if (alive) setData(r?.data || null); })
       .catch(() => { if (alive) setData(null); })
       .finally(() => { if (alive) setCargando(false); });
     return () => { alive = false; };
-  }, [cuentaId, recarga]);
+  }, [cuentaId, recarga, desde, hasta]);
   if (!cuentaId) return null;
   if (cargando) return <p className="text-sm text-gray-400">Cargando pólizas…</p>;
   if (!data) return null;
@@ -294,7 +294,7 @@ export function CambioCuentaPage() {
           <p className="text-sm font-medium text-gray-700">
             Pólizas en «{origen.nombre}» — para saber qué reasignar y desde qué fecha:
           </p>
-          <PartidasDe cuentaId={origen.id} recarga={recarga} />
+          <PartidasDe cuentaId={origen.id} recarga={recarga} desde={desde} hasta={hasta} />
         </div>
       )}
 

@@ -1066,8 +1066,8 @@ class APIClient {
     return r.data;
   }
   /** Las partidas (renglones de póliza) que tocan una cuenta — para Cambio de cuenta. */
-  async getPartidasCuenta(id: string) {
-    const r = await this.client.get<APIResponse<any>>(`/accounting/cuentas/${id}/partidas`);
+  async getPartidasCuenta(id: string, desde?: string, hasta?: string) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/cuentas/${id}/partidas`, { params: { desde, hasta } });
     return r.data;
   }
   /** Base para sugerir cuenta por clave SAT (claves asignadas + dominante). */

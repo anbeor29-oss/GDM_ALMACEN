@@ -246,7 +246,9 @@ router.get(
 router.get(
   '/cuentas/:id/partidas',
   asyncHandler(async (req: Request, res: Response) => {
-    const data = await cambioCuenta.partidasDeCuenta(companyId(req), req.params.id);
+    const desde = req.query.desde ? String(req.query.desde) : undefined;
+    const hasta = req.query.hasta ? String(req.query.hasta) : undefined;
+    const data = await cambioCuenta.partidasDeCuenta(companyId(req), req.params.id, 300, desde, hasta);
     res.json({ success: true, data });
   })
 );
