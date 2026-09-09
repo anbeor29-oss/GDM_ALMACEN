@@ -26,7 +26,7 @@ Orden cronológico inverso (más reciente arriba).
 - **Síntoma**: en el estado de situación financiera y en la balanza de un mes derivado de pólizas (p.ej. Nov-2017) NO aparecían las cuentas de capital (capital social 301, resultados de ejercicios anteriores 304, etc.) que sí salían en el mes cargado del respaldo de balanza (Oct-2017). El balance quedaba descuadrado (C = A − P daba −4,739.54 pero el capital listado era −5,500.21; dif. 760.67).
 - **Causa**: `alimentarDesdePolizas` (periodos.service) sólo insertaba en `accounting_period_balances` las cuentas **con movimiento del mes** (`HAVING SUM(cargo)<>0 OR SUM(abono)<>0`). Las que traen saldo de apertura/arrastre pero no se mueven cada mes (capital, acumulados) quedaban en el mapa de saldos iniciales pero nunca se insertaban → desaparecían de la balanza y del estado.
 - **Fix**: tras insertar las cuentas con movimiento, se **arrastran** las que traen saldo del mes anterior (`ini`) y no tuvieron movimiento, con `saldo_final = saldo_inicial`. Hay que re-derivar los meses afectados en ORDEN (cada mes arrastra del anterior).
-- **Commit**: `pendiente` (2026-09-08)
+- **Commit**: `d8bf31f` (2026-09-08)
 
 
 

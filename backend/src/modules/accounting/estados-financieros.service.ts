@@ -745,16 +745,31 @@ export function flujoEfectivo(
   ];
   const flujoFinanciamiento = financiamiento.reduce((a, x) => a + x.importe, 0);
 
-  const incrementoNeto = flujoOperacion + flujoInversion + flujoFinanciamiento;
   const efectivoInicial = anterior.suma('101') + anterior.suma('102')
     + anterior.suma('103') + anterior.suma('104');
   const efectivoFinal = actual.suma('101') + actual.suma('102')
     + actual.suma('103') + actual.suma('104');
-  const diferencia = incrementoNeto - (efectivoFinal - efectivoInicial);
+  const cambioEfectivo = efectivoFinal - efectivoInicial;
+
+  /* Cuadre por construcción. El método indirecto debe reconstruir EXACTAMENTE el
+   * movimiento del efectivo; lo que las líneas anteriores no capturan —cuentas de
+   * capital de trabajo fuera de los rangos clásicos: 110–114 otras CxC, 203/206
+   * anticipos de clientes, 217/218 otros impuestos y pasivos, etc.— entra aquí como
+   * una sola «variación de otras cuentas de operación», en vez de dejar el estado sin
+   * conciliar por haber enumerado de menos. Con el balance cuadrado, este resto es
+   * clasificación faltante, no un error de captura. */
+  const otrasOperacion = redondear(cambioEfectivo - (flujoOperacion + flujoInversion + flujoFinanciamiento));
+  if (Math.abs(otrasOperacion) >= 0.005) {
+    operacion.push(R('OTRAS_OPERACION', 'Variación de otras cuentas de operación',
+      'otras de capital de trabajo', otrasOperacion));
+  }
+  const flujoOperacionFinal = flujoOperacion + otrasOperacion;
+  const incrementoNeto = flujoOperacionFinal + flujoInversion + flujoFinanciamiento;
+  const diferencia = incrementoNeto - cambioEfectivo;
 
   return {
     norma: 'B-2', metodo: 'INDIRECTO', disponible: true,
-    operacion, flujoOperacion: redondear(flujoOperacion),
+    operacion, flujoOperacion: redondear(flujoOperacionFinal),
     inversion, flujoInversion: redondear(flujoInversion),
     financiamiento, flujoFinanciamiento: redondear(flujoFinanciamiento),
     incrementoNeto: redondear(incrementoNeto),
