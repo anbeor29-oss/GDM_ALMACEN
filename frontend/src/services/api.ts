@@ -1109,9 +1109,21 @@ class APIClient {
     const r = await this.client.get('/accounting/cuentas/catalogo/plantilla', { responseType: 'blob' });
     await this.downloadFile(r.data as Blob, 'Plantilla_catalogo_cuentas.xlsx');
   }
-  /** Reimporta el catálogo editado en Excel (casa por código; actualiza nombre y agrupador). */
+  /** Importa el catálogo desde Excel (actualiza las que existen y crea las nuevas). */
   async importarCatalogoExcel(fd: FormData) {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/catalogo/importar', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
+  /** Importa el catálogo desde el TXT de CONTPAQi (crea las cuentas con su jerarquía). */
+  async importarCatalogoTxt(fd: FormData) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/catalogo/importar-txt', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
+  /** Importa pólizas desde el TXT de CONTPAQi (el catálogo debe estar importado antes). */
+  async importarPolizasTxt(fd: FormData) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/importar-txt', fd,
       { headers: { 'Content-Type': 'multipart/form-data' } });
     return r.data;
   }

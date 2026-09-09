@@ -30,6 +30,7 @@ import * as contpaqi from './contpaqi-import.service';
 import * as cambioCuenta from './cambio-cuenta.service';
 import * as validacion from './validacion-contable.service';
 import * as especiales from './reportes-especiales.service';
+import * as contpaqiTxt from './contpaqi-txt.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
@@ -293,8 +294,8 @@ router.get(
   })
 );
 
-/** POST /accounting/cuentas/catalogo/importar — reimporta el catálogo editado en Excel.
- *  Casa por CÓDIGO contra cuentas existentes; actualiza nombre y agrupador SAT; no crea ni borra. */
+/** POST /accounting/cuentas/catalogo/importar — importa el catálogo desde Excel.
+ *  Casa por CÓDIGO: actualiza las que existen y CREA las nuevas con su jerarquía. */
 router.post(
   '/cuentas/catalogo/importar',
   requireCapability('contabilidad:catalogo'),
@@ -310,6 +311,25 @@ router.post(
     res.json({
       success: true, data: rep,
       message: `Catálogo: ${rep.creadas} creada(s), ${rep.actualizadas} actualizada(s), ${rep.sinCambio} sin cambio` +
+        (rep.errores.length ? `, ${rep.errores.length} con error` : '') + '.',
+    });
+  })
+);
+
+/** POST /accounting/cuentas/catalogo/importar-txt — importa el catálogo desde el TXT de
+ *  CONTPAQi (crea las cuentas con su jerarquía por el padre explícito y su agrupador SAT). */
+router.post(
+  '/cuentas/catalogo/importar-txt',
+  requireCapability('contabilidad:catalogo'),
+  subir.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = (req as any).file;
+    if (!f) throw new ValidationError('Falta el archivo TXT del catálogo.');
+    const rep = await contpaqiTxt.importarCatalogoTxt(companyId(req), f.buffer);
+    res.json({
+      success: true, data: rep,
+      message: `Catálogo CONTPAQi: ${rep.creadas} creada(s), ${rep.yaExistian} ya existían` +
+        (rep.sinAgrupador ? `, ${rep.sinAgrupador} sin agrupador` : '') +
         (rep.errores.length ? `, ${rep.errores.length} con error` : '') + '.',
     });
   })
@@ -1419,6 +1439,24 @@ router.post(
       .split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0);
     const rep = await contpaqi.importarContpaqi(companyId(req), paquete, req.user?.userId, { forzar, ejercicios, soloCatalogo, mascara });
     res.json({ success: true, data: rep });
+  })
+);
+
+/** POST /accounting/polizas/importar-txt — importa pólizas desde el TXT de CONTPAQi
+ *  (mapea las cuentas por su código; el catálogo debe estar importado antes). */
+router.post(
+  '/polizas/importar-txt',
+  requireCapability('contabilidad:capturar'),
+  subir.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = (req as any).file;
+    if (!f) throw new ValidationError('Falta el archivo TXT de pólizas.');
+    const rep = await contpaqiTxt.importarPolizasTxt(companyId(req), f.buffer, req.user?.userId);
+    res.json({
+      success: true, data: rep,
+      message: `Pólizas CONTPAQi: ${rep.creadas} creada(s), ${rep.yaExistian} ya existían` +
+        (rep.omitidas.length ? `, ${rep.omitidas.length} omitida(s)` : '') + '.',
+    });
   })
 );
 

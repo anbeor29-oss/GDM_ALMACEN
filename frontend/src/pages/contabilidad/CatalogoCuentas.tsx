@@ -181,6 +181,19 @@ export function CatalogoCuentasPage() {
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo descargar la plantilla.'); }
     finally { setHerr(''); }
   };
+  /* Importa el catálogo desde el TXT de CONTPAQi (crea las cuentas con su jerarquía). */
+  const importarTxt = async (file: File) => {
+    setHerr('txt'); setMsg('');
+    try {
+      const fd = new FormData(); fd.append('archivo', file);
+      const r: any = await api.importarCatalogoTxt(fd);
+      let m = r?.message || 'Catálogo importado.';
+      if (r?.data?.errores?.length) m += ` Errores: ${r.data.errores.slice(0, 3).join(' · ')}${r.data.errores.length > 3 ? '…' : ''}.`;
+      setMsg(m);
+      refrescar();
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo importar el TXT.'); }
+    finally { setHerr(''); }
+  };
   /* Reimporta el Excel editado: casa por código y actualiza nombre + agrupador. */
   const importarExcel = async (file: File) => {
     setHerr('import'); setMsg('');
@@ -241,6 +254,13 @@ export function CatalogoCuentasPage() {
                 <Upload size={14} /> {herr === 'import' ? 'Importando…' : 'Importar Excel'}
                 <input type="file" accept=".xlsx,.xls" className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) importarExcel(f); e.currentTarget.value = ''; }} />
+              </label>
+              <label
+                title="Importa el catálogo desde el TXT de CONTPAQi: crea las cuentas con su jerarquía, naturaleza y agrupador del SAT"
+                className={`border border-violet-300 text-violet-700 px-3 py-1.5 rounded-lg text-sm hover:bg-violet-50 flex items-center gap-1.5 cursor-pointer ${herr ? 'opacity-50 pointer-events-none' : ''}`}>
+                <Upload size={14} /> {herr === 'txt' ? 'Importando…' : 'Importar CONTPAQi (.txt)'}
+                <input type="file" accept=".txt" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />
               </label>
               <button onClick={reorganizar} disabled={!!herr}
                 title="Mueve los terceros mezclados (bajo un control equivocado) a su control correcto: clientes a 105, proveedores a 201, renumerados. Las partidas los siguen."
@@ -1261,12 +1281,12 @@ function ModalNuevaCuenta({ datos, onCerrar, onListo }: any) {
 
 function SinCatalogo({ onListo }: any) {
   const [anio, setAnio] = useState(new Date().getFullYear());
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'' | 'semilla' | 'txt'>('');
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
   const arrancar = async () => {
-    setError(''); setBusy(true);
+    setError(''); setMsg(''); setBusy('semilla');
     try {
       await api.sembrarReferenciasContables();
       const r = await api.activarContabilidad({ anio });
@@ -1274,7 +1294,26 @@ function SinCatalogo({ onListo }: any) {
       onListo();
     } catch (e: any) {
       setError(e?.response?.data?.message || e.message);
-    } finally { setBusy(false); }
+    } finally { setBusy(''); }
+  };
+
+  /* Arranca la contabilidad con el catálogo REAL de CONTPAQi (TXT):
+     crea el ejercicio y los doce periodos SIN catálogo semilla, y luego
+     importa las cuentas del archivo con su jerarquía y agrupador del SAT. */
+  const importarTxt = async (file: File) => {
+    setError(''); setMsg(''); setBusy('txt');
+    try {
+      await api.sembrarReferenciasContables();
+      await api.activarContabilidad({ anio, sembrarCatalogo: false });
+      const fd = new FormData(); fd.append('archivo', file);
+      const r: any = await api.importarCatalogoTxt(fd);
+      let m = r?.message || 'Catálogo importado.';
+      if (r?.data?.errores?.length) m += ` Errores: ${r.data.errores.slice(0, 3).join(' · ')}${r.data.errores.length > 3 ? '…' : ''}.`;
+      setMsg(m);
+      onListo();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e.message);
+    } finally { setBusy(''); }
   };
 
   return (
@@ -1305,9 +1344,23 @@ function SinCatalogo({ onListo }: any) {
         </p>
       )}
 
+      <label
+        title="Importa el catálogo del SAT desde el TXT de CONTPAQi: crea el ejercicio, los doce periodos y las cuentas con su jerarquía, naturaleza y agrupador del SAT"
+        className={`block mb-4 border-2 border-dashed border-violet-300 bg-violet-50 rounded-lg px-4 py-3 cursor-pointer hover:bg-violet-100 ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className="flex items-center gap-2 text-violet-800 font-medium text-sm">
+          <Upload size={16} /> {busy === 'txt' ? 'Importando catálogo…' : 'Importar catálogo CONTPAQi (.txt)'}
+        </div>
+        <p className="text-xs text-violet-700 mt-1">
+          Recomendado si vienes de CONTPAQi. Arranca la contabilidad del ejercicio {anio} con
+          TU catálogo (no el semilla) y su agrupador del SAT.
+        </p>
+        <input type="file" accept=".txt" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />
+      </label>
+
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={arrancar} disabled={busy} className="btn-primary disabled:opacity-50">
-          {busy ? 'Preparando…' : 'Arrancar contabilidad'}
+        <button onClick={arrancar} disabled={!!busy} className="btn-primary disabled:opacity-50">
+          {busy === 'semilla' ? 'Preparando…' : 'Arrancar con catálogo semilla'}
         </button>
         <button onClick={() => api.descargarPlantillaCatalogo().catch(() => {})}
           title="Descarga una plantilla en blanco para armar tu catálogo desde cero en Excel"
@@ -1316,7 +1369,7 @@ function SinCatalogo({ onListo }: any) {
         </button>
       </div>
       <p className="text-xs text-gray-500 mt-2">
-        ¿Vienes de otro sistema? Importa tu respaldo en <a href="/contabilidad/importar-contpaqi" className="text-primary hover:underline">Importar respaldo</a>,
+        ¿Vienes de otro sistema? Importa el catálogo en TXT (arriba), tu respaldo en <a href="/contabilidad/importar-contpaqi" className="text-primary hover:underline">Importar respaldo</a>,
         o arma el catálogo con la plantilla y luego asígnale el agrupador SAT.
       </p>
     </div>

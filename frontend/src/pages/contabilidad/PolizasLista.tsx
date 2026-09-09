@@ -84,6 +84,20 @@ export function PolizasListaPage() {
     } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo generar.'); }
     finally { setGenerando(''); }
   };
+  /* Importa las pólizas históricas desde el TXT de CONTPAQi (el catálogo debe estar antes). */
+  const importarTxt = async (file: File) => {
+    setGenerando('txt'); setMsg('');
+    try {
+      const fd = new FormData(); fd.append('archivo', file);
+      const r: any = await api.importarPolizasTxt(fd);
+      let m = r?.message || 'Pólizas importadas.';
+      const om = r?.data?.omitidas as Array<{ folio: string; motivo: string }> | undefined;
+      if (om?.length) m += ` Omitidas ${om.length}: ${om.slice(0, 2).map((o) => `${o.folio} (${o.motivo})`).join(' · ')}${om.length > 2 ? '…' : ''}.`;
+      setMsg(m);
+      await qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
+    } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo importar el TXT.'); }
+    finally { setGenerando(''); }
+  };
   const GENERADORES: Array<[string, string, () => Promise<any>]> = [
     ['ventas', 'Ventas', () => api.generarVentas(anio, mes, todoAnio || mes === 0)],
     ['compras', 'Compras', () => api.generarCompras(anio, mes, todoAnio || mes === 0)],
@@ -169,6 +183,14 @@ export function PolizasListaPage() {
           className="border bg-white px-2.5 py-1 rounded-lg text-xs text-gray-700 hover:bg-gray-100">Ventas</button>
         <button onClick={() => navigate('/compras/polizas')}
           className="border bg-white px-2.5 py-1 rounded-lg text-xs text-gray-700 hover:bg-gray-100">Compras</button>
+        <span className="mx-1 h-4 w-px bg-gray-300" />
+        <label
+          title="Importa las pólizas históricas desde el TXT de CONTPAQi. Casa cada renglón por código de cuenta, así que importa el catálogo primero. No duplica: se salta las que ya tengan el mismo UUID."
+          className={`flex items-center gap-1 border border-violet-300 bg-white text-violet-700 px-2.5 py-1 rounded-lg text-xs hover:bg-violet-50 cursor-pointer ${generando ? 'opacity-40 pointer-events-none' : ''}`}>
+          <BookOpen size={13} /> {generando === 'txt' ? 'Importando…' : 'Importar CONTPAQi (.txt)'}
+          <input type="file" accept=".txt" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />
+        </label>
       </div>
 
       {msg && <p className="text-sm text-emerald-700">{msg}</p>}

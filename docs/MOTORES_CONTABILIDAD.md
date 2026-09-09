@@ -56,6 +56,11 @@ Ruta: `backend/src/modules/accounting/` salvo donde se indique. Actualizado 2026
 - **contpaqi-import.service** — Importa el **respaldo CONTPAQi** (catálogo, pólizas,
   terceros, CFDI); **exige e.firma** (salvo "sólo catálogo"); al terminar dispara la
   descarga masiva de XML del SAT.
+- **contpaqi-txt.service** — Importa los **TXT de ancho fijo de CONTPAQi** (latin1): el
+  **catálogo** (crea cuentas ligando por el padre explícito, naturaleza por la letra y
+  agrupador SAT validado contra el Anexo 24) y las **pólizas** (mapea por código, idempotente
+  por UUID, cuadra por el trigger de BD). Camino de arranque cuando NO se tiene el respaldo
+  completo. Importa DE `catalogo.service`, nunca al revés.
 - **reportes-export.service** — **Excel y PDF** de balanza, auxiliar, situación, resultados,
   flujo, capital, razones, el **reporte anual** (12 columnas) y el **catálogo**.
 

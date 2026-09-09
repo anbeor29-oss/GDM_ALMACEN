@@ -5319,3 +5319,40 @@ agrupador faltante. Reporte: creadas / actualizadas / sin cambio / errores. Así
 TXT de ancho fijo, encabezado + renglones `M`+cuenta(30)+ref(10)+TipoMovto(0=cargo/1=abono)
 +importe(20)+concepto(100); Aspel COI usa Excel con `FIN_PARTIDAS`. PENDIENTE: conseguir un
 TXT real de CONTPAQi para afinar el lector del convertidor.
+
+---
+
+## 2026-09-09 (contabilidad) — Importadores de CONTPAQi en TXT: catálogo y pólizas
+
+**Contexto.** El usuario entregó dos archivos reales de CONTPAQi (catálogo y pólizas en
+TXT) y pidió arrancar la contabilidad importando el catálogo del SAT desde el TXT, además
+de las pólizas históricas.
+
+**Layouts medidos contra los archivos reales** (ancho fijo, **latin1**). *Catálogo*
+(registros `C`): código `[3,33)`, nombre `[34,136)`, **padre EXPLÍCITO** `[136,166)`, letra
+de naturaleza `[167]` (A=Activo/deudora, B=complementaria de activo, D=Pasivo, F=Capital,
+G=costo/gasto, H=Ingreso) y agrupador SAT `[207,fin)` (`0`/`000` = sin agrupador). Las
+líneas `RF`/`F` (códigos de reporte financiero) se ignoran. *Pólizas* (`P`+`M`): `P` fecha
+`YYYYMMDD [3,11)`, tipo `[15]` (1=Diario/2=Ingreso/3=Egreso), concepto `[40,140)`, UUID
+`[148,184)`; `M` cuenta `[3,33)`, referencia `[34,64)`, **TipoMovto `[65]` (0=cargo/1=abono)**,
+importe `[67,88)`, concepto `[120,226)`, UUID `[226,262)`.
+
+**`backend/.../contpaqi-txt.service.ts` (nuevo).** `importarCatalogoTxt` crea las cuentas
+ligando la jerarquía **por el código de padre explícito** (no por máscara), ordenando por
+profundidad para crear padres antes que hijos; `permite_movimientos` = hoja (nadie la trae
+como padre); tipo afinado por el primer dígito del agrupador; agrupador validado contra el
+Anexo 24 (exacto o su padre, `603.50 → 603`); al terminar rellena el agrupador faltante.
+`importarPolizasTxt` mapea la cuenta por código, descarta renglones en 0, es **idempotente
+por UUID** (no duplica al reimportar) y crea cada póliza con `crearPoliza` (mismo cuadre por
+trigger de BD). Regla de import evita el ciclo: este servicio importa DE `catalogo.service`,
+nunca al revés.
+
+**UI.** «Sin catálogo» (al inicio de la contabilidad) ofrece **«Importar catálogo CONTPAQi
+(.txt)»** como camino recomendado: crea el ejercicio + 12 periodos SIN catálogo semilla y
+luego importa el catálogo real; el «Arrancar con catálogo semilla» queda como alternativa.
+También en la barra del catálogo (junto a Importar Excel) y, para las pólizas, un
+**«Importar CONTPAQi (.txt)»** en la barra de Pólizas. Rutas
+`POST /accounting/cuentas/catalogo/importar-txt` y `POST /accounting/polizas/importar-txt`.
+`crearPoliza` inserta por `fecha` (no depende de que exista el periodo), así que las pólizas
+históricas entran aunque el ejercicio del combo sea otro; sólo exige el catálogo importado
+antes (para casar los códigos).
