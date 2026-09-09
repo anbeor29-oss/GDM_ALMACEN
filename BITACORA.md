@@ -5252,3 +5252,48 @@ Pantalla `ReportesEspeciales.tsx` con dos pestañas y combos de año/mes.
 cuenta) salían como texto plano. Ahora Guardar es **verde** (emerald sólido) y
 Cancelar **azul** (contorno sky), para distinguirlos como los colores del
 calendario (`CatalogoCuentas.tsx`).
+
+---
+
+## 2026-09-08 (contabilidad) — Repaso a fondo del cuadre: apertura, flujo, folio, fechas y utilidades
+
+Tanda de correcciones y utilidades revisando la contabilidad real de 2017-2018.
+
+**BUG raíz — la balanza «desde pólizas» perdía las cuentas sin movimiento (commit
+`d8bf31f`).** `alimentarDesdePolizas` sólo insertaba en `accounting_period_balances` las
+cuentas con movimiento del mes; las de apertura/arrastre sin movimiento (capital social
+301, resultados de ejercicios anteriores 304, etc.) desaparecían → el balance no cuadraba
+(Nov-2017: capital −5,500.21 en vez de −4,739.54, dif. 760.67). Fix: tras las cuentas con
+movimiento se **arrastran** las que traen saldo del mes anterior (`saldo_final =
+saldo_inicial`). Hay que re-derivar los meses afectados EN ORDEN.
+
+**Reconstruir año completo (commit `acc972b`).** Botón «Reconstruir año» en Balanza:
+`alimentarAnioDesdePolizas` re-deriva los 12 meses en orden; **salta los meses sin
+pólizas** (la apertura del respaldo no se toca). Ruta
+`POST /accounting/periodos/:anio/desde-polizas-anual`.
+
+**Flujo de efectivo que concilia (commit `769599e`).** El método indirecto enumeraba sólo
+un subconjunto de cuentas de capital de trabajo y dejaba fuera otras (110-114, 203/206,
+217/218…), así que no conciliaba aunque el balance sí cuadrara. Se agrega la línea
+**«Variación de otras cuentas de operación»** = el resto no clasificado, para cuadrar por
+construcción (legítimo con el balance cuadrado).
+
+**Folio de póliza por mes y tipo (commit `fd31d5d`).** Antes consecutivo por empresa/año
+(#7000+); ahora **reinicia en 1 cada mes y por tipo** (Ingreso/Egreso/Diario, estilo
+Anexo 24). No hay UNIQUE sobre folio (sólo sobre `origen_uuid`).
+
+**Fechas DD/MM/AAAA (commit `2b8c202`).** Los `<input type="date">` nativos se pintan con
+el formato del navegador (en inglés, MM/DD); se cambiaron los Desde/Hasta de Auxiliar y
+Cambio de cuenta por el componente `CampoFecha` (siempre DD/MM/AAAA). Además Cambio de
+cuenta **filtra las partidas por el rango de fechas** (commit `990c163`) y **refresca** la
+lista tras reasignar (parecía que «no funcionaba»); al editar una póliza desde ahí,
+**regresa** a Cambio de cuenta con la cuenta seleccionada (commit `858644c`).
+
+**Previsualización / PDF de la póliza (commit `f11c389`).** Ícono de ojo en «Todas las
+pólizas» → vista formateada (encabezado, partidas, sumas) con el **UUID del CFDI en azul**
+y botón «Imprimir / PDF» (abre la póliza como documento propio para guardarla en PDF).
+
+**Sidebar y reportes especiales (commit `2ccc838`).** El sidebar recalculaba «abierto» sólo
+al montar; se agregó `useEffect` para reabrir los submenús al navegar (así se alcanzan los
+reportes especiales). Ícono 🔬 y **Excel** en Reportes especiales. Inventario de motores en
+`docs/MOTORES_CONTABILIDAD.md`.

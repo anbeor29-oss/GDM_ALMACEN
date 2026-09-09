@@ -12,7 +12,7 @@ SW Sapien.
 > quedó de antes y **se conserva a propósito**: renombrarlos en Render crea un
 > par vacío y deja colgado el actual, con su inventario dentro.
 
-**Estado** (al 2026-09-02):
+**Estado** (al 2026-09-08):
 - 🟢 **Desplegado y respondiendo** en `gdm-almacen-*` (multi-empresa, pagos
   multi-factura, CSD en base).
 - 🟢 **Nómina completa**: expediente (con Vacaciones y ModifSal), cálculo,
@@ -30,7 +30,15 @@ SW Sapien.
   resultados** y modo **anual**— y razones, más **«Cambio de cuenta»** (sustituir la
   cuenta temporal de migración y unificar cuentas duplicadas). Los estados salen
   también en **Excel anual** (12 columnas, una por mes), y el **activo fijo** se
-  detecta por **rango de fechas** (2018→).
+  detecta por **rango de fechas** (2018→). Añadido después: **importar/exportar el
+  catálogo en Excel** y **«Proponer agrupador (SAT)»** (empata por nombre vs Anexo 24,
+  a confirmar); **«Cuadre contable»** que valida póliza por póliza y **localiza** el
+  descuadre; **Reportes especiales** (balanza y situación por agrupador/cuenta, con
+  Excel); la balanza se **reconstruye por mes o por año** desde las pólizas
+  (arrastrando las cuentas sin movimiento); el **folio de póliza reinicia por mes y
+  tipo** (Anexo 24); **previsualización/PDF de la póliza** con el UUID en azul; y el
+  **respaldo exige e.firma** (la descarga de sus XML). Todos los motores en
+  `docs/MOTORES_CONTABILIDAD.md`. Ver también **BITÁCORA.md** y **docs/BUGS_RESUELTOS.md**.
 - 🟢 **Tesorería**: cuentas por pagar, pagos programados, bancos y
   **conciliación bancaria** (con export a Excel).
 - 🟢 **Permisos por grupo de trabajo**: siete grupos, cada uno con sus módulos,

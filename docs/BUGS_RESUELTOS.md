@@ -28,6 +28,24 @@ Orden cronológico inverso (más reciente arriba).
 - **Fix**: tras insertar las cuentas con movimiento, se **arrastran** las que traen saldo del mes anterior (`ini`) y no tuvieron movimiento, con `saldo_final = saldo_inicial`. Hay que re-derivar los meses afectados en ORDEN (cada mes arrastra del anterior).
 - **Commit**: `d8bf31f` (2026-09-08)
 
+### 🐛 El flujo de efectivo no concilia aunque el balance cuadre
+- **Síntoma**: «El flujo de efectivo no concilia por X: los tres flujos suman A y el efectivo se movió B». No se veía "la partida que falta".
+- **Causa**: el método indirecto (`flujoEfectivo`) enumeraba sólo un subconjunto de cuentas de capital de trabajo (105-107, 115, 201/202/205, 207-209/213/216…) y dejaba fuera otras que sí variaron (110-114, 203/206, 217/218, etc.).
+- **Fix**: se agrega la línea **«Variación de otras cuentas de operación»** = el resto (cambio del efectivo − los tres flujos), para conciliar por construcción. Con el balance cuadrado es clasificación faltante, no error.
+- **Commit**: `769599e` (2026-09-08)
+
+### 🐛 En «Cambio de cuenta» el botón Reasignar «no funcionaba»
+- **Síntoma**: al reasignar partidas, parecía que no pasaba nada.
+- **Causa**: el backend sí movía las partidas, pero la **lista de partidas en pantalla no se refrescaba** (seguía mostrando las ya movidas). Además no filtraba por el rango de fechas.
+- **Fix**: la lista se recarga tras reasignar (prop `recarga`) y **filtra por Desde/Hasta** (backend `partidasDeCuenta` con fechas). El `#folio` abre el editor y al guardar regresa a Cambio de cuenta.
+- **Commit**: `858644c`, `990c163` (2026-09-08)
+
+### 🐛 Los calendarios se ven MM/DD/AAAA en equipos en inglés
+- **Síntoma**: los controles de fecha mostraban `11/01/2017` (1-nov) en formato de EE.UU., confundiendo.
+- **Causa**: `<input type="date">` nativo se dibuja con el formato del navegador; no hay atributo que lo fuerce.
+- **Fix**: se usan el componente `CampoFecha` (siempre DD/MM/AAAA, valor interno ISO) en Auxiliar y Cambio de cuenta.
+- **Commit**: `2b8c202` (2026-09-08)
+
 
 
 ### 🐛 Los clientes caían en `1-10-02-###` en vez de `1-10-25-###` (una cuenta suelta "se hacía de mayor")
