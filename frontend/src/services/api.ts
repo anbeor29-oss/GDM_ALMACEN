@@ -953,8 +953,8 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/treasury/bancos/config');
     return r.data;
   }
-  async setCuentasComisiones(comisionesId: string | null, ivaId: string | null) {
-    const r = await this.client.put<APIResponse<any>>('/treasury/bancos/config/comisiones', { comisionesId, ivaId });
+  async setCuentasComisiones(comisionesId: string | null, ivaId: string | null, interesesId?: string | null) {
+    const r = await this.client.put<APIResponse<any>>('/treasury/bancos/config/comisiones', { comisionesId, ivaId, interesesId });
     return r.data;
   }
   async getConciliacion(estadoId: string) {

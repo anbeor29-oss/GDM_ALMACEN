@@ -22,12 +22,15 @@ const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 const CLASIF: Record<string, { txt: string; color: string }> = {
-  cobro:        { txt: 'Cobro cliente',   color: 'bg-emerald-100 text-emerald-800' },
-  pago:         { txt: 'Pago proveedor',  color: 'bg-rose-100 text-rose-800' },
-  comision:     { txt: 'Comisión',        color: 'bg-amber-100 text-amber-800' },
-  iva_comision: { txt: 'IVA comisión',    color: 'bg-amber-100 text-amber-800' },
-  traspaso:     { txt: 'Traspaso',        color: 'bg-sky-100 text-sky-800' },
-  otro:         { txt: 'Otro',            color: 'bg-gray-100 text-gray-700' },
+  cobro:          { txt: 'Cobro cliente',    color: 'bg-emerald-100 text-emerald-800' },
+  pago:           { txt: 'Pago proveedor',   color: 'bg-rose-100 text-rose-800' },
+  comision:       { txt: 'Comisión',         color: 'bg-amber-100 text-amber-800' },
+  iva_comision:   { txt: 'IVA comisión',     color: 'bg-amber-100 text-amber-800' },
+  traspaso:       { txt: 'Traspaso',         color: 'bg-sky-100 text-sky-800' },
+  compra_tarjeta: { txt: 'Compra tarjeta',   color: 'bg-violet-100 text-violet-800' },
+  interes_tarjeta:{ txt: 'Interés tarjeta',  color: 'bg-amber-100 text-amber-800' },
+  pago_tarjeta:   { txt: 'Pago a tarjeta',   color: 'bg-teal-100 text-teal-800' },
+  otro:           { txt: 'Otro',             color: 'bg-gray-100 text-gray-700' },
 };
 const EST: Record<string, { txt: string; color: string }> = {
   pendiente:     { txt: 'Sin analizar', color: 'text-gray-400' },
@@ -65,6 +68,7 @@ export function ConciliacionContablePage() {
   const cuentasQ = useQuery({ queryKey: ['bancos-cuentas'], queryFn: () => api.getCuentasBancarias() });
   const cuentas: any[] = cuentasQ.data?.data?.cuentas || [];
   const cid = cuentaSel || cuentas[0]?.id || '';
+  const esTarjeta = cuentas.find((c) => c.id === cid)?.tipo === 'TARJETA_CREDITO';
   const cuenta = cuentas.find((c) => c.id === cid);
 
   const estadosQ = useQuery({ queryKey: ['bancos-estados', cid], queryFn: () => api.getEstadosBancarios(cid), enabled: !!cid });
@@ -196,8 +200,8 @@ export function ConciliacionContablePage() {
                 <tr>
                   <th className="px-2 py-1.5 text-left text-xs font-semibold">Fecha</th>
                   <th className="px-2 py-1.5 text-left text-xs font-semibold">Concepto</th>
-                  <th className="px-2 py-1.5 text-right text-xs font-semibold">Depósito</th>
-                  <th className="px-2 py-1.5 text-right text-xs font-semibold">Retiro</th>
+                  <th className="px-2 py-1.5 text-right text-xs font-semibold">{esTarjeta ? 'Cargo' : 'Depósito'}</th>
+                  <th className="px-2 py-1.5 text-right text-xs font-semibold">{esTarjeta ? 'Pago' : 'Retiro'}</th>
                   <th className="px-2 py-1.5 text-left text-xs font-semibold">Estado</th>
                 </tr>
               </thead>
@@ -215,8 +219,8 @@ export function ConciliacionContablePage() {
                       className={`cursor-pointer hover:bg-gray-50 ${selMov === m.id ? 'bg-emerald-50' : ''}`}>
                       <td className="px-2 py-1.5 text-xs whitespace-nowrap">{String(m.fecha).slice(0, 10)}</td>
                       <td className="px-2 py-1.5 text-xs truncate max-w-[180px]" title={m.concepto}>{m.concepto}</td>
-                      <td className="px-2 py-1.5 text-right text-xs text-emerald-700">{Number(m.deposito) > 0 ? money(m.deposito) : ''}</td>
-                      <td className="px-2 py-1.5 text-right text-xs text-rose-700">{Number(m.retiro) > 0 ? money(m.retiro) : ''}</td>
+                      <td className={`px-2 py-1.5 text-right text-xs ${esTarjeta ? 'text-rose-700' : 'text-emerald-700'}`}>{Number(m.deposito) > 0 ? money(m.deposito) : ''}</td>
+                      <td className={`px-2 py-1.5 text-right text-xs ${esTarjeta ? 'text-emerald-700' : 'text-rose-700'}`}>{Number(m.retiro) > 0 ? money(m.retiro) : ''}</td>
                       <td className="px-2 py-1.5 text-xs">
                         {m.clasificacion && <span className={`inline-block px-1.5 py-0.5 rounded ${c?.color} mr-1`}>{c?.txt}</span>}
                         <span className={e?.color}>{e?.txt}</span>
@@ -234,7 +238,7 @@ export function ConciliacionContablePage() {
         <div className="space-y-3">
           {sel && (
             <div className="bg-white rounded-lg border shadow-sm p-4">
-              <DetalleMov sel={sel} ctas={ctas} cfg={cfg} mascara={mascara} busy={busy}
+              <DetalleMov sel={sel} ctas={ctas} cfg={cfg} mascara={mascara} busy={busy} esTarjeta={esTarjeta}
                 onConfirmar={() => marcar(sel.id, { concilEstado: 'confirmado' })}
                 onOmitir={() => marcar(sel.id, { concilEstado: 'omitido' })}
                 onContabilizar={(contraId?: string) => contabilizar(sel, contraId)}
@@ -286,7 +290,7 @@ export function ConciliacionContablePage() {
       </div>
 
       {modalComis && <ModalComisiones ctas={ctas} cfg={cfg} onClose={() => setModalComis(false)}
-        onSave={async (com: string | null, iva: string | null) => { await correr(() => api.setCuentasComisiones(com, iva), () => { qc.invalidateQueries({ queryKey: ['bancos-config'] }); }); setModalComis(false); }} />}
+        onSave={async (com: string | null, iva: string | null, inte: string | null) => { await correr(() => api.setCuentasComisiones(com, iva, inte), () => { qc.invalidateQueries({ queryKey: ['bancos-config'] }); }); setModalComis(false); }} />}
       {modalSubir && <ModalSubir cid={cid} onClose={() => setModalSubir(false)}
         onDone={() => { setModalSubir(false); qc.invalidateQueries({ queryKey: ['bancos-estados', cid] }); }} />}
     </div>
@@ -294,21 +298,26 @@ export function ConciliacionContablePage() {
 }
 
 /* ── Panel derecho ── */
-function DetalleMov({ sel, ctas, cfg, mascara, busy, onConfirmar, onOmitir, onContabilizar, onDeshacer, onAbrirComis }: any) {
+function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onOmitir, onContabilizar, onDeshacer, onAbrirComis }: any) {
   const [contra, setContra] = useState('');
   const dep = Number(sel.deposito) > 0;
   const monto = dep ? sel.deposito : sel.retiro;
   const clas = sel.clasificacion || 'otro';
-  const contraparte = dep ? sel.nombre_receptor : sel.nombre_emisor;
-  const contraRfc = dep ? sel.rfc_receptor : sel.rfc_emisor;
+  /* En tarjeta: deposito = CARGO (compra), retiro = PAGO. En un cargo, la
+   * contraparte del CFDI es el proveedor (recibido). */
+  const contraparte = (dep && !esTarjeta) ? sel.nombre_receptor : sel.nombre_emisor;
+  const contraRfc = (dep && !esTarjeta) ? sel.rfc_receptor : sel.rfc_emisor;
+  const etqMonto = esTarjeta ? (dep ? 'Cargo (compra) ' : 'Pago ') : (dep ? 'Depósito ' : 'Retiro ');
+  const colorMonto = esTarjeta ? (dep ? 'text-rose-700' : 'text-emerald-700') : (dep ? 'text-emerald-700' : 'text-rose-700');
+  const esCompraTarjeta = clas === 'compra_tarjeta';
 
   return (
     <div className="space-y-3 text-sm">
       <div>
         <div className="text-xs text-gray-500">{String(sel.fecha).slice(0, 10)}</div>
         <div className="font-medium text-gray-800">{sel.concepto}</div>
-        <div className={`text-lg font-bold ${dep ? 'text-emerald-700' : 'text-rose-700'}`}>
-          {dep ? 'Depósito ' : 'Retiro '}{money(monto)}
+        <div className={`text-lg font-bold ${colorMonto}`}>
+          {etqMonto}{money(monto)}
         </div>
       </div>
 
@@ -330,8 +339,8 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, onConfirmar, onOmitir, onCo
         )
       ) : (
         <>
-          {/* Match de XML para cobro/pago */}
-          {(clas === 'cobro' || clas === 'pago') && (
+          {/* Match de XML para cobro/pago/compra de tarjeta */}
+          {(clas === 'cobro' || clas === 'pago' || esCompraTarjeta) && (
             <div className="border rounded p-3 space-y-1">
               <div className="text-xs text-gray-500">{clas === 'cobro' ? 'Cliente (XML emitido)' : 'Proveedor (XML recibido)'}</div>
               {sel.cfdi_uuid ? (
@@ -346,6 +355,33 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, onConfirmar, onOmitir, onCo
                   )}
                 </>
               ) : <div className="text-gray-400 text-xs">Sin XML casado.</div>}
+            </div>
+          )}
+
+          {/* Compra de tarjeta: a qué gasto va (si no hay CFDI o para forzar la cuenta). */}
+          {esCompraTarjeta && (
+            <div className="border rounded p-3 space-y-1">
+              <div className="text-xs text-gray-500">
+                {sel.cfdi_uuid ? 'Con CFDI va a gasto + IVA acreditable / abona la tarjeta. Puedes forzar otra cuenta de gasto:' : 'Sin CFDI. Elige la cuenta de gasto (o se usa la de por defecto de la tarjeta):'}
+              </div>
+              <SelCuenta ctas={ctas} value={contra} onChange={setContra} />
+            </div>
+          )}
+
+          {/* Interés de tarjeta → cuenta de intereses */}
+          {clas === 'interes_tarjeta' && (
+            <div className="border rounded p-3 text-xs">
+              {cfg.interesesCodigo
+                ? <>Va a <b>{formatCuenta(cfg.interesesCodigo, mascara)}</b> {cfg.interesesNombre} / abona la tarjeta</>
+                : <span className="text-rose-600">Falta elegir la cuenta de intereses de tarjeta. <button onClick={onAbrirComis} className="underline">Elegir</button></span>}
+            </div>
+          )}
+
+          {/* Pago a la tarjeta: se concilia contra el banco, no se asienta aquí. */}
+          {clas === 'pago_tarjeta' && (
+            <div className="border rounded p-3 text-xs bg-teal-50 border-teal-200 text-teal-900">
+              Este pago abona a la tarjeta y sale del BANCO. Se contabiliza desde el estado del banco
+              (ahí aparece como retiro) y aquí sólo se concilia con <b>Cotejar con el libro</b>.
             </div>
           )}
 
@@ -374,10 +410,13 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, onConfirmar, onOmitir, onCo
                 <Check size={14} /> Sí, es el mismo
               </button>
             )}
-            <button onClick={() => onContabilizar(clas === 'otro' ? contra : undefined)} disabled={busy || (clas === 'otro' && !contra)}
-              className="flex items-center gap-1 text-sm bg-sky-700 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
-              <PlayCircle size={14} /> Contabilizar
-            </button>
+            {clas !== 'pago_tarjeta' && (
+              <button onClick={() => onContabilizar((clas === 'otro' || esCompraTarjeta) ? (contra || undefined) : undefined)}
+                disabled={busy || (clas === 'otro' && !contra)}
+                className="flex items-center gap-1 text-sm bg-sky-700 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
+                <PlayCircle size={14} /> Contabilizar
+              </button>
+            )}
             <button onClick={onOmitir} disabled={busy}
               className="flex items-center gap-1 text-sm border rounded px-3 py-1.5 hover:bg-gray-50 text-gray-600">
               <X size={14} /> Omitir
@@ -393,22 +432,27 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, onConfirmar, onOmitir, onCo
 function ModalComisiones({ ctas, cfg, onClose, onSave }: any) {
   const [com, setCom] = useState(cfg.cuentaComisionesId || '');
   const [iva, setIva] = useState(cfg.cuentaIvaComisionesId || '');
+  const [inte, setInte] = useState(cfg.cuentaInteresesId || '');
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl p-5 w-full max-w-md space-y-4" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-semibold text-gray-900">Cuentas de comisiones</h3>
-        <p className="text-xs text-gray-500">Se eligen una vez y se aplican a todas las comisiones detectadas.</p>
+        <h3 className="font-semibold text-gray-900">Cuentas de comisiones e intereses</h3>
+        <p className="text-xs text-gray-500">Se eligen una vez y se aplican a comisiones (banco y tarjeta) e intereses de tarjeta.</p>
         <div>
           <label className="text-sm text-gray-700">1. Cuenta de comisiones (gasto)</label>
           <SelCuenta ctas={ctas} value={com} onChange={setCom} />
         </div>
         <div>
-          <label className="text-sm text-gray-700">2. Cuenta de IVA de comisiones (acreditable)</label>
+          <label className="text-sm text-gray-700">2. Cuenta de IVA de comisiones/intereses (acreditable)</label>
           <SelCuenta ctas={ctas} value={iva} onChange={setIva} />
+        </div>
+        <div>
+          <label className="text-sm text-gray-700">3. Cuenta de intereses de tarjeta (gasto financiero)</label>
+          <SelCuenta ctas={ctas} value={inte} onChange={setInte} />
         </div>
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="text-sm border rounded px-3 py-1.5 hover:bg-gray-50">Cancelar</button>
-          <button onClick={() => onSave(com || null, iva || null)}
+          <button onClick={() => onSave(com || null, iva || null, inte || null)}
             className="text-sm bg-emerald-600 text-white rounded px-3 py-1.5 hover:opacity-90">Guardar</button>
         </div>
       </div>

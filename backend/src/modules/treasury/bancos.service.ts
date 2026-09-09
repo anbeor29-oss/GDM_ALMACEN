@@ -42,7 +42,17 @@ export interface DatosCuenta {
   saldoInicialFecha?: string;
   notas?: string;
   cuentaContableId?: string | null;
+  /** CHEQUES (default) o TARJETA_CREDITO. Una tarjeta es un pasivo: su
+   *  cuenta_contable_id apunta a la cuenta de PASIVO de la tarjeta, y su
+   *  saldo_inicial es el ADEUDO de partida. */
+  tipo?: 'CHEQUES' | 'TARJETA_CREDITO';
+  /** Sólo tarjetas: cuenta de gasto por defecto para los cargos sin CFDI. */
+  cuentaGastosId?: string | null;
 }
+
+const TIPOS_CUENTA = ['CHEQUES', 'TARJETA_CREDITO'] as const;
+const normalizarTipo = (t?: string) =>
+  (TIPOS_CUENTA as readonly string[]).includes(String(t)) ? String(t) : 'CHEQUES';
 
 function validarClabe(clabe?: string): string | null {
   const c = String(clabe || '').replace(/\D/g, '');
@@ -97,13 +107,15 @@ export async function crearCuenta(companyId: string, d: DatosCuenta) {
     const r = await query<any>(
       `INSERT INTO bancos_cuentas
          (company_id, banco_clave, banco_nombre, alias, numero_cuenta, clabe,
-          moneda, saldo_inicial, saldo_inicial_fecha, notas, cuenta_contable_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10,$11)
+          moneda, saldo_inicial, saldo_inicial_fecha, notas, cuenta_contable_id,
+          tipo, cuenta_gastos_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10,$11,$12,$13)
        RETURNING *`,
       [companyId, d.bancoClave || null, banco, alias,
        String(d.numeroCuenta || '').trim().slice(0, 30) || null, clabe, moneda,
        pesos(d.saldoInicial), d.saldoInicialFecha || null,
-       String(d.notas || '').trim() || null, d.cuentaContableId || null]
+       String(d.notas || '').trim() || null, d.cuentaContableId || null,
+       normalizarTipo(d.tipo), d.cuentaGastosId || null]
     );
     logger.info(`[bancos] cuenta dada de alta: ${alias} (${banco})`);
     return r.rows[0];
@@ -134,6 +146,8 @@ export async function actualizarCuenta(companyId: string, id: string, d: DatosCu
   if (d.moneda !== undefined)       set('moneda', String(d.moneda).toUpperCase().slice(0, 3));
   if (d.notas !== undefined)        set('notas', String(d.notas).trim() || null);
   if (d.cuentaContableId !== undefined) set('cuenta_contable_id', d.cuentaContableId || null);
+  if (d.tipo !== undefined)         set('tipo', normalizarTipo(d.tipo));
+  if (d.cuentaGastosId !== undefined) set('cuenta_gastos_id', d.cuentaGastosId || null);
 
   /* El saldo inicial NO se cambia a la ligera: es el punto de partida de todo
    * el arrastre. Cambiarlo con estados ya cargados movería todos los saldos. */
@@ -260,13 +274,31 @@ export async function cargarEstadoDeCuenta(
   }
 
   const cuenta = await query<any>(
-    `SELECT id, alias, saldo_inicial FROM bancos_cuentas
+    `SELECT id, alias, saldo_inicial, tipo FROM bancos_cuentas
       WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
     [d.cuentaId, companyId]
   );
   if (cuenta.rows.length === 0) throw new NotFoundError('Cuenta no encontrada');
 
   const extraccion = extraerMovimientos(d.texto, { anio, mes });
+
+  /* Que el TIPO de la cuenta cuadre con lo que trae el documento: subir un estado
+   * de tarjeta a una cuenta de cheques (o al revés) mete el adeudo donde va el
+   * saldo y descuadra todo. Se avisa fuerte; no se bloquea, por si es la 1ª carga
+   * y la cuenta aún no tiene el tipo bien puesto. */
+  const esCuentaTarjeta = cuenta.rows[0].tipo === 'TARJETA_CREDITO';
+  if (extraccion.esTarjeta && !esCuentaTarjeta) {
+    extraccion.avisos.unshift(
+      'Este documento es un estado de TARJETA DE CRÉDITO, pero la cuenta está ' +
+      'marcada como CHEQUES. Cámbiala a «Tarjeta de crédito» (y ponle su cuenta ' +
+      'de PASIVO) para que el adeudo y la conciliación salgan bien.'
+    );
+  } else if (!extraccion.esTarjeta && esCuentaTarjeta && extraccion.movimientos.length) {
+    extraccion.avisos.unshift(
+      'Esta cuenta es una TARJETA DE CRÉDITO, pero el documento no parece un ' +
+      'estado de tarjeta. Verifica que subiste el archivo correcto.'
+    );
+  }
 
   /* ── EL SALDO INICIAL TIENE QUE SER EL FINAL DEL MES ANTERIOR ──
    *

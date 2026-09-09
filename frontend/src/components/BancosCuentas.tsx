@@ -96,7 +96,12 @@ export function BancosCuentas() {
           }`}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="font-semibold text-gray-900 truncate">{c.alias}</p>
+                <p className="font-semibold text-gray-900 truncate flex items-center gap-2">
+                  {c.alias}
+                  {c.tipo === 'TARJETA_CREDITO' && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 uppercase tracking-wide">Tarjeta</span>
+                  )}
+                </p>
                 <p className="text-xs text-gray-500">
                   {c.banco_nombre}
                   {c.clabe ? ` · CLABE ${c.clabe}` : ''}
@@ -118,9 +123,9 @@ export function BancosCuentas() {
 
             <div className="mt-3">
               <p className="text-[11px] text-gray-500 uppercase tracking-wide">
-                Saldo al corte
+                {c.tipo === 'TARJETA_CREDITO' ? 'Adeudo al corte' : 'Saldo al corte'}
               </p>
-              <p className="text-2xl font-bold text-gray-900 tabular-nums">
+              <p className={`text-2xl font-bold tabular-nums ${c.tipo === 'TARJETA_CREDITO' && Number(c.saldo_al_corte) > 0 ? 'text-rose-700' : 'text-gray-900'}`}>
                 {money(c.saldo_al_corte)}
               </p>
               {/* De cuándo es ese saldo. Sin esta línea, uno de hace cuatro
@@ -209,7 +214,9 @@ function ModalCuenta({ onCerrar, onListo }: any) {
   const [f, setF] = useState({
     bancoClave: '', bancoNombre: '', alias: '', numeroCuenta: '', clabe: '',
     moneda: 'MXN', saldoInicial: '', saldoInicialFecha: '', cuentaContableId: '',
+    tipo: 'CHEQUES', cuentaGastosId: '',
   });
+  const esTarjeta = f.tipo === 'TARJETA_CREDITO';
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
   const ctas: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);
 
@@ -243,40 +250,59 @@ function ModalCuenta({ onCerrar, onListo }: any) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg">
         <div className="flex items-center justify-between p-5 border-b">
-          <h3 className="font-bold text-gray-900">Nueva cuenta bancaria</h3>
+          <h3 className="font-bold text-gray-900">{esTarjeta ? 'Nueva tarjeta de crédito' : 'Nueva cuenta bancaria'}</h3>
           <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
 
         <div className="p-5 space-y-3">
           {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{error}</p>}
 
+          {/* Cheques (activo) o tarjeta de crédito (pasivo): cambia cómo cuadra el
+              estado y contra qué cuenta se concilia. */}
+          <div className="flex gap-2">
+            {[['CHEQUES', 'Cuenta de cheques'], ['TARJETA_CREDITO', 'Tarjeta de crédito']].map(([v, lbl]) => (
+              <button key={v} type="button" onClick={() => setF({ ...f, tipo: v })}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm border ${f.tipo === v ? 'border-emerald-500 bg-emerald-50 text-emerald-800 font-medium' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+
           <label className="block">
             <span className="text-xs text-gray-600">Cómo la llaman *</span>
             <input value={f.alias} onChange={(e) => setF({ ...f, alias: e.target.value })}
-              placeholder="Bancrea principal · nómina · dólares" className="input w-full" />
+              placeholder={esTarjeta ? 'Banorte Oro · Plata · Stori' : 'Bancrea principal · nómina · dólares'} className="input w-full" />
             <span className="text-[11px] text-gray-500">
               Es lo que se lee en la pantalla: el número de cuenta no distingue nada de un vistazo.
             </span>
           </label>
 
           <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-xs text-gray-600">Banco *</span>
-              <select
-                value={f.bancoClave}
-                onChange={(e) => {
-                  const b = bancos.find((x: any) => x.code === e.target.value);
-                  /* Se guardan los dos: la clave para cuadrar contra la CLABE,
-                     y el nombre para leerlo en pantalla. */
-                  setF({ ...f, bancoClave: e.target.value, bancoNombre: b?.name || '' });
-                }}
-                className="input w-full">
-                <option value="">— Elige el banco —</option>
-                {bancos.map((b: any) => (
-                  <option key={b.code} value={b.code}>{b.code} · {b.name}</option>
-                ))}
-              </select>
-            </label>
+            {esTarjeta ? (
+              <label className="block">
+                <span className="text-xs text-gray-600">Emisor / banco *</span>
+                <input value={f.bancoNombre} onChange={(e) => setF({ ...f, bancoNombre: e.target.value })}
+                  placeholder="Banorte · Banco Plata · Stori" className="input w-full" />
+              </label>
+            ) : (
+              <label className="block">
+                <span className="text-xs text-gray-600">Banco *</span>
+                <select
+                  value={f.bancoClave}
+                  onChange={(e) => {
+                    const b = bancos.find((x: any) => x.code === e.target.value);
+                    /* Se guardan los dos: la clave para cuadrar contra la CLABE,
+                       y el nombre para leerlo en pantalla. */
+                    setF({ ...f, bancoClave: e.target.value, bancoNombre: b?.name || '' });
+                  }}
+                  className="input w-full">
+                  <option value="">— Elige el banco —</option>
+                  {bancos.map((b: any) => (
+                    <option key={b.code} value={b.code}>{b.code} · {b.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="block">
               <span className="text-xs text-gray-600">Moneda</span>
               <select value={f.moneda} onChange={(e) => setF({ ...f, moneda: e.target.value })}
@@ -315,16 +341,32 @@ function ModalCuenta({ onCerrar, onListo }: any) {
             </label>
           </div>
 
-          {/* Cuenta contable del banco (102-xx): con ella, la Conciliación contable
-              puede contabilizar cada movimiento (cargo/abono del lado banco). */}
+          {/* Cuenta contable: el banco (102-xx, activo) o la tarjeta (201/205-xx,
+              pasivo). Con ella, la conciliación contabiliza/coteja cada movimiento. */}
           <label className="block">
-            <span className="text-xs text-gray-600">Cuenta contable (102-xx)</span>
+            <span className="text-xs text-gray-600">
+              {esTarjeta ? 'Cuenta de PASIVO de la tarjeta (201/205-xx)' : 'Cuenta contable (102-xx)'}
+            </span>
             <select value={f.cuentaContableId} onChange={(e) => setF({ ...f, cuentaContableId: e.target.value })}
               className="input w-full">
-              <option value="">— opcional, para la conciliación contable —</option>
+              <option value="">{esTarjeta ? '— recomendado: la cuenta del adeudo de la tarjeta —' : '— opcional, para la conciliación contable —'}</option>
               {ctas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
             </select>
           </label>
+
+          {esTarjeta && (
+            <label className="block">
+              <span className="text-xs text-gray-600">Cuenta de gastos por defecto (cargos sin CFDI)</span>
+              <select value={f.cuentaGastosId} onChange={(e) => setF({ ...f, cuentaGastosId: e.target.value })}
+                className="input w-full">
+                <option value="">— opcional; se puede elegir por movimiento —</option>
+                {ctas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+              </select>
+              <span className="text-[11px] text-gray-500">
+                Las compras que no traen CFDI (suscripciones, cargos chicos) van aquí al contabilizar.
+              </span>
+            </label>
+          )}
 
           {/* El punto de partida: sin él, el primer estado no tiene contra qué
               cuadrar y todos los saldos salen desfasados. */}
@@ -332,7 +374,7 @@ function ModalCuenta({ onCerrar, onListo }: any) {
             <p className="text-xs font-medium text-emerald-900">Punto de partida</p>
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="text-xs text-emerald-900">Saldo inicial</span>
+                <span className="text-xs text-emerald-900">{esTarjeta ? 'Adeudo inicial' : 'Saldo inicial'}</span>
                 <input type="number" step="0.01" value={f.saldoInicial}
                   onChange={(e) => setF({ ...f, saldoInicial: e.target.value })}
                   className="input w-full text-right" placeholder="0.00" />
@@ -344,8 +386,9 @@ function ModalCuenta({ onCerrar, onListo }: any) {
               </label>
             </div>
             <p className="text-[11px] text-emerald-800">
-              El saldo con el que arranca el control. Después ya no se puede cambiar si
-              hay estados cargados: movería todos los saldos calculados.
+              {esTarjeta
+                ? 'El ADEUDO con el que arranca el control (lo que se debe de la tarjeta). Después ya no se puede cambiar si hay estados cargados.'
+                : 'El saldo con el que arranca el control. Después ya no se puede cambiar si hay estados cargados: movería todos los saldos calculados.'}
             </p>
           </div>
         </div>
@@ -354,7 +397,8 @@ function ModalCuenta({ onCerrar, onListo }: any) {
           <button onClick={onCerrar} className="px-4 py-2 text-sm text-gray-600 hover:bg-white rounded-lg">
             Cancelar
           </button>
-          <button onClick={guardar} disabled={busy || !f.alias.trim() || !f.bancoClave}
+          <button onClick={guardar}
+            disabled={busy || !f.alias.trim() || (esTarjeta ? !f.bancoNombre.trim() : !f.bancoClave)}
             className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
             {busy ? 'Guardando…' : 'Dar de alta'}
           </button>
@@ -472,16 +516,16 @@ function ModalCargarEstado({ cuenta, mesInicial, anioInicial, onCerrar, onListo 
                 }`}>
                   {ext.cuadra ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
                   {ext.cuadra
-                    ? 'Cuadra con el saldo final del documento'
+                    ? (ext.esTarjeta ? 'Cuadra: adeudo anterior + cargos − pagos = adeudo actual' : 'Cuadra con el saldo final del documento')
                     : 'NO cuadra — revísalo antes de usar este saldo'}
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2 text-sm">
-                  <Cifra r="Banco" v={ext.banco} />
+                  <Cifra r={ext.esTarjeta ? 'Emisor' : 'Banco'} v={ext.banco} />
                   <Cifra r="Movimientos" v={String(ext.movimientos.length)} />
-                  <Cifra r="Retiros" v={money(ext.totalRetiros)} />
-                  <Cifra r="Depósitos" v={money(ext.totalDepositos)} />
-                  <Cifra r="Saldo inicial" v={ext.saldoInicial === null ? '—' : money(ext.saldoInicial)} />
-                  <Cifra r="Saldo final" v={ext.saldoFinal === null ? '—' : money(ext.saldoFinal)} />
+                  <Cifra r={ext.esTarjeta ? 'Pagos' : 'Retiros'} v={money(ext.totalRetiros)} />
+                  <Cifra r={ext.esTarjeta ? 'Cargos' : 'Depósitos'} v={money(ext.totalDepositos)} />
+                  <Cifra r={ext.esTarjeta ? 'Adeudo anterior' : 'Saldo inicial'} v={ext.saldoInicial === null ? '—' : money(ext.saldoInicial)} />
+                  <Cifra r={ext.esTarjeta ? 'Adeudo actual' : 'Saldo final'} v={ext.saldoFinal === null ? '—' : money(ext.saldoFinal)} />
                 </div>
                 {/* ── El enlace con el mes anterior ──
                     Cada estado puede cuadrar CONSIGO MISMO y la serie estar
@@ -523,9 +567,9 @@ function ModalCargarEstado({ cuenta, mesInicial, anioInicial, onCerrar, onListo 
                     <tr>
                       <th className="px-2 py-2 text-left w-24">Fecha</th>
                       <th className="px-2 py-2 text-left">Concepto</th>
-                      <th className="px-2 py-2 text-right w-24">Retiro</th>
-                      <th className="px-2 py-2 text-right w-24">Depósito</th>
-                      <th className="px-2 py-2 text-right w-28">Saldo</th>
+                      <th className="px-2 py-2 text-right w-24">{ext.esTarjeta ? 'Pago' : 'Retiro'}</th>
+                      <th className="px-2 py-2 text-right w-24">{ext.esTarjeta ? 'Cargo' : 'Depósito'}</th>
+                      <th className="px-2 py-2 text-right w-28">{ext.esTarjeta ? 'Adeudo' : 'Saldo'}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -543,10 +587,10 @@ function ModalCargarEstado({ cuenta, mesInicial, anioInicial, onCerrar, onListo 
                             <span className="block text-[11px] text-amber-700">{m.advertencia}</span>
                           )}
                         </td>
-                        <td className="px-2 py-1.5 text-right text-rose-700">
+                        <td className={`px-2 py-1.5 text-right ${ext.esTarjeta ? 'text-emerald-700' : 'text-rose-700'}`}>
                           {m.retiro ? money(m.retiro) : ''}
                         </td>
-                        <td className="px-2 py-1.5 text-right text-emerald-700">
+                        <td className={`px-2 py-1.5 text-right ${ext.esTarjeta ? 'text-rose-700' : 'text-emerald-700'}`}>
                           {m.deposito ? money(m.deposito) : ''}
                         </td>
                         <td className="px-2 py-1.5 text-right font-medium">

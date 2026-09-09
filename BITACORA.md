@@ -5356,3 +5356,48 @@ También en la barra del catálogo (junto a Importar Excel) y, para las pólizas
 `crearPoliza` inserta por `fecha` (no depende de que exista el periodo), así que las pólizas
 históricas entran aunque el ejercicio del combo sea otro; sólo exige el catálogo importado
 antes (para casar los códigos).
+
+---
+
+## 2026-09-09 (tesorería) — Estados de tarjeta de crédito (pasivo): lectura, conciliación y contabilización
+
+**Contexto.** El usuario dejó 5 estados reales para afinar la importación: 2 tarjetas Banorte
+(Clásica/Oro), 1 Plata, 1 Stori (PDF **escaneado**, sin capa de texto → sólo con OCR, que el
+server no tiene) y 1 chequera Ve Por Más (que ya cuadraba y sigue igual). Antes, un estado de
+tarjeta se detectaba y se **rechazaba** (guard). Ahora se importa completo. Decisión del
+usuario: soporte **completo como pasivo** (conciliar + contabilizar, casando compras con su CFDI).
+
+**Una tarjeta es un PASIVO, no una chequera.** Cuadra por «adeudo del periodo anterior +
+cargos − pagos = adeudo actual». Layouts medidos contra los archivos reales (ancho fijo,
+latin1): Banorte y Plata comparten `fecha operación · fecha cargo · [últimos 4] · descripción ·
+±importe`, con `Total cargos`/`Total abonos`. El `+` es CARGO (compra/interés/comisión, sube el
+adeudo) y el `−` ABONO (pago, baja el adeudo). **Se lee ANTES de `separarImportesPegados`**
+porque el desglose trae las dos fechas y el año de 4 dígitos pegados ("10-JUL-202613-JUL-2026…")
+y el separador (pensado para chequeras) partía el año. Banorte además parte el importe al
+renglón siguiente: se toma el `±$` inmediato. Los 3 cuadran (A 9 movs, B 28 —incluye compras
+partidas y la mensualidad MSI del periodo—, Plata 5).
+
+**Motor.** `contpaqi`… no; en `treasury/extractor-movimientos.service`: `detectarEmisorTarjeta`,
+`parsearTarjetaCredito` (devuelve adeudo anterior/actual, cargos, abonos, movimientos con
+`tipo` CARGO/ABONO y su cuadre) y `tarjetaAResultado` (mapea al formato común con la convención
+del pasivo: **deposito = CARGO, retiro = ABONO**, saldos = adeudo; así el arrastre y el enlace
+mes a mes funcionan sin tocar el motor). `ResultadoExtraccion.esTarjeta` marca el pasivo.
+
+**Cuenta y conciliación** (`treasury`): `bancos_cuentas.tipo` (CHEQUES | TARJETA_CREDITO;
+migración `2026-09-09_tarjetas_credito.sql`, se aplica sola en el arranque), su
+`cuenta_contable_id` apunta al **pasivo** (201/205-xx) y `cuenta_gastos_id` es el gasto por
+defecto de cargos sin CFDI. `bancos_config.cuenta_intereses_id` = gasto financiero por intereses.
+`cotejarConLibro` **invierte el lado** para el pasivo (compra→ABONO, pago→CARGO). `sugerir`
+clasifica compra_tarjeta (casa CFDI de proveedor), interes_tarjeta, comisión/IVA y pago_tarjeta.
+`contabilizar` (nuevo `contabilizarTarjeta`): compra con CFDI → gasto + IVA acreditable (119.01) /
+**abono a la tarjeta**, idempotente por el UUID del CFDI (si el módulo de compras ya lo asentó,
+choca y avisa que se concilie); compra sin CFDI → cuenta de gastos elegida / abono tarjeta;
+interés/comisión/IVA → su cuenta fija / abono tarjeta; **el pago NO se asienta aquí** (sale del
+banco: se concilia con «Cotejar con el libro»).
+
+**UI.** Alta de cuenta con selector Cheques/Tarjeta (emisor libre para Plata/Stori, cuenta de
+pasivo, gasto por defecto, «adeudo inicial»); tarjeta con etiqueta y adeudo en rojo. La carga y
+la conciliación renombran columnas (Cargo/Pago/Adeudo) e invierten colores; el modal de cuentas
+fijas añade la de intereses de tarjeta.
+
+**Stori escaneado:** el extractor lo dice claro (necesita PDF con texto o el CSV de la app).

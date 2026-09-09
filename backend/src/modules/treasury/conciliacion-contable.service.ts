@@ -29,43 +29,54 @@ const esIvaTxt = (c: string) =>
 /* ── Cuentas fijas de comisiones (una vez por empresa) ─────────────────────── */
 export async function getConfig(companyId: string) {
   const r = await query<any>(
-    `SELECT bc.cuenta_comisiones_id, bc.cuenta_iva_comisiones_id,
+    `SELECT bc.cuenta_comisiones_id, bc.cuenta_iva_comisiones_id, bc.cuenta_intereses_id,
             cc.codigo AS comisiones_codigo, cc.nombre AS comisiones_nombre,
-            ci.codigo AS iva_codigo, ci.nombre AS iva_nombre
+            ci.codigo AS iva_codigo, ci.nombre AS iva_nombre,
+            cn.codigo AS intereses_codigo, cn.nombre AS intereses_nombre
        FROM bancos_config bc
        LEFT JOIN accounting_accounts cc ON cc.id = bc.cuenta_comisiones_id
        LEFT JOIN accounting_accounts ci ON ci.id = bc.cuenta_iva_comisiones_id
+       LEFT JOIN accounting_accounts cn ON cn.id = bc.cuenta_intereses_id
       WHERE bc.company_id=$1`, [companyId]);
   const x = r.rows[0] || {};
   return {
     cuentaComisionesId: x.cuenta_comisiones_id || null,
     cuentaIvaComisionesId: x.cuenta_iva_comisiones_id || null,
+    cuentaInteresesId: x.cuenta_intereses_id || null,
     comisionesCodigo: x.comisiones_codigo || null,
     comisionesNombre: x.comisiones_nombre || null,
     ivaCodigo: x.iva_codigo || null,
     ivaNombre: x.iva_nombre || null,
+    interesesCodigo: x.intereses_codigo || null,
+    interesesNombre: x.intereses_nombre || null,
   };
 }
 
 export async function setCuentasComisiones(
   companyId: string, comisionesId: string | null, ivaId: string | null,
+  interesesId?: string | null,
 ) {
   await query(
-    `INSERT INTO bancos_config (company_id, cuenta_comisiones_id, cuenta_iva_comisiones_id)
-     VALUES ($1,$2,$3)
+    `INSERT INTO bancos_config (company_id, cuenta_comisiones_id, cuenta_iva_comisiones_id, cuenta_intereses_id)
+     VALUES ($1,$2,$3,$4)
      ON CONFLICT (company_id) DO UPDATE SET
        cuenta_comisiones_id = EXCLUDED.cuenta_comisiones_id,
-       cuenta_iva_comisiones_id = EXCLUDED.cuenta_iva_comisiones_id, updated_at=NOW()`,
-    [companyId, comisionesId || null, ivaId || null]);
+       cuenta_iva_comisiones_id = EXCLUDED.cuenta_iva_comisiones_id,
+       cuenta_intereses_id = COALESCE(EXCLUDED.cuenta_intereses_id, bancos_config.cuenta_intereses_id),
+       updated_at=NOW()`,
+    [companyId, comisionesId || null, ivaId || null, interesesId ?? null]);
   return getConfig(companyId);
 }
 
 /* ── Sugerir: analiza todos los movimientos de un estado y les pone su match ── */
 export async function sugerir(companyId: string, estadoId: string) {
   const est = await query<any>(
-    `SELECT id, cuenta_id FROM bancos_estados_cuenta WHERE id=$1 AND company_id=$2`,
+    `SELECT e.id, e.cuenta_id, bc.tipo
+       FROM bancos_estados_cuenta e JOIN bancos_cuentas bc ON bc.id = e.cuenta_id
+      WHERE e.id=$1 AND e.company_id=$2`,
     [estadoId, companyId]);
   if (!est.rows[0]) return { error: 'no se encontró el estado de cuenta' };
+  const esTarjeta = est.rows[0].tipo === 'TARJETA_CREDITO';
 
   const movs = (await query<any>(
     `SELECT id, fecha, concepto, retiro, deposito, poliza_id, concil_estado
@@ -115,7 +126,19 @@ export async function sugerir(companyId: string, estadoId: string) {
     const dep = round2(m.deposito), ret = round2(m.retiro);
     let clasificacion = 'otro', cfdi: string | null = null, estado = 'pendiente', diff: number | null = null;
 
-    if (esComisionTxt(m.concepto)) {
+    if (esTarjeta) {
+      /* Tarjeta (pasivo): deposito = CARGO (compra) · retiro = ABONO (pago). */
+      if (/INTER[EÉ]S/i.test(m.concepto)) { clasificacion = 'interes_tarjeta'; estado = 'confirmado'; comisiones++; }
+      else if (esComisionTxt(m.concepto)) { clasificacion = esIvaTxt(m.concepto) ? 'iva_comision' : 'comision'; estado = 'confirmado'; comisiones++; }
+      else if (dep > 0) {
+        // Una compra: se casa con el CFDI del PROVEEDOR (lo pagó la tarjeta).
+        const hit = matchear(dep, fecha, recib);
+        if (hit) { clasificacion = 'compra_tarjeta'; cfdi = hit.uuid; diff = hit.diff; usados.add(hit.uuid); estado = hit.diff <= EXACTO ? 'confirmado' : 'sugerido'; estado === 'confirmado' ? confirmados++ : sugeridos++; }
+        else { clasificacion = 'compra_tarjeta'; otros++; }   // sin CFDI: irá a la cuenta de gastos elegida
+      }
+      else if (ret > 0) { clasificacion = 'pago_tarjeta'; estado = 'confirmado'; otros++; }   // se concilia contra el banco
+      else { otros++; }
+    } else if (esComisionTxt(m.concepto)) {
       clasificacion = esIvaTxt(m.concepto) ? 'iva_comision' : 'comision';
       estado = 'confirmado'; comisiones++;
     } else if (dep > 0) {
@@ -170,22 +193,106 @@ export async function marcar(
   return { ok: true };
 }
 
+/* ── Contabilizar un movimiento de TARJETA (pasivo) ──────────────────────────
+ * Compra → cargo a gasto (+ IVA acreditable si hay CFDI) / ABONO a la tarjeta.
+ * Interés/comisión/IVA → su cuenta fija / ABONO a la tarjeta.
+ * Pago → NO se asienta aquí: se concilia contra la póliza del banco. */
+async function contabilizarTarjeta(
+  companyId: string, m: any, tarjetaId: string, dep: number, ret: number,
+  opts: { contraCuentaId?: string } | undefined, userId?: string,
+): Promise<{ ok: true; folio: number } | { yaContabilizado: true } | { error: string }> {
+  const fecha = m.fecha_ymd || String(m.fecha).slice(0, 10);
+  const concepto = (m.concepto || 'Movimiento tarjeta').toString().slice(0, 180);
+  const cfg = await getConfig(companyId);
+  const clas = m.clasificacion;
+  const lineas: any[] = [];
+  const abonarTarjeta = (monto: number, uuid?: string | null) =>
+    lineas.push({ account_id: tarjetaId, abono: monto, concepto, uuid_cfdi: uuid || undefined });
+
+  /* Un PAGO (retiro > 0) no se asienta desde la tarjeta: sale del banco. */
+  if (clas === 'pago_tarjeta' || (ret > 0 && dep <= 0)) {
+    return { error: 'El pago de la tarjeta se contabiliza desde el estado del BANCO (ahí sale como retiro y abona al banco). Aquí sólo se concilia contra esa póliza con «Cotejar con el libro».' };
+  }
+  if (clas === 'interes_tarjeta') {
+    if (!cfg.cuentaInteresesId) return { error: 'elige la cuenta de intereses de tarjeta (en «Cuentas de comisiones e intereses»)' };
+    lineas.push({ account_id: cfg.cuentaInteresesId, cargo: dep, concepto });
+    abonarTarjeta(dep);
+  } else if (clas === 'comision') {
+    if (!cfg.cuentaComisionesId) return { error: 'elige la cuenta de comisiones' };
+    lineas.push({ account_id: cfg.cuentaComisionesId, cargo: dep, concepto });
+    abonarTarjeta(dep);
+  } else if (clas === 'iva_comision') {
+    if (!cfg.cuentaIvaComisionesId) return { error: 'elige la cuenta de IVA de comisiones' };
+    lineas.push({ account_id: cfg.cuentaIvaComisionesId, cargo: dep, concepto });
+    abonarTarjeta(dep);
+  } else {
+    /* Compra: al gasto elegido (o el default de la tarjeta), con IVA acreditable
+     * si el CFDI lo trae. El abono va SIEMPRE a la tarjeta (sube el adeudo). */
+    const gastoId = opts?.contraCuentaId || m.contra_cuenta_id || m.cuenta_gastos_id;
+    if (!gastoId) return { error: 'elige la cuenta de gasto de esta compra (o define la «cuenta de gastos» por defecto de la tarjeta)' };
+    if (m.cfdi_uuid) {
+      const c = (await query<any>(`SELECT subtotal, descuento, total FROM cfdi_recibidos WHERE company_id=$1 AND uuid=$2 LIMIT 1`, [companyId, m.cfdi_uuid])).rows[0];
+      const total = round2(c?.total ?? dep);
+      const neto = round2((Number(c?.subtotal) || 0) - (Number(c?.descuento) || 0));
+      const iva = round2(total - neto);
+      const ivaAcct = iva > 0 ? (await query<any>(`SELECT id FROM accounting_accounts WHERE company_id=$1 AND permite_movimientos AND codigo_agrupador IN ('119.01','119') ORDER BY codigo_agrupador DESC LIMIT 1`, [companyId])).rows[0] : null;
+      if (neto > 0 && iva > 0 && ivaAcct) {
+        lineas.push({ account_id: gastoId, cargo: neto, concepto, uuid_cfdi: m.cfdi_uuid });
+        lineas.push({ account_id: ivaAcct.id, cargo: iva, concepto: 'IVA acreditable', uuid_cfdi: m.cfdi_uuid });
+        abonarTarjeta(round2(neto + iva), m.cfdi_uuid);
+      } else {
+        lineas.push({ account_id: gastoId, cargo: total, concepto, uuid_cfdi: m.cfdi_uuid });
+        abonarTarjeta(total, m.cfdi_uuid);
+      }
+    } else {
+      lineas.push({ account_id: gastoId, cargo: dep, concepto });
+      abonarTarjeta(dep);
+    }
+  }
+
+  /* Idempotencia: una compra con CFDI usa el UUID (si el módulo de compras ya la
+   * asentó, choca y se avisa); lo demás, la clave del movimiento. */
+  const origenUuid = m.cfdi_uuid && clas === 'compra_tarjeta' ? m.cfdi_uuid : `TARJETA:${m.id}`;
+  try {
+    const pol = await crearPoliza(companyId, {
+      tipo: 'EGRESO', fecha, concepto, origen: 'BANCO', origen_uuid: origenUuid, regla: 'tarjeta_credito', lineas,
+    } as any, userId);
+    await query(`UPDATE bancos_movimientos SET poliza_id=$2, concil_estado='contabilizado' WHERE id=$1`, [m.id, pol.id]);
+    return { ok: true, folio: pol.folio };
+  } catch (e: any) {
+    if (e?.code === '23505' || /ya existe una p[oó]liza con ese UUID/i.test(e?.message || '')) {
+      return { error: 'Esta compra ya está contabilizada (su CFDI ya tiene póliza, seguramente del módulo de compras). No se vuelve a asentar: concíliala contra el pasivo con «Cotejar con el libro».' };
+    }
+    return { error: (e?.message || 'no se pudo contabilizar').toString().slice(0, 180) };
+  }
+}
+
 /* ── Contabilizar un movimiento: genera la póliza banco↔contraparte ─────────── */
 export async function contabilizar(
   companyId: string, movId: string, opts?: { contraCuentaId?: string }, userId?: string,
 ): Promise<{ ok: true; folio: number } | { yaContabilizado: true } | { error: string }> {
   const m = (await query<any>(
     `SELECT bm.*, TO_CHAR(bm.fecha,'YYYY-MM-DD') AS fecha_ymd,
-            bc.cuenta_contable_id AS banco_cuenta_id
+            bc.cuenta_contable_id AS banco_cuenta_id, bc.tipo AS cuenta_tipo,
+            bc.cuenta_gastos_id
        FROM bancos_movimientos bm
        JOIN bancos_cuentas bc ON bc.id = bm.cuenta_id
       WHERE bm.id=$1 AND bm.company_id=$2`, [movId, companyId])).rows[0];
   if (!m) return { error: 'no se encontró el movimiento' };
   if (m.poliza_id) return { yaContabilizado: true };
-  if (!m.banco_cuenta_id) return { error: 'define la cuenta contable (102-xx) de esta cuenta bancaria antes de contabilizar' };
+  const esTarjeta = m.cuenta_tipo === 'TARJETA_CREDITO';
+  if (!m.banco_cuenta_id) return { error: esTarjeta
+    ? 'define la cuenta de PASIVO (201/205-xx) de la tarjeta antes de contabilizar'
+    : 'define la cuenta contable (102-xx) de esta cuenta bancaria antes de contabilizar' };
 
   const dep = round2(m.deposito), ret = round2(m.retiro);
   const bankId = m.banco_cuenta_id;
+
+  /* ── TARJETA DE CRÉDITO (pasivo): deposito = CARGO (compra) · retiro = ABONO
+   *    (pago). Una compra ABONA la tarjeta (sube el adeudo); el pago la CARGA. ── */
+  if (esTarjeta) {
+    return contabilizarTarjeta(companyId, m, bankId, dep, ret, opts, userId);
+  }
   // OJO: bm.fecha llega como Date de JS del lado servidor; String(Date) da
   // «Tue Jan 02» y truena el INSERT (invalid input syntax for type date). Se usa
   // el TO_CHAR de la consulta.
@@ -241,7 +348,7 @@ export async function contabilizarLote(companyId: string, estadoId: string, user
     `SELECT id FROM bancos_movimientos
       WHERE company_id=$1 AND estado_id=$2 AND poliza_id IS NULL
         AND concil_estado='confirmado'
-        AND clasificacion IN ('cobro','pago','comision','iva_comision')
+        AND clasificacion IN ('cobro','pago','comision','iva_comision','compra_tarjeta','interes_tarjeta')
       ORDER BY orden`, [companyId, estadoId])).rows;
   let contabilizadas = 0; const errores: Array<{ id: string; error: string }> = [];
   for (const m of movs) {
@@ -292,11 +399,16 @@ async function rangoDelEstado(companyId: string, estadoId: string): Promise<{ de
  */
 export async function cotejarConLibro(companyId: string, estadoId: string) {
   const est = (await query<any>(
-    `SELECT bc.cuenta_contable_id AS banco_cuenta_id
+    `SELECT bc.cuenta_contable_id AS banco_cuenta_id, bc.tipo
        FROM bancos_estados_cuenta e JOIN bancos_cuentas bc ON bc.id = e.cuenta_id
       WHERE e.id=$1 AND e.company_id=$2`, [estadoId, companyId])).rows[0];
   if (!est) return { error: 'no se encontró el estado de cuenta' };
-  if (!est.banco_cuenta_id) return { error: 'define la cuenta contable (102-xx) del banco antes de cotejar' };
+  if (!est.banco_cuenta_id) return { error: est.tipo === 'TARJETA_CREDITO'
+    ? 'define la cuenta de PASIVO (201/205-xx) de la tarjeta antes de cotejar'
+    : 'define la cuenta contable (102-xx) del banco antes de cotejar' };
+  /* En un PASIVO el lado se invierte: la compra (deposito) ABONA la cuenta y el
+   * pago (retiro) la CARGA — al revés que en el banco (activo). */
+  const esTarjeta = est.tipo === 'TARJETA_CREDITO';
   const rango = await rangoDelEstado(companyId, estadoId);
   if (!rango) return { conciliados: 0, enLibroSinBanco: 0 };
 
@@ -335,8 +447,8 @@ export async function cotejarConLibro(companyId: string, estadoId: string) {
     const dep = round2(m.deposito), ret = round2(m.retiro);
     const fecha = new Date(String(m.fecha).slice(0, 10) + 'T00:00:00Z');
     let ln: any = null;
-    if (dep > 0) ln = buscar(dep, fecha, 'cargo');
-    else if (ret > 0) ln = buscar(ret, fecha, 'abono');
+    if (dep > 0) ln = buscar(dep, fecha, esTarjeta ? 'abono' : 'cargo');
+    else if (ret > 0) ln = buscar(ret, fecha, esTarjeta ? 'cargo' : 'abono');
     if (ln) {
       usados.add(ln.id);
       await query(

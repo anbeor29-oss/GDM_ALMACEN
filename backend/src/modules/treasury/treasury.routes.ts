@@ -377,13 +377,15 @@ router.get(
   })
 );
 
-/** Elegir la cuenta de comisiones y la de su IVA (una vez, se aplican a todas). */
+/** Elegir la cuenta de comisiones, la de su IVA y la de intereses de tarjeta
+ *  (una vez, se aplican a todas las cuentas y tarjetas). */
 router.put(
   '/bancos/config/comisiones',
   requireCapability('treasury:pay'),
   asyncHandler(async (req: Request, res: Response) => {
     const data = await concil.setCuentasComisiones(
-      companyId(req), req.body?.comisionesId || null, req.body?.ivaId || null);
+      companyId(req), req.body?.comisionesId || null, req.body?.ivaId || null,
+      req.body?.interesesId ?? null);
     res.json({ success: true, data });
   })
 );

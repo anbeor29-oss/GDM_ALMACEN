@@ -66,6 +66,10 @@ export interface ResultadoExtraccion {
   /** Si el saldo final declarado cuadra con el arrastre. */
   cuadra: boolean;
   avisos: string[];
+  /** Es un estado de TARJETA DE CRÉDITO (pasivo), no una chequera. Para una
+   *  tarjeta: saldoInicial = adeudo anterior, saldoFinal = adeudo actual, y en
+   *  cada movimiento deposito = CARGO (compra) y retiro = ABONO (pago). */
+  esTarjeta?: boolean;
 }
 
 /* ══════════════════ UTILIDADES ══════════════════ */
@@ -885,11 +889,229 @@ function extraerBanamex(
   };
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   TARJETA DE CRÉDITO  (Banorte, Plata; Stori cuando trae texto)
+   ───────────────────────────────────────────────────────────────────────────
+   Un estado de tarjeta NO es una chequera: es un PASIVO. Su cuadre es
+   «adeudo del periodo anterior + cargos − pagos = adeudo actual», no un arrastre
+   de saldo bancario. Por eso tiene su propio tipo, con CARGO (compra/interés/
+   comisión, sube el adeudo) y ABONO (pago/devolución, baja el adeudo) —en lugar
+   de retiro/depósito, que en un pasivo confundirían el lado contable—.
+
+   Los dos emisores comparten la misma forma de renglón:
+     fecha_operación · fecha_cargo · [últimos 4] · descripción · ±importe
+   con «Total cargos» y «Total abonos» impresos para verificar que no se perdió
+   ningún renglón. El signo manda: «+» es CARGO, «−»/«-» es ABONO.
+   ═══════════════════════════════════════════════════════════════════════════ */
+export interface MovimientoTarjeta {
+  fecha: string;            // ISO — fecha de CARGO (cuándo pega en la cuenta)
+  fechaOperacion: string;   // ISO — cuándo se hizo la compra
+  concepto: string;
+  importe: number;          // siempre positivo; el lado lo da `tipo`
+  tipo: 'CARGO' | 'ABONO';  // CARGO = compra/interés/comisión · ABONO = pago/devolución
+  lineaOrigen: string;
+}
+export interface ResultadoTarjeta {
+  emisor: string;                 // 'Banorte' | 'Plata' | 'Stori'
+  tarjeta: string | null;         // últimos 4, si se leyeron
+  adeudoAnterior: number | null;
+  totalCargos: number;            // lo que declara el estado
+  totalAbonos: number;            // lo que declara el estado (positivo)
+  adeudoActual: number | null;    // adeudoAnterior + totalCargos − totalAbonos
+  movimientos: MovimientoTarjeta[];
+  sumaCargos: number;             // Σ de los renglones extraídos
+  sumaAbonos: number;
+  cuadra: boolean;                // Σ extraído == totales declarados
+  avisos: string[];
+}
+
+/** El emisor de la tarjeta, por marcas propias del estado (no por la contraparte
+ *  de un renglón). `null` si no se reconoce —entonces mejor no inventar el layout—. */
+export function detectarEmisorTarjeta(texto: string): 'Banorte' | 'Plata' | 'Stori' | null {
+  const t = texto.toUpperCase();
+  if (/BANCO\s*PLATA|BANCOPLATA\.MX|PLATA\s*CARD|PLATA\+/.test(t)) return 'Plata';
+  if (/BNO951005|MERCANTIL\s*DEL\s*NORTE|UNE@BANORTE\.COM|PUNTOS\s*BANORTE/.test(t)) return 'Banorte';
+  if (/\bSTORI\b|STORICARD|TARJETA\s*STORI/.test(t)) return 'Stori';
+  return null;
+}
+
+const importeCon = (s: string) => aNumero(s.replace(/[−–]/g, '-'));  // normaliza el signo Unicode
+
+/** Lee «Etiqueta … ±$1,234.56» y devuelve el número con su signo. */
+function montoTrasEtiqueta(texto: string, re: RegExp): number | null {
+  const m = re.exec(texto);
+  return m ? importeCon(m[1]) : null;
+}
+
+export function parsearTarjetaCredito(
+  texto: string,
+  opciones: { anio?: number } = {},
+): ResultadoTarjeta | null {
+  const emisor = detectarEmisorTarjeta(texto);
+  if (!emisor) return null;
+
+  const avisos: string[] = [];
+  const lineas = texto.split(/\r?\n/);
+  const movimientos: MovimientoTarjeta[] = [];
+
+  /* Dos fechas pegadas (operación + cargo), la 2ª es la de cargo. Año de 4
+   * dígitos (Banorte MAYÚS, Plata minús). Plata mete los últimos 4 y el monto de
+   * origen antes del importe en MXN; se toma SIEMPRE el último ±$ como importe. */
+  /* Un renglón empieza con la fecha de operación y la de cargo PEGADAS (la 2ª es
+   * la de cargo), año de 4 dígitos. El importe firmado va al final… o, en Banorte,
+   * en el renglón SIGUIENTE cuando pdf-parse parte el movimiento largo. */
+  const RX_INICIO     = /^(\d{1,2}-[A-Za-zÁÉÍÓÚ]{3}-\d{4})\s*(\d{1,2}-[A-Za-zÁÉÍÓÚ]{3}-\d{4})\s*(.*)$/;
+  const RX_MONTO_FIN  = /([+\-−–]\s?\$[\d,]+\.\d{2})\s*$/;
+  const RX_SOLO_MONTO = /^([+\-−–]\s?\$[\d,]+\.\d{2})$/;
+  /* No confundir con la sección «compras a meses» (una sola fecha, importes SIN
+   * signo): RX_INICIO exige DOS fechas, así que esas líneas ni se miran. */
+  const limpiar = (s: string) => (s.replace(/\s{2,}/g, ' ').trim().slice(0, 180) || 'Movimiento');
+
+  for (let i = 0; i < lineas.length; i++) {
+    const inicio = lineas[i].trim();
+    const mi = RX_INICIO.exec(inicio);
+    if (!mi) continue;
+    const fOper = mi[1], fCargo = mi[2];
+    let resto = mi[3];
+
+    let montoTxt: string | null = null;
+    const mf = RX_MONTO_FIN.exec(resto);
+    if (mf) { montoTxt = mf[1]; resto = resto.slice(0, mf.index); }
+    else {
+      /* Importe en el renglón inmediato siguiente (Banorte parte el movimiento). */
+      const nx = (lineas[i + 1] || '').trim();
+      const sm = RX_SOLO_MONTO.exec(nx);
+      if (sm) { montoTxt = sm[1]; i++; }
+    }
+    if (!montoTxt) continue;
+
+    /* Plata antepone los últimos 4 y el «±montoOrigen MXN TC» al importe en MXN. */
+    if (emisor === 'Plata') {
+      resto = resto.replace(/^\d{4}/, '')
+                   .replace(/[+\-−–][\d,]+\.\d{2}\s*MXN\s*[\d.]+\s*$/, '')
+                   .trim();
+    }
+
+    const importe = Math.abs(importeCon(montoTxt));
+    if (!importe) continue;
+    const esAbono = /[-−–]/.test(montoTxt);   // «−»/«-» = pago/abono · «+» = cargo/compra
+    movimientos.push({
+      fecha: aFechaIso(fCargo.toUpperCase(), opciones.anio) || aFechaIso(fOper.toUpperCase(), opciones.anio),
+      fechaOperacion: aFechaIso(fOper.toUpperCase(), opciones.anio),
+      concepto: limpiar(resto),
+      importe,
+      tipo: esAbono ? 'ABONO' : 'CARGO',
+      lineaOrigen: inicio,
+    });
+  }
+
+  const adeudoAnterior = montoTrasEtiqueta(texto, /Adeudo\s+del\s+periodo\s+anterior\s*\$?\s*([\d,]+\.\d{2})/i);
+  const totCargosDecl  = montoTrasEtiqueta(texto, /Total\s+cargos\s*([+\-−–]?\s?\$?[\d,]+\.\d{2})/i);
+  const totAbonosDecl  = montoTrasEtiqueta(texto, /Total\s+abonos\s*([+\-−–]?\s?\$?[\d,]+\.\d{2})/i);
+
+  const sumaCargos = pesos(movimientos.filter((x) => x.tipo === 'CARGO').reduce((s, x) => s + x.importe, 0));
+  const sumaAbonos = pesos(movimientos.filter((x) => x.tipo === 'ABONO').reduce((s, x) => s + x.importe, 0));
+  const totalCargos = totCargosDecl !== null ? Math.abs(totCargosDecl) : sumaCargos;
+  const totalAbonos = totAbonosDecl !== null ? Math.abs(totAbonosDecl) : sumaAbonos;
+  const adeudoActual = adeudoAnterior !== null ? pesos(adeudoAnterior + totalCargos - totalAbonos) : null;
+
+  const cuadraCargos = Math.abs(sumaCargos - totalCargos) <= 0.02;
+  const cuadraAbonos = Math.abs(sumaAbonos - totalAbonos) <= 0.02;
+  if (!movimientos.length) avisos.push(`${emisor}: no se reconoció ningún movimiento en el desglose de la tarjeta.`);
+  if (!cuadraCargos) avisos.push(`Los cargos extraídos suman ${sumaCargos.toFixed(2)} y el estado declara ${totalCargos.toFixed(2)}: falta o sobra algún renglón.`);
+  if (!cuadraAbonos) avisos.push(`Los pagos/abonos extraídos suman ${sumaAbonos.toFixed(2)} y el estado declara ${totalAbonos.toFixed(2)}.`);
+  if (adeudoAnterior === null) avisos.push(`${emisor}: no se encontró el «adeudo del periodo anterior»; no hay contra qué arrastrar el adeudo.`);
+
+  return {
+    emisor,
+    tarjeta: null,
+    adeudoAnterior,
+    totalCargos,
+    totalAbonos,
+    adeudoActual,
+    movimientos,
+    sumaCargos,
+    sumaAbonos,
+    cuadra: !!movimientos.length && cuadraCargos && cuadraAbonos,
+    avisos,
+  };
+}
+
+/** Convierte el resultado de tarjeta al formato común, con la convención del
+ *  pasivo: deposito = CARGO (compra, sube el adeudo) y retiro = ABONO (pago). El
+ *  arrastre (saldo += deposito − retiro) reproduce «adeudo anterior + cargos −
+ *  pagos», así que el motor de cuadre y el enlace mes a mes funcionan igual. */
+function tarjetaAResultado(rt: ResultadoTarjeta, avisos: string[]): ResultadoExtraccion {
+  const saldoInicial = rt.adeudoAnterior;
+  let corriente = saldoInicial ?? 0;
+  const movimientos: MovimientoExtraido[] = rt.movimientos.map((m, i) => {
+    const deposito = m.tipo === 'CARGO' ? m.importe : 0;   // compra: sube el adeudo
+    const retiro   = m.tipo === 'ABONO' ? m.importe : 0;   // pago: baja el adeudo
+    corriente = pesos(corriente + deposito - retiro);
+    return {
+      fecha: m.fecha,
+      concepto: m.concepto,
+      referencia: '',
+      retiro,
+      deposito,
+      saldo: null,                       // la tarjeta no imprime saldo por renglón
+      saldoCalculado: corriente,
+      advertencia: '',
+      inferido: false,
+      duda: false,
+      orden: i + 1,
+      lineaOrigen: m.lineaOrigen,
+    };
+  });
+  return {
+    banco: rt.emisor,
+    saldoInicial,
+    saldoFinal: rt.adeudoActual,
+    movimientos,
+    totalRetiros: rt.totalAbonos,      // pagos
+    totalDepositos: rt.totalCargos,    // cargos
+    conAdvertencia: 0,
+    inferidos: 0,
+    cuadra: rt.cuadra,
+    avisos: [...avisos, ...rt.avisos],
+    esTarjeta: true,
+  };
+}
+
 export function extraerMovimientos(
   texto: string,
   opciones: { anio?: number; mes?: number } = {}
 ): ResultadoExtraccion {
   const avisos: string[] = [];
+
+  /* TARJETA DE CRÉDITO: se reconoce y se lee ANTES de separar importes. Su
+   * desglose trae las dos fechas y el año PEGADOS ("10-JUL-202613-JUL-2026…") y
+   * el separador —pensado para chequeras— partiría el año de 4 dígitos. Es un
+   * PASIVO: se lee con su parser (adeudo anterior + cargos − pagos) y se marca
+   * para que la conciliación invierta el lado contable. Una chequera nunca dice
+   * "pago mínimo" junto a "adeudo del periodo / no generar intereses". */
+  const cab = texto.toUpperCase().slice(0, 4000);
+  const pareceTarjeta =
+    (/PAGO\s*M[ÍI]NIMO/.test(cab) && /ADEUDO\s+DEL\s+PERIODO|NO\s+GENERAR\s+INTERESES|SALDO\s+DEUDOR/.test(cab))
+    || !!detectarEmisorTarjeta(texto);
+  if (pareceTarjeta) {
+    const rt = parsearTarjetaCredito(texto, { anio: opciones.anio });
+    if (rt && rt.movimientos.length) return tarjetaAResultado(rt, avisos);
+    /* Se ve como tarjeta pero no se pudo leer el desglose (emisor no soportado o
+     * PDF escaneado): se avisa claro en vez de tratarla como chequera. */
+    return {
+      banco: rt?.emisor ? `Tarjeta ${rt.emisor}` : 'Tarjeta de crédito',
+      saldoInicial: null, saldoFinal: null, movimientos: [],
+      totalRetiros: 0, totalDepositos: 0, conAdvertencia: 0, inferidos: 0, cuadra: false,
+      esTarjeta: true,
+      avisos: [
+        ...avisos,
+        'Es un estado de TARJETA DE CRÉDITO pero no se pudo leer el desglose de ' +
+        'movimientos. Si el PDF está escaneado (sin texto), este servidor no tiene ' +
+        'OCR: sube el PDF con texto o el detalle que exporte la app del banco.',
+      ],
+    };
+  }
 
   /* Si el PDF trajo los importes pegados (pdf-parse colapsa espacios), se
    * separan por sus centavos ANTES de nada. Es determinista y no inventa cifras. */
@@ -903,35 +1125,6 @@ export function extraerMovimientos(
   }
 
   const banco = detectarBanco(texto);
-
-  /* Un estado de TARJETA DE CRÉDITO no es una cuenta bancaria: se concilia contra
-   * el PASIVO (la tarjeta), no contra bancos, y su cuadre es "adeudo anterior +
-   * cargos − pagos", no un arrastre de saldo. Colarlo por aquí produciría
-   * movimientos que ensucian la conciliación del banco. Se reconoce por su
-   * lenguaje —pago mínimo junto con adeudo del periodo / no generar intereses—;
-   * una chequera menciona "tarjeta de débito", pero nunca eso. Se corta aquí con
-   * un aviso claro en vez de inventar movimientos bancarios. */
-  const cab = texto.toUpperCase().slice(0, 4000);
-  if (/PAGO\s*M[ÍI]NIMO/.test(cab) &&
-      /ADEUDO\s+DEL\s+PERIODO|NO\s+GENERAR\s+INTERESES|SALDO\s+DEUDOR/.test(cab)) {
-    return {
-      banco: 'Tarjeta de crédito',
-      saldoInicial: null,
-      saldoFinal: null,
-      movimientos: [],
-      totalRetiros: 0,
-      totalDepositos: 0,
-      conAdvertencia: 0,
-      inferidos: 0,
-      cuadra: false,
-      avisos: [
-        'Esto es un estado de TARJETA DE CRÉDITO, no una cuenta bancaria. Se ' +
-        'concilia contra la cuenta de pasivo de la tarjeta (adeudo anterior + ' +
-        'cargos − pagos), no contra el banco. No se extrajeron movimientos para ' +
-        'no ensuciar la conciliación bancaria.',
-      ],
-    };
-  }
 
   /* Nu no es tabular: no trae columnas ni saldo por movimiento. La fecha, el
    * concepto y el importe FIRMADO van en renglones distintos. Se lee con su
