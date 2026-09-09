@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle } from 'lucide-react';
+import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
@@ -56,6 +56,7 @@ export function PolizasListaPage() {
   const [generando, setGenerando] = useState('');
   const [todoAnio, setTodoAnio] = useState(false);
   const [editar, setEditar] = useState<any>(null);
+  const [previa, setPrevia] = useState<any>(null);   // póliza en previsualización/PDF
   /* Si se llegó desde el auxiliar de la balanza, al cerrar/guardar el editor se
    * regresa allá (no a esta lista): es donde estaba trabajando el usuario. */
   const [volverBalanza, setVolverBalanza] = useState(false);
@@ -194,8 +195,10 @@ export function PolizasListaPage() {
                 {!cuadra && (
                   <span className="text-[10px] text-rose-600 flex items-center gap-0.5"><AlertTriangle size={11} /> descuadrada</span>
                 )}
+                <button onClick={() => setPrevia(p)} title="Previsualizar / PDF"
+                  className="ml-auto text-gray-300 hover:text-sky-600"><Eye size={15} /></button>
                 <button onClick={() => setEditar(p)} title="Editar póliza"
-                  className="ml-auto text-gray-300 hover:text-primary"><Pencil size={14} /></button>
+                  className="text-gray-300 hover:text-primary"><Pencil size={14} /></button>
                 <button onClick={() => borrar(p)} title="Eliminar póliza"
                   className="text-gray-300 hover:text-rose-500"><Trash2 size={15} /></button>
               </div>
@@ -221,6 +224,7 @@ export function PolizasListaPage() {
         })}
       </div>
 
+      {previa && <PreviaPoliza poliza={previa} mascara={mascara} onCerrar={() => setPrevia(null)} />}
       {editar && (
         <EditorPoliza
           poliza={editar}
@@ -252,6 +256,106 @@ export function PolizasListaPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/* ── Previsualización / PDF de una póliza (el UUID del CFDI va en AZUL) ── */
+function PreviaPoliza({ poliza, mascara, onCerrar }: any) {
+  const lineas: any[] = poliza.lineas || [];
+  const cargos = lineas.reduce((a, l) => a + Number(l.cargo || 0), 0);
+  const abonos = lineas.reduce((a, l) => a + Number(l.abono || 0), 0);
+  const uuid = poliza.origen_uuid || '';
+
+  /* Se abre una ventana con la póliza como documento propio y se manda a imprimir:
+   * el usuario elige «Guardar como PDF». Es la misma idea de la previsualización de
+   * facturas, pero para la póliza, y con el UUID en azul. */
+  const imprimir = () => {
+    const filas = lineas.map((l) => `
+      <tr>
+        <td class="mono">${formatCuenta(l.codigo, mascara)}</td>
+        <td>${(l.nombre || '')}${l.concepto ? ' · ' + l.concepto : ''}${l.uuid_cfdi ? ` <span class="uuid">${l.uuid_cfdi}</span>` : ''}</td>
+        <td class="num">${Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
+        <td class="num">${Number(l.abono) > 0 ? money(l.abono) : ''}</td>
+      </tr>`).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Póliza ${poliza.folio}</title>
+      <style>
+        body{font-family:system-ui,Arial,sans-serif;margin:28px;color:#111}
+        h1{font-size:17px;margin:0 0 2px} .meta{color:#555;font-size:12px;margin:0 0 2px}
+        .uuid{color:#2563eb;font-family:ui-monospace,monospace;font-size:11px}
+        table{width:100%;border-collapse:collapse;font-size:12px;margin-top:12px}
+        th,td{border-bottom:1px solid #ddd;padding:5px 7px;text-align:left;vertical-align:top}
+        th{background:#f3f4f6;font-size:10px;text-transform:uppercase;color:#555}
+        td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+        td.mono{font-family:ui-monospace,monospace;white-space:nowrap}
+        tfoot td{font-weight:700;border-top:2px solid #333}
+      </style></head><body>
+      <h1>Póliza #${poliza.folio} · ${TIPO_POLIZA_LABEL[poliza.tipo] || poliza.tipo || 'Diario'}</h1>
+      <p class="meta">${fecha(poliza.fecha)} · ${(poliza.concepto || '')}</p>
+      ${uuid ? `<p class="meta">UUID CFDI: <span class="uuid">${uuid}</span></p>` : ''}
+      <table>
+        <thead><tr><th>Cuenta</th><th>Concepto</th><th class="num">Cargo</th><th class="num">Abono</th></tr></thead>
+        <tbody>${filas}</tbody>
+        <tfoot><tr><td></td><td class="num">Sumas</td><td class="num">${money(cargos)}</td><td class="num">${money(abonos)}</td></tr></tfoot>
+      </table>
+      </body></html>`;
+    const w = window.open('', '_blank', 'width=820,height=900');
+    if (!w) return;
+    w.document.write(html); w.document.close(); w.focus();
+    setTimeout(() => w.print(), 250);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white">
+          <div>
+            <h3 className="font-semibold text-gray-900">Póliza #{poliza.folio} · {TIPO_POLIZA_LABEL[poliza.tipo] || poliza.tipo || 'Diario'}</h3>
+            <p className="text-xs text-gray-500">{fecha(poliza.fecha)} · {poliza.concepto}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={imprimir} className="flex items-center gap-1.5 border border-sky-300 text-sky-700 px-3 py-1.5 rounded-lg text-sm hover:bg-sky-50">
+              <Printer size={15} /> Imprimir / PDF
+            </button>
+            <button onClick={onCerrar} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+          </div>
+        </div>
+        <div className="p-5">
+          {uuid && (
+            <p className="text-xs text-gray-500 mb-2">UUID CFDI: <span className="font-mono text-blue-600">{uuid}</span></p>
+          )}
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-500 text-xs">
+              <tr>
+                <th className="px-3 py-2 text-left">Cuenta</th>
+                <th className="px-3 py-2 text-left">Concepto</th>
+                <th className="px-3 py-2 text-right">Cargo</th>
+                <th className="px-3 py-2 text-right">Abono</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {lineas.map((l, i) => (
+                <tr key={i}>
+                  <td className="px-3 py-1.5 font-mono text-xs whitespace-nowrap">{formatCuenta(l.codigo, mascara)}</td>
+                  <td className="px-3 py-1.5 text-xs">
+                    {l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}
+                    {l.uuid_cfdi && <span className="ml-1.5 font-mono text-[10px] text-blue-600">{l.uuid_cfdi}</span>}
+                  </td>
+                  <td className="px-3 py-1.5 text-right font-mono text-xs">{Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
+                  <td className="px-3 py-1.5 text-right font-mono text-xs">{Number(l.abono) > 0 ? money(l.abono) : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 font-semibold bg-gray-50">
+                <td colSpan={2} className="px-3 py-2 text-right">Sumas</td>
+                <td className="px-3 py-2 text-right font-mono">{money(cargos)}</td>
+                <td className="px-3 py-2 text-right font-mono">{money(abonos)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
