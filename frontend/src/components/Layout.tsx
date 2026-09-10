@@ -541,7 +541,8 @@ type AccentColor = 'sky' | 'amber' | 'rose' | 'emerald' | 'fuchsia' | 'violet';
 
 /* Cada opción del menú se rotula por su emoji histórico; aquí ese emoji se
  * resuelve a un icono de línea (Lucide), para que TODO el sistema use la misma
- * familia de iconos. El icono hereda el color de acento de su módulo (currentColor). */
+ * familia de iconos. El color lo pone el contenedor (ver ACCENT_MAP): hoy gris
+ * en reposo y azul tenue en la opción activa. */
 const NAV_ICON: Record<string, LucideIcon> = {
   '🏠': LayoutDashboard, '🧮': Calculator, '🧾': Receipt, '📋': ClipboardList,
   '📉': TrendingDown, '📈': TrendingUp, '💵': Banknote, '👥': Users, '🪙': Coins,
@@ -564,13 +565,19 @@ function navIcon(e: string) {
   return <I size={18} strokeWidth={2} />;
 }
 
+/* Esquema NEUTRO ("neutra total", elegido 2026-09-10): los iconos van en gris y
+ * el color —azul tenue— solo aparece en la opción ACTIVA; no hay color por
+ * módulo. Se conserva el prop `accent` de cada NavItem (hoy sin efecto visual)
+ * para poder reactivar el color por módulo cambiando SOLO este mapa. */
+const NEUTRAL = {
+  activeBg: 'bg-sky-50',
+  activeText: 'text-sky-700',
+  iconActive: 'text-sky-600',
+  iconIdle: 'text-slate-400 group-hover:text-slate-600',
+  bar: 'bg-sky-500',
+};
 const ACCENT_MAP: Record<AccentColor, { activeBg: string; activeText: string; iconActive: string; iconIdle: string; bar: string }> = {
-  sky:     { activeBg: 'bg-sky-50',     activeText: 'text-sky-700',     iconActive: 'text-sky-600',     iconIdle: 'text-sky-500 group-hover:text-sky-600',         bar: 'bg-sky-500' },
-  amber:   { activeBg: 'bg-amber-50',   activeText: 'text-amber-700',   iconActive: 'text-amber-600',   iconIdle: 'text-amber-500 group-hover:text-amber-600',     bar: 'bg-amber-500' },
-  rose:    { activeBg: 'bg-rose-50',    activeText: 'text-rose-700',    iconActive: 'text-rose-600',    iconIdle: 'text-rose-500 group-hover:text-rose-600',       bar: 'bg-rose-500' },
-  emerald: { activeBg: 'bg-emerald-50', activeText: 'text-emerald-700', iconActive: 'text-emerald-600', iconIdle: 'text-emerald-500 group-hover:text-emerald-600', bar: 'bg-emerald-500' },
-  fuchsia: { activeBg: 'bg-fuchsia-50', activeText: 'text-fuchsia-700', iconActive: 'text-fuchsia-600', iconIdle: 'text-fuchsia-500 group-hover:text-fuchsia-600', bar: 'bg-fuchsia-500' },
-  violet:  { activeBg: 'bg-violet-50',  activeText: 'text-violet-700',  iconActive: 'text-violet-600',  iconIdle: 'text-violet-500 group-hover:text-violet-600',   bar: 'bg-violet-500' },
+  sky: NEUTRAL, amber: NEUTRAL, rose: NEUTRAL, emerald: NEUTRAL, fuchsia: NEUTRAL, violet: NEUTRAL,
 };
 
 interface NavChild {

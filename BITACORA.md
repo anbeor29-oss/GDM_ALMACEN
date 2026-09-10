@@ -5532,3 +5532,44 @@ del bloque «RESUMEN DE CUENTAS». Se reconoce por la firma cifrada de «HSBC» 
 ANTES de todo. Probado con DOS estados reales que **cuadran**: RAMON (16 movs, 163,407.06 →
 75,391.00) y GRICELDA (32 movs, 53,785.56 → 30,399.83, incluida la comisión $399 + IVA que venía
 en renglón de una sola línea). Regresión: Banorte/Plata/Stori/VePorMás/Banamex siguen cuadrando.
+
+---
+
+## 2026-09-10 (docs) — Contrato .docx regenerado y presentable desde contract-text.ts
+
+El borrador Word `docs/CONTRATO_TYC_BORRADOR.docx` era una copia manual que ya no
+coincidía con el texto vigente. Nuevo script `backend/scripts/generar-contrato-docx.ts`
+(`npm run docs:contrato`, en TU PowerShell) que arma el OOXML **directamente desde
+`buildContractText`** —la única fuente de verdad— así el .docx nunca se desincroniza del
+texto que se firma. Sin dependencias nuevas: empaqueta con `archiver`. El texto viene
+envuelto a ~72 columnas en la fuente y aquí se **re-fluye a párrafos de verdad** (une las
+líneas de una misma oración), justifica el cuerpo, centra el título, pone reglas
+horizontales en los separadores y respeta encabezados de cláusula, etiquetas (RFC:,
+Domicilio:…) e incisos (a), I., 2.1.). Datos del cliente y fecha van como marcadores. Trae
+ya lo vigente: v2026-07-29.1, RFC del prestador GHC1707275Y0, jurisdicción Aguascalientes,
+manifiesto del PAC. Validado: 107 párrafos, XML bien formado, marcadores intactos.
+Consecuencia: cierra el pendiente #7 (contrato); para actualizarlo se corre el comando.
+
+## 2026-09-10 (UI) — Sidebar neutro: iconos en gris, color solo en la opción activa
+
+Pendiente #2. El usuario eligió la variante «neutra total» sobre el esquema colorido por
+módulo. En `frontend/src/components/Layout.tsx` se colapsó el `ACCENT_MAP` a un único
+esquema `NEUTRAL`: iconos en reposo `text-slate-400` (hover `slate-600`) y el acento —azul
+tenue (sky)— solo en la opción **activa** (fondo, texto, icono y barra). Se conserva el prop
+`accent` de cada NavItem (hoy sin efecto visual) para poder reactivar el color por módulo
+cambiando SOLO ese mapa. TSC=0. Consecuencia: sidebar más sobrio; decisión reversible en un
+punto.
+
+## 2026-09-10 (PAC) — Confirmado: el código ya está listo para producción
+
+Pendiente #6. Revisión del módulo `pac`: `SWSapienProvider` cambia solo de sandbox a
+producción con `SW_SAPIEN_ENV` (`services.test.sw.com.mx` → `services.sw.com.mx`), lee el
+token de `SW_SAPIEN_TOKEN`, y en sandbox obliga el RFC de prueba EKU9003173C9; en producción
+usa el CSD real de cada empresa (NEXO lo guarda cifrado y lo **envía en la petición**, sin
+depender de la bóveda de SW). **No hay nada que programar.** Salir a real es del lado del
+usuario: activar cuenta+timbres de producción en swpanel.mx, generar TOKEN de producción, y
+en Render (Environment del backend) poner `PAC_PROVIDER=SW_SAPIEN`,
+`SW_SAPIEN_TOKEN=<token prod>`, `SW_SAPIEN_ENV=production`. Verificar con
+`GET /api/v1/pac/test-connection`, `/account-status` y `/providers`. No se configura el token
+ni se hace el cambio a `production` desde aquí: son credenciales reales y cada timbre en
+producción es un CFDI real ante el SAT.
