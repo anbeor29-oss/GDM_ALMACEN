@@ -51,6 +51,8 @@ export function ContractPage() {
       // La contraseña se limpia en cuanto deja de hacer falta.
       setPassword(''); setCer(null); setKey(null); setErr(null);
       qc.invalidateQueries({ queryKey: ['contract'] });
+      // Desbloquea el menú y el contenido (ContratoGate en Layout) sin recargar.
+      qc.invalidateQueries({ queryKey: ['contrato-estado'] });
     },
     onError: (e: any) => setErr(e?.response?.data?.message || e.message || 'No se pudo firmar'),
   });

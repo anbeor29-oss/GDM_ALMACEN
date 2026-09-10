@@ -24,6 +24,10 @@ export interface ContractStatus {
   version_vigente: string;
   signed: boolean;
   contract_text: string;
+  /** ¿La empresa ya tiene operación (facturas o catálogo contable)? Sirve al
+   *  gateo de alta: una empresa NUEVA/sin operación debe firmar el contrato
+   *  antes de habilitar módulos; una que ya opera no se bloquea de sorpresa. */
+  has_operation: boolean;
   signature?: {
     id: string;
     version: string;
@@ -67,14 +71,24 @@ export async function getContractStatus(companyId: string): Promise<ContractStat
     [companyId]
   );
 
+  // ¿Ya opera? Facturas emitidas (cualquier grupo que factura) o catálogo
+  // contable sembrado. Basta una para considerarla "en operación".
+  const opR = await query<{ op: boolean }>(
+    `SELECT (EXISTS(SELECT 1 FROM invoices WHERE company_id = $1 AND deleted_at IS NULL)
+          OR EXISTS(SELECT 1 FROM accounting_accounts WHERE company_id = $1)) AS op`,
+    [companyId]
+  );
+  const has_operation = opR.rows[0]?.op === true;
+
   if (r.rows.length === 0) {
-    return { version_vigente: CONTRACT_VERSION, signed: false, contract_text: preview };
+    return { version_vigente: CONTRACT_VERSION, signed: false, contract_text: preview, has_operation };
   }
   const s = r.rows[0];
   return {
     version_vigente: CONTRACT_VERSION,
     signed: true,
     contract_text: preview,
+    has_operation,
     signature: {
       id: s.id,
       version: s.version,

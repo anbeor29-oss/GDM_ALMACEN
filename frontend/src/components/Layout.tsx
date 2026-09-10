@@ -33,11 +33,47 @@ import { QueVersionEstoyViendo } from './QueVersionEstoyViendo';
  *  del SAT sin que la sesión se cierre a media bajada. */
 const IDLE_MINUTES = 20;
 
+/** Cubre el contenido mientras una empresa nueva/sin operación no ha firmado el
+ *  contrato. No es un error: es el SIGUIENTE PASO para continuar. */
+function ContratoGate({ esAdmin, onFirmar }: { esAdmin: boolean; onFirmar: () => void }) {
+  return (
+    <div className="max-w-xl mx-auto mt-10 bg-white rounded-xl shadow-lg border border-slate-200 p-8 text-center">
+      <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-sky-50 grid place-items-center">
+        <ScrollText className="text-sky-600" size={28} />
+      </div>
+      <h2 className="text-2xl font-bold text-slate-900">Activa tu empresa</h2>
+      {esAdmin ? (
+        <>
+          <p className="text-slate-600 mt-3">
+            El <b>primer paso</b> es firmar el contrato de servicio y el manifiesto
+            con la e.firma de la empresa. Hasta entonces los módulos permanecen bloqueados.
+          </p>
+          <button
+            onClick={onFirmar}
+            className="mt-6 inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white px-6 py-3 rounded-lg font-semibold"
+          >
+            <ScrollText size={18} /> Ir a firmar el contrato
+          </button>
+          <p className="text-xs text-slate-400 mt-4">
+            Al firmar se libera el catálogo de cuentas y los módulos de tu grupo de trabajo.
+          </p>
+        </>
+      ) : (
+        <p className="text-slate-600 mt-3">
+          El <b>administrador</b> de la empresa debe firmar el contrato de servicio para
+          habilitar el sistema. En cuanto lo firme, podrás operar con tu grupo de trabajo.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showIssuer, setShowIssuer] = useState(false);
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
 
   /* Mensajes sin leer, para el número del menú.
    *
@@ -74,6 +110,22 @@ export function Layout() {
     staleTime: 60 * 1000,
   });
   const contabLista = contabEstadoQ.data?.data?.activa !== false;   // undefined (cargando) = no recortar
+
+  /* PASO 1 DEL ALTA: FIRMAR EL CONTRATO. En una empresa NUEVA / sin operación,
+     hasta que el ADMIN firme el contrato + manifiesto no se habilita ningún
+     módulo (solo se ofrece ir a la firma). Una empresa que YA opera —tiene
+     facturas o catálogo contable— NO se bloquea (has_operation del backend).
+     Se recorta el menú y se cubre el contenido con <ContratoGate>. */
+  const contratoQ = useQuery({
+    queryKey: ['contrato-estado', user?.companyId],
+    queryFn: () => api.getContract(),
+    enabled: !!user?.companyId && user?.role !== 'SUPER_ADMIN',
+    staleTime: 60 * 1000,
+  });
+  const cEstado = contratoQ.data?.data as { signed?: boolean; has_operation?: boolean } | undefined;
+  const debeeFirmarContrato =
+    user?.role !== 'SUPER_ADMIN' && cEstado != null &&
+    cEstado.signed === false && cEstado.has_operation === false;
 
   const doLogout = useCallback(async (reason?: 'idle') => {
     try {
@@ -139,6 +191,13 @@ export function Layout() {
             // Cada entrada se muestra solo si el grupo de trabajo la permite.
             // El dashboard es común a todos.
             const emoji3D = navIcon;
+            // Empresa nueva/sin operación: hasta firmar el contrato, el menú
+            // muestra SOLO «Contrato» (al ADMIN) o nada (a los demás grupos).
+            if (debeeFirmarContrato) {
+              return esAdmin
+                ? <NavItem to="/contract" icon={emoji3D('📜')} accent="sky" label="Contrato" open={sidebarOpen} />
+                : null;
+            }
             return (
               <>
                 {/* Orden solicitado (V2): 1 Dashboard, 2 Facturas, 3 Carta Porte,
@@ -521,7 +580,12 @@ export function Layout() {
 
         <div className="flex-1 overflow-auto">
           <div className="p-8">
-            <Outlet />
+            {/* Empresa nueva/sin operación: hasta firmar el contrato el contenido
+                se cubre con el siguiente paso. Se deja pasar la propia pantalla
+                del contrato para que el ADMIN pueda firmarlo. */}
+            {debeeFirmarContrato && location.pathname !== '/contract'
+              ? <ContratoGate esAdmin={user?.role === 'ADMIN'} onFirmar={() => navigate('/contract')} />
+              : <Outlet />}
           </div>
         </div>
       </main>
