@@ -1442,6 +1442,16 @@ export function extraerMovimientos(
       'este servidor no puede leerlo: pega el texto o sube el CSV que da el portal del banco.'
     );
   }
+  /* HSBC imprime el PDF con una fuente que pdf-parse decodifica mal (mojibake), así
+   * que el texto llega ilegible y no se puede parsear con fiabilidad. Se avisa
+   * puntual: lo que funciona es el CSV/Excel del portal, o pegar el texto. */
+  if (banco === 'HSBC' && (movimientos.length === 0 || !cuadra)) {
+    avisos.push(
+      'HSBC: su PDF suele venir con el texto codificado de forma que no se lee bien. ' +
+      'Sube el CSV/Excel que exporta la banca en línea de HSBC, o pega el texto, para ' +
+      'poder extraer los movimientos.'
+    );
+  }
 
   return {
     banco,
