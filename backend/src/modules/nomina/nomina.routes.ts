@@ -888,6 +888,7 @@ router.post(
     res.json({
       success: true, data: r,
       message: `Trabajadores: ${r.creados} de ${r.total} creado(s)` +
+        (r.creditos ? `, ${r.creditos} crédito(s)` : '') +
         (r.errores.length ? `, ${r.errores.length} con error` : '') + '.',
     });
   })

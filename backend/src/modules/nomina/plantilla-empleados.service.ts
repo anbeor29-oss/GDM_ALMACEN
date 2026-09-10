@@ -13,6 +13,7 @@
  */
 import { ExcelJS, C, titulo, dato, encabezado, celda, anchos, aBuffer } from './estilo-excel';
 import { crear, TIPOS_CONTRATO, TIPOS_REGIMEN, TIPOS_JORNADA, PERIODICIDADES } from './empleados.service';
+import * as creditos from './creditos.service';
 
 type Tipo = 'texto' | 'fecha' | 'numero' | 'bool' | 'codigo';
 interface Col { key: string; label: string; ejemplo: string; tipo: Tipo; req?: boolean; nota?: string; }
@@ -66,6 +67,23 @@ const COLUMNAS: Col[] = [
   { key: 'pension_num_oficio',   label: 'Pensión · No. de oficio', ejemplo: '', tipo: 'texto' },
 ];
 
+/* Créditos con saldo y descuento por periodo. NO son campos del expediente: se
+ * dan de alta aparte, en `nomina_creditos`, después de crear al trabajador.
+ * Se llenan sólo si el trabajador trae ese crédito. */
+const COLUMNAS_CREDITO: Col[] = [
+  { key: 'fonacot_numero', label: 'FONACOT · No. de crédito', ejemplo: '', tipo: 'texto', nota: 'Si trae FONACOT: su número (obligatorio).' },
+  { key: 'fonacot_monto',  label: 'FONACOT · Monto total',    ejemplo: '', tipo: 'numero' },
+  { key: 'fonacot_cuota',  label: 'FONACOT · Descuento por periodo', ejemplo: '', tipo: 'numero' },
+  { key: 'fonacot_inicio', label: 'FONACOT · Fecha de inicio', ejemplo: '', tipo: 'fecha', nota: 'DD/MM/AAAA.' },
+  { key: 'prestamo_concepto', label: 'Préstamo · Concepto',   ejemplo: '', tipo: 'texto', nota: 'Préstamo de la empresa (opcional).' },
+  { key: 'prestamo_monto',  label: 'Préstamo · Monto total',  ejemplo: '', tipo: 'numero' },
+  { key: 'prestamo_cuota',  label: 'Préstamo · Descuento por periodo', ejemplo: '', tipo: 'numero' },
+  { key: 'prestamo_inicio', label: 'Préstamo · Fecha de inicio', ejemplo: '', tipo: 'fecha', nota: 'DD/MM/AAAA.' },
+];
+
+/* Todas las columnas de la plantilla, en orden (expediente + créditos). */
+const TODAS: Col[] = [...COLUMNAS, ...COLUMNAS_CREDITO];
+
 const norm = (s: any) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
 /* Fecha DD/MM/AAAA (o lo que Excel entregue como Date) → ISO AAAA-MM-DD. */
@@ -86,14 +104,14 @@ const aNum = (v: any) => { const n = Number(String(v ?? '').replace(/[,$\s]/g, '
 export async function plantillaEmpleadosExcel(): Promise<{ buffer: Buffer; nombre: string }> {
   const wb = new ExcelJS.Workbook(); wb.creator = 'GDM NEXO';
   const ws = wb.addWorksheet('Trabajadores', { views: [{ state: 'frozen', ySplit: 6, xSplit: 3 }] });
-  titulo(ws, 'Alta de trabajadores', COLUMNAS.length);
+  titulo(ws, 'Alta de trabajadores', TODAS.length);
   dato(ws, 3, 1, 'Llena UNA FILA por trabajador. Las columnas marcadas con * son obligatorias. Fechas en DD/MM/AAAA.', true);
-  dato(ws, 4, 1, 'Los campos con código (contrato, régimen, jornada, periodicidad) vienen en la hoja «Catálogos».');
-  encabezado(ws, 6, COLUMNAS.map((c) => ({ texto: c.req ? `${c.label} *` : c.label, color: C.identidad })));
+  dato(ws, 4, 1, 'Los campos con código (contrato, régimen, jornada, periodicidad) vienen en la hoja «Catálogos». FONACOT y préstamos: sólo si el trabajador los trae.');
+  encabezado(ws, 6, TODAS.map((c) => ({ texto: c.req ? `${c.label} *` : c.label, color: C.identidad })));
   // Fila 7: ejemplo. Fila 8: notas breves por columna (en gris) para que no estorben.
-  COLUMNAS.forEach((c, i) => celda(ws, 7, i + 1, c.ejemplo));
-  COLUMNAS.forEach((c, i) => { if (c.nota) celda(ws, 8, i + 1, c.nota, { tinta: 'gris' }); });
-  anchos(ws, COLUMNAS.map((c) => Math.min(34, Math.max(12, c.label.length + 2))));
+  TODAS.forEach((c, i) => celda(ws, 7, i + 1, c.ejemplo));
+  TODAS.forEach((c, i) => { if (c.nota) celda(ws, 8, i + 1, c.nota, { tinta: 'gris' }); });
+  anchos(ws, TODAS.map((c) => Math.min(34, Math.max(12, c.label.length + 2))));
 
   // Hoja de catálogos de los campos con código.
   const cat = wb.addWorksheet('Catálogos');
@@ -117,7 +135,7 @@ export async function plantillaEmpleadosExcel(): Promise<{ buffer: Buffer; nombr
 /* ── IMPORTADOR ────────────────────────────────────────────────────────────── */
 export async function importarEmpleadosExcel(
   companyId: string, buffer: Buffer,
-): Promise<{ total: number; creados: number; errores: Array<{ fila: number; trabajador: string; motivo: string }> }> {
+): Promise<{ total: number; creados: number; creditos: number; errores: Array<{ fila: number; trabajador: string; motivo: string }> }> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer as any);
   const ws = wb.getWorksheet('Trabajadores') || wb.worksheets[0];
@@ -134,7 +152,7 @@ export async function importarEmpleadosExcel(
 
   const encRow = ws.getRow(filaEnc).values as any[];
   const colDe = new Map<string, number>();
-  for (const c of COLUMNAS) {
+  for (const c of TODAS) {
     const objetivo = norm(c.label);
     for (let i = 1; i < encRow.length; i++) {
       const h = norm(encRow[i]).replace(/\s*\*$/, '');
@@ -143,7 +161,7 @@ export async function importarEmpleadosExcel(
   }
 
   const errores: Array<{ fila: number; trabajador: string; motivo: string }> = [];
-  let creados = 0, total = 0;
+  let creados = 0, total = 0, creditosCreados = 0;
 
   for (let r = filaEnc + 1; r <= ws.rowCount; r++) {
     const row = ws.getRow(r).values as any[];
@@ -169,11 +187,31 @@ export async function importarEmpleadosExcel(
       if (!d.nombre || !d.apellido_pat || !d.rfc || !d.curp) { errores.push({ fila: r, trabajador: etq, motivo: 'faltan datos obligatorios (nombre, apellido paterno, RFC, CURP)' }); continue; }
       if (!d.fecha_ingreso) { errores.push({ fila: r, trabajador: etq, motivo: 'falta la fecha de ingreso (DD/MM/AAAA)' }); continue; }
       if (!(Number(d.salario_diario) > 0)) { errores.push({ fila: r, trabajador: etq, motivo: 'el salario diario debe ser mayor a 0' }); continue; }
-      await crear(companyId, d);
+      const emp: any = await crear(companyId, d);
       creados++;
+
+      /* Créditos (FONACOT / préstamo): el trabajador ya quedó creado; si el crédito
+       * falla, se avisa pero NO se deshace el alta. */
+      const crearCredito = async (origen: 'FONACOT' | 'PRESTAMO', numero: any, concepto: any, monto: any, cuota: any, inicio: any) => {
+        const m = aNum(monto), q = aNum(cuota), fi = aFechaIso(inicio);
+        const algo = (numero && String(numero).trim()) || m || q || fi;
+        if (!algo) return;   // no trae ese crédito
+        try {
+          await creditos.crear(companyId, {
+            empleado_id: emp.id, origen, numero: numero ? String(numero).trim() : undefined,
+            concepto: concepto ? String(concepto).trim() : undefined,
+            monto_original: m, descuento_por_periodo: q, fecha_inicio: fi,
+          } as any);
+          creditosCreados++;
+        } catch (e: any) {
+          errores.push({ fila: r, trabajador: etq, motivo: `${origen}: ${(e?.message || 'no se pudo dar de alta el crédito').toString().slice(0, 120)}` });
+        }
+      };
+      await crearCredito('FONACOT', raw('fonacot_numero'), null, raw('fonacot_monto'), raw('fonacot_cuota'), raw('fonacot_inicio'));
+      await crearCredito('PRESTAMO', null, raw('prestamo_concepto'), raw('prestamo_monto'), raw('prestamo_cuota'), raw('prestamo_inicio'));
     } catch (e: any) {
       errores.push({ fila: r, trabajador: etq, motivo: (e?.message || 'no se pudo crear').toString().slice(0, 160) });
     }
   }
-  return { total, creados, errores };
+  return { total, creados, creditos: creditosCreados, errores };
 }
