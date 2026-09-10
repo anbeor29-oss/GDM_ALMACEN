@@ -10,8 +10,11 @@
  * El documento legal real lo arma `buildContractText` con los datos reales y se
  * firma con la e.firma; este .docx solo sirve para revisión/impresión interna.
  *
- * Sin dependencias nuevas: usa `archiver` (ya instalado) para empaquetar el
- * OOXML mínimo (Content_Types + rels + word/document.xml).
+ * El texto fuente viene envuelto a ~72 columnas. Aquí se RE-FLUYE a párrafos de
+ * verdad (se unen las líneas de una misma oración), se justifica el cuerpo y se
+ * respetan títulos, etiquetas (RFC:, Domicilio:…) y listas (a), I., 2.1.).
+ *
+ * Sin dependencias nuevas: empaqueta el OOXML mínimo con `archiver`.
  */
 import fs from 'fs';
 import path from 'path';
@@ -36,22 +39,27 @@ let texto = buildContractText({
 });
 texto = texto.split(fechaCentinela).join('_______________________');
 
-// ── 2) Utilidades OOXML ────────────────────────────────────────────────────
-const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-const RX_SEP = /^[─-╿]+$/;    // líneas de recuadro ──── / ════
-const RX_CLAUSULA = /^(PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|S[ÉE]PTIMA|OCTAVA|NOVENA|D[ÉE]CIMA)\b/;
+// ── 2) Clasificación de líneas ─────────────────────────────────────────────
+const RX_SEP_DOBLE = /^═+$/;                        // ════ (doble)
+const RX_SEP = /^[─-╿]+$/;                          // cualquier recuadro (── o ══)
+// Encabezado de cláusula del contrato: "PRIMERA — OBJETO" (con raya), NO el
+// "PRIMERA. El servicio…" del manifiesto (ése es texto corrido).
+const RX_CLAUSULA = /^(PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|S[ÉE]PTIMA|OCTAVA|NOVENA|D[ÉE]CIMA)\s+—/;
+// Inicio de inciso/lista: "a)", "I.", "II.", "2.1.", "4.5."
+const RX_LISTA = /^\s*(?:[a-z]\)|[IVX]{1,4}\.|\d+\.\d+\.?)\s/;
+// Etiqueta "Clave: valor" con clave corta (RFC:, Domicilio:, Correo de contacto:…).
+const RX_ETIQUETA = /^\s*[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚáéíóúñ .]{0,26}:\s/;
 const LABELS_H1 = new Set(['PARTES', 'ACEPTACIÓN', 'CLÁUSULAS']);
 
-function nivel(linea: string, idx: number): 'title' | 'h1' | 'normal' {
+type Nivel = 'title' | 'h1' | 'normal';
+function nivel(linea: string, idx: number): Nivel {
   const t = linea.trim();
   if (idx === 0) return 'title';
   if (t.startsWith('MANIFIESTO PARA EL SERVICIO')) return 'title';
+  if (t.startsWith('GDM NEXO —')) return 'title';
   if (
     RX_CLAUSULA.test(t) ||
     LABELS_H1.has(t) ||
-    t.startsWith('GDM NEXO —') ||
     t.startsWith('AUTORIZACIÓN Y MANIFESTACIÓN') ||
     t.startsWith('EL PRESTADOR:') ||
     t.startsWith('EL CLIENTE:')
@@ -59,49 +67,96 @@ function nivel(linea: string, idx: number): 'title' | 'h1' | 'normal' {
   return 'normal';
 }
 
-/** Párrafo con formato. sz en medios puntos (21 = 10.5 pt). */
-function parrafo(texto: string, opts: { bold?: boolean; sz?: number; indent?: number } = {}) {
-  const { bold, sz = 21, indent = 0 } = opts;
-  const pPr = indent > 0 ? `<w:pPr><w:ind w:left="${indent}"/></w:pPr>` : '';
+const esArranqueForzado = (t: string) =>
+  RX_LISTA.test(t) || RX_ETIQUETA.test(t) || /^En lo sucesivo,/.test(t.trim());
+const esMayusculas = (t: string) => !/[a-záéíóúñ]/.test(t) && /[A-ZÁÉÍÓÚÑ]/.test(t);
+const sangriaDe = (t: string) => (t.match(/^ */)?.[0].length ?? 0);
+
+// ── 3) Re-flujo: líneas → párrafos lógicos ─────────────────────────────────
+interface Bloque { tipo: 'p' | 'sep' | 'sepDoble'; nivel?: Nivel; indent?: number; texto?: string; }
+const lineas = texto.replace(/\r\n/g, '\n').split('\n');
+const bloques: Bloque[] = [];
+let actual: { nivel: Nivel; indent: number; partes: string[] } | null = null;
+
+const cerrar = () => {
+  if (!actual) return;
+  bloques.push({ tipo: 'p', nivel: actual.nivel, indent: actual.indent, texto: actual.partes.join(' ') });
+  actual = null;
+};
+
+lineas.forEach((linea, idx) => {
+  if (linea.trim() === '') { cerrar(); return; }
+  if (RX_SEP.test(linea)) {
+    cerrar();
+    bloques.push({ tipo: RX_SEP_DOBLE.test(linea) ? 'sepDoble' : 'sep' });
+    return;
+  }
+
+  const lvl = nivel(linea, idx);
+  const t = linea.trim();
+  const arranca =
+    actual === null ||
+    lvl !== 'normal' ||                                   // esta línea es un encabezado
+    esArranqueForzado(t) ||                               // lista o etiqueta
+    (actual.nivel !== 'normal' && !esMayusculas(t));      // no colgar texto normal de un encabezado
+
+  if (arranca) {
+    cerrar();
+    actual = { nivel: lvl, indent: sangriaDe(linea), partes: [t] };
+  } else {
+    actual!.partes.push(t); // arranca es false ⇒ actual ≠ null
+  }
+});
+cerrar();
+
+// ── 4) Render OOXML ────────────────────────────────────────────────────────
+const esc = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** sz en medios de punto (22 = 11 pt). */
+function parrafo(txt: string, o: {
+  bold?: boolean; sz?: number; jc?: 'both' | 'center' | 'left';
+  indent?: number; before?: number; after?: number; line?: number; keepNext?: boolean;
+} = {}) {
+  const { bold, sz = 22, jc = 'left', indent = 0, before = 0, after = 120, line = 276, keepNext } = o;
+  const pPr =
+    `<w:pPr>` +
+    `<w:spacing w:before="${before}" w:after="${after}" w:line="${line}" w:lineRule="auto"/>` +
+    (indent > 0 ? `<w:ind w:left="${indent}"/>` : '') +
+    (jc !== 'left' ? `<w:jc w:val="${jc}"/>` : '') +
+    (keepNext ? '<w:keepNext/>' : '') +
+    `</w:pPr>`;
   const rPr =
     `<w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>` +
     (bold ? '<w:b/>' : '') +
     `<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/></w:rPr>`;
-  return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${esc(texto)}</w:t></w:r></w:p>`;
+  return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${esc(txt)}</w:t></w:r></w:p>`;
 }
 
-const parrafoVacio = () =>
-  `<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr></w:p>`;
+const regla = (doble: boolean) =>
+  `<w:p><w:pPr><w:spacing w:before="80" w:after="160"/>` +
+  `<w:pBdr><w:bottom w:val="${doble ? 'double' : 'single'}" w:sz="6" w:space="1" w:color="9AA0A6"/></w:pBdr>` +
+  `</w:pPr></w:p>`;
 
-const reglaHorizontal = () =>
-  `<w:p><w:pPr><w:spacing w:before="40" w:after="40"/>` +
-  `<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="9AA0A6"/></w:pBdr></w:pPr></w:p>`;
-
-// ── 3) Cada línea del texto → un párrafo (fiel a la fuente) ─────────────────
-const lineas = texto.replace(/\r\n/g, '\n').split('\n');
-const cuerpo: string[] = [];
-
-lineas.forEach((linea, idx) => {
-  if (linea.trim() === '') { cuerpo.push(parrafoVacio()); return; }
-  if (RX_SEP.test(linea)) { cuerpo.push(reglaHorizontal()); return; }
-
-  const lvl = nivel(linea, idx);
-  const indent = (linea.match(/^ */)?.[0].length ?? 0) * 100; // sangría por espacios
-  const contenido = linea.replace(/^ +/, '');
-
-  if (lvl === 'title') {
-    cuerpo.push(parrafo(contenido, { bold: true, sz: idx === 0 ? 30 : 26 }));
-  } else if (lvl === 'h1') {
-    cuerpo.push(parrafo(contenido, { bold: true, sz: 23 }));
-  } else {
-    cuerpo.push(parrafo(contenido, { indent }));
+const cuerpo = bloques.map((b) => {
+  if (b.tipo === 'sep') return regla(false);
+  if (b.tipo === 'sepDoble') return regla(true);
+  const txt = b.texto ?? '';
+  if (b.nivel === 'title') {
+    const sz = txt.startsWith('CONTRATO DE PRESTACIÓN') ? 32 : txt.startsWith('GDM NEXO') ? 24 : 26;
+    return parrafo(txt, { bold: true, sz, jc: 'center', after: 140, before: 60, keepNext: true });
   }
-});
+  if (b.nivel === 'h1') {
+    return parrafo(txt, { bold: true, sz: 23, before: 240, after: 100, keepNext: true });
+  }
+  const jc = /^Versión\b/.test(txt) ? 'center' : 'both';
+  return parrafo(txt, { jc, indent: (b.indent ?? 0) * 115 });
+}).join('');
 
 const documentXml =
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
   `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
-  `<w:body>${cuerpo.join('')}` +
+  `<w:body>${cuerpo}` +
   `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>` +
   `<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>` +
   `</w:sectPr></w:body></w:document>`;
@@ -120,7 +175,7 @@ const rels =
   `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>` +
   `</Relationships>`;
 
-// ── 4) Empaquetar el .docx (ZIP) ───────────────────────────────────────────
+// ── 5) Empaquetar el .docx (ZIP) ───────────────────────────────────────────
 const salida = path.resolve(__dirname, '../../docs/CONTRATO_TYC_BORRADOR.docx');
 const stream = fs.createWriteStream(salida);
 // archiver exporta CJS; su default namespace no es callable bajo este tsconfig.
@@ -130,7 +185,7 @@ const zip = (archiver as unknown as (f: string, o?: any) => import('archiver').A
 
 stream.on('close', () => {
   console.log(`✔ Borrador regenerado desde contract-text.ts (v${CONTRACT_VERSION})`);
-  console.log(`  ${salida}  (${zip.pointer()} bytes, ${lineas.length} líneas)`);
+  console.log(`  ${salida}  (${zip.pointer()} bytes, ${bloques.length} párrafos)`);
 });
 zip.on('warning', (e: Error) => { throw e; });
 zip.on('error', (e: Error) => { throw e; });
