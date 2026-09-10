@@ -5573,3 +5573,21 @@ en Render (Environment del backend) poner `PAC_PROVIDER=SW_SAPIEN`,
 `GET /api/v1/pac/test-connection`, `/account-status` y `/providers`. No se configura el token
 ni se hace el cambio a `production` desde aquí: son credenciales reales y cada timbre en
 producción es un CFDI real ante el SAT.
+
+## 2026-09-10 (alta) — Firmar el contrato es el PASO 1 del alta
+
+Cambio de onboarding: antes el primer bloqueo de una empresa nueva era el catálogo de
+cuentas (solo en Contabilidad). Ahora, para **cualquier grupo de trabajo**, el paso 1 es
+**firmar el contrato + manifiesto**; hasta que el ADMIN firme, no se habilita ningún módulo.
+Ya firmado, se libera el catálogo (que conserva su candado propio «catálogo primero») y los
+demás grupos operan normal.
+
+**Solo aplica a empresas NUEVAS / sin operación.** `getContractStatus` ahora devuelve
+`has_operation` (`EXISTS` facturas `OR EXISTS` catálogo contable — cubre a un VENTAS que
+factura sin catálogo). Una empresa que **ya opera no se bloquea** aunque no haya firmado, para
+no dejar fuera a las que ya trabajan (decisión del usuario: las actuales aún no firman). El
+gateo es de UI, como el del catálogo: `Layout` recorta el menú a solo «Contrato» (al ADMIN) o
+nada, y cubre el contenido con `<ContratoGate>`, que muestra el **siguiente paso** (botón a la
+firma para el ADMIN; aviso «el administrador debe firmar» a los demás). Al firmar se invalida
+`['contrato-estado']` y se desbloquea sin recargar. SUPER_ADMIN no se ve afectado. Sin
+migración (solo lee tablas existentes). TSC back+front = 0.
