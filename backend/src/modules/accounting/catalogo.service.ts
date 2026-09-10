@@ -308,6 +308,30 @@ export interface FiltroCuentas {
   nivel?: number;
 }
 
+/**
+ * Estado de la contabilidad de la empresa, para decidir qué se puede hacer:
+ * mientras no haya catálogo, sólo se ofrece arrancar/importar; con catálogo se
+ * desbloquea el resto (pólizas, balanza, reportes).
+ */
+export async function estadoContabilidad(companyId: string) {
+  const r = await query<any>(
+    `SELECT
+       (SELECT COUNT(*)::int FROM accounting_accounts WHERE company_id=$1) AS cuentas,
+       (SELECT COUNT(*)::int FROM journal_entries   WHERE company_id=$1) AS polizas,
+       COALESCE((SELECT contabilidad_activa FROM company_accounting_settings WHERE company_id=$1), false) AS activa`,
+    [companyId]);
+  const x = r.rows[0] || {};
+  const cuentas = Number(x.cuentas) || 0;
+  return {
+    cuentas,
+    polizas: Number(x.polizas) || 0,
+    /* "Lista para operar" = ya tiene catálogo. El flag contabilidad_activa se
+     * pone al arrancar, pero el catálogo (importado o semilla) es lo que de
+     * verdad habilita pólizas y balanza. */
+    activa: cuentas > 0 || x.activa === true,
+  };
+}
+
 export async function listarCuentas(companyId: string, f: FiltroCuentas = {}) {
   const cond: string[] = ['c.company_id = $1'];
   const par: any[] = [companyId];

@@ -999,6 +999,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/cuentas', { params });
     return r.data;
   }
+  /** ¿La empresa ya tiene catálogo contable? Decide qué se ofrece en el menú. */
+  async getEstadoContabilidad() {
+    const r = await this.client.get<APIResponse<{ cuentas: number; polizas: number; activa: boolean }>>('/accounting/estado');
+    return r.data;
+  }
   /** Máscara de despliegue del código de cuenta (por empresa). */
   async getMascaraCuenta(): Promise<string> {
     const r = await this.client.get<APIResponse<any>>('/accounting/mascara');
@@ -2190,6 +2195,17 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/nomina/empleados', {
       params: { buscar: params.buscar || undefined, incluirBajas: params.incluirBajas || undefined },
     });
+    return r.data;
+  }
+  /** Descarga la plantilla Excel para dar de alta trabajadores. */
+  async descargarPlantillaEmpleados() {
+    const r = await this.client.get('/nomina/empleados/plantilla-excel', { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, 'Plantilla_alta_trabajadores.xlsx');
+  }
+  /** Da de alta trabajadores desde la plantilla Excel llena. */
+  async importarEmpleadosExcel(fd: FormData) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/empleados/importar-excel', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
     return r.data;
   }
   async getEmpleadosResumen() {

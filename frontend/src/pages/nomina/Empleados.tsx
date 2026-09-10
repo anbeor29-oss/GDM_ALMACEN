@@ -16,7 +16,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Users, Plus, Search, AlertTriangle, UserMinus, UserPlus, Pencil, X, Upload,
+  Users, Plus, Search, AlertTriangle, UserMinus, UserPlus, Pencil, X, Upload, Download,
 } from 'lucide-react';
 import api from '@/services/api';
 import { EmpleadoModal } from './EmpleadoModal';
@@ -61,6 +61,27 @@ export function EmpleadosPage() {
     qc.invalidateQueries({ queryKey: ['empleados-resumen'] });
   };
 
+  const [msgExcel, setMsgExcel] = useState('');
+  const [busyExcel, setBusyExcel] = useState<'' | 'plantilla' | 'importar'>('');
+  const descargarPlantilla = async () => {
+    setBusyExcel('plantilla'); setError(''); setMsgExcel('');
+    try { await api.descargarPlantillaEmpleados(); }
+    catch (e: any) { setError(e?.response?.data?.message || 'No se pudo descargar la plantilla.'); }
+    finally { setBusyExcel(''); }
+  };
+  const importarExcel = async (file: File) => {
+    setBusyExcel('importar'); setError(''); setMsgExcel('');
+    try {
+      const fd = new FormData(); fd.append('archivo', file);
+      const r: any = await api.importarEmpleadosExcel(fd);
+      let m = r?.message || 'Trabajadores importados.';
+      if (r?.data?.errores?.length) m += ' Errores: ' + r.data.errores.slice(0, 3).map((e: any) => `fila ${e.fila}: ${e.motivo}`).join(' · ') + (r.data.errores.length > 3 ? '…' : '');
+      setMsgExcel(m);
+      refrescar();
+    } catch (e: any) { setError(e?.response?.data?.message || 'No se pudo importar el Excel.'); }
+    finally { setBusyExcel(''); }
+  };
+
   const abrirEdicion = async (id: string) => {
     setError('');
     try {
@@ -92,9 +113,19 @@ export function EmpleadosPage() {
             >
               <Upload size={16} /> Importar de recibos de nómina
             </button>
+            <button onClick={descargarPlantilla} disabled={!!busyExcel} className="btn-export px-4 py-2"
+              title="Baja el Excel con todas las columnas del expediente y sus descuentos, y una hoja de catálogos">
+              <Download size={16} /> {busyExcel === 'plantilla' ? 'Bajando…' : 'Plantilla Excel'}
+            </button>
+            <label className={`btn-import px-4 py-2 ${busyExcel ? 'opacity-50 pointer-events-none' : ''}`}
+              title="Da de alta trabajadores desde la plantilla Excel llena (uno por fila)">
+              <Upload size={16} /> {busyExcel === 'importar' ? 'Importando…' : 'Importar Excel'}
+              <input type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) importarExcel(f); e.currentTarget.value = ''; }} />
+            </label>
             <button
               onClick={() => setAbriendoAlta(true)}
-              className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600 text-sm"
+              className="btn-primary"
             >
               <Plus size={16} /> Nuevo trabajador
             </button>
@@ -103,6 +134,7 @@ export function EmpleadosPage() {
       </div>
 
       {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
+      {msgExcel && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg text-sm">{msgExcel}</div>}
 
       {/* Resumen de la plantilla */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

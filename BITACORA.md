@@ -5436,3 +5436,34 @@ Banamex MiCuenta) traía la fecha del renglón PEGADA y sin año («07AGO») en 
 `\s*` y se **valida el mes** contra `MESES_ES` para no confundir un código con una fecha.
 Ahora cuadra: 38 movimientos (11 dep 146,597.55 + 27 ret 154,332.16), saldo 9,381.30 →
 1,646.69. Compatible con el formato con espacio.
+
+---
+
+## 2026-09-09 (varios) — Lector XML fuera del sidebar, menú por estado, alta de trabajadores por Excel, doc de códigos SAT
+
+**Lector de XML general fuera del sidebar.** Ya vive dentro de Carta Porte; el renglón
+general se quitó del menú (la ruta `/xml-super-import` sigue, se llega desde Nómina → Importar
+de un XML).
+
+**Menú de Contabilidad por estado (empresa nueva).** Nuevo `GET /accounting/estado`
+(`estadoContabilidad`: cuentas, pólizas, activa). El sidebar consulta ese estado y, mientras
+la empresa NO tenga catálogo, en Contabilidad sólo ofrece **«Catálogo de cuentas»** e
+**«Importar respaldo»**; en cuanto hay catálogo (importado o semilla) se desbloquea todo.
+Mientras carga, no recorta (evita el parpadeo).
+
+**Alta de trabajadores por Excel (Nómina).** Nuevo `plantilla-empleados.service`: una sola
+definición de columnas genera la **plantilla** (`GET /nomina/empleados/plantilla-excel`, con
+hoja «Catálogos» de los campos con código) y la **lee de vuelta**
+(`POST /nomina/empleados/importar-excel`) creando cada trabajador con `empleados.crear`. Cubre
+el expediente completo + descuentos de INFONAVIT y pensión alimenticia (FONACOT y préstamos van
+en Créditos). Casa las columnas por su ENCABEZADO (no por posición), salta la fila de ejemplo,
+valida obligatorios y reporta errores por fila. Botones «Plantilla Excel» / «Importar Excel»
+en Empleados (verificado el ida-y-vuelta: 43 columnas, 6 obligatorias).
+
+**Doc `docs/CODIGOS_SAT_CONTABILIDAD.md`.** Referencia de los agrupadores que deben existir
+para que se activen las cédulas y las pólizas automáticas: activo fijo/depreciación (151–182 →
+701/702, 171/183), ventas (401, 105, 208/209, 113), compras y **pasivos** (115/601, 119, 201,
+216, 118), tarjeta, y cómo la balanza desde pólizas revisa todo el mes calendario.
+
+**Homologación de botones (continuación).** Menú Nómina Empleados: «Nuevo trabajador» →
+`btn-primary`; nuevos «Plantilla Excel» (export) / «Importar Excel» (import) con las clases.

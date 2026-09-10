@@ -39,6 +39,7 @@ import { generarReciboPDF } from './pdf-recibo.service';
 import * as cierre from './cierre.service';
 import * as conceptosCuenta from './conceptos-cuenta.service';
 import * as nominaPoliza from './nomina-poliza.service';
+import * as plantillaEmp from './plantilla-empleados.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -859,6 +860,36 @@ router.get(
   '/empleados/:id',
   asyncHandler(async (req: Request, res: Response) => {
     res.json({ success: true, data: await empleados.obtener(companyId(req), req.params.id) });
+  })
+);
+
+/** GET /nomina/empleados/plantilla-excel — la plantilla para dar de alta
+ *  trabajadores por Excel (con hoja de catálogos). */
+router.get(
+  '/empleados/plantilla-excel',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const { buffer, nombre } = await plantillaEmp.plantillaEmpleadosExcel();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
+/** POST /nomina/empleados/importar-excel — da de alta los trabajadores de la
+ *  plantilla; una fila por trabajador. Devuelve creados y errores por fila. */
+router.post(
+  '/empleados/importar-excel',
+  soloAdmin,
+  subirNomina.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = (req as any).file;
+    if (!f) throw new ValidationError('Falta el archivo Excel de trabajadores.');
+    const r = await plantillaEmp.importarEmpleadosExcel(companyId(req), f.buffer);
+    res.json({
+      success: true, data: r,
+      message: `Trabajadores: ${r.creados} de ${r.total} creado(s)` +
+        (r.errores.length ? `, ${r.errores.length} con error` : '') + '.',
+    });
   })
 );
 

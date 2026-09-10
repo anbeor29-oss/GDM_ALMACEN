@@ -61,6 +61,17 @@ export function Layout() {
   const nombreEmpresa: string | undefined =
     (empresasQ.data?.data as any[] | undefined)?.find((e) => e.id === user?.companyId)?.business_name;
 
+  /* ¿La empresa ya tiene catálogo contable? Sin él, en Contabilidad sólo se
+     ofrece arrancar/importar (catálogo o respaldo); lo demás se desbloquea
+     cuando ya hay catálogo. Se refresca al cambiar de empresa. */
+  const contabEstadoQ = useQuery({
+    queryKey: ['contab-estado', user?.companyId],
+    queryFn: () => api.getEstadoContabilidad(),
+    enabled: !!user?.companyId && user?.role !== 'SUPER_ADMIN',
+    staleTime: 60 * 1000,
+  });
+  const contabLista = contabEstadoQ.data?.data?.activa !== false;   // undefined (cargando) = no recortar
+
   const doLogout = useCallback(async (reason?: 'idle') => {
     try {
       await api.logout();
@@ -202,7 +213,10 @@ export function Layout() {
                 {show('products') && !show('inventory') && (
                   <NavItem to="/products" icon={emoji3D('📦')} accent="fuchsia" label="Productos" open={sidebarOpen} />
                 )}
-                {show('xml_reader')   && <NavItem to="/xml-super-import" icon={emoji3D('📥')} accent="violet"  label="Lector de XML"    open={sidebarOpen} />}
+                {/* «Lector de XML» general se quitó del sidebar: el de Carta Porte
+                    vive dentro de su menú, y a la lectura general de XML se llega
+                    desde donde se necesita (p. ej. Nómina → Importar de un XML).
+                    La ruta /xml-super-import sigue existiendo. */}
                 {/* Inventarios, compras y tesorería — fusión ERP */}
                 {show('inventory') && (
                   <NavGroup
@@ -292,7 +306,12 @@ export function Layout() {
                        explícita) y "Reportes" conserva la secuencia natural de los
                        estados financieros; alfabetizar esos dos rompería un orden
                        que el usuario pidió o que tiene sentido contable. */
-                    children={[
+                    /* Empresa nueva sin catálogo: sólo se ofrece arrancar/importar
+                       (catálogo o respaldo). Con catálogo, se desbloquea todo. */
+                    children={!contabLista ? [
+                      { to: '/contabilidad/cuentas',           icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
+                      { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },
+                    ] : [
                       { to: '/contabilidad/activo-fijo',   icon: emoji3D('🏗️'), label: 'Activo fijo · Depreciación' },
                       { to: '/contabilidad/asignacion',     icon: emoji3D('🏷️'), label: 'Asignación de cuentas' },
                       /* Auditoría: revisa lo timbrado contra lo contabilizado. La ruta es /auditoria. */

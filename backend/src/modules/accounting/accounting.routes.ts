@@ -87,6 +87,15 @@ router.get(
    ACTIVACIÓN
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/** GET /accounting/estado — ¿ya hay catálogo? Sirve para decidir qué se ofrece
+ *  en el menú: sin catálogo, sólo arrancar/importar; con catálogo, todo. */
+router.get(
+  '/estado',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await catalogo.estadoContabilidad(companyId(req)) });
+  })
+);
+
 /** POST /accounting/activar — configuración + ejercicio + 12 periodos + catálogo */
 router.post(
   '/activar',
