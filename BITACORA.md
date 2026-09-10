@@ -5511,3 +5511,24 @@ formal aparte; no cambia los reportes operativos. Rutas `GET /accounting/cierre/
 pantalla `/contabilidad/cierre` con el resultado, las cuentas que se saldan y los botones de
 generar/regenerar/deshacer. Pendiente (siguiente iteración): el arrastre automático del
 resultado a capital en la balanza del año siguiente (hoy la póliza es formal).
+
+---
+
+## 2026-09-10 (extractor) — Tarjeta Stori y HSBC (mojibake descifrado)
+
+**Stori (tarjeta).** Trae texto limpio con layout propio: una sola fecha DD/MM/AAAA,
+descripción y ±importe al final, «Saldo inicial del periodo» / «Saldo Nuevo al Corte». Rama
+propia en `parsearTarjetaCredito` con validación del saldo al corte. Probado: 19,676.86 →
+13,367.29, cuadra. (El otro PDF de Stori venía escaneado, sin texto — no hay OCR.)
+
+**HSBC — descifrado del mojibake.** El PDF de HSBC usa una fuente que pdf-parse decodifica
+mal; el texto llegaba ilegible. Resultó ser un cifrado FIJO por sustitución: mayúsculas por
+bloques del alfabeto (A–J +0x80, K–R +0x87, S–Z +0x8F), dígitos en 0xF0–0xF9 y una tabla de
+puntuación (`k`=miles, `K`=decimal, `[`=$, `` ` ``=-, `a`=/, `z`=:, `@`=espacio). `deGarbleHSBC`
+lo revierte y `extraerHSBC` parsea el «DETALLE DE MOVIMIENTOS»: cada renglón trae «$ importe $
+saldo» (a veces con la descripción en la misma línea, a veces en la anterior); el lado sale de
+si el saldo sube (depósito) o baja (retiro), y el importe explícito confirma. Saldo inicial/final
+del bloque «RESUMEN DE CUENTAS». Se reconoce por la firma cifrada de «HSBC» (`ÈâÂÃ`) y se enruta
+ANTES de todo. Probado con DOS estados reales que **cuadran**: RAMON (16 movs, 163,407.06 →
+75,391.00) y GRICELDA (32 movs, 53,785.56 → 30,399.83, incluida la comisión $399 + IVA que venía
+en renglón de una sola línea). Regresión: Banorte/Plata/Stori/VePorMás/Banamex siguen cuadrando.

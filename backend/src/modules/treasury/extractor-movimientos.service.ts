@@ -1106,11 +1106,130 @@ function tarjetaAResultado(rt: ResultadoTarjeta, avisos: string[]): ResultadoExt
   };
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   HSBC — el PDF trae una fuente que pdf-parse decodifica mal (mojibake). El
+   cifrado es FIJO: mayúsculas por bloques del alfabeto (A–J +0x80, K–R +0x87,
+   S–Z +0x8F), dígitos en 0xF0–0xF9, y una tabla de puntuación. Se de-cifra y
+   luego se parsea el «DETALLE DE MOVIMIENTOS»: cada renglón trae «$ importe $
+   saldo», y el lado (depósito/retiro) sale de si el saldo sube o baja.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const HSBC_PUNT: Record<string, string> = { '@': ' ', '`': '-', 'z': ':', 'k': ',', 'K': '.', '[': '$', 'a': '/' };
+export function deGarbleHSBC(s: string): string {
+  let o = '';
+  for (const ch of s) {
+    const c = ch.codePointAt(0)!;
+    if (c >= 0xC1 && c <= 0xCA) o += String.fromCharCode(65 + (c - 0xC1));       // A–J
+    else if (c >= 0xD2 && c <= 0xD9) o += String.fromCharCode(75 + (c - 0xD2));  // K–R
+    else if (c >= 0xE2 && c <= 0xE9) o += String.fromCharCode(83 + (c - 0xE2));  // S–Z
+    else if (c >= 0xF0 && c <= 0xF9) o += String.fromCharCode(48 + (c - 0xF0));  // 0–9
+    else o += HSBC_PUNT[ch] ?? ch;
+  }
+  return o;
+}
+
+/** ¿El texto es un estado HSBC con la fuente mal codificada? Se reconoce por la
+ *  firma de «HSBC» cifrada (ÈâÂÃ) o el RFC HMI950125 cifrado. */
+function pareceHSBCcifrado(texto: string): boolean {
+  return /ÈâÂÃ/.test(texto) || /ÈÔÉ.?ùõðñòõ/.test(texto);
+}
+
+function extraerHSBC(
+  textoGarbled: string, opciones: { anio?: number; mes?: number }, avisos: string[]
+): ResultadoExtraccion {
+  const texto = deGarbleHSBC(textoGarbled);
+  const lineas = texto.split(/\r?\n/).map((l) => l.trim());
+
+  const per = /(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2})\/(\d{2})\/(\d{4})/.exec(texto);
+  const mes = per ? per[2] : String(opciones.mes || '').padStart(2, '0');
+  const anio = per ? per[3] : String(opciones.anio || '');
+
+  /* Saldo inicial y final: los importes del bloque «RESUMEN DE CUENTAS»
+   * (el 1º es el inicial; el último, el final). */
+  let saldoInicial: number | null = null, saldoFinalDecl: number | null = null;
+  const idxRes = lineas.findIndex((l) => /RESUMEN DE CUENTAS/i.test(l));
+  if (idxRes >= 0) {
+    const amts: number[] = [];
+    for (let i = idxRes + 1; i < Math.min(idxRes + 30, lineas.length); i++) {
+      const m = /\$ ?([\d,]+\.\d{2})/.exec(lineas[i]);
+      if (m) amts.push(aNumero(m[1]));
+      if (amts.length && /DETALLE|N[UÚ]MERO DE CUENTA/i.test(lineas[i])) break;
+    }
+    if (amts.length) { saldoInicial = amts[0]; saldoFinalDecl = amts[amts.length - 1]; }
+  }
+
+  /* El renglón termina en «$ importe $ saldo». La descripción va ANTES en la
+   * misma línea (día + concepto + ref) o, si la línea sólo trae los importes, en
+   * el renglón anterior. */
+  const RX_MOV = /^(.*?)\$ ?([\d,]+\.\d{2})\s+\$ ?([\d,]+\.\d{2})\s*$/;
+  const RX_DESC = /^(\d{2})\d{0,2}.*[A-Za-z]/;   // día (2 díg) + tipo opcional + descripción
+  const descDe = (linea: string) => linea.replace(/^\d+/, '').replace(/\d{6,}\s*$/, '').replace(/\s{2,}/g, ' ').trim() || 'Movimiento';
+  const movimientos: MovimientoExtraido[] = [];
+  let prev = saldoInicial ?? 0, orden = 0, enDetalle = false;
+
+  for (let i = 0; i < lineas.length; i++) {
+    if (/DETALLE\s+MOVIMIENTOS/i.test(lineas[i])) { enDetalle = true; continue; }
+    /* Fin del detalle: el desglose de comisiones y la info general no son movtos. */
+    if (/DESGLOSE\s+DE|COMISIONES\s+COBRADAS|INFORMACI[OÓ]N\s+(GENERAL|FINANCIERA)/i.test(lineas[i])) enDetalle = false;
+    if (!enDetalle) continue;
+    const m = RX_MOV.exec(lineas[i]);
+    if (!m) continue;
+    const prefijo = m[1].trim();
+    const imp = aNumero(m[2]), saldo = aNumero(m[3]);
+
+    let desc = 'Movimiento', dia = '';
+    if (RX_DESC.test(prefijo)) { dia = prefijo.slice(0, 2); desc = descDe(prefijo); }
+    else {
+      for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
+        if (RX_DESC.test(lineas[j])) { dia = lineas[j].slice(0, 2); desc = descDe(lineas[j]); break; }
+      }
+    }
+
+    /* El lado sale del encadenamiento del saldo: sube = depósito, baja = retiro.
+     * El importe explícito confirma; si no encaja, manda la diferencia de saldos. */
+    let deposito = 0, retiro = 0;
+    if (Math.abs(saldo - (prev + imp)) <= 0.02) deposito = imp;
+    else if (Math.abs(saldo - (prev - imp)) <= 0.02) retiro = imp;
+    else { const d = pesos(saldo - prev); if (d >= 0) deposito = pesos(d); else retiro = pesos(-d); }
+
+    movimientos.push({
+      fecha: dia && mes && anio ? `${anio}-${mes}-${dia}` : '',
+      concepto: desc.slice(0, 140), referencia: '', retiro, deposito,
+      saldo, saldoCalculado: 0, advertencia: '', inferido: false, duda: false,
+      orden: orden++, lineaOrigen: lineas[i],
+    });
+    prev = saldo;
+  }
+
+  let corr = saldoInicial ?? 0;
+  for (const mv of movimientos) { corr = pesos(corr - mv.retiro + mv.deposito); mv.saldoCalculado = corr; }
+  const totalRetiros = pesos(movimientos.reduce((a, m) => a + m.retiro, 0));
+  const totalDepositos = pesos(movimientos.reduce((a, m) => a + m.deposito, 0));
+  const finalCalc = pesos((saldoInicial ?? 0) - totalRetiros + totalDepositos);
+  const saldoFinal = movimientos.length ? movimientos[movimientos.length - 1].saldo : saldoFinalDecl;
+  const cuadra = saldoFinalDecl !== null && Math.abs((saldoFinalDecl ?? 0) - finalCalc) <= 0.02;
+
+  if (saldoInicial === null) avisos.push('HSBC: no se encontró el saldo inicial en el resumen.');
+  if (movimientos.length === 0) avisos.push('HSBC: no se reconocieron movimientos en el detalle.');
+  if (saldoFinalDecl !== null && !cuadra) {
+    avisos.push(`NO CUADRA: HSBC declara saldo final ${saldoFinalDecl.toFixed(2)} y los movimientos dan ${finalCalc.toFixed(2)} (dif ${pesos((saldoFinalDecl ?? 0) - finalCalc).toFixed(2)}).`);
+  }
+  avisos.push('HSBC: el PDF traía el texto codificado y se decodificó automáticamente; verifica que los saldos cuadren.');
+
+  return {
+    banco: 'HSBC', saldoInicial, saldoFinal: saldoFinal ?? null, movimientos,
+    totalRetiros, totalDepositos, conAdvertencia: 0, inferidos: 0, cuadra, avisos,
+  };
+}
+
 export function extraerMovimientos(
   texto: string,
   opciones: { anio?: number; mes?: number } = {}
 ): ResultadoExtraccion {
   const avisos: string[] = [];
+
+  /* HSBC con la fuente mal codificada: se de-cifra y parsea aparte, ANTES de
+   * cualquier otra cosa (su texto crudo es ilegible para el resto de reglas). */
+  if (pareceHSBCcifrado(texto)) return extraerHSBC(texto, opciones, avisos);
 
   /* TARJETA DE CRÉDITO: se reconoce y se lee ANTES de separar importes. Su
    * desglose trae las dos fechas y el año PEGADOS ("10-JUL-202613-JUL-2026…") y
