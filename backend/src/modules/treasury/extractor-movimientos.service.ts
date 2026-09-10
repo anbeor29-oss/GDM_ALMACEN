@@ -971,60 +971,84 @@ export function parsearTarjetaCredito(
    * signo): RX_INICIO exige DOS fechas, así que esas líneas ni se miran. */
   const limpiar = (s: string) => (s.replace(/\s{2,}/g, ' ').trim().slice(0, 180) || 'Movimiento');
 
-  for (let i = 0; i < lineas.length; i++) {
-    const inicio = lineas[i].trim();
-    const mi = RX_INICIO.exec(inicio);
-    if (!mi) continue;
-    const fOper = mi[1], fCargo = mi[2];
-    let resto = mi[3];
-
-    let montoTxt: string | null = null;
-    const mf = RX_MONTO_FIN.exec(resto);
-    if (mf) { montoTxt = mf[1]; resto = resto.slice(0, mf.index); }
-    else {
-      /* Importe en el renglón inmediato siguiente (Banorte parte el movimiento). */
-      const nx = (lineas[i + 1] || '').trim();
-      const sm = RX_SOLO_MONTO.exec(nx);
-      if (sm) { montoTxt = sm[1]; i++; }
+  if (emisor === 'Stori') {
+    /* Stori: una sola fecha DD/MM/AAAA, descripción (con su cuota si va a meses) y
+     * el importe firmado al final. «+» = cargo (compra/interés/IVA) · «−» = pago. */
+    const RX_STORI = /^(\d{2})\/(\d{2})\/(\d{4})\s*(.*?)([+\-−–]\s?\$?[\d,]+\.\d{2})\s*$/;
+    for (const raw of lineas) {
+      const m = RX_STORI.exec(raw.trim());
+      if (!m) continue;
+      const importe = Math.abs(importeCon(m[5]));
+      if (!importe) continue;
+      const iso = `${m[3]}-${m[2]}-${m[1]}`;
+      movimientos.push({
+        fecha: iso, fechaOperacion: iso, concepto: limpiar(m[4]), importe,
+        tipo: /[-−–]/.test(m[5]) ? 'ABONO' : 'CARGO', lineaOrigen: raw.trim(),
+      });
     }
-    if (!montoTxt) continue;
+  } else {
+    for (let i = 0; i < lineas.length; i++) {
+      const inicio = lineas[i].trim();
+      const mi = RX_INICIO.exec(inicio);
+      if (!mi) continue;
+      const fOper = mi[1], fCargo = mi[2];
+      let resto = mi[3];
 
-    /* Plata antepone los últimos 4 y el «±montoOrigen MXN TC» al importe en MXN. */
-    if (emisor === 'Plata') {
-      resto = resto.replace(/^\d{4}/, '')
-                   .replace(/[+\-−–][\d,]+\.\d{2}\s*MXN\s*[\d.]+\s*$/, '')
-                   .trim();
+      let montoTxt: string | null = null;
+      const mf = RX_MONTO_FIN.exec(resto);
+      if (mf) { montoTxt = mf[1]; resto = resto.slice(0, mf.index); }
+      else {
+        /* Importe en el renglón inmediato siguiente (Banorte parte el movimiento). */
+        const nx = (lineas[i + 1] || '').trim();
+        const sm = RX_SOLO_MONTO.exec(nx);
+        if (sm) { montoTxt = sm[1]; i++; }
+      }
+      if (!montoTxt) continue;
+
+      /* Plata antepone los últimos 4 y el «±montoOrigen MXN TC» al importe en MXN. */
+      if (emisor === 'Plata') {
+        resto = resto.replace(/^\d{4}/, '')
+                     .replace(/[+\-−–][\d,]+\.\d{2}\s*MXN\s*[\d.]+\s*$/, '')
+                     .trim();
+      }
+
+      const importe = Math.abs(importeCon(montoTxt));
+      if (!importe) continue;
+      const esAbono = /[-−–]/.test(montoTxt);   // «−»/«-» = pago/abono · «+» = cargo/compra
+      movimientos.push({
+        fecha: aFechaIso(fCargo.toUpperCase(), opciones.anio) || aFechaIso(fOper.toUpperCase(), opciones.anio),
+        fechaOperacion: aFechaIso(fOper.toUpperCase(), opciones.anio),
+        concepto: limpiar(resto),
+        importe,
+        tipo: esAbono ? 'ABONO' : 'CARGO',
+        lineaOrigen: inicio,
+      });
     }
-
-    const importe = Math.abs(importeCon(montoTxt));
-    if (!importe) continue;
-    const esAbono = /[-−–]/.test(montoTxt);   // «−»/«-» = pago/abono · «+» = cargo/compra
-    movimientos.push({
-      fecha: aFechaIso(fCargo.toUpperCase(), opciones.anio) || aFechaIso(fOper.toUpperCase(), opciones.anio),
-      fechaOperacion: aFechaIso(fOper.toUpperCase(), opciones.anio),
-      concepto: limpiar(resto),
-      importe,
-      tipo: esAbono ? 'ABONO' : 'CARGO',
-      lineaOrigen: inicio,
-    });
   }
 
-  const adeudoAnterior = montoTrasEtiqueta(texto, /Adeudo\s+del\s+periodo\s+anterior\s*\$?\s*([\d,]+\.\d{2})/i);
+  const adeudoAnterior = montoTrasEtiqueta(texto, /Adeudo\s+del\s+periodo\s+anterior\s*\$?\s*([\d,]+\.\d{2})/i)
+    ?? montoTrasEtiqueta(texto, /Saldo\s+inicial\s+del\s+periodo\s*=?\s*\$?\s*([\d,]+\.\d{2})/i);
   const totCargosDecl  = montoTrasEtiqueta(texto, /Total\s+cargos\s*([+\-−–]?\s?\$?[\d,]+\.\d{2})/i);
   const totAbonosDecl  = montoTrasEtiqueta(texto, /Total\s+abonos\s*([+\-−–]?\s?\$?[\d,]+\.\d{2})/i);
+  /* Saldo al corte que declara el estado (Stori: «Saldo Nuevo al Corte …=$…»), para
+   * validar el arrastre cuando no hay «Total cargos/abonos» impresos. */
+  const adeudoActualDecl = montoTrasEtiqueta(texto, /Saldo\s+Nuevo\s+al\s+Corte[\s\S]{0,120}?=\s?\$?\s*([\d,]+\.\d{2})/i);
 
   const sumaCargos = pesos(movimientos.filter((x) => x.tipo === 'CARGO').reduce((s, x) => s + x.importe, 0));
   const sumaAbonos = pesos(movimientos.filter((x) => x.tipo === 'ABONO').reduce((s, x) => s + x.importe, 0));
   const totalCargos = totCargosDecl !== null ? Math.abs(totCargosDecl) : sumaCargos;
   const totalAbonos = totAbonosDecl !== null ? Math.abs(totAbonosDecl) : sumaAbonos;
-  const adeudoActual = adeudoAnterior !== null ? pesos(adeudoAnterior + totalCargos - totalAbonos) : null;
+  const adeudoActual = adeudoAnterior !== null ? pesos(adeudoAnterior + totalCargos - totalAbonos) : (adeudoActualDecl ?? null);
 
   const cuadraCargos = Math.abs(sumaCargos - totalCargos) <= 0.02;
   const cuadraAbonos = Math.abs(sumaAbonos - totalAbonos) <= 0.02;
+  /* Si el estado declara el saldo al corte, el arrastre tiene que llegar a él. */
+  const cuadraSaldo = adeudoActualDecl == null || adeudoActual == null || Math.abs(adeudoActual - adeudoActualDecl) <= 0.02;
   if (!movimientos.length) avisos.push(`${emisor}: no se reconoció ningún movimiento en el desglose de la tarjeta.`);
   if (!cuadraCargos) avisos.push(`Los cargos extraídos suman ${sumaCargos.toFixed(2)} y el estado declara ${totalCargos.toFixed(2)}: falta o sobra algún renglón.`);
   if (!cuadraAbonos) avisos.push(`Los pagos/abonos extraídos suman ${sumaAbonos.toFixed(2)} y el estado declara ${totalAbonos.toFixed(2)}.`);
-  if (adeudoAnterior === null) avisos.push(`${emisor}: no se encontró el «adeudo del periodo anterior»; no hay contra qué arrastrar el adeudo.`);
+  if (!cuadraSaldo) avisos.push(`El adeudo calculado (${adeudoActual?.toFixed(2)}) no coincide con el saldo al corte declarado (${adeudoActualDecl?.toFixed(2)}).`);
+  if (adeudoAnterior === null) avisos.push(`${emisor}: no se encontró el saldo/adeudo del periodo anterior; no hay contra qué arrastrar el adeudo.`);
 
   return {
     emisor,
@@ -1036,7 +1060,7 @@ export function parsearTarjetaCredito(
     movimientos,
     sumaCargos,
     sumaAbonos,
-    cuadra: !!movimientos.length && cuadraCargos && cuadraAbonos,
+    cuadra: !!movimientos.length && cuadraCargos && cuadraAbonos && cuadraSaldo,
     avisos,
   };
 }
