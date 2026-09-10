@@ -5492,3 +5492,22 @@ contabilidad, códigos SAT, bugs resueltos, cancelación/CSD, complemento de pag
 planes y las guías de deploy). Los demás `.md` se borraron —siguen recuperables por el
 historial de git—. Se conservan los binarios/assets: `docs/GUIA_ICONOS_FACTURAS.pdf`,
 `docs/CONTRATO_TYC_BORRADOR.docx` y `docs/movil/` (docs de la API móvil).
+
+---
+
+## 2026-09-09 (contabilidad) — Cierre del ejercicio (determinación del resultado), proceso ADMIN
+
+`cierre-ejercicio.service`: **determina la utilidad/pérdida** del año (ingresos − costos −
+gastos, sumando los movimientos de las cuentas de resultados 4xx/5xx/6xx/7xx del ejercicio) y
+arma la **póliza de cierre** que las salda contra la **305 «Resultado del ejercicio»** (se crea
+al vuelo bajo su mayor si el catálogo no la trae). Reglas del usuario: **ISR/PTU se capturan
+antes** a mano; **re-ejecutable N veces** (cada corrida borra su póliza `origen_uuid=CIERRE:año`
+y la regenera con lo que haya, incluidas pólizas manuales); en un **menú especial de
+Contabilidad sólo para ADMIN**. La póliza de cierre lleva `regla='cierre_ejercicio'` y se
+**EXCLUYE de la balanza reconstruida** (`alimentarDesdePolizas`): si entrara, dejaría los
+resultados en cero en diciembre y el estado de resultados anual saldría vacío. Es un asiento
+formal aparte; no cambia los reportes operativos. Rutas `GET /accounting/cierre/:anio`,
+`POST /accounting/cierre/:anio/generar` (ADMIN), `DELETE /accounting/cierre/:anio` (ADMIN);
+pantalla `/contabilidad/cierre` con el resultado, las cuentas que se saldan y los botones de
+generar/regenerar/deshacer. Pendiente (siguiente iteración): el arrastre automático del
+resultado a capital en la balanza del año siguiente (hoy la póliza es formal).

@@ -1004,6 +1004,21 @@ class APIClient {
     const r = await this.client.get<APIResponse<{ cuentas: number; polizas: number; activa: boolean }>>('/accounting/estado');
     return r.data;
   }
+  /** Cierre del ejercicio: utilidad/pérdida y cuentas de resultados del año. */
+  async getCierreEjercicio(anio: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/cierre/${anio}`);
+    return r.data;
+  }
+  /** Genera/regenera la póliza de cierre (ADMIN). */
+  async generarCierreEjercicio(anio: number) {
+    const r = await this.client.post<APIResponse<any>>(`/accounting/cierre/${anio}/generar`, {});
+    return r.data;
+  }
+  /** Deshace la póliza de cierre del año (ADMIN). */
+  async revertirCierreEjercicio(anio: number) {
+    const r = await this.client.delete<APIResponse<any>>(`/accounting/cierre/${anio}`);
+    return r.data;
+  }
   /** Máscara de despliegue del código de cuenta (por empresa). */
   async getMascaraCuenta(): Promise<string> {
     const r = await this.client.get<APIResponse<any>>('/accounting/mascara');

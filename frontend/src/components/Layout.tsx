@@ -14,7 +14,7 @@ import {
   Building2, Tags, Shuffle, Landmark, PenLine, CalendarClock, Calendar, Droplets,
   Search, Microscope, FolderOpen, Satellite, Mail, ScrollText, ArrowUpFromLine,
   ArrowDownToLine, ArrowRightLeft, CircleDot, ShoppingCart,
-  Link2, CreditCard, DollarSign, Gift,
+  Link2, CreditCard, DollarSign, Gift, Lock,
   type LucideIcon,
 } from 'lucide-react';
 import { canAccess, type ModuleKey } from '@/utils/permissions';
@@ -135,6 +135,7 @@ export function Layout() {
           {user?.role !== 'SUPER_ADMIN' && (() => {
             const g = user?.workGroup;
             const show = (m: ModuleKey) => canAccess(g, m);
+            const esAdmin = user?.role === 'ADMIN';   // aquí ya se excluyó SUPER_ADMIN
             // Cada entrada se muestra solo si el grupo de trabajo la permite.
             // El dashboard es común a todos.
             const emoji3D = navIcon;
@@ -324,6 +325,7 @@ export function Layout() {
                       { to: '/contabilidad/cuentas',        icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
                       { to: '/contabilidad/conciliacion',  icon: emoji3D('🏦'), label: 'Conciliación contable' },
                       { to: '/contabilidad/validacion',    icon: emoji3D('🧮'), label: 'Cuadre contable' },
+                      ...(esAdmin ? [{ to: '/contabilidad/cierre', icon: emoji3D('🔒'), label: 'Cierre del ejercicio' }] : []),
                       { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },
                       {
                         icon: emoji3D('📔'), label: 'Pólizas',
@@ -552,7 +554,7 @@ const NAV_ICON: Record<string, LucideIcon> = {
   '🔍': Search, '🔬': Microscope, '🗂️': FolderOpen, '🛰️': Satellite, '✉️': Mail,
   '📜': ScrollText, '⬆️': ArrowUpFromLine, '⬇️': ArrowDownToLine, '💱': ArrowRightLeft,
   '🛒': ShoppingCart, '🏢': Building2, '🔗': Link2, '💳': CreditCard, '💰': DollarSign,
-  '🎁': Gift,
+  '🎁': Gift, '🔒': Lock,
 };
 
 /** Un icono de línea (Lucide) por su emoji histórico. Se usa en todo el sidebar,

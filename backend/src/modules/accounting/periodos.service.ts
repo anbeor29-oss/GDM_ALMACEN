@@ -454,6 +454,10 @@ export async function alimentarDesdePolizas(
   if (!p) throw new Error(`No existe el periodo ${nombreMes(mes)} ${anio}. Activa la contabilidad de ese ejercicio.`);
   if (p.estado === 'CERRADO') throw new Error(`${nombreMes(mes)} ${anio} está cerrado. Reábrelo para actualizarlo.`);
 
+  /* La póliza de CIERRE (saldar resultados contra 305) se EXCLUYE del arrastre de
+   * la balanza: si entrara, dejaría los resultados en cero en diciembre y el estado
+   * de resultados anual saldría vacío. Es un asiento formal aparte (se ve en el
+   * detalle de la cuenta), no un movimiento operativo del periodo. */
   const mov = await query<any>(
     `SELECT l.account_id, a.naturaleza,
             COALESCE(SUM(l.cargo),0)::float AS cargos,
@@ -462,6 +466,7 @@ export async function alimentarDesdePolizas(
        JOIN journal_entries e ON e.id = l.entry_id
        JOIN accounting_accounts a ON a.id = l.account_id
       WHERE e.company_id=$1 AND e.fecha >= $2::date AND e.fecha <= $3::date
+        AND e.regla IS DISTINCT FROM 'cierre_ejercicio'
       GROUP BY l.account_id, a.naturaleza
       HAVING COALESCE(SUM(l.cargo),0) <> 0 OR COALESCE(SUM(l.abono),0) <> 0`,
     [companyId, p.fecha_inicio, p.fecha_fin]);

@@ -79,6 +79,7 @@ import {
   FlujoEfectivoPage, CambiosCapitalPage, RazonesPage,
 } from '@/pages/contabilidad/Estados';
 import { PeriodosPage } from '@/pages/contabilidad/Periodos';
+import { CierreEjercicioPage } from '@/pages/contabilidad/CierreEjercicio';
 import { PhysicalCountPage }          from '@/pages/PhysicalCount';
 import { KardexPage }                 from '@/pages/Kardex';
 import { FaltantesPage }              from '@/pages/Faltantes';
@@ -327,6 +328,7 @@ export function App() {
             <Route path="contabilidad/validacion"         element={<ModuleRoute module="contabilidad"><ValidacionContablePage /></ModuleRoute>} />
             <Route path="contabilidad/reportes-especiales" element={<ModuleRoute module="contabilidad"><ReportesEspecialesPage /></ModuleRoute>} />
             <Route path="contabilidad/periodos"           element={<ModuleRoute module="contabilidad"><PeriodosPage /></ModuleRoute>} />
+            <Route path="contabilidad/cierre"             element={<ModuleRoute module="contabilidad"><CierreEjercicioPage /></ModuleRoute>} />
             <Route path="contabilidad/balanza"            element={<ModuleRoute module="contabilidad"><BalanzaPage /></ModuleRoute>} />
             <Route path="contabilidad/situacion"          element={<ModuleRoute module="contabilidad"><SituacionFinancieraPage /></ModuleRoute>} />
             <Route path="contabilidad/resultados"         element={<ModuleRoute module="contabilidad"><ResultadoIntegralPage /></ModuleRoute>} />

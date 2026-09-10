@@ -31,6 +31,7 @@ import * as cambioCuenta from './cambio-cuenta.service';
 import * as validacion from './validacion-contable.service';
 import * as especiales from './reportes-especiales.service';
 import * as contpaqiTxt from './contpaqi-txt.service';
+import * as cierre from './cierre-ejercicio.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
@@ -93,6 +94,39 @@ router.get(
   '/estado',
   asyncHandler(async (req: Request, res: Response) => {
     res.json({ success: true, data: await catalogo.estadoContabilidad(companyId(req)) });
+  })
+);
+
+/** GET /accounting/cierre/:anio — utilidad/pérdida del ejercicio (sólo cálculo). */
+router.get(
+  '/cierre/:anio',
+  requireCapability('contabilidad:cerrar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await cierre.determinarResultado(companyId(req), Number(req.params.anio)) });
+  })
+);
+
+/** POST /accounting/cierre/:anio/generar — genera/regenera la póliza de cierre (ADMIN). */
+router.post(
+  '/cierre/:anio/generar',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r: any = await cierre.generarPolizaDeCierre(companyId(req), Number(req.params.anio), req.user?.userId);
+    if (r?.error) { res.status(400).json({ success: false, message: r.error }); return; }
+    res.json({
+      success: true, data: r,
+      message: `Cierre ${req.params.anio}: ${r.utilidad ? 'utilidad' : 'pérdida'} ${Math.abs(r.resultado).toFixed(2)} a ${r.cuenta305}` +
+        (r.cuenta305Creada ? ' (cuenta creada)' : '') + `. Póliza #${r.folio}.`,
+    });
+  })
+);
+
+/** DELETE /accounting/cierre/:anio — deshace la póliza de cierre (ADMIN). */
+router.delete(
+  '/cierre/:anio',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await cierre.revertirCierre(companyId(req), Number(req.params.anio)) });
   })
 );
 
