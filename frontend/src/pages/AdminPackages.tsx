@@ -12,8 +12,7 @@
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Download, Building2, Calendar, Check, Coins } from 'lucide-react';
-import { Emoji3D } from '@/components/Emoji3D';
+import { Download, Building2, Calendar, Check, Coins, Zap, Star, Rocket, CreditCard } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { CampoFecha } from '@/components/CampoFecha';
@@ -44,7 +43,7 @@ const PLANS: StampPlan[] = [
     color: 'text-emerald-700',
     ring: 'border-emerald-200',
     bg: 'bg-emerald-50',
-    icon: <Emoji3D e="⚡" size="xl" />,
+    icon: <Zap size={20} />,
     bulletpoints: [
       '100 timbres CFDI 4.0 al mes',
       'Timbrado ilimitado dentro del cap',
@@ -63,7 +62,7 @@ const PLANS: StampPlan[] = [
     color: 'text-indigo-700',
     ring: 'border-indigo-200',
     bg: 'bg-indigo-50',
-    icon: <Emoji3D e="⭐" size="xl" />,
+    icon: <Star size={20} />,
     highlight: true,
     bulletpoints: [
       '200 timbres CFDI 4.0 al mes',
@@ -86,7 +85,7 @@ const PLANS: StampPlan[] = [
     color: 'text-violet-700',
     ring: 'border-violet-200',
     bg: 'bg-violet-50',
-    icon: <Emoji3D e="🚀" size="xl" />,
+    icon: <Rocket size={20} />,
     bulletpoints: [
       '500 timbres CFDI 4.0 al mes',
       'Todo lo del plan Pyme',
@@ -166,7 +165,7 @@ export function AdminPackagesPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-          <Emoji3D e="💳" size="xl" /> Paquetes fiscales
+          <CreditCard size={20} /> Paquetes fiscales
         </h1>
         <p className="text-gray-600 mt-2">
           Planes de timbrado disponibles y descarga de respaldos SAT.

@@ -7,8 +7,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { X } from 'lucide-react';
-import { Emoji3D } from '@/components/Emoji3D';
+import { X, Shield, Plus, Pencil, Building2, Key, Drama, Ban, CheckCircle } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { WORK_GROUP_LABELS, WORK_GROUP_DETAIL, WorkGroup } from '@/utils/permissions';
@@ -93,13 +92,13 @@ export function AdminUsersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-            <Emoji3D e="🛡️" size="xl" /> Usuarios
+            <Shield size={20} /> Usuarios
           </h1>
           <p className="text-gray-600 mt-1">Administra los usuarios que pueden facturar en la plataforma.</p>
         </div>
         <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg shadow">
-          <Emoji3D e="➕" size="base" /> Nuevo usuario
+          <Plus size={16} /> Nuevo usuario
         </button>
       </div>
 
@@ -151,7 +150,7 @@ export function AdminUsersPage() {
                     {u.role !== 'SUPER_ADMIN' && (
                       <IconBtn title="Editar usuario (rol, grupo, nombre)" color="green"
                         onClick={() => setEditUser(u)}>
-                        <Emoji3D e="✏️" size="base" />
+                        <Pencil size={16} />
                       </IconBtn>
                     )}
                     {/* Los permisos no aplican al SUPER_ADMIN: opera la
@@ -159,7 +158,7 @@ export function AdminUsersPage() {
                     {u.role !== 'SUPER_ADMIN' && (
                       <IconBtn title="Permisos: módulos y capacidades" color="violet"
                         onClick={() => setPermsUser(u)}>
-                        <Emoji3D e="🛡️" size="base" />
+                        <Shield size={16} />
                       </IconBtn>
                     )}
                     {/* Empresas del usuario. Se ofrece para todos menos el
@@ -168,12 +167,12 @@ export function AdminUsersPage() {
                     {u.role !== 'SUPER_ADMIN' && (
                       <IconBtn title="Empresas de este usuario" color="sky"
                         onClick={() => setEmpresasDe(u)}>
-                        <Emoji3D e="🏢" size="base" />
+                        <Building2 size={16} />
                       </IconBtn>
                     )}
                     <IconBtn title="Resetear password" color="amber"
                       onClick={() => { if (confirm(`Generar nueva contraseña temporal para ${u.email}?`)) reset.mutate(u.id); }}>
-                      <Emoji3D e="🔑" size="base" />
+                      <Key size={16} />
                     </IconBtn>
                     {/* Solo se puede suplantar a usuarios distintos del propio super-admin
                         y nunca a otro SUPER_ADMIN (el backend también lo bloquea). */}
@@ -184,17 +183,17 @@ export function AdminUsersPage() {
                             impersonate.mutate(u.id);
                           }
                         }}>
-                        <Emoji3D e="🎭" size="base" />
+                        <Drama size={16} />
                       </IconBtn>
                     )}
                     {u.is_active ? (
                       <IconBtn title="Deshabilitar" color="red"
                         onClick={() => { if (confirm(`Deshabilitar ${u.email}?`)) disable.mutate(u.id); }}>
-                        <Emoji3D e="🚫" size="base" />
+                        <Ban size={16} />
                       </IconBtn>
                     ) : (
                       <IconBtn title="Re-activar" color="green" onClick={() => enable.mutate(u.id)}>
-                        <Emoji3D e="✅" size="base" />
+                        <CheckCircle size={16} />
                       </IconBtn>
                     )}
                   </div>
@@ -518,7 +517,7 @@ export function CreateUserModal({ companies, onClose, onDone, companyFija }: any
         <div className="flex items-center justify-between p-5 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-              <Emoji3D e="➕" size="lg" />
+              <Plus size={18} />
             </div>
             <h2 className="font-bold text-gray-900">Nuevo usuario</h2>
           </div>

@@ -5,14 +5,17 @@
 
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { GdmLogo } from './GdmLogo';
-import { Emoji3D } from './Emoji3D';
 import {
-  LogOut,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Building2,
-  ChevronDown,
-  ChevronRight,
+  LogOut, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronRight,
+  LayoutDashboard, Calculator, Receipt, ClipboardList, TrendingDown, TrendingUp,
+  Banknote, Users, Coins, Scale, Truck, Download, MapPin, Shield, UserCog, Package,
+  Factory, BarChart3, Store, BookOpen, BookText, AlertTriangle, AlertCircle,
+  FileText, FileDown, FileUp, Wallet, HeartPulse, Settings, BookMarked, Building,
+  Building2, Tags, Shuffle, Landmark, PenLine, CalendarClock, Calendar, Droplets,
+  Search, Microscope, FolderOpen, Satellite, Mail, ScrollText, ArrowUpFromLine,
+  ArrowDownToLine, ArrowRightLeft, CircleDot, ShoppingCart,
+  Link2, CreditCard, DollarSign, Gift,
+  type LucideIcon,
 } from 'lucide-react';
 import { canAccess, type ModuleKey } from '@/utils/permissions';
 import { useState, useCallback, useEffect } from 'react';
@@ -134,7 +137,7 @@ export function Layout() {
             const show = (m: ModuleKey) => canAccess(g, m);
             // Cada entrada se muestra solo si el grupo de trabajo la permite.
             // El dashboard es común a todos.
-            const emoji3D = (e: string) => <Emoji3D e={e} />;
+            const emoji3D = navIcon;
             return (
               <>
                 {/* Orden solicitado (V2): 1 Dashboard, 2 Facturas, 3 Carta Porte,
@@ -439,14 +442,14 @@ export function Layout() {
                   {sidebarOpen ? 'Plataforma' : '•'}
                 </p>
               </div>
-              <NavItem to="/admin/companies" icon={<Emoji3D e="🏢" />} accent="sky"     label="Empresas"              open={sidebarOpen} />
-              <NavItem to="/admin/users"     icon={<Emoji3D e="🛡️" />} accent="emerald" label="Usuarios"              open={sidebarOpen} />
-              <NavItem to="/admin/accesos"  icon={<Emoji3D e="🔗" />} accent="sky"     label="Accesos por empresa"   open={sidebarOpen} />
-              <NavItem to="/admin/packages"  icon={<Emoji3D e="💳" />} accent="violet"  label="Paquetes fiscales"     open={sidebarOpen} />
-              <NavItem to="/admin/billing"   icon={<Emoji3D e="💰" />} accent="emerald" label="Facturación y consumo" open={sidebarOpen} />
-              <NavItem to="/admin/prepaid"   icon={<Emoji3D e="🛒" />} accent="fuchsia" label="Compras prepago"       open={sidebarOpen} />
-              <NavItem to="/admin/promocion" icon={<Emoji3D e="🎁" />} accent="amber"   label="Promoción y cobros"    open={sidebarOpen} />
-              <NavItem to="/import-xml"      icon={<Emoji3D e="📥" />} accent="amber"   label="Importar XML"          open={sidebarOpen} />
+              <NavItem to="/admin/companies" icon={navIcon('🏢')} accent="sky"     label="Empresas"              open={sidebarOpen} />
+              <NavItem to="/admin/users"     icon={navIcon('🛡️')} accent="emerald" label="Usuarios"              open={sidebarOpen} />
+              <NavItem to="/admin/accesos"  icon={navIcon('🔗')} accent="sky"     label="Accesos por empresa"   open={sidebarOpen} />
+              <NavItem to="/admin/packages"  icon={navIcon('💳')} accent="violet"  label="Paquetes fiscales"     open={sidebarOpen} />
+              <NavItem to="/admin/billing"   icon={navIcon('💰')} accent="emerald" label="Facturación y consumo" open={sidebarOpen} />
+              <NavItem to="/admin/prepaid"   icon={navIcon('🛒')} accent="fuchsia" label="Compras prepago"       open={sidebarOpen} />
+              <NavItem to="/admin/promocion" icon={navIcon('🎁')} accent="amber"   label="Promoción y cobros"    open={sidebarOpen} />
+              <NavItem to="/import-xml"      icon={navIcon('📥')} accent="amber"   label="Importar XML"          open={sidebarOpen} />
               {/* Proveedores ya vive en el grupo Compras, que sí ve el ADMIN
                   de la empresa. Aquí duplicaba la entrada. */}
             </>
@@ -534,13 +537,38 @@ export function Layout() {
 
 type AccentColor = 'sky' | 'amber' | 'rose' | 'emerald' | 'fuchsia' | 'violet';
 
+/* Cada opción del menú se rotula por su emoji histórico; aquí ese emoji se
+ * resuelve a un icono de línea (Lucide), para que TODO el sistema use la misma
+ * familia de iconos. El icono hereda el color de acento de su módulo (currentColor). */
+const NAV_ICON: Record<string, LucideIcon> = {
+  '🏠': LayoutDashboard, '🧮': Calculator, '🧾': Receipt, '📋': ClipboardList,
+  '📉': TrendingDown, '📈': TrendingUp, '💵': Banknote, '👥': Users, '🪙': Coins,
+  '⚖️': Scale, '🚚': Truck, '🚛': Truck, '📥': Download, '📍': MapPin, '🛡️': Shield,
+  '👨‍✈️': UserCog, '📦': Package, '🏭': Factory, '📊': BarChart3, '🏬': Store,
+  '📒': BookOpen, '📔': BookText, '📕': FileDown, '📗': FileUp, '📚': BookMarked,
+  '🚨': AlertTriangle, '⚠️': AlertCircle, '📝': FileText, '👷': Wallet, '🏥': HeartPulse,
+  '⚙️': Settings, '🏗️': Building2, '🏛️': Building, '🏷️': Tags, '🔀': Shuffle,
+  '🏦': Landmark, '✍️': PenLine, '🗓️': CalendarClock, '📅': Calendar, '💧': Droplets,
+  '🔍': Search, '🔬': Microscope, '🗂️': FolderOpen, '🛰️': Satellite, '✉️': Mail,
+  '📜': ScrollText, '⬆️': ArrowUpFromLine, '⬇️': ArrowDownToLine, '💱': ArrowRightLeft,
+  '🛒': ShoppingCart, '🏢': Building2, '🔗': Link2, '💳': CreditCard, '💰': DollarSign,
+  '🎁': Gift,
+};
+
+/** Un icono de línea (Lucide) por su emoji histórico. Se usa en todo el sidebar,
+ *  incluidas las opciones de plataforma (SUPER_ADMIN). */
+function navIcon(e: string) {
+  const I = NAV_ICON[e] || CircleDot;
+  return <I size={18} strokeWidth={2} />;
+}
+
 const ACCENT_MAP: Record<AccentColor, { activeBg: string; activeText: string; iconActive: string; iconIdle: string; bar: string }> = {
-  sky:     { activeBg: 'bg-sky-50',     activeText: 'text-sky-700',     iconActive: 'text-sky-600',     iconIdle: 'text-slate-400 group-hover:text-sky-600',     bar: 'bg-sky-500' },
-  amber:   { activeBg: 'bg-amber-50',   activeText: 'text-amber-700',   iconActive: 'text-amber-600',   iconIdle: 'text-slate-400 group-hover:text-amber-600',   bar: 'bg-amber-500' },
-  rose:    { activeBg: 'bg-rose-50',    activeText: 'text-rose-700',    iconActive: 'text-rose-600',    iconIdle: 'text-slate-400 group-hover:text-rose-600',    bar: 'bg-rose-500' },
-  emerald: { activeBg: 'bg-emerald-50', activeText: 'text-emerald-700', iconActive: 'text-emerald-600', iconIdle: 'text-slate-400 group-hover:text-emerald-600', bar: 'bg-emerald-500' },
-  fuchsia: { activeBg: 'bg-fuchsia-50', activeText: 'text-fuchsia-700', iconActive: 'text-fuchsia-600', iconIdle: 'text-slate-400 group-hover:text-fuchsia-600', bar: 'bg-fuchsia-500' },
-  violet:  { activeBg: 'bg-violet-50',  activeText: 'text-violet-700',  iconActive: 'text-violet-600',  iconIdle: 'text-slate-400 group-hover:text-violet-600',  bar: 'bg-violet-500' },
+  sky:     { activeBg: 'bg-sky-50',     activeText: 'text-sky-700',     iconActive: 'text-sky-600',     iconIdle: 'text-sky-500 group-hover:text-sky-600',         bar: 'bg-sky-500' },
+  amber:   { activeBg: 'bg-amber-50',   activeText: 'text-amber-700',   iconActive: 'text-amber-600',   iconIdle: 'text-amber-500 group-hover:text-amber-600',     bar: 'bg-amber-500' },
+  rose:    { activeBg: 'bg-rose-50',    activeText: 'text-rose-700',    iconActive: 'text-rose-600',    iconIdle: 'text-rose-500 group-hover:text-rose-600',       bar: 'bg-rose-500' },
+  emerald: { activeBg: 'bg-emerald-50', activeText: 'text-emerald-700', iconActive: 'text-emerald-600', iconIdle: 'text-emerald-500 group-hover:text-emerald-600', bar: 'bg-emerald-500' },
+  fuchsia: { activeBg: 'bg-fuchsia-50', activeText: 'text-fuchsia-700', iconActive: 'text-fuchsia-600', iconIdle: 'text-fuchsia-500 group-hover:text-fuchsia-600', bar: 'bg-fuchsia-500' },
+  violet:  { activeBg: 'bg-violet-50',  activeText: 'text-violet-700',  iconActive: 'text-violet-600',  iconIdle: 'text-violet-500 group-hover:text-violet-600',   bar: 'bg-violet-500' },
 };
 
 interface NavChild {

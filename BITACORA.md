@@ -5467,3 +5467,16 @@ para que se activen las cédulas y las pólizas automáticas: activo fijo/deprec
 
 **Homologación de botones (continuación).** Menú Nómina Empleados: «Nuevo trabajador» →
 `btn-primary`; nuevos «Plantilla Excel» (export) / «Importar Excel» (import) con las clases.
+
+---
+
+## 2026-09-09 (UI) — Iconos de línea (Lucide) en TODO el sistema
+
+Se cambió el sistema de iconos de **emoji 3D** a **iconos de línea Lucide** (elegido por el
+usuario, opción B). En el sidebar, cada opción se rotulaba por su emoji; ahora un mapa
+`NAV_ICON` (emoji → icono Lucide) lo resuelve en `navIcon()`, y el icono **hereda el color de
+acento de su módulo** (se cambió `iconIdle` de gris a `text-{accent}-500`, así el icono va
+siempre con el color de su grupo, no sólo al activarse). Cubre las ~50 opciones del menú
+—principales y submenús— y las de plataforma (SUPER_ADMIN). También se convirtieron las dos
+pantallas que usaban `Emoji3D` directo (AdminUsers, AdminPackages). El resto del sistema ya
+usaba `lucide-react`, así que ahora es una sola familia de iconos. `Emoji3D.tsx` queda sin uso.
