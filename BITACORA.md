@@ -5480,3 +5480,15 @@ siempre con el color de su grupo, no sólo al activarse). Cubre las ~50 opciones
 —principales y submenús— y las de plataforma (SUPER_ADMIN). También se convirtieron las dos
 pantallas que usaban `Emoji3D` directo (AdminUsers, AdminPackages). El resto del sistema ya
 usaba `lucide-react`, así que ahora es una sola familia de iconos. `Emoji3D.tsx` queda sin uso.
+
+---
+
+## 2026-09-09 (docs) — Consolidación de la documentación a 3 archivos
+
+La raíz tenía ~40 `.md` sueltos (progreso semanal, status, planes, reviews) que ya sólo eran
+histórico. Se dejaron **tres**: **README.md** (panorama/estado), **BITACORA.md** (este
+histórico) y **RESPALDO.md** (referencia técnica consolidada: arquitectura, motores de
+contabilidad, códigos SAT, bugs resueltos, cancelación/CSD, complemento de pago, diseño de
+planes y las guías de deploy). Los demás `.md` se borraron —siguen recuperables por el
+historial de git—. Se conservan los binarios/assets: `docs/GUIA_ICONOS_FACTURAS.pdf`,
+`docs/CONTRATO_TYC_BORRADOR.docx` y `docs/movil/` (docs de la API móvil).

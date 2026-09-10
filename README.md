@@ -37,8 +37,8 @@ SW Sapien.
   Excel); la balanza se **reconstruye por mes o por año** desde las pólizas
   (arrastrando las cuentas sin movimiento); el **folio de póliza reinicia por mes y
   tipo** (Anexo 24); **previsualización/PDF de la póliza** con el UUID en azul; y el
-  **respaldo exige e.firma** (la descarga de sus XML). Todos los motores en
-  `docs/MOTORES_CONTABILIDAD.md`. Ver también **BITÁCORA.md** y **docs/BUGS_RESUELTOS.md**.
+  **respaldo exige e.firma** (la descarga de sus XML). Todos los motores y los códigos del SAT
+  en **RESPALDO.md**. Ver también **BITACORA.md**.
 - 🟢 **Tesorería**: cuentas por pagar, pagos programados, bancos y
   **conciliación bancaria** (con export a Excel).
 - 🟢 **Permisos por grupo de trabajo**: siete grupos, cada uno con sus módulos,
@@ -1305,15 +1305,21 @@ Con 10 clientes activos mix Esencial/Pyme/Empresarial (~$7,200 MXN ingresos):
 
 ---
 
-## 📚 Documentación adicional
+## 📚 Documentación
 
-- [BITACORA.md](BITACORA.md) — Histórico cronológico de cambios y decisiones
-- [docs/BUGS_RESUELTOS.md](docs/BUGS_RESUELTOS.md) — Bugs de las pruebas pre-producción con síntoma/causa/fix/commit
-- [docs/GUIA_ICONOS_FACTURAS.pdf](docs/GUIA_ICONOS_FACTURAS.pdf) — Guía visual de cada ícono de la lista de facturas (regenerable con `npm run docs:icons`)
-- [docs/DEPLOY_HCGM_DOMAIN.md](docs/DEPLOY_HCGM_DOMAIN.md) — Guía paso a paso para colgar el ERP de `erp.hcgm.com.mx` (custom domain + SSL + variables)
-- [docs/DEPLOY_HOSTING_ZIP.md](docs/DEPLOY_HOSTING_ZIP.md) — Servir el frontend desde `hcgm.com.mx/erp` vía ZIP en cPanel (`npm run build:hosting`) + checklist de PAC producción
-- [docs/DISENO_FACTURACION_PLANES.md](docs/DISENO_FACTURACION_PLANES.md) — Diseño del módulo de Facturación y Consumo (rollover iguala, prepago FLEX, jobs y correos)
-- [DEPLOY_RENDER.md](DEPLOY_RENDER.md) — Guía paso a paso del deploy inicial
+La documentación se consolidó en **tres archivos** (los demás se archivaron; siguen en el
+historial de git):
+
+- **[BITACORA.md](BITACORA.md)** — histórico cronológico de cambios y decisiones.
+- **[RESPALDO.md](RESPALDO.md)** — referencia técnica consolidada: arquitectura, motores de
+  contabilidad, códigos del SAT, bugs resueltos (síntoma/causa/fix/commit), cancelación y CSD,
+  complemento de pago, diseño de planes de facturación y las guías de deploy (Render, hosting
+  ZIP, dominio HCGM).
+- **README.md** (este archivo) — panorama, estado y cómo entrar/desplegar.
+
+Assets que se conservan: `docs/GUIA_ICONOS_FACTURAS.pdf` (guía visual de íconos, regenerable con
+`npm run docs:icons`), `docs/CONTRATO_TYC_BORRADOR.docx` (borrador legal) y `docs/movil/` (docs de
+la API móvil).
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Arquitectura interna del backend
 - [ESTRUCTURA_PROYECTO.md](ESTRUCTURA_PROYECTO.md) — Layout de carpetas
 
