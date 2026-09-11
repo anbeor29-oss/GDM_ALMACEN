@@ -5603,3 +5603,10 @@ desperdicia cupo: si hay poco reciente, el sobrante engorda el histórico. Lo re
 primero, así que si el SAT limita a media corrida, lo actual ya salió. Sin cambios en el
 reloj: sigue el trabajo diario 6:00 (CDMX) + red cada 45 min, factor nocturno 4× (22–07 h).
 Sin migración; TSC = 0.
+
+Además se **subió el presupuesto por defecto** (`PREDETERMINADO`): **40→120 solicitudes** y
+**2000→10000 XML** por empresa/día, para acelerar el backfill de ejercicios completos. Es un
+TECHO, no una meta (una empresa sólo con descarga diaria nunca se le acerca) y el motor se
+auto-frena ante el 5002 del SAT, así que sólo acelera el rezago. Aplica a empresas SIN fila en
+`sat_config_descarga` (las nuevas); una empresa con config guardada mantiene la suya y se
+ajusta aparte.

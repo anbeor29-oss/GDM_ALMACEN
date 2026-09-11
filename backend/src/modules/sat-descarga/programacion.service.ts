@@ -39,7 +39,14 @@ export interface ConfigDescarga {
 
 const PREDETERMINADO = {
   diariaActiva: true, diariaRecibidos: true, diariaEmitidos: true,
-  diasAtras: 3, xmlPorDia: 2000, solicitudesPorDia: 40,
+  /* Presupuesto por defecto SUBIDO (2026-09-11) para acelerar el backfill de
+   * ejercicios completos. Es un TECHO, no una meta: una empresa sólo con
+   * descarga diaria nunca se le acerca, y el motor se auto-frena ante el 5002
+   * del SAT («se agotó el límite de solicitudes») vía proxima_consulta_at, así
+   * que subirlo sólo acelera el rezago sin arriesgar la operación diaria.
+   * (Antes: 2000 XML / 40 solicitudes.) Se puede ajustar por empresa en
+   * sat_config_descarga. */
+  diasAtras: 3, xmlPorDia: 10000, solicitudesPorDia: 120,
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
