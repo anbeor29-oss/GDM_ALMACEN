@@ -1176,7 +1176,13 @@ Ruta: `backend/src/modules/accounting/` salvo donde se indique. Actualizado 2026
   (número, nombre, moneda, agrupador), árbol, borrar/tombstone, `asignarAgrupadorFaltante`
   (hereda del padre), `proponerAgrupadoresDelCatalogo`/`aplicarAgrupadoresPropuestos`
   (por nombre vs Anexo 24, a confirmar), **importar/exportar Excel del catálogo**,
-  `revisarCatalogo` (errores de estructura).
+  `revisarCatalogo` (errores de estructura). **Subcuentas de arranque** (`SUBCUENTAS_ARRANQUE`
+  en catalogo-sat.data): detalle de trabajo para rubros que el SAT deja como cuenta mayor —703
+  «Gastos y Productos Financieros»: 703.01 Comisiones bancarias, .02 Intereses a cargo, .03
+  Pérdida cambiaria, .04 Intereses a favor, .05 Utilidad cambiaria—. NO son códigos del
+  agrupador (no entran en `sat_codigos_agrupadores`): se siembran por empresa con
+  `codigo_agrupador = 703` (el mayor REAL), nunca su propio número, para que el Anexo 24 reporte
+  703. Habilitan la cuenta de comisiones de la conciliación de Tesorería.
 - **catalogo-terceros.service** — Subcuentas de cliente/proveedor (terceros):
   `resolverOCrearSubcuentaTercero`, `cuentaControl` (105.01/201.01 o su padre 105/201),
   numeración `1-10-25-0XX`, `generarSubcuentasDeComprobantes`. Respeta el número del
