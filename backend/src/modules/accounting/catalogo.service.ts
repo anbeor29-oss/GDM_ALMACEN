@@ -22,7 +22,7 @@ import { ExcelJS } from '../nomina/estilo-excel';
 import { proponerMapeo, agrupadoresValidos, conNombresDelSat } from './mapeador-sat.service';
 import type { FilaBalanza } from './balanza-lector.service';
 import { NIF_NORMAS } from './nif-normas.data';
-import { construirCatalogoSat, NIVEL2_PENDIENTE, type CodigoSat } from './catalogo-sat.data';
+import { construirCatalogoSat, SUBCUENTAS_ARRANQUE, NIVEL2_PENDIENTE, type CodigoSat } from './catalogo-sat.data';
 import logger from '../../middleware/logger';
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -290,6 +290,37 @@ async function sembrarCatalogoEmpresa(
         [companyId, c.codigo],
       );
       if (ya.rows.length) idPorCodigo.set(c.codigo, ya.rows[0].id);
+    }
+  }
+
+  /* Subcuentas de ARRANQUE: detalle de trabajo para rubros que el SAT deja como
+   * cuenta mayor (703 «Gastos y Productos Financieros» — comisiones bancarias,
+   * intereses, cambios). Se crean con `codigo_agrupador` = su PADRE (código REAL
+   * del SAT), NUNCA su propio número, para que el Anexo 24 reporte 703 y no un
+   * agrupador inventado. Sólo al sembrar a nivel 2 (su mayor ya existe). La
+   * complementaria sale de la misma regla: un producto (acreedora) dentro del
+   * RIF (deudora) RESTA del rubro. Idempotente (ON CONFLICT DO NOTHING). */
+  if (hastaNivel === 2) {
+    for (const s of SUBCUENTAS_ARRANQUE) {
+      const padre = sat.rows.find((r: any) => r.codigo === s.agrupador);
+      if (!padre) continue;
+      const parentId = idPorCodigo.get(s.agrupador) ?? null;
+      const esComplementaria =
+        (['ACTIVO', 'COSTO', 'GASTO', 'RIF'].includes(padre.tipo) && s.naturaleza === 'ACREEDORA')
+        || (['PASIVO', 'CAPITAL', 'INGRESO'].includes(padre.tipo) && s.naturaleza === 'DEUDORA');
+      const r = await transactionQuery<any>(
+        client,
+        `INSERT INTO accounting_accounts
+           (company_id, parent_id, codigo, nombre, codigo_agrupador,
+            tipo, naturaleza, es_complementaria, nif_norma, nivel,
+            permite_movimientos, requiere_tercero)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,2,true,false)
+         ON CONFLICT (company_id, codigo) DO NOTHING
+         RETURNING id`,
+        [companyId, parentId, s.codigo, s.nombre, s.agrupador,
+         padre.tipo, s.naturaleza, esComplementaria, padre.nif_norma],
+      );
+      if (r.rows.length) n++;
     }
   }
 

@@ -540,6 +540,31 @@ const ORDEN_800: Array<[string, string]> = [
    ARMADO
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/**
+ * Subcuentas de ARRANQUE (detalle del catálogo PROPIO de cada empresa).
+ *
+ * Para rubros que el agrupador del SAT deja como cuenta MAYOR sin sub-agrupador
+ * oficial —703 «Gastos y Productos Financieros»—, aquí van las subcuentas de
+ * trabajo que toda empresa necesita desde el día 1 (empezando por las comisiones
+ * bancarias, que la conciliación de Tesorería no tenía dónde asentar).
+ *
+ * NO son códigos del agrupador: por eso NO entran en construirCatalogoSat ni en
+ * `sat_codigos_agrupadores`. Se siembran por empresa con
+ * `codigo_agrupador = agrupador` (el PADRE, un código REAL del SAT), nunca con su
+ * propio número —así la contabilidad electrónica del Anexo 24 reporta 703, no
+ * 703.01, que sería un agrupador inventado (justo lo que este archivo evita)—.
+ */
+export interface SubcuentaArranque {
+  codigo: string; nombre: string; agrupador: string; naturaleza: Naturaleza;
+}
+export const SUBCUENTAS_ARRANQUE: SubcuentaArranque[] = [
+  { codigo: '703.01', nombre: 'Comisiones bancarias', agrupador: '703', naturaleza: D },
+  { codigo: '703.02', nombre: 'Intereses a cargo',    agrupador: '703', naturaleza: D },
+  { codigo: '703.03', nombre: 'Pérdida cambiaria',    agrupador: '703', naturaleza: D },
+  { codigo: '703.04', nombre: 'Intereses a favor',    agrupador: '703', naturaleza: A },
+  { codigo: '703.05', nombre: 'Utilidad cambiaria',   agrupador: '703', naturaleza: A },
+];
+
 export function construirCatalogoSat(): CodigoSat[] {
   const out: CodigoSat[] = [];
   const porCodigo = new Map<string, CodigoSat>();

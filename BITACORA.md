@@ -5610,3 +5610,23 @@ TECHO, no una meta (una empresa sólo con descarga diaria nunca se le acerca) y 
 auto-frena ante el 5002 del SAT, así que sólo acelera el rezago. Aplica a empresas SIN fila en
 `sat_config_descarga` (las nuevas); una empresa con config guardada mantiene la suya y se
 ajusta aparte.
+
+## 2026-09-11 (contabilidad) — Semilla: subcuentas de arranque del 703 (comisiones bancarias, etc.)
+
+Inconsistencia reportada: no había cuenta de **comisiones bancarias** en la serie 700. Causa:
+la semilla arma subcuentas para 401/701/702 pero **703 «Gastos y Productos Financieros» y 704
+quedaban solo como cuenta mayor** (el agrupador del SAT no detalla sub-códigos para 703, y el
+archivo evita inventarlos — «un código inventado se usa»).
+
+Arreglo respetando la regla «no deduzcas agrupador por número de cuenta»: se agregó
+`SUBCUENTAS_ARRANQUE` (703.01 Comisiones bancarias, 703.02 Intereses a cargo, 703.03 Pérdida
+cambiaria, 703.04 Intereses a favor, 703.05 Utilidad cambiaria). **NO** entran en
+`construirCatalogoSat` ni en `sat_codigos_agrupadores` (no son códigos del agrupador): se
+siembran por empresa en `sembrarCatalogoEmpresa` con **`codigo_agrupador = 703`** (el mayor
+REAL del SAT), nunca su propio número — así el Anexo 24 reporta 703, no 703.01. Las acreedoras
+(intereses a favor, utilidad cambiaria) salen como **complementarias** por la regla existente
+(un producto dentro del RIF resta del rubro). Habilita la cuenta de comisiones que pide la
+conciliación de Tesorería (`bancos_config.cuenta_comisiones_id`). Idempotente
+(`ON CONFLICT DO NOTHING`): AABA (nueva) las recibe al sembrar; una empresa ya sembrada las
+agrega al **re-sembrar** (`activarContabilidad{sembrarCatalogo:true}`), sin tocar lo existente.
+Sin migración; TSC = 0.
