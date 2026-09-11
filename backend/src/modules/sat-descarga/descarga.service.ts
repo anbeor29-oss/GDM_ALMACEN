@@ -518,18 +518,49 @@ export async function avanzar(companyId: string, trabajoId?: string, factor = 1)
 
   /* Se piden como maximo las que quepan en lo que queda del cupo. */
   const cupoSolicitudes = Math.min(cupo.solicitudes, presupuesto.quedanSolicitudes);
-  const pendientes = await query<any>(
-    `SELECT pa.*, t.direccion, t.tipo, t.filtros, t.company_id
-       FROM sat_particiones pa
-       JOIN sat_trabajos t ON t.id = pa.trabajo_id
-      WHERE t.company_id = $1 ${filtroTrabajo}
+
+  /* BALANCE 50/50 — lo MÁS ACTUAL y el histórico DESDE EL INICIO, a la par.
+   * Antes se pedía sólo por `desde ASC` (lo más viejo primero): con un ejercicio
+   * completo en cola, la descarga del día quedaba esperando semanas a que bajara
+   * todo el histórico. Ahora la mitad del cupo va a lo más reciente (desde DESC)
+   * y el resto al backfill desde el inicio (desde ASC). No se desperdicia cupo:
+   * si hay poco reciente, el sobrante engorda el histórico (y viceversa). */
+  const baseWhere = `t.company_id = $1 ${filtroTrabajo}
         AND pa.estado = 'PENDIENTE'
-        AND (pa.proxima_consulta_at IS NULL OR pa.proxima_consulta_at <= NOW())
-      ORDER BY pa.desde ASC
-      LIMIT ${cupoSolicitudes}`,
-    params
-  );
-  for (const pa of pendientes.rows) {
+        AND (pa.proxima_consulta_at IS NULL OR pa.proxima_consulta_at <= NOW())`;
+  const cols = 'pa.*, t.direccion, t.tipo, t.filtros, t.company_id';
+
+  let pendientesRows: any[] = [];
+  if (cupoSolicitudes > 0) {
+    const cupoReciente = Math.ceil(cupoSolicitudes / 2);
+    const recientes = await query<any>(
+      `SELECT ${cols}
+         FROM sat_particiones pa
+         JOIN sat_trabajos t ON t.id = pa.trabajo_id
+        WHERE ${baseWhere}
+        ORDER BY pa.desde DESC
+        LIMIT ${cupoReciente}`,
+      params
+    );
+    // El sobrante del cupo reciente pasa al histórico, para no dejar cupo ocioso.
+    const cupoAntiguo = cupoSolicitudes - recientes.rows.length;
+    const antiguas = cupoAntiguo > 0
+      ? await query<any>(
+          `SELECT ${cols}
+             FROM sat_particiones pa
+             JOIN sat_trabajos t ON t.id = pa.trabajo_id
+            WHERE ${baseWhere}
+              AND NOT (pa.id::text = ANY($${params.length + 1}::text[]))
+            ORDER BY pa.desde ASC
+            LIMIT ${cupoAntiguo}`,
+          [...params, recientes.rows.map((r: any) => String(r.id))]
+        )
+      : { rows: [] as any[] };
+    // Reciente primero: si el SAT limita a media corrida, lo actual ya se pidió.
+    pendientesRows = [...recientes.rows, ...antiguas.rows];
+  }
+
+  for (const pa of pendientesRows) {
     try {
       const r = await solicitarParticion(cred, token, pa);
       if (r === 'dividida') {

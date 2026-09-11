@@ -5591,3 +5591,15 @@ nada, y cubre el contenido con `<ContratoGate>`, que muestra el **siguiente paso
 firma para el ADMIN; aviso «el administrador debe firmar» a los demás). Al firmar se invalida
 `['contrato-estado']` y se desbloquea sin recargar. SUPER_ADMIN no se ve afectado. Sin
 migración (solo lee tablas existentes). TSC back+front = 0.
+
+## 2026-09-11 (sat-descarga) — Balance 50/50: lo más actual y el histórico a la par
+
+El motor pedía las solicitudes nuevas por `desde ASC` (lo más viejo primero). Con un
+ejercicio completo en cola (p. ej. todo 2025), la **descarga del día quedaba esperando
+semanas** a que bajara todo el histórico. Ahora `avanzar` (paso 3) reparte el cupo de
+solicitudes **50/50**: la mitad a lo **más reciente** (`desde DESC`) y el resto al **backfill
+desde el inicio** (`desde ASC`, que es justo «desde dónde necesitamos comenzar»). No se
+desperdicia cupo: si hay poco reciente, el sobrante engorda el histórico. Lo reciente se pide
+primero, así que si el SAT limita a media corrida, lo actual ya salió. Sin cambios en el
+reloj: sigue el trabajo diario 6:00 (CDMX) + red cada 45 min, factor nocturno 4× (22–07 h).
+Sin migración; TSC = 0.
