@@ -5641,3 +5641,19 @@ textos muestran «todo el año» en lugar de mes vacío (`MESES[mes] || 'todo el
 asignan cuentas a los productos de **todo el año** de una vez, sin ir mes por mes. Balanza,
 estados financieros y activo fijo son **punto en el tiempo** (saldo/depreciación de un mes), ahí
 «todo el año» no aplica y no se tocaron. TSC back+front = 0.
+
+## 2026-09-12 (nómina/checador) — Fase 0 + enrolamiento/match (backend)
+
+Arranca el **checador biométrico** (ver [[checador-nomina-plan]] en memoria). Migración
+`2026-09-12_checador.sql` con 8 tablas: `checador_config` (params CONFIGURABLES: tolerancia,
+comida, **horas_semanales 48→40 flexible**, radio kiosco, umbral facial), `checador_turnos`,
+`checador_empleado_horario` (FIJO/ROTATIVO/EXENTO), `checador_asignacion` (rol por fecha + caso
+mixto oficina/campo), `checador_rostro` (**embedding como `real[]`, no la foto**),
+`checador_evento`, `checador_resumen_dia` (alimenta la prenómina), `checador_consentimiento`.
+
+**Decisión clave:** el match 1:N va **en el backend** por distancia euclidiana contra los rostros
+de la empresa → **sin `pgvector`** (a escala de una empresa es instantáneo; se destraba el
+arranque sin habilitar nada en Render). Módulo `backend/src/modules/checador` (service+routes),
+montado bajo el candado `nomina`. Endpoints: config, turnos, horario/asignación, consentimiento,
+**enrolar** (recibe descriptores que extrae el cliente, exige consentimiento previo) e
+**identificar** (1:N). El auth del KIOSCO (token de dispositivo) va en Fase 2. TSC=0.

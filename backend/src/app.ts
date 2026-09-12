@@ -73,6 +73,7 @@ import { requireModule, ModuleKey } from './middleware/permissions';
 // customers, invoices…) rompería POS/facturas con un 403.
 const gated = (mod: ModuleKey) => [authenticateToken, requireModule(mod)];
 import nominaRoutes          from './modules/nomina/nomina.routes';
+import checadorRoutes        from './modules/checador/checador.routes';
 import accountingRoutes      from './modules/accounting/accounting.routes';
 
 export function createApp(): Express {
@@ -233,6 +234,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/sat-descarga`,    ...gated('auditoria'), satDescargaRoutes);
   app.use(`/api/${config.apiVersion}/physical-counts`, physicalCountRoutes);
   app.use(`/api/${config.apiVersion}/nomina`,          ...gated('nomina'), nominaRoutes);
+  app.use(`/api/${config.apiVersion}/checador`,        ...gated('nomina'), checadorRoutes);
   app.use(`/api/${config.apiVersion}/accounting`,      ...gated('contabilidad'), accountingRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);
