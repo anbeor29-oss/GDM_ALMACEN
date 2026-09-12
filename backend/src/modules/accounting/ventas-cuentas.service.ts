@@ -7,8 +7,9 @@
  */
 import { query } from '../../config/database';
 
-const iniDeMes = (a: number, m: number) => `${a}-${String(m).padStart(2, '0')}-01`;
-const finDeMes = (a: number, m: number) => new Date(a, m, 0).toISOString().slice(0, 10);
+// mes 0 (o fuera de 1..12) = TODO EL AÑO — mismo criterio que listarPolizas.
+const iniDeMes = (a: number, m: number) => (m >= 1 && m <= 12) ? `${a}-${String(m).padStart(2, '0')}-01` : `${a}-01-01`;
+const finDeMes = (a: number, m: number) => (m >= 1 && m <= 12) ? new Date(a, m, 0).toISOString().slice(0, 10) : `${a}-12-31`;
 const attr = (s: string, n: string) => {
   const m = new RegExp(`\\b${n}\\s*=\\s*"([^"]*)"`).exec(s);
   return m ? m[1] : '';

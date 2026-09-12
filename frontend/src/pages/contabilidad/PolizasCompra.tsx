@@ -185,7 +185,7 @@ export function TabCargos({ anio, mes, cuentas }: { anio: number; mes: number; c
             {q.isLoading && <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>}
             {!q.isLoading && productos.length === 0 && (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500 italic">
-                Sin productos con XML en {MESES[mes]} {anio}. (Recuerda: los recibidos suelen venir como metadato.)
+                Sin productos con XML en {(MESES[mes] || 'todo el año')} {anio}. (Recuerda: los recibidos suelen venir como metadato.)
               </td></tr>
             )}
             {productos.map((p) => (
@@ -377,7 +377,7 @@ function TabPolizasCompra({ anio, mes }: { anio: number; mes: number }) {
       <AvisoXml />
       <div className="bg-white rounded-lg shadow border p-4 flex flex-wrap items-center gap-2">
         <p className="text-sm text-gray-600 flex-1 min-w-[16rem]">
-          Una póliza por factura recibida de <b>{MESES[mes]} {anio}</b> con XML: cargo a
+          Una póliza por factura recibida de <b>{(MESES[mes] || 'todo el año')} {anio}</b> con XML: cargo a
           inventario/gasto (por producto) y al IVA acreditable, abono al proveedor. No duplica.
         </p>
         <button onClick={() => generar(false)} disabled={busy}

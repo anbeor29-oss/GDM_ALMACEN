@@ -199,7 +199,7 @@ export function PolizasListaPage() {
         {q.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
         {!q.isLoading && polizas.length === 0 && (
           <p className="text-sm text-gray-500 italic bg-white border rounded-lg p-4 text-center">
-            Sin pólizas {filtro ? `de ${ETIQUETA[filtro].toLowerCase()} ` : ''}en {MESES[mes]} {anio}.
+            Sin pólizas {filtro ? `de ${ETIQUETA[filtro].toLowerCase()} ` : ''}en {(MESES[mes] || 'todo el año')} {anio}.
           </p>
         )}
         {polizas.map((p) => {

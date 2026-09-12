@@ -70,6 +70,7 @@ export function AsignacionCuentasPage() {
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500">Mes:</span>
             <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 text-sm">
+              <option value={0}>Todo el año</option>
               {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
             </select>
             <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">

@@ -5630,3 +5630,14 @@ conciliación de Tesorería (`bancos_config.cuenta_comisiones_id`). Idempotente
 (`ON CONFLICT DO NOTHING`): AABA (nueva) las recibe al sembrar; una empresa ya sembrada las
 agrega al **re-sembrar** (`activarContabilidad{sembrarCatalogo:true}`), sin tocar lo existente.
 Sin migración; TSC = 0.
+
+## 2026-09-11 (contabilidad) — «Todo el año» en los combos de fecha contable
+
+**Asignación de cuentas** no ofrecía la opción «Todo el año» (que Pólizas venta/compra/lista
+ya tenían por `mes=0`). Se agregó al combo de Asignación, y sus endpoints de vista
+—`ventas-cuentas`/`compras-cuentas` (`clavesProdServDeEmitidos`/`DeRecibidos`)— ahora tratan
+**mes 0 = TODO EL AÑO** (`${anio}-01-01` → `-12-31`), mismo criterio que `listarPolizas`. Los
+textos muestran «todo el año» en lugar de mes vacío (`MESES[mes] || 'todo el año'`). Así se
+asignan cuentas a los productos de **todo el año** de una vez, sin ir mes por mes. Balanza,
+estados financieros y activo fijo son **punto en el tiempo** (saldo/depreciación de un mes), ahí
+«todo el año» no aplica y no se tocaron. TSC back+front = 0.
