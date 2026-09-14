@@ -1013,6 +1013,11 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>('/accounting/cuentas-fijas', { agrupador, account_id });
     return r.data;
   }
+  /** Cuentas por cobrar por cliente, desde la contabilidad (subcuentas 105-xx). */
+  async getSaldosClientesContable() {
+    const r = await this.client.get<APIResponse<{ clientes: any[]; total: number; cuantos: number }>>('/invoices/saldos-clientes-contable');
+    return r.data;
+  }
   /** Cierre del ejercicio: utilidad/pérdida y cuentas de resultados del año. */
   async getCierreEjercicio(anio: number) {
     const r = await this.client.get<APIResponse<any>>(`/accounting/cierre/${anio}`);

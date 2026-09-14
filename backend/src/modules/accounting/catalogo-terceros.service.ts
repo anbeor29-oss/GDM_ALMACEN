@@ -317,6 +317,31 @@ export async function listarSubcuentasTercero(companyId: string, tipo: 'cliente'
   return r.rows;
 }
 
+/**
+ * Saldos por CLIENTE (cuentas por cobrar) desde la CONTABILIDAD: el neto de cada
+ * subcuenta de cliente (105.01/105.02) = cargos (ventas) − abonos (cobros). Se
+ * alimenta de TODO lo contabilizado —facturas de NEXO Y XML descargados del SAT—,
+ * por eso importan las descargas. Sólo los que deben (saldo > 0); el nombre sale
+ * del catálogo de clientes si está, si no del de la subcuenta.
+ */
+export async function saldosPorCliente(companyId: string) {
+  const r = await query<any>(
+    `SELECT a.id, a.codigo, a.tercero_rfc,
+            COALESCE(NULLIF(TRIM(cu.business_name), ''), a.nombre) AS cliente,
+            (COALESCE(SUM(jl.cargo),0) - COALESCE(SUM(jl.abono),0))::float AS saldo
+       FROM accounting_accounts a
+       LEFT JOIN journal_lines jl ON jl.account_id = a.id
+       LEFT JOIN customers cu ON cu.company_id = a.company_id AND UPPER(cu.rfc) = UPPER(a.tercero_rfc)
+      WHERE a.company_id = $1
+        AND a.codigo_agrupador IN ('105.01','105.02')
+        AND a.tercero_rfc IS NOT NULL
+      GROUP BY a.id, a.codigo, a.tercero_rfc, cu.business_name, a.nombre
+      HAVING (COALESCE(SUM(jl.cargo),0) - COALESCE(SUM(jl.abono),0)) > 0.005
+      ORDER BY saldo DESC`, [companyId]);
+  const total = r.rows.reduce((s: number, x: any) => s + Number(x.saldo || 0), 0);
+  return { clientes: r.rows, total, cuantos: r.rows.length };
+}
+
 /** Captura/override manual del código de una subcuenta de tercero (respaldos). */
 export async function fijarCodigoSubcuenta(
   companyId: string, id: string, nuevoCodigo: string

@@ -5707,3 +5707,18 @@ tocar el resto del motor. Rutas `GET/PUT /accounting/cuentas-fijas` (`getCuentas
 `setCuentaFija`). La pestaña **«Cobros y pagos»** de Asignación de cuentas dejó de ser sólo
 verificación: ahora **se elige la cuenta** de cada rol con un selector (muestra la asignada, o la
 detectada por agrupador como default). TSC back+front = 0.
+
+## 2026-09-14 (facturación/contabilidad) — Cobranza detallada por contabilidad + reorden del menú XML
+
+**Cobranza detallada ahora se alimenta de DOS fuentes.** La pantalla mostraba sólo facturas de
+NEXO con saldo (`ReceivablesReport`), así que un cliente cuya historia viene de **XML descargados**
+no aparecía. Se agregó una sección **«Saldos por cliente (contabilidad)»**: el neto de cada
+subcuenta de cliente `105.01/105.02` (`= Σcargo − Σabono` de `journal_lines`), que se alimenta de
+TODO lo contabilizado (facturas de NEXO **y** XML del SAT) — de ahí la importancia de las
+descargas. Función `saldosPorCliente` (catalogo-terceros.service, nombre del cliente vía `customers`
+por RFC). Ruta `GET /invoices/saldos-clientes-contable` (va en `/invoices`, NO en `/accounting`
+—gateado por contabilidad—, para que también la vea quien factura). Con el tiempo esta vista es la
+que sobrevive; la de facturas queda como complemento inmediato. TSC=0.
+
+**Menú XML del SAT:** se movió **Calendario** después de Emitidos/Recibidos (orden: XML del SAT ·
+Emitidos · Recibidos · Calendario).

@@ -42,6 +42,20 @@ router.get(
   asyncHandler(invoicesController.listInvoices)
 );
 
+/** GET /invoices/saldos-clientes-contable — cuentas por cobrar por cliente desde
+ *  la CONTABILIDAD (subcuentas 105-xx = ventas − cobros). Alimenta la cobranza
+ *  detallada con lo que dicen las pólizas: facturas de NEXO + XML del SAT.
+ *  Va aquí (no en /accounting, gateado por contabilidad) para que también la vea
+ *  quien factura. Antes de las rutas /:id. */
+router.get(
+  '/saldos-clientes-contable',
+  asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user?.companyId) throw new ValidationError('Company ID is required');
+    const { saldosPorCliente } = await import('../accounting/catalogo-terceros.service');
+    res.json({ success: true, data: await saldosPorCliente(req.user.companyId) });
+  })
+);
+
 /**
  * GET /api/v1/invoices/dashboard/summary
  * IMPORTANTE: definido ANTES de /:id/summary para que "dashboard" no entre
