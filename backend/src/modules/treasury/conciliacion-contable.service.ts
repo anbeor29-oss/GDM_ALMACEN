@@ -469,19 +469,32 @@ export async function cotejarConLibro(companyId: string, estadoId: string) {
  */
 export async function movimientosDelLibro(companyId: string, estadoId: string) {
   const est = (await query<any>(
-    `SELECT bc.cuenta_contable_id AS banco_cuenta_id, aa.codigo, aa.nombre
+    `SELECT bc.cuenta_contable_id AS banco_cuenta_id, e.anio, e.mes, aa.codigo, aa.nombre
        FROM bancos_estados_cuenta e JOIN bancos_cuentas bc ON bc.id = e.cuenta_id
        LEFT JOIN accounting_accounts aa ON aa.id = bc.cuenta_contable_id
       WHERE e.id=$1 AND e.company_id=$2`, [estadoId, companyId])).rows[0];
   if (!est || !est.banco_cuenta_id) return { cuenta: null, lineas: [] };
+  const cuenta = { codigo: est.codigo, nombre: est.nombre };
+
+  /* El "libro" del banco es TODO el mes del estado de cuenta, no sólo ±2 días
+   * alrededor de cada línea: así se ven TODOS los movimientos de la 102 del
+   * periodo —aunque todavía no tengan su contraparte en el banco (quedan "en
+   * tránsito")—. Se une con el rango real de las líneas por si el corte del banco
+   * se sale del mes calendario. Antes, con un estado de pocas líneas, se ocultaban
+   * los demás movimientos contables del mes. */
+  const mm = String(est.mes).padStart(2, '0');
+  const mesIni = `${est.anio}-${mm}-01`;
+  const mesFin = new Date(Date.UTC(est.anio, est.mes, 0)).toISOString().slice(0, 10);
   const rango = await rangoDelEstado(companyId, estadoId);
-  if (!rango) return { cuenta: { codigo: est.codigo, nombre: est.nombre }, lineas: [] };
+  const desde = rango && rango.desde < mesIni ? rango.desde : mesIni;
+  const hasta = rango && rango.hasta > mesFin ? rango.hasta : mesFin;
+
   const lineas = (await query<any>(
     `SELECT l.id, TO_CHAR(e.fecha,'YYYY-MM-DD') AS fecha, e.folio, e.concepto AS poliza_concepto,
             l.concepto, l.cargo::float AS cargo, l.abono::float AS abono,
             (SELECT bm.id FROM bancos_movimientos bm WHERE bm.conciliado_line_id = l.id LIMIT 1) AS empatado_con
        FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id
       WHERE e.company_id=$1 AND l.account_id=$2 AND e.fecha BETWEEN $3 AND $4
-      ORDER BY e.fecha, e.folio`, [companyId, est.banco_cuenta_id, rango.desde, rango.hasta])).rows;
-  return { cuenta: { codigo: est.codigo, nombre: est.nombre }, lineas };
+      ORDER BY e.fecha, e.folio`, [companyId, est.banco_cuenta_id, desde, hasta])).rows;
+  return { cuenta, lineas };
 }

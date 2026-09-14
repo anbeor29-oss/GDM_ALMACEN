@@ -5806,3 +5806,21 @@ dice el **flujo** («Sugerir todo» → «Contabilizar confirmados» para genera
 del flujo: Sugerir empata cada egreso con su XML recibido (±10¢ / ±2 días) guardando el UUID; lo que
 no casa queda «Otro» y se le elige la cuenta; Contabilizar crea la póliza banco↔contraparte. Front
 build=0.
+
+---
+
+## 2026-09-14 (conciliación) — El "libro" de la 102 muestra TODO el mes, no sólo ±2 días de las líneas
+
+El usuario reportó que el panel «Contabilidad de la 102» salía en 0 aunque hubiera movimientos
+contables en el mes. Causa: `movimientosDelLibro` acotaba las líneas de la 102 al **rango de las
+líneas del estado ±2 días** (mismo `rangoDelEstado` que usa el cotejo). Con un estado de pocas líneas
+—p.ej. dos movimientos el 4 y 11 de diciembre— cualquier póliza de la 102 fuera de esa ventana
+quedaba oculta.
+
+Ahora el libro usa **el mes completo del estado de cuenta** (`bancos_estados_cuenta.anio/mes`),
+unido con el rango real de las líneas por si el corte del banco se sale del mes calendario. Así se
+ven todos los movimientos de la 102 del periodo; los que no casan con una línea del banco salen «en
+tránsito». El cotejo automático sigue con su ventana de ±2 días (es tolerancia de match, no de
+despliegue). Nota para el usuario: el panel es de la **102.01.001**; las pólizas de compra tocan
+**201-proveedores**, no la 102 —la 102 se mueve al contabilizar aquí, en cobros/pagos, o en la
+apertura/migración—. TSC back=0.
