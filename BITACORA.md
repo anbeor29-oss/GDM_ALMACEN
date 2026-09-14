@@ -5785,3 +5785,24 @@ la agregación de `diot()`). Ruta `GET /accounting/diot/:anio/:mes/batch?tipoOpe
 (text/plain, nombre `DIOT_{RFC}_{AAAAMM}.txt`, headers `X-DIOT-Cuantos`/`X-DIOT-Extranjeros`). API
 `descargarDiotBatch`. El PDF de la RMF no se pudo renderizar aquí (falta `poppler`), pero el layout
 salió del instructivo del SAT, no de la RMF. TSC back=0, front=0, build=0.
+
+---
+
+## 2026-09-14 (conciliación) — Cada egreso del banco muestra su cuenta contable y su liga (UUID / póliza)
+
+Con un cliente real cargando su estado de cuenta, el usuario pidió que en la **conciliación** los
+egresos del banco «tengan su respectiva cuenta contable y, si es posible, se relacionen con el UUID
+o la póliza». El backend **ya** guardaba todo eso por movimiento (`contra_cuenta_id`, `cfdi_uuid`,
+`poliza_id` → folio, y el tercero casado), pero sólo se veía al abrir el detalle de cada uno.
+
+Se agregó una **línea muda bajo el concepto** de cada movimiento en la lista (componente `ContraDoc`
+en `ConciliacionContable.tsx`): muestra la **contraparte contable** (cliente/proveedor casado por
+XML, «Comisiones/IVA», o la cuenta «otro» elegida) y el **documento con el que quedó ligado** —
+`CFDI …últimos6` mientras está sugerido, `Pól. #folio` una vez contabilizado—. Sólo lectura, de lo
+que ya devuelve `listarMovimientos`; sin cambios de backend.
+
+También se aclaró el vacío del panel derecho: en vez de sólo «la 102 no tiene movimientos», ahora
+dice el **flujo** («Sugerir todo» → «Contabilizar confirmados» para generar las pólizas). Recordatorio
+del flujo: Sugerir empata cada egreso con su XML recibido (±10¢ / ±2 días) guardando el UUID; lo que
+no casa queda «Otro» y se le elige la cuenta; Contabilizar crea la póliza banco↔contraparte. Front
+build=0.

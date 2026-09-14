@@ -54,6 +54,38 @@ function SelCuenta({ ctas, value, onChange, placeholder = '— cuenta —' }: {
   );
 }
 
+/**
+ * Línea muda bajo el concepto de cada movimiento: su CUENTA CONTABLE contraparte
+ * (cliente/proveedor casado, comisión, o la cuenta «otro» elegida) y el DOCUMENTO
+ * con el que quedó ligado (UUID del CFDI o folio de la póliza). Sale de lo que ya
+ * devuelve el backend por movimiento; así el egreso muestra su cuenta y su liga sin
+ * tener que abrir el detalle.
+ */
+function ContraDoc({ m, mascara }: { m: any; mascara: string }) {
+  const partes: string[] = [];
+  const tit: string[] = [];
+  if (m.clasificacion === 'cobro') {
+    const n = m.nombre_receptor || m.rfc_receptor;
+    if (n) { partes.push(n); tit.push(`Cliente: ${n}`); }
+  } else if (m.clasificacion === 'pago') {
+    const n = m.nombre_emisor || m.rfc_emisor;
+    if (n) { partes.push(n); tit.push(`Proveedor: ${n}`); }
+  } else if (m.clasificacion === 'comision') { partes.push('Comisiones bancarias'); }
+  else if (m.clasificacion === 'iva_comision') { partes.push('IVA de comisiones'); }
+  else if (m.contra_codigo) {
+    partes.push(formatCuenta(m.contra_codigo, mascara));
+    tit.push(`${m.contra_codigo} ${m.contra_nombre || ''}`.trim());
+  }
+  if (m.poliza_folio) { partes.push(`Pól. #${m.poliza_folio}`); tit.push(`Póliza #${m.poliza_folio}`); }
+  else if (m.cfdi_uuid) { partes.push(`CFDI …${String(m.cfdi_uuid).slice(-6)}`); tit.push(`UUID: ${m.cfdi_uuid}`); }
+  if (!partes.length) return null;
+  return (
+    <div className="text-[11px] text-gray-400 truncate flex items-center gap-1" title={tit.join(' · ') || partes.join(' · ')}>
+      <Link2 size={10} className="shrink-0" /> {partes.join(' · ')}
+    </div>
+  );
+}
+
 export function ConciliacionContablePage() {
   const qc = useQueryClient();
   const mascara = useMascara();
@@ -217,8 +249,11 @@ export function ConciliacionContablePage() {
                   return (
                     <tr key={m.id} onClick={() => setSelMov(m.id)}
                       className={`cursor-pointer hover:bg-gray-50 ${selMov === m.id ? 'bg-emerald-50' : ''}`}>
-                      <td className="px-2 py-1.5 text-xs whitespace-nowrap">{String(m.fecha).slice(0, 10)}</td>
-                      <td className="px-2 py-1.5 text-xs truncate max-w-[180px]" title={m.concepto}>{m.concepto}</td>
+                      <td className="px-2 py-1.5 text-xs whitespace-nowrap align-top">{String(m.fecha).slice(0, 10)}</td>
+                      <td className="px-2 py-1.5 text-xs max-w-[220px]">
+                        <div className="truncate" title={m.concepto}>{m.concepto}</div>
+                        <ContraDoc m={m} mascara={mascara} />
+                      </td>
                       <td className={`px-2 py-1.5 text-right text-xs ${esTarjeta ? 'text-rose-700' : 'text-emerald-700'}`}>{Number(m.deposito) > 0 ? money(m.deposito) : ''}</td>
                       <td className={`px-2 py-1.5 text-right text-xs ${esTarjeta ? 'text-emerald-700' : 'text-rose-700'}`}>{Number(m.retiro) > 0 ? money(m.retiro) : ''}</td>
                       <td className="px-2 py-1.5 text-xs">
@@ -267,7 +302,8 @@ export function ConciliacionContablePage() {
                   {libro.length === 0 && (
                     <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-500">
                       {!cuenta?.cuenta_contable_id ? 'Asigna la cuenta contable del banco (102) arriba.'
-                        : libroQ.isFetching ? 'Cargando…' : 'La 102 no tiene movimientos en este periodo (aún no hay pólizas que la toquen).'}
+                        : libroQ.isFetching ? 'Cargando…'
+                        : 'La 102 no tiene movimientos en este periodo. Corre «Sugerir todo» (empata cada egreso con su XML) y luego «Contabilizar confirmados» para generar las pólizas.'}
                     </td></tr>
                   )}
                   {libro.map((l) => (
