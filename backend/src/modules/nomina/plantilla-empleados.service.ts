@@ -11,7 +11,7 @@
  * empresa NO van aquí: son créditos con saldo y amortización, y se cargan en la
  * pantalla de Créditos.
  */
-import { ExcelJS, C, titulo, dato, encabezado, celda, anchos, aBuffer } from './estilo-excel';
+import { ExcelJS, C, titulo, encabezado, celda, anchos, aBuffer } from './estilo-excel';
 import { crear, TIPOS_CONTRATO, TIPOS_REGIMEN, TIPOS_JORNADA, PERIODICIDADES } from './empleados.service';
 import * as creditos from './creditos.service';
 
@@ -103,14 +103,14 @@ const aNum = (v: any) => { const n = Number(String(v ?? '').replace(/[,$\s]/g, '
 /* ── PLANTILLA ─────────────────────────────────────────────────────────────── */
 export async function plantillaEmpleadosExcel(): Promise<{ buffer: Buffer; nombre: string }> {
   const wb = new ExcelJS.Workbook(); wb.creator = 'GDM NEXO';
-  const ws = wb.addWorksheet('Trabajadores', { views: [{ state: 'frozen', ySplit: 6, xSplit: 3 }] });
-  titulo(ws, 'Alta de trabajadores', TODAS.length);
-  dato(ws, 3, 1, 'Llena UNA FILA por trabajador. Las columnas marcadas con * son obligatorias. Fechas en DD/MM/AAAA.', true);
-  dato(ws, 4, 1, 'Los campos con código (contrato, régimen, jornada, periodicidad) vienen en la hoja «Catálogos». FONACOT y préstamos: sólo si el trabajador los trae.');
-  encabezado(ws, 6, TODAS.map((c) => ({ texto: c.req ? `${c.label} *` : c.label, color: C.identidad })));
-  // Fila 7: ejemplo. Fila 8: notas breves por columna (en gris) para que no estorben.
-  TODAS.forEach((c, i) => celda(ws, 7, i + 1, c.ejemplo));
-  TODAS.forEach((c, i) => { if (c.nota) celda(ws, 8, i + 1, c.nota, { tinta: 'gris' }); });
+  // Los ~50 campos van como ENCABEZADOS en la FILA 1: así puedes REORDENAR las
+  // columnas para que calcen con el archivo de CUALQUIER sistema — el importador
+  // mapea por el NOMBRE del encabezado, no por su posición. * = obligatorio; fechas DD/MM/AAAA.
+  const ws = wb.addWorksheet('Trabajadores', { views: [{ state: 'frozen', ySplit: 1 }] });
+  encabezado(ws, 1, TODAS.map((c) => ({ texto: c.req ? `${c.label} *` : c.label, color: C.identidad })));
+  // Fila 2: ejemplo · Fila 3: nota breve por columna (gris). Puedes borrarlas y pegar tu lista.
+  TODAS.forEach((c, i) => celda(ws, 2, i + 1, c.ejemplo));
+  TODAS.forEach((c, i) => { if (c.nota) celda(ws, 3, i + 1, c.nota, { tinta: 'gris' }); });
   anchos(ws, TODAS.map((c) => Math.min(34, Math.max(12, c.label.length + 2))));
 
   // Hoja de catálogos de los campos con código.

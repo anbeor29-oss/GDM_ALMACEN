@@ -856,15 +856,10 @@ router.get(
   })
 );
 
-router.get(
-  '/empleados/:id',
-  asyncHandler(async (req: Request, res: Response) => {
-    res.json({ success: true, data: await empleados.obtener(companyId(req), req.params.id) });
-  })
-);
-
 /** GET /nomina/empleados/plantilla-excel — la plantilla para dar de alta
- *  trabajadores por Excel (con hoja de catálogos). */
+ *  trabajadores por Excel (con hoja de catálogos).
+ *  DEBE ir ANTES de '/empleados/:id': si no, Express toma "plantilla-excel" como
+ *  el :id y el Excel nunca se genera («no baja»). */
 router.get(
   '/empleados/plantilla-excel',
   asyncHandler(async (_req: Request, res: Response) => {
@@ -872,6 +867,13 @@ router.get(
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
     res.send(buffer);
+  })
+);
+
+router.get(
+  '/empleados/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await empleados.obtener(companyId(req), req.params.id) });
   })
 );
 

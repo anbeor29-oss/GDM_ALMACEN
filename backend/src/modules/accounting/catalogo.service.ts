@@ -484,19 +484,19 @@ export async function crearCuenta(companyId: string, d: DatosCuenta) {
     throw new Error('La naturaleza debe ser DEUDORA o ACREEDORA.');
   }
 
-  /* ── El agrupador tiene que existir ──
-   * Un agrupador tecleado a mano que no está en el Anexo 24 pasa inadvertido
-   * hasta el día del envío al buzón, que es cuando ya no hay tiempo. */
-  if (d.codigoAgrupador) {
+  /* ── El agrupador tiene que existir (si se da) ──
+   * '' vacío = SIN agrupador (null): una subcuenta de trabajo puede no mapear a
+   * un código del Anexo 24. Antes el '' se colaba y reventaba la FK
+   * `codigo_agrupador → sat_codigos_agrupadores` con un críptico "violación de
+   * restricción"; ahora se normaliza a null y sólo se valida si trae valor. */
+  const agrup = (d.codigoAgrupador ?? '').toString().trim() || null;
+  if (agrup) {
     const s = await query<any>(
-      `SELECT codigo FROM sat_codigos_agrupadores WHERE codigo=$1`,
-      [d.codigoAgrupador],
-    );
+      `SELECT codigo FROM sat_codigos_agrupadores WHERE codigo=$1`, [agrup]);
     if (!s.rows.length) {
       throw new Error(
-        `El código agrupador "${d.codigoAgrupador}" no existe en el Anexo 24 ` +
-        `sembrado. Revísalo, o pide que se complete el catálogo oficial.`,
-      );
+        `El código agrupador "${agrup}" no existe en el Anexo 24. Déjalo vacío ` +
+        `(subcuenta sin agrupador) o elige uno válido — NO uses el número de la subcuenta.`);
     }
   }
 
@@ -508,23 +508,36 @@ export async function crearCuenta(companyId: string, d: DatosCuenta) {
 
   const nivel = padre ? padre.nivel + 1 : 1;
 
-  const r = await query<any>(
-    `INSERT INTO accounting_accounts
-       (company_id, parent_id, codigo, nombre, codigo_agrupador, tipo, naturaleza,
-        es_complementaria, nif_norma, nivel, requiere_tercero, requiere_producto,
-        requiere_almacen, requiere_centro, moneda, notas)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-     RETURNING *`,
-    [
-      companyId, d.parentId ?? null, codigo, d.nombre.trim(),
-      d.codigoAgrupador ?? null, tipo, naturaleza,
-      d.esComplementaria ?? padre?.es_complementaria ?? false,
-      d.nifNorma ?? padre?.nif_norma ?? null, nivel,
-      d.requiereTercero ?? false, d.requiereProducto ?? false,
-      d.requiereAlmacen ?? false, d.requiereCentro ?? false,
-      d.moneda ?? 'MXN', d.notas ?? null,
-    ],
-  );
+  let r: any;
+  try {
+    r = await query<any>(
+      `INSERT INTO accounting_accounts
+         (company_id, parent_id, codigo, nombre, codigo_agrupador, tipo, naturaleza,
+          es_complementaria, nif_norma, nivel, requiere_tercero, requiere_producto,
+          requiere_almacen, requiere_centro, moneda, notas)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       RETURNING *`,
+      [
+        companyId, d.parentId ?? null, codigo, d.nombre.trim(),
+        agrup, tipo, naturaleza,
+        d.esComplementaria ?? padre?.es_complementaria ?? false,
+        d.nifNorma ?? padre?.nif_norma ?? null, nivel,
+        d.requiereTercero ?? false, d.requiereProducto ?? false,
+        d.requiereAlmacen ?? false, d.requiereCentro ?? false,
+        d.moneda ?? 'MXN', d.notas ?? null,
+      ],
+    );
+  } catch (e: any) {
+    /* Traducir errores de la BASE a algo accionable (antes salía "violación de
+     * restricción" sin decir qué). */
+    switch (e?.code) {
+      case '23503': throw new Error(`El código agrupador "${agrup}" no existe en el Anexo 24. Déjalo vacío o elige uno válido.`);
+      case '23505': throw new Error(`Ya existe una cuenta con el código "${codigo}".`);
+      case '22001': throw new Error('El código agrupador es demasiado largo (máx 10). Debe ser un código del Anexo 24, no el número de la subcuenta.');
+      case '23514': throw new Error('Datos inválidos para la cuenta (revisa el tipo y la naturaleza).');
+      default: throw e;
+    }
+  }
   /* Si este código estaba en la lápida (se había borrado), quitarlo: el usuario
    * lo está re-creando a propósito y el import ya puede volver a tocarlo. */
   await query('DELETE FROM accounting_cuentas_excluidas WHERE company_id=$1 AND codigo=$2', [companyId, codigo]);

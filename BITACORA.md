@@ -5667,3 +5667,19 @@ LFPDPPP**, y estado de enrolamiento). Métodos en `api.ts` (`getCheckadorConfig`
 no chocar con nombres). La **captura facial** (enrolamiento con cámara) y el **kiosco** quedan para
 la siguiente fase (requieren equipo con cámara). Consentimiento redactado en
 `docs/CONSENTIMIENTO_BIOMETRICO_CHECADOR.md`. TSC back+front = 0.
+
+## 2026-09-14 (contabilidad/nómina) — Arreglos con cliente real: alta de subcuenta y plantilla Excel
+
+**#6 · Alta de subcuenta reventaba con "violación de restricción".** `accounting_accounts` tiene
+FK `codigo_agrupador → sat_codigos_agrupadores(codigo)`. Cuando el alta mandaba el agrupador como
+cadena vacía `''` (o el número de la subcuenta), la FK tronaba con un error críptico. `crearCuenta`
+ahora **normaliza `''`→null** (subcuenta sin agrupador es válido) y **traduce los errores de la
+base** (23503/23505/22001/23514) a mensajes accionables. El borrado ya funcionaba (rechaza si tiene
+hijos; si tiene movimientos los preserva a MIG-TEMPORAL).
+
+**#2 · La plantilla Excel de trabajadores «no baja».** Choque de orden de rutas: `GET
+/nomina/empleados/:id` estaba **antes** de `/empleados/plantilla-excel`, así que Express tomaba
+«plantilla-excel» como el `:id` y el Excel nunca se generaba. Se **reordenó** (plantilla-excel
+antes de `/:id`). Además, los **~50 campos ahora van como encabezados en la FILA 1** (antes en la 6)
+para poder **reordenar las columnas** y calzar con el archivo de cualquier sistema; el importador ya
+**mapea por el NOMBRE del encabezado**, no por posición. TSC=0.
