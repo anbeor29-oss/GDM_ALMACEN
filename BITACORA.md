@@ -5683,3 +5683,14 @@ hijos; si tiene movimientos los preserva a MIG-TEMPORAL).
 antes de `/:id`). Además, los **~50 campos ahora van como encabezados en la FILA 1** (antes en la 6)
 para poder **reordenar las columnas** y calzar con el archivo de cualquier sistema; el importador ya
 **mapea por el NOMBRE del encabezado**, no por posición. TSC=0.
+
+## 2026-09-14 (contabilidad) — Control de mes+año al inicio del catálogo (#1)
+
+Al arrancar la contabilidad de una empresa nueva (pantalla «sin catálogo»), antes sólo se elegía
+el **año** y el mes de inicio caía por defecto en enero. Ahora hay un **control de calendario
+(Mes de inicio + Año de inicio)** al inicio de la definición del catálogo: `activarContabilidad`
+ya aceptaba `mesInicioEjercicio` (y la ruta `/accounting/activar` lo lee del body) — sólo faltaba
+mandarlo desde el frontend. Con eso, **desde ese mes/año** se crean el ejercicio y sus periodos, y
+—como el navegador del calendario de cobertura toma el `MIN(anio)` de `accounting_fiscal_years`—
+**desde ese año arranca la cobertura de descargas del SAT**. Puro frontend
+(`CatalogoCuentas.tsx`, ambas vías: semilla y TXT de CONTPAQi). TSC=0.

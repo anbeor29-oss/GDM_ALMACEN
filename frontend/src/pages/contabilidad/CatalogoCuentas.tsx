@@ -1279,8 +1279,12 @@ function ModalNuevaCuenta({ datos, onCerrar, onListo }: any) {
 
 /* ═══════════ SIN CATÁLOGO TODAVÍA ═══════════ */
 
+const MESES_INICIO = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
+  'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
 function SinCatalogo({ onListo }: any) {
   const [anio, setAnio] = useState(new Date().getFullYear());
+  const [mes, setMes] = useState(1);   // mes de inicio del ejercicio; desde este año/mes arranca todo
   const [busy, setBusy] = useState<'' | 'semilla' | 'txt'>('');
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
@@ -1289,7 +1293,7 @@ function SinCatalogo({ onListo }: any) {
     setError(''); setMsg(''); setBusy('semilla');
     try {
       await api.sembrarReferenciasContables();
-      const r = await api.activarContabilidad({ anio });
+      const r = await api.activarContabilidad({ anio, mesInicioEjercicio: mes });
       setMsg(r.message || 'Listo.');
       onListo();
     } catch (e: any) {
@@ -1304,7 +1308,7 @@ function SinCatalogo({ onListo }: any) {
     setError(''); setMsg(''); setBusy('txt');
     try {
       await api.sembrarReferenciasContables();
-      await api.activarContabilidad({ anio, sembrarCatalogo: false });
+      await api.activarContabilidad({ anio, mesInicioEjercicio: mes, sembrarCatalogo: false });
       const fd = new FormData(); fd.append('archivo', file);
       const r: any = await api.importarCatalogoTxt(fd);
       let m = r?.message || 'Catálogo importado.';
@@ -1326,12 +1330,27 @@ function SinCatalogo({ onListo }: any) {
         con el SAT.
       </p>
 
-      <label className="block mb-3">
-        <span className="text-xs text-gray-600">Ejercicio</span>
-        <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input w-32">
-          {aniosContables().map((y) => <option key={y} value={y}>{y}</option>)}
-        </select>
-      </label>
+      {/* Control de calendario al inicio del catálogo: define el MES y AÑO de
+          arranque de la contabilidad. Desde ese año/mes se crean el ejercicio y
+          los periodos, y desde ese año arranca la cobertura de descargas del SAT. */}
+      <div className="flex flex-wrap items-end gap-3 mb-2">
+        <label className="block">
+          <span className="text-xs text-gray-600">Mes de inicio</span>
+          <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input w-40">
+            {MESES_INICIO.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-xs text-gray-600">Año de inicio</span>
+          <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input w-32">
+            {aniosContables().map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </label>
+      </div>
+      <p className="text-xs text-gray-500 mb-3">
+        Desde <b>{MESES_INICIO[mes - 1]} {anio}</b> arrancan el ejercicio, sus periodos y la
+        cobertura de descargas del SAT.
+      </p>
 
       {error && (
         <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2 mb-3">
