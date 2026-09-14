@@ -1427,6 +1427,21 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/diot/${anio}/${mes}`);
     return r.data;
   }
+  /** Archivo .txt de carga masiva DIOT 2025 para el portal del SAT. */
+  async descargarDiotBatch(anio: number, mes: number, opts: {
+    tipoOperacion?: string; region?: 'none' | 'norte' | 'sur'; proporcion?: boolean;
+  } = {}) {
+    const r = await this.client.get(`/accounting/diot/${anio}/${mes}/batch`, {
+      params: {
+        tipoOperacion: opts.tipoOperacion || '85',
+        region: opts.region || 'none',
+        proporcion: opts.proporcion ? 'true' : 'false',
+      },
+      responseType: 'blob',
+    });
+    await this.downloadFile(r.data as Blob,
+      this.nombreDeHeader(r, `DIOT_${anio}${String(mes).padStart(2, '0')}.txt`));
+  }
   /** El nombre del archivo lo pone el SAT (RFC+periodo); se lee del header. */
   private nombreDeHeader(r: any, alterno: string): string {
     const cd = String(r.headers?.['content-disposition'] || '');

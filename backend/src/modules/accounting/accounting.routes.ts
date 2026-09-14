@@ -1596,6 +1596,27 @@ router.get(
   })
 );
 
+/**
+ * GET /accounting/diot/:anio/:mes/batch — archivo .txt de carga masiva DIOT 2025.
+ * opts por query: tipoOperacion (02|03|06|85), region (none|norte|sur), proporcion (true|false).
+ * Son decisiones fiscales que el CFDI no trae; llegan de la pantalla, con default conservador.
+ */
+router.get(
+  '/diot/:anio/:mes/batch',
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await diotSvc.diotBatchTxt(companyId(req), Number(req.params.anio), Number(req.params.mes), {
+      tipoOperacion: req.query.tipoOperacion ? String(req.query.tipoOperacion) : undefined,
+      region: req.query.region === 'norte' || req.query.region === 'sur' ? req.query.region : 'none',
+      proporcion: req.query.proporcion === 'true',
+    });
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${r.nombre}"`);
+    res.setHeader('X-DIOT-Cuantos', String(r.cuantos));
+    res.setHeader('X-DIOT-Extranjeros', String(r.extranjeros));
+    res.send(r.txt);
+  })
+);
+
 /** Envía un XML como descarga con su nombre del SAT. */
 function enviarXml(res: Response, r: { xml: string; nombre: string }) {
   res.setHeader('Content-Type', 'application/xml; charset=utf-8');

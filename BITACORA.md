@@ -5758,3 +5758,30 @@ selector Normal/Complementaria).
 **Honestidad (no inventar):** el **.txt para el portal del SAT** de la DIOT **no** se genera aún —su
 formato cambió con la declaración 2025—; la pantalla lo dice y ofrece la base de trabajo (tabla +
 CSV) mientras el usuario confirma cuál layout necesita. TSC back=0, front=0.
+
+---
+
+## 2026-09-14 (contabilidad) — DIOT: archivo .txt de carga masiva 2025 para el portal del SAT
+
+El usuario compartió el instructivo oficial de la **carga masiva DIOT 2025** (más dos guías y la
+1ª modificación a la RMF 2026). Con eso se generó el **archivo .txt** que se sube al aplicativo del
+SAT: UTF-8, campos separados por **pipe `|`**, un renglón por proveedor, **montos enteros** (sin
+decimales ni separador de miles), **53 campos** en el orden del instructivo (tipo de tercero, tipo
+de operación, RFC, datos de extranjero, valor de actos y devoluciones por región ×5 —frontera
+norte, frontera sur, tasa 16 %, importación tangibles, importación intangibles—, IVA acreditable
+exclusiva/proporción por región, IVA no acreditable, IVA retenido, exentos, tasa 0 %, no objeto y el
+**manifiesto de efectos fiscales** = 01).
+
+**Lo que el CFDI NO trae se pregunta, no se inventa.** Tipo de operación (02/03/06/85), si el IVA
+acreditable va a «exclusiva de gravadas» o a «proporción», y la región fronteriza del 8 % **no**
+están en el XML: son decisión del contribuyente. Se exponen como **controles en la pestaña DIOT**
+(selector de tipo de operación, selector de región, casilla de proporción) con defaults
+conservadores (85 · Otros / no aplica / sin proporción). Los **extranjeros (05)** salen con país e
+ID fiscal en blanco (el CFDI no los trae) y la pantalla avisa cuántos hay para captura manual. La
+nota insiste en **validar el archivo en el propio aplicativo del SAT** antes de enviarlo.
+
+`diot.service.ts` → `diotBatchTxt(companyId, anio, mes, {tipoOperacion, region, proporcion})` (reusa
+la agregación de `diot()`). Ruta `GET /accounting/diot/:anio/:mes/batch?tipoOperacion=&region=&proporcion=`
+(text/plain, nombre `DIOT_{RFC}_{AAAAMM}.txt`, headers `X-DIOT-Cuantos`/`X-DIOT-Extranjeros`). API
+`descargarDiotBatch`. El PDF de la RMF no se pudo renderizar aquí (falta `poppler`), pero el layout
+salió del instructivo del SAT, no de la RMF. TSC back=0, front=0, build=0.

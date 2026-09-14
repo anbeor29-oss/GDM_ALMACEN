@@ -70,6 +70,22 @@ function Diot({ anio, mes }: { anio: number; mes: number }) {
   const q = useQuery({ queryKey: ['diot', anio, mes], queryFn: () => api.getDiot(anio, mes) });
   const d: any = q.data?.data;
 
+  // Decisiones fiscales que el CFDI no trae (las fija el usuario, no se inventan).
+  const [tipoOp, setTipoOp] = useState('85');
+  const [region, setRegion] = useState<'none' | 'norte' | 'sur'>('none');
+  const [prop, setProp] = useState(false);
+  const [bajando, setBajando] = useState(false);
+  const [errTxt, setErrTxt] = useState('');
+
+  const bajarTxt = async () => {
+    setBajando(true); setErrTxt('');
+    try {
+      await api.descargarDiotBatch(anio, mes, { tipoOperacion: tipoOp, region, proporcion: prop });
+    } catch (e: any) {
+      setErrTxt(e?.message || 'No se pudo generar el archivo .txt.');
+    } finally { setBajando(false); }
+  };
+
   const bajarCsv = () => {
     if (!d?.proveedores?.length) return;
     const enc = ['Tipo tercero', 'RFC', 'Nombre', 'Comprobantes', 'Base 16%', 'IVA 16%',
@@ -89,10 +105,12 @@ function Diot({ anio, mes }: { anio: number; mes: number }) {
   if (!d) return <p className="text-sm text-gray-500 italic bg-white border rounded-lg p-4 text-center">No se pudo cargar la DIOT.</p>;
 
   const t = d.totales || {};
+  const extranjeros = (d.proveedores || []).filter((p: any) => p.tipoTercero === '05').length;
   return (
     <div className="space-y-3">
       <div className="rounded-lg border bg-violet-50 border-violet-200 px-4 py-2 text-sm flex flex-wrap items-center gap-x-6 gap-y-1">
         <span className="font-medium text-violet-900">{d.cuantos} proveedor(es)</span>
+        {extranjeros > 0 && <span className="text-amber-700">{extranjeros} extranjero(s)</span>}
         <span>Base 16% {money(t.base16)}</span>
         <span>IVA 16% {money(t.iva16)}</span>
         {(t.base8 > 0 || t.iva8 > 0) && <span>IVA 8% {money(t.iva8)}</span>}
@@ -104,14 +122,53 @@ function Diot({ anio, mes }: { anio: number; mes: number }) {
         </button>
       </div>
 
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 flex gap-2">
-        <AlertCircle size={15} className="shrink-0 mt-0.5" />
-        <span>
-          Es la <b>base de trabajo</b> de tu DIOT: el desglose de IVA por proveedor tomado del
-          bloque de impuestos a nivel comprobante de cada CFDI. El archivo <b>.txt para el portal
-          del SAT</b> aún no se genera aquí porque su formato exacto cambió (declaración 2025);
-          dime cuál necesitas (el .txt del programa anterior o la carga del formato nuevo) y lo agrego.
-        </span>
+      {/* Archivo .txt de carga masiva del SAT + las decisiones fiscales que lo afectan */}
+      <div className="bg-white rounded-lg border p-3 space-y-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="text-[11px] text-gray-600 block">Tipo de operación (por defecto)</label>
+            <select value={tipoOp} onChange={(e) => setTipoOp(e.target.value)} className="input text-sm">
+              <option value="85">85 · Otros</option>
+              <option value="03">03 · Servicios profesionales</option>
+              <option value="06">06 · Uso o goce (arrendamiento)</option>
+              <option value="02">02 · Enajenación de bienes</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] text-gray-600 block">Región fronteriza (para el 8%)</label>
+            <select value={region} onChange={(e) => setRegion(e.target.value as any)} className="input text-sm">
+              <option value="none">No aplica</option>
+              <option value="norte">Frontera norte</option>
+              <option value="sur">Frontera sur</option>
+            </select>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700 pb-1.5">
+            <input type="checkbox" checked={prop} onChange={(e) => setProp(e.target.checked)} />
+            Aplico proporción de acreditamiento (tengo actividades exentas)
+          </label>
+          <button onClick={bajarTxt} disabled={bajando || !d.proveedores.length}
+            className="btn-export ml-auto">
+            <Download size={14} /> {bajando ? 'Generando…' : '.txt carga masiva SAT'}
+          </button>
+        </div>
+
+        {errTxt && (
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-800 flex gap-2">
+            <AlertCircle size={14} className="shrink-0 mt-0.5" /> {errTxt}
+          </div>
+        )}
+
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex gap-2">
+          <AlertCircle size={15} className="shrink-0 mt-0.5" />
+          <span>
+            El <b>.txt</b> sigue el layout del instructivo de <b>carga masiva DIOT 2025</b> (53 campos,
+            separados por «|», montos enteros). Lo que el CFDI <b>no</b> dice —tipo de operación,
+            proporción y región— lo tomas de los controles de arriba; el <b>manifiesto de efectos
+            fiscales</b> va en «Sí». <b>Valida el archivo en el propio aplicativo del SAT</b> antes de
+            enviarlo, y ajusta lo que tu caso requiera. Los <b>proveedores extranjeros</b> salen sin
+            país ni ID fiscal (el CFDI no los trae): captúralos a mano en esos renglones.
+          </span>
+        </div>
       </div>
 
       {d.proveedores.length === 0 ? (

@@ -102,4 +102,105 @@ export async function diot(companyId: string, anio: number, mes: number) {
   };
 }
 
-export default { diot, impuestosDeXml };
+/* ═══════════════════════════════════════════════════════════════════════════
+   ARCHIVO DE CARGA MASIVA (.txt) PARA EL PORTAL DEL SAT — DIOT 2025
+   ───────────────────────────────────────────────────────────────────────────
+   Layout tomado del instructivo OFICIAL del SAT "Ayuda para el llenado del
+   archivo para la carga masiva DIOT 2025": .txt UTF-8, campos separados por
+   pipe (|), un renglón por operación (por proveedor), montos ENTEROS (sin
+   decimales, sin separador de miles; acepta 0). Son 53 campos en este orden:
+
+    1  Tipo de tercero              (04 nacional, 05 extranjero, 15 global)
+    2  Tipo de operación           (02 enajenación, 03 serv. profesionales,
+                                     06 uso o goce, 85 otros; 07/87 import/global)
+    3  RFC                         (obligatorio nacional/global; opc. extranjero)
+    4  Número de ID fiscal         (extranjero)
+    5  Nombre del extranjero
+    6  País/jurisdicción           (extranjero, 2 letras)
+   VALOR DE LOS ACTOS O ACTIVIDADES PAGADOS (valor / devoluciones), por región:
+    7  Valor · frontera norte      8  Devoluciones · frontera norte
+    9  Valor · frontera sur       10  Devoluciones · frontera sur
+   11  Valor · tasa 16%           12  Devoluciones · tasa 16%
+   13  Valor · import. aduana tangibles 16%   14  Devoluciones ·  (idem)
+   15  Valor · import. intangibles/serv. 16%  16  Devoluciones ·  (idem)
+   IVA ACREDITABLE (exclusiva de gravadas / asociado a proporción), por región:
+   17 excl · front norte   18 prop · front norte
+   19 excl · front sur     20 prop · front sur
+   21 excl · tasa 16%      22 prop · tasa 16%
+   23 excl · imp tangibles 24 prop · imp tangibles
+   25 excl · imp intang.   26 prop · imp intang.
+   IVA NO ACREDITABLE (4 categorías) × 5 regiones = campos 27..46
+   47 IVA retenido por el contribuyente
+   48 Actos pagados en importación · exentos
+   49 Actos o actividades pagados · exentos
+   50 Demás actos pagados a tasa 0%
+   51 Actos no objeto del IVA · territorio nacional
+   52 Actos no objeto del IVA · sin establecimiento
+   53 Manifiesto de efectos fiscales (01 Sí, 02 No)
+
+   OJO (no se inventa): tipo de operación, si el IVA acreditable va a "exclusiva
+   de gravadas" o a "proporción", y la región fronteriza NO vienen en el CFDI —
+   son decisión del contribuyente. Llegan como `opts` desde la pantalla, con
+   valores por defecto conservadores. Los extranjeros (05) salen con país e ID
+   fiscal en blanco (el CFDI no los trae) y se listan aparte para captura manual.
+   El archivo debe validarse en el propio aplicativo del SAT antes de enviarlo.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export interface DiotBatchOpts {
+  tipoOperacion?: string;              // 02 | 03 | 06 | 85 …  (default 85)
+  region?: 'none' | 'norte' | 'sur';   // dónde cae el 8% de frontera (default none)
+  proporcion?: boolean;                // IVA acreditable a "proporción" (default false)
+}
+
+/** Entero como texto: sin decimales ni separador de miles (regla del SAT). */
+const ent = (n: any) => String(Math.round(Number(n) || 0));
+
+export async function diotBatchTxt(
+  companyId: string, anio: number, mes: number, opts: DiotBatchOpts = {},
+): Promise<{ txt: string; nombre: string; cuantos: number; extranjeros: number }> {
+  const emp = await query<{ rfc: string }>(`SELECT rfc FROM companies WHERE id=$1`, [companyId]);
+  const rfcEmp = (emp.rows[0]?.rfc || 'XAXX010101000').toUpperCase().trim();
+
+  const tipoOp = (opts.tipoOperacion || '85').trim();
+  const region = opts.region === 'norte' || opts.region === 'sur' ? opts.region : 'none';
+  const prop = !!opts.proporcion;
+
+  const d = await diot(companyId, anio, mes);
+
+  let extranjeros = 0;
+  const lineas = d.proveedores.map((p) => {
+    const esExt = p.tipoTercero === '05';
+    if (esExt) extranjeros++;
+    // 8% = tasa de región fronteriza; su valor/IVA cae en norte o sur según opts.
+    const f = new Array<string>(53).fill('0');
+    f[0] = p.tipoTercero;                 // 1 tipo de tercero
+    f[1] = esExt ? '07' : tipoOp;         // 2 tipo de operación (extranjero: importación)
+    f[2] = esExt ? '' : p.rfc;            // 3 RFC (extranjero: en blanco / opc.)
+    f[3] = '';                            // 4 ID fiscal extranjero (no viene en CFDI)
+    f[4] = esExt ? p.nombre || '' : '';   // 5 nombre del extranjero
+    f[5] = '';                            // 6 país (no viene en CFDI → captura manual)
+    // Valor de los actos (BASE), por región:
+    f[6]  = region === 'norte' ? ent(p.base8) : '0';   // 7  valor · frontera norte
+    f[8]  = region === 'sur'   ? ent(p.base8) : '0';   // 9  valor · frontera sur
+    f[10] = ent(p.base16);                              // 11 valor · tasa 16%
+    // IVA acreditable (exclusiva gravadas vs proporción):
+    if (region === 'norte') { f[prop ? 17 : 16] = ent(p.iva8); }   // 17/18 front norte
+    if (region === 'sur')   { f[prop ? 19 : 18] = ent(p.iva8); }   // 19/20 front sur
+    f[prop ? 21 : 20] = ent(p.iva16);                              // 21/22 tasa 16%
+    // Resto de bloques (importaciones, no acreditable) quedan en 0.
+    f[46] = ent(p.ivaRet);   // 47 IVA retenido
+    f[48] = ent(p.exento);   // 49 actos exentos
+    f[49] = ent(p.base0);    // 50 demás actos a tasa 0%
+    f[52] = '01';            // 53 manifiesto de efectos fiscales = Sí
+    return f.join('|');
+  });
+
+  return {
+    txt: lineas.join('\r\n') + (lineas.length ? '\r\n' : ''),
+    nombre: `DIOT_${rfcEmp}_${anio}${String(mes).padStart(2, '0')}.txt`,
+    cuantos: lineas.length,
+    extranjeros,
+  };
+}
+
+export default { diot, impuestosDeXml, diotBatchTxt };
