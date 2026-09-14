@@ -12,7 +12,7 @@
  *              comprueba que esas cuentas existan.
  */
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Tag, Truck, HeartPulse, ArrowLeftRight, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
@@ -99,14 +99,24 @@ export function AsignacionCuentasPage() {
 /* Cobros y pagos no se asignan por partida: usan cuentas fijas por agrupador.
  * Aquí sólo se comprueba que existan (si falta una, la póliza de cobro/pago se
  * omite). */
+/* Cobros y pagos: cuentas fijas ASIGNABLES por rol (agrupador). Si el catálogo
+ * del cliente no usa la numeración del SAT, aquí se elige qué cuenta hace cada
+ * papel; el motor (cuentaPorAgrupador) respeta ese override. */
 function PagosInfo({ cuentas }: { cuentas: any[] }) {
+  const qc = useQueryClient();
   const mascara = useMascara();
+  const fijasQ = useQuery({ queryKey: ['cuentas-fijas'], queryFn: () => api.getCuentasFijas() });
+  const fijas: Record<string, any> = fijasQ.data?.data || {};
   const porAgrup = useMemo(() => {
     const m = new Map<string, any>();
-    for (const c of cuentas) if (c.codigo_agrupador) m.set(c.codigo_agrupador, c);
+    for (const c of cuentas) if (c.codigo_agrupador && !m.has(c.codigo_agrupador)) m.set(c.codigo_agrupador, c);
     return m;
   }, [cuentas]);
-  const necesarias = [
+  const asignar = useMutation({
+    mutationFn: (v: { agr: string; id: string | null }) => api.setCuentaFija(v.agr, v.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cuentas-fijas'] }),
+  });
+  const necesarias: Array<[string, string]> = [
     ['102.01', 'Banco (cobros y pagos)'],
     ['208.01', 'IVA trasladado cobrado'],
     ['209.01', 'IVA trasladado no cobrado'],
@@ -116,25 +126,32 @@ function PagosInfo({ cuentas }: { cuentas: any[] }) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-gray-600 bg-gray-50 border rounded p-3">
-        Los <b>cobros y pagos</b> no se asignan producto por producto: al timbrar un complemento
-        de pago, la póliza usa cuentas fijas por su agrupador del Anexo 24. Aquí sólo se verifica
-        que existan en tu catálogo.
+        Los <b>cobros y pagos</b> usan estas cuentas fijas. Si tu catálogo <b>no</b> usa la
+        numeración del SAT, <b>asigna aquí</b> qué cuenta de tu catálogo hace cada papel — el motor
+        la respeta aunque no se llame como en el Anexo 24.
       </p>
       <div className="bg-white rounded-lg shadow border divide-y">
         {necesarias.map(([agr, desc]) => {
-          const c = porAgrup.get(agr);
+          const fija = fijas[agr];
+          const fallback = porAgrup.get(agr);
+          const actualId = fija?.account_id || fallback?.id || '';
           return (
-            <div key={agr} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-              <span className="font-mono text-gray-700 w-16">{agr}</span>
-              <span className="text-gray-600 flex-1">{desc}</span>
-              {c ? (
-                <span className="flex items-center gap-1.5 text-emerald-700 text-xs">
-                  <CheckCircle2 size={14} /> {formatCuenta(c.codigo, mascara)} · {c.nombre}
-                </span>
+            <div key={agr} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
+              <span className="font-mono text-gray-500 w-14">{agr}</span>
+              <span className="text-gray-700 flex-1 min-w-[10rem]">{desc}</span>
+              <select className="input w-72" value={actualId}
+                onChange={(e) => asignar.mutate({ agr, id: e.target.value || null })}>
+                <option value="">— Elegir cuenta —</option>
+                {cuentas.map((c) => (
+                  <option key={c.id} value={c.id}>{formatCuenta(c.codigo, mascara)} · {c.nombre}</option>
+                ))}
+              </select>
+              {fija ? (
+                <span className="flex items-center gap-1 text-emerald-700 text-xs"><CheckCircle2 size={13} /> asignada</span>
+              ) : fallback ? (
+                <span className="text-gray-400 text-xs">por agrupador</span>
               ) : (
-                <span className="flex items-center gap-1.5 text-rose-600 text-xs">
-                  <AlertTriangle size={14} /> falta una cuenta con agrupador {agr}
-                </span>
+                <span className="flex items-center gap-1 text-rose-600 text-xs"><AlertTriangle size={13} /> sin cuenta</span>
               )}
             </div>
           );

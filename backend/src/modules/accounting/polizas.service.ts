@@ -87,11 +87,55 @@ const AGR_RET = {
 };
 
 async function cuentaPorAgrupador(companyId: string, agrupador: string) {
+  /* Override CONFIGURABLE: si el usuario asignó a mano una cuenta para este rol
+   * (agrupador) en Asignación → Cobros y pagos, se usa ESA aunque el catálogo del
+   * cliente no traiga el código del Anexo 24. Así el motor funciona con CUALQUIER
+   * catálogo, no sólo con el que usa la numeración del SAT. */
+  const ov = await query<any>(
+    `SELECT a.id, a.codigo, a.nombre
+       FROM accounting_cuentas_fijas f
+       JOIN accounting_accounts a ON a.id = f.account_id AND a.company_id = f.company_id
+      WHERE f.company_id=$1 AND f.agrupador=$2 AND a.activa=true AND a.permite_movimientos=true
+      LIMIT 1`, [companyId, agrupador]);
+  if (ov.rows.length) return ov.rows[0];
+
   const r = await query<any>(
     `SELECT id, codigo, nombre FROM accounting_accounts
       WHERE company_id=$1 AND activa=true AND permite_movimientos=true AND codigo_agrupador=$2
       ORDER BY codigo LIMIT 1`, [companyId, agrupador]);
   return r.rows[0] || null;
+}
+
+/* ── Cuentas fijas configurables (Cobros y pagos): rol/agrupador → cuenta ──
+ * Resuelven las provisiones de IVA y el banco cuando el catálogo del cliente no
+ * usa los códigos del SAT. El motor las respeta vía cuentaPorAgrupador (arriba). */
+export async function getCuentasFijas(companyId: string): Promise<Record<string, any>> {
+  const r = await query<any>(
+    `SELECT f.agrupador, f.account_id, a.codigo, a.nombre
+       FROM accounting_cuentas_fijas f
+       JOIN accounting_accounts a ON a.id = f.account_id
+      WHERE f.company_id=$1`, [companyId]);
+  const map: Record<string, any> = {};
+  for (const x of r.rows) map[x.agrupador] = { account_id: x.account_id, codigo: x.codigo, nombre: x.nombre };
+  return map;
+}
+
+export async function setCuentaFija(companyId: string, agrupador: string, accountId: string | null) {
+  if (!agrupador) throw new Error('Falta el rol (agrupador) a asignar.');
+  if (!accountId) {
+    await query(`DELETE FROM accounting_cuentas_fijas WHERE company_id=$1 AND agrupador=$2`, [companyId, agrupador]);
+    return { agrupador, account_id: null };
+  }
+  const c = await query<any>(
+    `SELECT id FROM accounting_accounts WHERE id=$1 AND company_id=$2 AND permite_movimientos=true`,
+    [accountId, companyId]);
+  if (!c.rows.length) throw new Error('La cuenta elegida no existe en esta empresa o no acepta movimientos.');
+  await query(
+    `INSERT INTO accounting_cuentas_fijas (company_id, agrupador, account_id)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (company_id, agrupador) DO UPDATE SET account_id=EXCLUDED.account_id, updated_at=NOW()`,
+    [companyId, agrupador, accountId]);
+  return { agrupador, account_id: accountId };
 }
 async function cuentaPorCodigo(companyId: string, codigo: string) {
   const r = await query<any>(

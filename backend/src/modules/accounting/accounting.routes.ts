@@ -1312,6 +1312,25 @@ router.post(
   })
 );
 
+/** GET /accounting/cuentas-fijas — cuentas asignadas para cobros/pagos (IVA, banco). */
+router.get(
+  '/cuentas-fijas',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await polizas.getCuentasFijas(companyId(req)) });
+  })
+);
+
+/** PUT /accounting/cuentas-fijas — asigna (o limpia) la cuenta de un rol (agrupador). */
+router.put(
+  '/cuentas-fijas',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await polizas.setCuentaFija(
+      companyId(req), String(req.body?.agrupador || ''), req.body?.account_id || null);
+    res.json({ success: true, data: r });
+  })
+);
+
 /** POST /accounting/polizas/manual — una póliza capturada a mano (cargos/abonos) */
 router.post(
   '/polizas/manual',

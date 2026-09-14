@@ -1004,6 +1004,15 @@ class APIClient {
     const r = await this.client.get<APIResponse<{ cuentas: number; polizas: number; activa: boolean }>>('/accounting/estado');
     return r.data;
   }
+  /** Cuentas fijas asignadas para Cobros y pagos (IVA, banco): { agrupador: {account_id, codigo, nombre} }. */
+  async getCuentasFijas() {
+    const r = await this.client.get<APIResponse<Record<string, any>>>('/accounting/cuentas-fijas');
+    return r.data;
+  }
+  async setCuentaFija(agrupador: string, account_id: string | null) {
+    const r = await this.client.put<APIResponse<any>>('/accounting/cuentas-fijas', { agrupador, account_id });
+    return r.data;
+  }
   /** Cierre del ejercicio: utilidad/pérdida y cuentas de resultados del año. */
   async getCierreEjercicio(anio: number) {
     const r = await this.client.get<APIResponse<any>>(`/accounting/cierre/${anio}`);

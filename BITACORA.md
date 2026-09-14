@@ -5694,3 +5694,16 @@ mandarlo desde el frontend. Con eso, **desde ese mes/año** se crean el ejercici
 —como el navegador del calendario de cobertura toma el `MIN(anio)` de `accounting_fiscal_years`—
 **desde ese año arranca la cobertura de descargas del SAT**. Puro frontend
 (`CatalogoCuentas.tsx`, ambas vías: semilla y TXT de CONTPAQi). TSC=0.
+
+## 2026-09-14 (contabilidad) — Provisiones de IVA / banco ASIGNABLES en Cobros y pagos (#3)
+
+El motor de cobros/pagos resolvía las cuentas fijas (208.01/209.01/118.01/119.01/102.01) **sólo
+por su código agrupador del Anexo 24**. En un catálogo que no usa la numeración del SAT, ninguna
+calzaba y la póliza se omitía. Ahora hay un **override configurable por empresa**: tabla
+`accounting_cuentas_fijas` (migración `2026-09-14_cuentas_fijas.sql`, rol/agrupador → cuenta), y
+`cuentaPorAgrupador` (polizas.service) **consulta primero ese override** y sólo si no hay cae al
+agrupador — así lo respetan TODAS las resoluciones (IVA cobros/pagos y hasta retenciones), sin
+tocar el resto del motor. Rutas `GET/PUT /accounting/cuentas-fijas` (`getCuentasFijas`/
+`setCuentaFija`). La pestaña **«Cobros y pagos»** de Asignación de cuentas dejó de ser sólo
+verificación: ahora **se elige la cuenta** de cada rol con un selector (muestra la asignada, o la
+detectada por agrupador como default). TSC back+front = 0.
