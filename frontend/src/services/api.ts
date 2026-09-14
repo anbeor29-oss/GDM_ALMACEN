@@ -1420,6 +1420,34 @@ class APIClient {
     const r = await this.client.get(`/accounting/estados/${anio}/${mes}/razones/${formato}`, { responseType: 'blob' });
     await this.downloadFile(r.data as Blob, `Razones_${anio}-${String(mes).padStart(2, '0')}.${formato === 'pdf' ? 'pdf' : 'xlsx'}`);
   }
+
+  /* ── Reportes fiscales: DIOT y Contabilidad Electrónica (Anexo 24) ── */
+  /** DIOT del mes: compras por proveedor con IVA por tasa e IVA retenido. */
+  async getDiot(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/diot/${anio}/${mes}`);
+    return r.data;
+  }
+  /** El nombre del archivo lo pone el SAT (RFC+periodo); se lee del header. */
+  private nombreDeHeader(r: any, alterno: string): string {
+    const cd = String(r.headers?.['content-disposition'] || '');
+    const m = /filename="?([^";]+)"?/i.exec(cd);
+    return m?.[1] || alterno;
+  }
+  /** Catálogo de cuentas XML (Contabilidad Electrónica). */
+  async descargarCatalogoElectronico(anio: number, mes: number) {
+    const r = await this.client.get(
+      `/accounting/contabilidad-electronica/catalogo/${anio}/${mes}`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob,
+      this.nombreDeHeader(r, `Catalogo_${anio}-${String(mes).padStart(2, '0')}.xml`));
+  }
+  /** Balanza de comprobación XML (Contabilidad Electrónica). tipoEnvio N normal / C complementaria. */
+  async descargarBalanzaElectronica(anio: number, mes: number, tipoEnvio: 'N' | 'C' = 'N') {
+    const r = await this.client.get(
+      `/accounting/contabilidad-electronica/balanza/${anio}/${mes}`,
+      { params: { tipoEnvio }, responseType: 'blob' });
+    await this.downloadFile(r.data as Blob,
+      this.nombreDeHeader(r, `Balanza_${anio}-${String(mes).padStart(2, '0')}B${tipoEnvio}.xml`));
+  }
   /** Deriva/actualiza la balanza del mes desde las pólizas (journal_lines). */
   async actualizarBalanzaDesdePolizas(anio: number, mes: number) {
     const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/${mes}/desde-polizas`);

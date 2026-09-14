@@ -32,6 +32,8 @@ import * as validacion from './validacion-contable.service';
 import * as especiales from './reportes-especiales.service';
 import * as contpaqiTxt from './contpaqi-txt.service';
 import * as cierre from './cierre-ejercicio.service';
+import * as diotSvc from './diot.service';
+import * as contabElec from './contabilidad-electronica.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
@@ -1574,6 +1576,49 @@ router.get(
     const baseUrl = process.env.RENDER_EXTERNAL_URL || `https://${req.get('host')}`;
     zip.append(`url=${baseUrl}\nemail=${req.user?.email ?? ''}\n`, { name: 'nexo.txt' });
     await zip.finalize();
+  })
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   REPORTES FISCALES — DIOT y Contabilidad Electrónica (Anexo 24)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * GET /accounting/diot/:anio/:mes — DIOT (clientes y proveedores).
+ * Devuelve las compras del mes por proveedor con el IVA desglosado por tasa y el
+ * IVA retenido. Se alimenta de los XML recibidos: sin descargas no hay DIOT.
+ */
+router.get(
+  '/diot/:anio/:mes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await diotSvc.diot(companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.json({ success: true, data });
+  })
+);
+
+/** Envía un XML como descarga con su nombre del SAT. */
+function enviarXml(res: Response, r: { xml: string; nombre: string }) {
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${r.nombre}"`);
+  res.send(r.xml);
+}
+
+/** GET /accounting/contabilidad-electronica/catalogo/:anio/:mes — Catálogo XML (Anexo 24). */
+router.get(
+  '/contabilidad-electronica/catalogo/:anio/:mes',
+  asyncHandler(async (req: Request, res: Response) => {
+    enviarXml(res, await contabElec.catalogoXml(
+      companyId(req), Number(req.params.anio), Number(req.params.mes)));
+  })
+);
+
+/** GET /accounting/contabilidad-electronica/balanza/:anio/:mes?tipoEnvio=N|C — Balanza XML. */
+router.get(
+  '/contabilidad-electronica/balanza/:anio/:mes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const tipo = req.query.tipoEnvio === 'C' ? 'C' : 'N';
+    enviarXml(res, await contabElec.balanzaXml(
+      companyId(req), Number(req.params.anio), Number(req.params.mes), tipo));
   })
 );
 

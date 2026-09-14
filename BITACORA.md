@@ -5722,3 +5722,39 @@ que sobrevive; la de facturas queda como complemento inmediato. TSC=0.
 
 **Menú XML del SAT:** se movió **Calendario** después de Emitidos/Recibidos (orden: XML del SAT ·
 Emitidos · Recibidos · Calendario).
+
+---
+
+## 2026-09-14 (contabilidad) — Reportes fiscales: DIOT y Contabilidad Electrónica (Anexo 24)
+
+El usuario pidió dos reportes nuevos en **Contabilidad → Reportes**: la **DIOT** (clientes y
+proveedores) y la **Contabilidad Electrónica**. (Son del **Anexo 24** de la RMF, no del 20; el
+Anexo 20 es el del CFDI. Se le aclara.)
+
+**DIOT** (`diot.service.ts`). Suma las **compras del mes** (CFDI recibidos tipo I con XML) **por
+proveedor**, con el IVA desglosado por tasa (16 % / 8 % / 0 % / exento) y el **IVA retenido**. El
+desglose sale del bloque de impuestos **a nivel comprobante** (lo que va DESPUÉS de `</Conceptos>`),
+no de los conceptos, para no contarlo doble; para CFDI 3.3 (que no traía `Base` a nivel
+comprobante) la base se deriva de `Importe/TasaOCuota`. Tipo de tercero **04** nacional (RFC
+12/13) / **05** extranjero. Se alimenta de los XML descargados: sin descargas no hay DIOT.
+
+**Contabilidad Electrónica** (`contabilidad-electronica.service.ts`). Genera los dos XML del
+Anexo 24 **v1.3**: **catálogo de cuentas** (`CatalogoCuentas_1_3`, prefijo `catalogocuentas`) y
+**balanza de comprobación** (`BalanzaComprobacion_1_3`, prefijo `BCE`, con `TipoEnvio` N/C). Son
+**XML PLANOS sin sello**: validan contra el XSD; la **e.firma se usa al ENVIARLOS por el buzón**, no
+se incrusta. Sólo entran las cuentas con **código agrupador** del Anexo 24 (el SAT lo exige). La
+balanza sale de `balanzaDelPeriodo` (saldo inicial, cargos, abonos, saldo final). Nombres de archivo
+con el patrón del SAT: `RFC+AAAA+MM+CT.xml` y `RFC+AAAA+MM+B{N|C}.xml`.
+
+**Rutas** (`accounting.routes.ts`): `GET /accounting/diot/:anio/:mes` (JSON),
+`GET /accounting/contabilidad-electronica/catalogo/:anio/:mes` y `…/balanza/:anio/:mes?tipoEnvio=`
+(descargan el XML con su nombre del SAT). **API** (`api.ts`): `getDiot`,
+`descargarCatalogoElectronico`, `descargarBalanzaElectronica` (el nombre se lee del
+`Content-Disposition`). **Pantalla** `ReportesFiscales.tsx` (ruta `/contabilidad/reportes-fiscales`,
+menú **Reportes → «DIOT / Contab. electrónica»**): pestañas DIOT (tabla por proveedor + totales +
+exporta CSV de trabajo) y Contabilidad Electrónica (botones de descarga de catálogo y balanza, con
+selector Normal/Complementaria).
+
+**Honestidad (no inventar):** el **.txt para el portal del SAT** de la DIOT **no** se genera aún —su
+formato cambió con la declaración 2025—; la pantalla lo dice y ofrece la base de trabajo (tabla +
+CSV) mientras el usuario confirma cuál layout necesita. TSC back=0, front=0.
