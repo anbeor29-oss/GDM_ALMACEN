@@ -2991,6 +2991,52 @@ class APIClient {
     // Liberamos el ObjectURL tras un breve delay para no abortar la descarga
     setTimeout(() => window.URL.revokeObjectURL(url), 4000);
   }
+
+  /* ─── Checador (control de asistencia) ─── */
+  async getCheckadorConfig() {
+    const r = await this.client.get<APIResponse<any>>('/checador/config');
+    return r.data;
+  }
+  async setCheckadorConfig(body: any) {
+    const r = await this.client.put<APIResponse<any>>('/checador/config', body);
+    return r.data;
+  }
+  async getCheckadorTurnos() {
+    const r = await this.client.get<APIResponse<any[]>>('/checador/turnos');
+    return r.data;
+  }
+  async crearCheckadorTurno(body: any) {
+    const r = await this.client.post<APIResponse<any>>('/checador/turnos', body);
+    return r.data;
+  }
+  async actualizarCheckadorTurno(id: string, body: any) {
+    const r = await this.client.put<APIResponse<any>>(`/checador/turnos/${id}`, body);
+    return r.data;
+  }
+  async borrarCheckadorTurno(id: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/checador/turnos/${id}`);
+    return r.data;
+  }
+  async getCheckadorHorario(empleadoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/checador/empleados/${empleadoId}/horario`);
+    return r.data;
+  }
+  async setCheckadorHorario(empleadoId: string, body: any) {
+    const r = await this.client.put<APIResponse<any>>(`/checador/empleados/${empleadoId}/horario`, body);
+    return r.data;
+  }
+  async getCheckadorConsentimiento(empleadoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/checador/empleados/${empleadoId}/consentimiento`);
+    return r.data;
+  }
+  async setCheckadorConsentimiento(empleadoId: string, body: any) {
+    const r = await this.client.put<APIResponse<any>>(`/checador/empleados/${empleadoId}/consentimiento`, body);
+    return r.data;
+  }
+  async getCheckadorEnrolamiento(empleadoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/checador/empleados/${empleadoId}/enrolamiento`);
+    return r.data;
+  }
 }
 
 export const api = new APIClient();

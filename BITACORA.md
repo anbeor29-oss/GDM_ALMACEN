@@ -5657,3 +5657,13 @@ arranque sin habilitar nada en Render). Módulo `backend/src/modules/checador` (
 montado bajo el candado `nomina`. Endpoints: config, turnos, horario/asignación, consentimiento,
 **enrolar** (recibe descriptores que extrae el cliente, exige consentimiento previo) e
 **identificar** (1:N). El auth del KIOSCO (token de dispositivo) va en Fase 2. TSC=0.
+
+**UI de administración (misma fecha, sin cámara):** pantalla **Checador · Asistencia**
+(`frontend/src/pages/nomina/Checador.tsx`), colgada del menú **Nómina** y ruta `/checador` (gateada
+por el módulo nomina). Tres pestañas: **Configuración** (tolerancia, comida, horas semanales,
+radio kiosco, umbral facial), **Turnos** (alta/baja con entrada/comida/salida y días laborales), y
+**Empleados** (por persona: tipo FIJO/ROTATIVO/EXENTO + turno, toggle de **consentimiento
+LFPDPPP**, y estado de enrolamiento). Métodos en `api.ts` (`getCheckadorConfig`… con doble-k para
+no chocar con nombres). La **captura facial** (enrolamiento con cámara) y el **kiosco** quedan para
+la siguiente fase (requieren equipo con cámara). Consentimiento redactado en
+`docs/CONSENTIMIENTO_BIOMETRICO_CHECADOR.md`. TSC back+front = 0.

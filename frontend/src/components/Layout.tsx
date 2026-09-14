@@ -342,6 +342,7 @@ export function Layout() {
                     children={[
                       { to: '/nomina',            icon: emoji3D('🏠'), label: 'Dashboard' },
                       { to: '/nomina/empleados',  icon: emoji3D('👥'), label: 'Empleados' },
+                      { to: '/checador',          icon: emoji3D('🗓️'), label: 'Checador · Asistencia' },
                       { to: '/nomina/calculo',    icon: emoji3D('🧮'), label: 'Nómina' },
                       { to: '/nomina/cfdi',       icon: emoji3D('🧾'), label: 'CFDI' },
                       { to: '/nomina/imss',       icon: emoji3D('🏥'), label: 'IMSS · IDSE' },
