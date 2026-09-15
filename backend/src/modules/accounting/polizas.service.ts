@@ -758,7 +758,13 @@ export async function editarPoliza(
     const own = await client.query<any>(
       `SELECT origen_uuid FROM journal_entries WHERE company_id=$1 AND id=$2`, [companyId, id]);
     if (own.rows.length === 0) throw new Error('No se encontró la póliza.');
-    const uuid = own.rows[0].origen_uuid || null;
+    const origen = own.rows[0].origen_uuid || null;
+    // A la dimensión `uuid_cfdi` (VARCHAR(40)) sólo va un UUID de CFDI REAL. Las
+    // pólizas de banco/pago usan una clave con prefijo como origen_uuid
+    // ('BANCO:uuid', 'PAGOPUE:uuid'): NO es un CFDI y además se pasa de 40 (era el
+    // «value too long for character varying(40)» al editar una póliza conciliada).
+    const RX_UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    const uuid = origen && RX_UUID.test(origen) ? origen : null;
 
     const fechaValida = d.fecha && /^\d{4}-\d{2}-\d{2}$/.test(d.fecha) ? d.fecha : null;
     if (fechaValida || d.concepto !== undefined) {
