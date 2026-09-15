@@ -5969,3 +5969,20 @@ muestra «N por conciliar» / «todo conciliado ✓» y en la 102 el conteo empa
 `movimientosDelLibro` ahora marca empatada una línea de la 102 no sólo si un movimiento la cotejó
 (`conciliado_line_id`), también si su **póliza nació de un movimiento del banco** (`poliza_id = e.id`)
 —antes esas salían «en tránsito» aunque ya estuvieran conciliadas—. TSC back=0, front build=0.
+
+---
+
+## 2026-09-15 (conciliación) — Renombre a «Conciliación bancaria» + documento formal (PDF)
+
+**Renombre.** El menú y el título pasaron de «Conciliación contable» a **«Conciliación bancaria»**
+(la ruta `/contabilidad/conciliacion` no cambió, para no romper enlaces).
+
+**Documento formal de conciliación bancaria (PDF imprimible).** `datosConciliacion` +
+`conciliacionPdf` (`conciliacion-contable.service`, reusa `utils/reporte-pdf`): el clásico de saldos
+ajustados —
+· Saldo según estado de cuenta (banco) (+) depósitos en tránsito (−) cheques/pagos en circulación = saldo conciliado;
+· Saldo según libros (102, acumulado al corte) (+) depósitos del banco no registrados (−) cargos/comisiones no registrados = saldo conciliado.
+Los dos saldos conciliados deben coincidir; el encabezado avisa si cuadra o la diferencia. Las
+partidas salen de lo mismo que ve la pantalla: «en tránsito» = líneas de la 102 sin cotejar; «no
+registrados» = movimientos del banco sin póliza. Ruta `GET /treasury/bancos/estados/:id/conciliacion/pdf`,
+API `descargarConciliacionBancaria`, botón «Conciliación PDF» en la pantalla. TSC back=0, front build=0.

@@ -383,7 +383,7 @@ export function Layout() {
                       { to: '/contabilidad/auxiliar',      icon: emoji3D('📒'), label: 'Auxiliar de cuentas' },
                       { to: '/contabilidad/cambio-cuenta', icon: emoji3D('🔀'), label: 'Cambio de cuenta' },
                       { to: '/contabilidad/cuentas',        icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
-                      { to: '/contabilidad/conciliacion',  icon: emoji3D('🏦'), label: 'Conciliación contable' },
+                      { to: '/contabilidad/conciliacion',  icon: emoji3D('🏦'), label: 'Conciliación bancaria' },
                       { to: '/contabilidad/validacion',    icon: emoji3D('🧮'), label: 'Cuadre contable' },
                       ...(esAdmin ? [{ to: '/contabilidad/cierre', icon: emoji3D('🔒'), label: 'Cierre del ejercicio' }] : []),
                       { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },

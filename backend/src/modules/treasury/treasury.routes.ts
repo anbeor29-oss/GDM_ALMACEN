@@ -437,6 +437,17 @@ router.get(
   })
 );
 
+/** GET /treasury/bancos/estados/:id/conciliacion/pdf — el documento formal de conciliación bancaria. */
+router.get(
+  '/bancos/estados/:id/conciliacion/pdf',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await concil.conciliacionPdf(companyId(req), req.params.id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
 /** Contabiliza de golpe todo lo confirmado del estado. */
 router.post(
   '/bancos/estados/:id/contabilizar',

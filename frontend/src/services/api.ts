@@ -984,6 +984,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/treasury/bancos/estados/${estadoId}/libro`);
     return r.data;
   }
+  /** El documento formal de conciliación bancaria (PDF imprimible). */
+  async descargarConciliacionBancaria(estadoId: string) {
+    const r = await this.client.get(`/treasury/bancos/estados/${estadoId}/conciliacion/pdf`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, this.nombreDeHeader(r, `Conciliacion_${estadoId.slice(0, 8)}.pdf`));
+  }
   async marcarMovimiento(id: string, data: any) {
     const r = await this.client.put<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/marcar`, data);
     return r.data;

@@ -175,13 +175,18 @@ export function ConciliacionContablePage() {
     () => api.contabilizarMovimiento(m.id, contraId),
     (r) => { const d = r?.data; if (d?.error) setMsg(d.error); else if (d?.folio) setMsg(`Póliza #${d.folio} creada.`); });
   const deshacer = (id: string) => correr(() => api.descontabilizarMovimiento(id));
+  const descargarConcil = async () => {
+    if (!eid) return;
+    try { await api.descargarConciliacionBancaria(eid); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo generar el reporte de conciliación.'); }
+  };
 
   return (
     <div className="p-4 space-y-3 max-w-[1400px]">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Landmark size={22} className="text-emerald-600" /> Conciliación contable
+            <Landmark size={22} className="text-emerald-600" /> Conciliación bancaria
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
             Cuadra el estado de cuenta contra los XML: el banco es la fuente del dinero. Cada movimiento genera su póliza.
@@ -218,6 +223,11 @@ export function ConciliacionContablePage() {
             className="flex items-center gap-1.5 text-sm bg-emerald-600 text-white rounded-lg px-4 py-2 font-medium hover:opacity-90 disabled:opacity-50 shadow-sm"
             title="Todo en un clic: coteja con la contabilidad, sugiere y contabiliza lo confirmado">
             <Sparkles size={15} /> Conciliar todo
+          </button>
+          <button onClick={descargarConcil} disabled={!eid}
+            className="flex items-center gap-1 text-sm border rounded px-2 py-1.5 hover:bg-gray-50 disabled:opacity-50"
+            title="Descargar el documento de conciliación bancaria (PDF)">
+            <FileText size={14} /> Conciliación PDF
           </button>
         </div>
       </div>
