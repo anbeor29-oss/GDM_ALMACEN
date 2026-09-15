@@ -5884,3 +5884,24 @@ tarjetas) y un botón **«Generar pago»** que crea la póliza `201/102` ahí mi
 `POST /accounting/polizas/pago-pue` ({uuid, bancoCuentaId}) → reusa `generarPagoPue`. Se reforzó
 `generarPagoPue` con un guard: si el CFDI ya se pagó desde el banco (conciliación: `bancos_movimientos`
 con ese uuid y `poliza_id`), **no** duplica el abono a la 102. API `pagarPue`. TSC back=0, front=0, build=0.
+
+---
+
+## 2026-09-15 (bancos/contabilidad) — Excel de estado de cuenta que truena, selector con todos los bancos, y folio de pago corregible
+
+Tres arreglos de pruebas con cliente real:
+
+**1. Excel de estado de cuenta «value too long for character varying(200)».** `bancos_movimientos.concepto`
+es `VARCHAR(200)` y `movimientosDeExcel` no lo recortaba; los conceptos de algunos bancos (Bancrea) traen
+toda la referencia y pasan de 200. Se recorta a 200 al leer.
+
+**2. «Falta la otra cuenta bancaria» en el selector de pago PUE.** El selector sólo mostraba los bancos
+con su cuenta contable 102-xx, así que un banco registrado sin su 102 (BANCREA) no aparecía. Ahora el
+selector (en el asiento y en Cobros y pagos) lista **todos** los bancos —los que no tienen su 102 salen
+**deshabilitados con «— sin cuenta 102»**—, para que se vean y se sepa qué les falta (asignar su 102 en
+Tesorería→Bancos). El catálogo ya trae los agrupadores 102.01 Bancos nacionales y 102.02 Bancos extranjeros.
+
+**3. Folio del asiento en azul + «Deshacer» del pago PUE.** En el modal de asiento (doble clic en un
+recibido) el **folio va en azul** (referencia para correcciones) y la póliza de **pago PUE** (`pago_pue_v1`)
+trae un **«Deshacer»** que la borra (para corregir el banco y regenerarla). La cancelación del IVA
+119→118 en el pago PUE quedó confirmada por el usuario. TSC back=0, front=0, build=0.

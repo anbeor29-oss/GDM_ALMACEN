@@ -186,7 +186,9 @@ export async function movimientosDeExcel(
 
     movimientos.push({
       fecha: fecha || `${opts.anio}-${String(opts.mes).padStart(2, '0')}-01`,
-      concepto: concepto || '(sin concepto)',
+      // La columna concepto es VARCHAR(200): se recorta (los conceptos de algunos
+      // bancos —Bancrea— traen toda la referencia y pasan de 200).
+      concepto: (concepto || '(sin concepto)').slice(0, 200),
       referencia: '',
       retiro: cargo, deposito: abono,
       saldo,

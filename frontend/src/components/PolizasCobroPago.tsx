@@ -142,10 +142,11 @@ function PagosPue({ anio, mes }: { anio: number; mes: number }) {
   const pendQ = useQuery({ queryKey: ['pagos-pue', anio, mes], queryFn: () => api.getPagosPuePendientes(anio, mes) });
   const pend: any[] = pendQ.data?.data?.pendientes || [];
   const bancosQ = useQuery({ queryKey: ['bancos-cuentas'], queryFn: () => api.getCuentasBancarias() });
-  const bancos: any[] = (bancosQ.data?.data?.cuentas || [])
-    .filter((c: any) => c.cuenta_contable_id && c.tipo !== 'TARJETA_CREDITO');
-  const unSolo = bancos.length === 1 ? bancos[0].id : '';
-  const bancoDe = (uuid: string) => asig[uuid] || unSolo || bancos[0]?.id || '';
+  // Todos los bancos (menos tarjetas); los que no tienen su 102 salen deshabilitados.
+  const bancosTodos: any[] = (bancosQ.data?.data?.cuentas || []).filter((c: any) => c.tipo !== 'TARJETA_CREDITO');
+  const bancosOk = bancosTodos.filter((c: any) => c.cuenta_contable_id);
+  const unSolo = bancosOk.length === 1 ? bancosOk[0].id : '';
+  const bancoDe = (uuid: string) => asig[uuid] || unSolo || bancosOk[0]?.id || '';
 
   const generar = async () => {
     setBusy(true); setMsg(''); setOmitidas([]);
@@ -175,19 +176,21 @@ function PagosPue({ anio, mes }: { anio: number; mes: number }) {
         Antes deben tener su <b>compra</b> (el pasivo) generada.
       </p>
 
-      {bancos.length === 0 ? (
+      {bancosOk.length === 0 ? (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-start gap-2">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-          No hay cuentas de banco con su cuenta contable (102-xx). Asígnala en <b>Tesorería → Bancos</b> (o en
-          Conciliación) para poder generar los pagos.
+          {bancosTodos.length === 0
+            ? <>No hay cuentas de banco. Créalas en <b>Tesorería → Bancos</b>.</>
+            : <>Tus bancos aún no tienen su <b>cuenta contable (102-xx)</b>. Asígnala en <b>Tesorería → Bancos</b> (o
+               en Conciliación) para poder generar los pagos.</>}
         </p>
       ) : pend.length === 0 ? (
         <p className="text-sm text-gray-500 italic">No hay facturas PUE pendientes de pago en el mes.</p>
       ) : (
         <>
-          {bancos.length > 1 && (
+          {bancosOk.length > 1 && (
             <p className="text-[11px] text-gray-500">
-              Tienes {bancos.length} bancos: elige el correcto en cada renglón (por defecto va el primero).
+              Tienes {bancosOk.length} bancos: elige el correcto en cada renglón (por defecto va el primero).
             </p>
           )}
           <div className="overflow-x-auto border rounded-lg">
@@ -212,8 +215,12 @@ function PagosPue({ anio, mes }: { anio: number; mes: number }) {
                     <td className="px-2 py-1 text-right font-mono text-gray-500">{p.iva ? money(p.iva) : ''}</td>
                     <td className="px-2 py-1">
                       <select value={bancoDe(p.uuid)} onChange={(e) => setAsig((a) => ({ ...a, [p.uuid]: e.target.value }))}
-                        className="input py-1 text-xs" disabled={bancos.length === 1}>
-                        {bancos.map((b) => <option key={b.id} value={b.id}>{b.alias} · {b.banco_nombre}</option>)}
+                        className="input py-1 text-xs" disabled={bancosOk.length === 1}>
+                        {bancosTodos.map((b) => (
+                          <option key={b.id} value={b.id} disabled={!b.cuenta_contable_id}>
+                            {b.alias} · {b.banco_nombre}{b.cuenta_contable_id ? '' : ' — sin cuenta 102'}
+                          </option>
+                        ))}
                       </select>
                     </td>
                   </tr>

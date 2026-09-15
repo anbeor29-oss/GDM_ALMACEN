@@ -217,14 +217,17 @@ function AsientoModal({ uuid, onClose, claveVista }: {
   const q = useQuery({ queryKey: ['asiento', uuid], queryFn: () => api.getAsientoPorUuid(uuid) });
   const d: any = q.data?.data;
   const bancosQ = useQuery({ queryKey: ['bancos-cuentas'], queryFn: () => api.getCuentasBancarias() });
-  const bancos: any[] = (bancosQ.data?.data?.cuentas || [])
-    .filter((c: any) => c.cuenta_contable_id && c.tipo !== 'TARJETA_CREDITO');
+  // Todos los bancos (menos tarjetas). Los que no tienen su cuenta 102 salen
+  // deshabilitados con el motivo, para que se vean y se sepa qué les falta.
+  const bancosTodos: any[] = (bancosQ.data?.data?.cuentas || []).filter((c: any) => c.tipo !== 'TARJETA_CREDITO');
+  const bancosOk = bancosTodos.filter((c: any) => c.cuenta_contable_id);
   const [banco, setBanco] = useState('');
   const [busy, setBusy] = useState(false);
+  const [borrando, setBorrando] = useState('');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
-  const bancoSel = banco || bancos[0]?.id || '';
+  const bancoSel = banco || bancosOk[0]?.id || '';
 
   const pagar = async () => {
     if (!bancoSel) { setErr('Elige el banco con que se pagó.'); return; }
@@ -237,6 +240,20 @@ function AsientoModal({ uuid, onClose, claveVista }: {
       qc.invalidateQueries({ queryKey: ['pagos-pue'] });
     } catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo generar el pago.'); }
     finally { setBusy(false); }
+  };
+
+  // Deshacer una póliza de pago PUE (para corregir el banco: se borra y se regenera).
+  const deshacer = async (id: string) => {
+    if (!window.confirm('¿Deshacer esta póliza de pago? Podrás generarla de nuevo con el banco correcto.')) return;
+    setBorrando(id); setErr(''); setMsg('');
+    try {
+      await api.borrarPoliza(id);
+      setMsg('Póliza de pago deshecha. Puedes generarla otra vez.');
+      qc.invalidateQueries({ queryKey: ['asiento', uuid] });
+      qc.invalidateQueries({ queryKey: claveVista });
+      qc.invalidateQueries({ queryKey: ['pagos-pue'] });
+    } catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo deshacer.'); }
+    finally { setBorrando(''); }
   };
 
   return (
@@ -273,9 +290,16 @@ function AsientoModal({ uuid, onClose, claveVista }: {
             return (
               <div key={a.id} className="border rounded-lg overflow-hidden">
                 <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-gray-50 border-b text-sm">
-                  <b>#{a.folio}</b>
+                  <b className="text-blue-600" title="Folio de la póliza (para posibles correcciones)">#{a.folio}</b>
                   <span className="text-gray-500">{fechaCorta(a.fecha)}</span>
                   <span className="text-gray-700 truncate">{a.concepto}</span>
+                  {a.regla === 'pago_pue_v1' && (
+                    <button onClick={() => deshacer(a.id)} disabled={!!borrando}
+                      className="text-[11px] text-rose-600 hover:underline disabled:opacity-50"
+                      title="Borra este pago para corregirlo (p. ej. el banco) y generarlo de nuevo">
+                      {borrando === a.id ? 'Deshaciendo…' : 'Deshacer'}
+                    </button>
+                  )}
                   <span className="ml-auto text-[10px] text-gray-400">{a.regla}</span>
                 </div>
                 <table className="w-full text-xs">
@@ -303,18 +327,24 @@ function AsientoModal({ uuid, onClose, claveVista }: {
           {!q.isLoading && d?.esPue && d?.tieneCompra && !d?.yaPagada && (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
               <p className="text-sm text-emerald-900 font-medium">Factura de contado (PUE) sin pago contabilizado</p>
-              {bancos.length === 0 ? (
+              {bancosOk.length === 0 ? (
                 <p className="text-xs text-amber-800">
-                  No hay cuentas de banco activas con su cuenta contable (102-xx). Créala/actívala en
-                  <b> Tesorería → Bancos</b> para poder generar el pago.
+                  {bancosTodos.length === 0
+                    ? <>No hay cuentas de banco. Créalas en <b>Tesorería → Bancos</b>.</>
+                    : <>Tus bancos aún no tienen su <b>cuenta contable (102-xx)</b>. Asígnala en
+                       <b> Tesorería → Bancos</b> (o en Conciliación) para poder generar el pago.</>}
                 </p>
               ) : (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs text-gray-600">Banco con que se pagó:</span>
                   <select value={bancoSel} onChange={(e) => setBanco(e.target.value)} className="input py-1 text-xs">
-                    {bancos.map((b) => <option key={b.id} value={b.id}>{b.alias} · {b.banco_nombre}</option>)}
+                    {bancosTodos.map((b) => (
+                      <option key={b.id} value={b.id} disabled={!b.cuenta_contable_id}>
+                        {b.alias} · {b.banco_nombre}{b.cuenta_contable_id ? '' : ' — sin cuenta 102'}
+                      </option>
+                    ))}
                   </select>
-                  <button onClick={pagar} disabled={busy}
+                  <button onClick={pagar} disabled={busy || !bancoSel}
                     className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm">
                     {busy ? 'Generando…' : 'Generar pago'}
                   </button>
