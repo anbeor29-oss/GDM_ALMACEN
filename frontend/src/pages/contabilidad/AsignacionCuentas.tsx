@@ -15,7 +15,8 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Tag, Truck, HeartPulse, ArrowLeftRight, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
-import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { useMascara } from '@/utils/cuenta';
+import { SelectorCuentaId } from '@/components/SelectorCuenta';
 import { TabIngresos } from './PolizasVenta';
 import { TabCargos } from './PolizasCompra';
 import { ConceptosCuentasNomina } from '../nomina/NominaReportes';
@@ -139,13 +140,10 @@ function PagosInfo({ cuentas }: { cuentas: any[] }) {
             <div key={agr} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
               <span className="font-mono text-gray-500 w-14">{agr}</span>
               <span className="text-gray-700 flex-1 min-w-[10rem]">{desc}</span>
-              <select className="input w-72" value={actualId}
-                onChange={(e) => asignar.mutate({ agr, id: e.target.value || null })}>
-                <option value="">— Elegir cuenta —</option>
-                {cuentas.map((c) => (
-                  <option key={c.id} value={c.id}>{formatCuenta(c.codigo, mascara)} · {c.nombre}</option>
-                ))}
-              </select>
+              <div className="w-72">
+                <SelectorCuentaId cuentas={cuentas} value={actualId || null} mascara={mascara} permitirCrear={false}
+                  placeholder="— Elegir cuenta —" onChange={(id) => asignar.mutate({ agr, id: id || null })} />
+              </div>
               {fija ? (
                 <span className="flex items-center gap-1 text-emerald-700 text-xs"><CheckCircle2 size={13} /> asignada</span>
               ) : fallback ? (

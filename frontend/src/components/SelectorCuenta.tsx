@@ -9,7 +9,7 @@
  *
  * Trabaja por CÓDIGO: `value` es el código y `onChange(codigo)` lo devuelve.
  */
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, PlusCircle, Check } from 'lucide-react';
 import { ModalCrearSubcuenta } from '@/components/ModalCrearSubcuenta';
@@ -18,7 +18,7 @@ export interface CuentaOpc { id: string; codigo: string; nombre: string }
 
 export function SelectorCuenta({
   cuentas, value, onChange, placeholder = 'Cuenta del catálogo', mascara,
-  permitirCrear = true, className = '', autoFocus = false,
+  permitirCrear = true, onCrearExterno, className = '', autoFocus = false,
 }: {
   cuentas: CuentaOpc[];
   value: string | null | undefined;
@@ -26,6 +26,9 @@ export function SelectorCuenta({
   placeholder?: string;
   mascara?: string;
   permitirCrear?: boolean;
+  /** Si se pasa, «Crear cuenta» delega en el padre (con el texto escrito) en vez
+   *  de abrir el alta interna — para consumidores que ya traen su propio flujo. */
+  onCrearExterno?: (texto: string) => void;
   className?: string;
   autoFocus?: boolean;
 }) {
@@ -48,6 +51,12 @@ export function SelectorCuenta({
 
   const abrir = () => { setBusca(''); setIdx(0); setAbierto(true); };
   const elegir = (c: CuentaOpc) => { onChange(c.codigo); setAbierto(false); setBusca(''); };
+  const dispararCrear = () => {
+    const txt = busca.trim();
+    setAbierto(false);
+    if (onCrearExterno) onCrearExterno(txt);   // el padre abre su propio alta
+    else setCreando(txt);                       // alta interna (ModalCrearSubcuenta)
+  };
 
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (!abierto && (e.key === 'ArrowDown' || e.key === 'Enter')) { abrir(); return; }
@@ -56,7 +65,7 @@ export function SelectorCuenta({
     else if (e.key === 'Enter') {
       e.preventDefault();
       if (idx < filtradas.length) elegir(filtradas[idx]);
-      else if (permitirCrear) setCreando(busca.trim());
+      else if (permitirCrear) dispararCrear();
     } else if (e.key === 'Escape') { setAbierto(false); }
   };
 
@@ -97,7 +106,7 @@ export function SelectorCuenta({
           ))}
           {permitirCrear && (
             <button type="button"
-              onMouseDown={(e) => { e.preventDefault(); setCreando(busca.trim()); setAbierto(false); }}
+              onMouseDown={(e) => { e.preventDefault(); dispararCrear(); }}
               className={`w-full text-left px-3 py-1.5 flex items-center gap-1.5 border-t text-primary ${idx === filtradas.length ? 'bg-emerald-50' : 'hover:bg-gray-50'}`}>
               <PlusCircle size={14} /> Crear cuenta{busca.trim() ? ` «${busca.trim()}»` : ''}
             </button>
@@ -120,6 +129,34 @@ export function SelectorCuenta({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Igual que SelectorCuenta, pero trabaja por **id** (para los combos que guardan
+ * el account_id en vez del código): resuelve id↔código y, si se crea una cuenta
+ * nueva, espera a que aparezca en el catálogo para devolver su id.
+ */
+export function SelectorCuentaId({
+  cuentas, value, onChange, placeholder, mascara, permitirCrear = true, className,
+}: {
+  cuentas: CuentaOpc[];
+  value: string | null | undefined;
+  onChange: (id: string | null) => void;
+  placeholder?: string;
+  mascara?: string;
+  permitirCrear?: boolean;
+  className?: string;
+}) {
+  const [pend, setPend] = useState('');
+  const codActual = cuentas.find((c) => c.id === value)?.codigo || '';
+  useEffect(() => {
+    if (pend) { const c = cuentas.find((x) => x.codigo === pend); if (c) { onChange(c.id); setPend(''); } }
+  }, [cuentas, pend]);   // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <SelectorCuenta cuentas={cuentas} value={pend || codActual} placeholder={placeholder}
+      mascara={mascara} permitirCrear={permitirCrear} className={className}
+      onChange={(cod) => { const c = cuentas.find((x) => x.codigo === cod); if (c) onChange(c.id); else setPend(cod); }} />
   );
 }
 

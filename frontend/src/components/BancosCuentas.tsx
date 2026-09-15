@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { aniosContables } from '@/utils/anios';
+import { SelectorCuentaId } from '@/components/SelectorCuenta';
 import { CampoFecha } from '@/components/CampoFecha';
 import { fechaMx } from '@/utils/fecha';
 import { useCapacidades, CAP } from '@/utils/capacidades';
@@ -166,11 +167,9 @@ export function BancosCuentas() {
                 {c.tipo === 'TARJETA_CREDITO' ? 'Cuenta de pasivo (201/205-xx)' : 'Cuenta contable (102-xx)'}
               </p>
               {puedeEditar ? (
-                <select value={c.cuenta_contable_id || ''} onChange={(e) => ligarCuenta(c.id, e.target.value)}
-                  className={`input py-1 text-xs w-full mt-1 ${c.cuenta_contable_id ? '' : 'border-amber-300 bg-amber-50'}`}>
-                  <option value="">— sin ligar: elige su cuenta —</option>
-                  {ctasMov.map((x) => <option key={x.id} value={x.id}>{x.codigo} — {x.nombre}</option>)}
-                </select>
+                <SelectorCuentaId cuentas={ctasMov} value={c.cuenta_contable_id || null}
+                  placeholder="— sin ligar: elige su cuenta —"
+                  onChange={(id) => ligarCuenta(c.id, id || '')} />
               ) : (
                 <p className="text-sm font-mono mt-0.5">{c.cuenta_contable_codigo || 'sin ligar'}</p>
               )}
