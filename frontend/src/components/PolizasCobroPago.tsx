@@ -9,7 +9,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftRight, PlayCircle, AlertTriangle } from 'lucide-react';
+import { ArrowLeftRight, PlayCircle, AlertTriangle, Wallet } from 'lucide-react';
 import { api } from '@/services/api';
 
 const money = (n: any, m = 'MXN') =>
@@ -82,6 +82,8 @@ export function PolizasCobroPago() {
         )}
       </div>
 
+      <PagosPue anio={anio} mes={mes} />
+
       <div className="space-y-2">
         {!q.isLoading && polizas.length === 0 && (
           <p className="text-sm text-gray-500 italic bg-white border rounded-lg p-4 text-center">
@@ -120,6 +122,124 @@ export function PolizasCobroPago() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Pagos de facturas PUE (pagadas en una sola exhibición). Estas no traen
+ * complemento de pago, así que el pago no se genera solo: aquí se elige con qué
+ * BANCO se pagó cada una (con un solo banco, se preselecciona) y se genera la
+ * póliza de pago (201 proveedor / 102 banco + IVA 119→118).
+ */
+function PagosPue({ anio, mes }: { anio: number; mes: number }) {
+  const qc = useQueryClient();
+  const [asig, setAsig] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [omitidas, setOmitidas] = useState<any[]>([]);
+
+  const pendQ = useQuery({ queryKey: ['pagos-pue', anio, mes], queryFn: () => api.getPagosPuePendientes(anio, mes) });
+  const pend: any[] = pendQ.data?.data?.pendientes || [];
+  const bancosQ = useQuery({ queryKey: ['bancos-cuentas'], queryFn: () => api.getCuentasBancarias() });
+  const bancos: any[] = (bancosQ.data?.data?.cuentas || [])
+    .filter((c: any) => c.cuenta_contable_id && c.tipo !== 'TARJETA_CREDITO');
+  const unSolo = bancos.length === 1 ? bancos[0].id : '';
+  const bancoDe = (uuid: string) => asig[uuid] || unSolo || bancos[0]?.id || '';
+
+  const generar = async () => {
+    setBusy(true); setMsg(''); setOmitidas([]);
+    try {
+      const asignaciones: Record<string, string> = {};
+      for (const p of pend) { const b = bancoDe(p.uuid); if (b) asignaciones[p.uuid] = b; }
+      const r: any = await api.generarPagosPue(anio, mes, { asignaciones });
+      setMsg(`${r.data.creadas} pago(s) de contado generado(s).`);
+      setOmitidas(r.data.omitidas || []);
+      qc.invalidateQueries({ queryKey: ['pagos-pue', anio, mes] });
+      qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo generar'); }
+    finally { setBusy(false); }
+  };
+
+  if (pendQ.isLoading) return null;
+
+  return (
+    <div className="bg-white rounded-lg shadow border p-4 space-y-3">
+      <h3 className="font-semibold flex items-center gap-2">
+        <Wallet size={18} className="text-emerald-600" /> Pagos de facturas de contado (PUE)
+      </h3>
+      <p className="text-sm text-gray-600">
+        Las facturas <b>PUE</b> ya están pagadas pero no traen complemento, así que su pago no se genera
+        solo. Elige con qué <b>banco</b> se pagó cada una y se crea la póliza de pago
+        (<span className="font-mono text-xs">201 proveedor / 102 banco</span>, con el IVA de 119 a 118).
+        Antes deben tener su <b>compra</b> (el pasivo) generada.
+      </p>
+
+      {bancos.length === 0 ? (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-start gap-2">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          No hay cuentas de banco con su cuenta contable (102-xx). Asígnala en <b>Tesorería → Bancos</b> (o en
+          Conciliación) para poder generar los pagos.
+        </p>
+      ) : pend.length === 0 ? (
+        <p className="text-sm text-gray-500 italic">No hay facturas PUE pendientes de pago en el mes.</p>
+      ) : (
+        <>
+          {bancos.length > 1 && (
+            <p className="text-[11px] text-gray-500">
+              Tienes {bancos.length} bancos: elige el correcto en cada renglón (por defecto va el primero).
+            </p>
+          )}
+          <div className="overflow-x-auto border rounded-lg">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 text-gray-500">
+                <tr>
+                  <th className="px-2 py-1.5 text-left font-semibold">Fecha</th>
+                  <th className="px-2 py-1.5 text-left font-semibold">Folio</th>
+                  <th className="px-2 py-1.5 text-left font-semibold">Proveedor</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">Total</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">IVA</th>
+                  <th className="px-2 py-1.5 text-left font-semibold">Banco con que se pagó</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {pend.map((p) => (
+                  <tr key={p.uuid} className="hover:bg-gray-50">
+                    <td className="px-2 py-1 whitespace-nowrap">{fecha(p.fecha)}</td>
+                    <td className="px-2 py-1 font-mono">{p.folio}</td>
+                    <td className="px-2 py-1 max-w-[220px] truncate" title={p.proveedor}>{p.proveedor}</td>
+                    <td className="px-2 py-1 text-right font-mono">{money(p.total)}</td>
+                    <td className="px-2 py-1 text-right font-mono text-gray-500">{p.iva ? money(p.iva) : ''}</td>
+                    <td className="px-2 py-1">
+                      <select value={bancoDe(p.uuid)} onChange={(e) => setAsig((a) => ({ ...a, [p.uuid]: e.target.value }))}
+                        className="input py-1 text-xs" disabled={bancos.length === 1}>
+                        {bancos.map((b) => <option key={b.id} value={b.id}>{b.alias} · {b.banco_nombre}</option>)}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={generar} disabled={busy}
+              className="flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm">
+              <PlayCircle size={15} /> {busy ? 'Generando…' : `Generar ${pend.length} pago(s)`}
+            </button>
+            <span className="text-[11px] text-gray-400">Se puede deshacer borrando la póliza si te equivocas de banco.</span>
+          </div>
+        </>
+      )}
+
+      {msg && <p className="text-sm text-emerald-700">{msg}</p>}
+      {omitidas.length > 0 && (
+        <details className="text-xs text-amber-700">
+          <summary className="cursor-pointer">{omitidas.length} omitida(s) — ver por qué</summary>
+          <ul className="mt-1 list-disc pl-5 space-y-0.5">
+            {omitidas.map((o, i) => <li key={i}><b>{o.folio}</b>: {o.motivo}</li>)}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

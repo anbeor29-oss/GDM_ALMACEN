@@ -496,6 +496,121 @@ export async function generarCobrosPagosDelMes(
   return { creadas, omitidas };
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   PAGO de facturas PUE (pagadas en una sola exhibición)
+   ───────────────────────────────────────────────────────────────────────────
+   Una factura PUE ya está pagada, pero NO trae complemento de pago (el SAT no lo
+   exige en PUE), así que `generarCobrosPagosDelMes` —que sólo procesa complementos
+   tipo P— nunca le hace el pago: sólo queda el pasivo (la compra). Aquí se genera
+   el pago, EXACTAMENTE como el de un complemento recibido, pero con el banco que
+   el USUARIO elige (el CFDI PUE no dice con qué cuenta se pagó):
+
+     201 Proveedor        cargo  total      (baja el adeudo)
+     118 IVA acred. pagado cargo iva        (realiza el acreditamiento)
+         102 Banco elegido  abono total
+         119 IVA por pagar  abono iva
+
+   El banco no se inventa: si la empresa tiene una sola cuenta se usa esa; con
+   varias, el usuario asigna cuál pagó cada factura. Idempotente por
+   origen_uuid = 'PAGOPUE:'+uuid (no choca con la compra, que usa el uuid a secas).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Recibidos PUE del mes que ya tienen su compra (pasivo) pero aún no su pago. */
+export async function pagosPuePendientes(companyId: string, anio: number, mes: number) {
+  const r = await query<any>(
+    `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision,'YYYY-MM-DD') AS fecha_emision,
+            c.total, c.nombre_emisor, c.rfc_emisor, c.xml
+       FROM cfdi_recibidos c
+      WHERE c.company_id=$1 AND c.direccion='recibidos' AND c.tipo_comprobante='I'
+        AND c.metodo_pago='PUE' AND c.xml IS NOT NULL
+        AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
+        AND c.fecha_emision::date BETWEEN $2 AND $3
+        AND EXISTS (SELECT 1 FROM journal_entries e
+                     WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)
+        AND NOT EXISTS (SELECT 1 FROM journal_entries e
+                     WHERE e.company_id=c.company_id AND e.origen_uuid='PAGOPUE:'||c.uuid)
+      ORDER BY c.fecha_emision`,
+    [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
+  return r.rows
+    .map((c) => ({
+      uuid: c.uuid,
+      folio: [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8),
+      proveedor: c.nombre_emisor || c.rfc_emisor || '', rfc: c.rfc_emisor,
+      fecha: c.fecha_emision, total: round2(c.total),
+      iva: round2(impuestosDeXml(String(c.xml)).trasladados),
+    }))
+    .filter((x) => x.total > 0);
+}
+
+/** Genera la póliza de pago de UN recibido PUE contra la cuenta bancaria elegida. */
+export async function generarPagoPue(
+  companyId: string, uuid: string, bancoCuentaId: string, userId?: string,
+): Promise<{ ok: true; folio: number } | { error: string }> {
+  const c = (await query<any>(
+    `SELECT uuid, serie, folio, TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha_emision,
+            total, nombre_emisor, rfc_emisor, xml, metodo_pago
+       FROM cfdi_recibidos WHERE company_id=$1 AND uuid=$2 AND direccion='recibidos' LIMIT 1`,
+    [companyId, uuid])).rows[0];
+  if (!c) return { error: 'no se encontró el CFDI' };
+  if (c.metodo_pago && c.metodo_pago !== 'PUE') return { error: 'este CFDI es PPD: su pago va por complemento, no por aquí' };
+  if (!c.xml) return { error: 'el CFDI no tiene XML' };
+  const total = round2(c.total);
+  if (total <= 0) return { error: 'el CFDI no tiene importe' };
+
+  const bc = (await query<any>(
+    `SELECT cuenta_contable_id FROM bancos_cuentas WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL`,
+    [bancoCuentaId, companyId])).rows[0];
+  if (!bc?.cuenta_contable_id) return { error: 'la cuenta de banco elegida no tiene cuenta contable (102-xx) asignada' };
+
+  const prov = await resolverOCrearSubcuentaTercero(companyId, 'proveedor', c.rfc_emisor, c.nombre_emisor);
+  if ('error' in prov) return { error: `proveedores: ${prov.error}` };
+
+  const iva = round2(impuestosDeXml(String(c.xml)).trasladados);
+  const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
+  const lineas: LineaPoliza[] = [
+    { account_id: prov.id, cargo: total, concepto: 'Proveedores (pago PUE)', uuid_cfdi: c.uuid, party_rfc: c.rfc_emisor },
+    { account_id: bc.cuenta_contable_id, abono: total, concepto: 'Banco (pago PUE)', uuid_cfdi: c.uuid },
+  ];
+  if (iva > 0) {
+    const c118 = await cuentaPorAgrupador(companyId, '118.01');
+    const c119 = await cuentaPorAgrupador(companyId, '119.01');
+    if (!c118 || !c119) return { error: 'falta cuenta de IVA (118.01 / 119.01)' };
+    lineas.push({ account_id: c118.id, cargo: iva, concepto: 'IVA acreditable pagado', uuid_cfdi: c.uuid });
+    lineas.push({ account_id: c119.id, abono: iva, concepto: 'IVA acreditable por pagar', uuid_cfdi: c.uuid });
+  }
+  try {
+    const pol = await crearPoliza(companyId, {
+      tipo: 'EGRESO', fecha: String(c.fecha_emision).slice(0, 10),
+      concepto: `Pago ${folioTxt} · ${(c.nombre_emisor || c.rfc_emisor || '').toString().slice(0, 80)}`.trim(),
+      origen: 'BANCO', origen_uuid: `PAGOPUE:${c.uuid}`, regla: 'pago_pue_v1', lineas,
+    }, userId);
+    return { ok: true, folio: pol.folio };
+  } catch (e: any) {
+    if (e?.code === '23505' || /ya existe una p[oó]liza con ese UUID/i.test(e?.message || '')) {
+      return { error: 'esta factura ya tiene su póliza de pago' };
+    }
+    return { error: (e?.message || 'no se pudo contabilizar el pago').toString().slice(0, 140) };
+  }
+}
+
+/** Genera los pagos PUE del mes. `asignaciones` = {uuid: bancoCuentaId} por factura;
+ *  lo que falte usa `bancoCuentaId` por defecto (el único banco, si la empresa tiene uno). */
+export async function generarPagosPueDelMes(
+  companyId: string, anio: number, mes: number,
+  opts: { bancoCuentaId?: string; asignaciones?: Record<string, string> }, userId?: string,
+): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
+  const pend = await pagosPuePendientes(companyId, anio, mes);
+  let creadas = 0;
+  const omitidas: Array<{ folio: string; motivo: string }> = [];
+  for (const p of pend) {
+    const bancoId = opts.asignaciones?.[p.uuid] || opts.bancoCuentaId;
+    if (!bancoId) { omitidas.push({ folio: p.folio, motivo: 'no se eligió con qué banco se pagó' }); continue; }
+    const r = await generarPagoPue(companyId, p.uuid, bancoId, userId);
+    if ('ok' in r) creadas++; else omitidas.push({ folio: p.folio, motivo: r.error });
+  }
+  return { creadas, omitidas };
+}
+
 /**
  * Póliza MANUAL — cargos y abonos capturados a mano, con CUALQUIER cuenta del
  * catálogo (a diferencia de ventas/compras/nómina, que sólo tocan sus cuentas).

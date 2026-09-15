@@ -940,6 +940,11 @@ class APIClient {
     });
     return r.data;
   }
+  /** Plantilla de Excel para capturar un estado de cuenta (cuando sólo hay resumen). */
+  async descargarPlantillaEstado() {
+    const r = await this.client.get('/treasury/bancos/estados/plantilla', { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, 'Plantilla_estado_de_cuenta.xlsx');
+  }
   async actualizarCuentaBancaria(id: string, datos: any) {
     const r = await this.client.put<APIResponse<any>>(`/treasury/bancos/cuentas/${id}`, datos);
     return r.data;
@@ -1230,6 +1235,17 @@ class APIClient {
   }
   async generarCobrosPagos(anio: number, mes: number, todoElAnio = false) {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-cobros-pagos', { anio, mes, todoElAnio });
+    return r.data;
+  }
+  /** Facturas PUE (de contado) del mes pendientes de su póliza de pago. */
+  async getPagosPuePendientes(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/pagos-pue/${anio}/${mes}`);
+    return r.data;
+  }
+  /** Genera el pago de las PUE. asignaciones = {uuid: bancoCuentaId} por factura;
+   *  bancoCuentaId es el banco por defecto (cuando la empresa tiene uno solo). */
+  async generarPagosPue(anio: number, mes: number, opts: { bancoCuentaId?: string; asignaciones?: Record<string, string> } = {}) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-pagos-pue', { anio, mes, ...opts });
     return r.data;
   }
 

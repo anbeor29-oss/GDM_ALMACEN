@@ -5824,3 +5824,43 @@ tránsito». El cotejo automático sigue con su ventana de ±2 días (es toleran
 despliegue). Nota para el usuario: el panel es de la **102.01.001**; las pólizas de compra tocan
 **201-proveedores**, no la 102 —la 102 se mueve al contabilizar aquí, en cobros/pagos, o en la
 apertura/migración—. TSC back=0.
+
+---
+
+## 2026-09-14 (tesorería) — Estado de cuenta por plantilla de EXCEL (cuando sólo hay un resumen)
+
+A veces del banco sólo se consigue un resumen, no un PDF/CSV completo. Se agregó una **plantilla de
+Excel** para capturar el estado de cuenta y subirlo. Servicio nuevo `estado-cuenta-excel.service.ts`:
+`plantillaEstadoCuentaExcel()` (hoja con columnas Fecha · Concepto · Cargo · Abono · Saldo, encabezado
+rojo, ejemplos que se borran, hoja de instrucciones) y `movimientosDeExcel(buffer, {anio,mes})` que la
+lee **por nombre de columna** (tolerante a orden/sinónimos) a la misma estructura del extractor
+(`ResultadoExtraccion`): fila "SALDO INICIAL" fija el saldo, arrastra el saldo y avisa si no cuadra.
+
+`cargarEstadoDeCuenta` acepta una `extraccionPre` (el Excel llega ya extraído; el resto sigue por
+`extraerMovimientos`). La ruta `POST /treasury/bancos/estados` detecta `.xlsx` y usa el lector de
+Excel; ruta nueva `GET /treasury/bancos/estados/plantilla`. Migración `2026-09-14b_estado_cuenta_excel_origen.sql`
+extiende el CHECK de `origen` a incluir `'EXCEL'`. Front: botón «↓ Plantilla de Excel» y `.xlsx`
+aceptado en los dos modales de carga (Tesorería→Bancos y Conciliación). API `descargarPlantillaEstado`.
+TSC back=0, front=0, build=0.
+
+---
+
+## 2026-09-14 (contabilidad) — Pago de facturas PUE (de contado): se elige el banco
+
+Las facturas **PUE** (pago en una sola exhibición) ya están pagadas pero **no traen complemento de
+pago**, así que `generarCobrosPagosDelMes` —que sólo procesa complementos tipo P— nunca les hacía el
+pago: sólo quedaba el pasivo (la compra). Ahora, en **Tesorería → Cobros y pagos**, una sección nueva
+lista las **PUE del mes pendientes de pago** (las que ya tienen su compra) y genera su póliza de pago,
+eligiendo **con qué banco** se pagó cada una (el CFDI PUE no lo dice). Con un solo banco se
+preselecciona; con varios, el usuario asigna por renglón.
+
+La póliza de pago replica exactamente la del complemento recibido, para ser consistentes:
+`201 proveedor (cargo total) / 102 banco elegido (abono total)` y el IVA de `119.01 → 118.01`
+(realiza el acreditamiento). Idempotente por `origen_uuid = 'PAGOPUE:'+uuid` (no choca con la compra,
+que usa el uuid a secas). El banco es la **cuenta contable 102-xx** de la cuenta bancaria elegida
+(`bancos_cuentas.cuenta_contable_id`). `polizas.service`: `pagosPuePendientes`, `generarPagoPue`,
+`generarPagosPueDelMes`. Rutas `GET /accounting/pagos-pue/:anio/:mes` y
+`POST /accounting/polizas/generar-pagos-pue` ({anio,mes,bancoCuentaId?,asignaciones}). API
+`getPagosPuePendientes`/`generarPagosPue`. **Ojo (a confirmar con el usuario):** el pago sólo se
+genera si la factura ya tiene su compra; el movimiento IVA 119→118 sigue el patrón del complemento —si
+su política de acreditamiento de PUE difiere, se ajusta. TSC back=0, front=0, build=0.

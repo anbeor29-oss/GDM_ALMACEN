@@ -16,6 +16,7 @@ import * as bancos from './bancos.service';
 import * as concil from './conciliacion-contable.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { textoDePdf } from './extractor-movimientos.service';
+import { plantillaEstadoCuentaExcel, movimientosDeExcel } from './estado-cuenta-excel.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -268,13 +269,21 @@ router.post(
   subir.single('archivo'),
   asyncHandler(async (req: Request, res: Response) => {
     let texto = String(req.body?.texto || '');
-    let origen: 'PDF' | 'TEXTO' | 'CSV' = 'TEXTO';
+    let origen: 'PDF' | 'TEXTO' | 'CSV' | 'EXCEL' = 'TEXTO';
     let archivoNombre: string | undefined;
+    let extraccionPre;
+    const anio = Number(req.body?.anio);
+    const mes = Number(req.body?.mes);
 
     if (req.file) {
       archivoNombre = req.file.originalname;
       const esPdf = /\.pdf$/i.test(archivoNombre) || /pdf/i.test(req.file.mimetype || '');
-      if (esPdf) {
+      const esExcel = /\.xlsx?$/i.test(archivoNombre) || /spreadsheet|excel/i.test(req.file.mimetype || '');
+      if (esExcel) {
+        // La plantilla de Excel se lee por columnas fijas (más confiable que el texto).
+        extraccionPre = await movimientosDeExcel(req.file.buffer, { anio, mes });
+        origen = 'EXCEL';
+      } else if (esPdf) {
         const r = await textoDePdf(req.file.buffer);
         if (!r.utilizable) throw new ValidationError(r.motivo || 'No se pudo leer el PDF');
         texto = r.texto;
@@ -289,17 +298,21 @@ router.post(
 
     const r = await bancos.cargarEstadoDeCuenta(
       companyId(req),
-      {
-        cuentaId: req.body?.cuentaId,
-        anio: Number(req.body?.anio),
-        mes: Number(req.body?.mes),
-        texto,
-        origen,
-        archivoNombre,
-      },
+      { cuentaId: req.body?.cuentaId, anio, mes, texto, origen, archivoNombre, extraccionPre },
       req.user?.userId
     );
     res.status(201).json({ success: true, data: r });
+  })
+);
+
+/** GET /treasury/bancos/estados/plantilla — plantilla de Excel para capturar un estado de cuenta. */
+router.get(
+  '/bancos/estados/plantilla',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const { buffer, nombre } = await plantillaEstadoCuentaExcel();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
   })
 );
 

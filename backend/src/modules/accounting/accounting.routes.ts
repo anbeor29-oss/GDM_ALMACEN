@@ -1314,6 +1314,29 @@ router.post(
   })
 );
 
+/** GET /accounting/pagos-pue/:anio/:mes — facturas PUE (de contado) pendientes de su póliza de pago. */
+router.get(
+  '/pagos-pue/:anio/:mes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await polizas.pagosPuePendientes(companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.json({ success: true, data: { pendientes: data } });
+  })
+);
+
+/** POST /accounting/polizas/generar-pagos-pue — genera el pago de las PUE del mes.
+ *  body: { anio, mes, bancoCuentaId?, asignaciones?: {uuid: bancoCuentaId} }. */
+router.post(
+  '/polizas/generar-pagos-pue',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await polizas.generarPagosPueDelMes(
+      companyId(req), Number(req.body?.anio), Number(req.body?.mes),
+      { bancoCuentaId: req.body?.bancoCuentaId || undefined, asignaciones: req.body?.asignaciones || undefined },
+      req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
+
 /** GET /accounting/cuentas-fijas — cuentas asignadas para cobros/pagos (IVA, banco). */
 router.get(
   '/cuentas-fijas',

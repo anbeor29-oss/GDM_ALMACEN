@@ -239,8 +239,10 @@ export interface DatosCarga {
   anio: number;
   mes: number;
   texto: string;
-  origen?: 'PDF' | 'TEXTO' | 'CSV';
+  origen?: 'PDF' | 'TEXTO' | 'CSV' | 'EXCEL';
   archivoNombre?: string;
+  /** Extracción ya resuelta (Excel): se usa tal cual en vez de parsear `texto`. */
+  extraccionPre?: ResultadoExtraccion;
 }
 
 /**
@@ -269,7 +271,7 @@ export async function cargarEstadoDeCuenta(
   if (!Number.isInteger(mes) || mes < 1 || mes > 12) {
     throw new ValidationError('El mes debe ir de 1 a 12');
   }
-  if (!String(d.texto || '').trim()) {
+  if (!d.extraccionPre && !String(d.texto || '').trim()) {
     throw new ValidationError('No hay texto que procesar');
   }
 
@@ -280,7 +282,8 @@ export async function cargarEstadoDeCuenta(
   );
   if (cuenta.rows.length === 0) throw new NotFoundError('Cuenta no encontrada');
 
-  const extraccion = extraerMovimientos(d.texto, { anio, mes });
+  // El Excel llega ya extraído (columnas fijas); el resto se parsea del texto.
+  const extraccion = d.extraccionPre ?? extraerMovimientos(d.texto, { anio, mes });
 
   /* Que el TIPO de la cuenta cuadre con lo que trae el documento: subir un estado
    * de tarjeta a una cuenta de cheques (o al revés) mete el adeudo donde va el

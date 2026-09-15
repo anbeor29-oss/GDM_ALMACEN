@@ -472,14 +472,21 @@ function ModalCargarEstado({ cuenta, mesInicial, anioInicial, onCerrar, onListo 
               adivinar sobre las columnas. Se dice, para que quien tenga los dos
               elija el bueno. */}
           <div className="rounded-lg border p-3 space-y-2">
-            <p className="text-xs font-medium text-gray-700">1 · El documento</p>
-            <input type="file" accept=".pdf,.csv,.txt,text/plain"
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-gray-700">1 · El documento</p>
+              <button type="button" onClick={() => api.descargarPlantillaEstado()}
+                className="text-[11px] text-emerald-700 hover:underline">
+                ↓ Plantilla de Excel
+              </button>
+            </div>
+            <input type="file" accept=".pdf,.csv,.txt,.xlsx,.xls,text/plain"
               onChange={(e) => { setArchivo(e.target.files?.[0] || null); setResultado(null); }}
               className="text-sm" />
             <p className="text-[11px] text-gray-500">
               Si tu banco da <b>CSV</b>, úsalo: es más confiable que el PDF porque no hay
-              que adivinar dónde termina una columna y empieza otra. Un PDF <b>escaneado</b>
-              {' '}no se puede leer aquí — este servidor no tiene OCR.
+              que adivinar dónde termina una columna y empieza otra. Si sólo tienes un
+              <b> resumen</b>, baja la <b>plantilla de Excel</b>, captúralo y súbelo. Un PDF
+              {' '}<b>escaneado</b> no se puede leer aquí — este servidor no tiene OCR.
             </p>
           </div>
 

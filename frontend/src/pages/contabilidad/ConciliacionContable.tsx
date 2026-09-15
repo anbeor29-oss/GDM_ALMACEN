@@ -506,7 +506,7 @@ function ModalSubir({ cid, onClose, onDone }: any) {
   const [err, setErr] = useState('');
   const subir = async () => {
     if (!cid) { setErr('Primero crea o elige una cuenta de banco (Tesorería → Bancos).'); return; }
-    if (!archivo) { setErr('Elige el archivo del estado de cuenta (PDF o CSV).'); return; }
+    if (!archivo) { setErr('Elige el archivo del estado de cuenta (PDF, CSV o Excel).'); return; }
     setBusy(true); setErr('');
     try { await api.cargarEstadoDeCuenta({ cuentaId: cid, anio, mes, archivo }); onDone(); }
     catch (e: any) { setErr(e?.response?.data?.message || e.message || 'No se pudo cargar.'); }
@@ -524,7 +524,11 @@ function ModalSubir({ cid, onClose, onDone }: any) {
             {aniosContables().map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
-        <input type="file" accept=".pdf,.csv,.txt" onChange={(e) => setArchivo(e.target.files?.[0] || null)} className="text-sm" />
+        <div className="flex items-center justify-between gap-2">
+          <input type="file" accept=".pdf,.csv,.txt,.xlsx,.xls" onChange={(e) => setArchivo(e.target.files?.[0] || null)} className="text-sm" />
+          <button type="button" onClick={() => api.descargarPlantillaEstado()}
+            className="text-[11px] text-emerald-700 hover:underline shrink-0">↓ Plantilla Excel</button>
+        </div>
         {err && <p className="text-xs text-rose-600">{err}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="text-sm border rounded px-3 py-1.5 hover:bg-gray-50">Cancelar</button>
