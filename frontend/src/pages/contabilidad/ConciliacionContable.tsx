@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SelectorCuenta } from '@/components/SelectorCuenta';
 import {
   Landmark, RefreshCw, Wand2, PlayCircle, Check, X, Upload, Settings2, Undo2, FileText, Link2, BookOpen,
+  Sparkles,
 } from 'lucide-react';
 import { api } from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
@@ -101,6 +102,7 @@ export function ConciliacionContablePage() {
   const [busy, setBusy] = useState(false);
   const [modalComis, setModalComis] = useState(false);
   const [modalSubir, setModalSubir] = useState(false);
+  const [ocultarConcil, setOcultarConcil] = useState(false);   // ocultar lo ya conciliado
 
   const cuentasQ = useQuery({ queryKey: ['bancos-cuentas'], queryFn: () => api.getCuentasBancarias() });
   const cuentas: any[] = cuentasQ.data?.data?.cuentas || [];
@@ -124,6 +126,12 @@ export function ConciliacionContablePage() {
   const libroQ = useQuery({ queryKey: ['libro', eid], queryFn: () => api.getLibroBanco(eid), enabled: !!eid });
   const libro: any[] = libroQ.data?.data?.lineas || [];
 
+  // Un movimiento del banco está "conciliado" si ya se contabilizó o se cotejó.
+  const conciliado = (m: any) => ['contabilizado', 'conciliado'].includes(m.concil_estado);
+  const movsVis = ocultarConcil ? movs.filter((m) => !conciliado(m)) : movs;
+  const libroVis = ocultarConcil ? libro.filter((l) => !l.empatado_con) : libro;
+  const pendientes = movs.filter((m) => !conciliado(m) && m.concil_estado !== 'omitido').length;
+
   const sel = movs.find((m) => m.id === selMov) || null;
   const refetch = () => {
     qc.invalidateQueries({ queryKey: ['concil', eid] });
@@ -145,6 +153,20 @@ export function ConciliacionContablePage() {
   const cotejar = () => correr(() => api.cotejarConLibro(eid), (r) => {
     const d = r?.data || {}; setMsg(d.error ? d.error
       : `${d.conciliados} movimiento(s) empatados con la contabilidad. ${d.enLibroSinBanco} en el libro sin banco (en tránsito).`);
+    qc.invalidateQueries({ queryKey: ['libro', eid] });
+  });
+  // TODO EN 1 CLIC: cotejar (empata con lo ya asentado, evita duplicar) → sugerir
+  // (clasifica el resto) → contabilizar (crea las pólizas de lo confirmado).
+  const conciliarTodo = () => correr(async () => {
+    const c: any = await api.cotejarConLibro(eid);
+    const s: any = await api.sugerirConciliacion(eid);
+    const k: any = await api.contabilizarEstado(eid);
+    return { c: c?.data || {}, s: s?.data || {}, k: k?.data || {} };
+  }, (r) => {
+    setMsg(`Conciliado en 1 paso: ${r.c.conciliados || 0} cotejado(s) con la contabilidad · ` +
+      `${r.s.confirmados || 0} listo(s) y ${r.s.sugeridos || 0} por revisar (±10¢) · ` +
+      `${r.k.contabilizadas || 0} póliza(s) creada(s).` +
+      (r.k.errores?.length ? ` ${r.k.errores.length} con detalle pendiente.` : ''));
     qc.invalidateQueries({ queryKey: ['libro', eid] });
   });
   const setBancoCuenta = (id: string) => correr(() => api.actualizarCuentaBancaria(cid, { cuentaContableId: id || null }));
@@ -192,21 +214,37 @@ export function ConciliacionContablePage() {
           <button onClick={() => setModalComis(true)} className="flex items-center gap-1 text-sm border rounded px-2 py-1.5 hover:bg-gray-50">
             <Settings2 size={14} /> Cuentas de comisiones
           </button>
-          <button onClick={cotejar} disabled={busy || !eid}
-            className="flex items-center gap-1 text-sm bg-teal-600 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50"
-            title="Empata los movimientos del banco con lo ya asentado en la contabilidad (102)">
-            <Link2 size={14} /> Cotejar contabilidad
-          </button>
-          <button onClick={sugerirTodo} disabled={busy || !eid}
-            className="flex items-center gap-1 text-sm bg-amber-500 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
-            <Wand2 size={14} /> Sugerir todo
-          </button>
-          <button onClick={contabilizarTodo} disabled={busy || !eid}
-            className="flex items-center gap-1 text-sm bg-emerald-600 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
-            <PlayCircle size={14} /> Contabilizar confirmados
+          <button onClick={conciliarTodo} disabled={busy || !eid}
+            className="flex items-center gap-1.5 text-sm bg-emerald-600 text-white rounded-lg px-4 py-2 font-medium hover:opacity-90 disabled:opacity-50 shadow-sm"
+            title="Todo en un clic: coteja con la contabilidad, sugiere y contabiliza lo confirmado">
+            <Sparkles size={15} /> Conciliar todo
           </button>
         </div>
       </div>
+
+      {/* Los tres pasos por separado (control fino) + ver sólo lo pendiente */}
+      {eid && (
+        <div className="flex flex-wrap items-center gap-2 px-1 text-xs">
+          <span className="text-gray-400">Pasos sueltos:</span>
+          <button onClick={cotejar} disabled={busy}
+            className="flex items-center gap-1 border border-teal-300 text-teal-700 rounded px-2 py-1 hover:bg-teal-50 disabled:opacity-50"
+            title="Empata los movimientos del banco con lo ya asentado en la 102">
+            <Link2 size={12} /> Cotejar
+          </button>
+          <button onClick={sugerirTodo} disabled={busy}
+            className="flex items-center gap-1 border border-amber-300 text-amber-700 rounded px-2 py-1 hover:bg-amber-50 disabled:opacity-50">
+            <Wand2 size={12} /> Sugerir
+          </button>
+          <button onClick={contabilizarTodo} disabled={busy}
+            className="flex items-center gap-1 border border-emerald-300 text-emerald-700 rounded px-2 py-1 hover:bg-emerald-50 disabled:opacity-50">
+            <PlayCircle size={12} /> Contabilizar
+          </button>
+          <label className="ml-auto flex items-center gap-1.5 text-gray-600 cursor-pointer">
+            <input type="checkbox" checked={ocultarConcil} onChange={(e) => setOcultarConcil(e.target.checked)} />
+            Ocultar lo ya conciliado (dejar sólo lo pendiente)
+          </label>
+        </div>
+      )}
 
       {cuentas.length === 0 && (
         <p className="text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded px-3 py-2">
@@ -230,7 +268,9 @@ export function ConciliacionContablePage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Izquierda: movimientos del banco */}
         <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-          <div className="px-3 py-2 border-b text-xs text-gray-500">{movs.length} movimiento(s)</div>
+          <div className="px-3 py-2 border-b text-xs text-gray-500">
+            {movs.length} movimiento(s){pendientes > 0 ? ` · ${pendientes} por conciliar` : movs.length ? ' · todo conciliado ✓' : ''}
+          </div>
           <div className="overflow-y-auto max-h-[70vh]">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-600 sticky top-0">
@@ -243,17 +283,19 @@ export function ConciliacionContablePage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {movs.length === 0 && (
+                {movsVis.length === 0 && (
                   <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-500">
-                    {eid ? 'Sin movimientos. Sube un estado o dale «Sugerir todo».' : 'Elige una cuenta y un estado.'}
+                    {movs.length === 0
+                      ? (eid ? 'Sin movimientos. Sube un estado o dale «Conciliar todo».' : 'Elige una cuenta y un estado.')
+                      : 'Todo conciliado 🎉 — quita «Ocultar lo ya conciliado» para verlos.'}
                   </td></tr>
                 )}
-                {movs.map((m) => {
+                {movsVis.map((m) => {
                   const c = CLASIF[m.clasificacion || 'otro'];
                   const e = EST[m.concil_estado || 'pendiente'];
                   return (
                     <tr key={m.id} onClick={() => setSelMov(m.id)}
-                      className={`cursor-pointer hover:bg-gray-50 ${selMov === m.id ? 'bg-emerald-50' : ''}`}>
+                      className={`cursor-pointer ${selMov === m.id ? 'bg-emerald-100' : conciliado(m) ? 'bg-emerald-50/50 hover:bg-emerald-50' : 'hover:bg-gray-50'}`}>
                       <td className="px-2 py-1.5 text-xs whitespace-nowrap align-top">{String(m.fecha).slice(0, 10)}</td>
                       <td className="px-2 py-1.5 text-xs max-w-[220px]">
                         <div className="truncate" title={m.concepto}>{m.concepto}</div>
@@ -288,8 +330,9 @@ export function ConciliacionContablePage() {
           )}
           <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
             <div className="px-3 py-2 border-b text-xs text-gray-500 flex items-center gap-2">
-              <BookOpen size={13} /> Contabilidad de la 102 · {libro.length} mov. ·
-              <span className="text-teal-700">✓ empatado</span> / <span className="text-amber-600">en tránsito</span>
+              <BookOpen size={13} /> Contabilidad de la 102 · {libro.length} mov ·
+              <span className="text-teal-700">{libro.filter((l: any) => l.empatado_con).length} ✓ empatado</span> /
+              <span className="text-amber-600">{libro.filter((l: any) => !l.empatado_con).length} en tránsito</span>
             </div>
             <div className="overflow-y-auto max-h-[70vh]">
               <table className="w-full text-sm">
@@ -304,14 +347,15 @@ export function ConciliacionContablePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {libro.length === 0 && (
+                  {libroVis.length === 0 && (
                     <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-500">
-                      {!cuenta?.cuenta_contable_id ? 'Asigna la cuenta contable del banco (102) arriba.'
+                      {libro.length > 0 ? 'Todo empatado 🎉 — quita «Ocultar lo ya conciliado» para verlos.'
+                        : !cuenta?.cuenta_contable_id ? 'Asigna la cuenta contable del banco (102) arriba.'
                         : libroQ.isFetching ? 'Cargando…'
-                        : 'La 102 no tiene movimientos en este periodo. Corre «Sugerir todo» (empata cada egreso con su XML) y luego «Contabilizar confirmados» para generar las pólizas.'}
+                        : 'La 102 no tiene movimientos en este periodo. Dale «Conciliar todo» para generar las pólizas.'}
                     </td></tr>
                   )}
-                  {libro.map((l) => (
+                  {libroVis.map((l) => (
                     <tr key={l.id} className={l.empatado_con ? 'bg-teal-50/50' : ''}>
                       <td className="px-2 py-1.5 text-xs whitespace-nowrap">{l.fecha}</td>
                       <td className="px-2 py-1.5 text-xs text-gray-500">#{l.folio}</td>

@@ -5940,8 +5940,32 @@ columnas Cuenta/Nombre en un solo combo) y en **Conciliación** (`SelCuenta`, co
 que además resuelve el id de una cuenta recién creada). Pendiente extenderlo a las asignaciones
 (ventas/compras/nómina) que usan `CuentaPicker` por datalist. Front build=0.
 
+**(Extensión, 2026-09-15b) Selector buscable en TODAS las asignaciones.** `CuentaPicker` se reescribió
+como envoltorio de `SelectorCuenta` (por dentro), así que ventas (401), compras (115/601) y conceptos
+de nómina —en Asignación de cuentas y en Pólizas de venta/compra— quedaron buscables por código o
+nombre, con «Crear cuenta» delegado al padre (`onCrearExterno`). Nuevo wrapper `SelectorCuentaId` para
+los combos que guardan `account_id`: usado en «Pagos» (cuentas fijas de cobros/pagos) y en la **cuenta
+contable del banco** (Tesorería → Bancos), que ahora deja **crear la 102 al vuelo**.
+
 **Pólizas de conciliación bancaria organizadas como «Manuales».** En el libro diario (`PolizasLista`),
 `categoria()` mandaba las de origen `BANCO` (conciliación: 'otro'/comisión/tarjeta que no casaron con
 un CFDI) al cajón vago **«Otro»**. Ahora se agrupan en **«Manuales»** (son asientos que el usuario
 arma/confirma a mano). Los cobros/pagos casados (reglas `cobro*`/`pago*`, incl. `pago_pue`) siguen en
 «Cobros/Pagos». Sólo cambia la categoría de despliegue/filtro; el origen guardado no se toca.
+
+---
+
+## 2026-09-15 (conciliación) — «Conciliar todo» en 1 clic + resaltar/ocultar lo ya conciliado
+
+La esencia de una conciliación bancaria es que **todos** los movimientos del banco estén
+contabilizados. Se agregó un botón único **«Conciliar todo»** que hace los tres pasos en orden:
+**cotejar** (empata con lo ya asentado en la 102 —así no se duplica un pago PUE ya hecho—) →
+**sugerir** (clasifica el resto) → **contabilizar** (crea las pólizas de lo confirmado). Los tres
+pasos sueltos siguen disponibles (control fino), en chico.
+
+**Ver sólo lo pendiente.** Toggle **«Ocultar lo ya conciliado»** que, en las DOS columnas, esconde lo
+reconciliado y deja sólo lo que falta; los renglones conciliados salen resaltados en verde. La cabecera
+muestra «N por conciliar» / «todo conciliado ✓» y en la 102 el conteo empatado/en tránsito. Backend:
+`movimientosDelLibro` ahora marca empatada una línea de la 102 no sólo si un movimiento la cotejó
+(`conciliado_line_id`), también si su **póliza nació de un movimiento del banco** (`poliza_id = e.id`)
+—antes esas salían «en tránsito» aunque ya estuvieran conciliadas—. TSC back=0, front build=0.

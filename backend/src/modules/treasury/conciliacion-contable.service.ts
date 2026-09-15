@@ -492,7 +492,10 @@ export async function movimientosDelLibro(companyId: string, estadoId: string) {
   const lineas = (await query<any>(
     `SELECT l.id, TO_CHAR(e.fecha,'YYYY-MM-DD') AS fecha, e.folio, e.concepto AS poliza_concepto,
             l.concepto, l.cargo::float AS cargo, l.abono::float AS abono,
-            (SELECT bm.id FROM bancos_movimientos bm WHERE bm.conciliado_line_id = l.id LIMIT 1) AS empatado_con
+            -- Conciliada si un movimiento del banco la COTEJÓ (conciliado_line_id) o
+            -- si su póliza NACIÓ de un movimiento del banco (poliza_id = e.id).
+            (SELECT bm.id FROM bancos_movimientos bm
+              WHERE bm.company_id=$1 AND (bm.conciliado_line_id = l.id OR bm.poliza_id = e.id) LIMIT 1) AS empatado_con
        FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id
       WHERE e.company_id=$1 AND l.account_id=$2 AND e.fecha BETWEEN $3 AND $4
       ORDER BY e.fecha, e.folio`, [companyId, est.banco_cuenta_id, desde, hasta])).rows;
