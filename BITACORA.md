@@ -5912,3 +5912,10 @@ la única forma de ligarlo era en Conciliación (poco visible). Ahora cada **tar
 Tesorería → Bancos trae un **selector de cuenta contable** (102-xx / pasivo de tarjeta) para ligarla
 ahí mismo; los sin ligar salen resaltados. Reusa `actualizarCuentaBancaria`. Con eso el banco queda
 disponible para conciliar y para los pagos PUE. Front build=0.
+
+**5. `origen_uuid` de las pólizas: VARCHAR(40) → VARCHAR(80).** Generar el pago PUE tronaba con
+«value too long for character varying(40)»: la clave de idempotencia `PAGOPUE:`+uuid mide 44 y no
+cabía en `journal_entries.origen_uuid` (40). El CFDI pelón (36) sí cabía —por eso la compra no
+fallaba—. Ensanchada a 80 con la migración `2026-09-15_origen_uuid_ancho.sql`; de paso arregla el
+mismo desborde latente de la conciliación (`BANCO:`+uuid = 42, `TARJETA:`+uuid = 44). El arranque de
+Render corre las migraciones primero, así que aplica sola al redeploy.
