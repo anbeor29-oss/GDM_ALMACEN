@@ -5919,3 +5919,23 @@ cabía en `journal_entries.origen_uuid` (40). El CFDI pelón (36) sí cabía —
 fallaba—. Ensanchada a 80 con la migración `2026-09-15_origen_uuid_ancho.sql`; de paso arregla el
 mismo desborde latente de la conciliación (`BANCO:`+uuid = 42, `TARJETA:`+uuid = 44). El arranque de
 Render corre las migraciones primero, así que aplica sola al redeploy.
+
+---
+
+## 2026-09-15 (contabilidad/UI) — Editar póliza que tronaba, y selector de cuentas BUSCABLE + creable
+
+**Editar póliza «value too long for character varying(40)».** `editarPoliza` copiaba el `origen_uuid`
+de la póliza a **cada renglón** en `journal_lines.uuid_cfdi` (VARCHAR 40). En una póliza de banco/pago
+el `origen_uuid` lleva prefijo (`BANCO:`+uuid = 42, `PAGOPUE:`+uuid = 44): no cabía y además no es un
+UUID de CFDI. Ahora sólo un **UUID de CFDI real** va a `uuid_cfdi`; las claves con prefijo dejan
+`uuid_cfdi` en null (corrige el error y deja de corromper la dimensión al editar).
+
+**Selector de cuentas buscable + con «Crear cuenta» (`SelectorCuenta.tsx`).** Los `<datalist>` y
+`<select>` con el catálogo entero filtraban mal («busca por todo el catálogo»). Nuevo combobox: se
+escriben las primeras letras del **código o del nombre**, la lista se acota en el acto (máx. 60),
+flechas + Enter para elegir, y un renglón **«＋ Crear cuenta»** que abre el alta rápida
+(`ModalCrearSubcuenta`) e invalida `['ctas-mov']`/`['ctas-todas']` para que aparezca ya. Trabaja por
+código. Conectado en: **`PartidasPoliza`** (editor de pólizas + póliza manual; se fusionaron las
+columnas Cuenta/Nombre en un solo combo) y en **Conciliación** (`SelCuenta`, con adaptador código↔id
+que además resuelve el id de una cuenta recién creada). Pendiente extenderlo a las asignaciones
+(ventas/compras/nómina) que usan `CuentaPicker` por datalist. Front build=0.

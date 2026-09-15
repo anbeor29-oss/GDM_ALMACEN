@@ -7,8 +7,9 @@
  * Cada movimiento genera una póliza banco↔contraparte. La contabilidad se cuadra
  * contra el documento del banco, que es la fuente de la verdad del dinero.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { SelectorCuenta } from '@/components/SelectorCuenta';
 import {
   Landmark, RefreshCw, Wand2, PlayCircle, Check, X, Upload, Settings2, Undo2, FileText, Link2, BookOpen,
 } from 'lucide-react';
@@ -41,16 +42,20 @@ const EST: Record<string, { txt: string; color: string }> = {
   omitido:       { txt: 'Omitido',      color: 'text-gray-400 line-through' },
 };
 
-/** Selector de cuenta contable (por ID) de las de movimiento. */
+/** Selector de cuenta contable BUSCABLE (por ID) — envuelve a SelectorCuenta, que
+ *  trabaja por código, resolviendo código↔id y el alta de una cuenta nueva. */
 function SelCuenta({ ctas, value, onChange, placeholder = '— cuenta —' }: {
   ctas: any[]; value: string; onChange: (id: string) => void; placeholder?: string;
 }) {
+  const [pend, setPend] = useState('');
+  const codActual = ctas.find((c) => c.id === value)?.codigo || '';
+  // Cuando una cuenta recién creada aparece en el catálogo, resuelve su id.
+  useEffect(() => {
+    if (pend) { const c = ctas.find((x) => x.codigo === pend); if (c) { onChange(c.id); setPend(''); } }
+  }, [ctas, pend]);   // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <select value={value || ''} onChange={(e) => onChange(e.target.value)}
-      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full">
-      <option value="">{placeholder}</option>
-      {ctas.map((c) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
-    </select>
+    <SelectorCuenta cuentas={ctas} value={pend || codActual} placeholder={placeholder}
+      onChange={(cod) => { const c = ctas.find((x) => x.codigo === cod); if (c) onChange(c.id); else setPend(cod); }} />
   );
 }
 

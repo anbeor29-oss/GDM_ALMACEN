@@ -15,6 +15,8 @@
  */
 import { useMemo, useState } from 'react';
 import { Trash2 } from 'lucide-react';
+import { SelectorCuenta } from '@/components/SelectorCuenta';
+import { useMascara } from '@/utils/cuenta';
 
 /** #,###.## con dos decimales, sin símbolo — el formato contable de importes. */
 export const fmt2 = (n: any) =>
@@ -53,7 +55,7 @@ export function CampoImporte({ value, onChange, onMinus, className }: {
 }
 
 export function PartidasPoliza({
-  lineas, cuentas, sumaCargo, sumaAbono, onLinea, onCuadrar, onQuitar, idBase,
+  lineas, cuentas, sumaCargo, sumaAbono, onLinea, onCuadrar, onQuitar,
 }: {
   lineas: LineaPoliza[];
   cuentas: any[];
@@ -62,27 +64,18 @@ export function PartidasPoliza({
   onLinea: (i: number, patch: Partial<LineaPoliza>) => void;
   onCuadrar: (i: number, campo: 'cargo' | 'abono') => void;
   onQuitar: (i: number) => void;
-  idBase: string;
+  /** @deprecated ya no se usa (los datalists se reemplazaron por SelectorCuenta). */
+  idBase?: string;
 }) {
   const nombreDe = useMemo(() => new Map<string, string>(cuentas.map((c: any) => [c.codigo, c.nombre])), [cuentas]);
-  const codigoDeNombre = useMemo(() => new Map<string, string>(cuentas.map((c: any) => [c.nombre, c.codigo])), [cuentas]);
-  const idCod = `${idBase}-cuentas`;
-  const idNom = `${idBase}-nombres`;
+  const mascara = useMascara();
 
   return (
-    <div className="border rounded-lg overflow-x-auto">
-      <datalist id={idCod}>
-        {cuentas.map((c) => <option key={c.id} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
-      </datalist>
-      <datalist id={idNom}>
-        {cuentas.map((c) => <option key={c.id} value={c.nombre}>{c.codigo}</option>)}
-      </datalist>
-
+    <div className="border rounded-lg overflow-visible">
       <table className="w-full text-sm">
         <thead className="border-b border-indigo-200 bg-indigo-50/60">
           <tr>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-900 w-32">Cuenta</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-900 w-56">Nombre de la cuenta</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-900 w-72">Cuenta (busca por código o nombre)</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-900">Concepto</th>
             <th className="px-3 py-2 text-right text-xs font-semibold text-sky-800 w-36 bg-sky-100/70">Debe</th>
             <th className="px-3 py-2 text-right text-xs font-semibold text-violet-800 w-36 bg-violet-100/70">Haber</th>
@@ -90,41 +83,31 @@ export function PartidasPoliza({
           </tr>
         </thead>
         <tbody className="divide-y">
-          {lineas.map((l, i) => {
-            const invalido = !!l.codigo && !nombreDe.has(l.codigo);
-            return (
-              <tr key={i}>
-                <td className="px-2 py-1.5 align-top">
-                  <input list={idCod} value={l.codigo} placeholder="Cuenta"
-                    onChange={(e) => onLinea(i, { codigo: e.target.value, ...(nombreDe.has(e.target.value) ? { nombre: nombreDe.get(e.target.value)! } : {}) })}
-                    className={`border rounded px-2 py-1 text-sm w-full font-mono ${invalido ? 'border-rose-400 text-rose-700' : ''}`} />
-                  {invalido && <span className="text-[11px] text-rose-500 block">no existe</span>}
-                </td>
-                <td className="px-2 py-1.5 align-top">
-                  <input list={idNom} value={l.nombre || ''} placeholder="Nombre de la cuenta"
-                    onChange={(e) => onLinea(i, { nombre: e.target.value, ...(codigoDeNombre.has(e.target.value) ? { codigo: codigoDeNombre.get(e.target.value)! } : {}) })}
-                    className="border rounded px-2 py-1 text-sm w-full" />
-                </td>
-                <td className="px-2 py-1.5 align-top">
-                  <input value={l.concepto} onChange={(e) => onLinea(i, { concepto: e.target.value })}
-                    className="border rounded px-2 py-1 text-sm w-full" />
-                </td>
-                <td className="px-2 py-1.5 align-top bg-sky-50/40">
-                  <CampoImporte value={l.cargo} onChange={(v) => onLinea(i, { cargo: v })} onMinus={() => onCuadrar(i, 'cargo')}
-                    className="border rounded px-2 py-1 text-sm w-full text-right tabular-nums outline-none focus:ring-2 focus:ring-sky-300" />
-                </td>
-                <td className="px-2 py-1.5 align-top bg-violet-50/40">
-                  <CampoImporte value={l.abono} onChange={(v) => onLinea(i, { abono: v })} onMinus={() => onCuadrar(i, 'abono')}
-                    className="border rounded px-2 py-1 text-sm w-full text-right tabular-nums outline-none focus:ring-2 focus:ring-violet-300" />
-                </td>
-                <td className="px-1 align-top pt-2">
-                  <button onClick={() => onQuitar(i)} title="Quitar renglón" className="text-gray-300 hover:text-rose-500"><Trash2 size={14} /></button>
-                </td>
-              </tr>
-            );
-          })}
+          {lineas.map((l, i) => (
+            <tr key={i}>
+              <td className="px-2 py-1.5 align-top">
+                <SelectorCuenta cuentas={cuentas} value={l.codigo} mascara={mascara}
+                  onChange={(cod) => onLinea(i, { codigo: cod, nombre: nombreDe.get(cod) || '' })} />
+              </td>
+              <td className="px-2 py-1.5 align-top">
+                <input value={l.concepto} onChange={(e) => onLinea(i, { concepto: e.target.value })}
+                  className="border rounded px-2 py-1 text-sm w-full" />
+              </td>
+              <td className="px-2 py-1.5 align-top bg-sky-50/40">
+                <CampoImporte value={l.cargo} onChange={(v) => onLinea(i, { cargo: v })} onMinus={() => onCuadrar(i, 'cargo')}
+                  className="border rounded px-2 py-1 text-sm w-full text-right tabular-nums outline-none focus:ring-2 focus:ring-sky-300" />
+              </td>
+              <td className="px-2 py-1.5 align-top bg-violet-50/40">
+                <CampoImporte value={l.abono} onChange={(v) => onLinea(i, { abono: v })} onMinus={() => onCuadrar(i, 'abono')}
+                  className="border rounded px-2 py-1 text-sm w-full text-right tabular-nums outline-none focus:ring-2 focus:ring-violet-300" />
+              </td>
+              <td className="px-1 align-top pt-2">
+                <button onClick={() => onQuitar(i)} title="Quitar renglón" className="text-gray-300 hover:text-rose-500"><Trash2 size={14} /></button>
+              </td>
+            </tr>
+          ))}
           <tr className="font-semibold bg-indigo-50 border-t border-indigo-200">
-            <td colSpan={3} className="px-3 py-2 text-right text-indigo-900">Sumas</td>
+            <td colSpan={2} className="px-3 py-2 text-right text-indigo-900">Sumas</td>
             <td className="px-3 py-2 text-right tabular-nums text-sky-900">{fmt2(sumaCargo)}</td>
             <td className="px-3 py-2 text-right tabular-nums text-violet-900">{fmt2(sumaAbono)}</td>
             <td />
