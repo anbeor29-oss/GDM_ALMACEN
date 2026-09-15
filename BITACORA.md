@@ -5998,3 +5998,12 @@ que un pago asentado con la fecha de la factura (18) que el banco aplica días d
 con su póliza (típico de los pagos PUE). Ahora los candidatos son de **todo el mes** y la ventana es
 **±45 días**: manda el importe (±10¢) y se prefiere la fecha más cercana. Así, al «Conciliar todo» esos
 pares se cotejan y «Ocultar lo ya conciliado» deja sólo los huérfanos reales. TSC back=0.
+
+**(Formato FINAL del PDF)** El usuario compartió dos modelos y ambos son de **saldos ajustados** (no la
+hoja por movimiento). Se dejó el PDF en el formato de **saldos ajustados vertical en bloques** (imagen
+«contabilidad.com.do»): BALANCE SEGÚN BANCO (+) depósitos en tránsito (−) cheques/pagos en circulación =
+conciliado; BALANCE SEGÚN LIBROS (+) depósitos del banco no registrados (−) cargos/comisiones no
+registrados = conciliado; dos columnas de importe (Parcial / Importe). Reusa `datosConciliacion` (la
+hoja por movimiento se descartó). **El nombre del archivo lleva fecha y hora** (`..._AAAAMMDD-HHMMSS.pdf`)
+para NO sobrescribir un PDF anterior. La variante de dos columnas lado a lado (2ª imagen) queda como
+opción si la pide (requiere layout a dos columnas, no el util tabular). TSC back=0.
