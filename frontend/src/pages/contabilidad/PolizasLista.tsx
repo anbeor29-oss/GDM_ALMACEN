@@ -29,7 +29,11 @@ function categoria(p: any): 'venta' | 'compra' | 'cobropago' | 'nomina' | 'manua
   if (/^compras/.test(r)) return 'compra';
   if (/^(cobro|pago)/.test(r)) return 'cobropago';
   if (p.origen === 'NOMINA' || /^nomina/.test(r)) return 'nomina';
-  if (p.origen === 'MANUAL' || r === 'manual') return 'manual';
+  // Las de conciliación bancaria (origen BANCO: 'otro'/comisión/tarjeta que no
+  // casaron con un CFDI) se organizan como MANUALES —son asientos que el usuario
+  // arma/confirma a mano—. Los cobros/pagos de banco casados ya salieron arriba
+  // por su regla (cobro/pago/pago_pue).
+  if (p.origen === 'MANUAL' || p.origen === 'BANCO' || r === 'manual') return 'manual';
   return 'otro';
 }
 const ETIQUETA: Record<string, string> = {

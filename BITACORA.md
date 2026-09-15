@@ -5939,3 +5939,9 @@ código. Conectado en: **`PartidasPoliza`** (editor de pólizas + póliza manual
 columnas Cuenta/Nombre en un solo combo) y en **Conciliación** (`SelCuenta`, con adaptador código↔id
 que además resuelve el id de una cuenta recién creada). Pendiente extenderlo a las asignaciones
 (ventas/compras/nómina) que usan `CuentaPicker` por datalist. Front build=0.
+
+**Pólizas de conciliación bancaria organizadas como «Manuales».** En el libro diario (`PolizasLista`),
+`categoria()` mandaba las de origen `BANCO` (conciliación: 'otro'/comisión/tarjeta que no casaron con
+un CFDI) al cajón vago **«Otro»**. Ahora se agrupan en **«Manuales»** (son asientos que el usuario
+arma/confirma a mano). Los cobros/pagos casados (reglas `cobro*`/`pago*`, incl. `pago_pue`) siguen en
+«Cobros/Pagos». Sólo cambia la categoría de despliegue/filtro; el origen guardado no se toca.
