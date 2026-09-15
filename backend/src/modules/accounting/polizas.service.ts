@@ -529,6 +529,11 @@ export async function pagosPuePendientes(companyId: string, anio: number, mes: n
                      WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)
         AND NOT EXISTS (SELECT 1 FROM journal_entries e
                      WHERE e.company_id=c.company_id AND e.origen_uuid='PAGOPUE:'||c.uuid)
+        -- Si el pago ya se registró desde el banco (conciliación cotejó ese CFDI),
+        -- no se ofrece aquí: evitaría duplicar el abono a la 102.
+        AND NOT EXISTS (SELECT 1 FROM bancos_movimientos bm
+                     WHERE bm.company_id=c.company_id AND bm.cfdi_uuid=c.uuid
+                       AND bm.poliza_id IS NOT NULL)
       ORDER BY c.fecha_emision`,
     [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
   return r.rows
