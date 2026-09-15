@@ -400,7 +400,7 @@ async function rangoDelEstado(companyId: string, estadoId: string): Promise<{ de
  */
 export async function cotejarConLibro(companyId: string, estadoId: string) {
   const est = (await query<any>(
-    `SELECT bc.cuenta_contable_id AS banco_cuenta_id, bc.tipo
+    `SELECT bc.cuenta_contable_id AS banco_cuenta_id, bc.tipo, e.anio, e.mes
        FROM bancos_estados_cuenta e JOIN bancos_cuentas bc ON bc.id = e.cuenta_id
       WHERE e.id=$1 AND e.company_id=$2`, [estadoId, companyId])).rows[0];
   if (!est) return { error: 'no se encontró el estado de cuenta' };
@@ -412,6 +412,15 @@ export async function cotejarConLibro(companyId: string, estadoId: string) {
   const esTarjeta = est.tipo === 'TARJETA_CREDITO';
   const rango = await rangoDelEstado(companyId, estadoId);
   if (!rango) return { conciliados: 0, enLibroSinBanco: 0 };
+
+  // Candidatos de TODO el mes del estado (no sólo ±2 días de las líneas): un pago
+  // se asienta con la fecha de la factura (p. ej. 18) y el banco lo aplica días
+  // después (p. ej. 22); si sólo miramos ±2 días nunca casan aunque sean el mismo.
+  const mm = String(est.mes).padStart(2, '0');
+  const mesIni = `${est.anio}-${mm}-01`;
+  const mesFin = new Date(Date.UTC(est.anio, est.mes, 0)).toISOString().slice(0, 10);
+  const desde = rango.desde < mesIni ? rango.desde : mesIni;
+  const hasta = rango.hasta > mesFin ? rango.hasta : mesFin;
 
   const movs = (await query<any>(
     `SELECT id, fecha, retiro, deposito, poliza_id, concil_estado
@@ -425,9 +434,12 @@ export async function cotejarConLibro(companyId: string, estadoId: string) {
        FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id
       WHERE e.company_id=$1 AND l.account_id=$2 AND e.fecha BETWEEN $3 AND $4
         AND NOT EXISTS (SELECT 1 FROM bancos_movimientos bm WHERE bm.conciliado_line_id = l.id)
-      ORDER BY e.fecha`, [companyId, est.banco_cuenta_id, rango.desde, rango.hasta])).rows;
+      ORDER BY e.fecha`, [companyId, est.banco_cuenta_id, desde, hasta])).rows;
 
   const usados = new Set<string>();
+  // Ventana de fecha amplia (los candidatos ya están acotados al mes): el importe
+  // manda (±10¢) y, entre los que empatan, se prefiere el de fecha más cercana.
+  const VENTANA_DIAS = 45;
   const buscar = (monto: number, fechaMov: Date, lado: 'cargo' | 'abono') => {
     let best: any = null, bd = Infinity, bday = Infinity;
     for (const ln of lines) {
@@ -436,7 +448,7 @@ export async function cotejarConLibro(companyId: string, estadoId: string) {
       const diff = Math.abs(round2(val) - round2(monto));
       if (diff > TOL) continue;
       const dd = Math.abs(fechaMov.getTime() - new Date(ln.fecha + 'T00:00:00Z').getTime()) / DIA;
-      if (dd > 2) continue;
+      if (dd > VENTANA_DIAS) continue;
       if (diff < bd - 1e-4 || (Math.abs(diff - bd) < 1e-4 && dd < bday)) { best = ln; bd = diff; bday = dd; }
     }
     return best;
@@ -581,57 +593,68 @@ export async function datosConciliacion(companyId: string, estadoId: string) {
   };
 }
 
+/**
+ * El documento de conciliación bancaria, en el formato del modelo del usuario:
+ * una hoja VERTICAL con un renglón por movimiento del banco — «Concil.» (si ya
+ * tiene póliza), fecha, descripción, la CUENTA CONTABLE contraparte (folio),
+ * depósitos, retiros y el saldo corriente — con saldo inicial y totales.
+ */
 export async function conciliacionPdf(companyId: string, estadoId: string): Promise<{ buffer: Buffer; nombre: string }> {
-  const d = await datosConciliacion(companyId, estadoId);
-  if ('error' in d) throw new Error(d.error);
+  const est = (await query<any>(
+    `SELECT e.anio, e.mes, e.saldo_inicial::float AS saldo_inicial, e.saldo_final::float AS saldo_final,
+            bc.cuenta_contable_id AS banco_cuenta_id, bc.alias, bc.banco_nombre, bc.moneda
+       FROM bancos_estados_cuenta e JOIN bancos_cuentas bc ON bc.id = e.cuenta_id
+      WHERE e.id=$1 AND e.company_id=$2`, [estadoId, companyId])).rows[0];
+  if (!est) throw new Error('no se encontró el estado de cuenta');
   const emp = (await query<any>(`SELECT business_name, rfc FROM companies WHERE id=$1`, [companyId])).rows[0] || {};
 
+  const movs = (await query<any>(
+    `SELECT TO_CHAR(bm.fecha,'DD/MM/YYYY') AS fecha, bm.concepto,
+            bm.deposito::float AS deposito, bm.retiro::float AS retiro,
+            COALESCE(bm.saldo, bm.saldo_calculado)::float AS saldo,
+            (bm.poliza_id IS NOT NULL) AS conciliado,
+            (SELECT string_agg(DISTINCT a.codigo || ' ' || a.nombre, ' / ')
+               FROM journal_lines l JOIN accounting_accounts a ON a.id=l.account_id
+              WHERE l.entry_id = bm.poliza_id AND l.account_id <> $3) AS folio
+       FROM bancos_movimientos bm
+      WHERE bm.company_id=$1 AND bm.estado_id=$2 AND bm.inferido=false
+      ORDER BY bm.orden, bm.fecha`, [companyId, estadoId, est.banco_cuenta_id])).rows;
+
   const filas: Array<Record<string, any>> = [];
-  const secc = (t: string) => filas.push({ concepto: t, _bold: true, _fondo: '#DCE6F5' });
-  const linea = (c: string, det: string, imp: number) => filas.push({ concepto: c, detalle: det, importe: imp });
-  const sub = (c: string, imp: number) => filas.push({ concepto: c, importe: imp, _bold: true });
-
-  secc('SALDO SEGÚN ESTADO DE CUENTA (BANCO)');
-  linea('Saldo final del estado de cuenta', '', d.saldoBanco);
-  secc('(+) Depósitos en tránsito (en libros, aún no en el banco)');
-  if (!d.depTransito.length) linea('— ninguno —', '', 0);
-  d.depTransito.forEach((l: any) => linea(l.concepto || l.poliza_concepto || 'Depósito', `${l.fecha} · pól. #${l.folio}`, l.cargo));
-  sub('Total depósitos en tránsito', d.tDepTransito);
-  secc('(−) Cheques / pagos en circulación (en libros, aún no en el banco)');
-  if (!d.chequesCirc.length) linea('— ninguno —', '', 0);
-  d.chequesCirc.forEach((l: any) => linea(l.concepto || l.poliza_concepto || 'Pago', `${l.fecha} · pól. #${l.folio}`, l.abono));
-  sub('Total cheques / pagos en circulación', d.tChequesCirc);
-  sub('= SALDO CONCILIADO (BANCO)', d.saldoConcBanco);
-
-  secc(`SALDO SEGÚN LIBROS (cuenta ${d.est.cuenta_codigo || '102'})`);
-  linea('Saldo en libros al corte', '', d.saldoLibros);
-  secc('(+) Depósitos del banco no registrados en libros');
-  if (!d.bancoDep.length) linea('— ninguno —', '', 0);
-  d.bancoDep.forEach((m: any) => linea(m.concepto || 'Depósito', m.fecha, m.deposito));
-  sub('Total por registrar (ingresos)', d.tBancoDep);
-  secc('(−) Cargos / comisiones del banco no registrados en libros');
-  if (!d.bancoRet.length) linea('— ninguno —', '', 0);
-  d.bancoRet.forEach((m: any) => linea(m.concepto || 'Cargo', m.fecha, m.retiro));
-  sub('Total por registrar (egresos)', d.tBancoRet);
-  sub('= SALDO CONCILIADO (LIBROS)', d.saldoConcLibros);
+  filas.push({ desc: 'SALDO INICIAL', saldo: est.saldo_inicial ?? 0, _bold: true, _fondo: '#EEF2F7' });
+  let sumDep = 0, sumRet = 0;
+  for (const m of movs) {
+    sumDep += Number(m.deposito) || 0; sumRet += Number(m.retiro) || 0;
+    filas.push({
+      conc: m.conciliado ? 'Sí' : '',
+      fecha: m.fecha, desc: m.concepto, folio: m.folio || '',
+      dep: Number(m.deposito) > 0 ? m.deposito : '',
+      ret: Number(m.retiro) > 0 ? m.retiro : '',
+      saldo: m.saldo,
+    });
+  }
 
   const buffer = await reporteTablaPdf({
-    titulo: 'Conciliación bancaria',
+    titulo: 'CONCILIACIÓN BANCARIA',
     empresa: emp.business_name || '', rfc: emp.rfc || '',
     subtitulos: [
-      `${d.est.alias} · ${d.est.banco_nombre}`,
-      `Periodo: ${MESES_REP[d.est.mes]} ${d.est.anio} (corte al ${d.cutoff})`,
-      d.cuadra ? '✓ Conciliación CUADRADA' : `DIFERENCIA: ${d.diferencia.toFixed(2)} — hay partidas por revisar`,
+      `Banco: ${est.banco_nombre || est.alias}   ·   Moneda: ${est.moneda || 'MXN'}`,
+      `Periodo: ${MESES_REP[est.mes]} ${est.anio}`,
     ],
     columnas: [
-      { titulo: 'Concepto', clave: 'concepto', ancho: 62, align: 'left' },
-      { titulo: 'Referencia', clave: 'detalle', ancho: 20, align: 'left' },
-      { titulo: 'Importe', clave: 'importe', ancho: 18, align: 'right', pesos: true },
+      { titulo: 'Concil.', clave: 'conc', ancho: 7, align: 'center' },
+      { titulo: 'Fecha', clave: 'fecha', ancho: 11, align: 'left' },
+      { titulo: 'Descripción', clave: 'desc', ancho: 33, align: 'left' },
+      { titulo: 'Cuenta (folio)', clave: 'folio', ancho: 21, align: 'left' },
+      { titulo: 'Depósitos', clave: 'dep', ancho: 9, align: 'right', pesos: true },
+      { titulo: 'Retiros', clave: 'ret', ancho: 9, align: 'right', pesos: true },
+      { titulo: 'Saldo', clave: 'saldo', ancho: 10, align: 'right', pesos: true },
     ],
     filas,
-    nota: 'Depósitos en tránsito y cheques/pagos en circulación = movimientos ya en libros (102) que el banco aún no refleja. ' +
-      'Los cargos/comisiones del banco no registrados deben capturarse en libros (botón «Conciliar todo»). Los dos saldos conciliados deben coincidir.',
+    totales: { desc: 'TOTALES', dep: round2(sumDep), ret: round2(sumRet), saldo: est.saldo_final ?? 0 },
+    nota: '«Concil.» = el movimiento ya tiene su póliza (contabilizado o cotejado); los que quedan en blanco '
+      + 'faltan por conciliar. «Cuenta (folio)» es la contraparte contable de cada movimiento.',
     orientacion: 'portrait',
   });
-  return { buffer, nombre: `Conciliacion_${(emp.rfc || '').trim()}_${d.est.anio}${String(d.est.mes).padStart(2, '0')}.pdf` };
+  return { buffer, nombre: `Conciliacion_${(emp.rfc || '').trim()}_${est.anio}${String(est.mes).padStart(2, '0')}.pdf` };
 }

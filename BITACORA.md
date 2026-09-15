@@ -5986,3 +5986,15 @@ Los dos saldos conciliados deben coincidir; el encabezado avisa si cuadra o la d
 partidas salen de lo mismo que ve la pantalla: «en tránsito» = líneas de la 102 sin cotejar; «no
 registrados» = movimientos del banco sin póliza. Ruta `GET /treasury/bancos/estados/:id/conciliacion/pdf`,
 API `descargarConciliacionBancaria`, botón «Conciliación PDF» en la pantalla. TSC back=0, front build=0.
+
+**(Ajuste tras revisar el modelo del usuario, mismo día)** El PDF se **rehízo al formato del modelo**:
+una hoja **vertical con un renglón por movimiento** — Concil. (✓ si ya tiene póliza) · Fecha ·
+Descripción · **Cuenta (folio)** (la contraparte contable de cada movimiento, `string_agg` de las
+partidas de su póliza excluyendo la 102) · Depósitos · Retiros · Saldo — con SALDO INICIAL y TOTALES.
+(`datosConciliacion` de saldos ajustados se conserva por si se expone en pantalla.)
+
+**Cotejo ampliado.** `cotejarConLibro` sólo casaba dentro de **±2 días** de las líneas del estado, así
+que un pago asentado con la fecha de la factura (18) que el banco aplica días después (22) nunca casaba
+con su póliza (típico de los pagos PUE). Ahora los candidatos son de **todo el mes** y la ventana es
+**±45 días**: manda el importe (±10¢) y se prefiere la fecha más cercana. Así, al «Conciliar todo» esos
+pares se cotejan y «Ocultar lo ya conciliado» deja sólo los huérfanos reales. TSC back=0.
