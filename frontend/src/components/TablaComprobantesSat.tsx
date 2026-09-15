@@ -55,6 +55,7 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
   const [tab, setTab] = useState<TabTipo>('I');
   const [buscar, setBuscar] = useState('');
   const [detalle, setDetalle] = useState<{ id: string; modo: Modo } | null>(null);
+  const [asiento, setAsiento] = useState<string | null>(null);   // UUID para ver su póliza
 
   const q = useQuery({
     queryKey: ['sat-vista', direccion, anio, mes],
@@ -148,7 +149,9 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
               const cancelado = c.estado_sat === 'Cancelado';
               const folio = folioDe(c);
               return (
-                <tr key={c.id} className={cancelado ? 'bg-rose-50/40' : 'hover:bg-gray-50'}>
+                <tr key={c.id} onDoubleClick={() => setAsiento(c.uuid)}
+                  title="Doble clic para ver su asiento contable (póliza)"
+                  className={cancelado ? 'bg-rose-50/40' : 'hover:bg-gray-50'}>
                   <td className="px-4 py-2 text-sm whitespace-nowrap">{fechaCorta(c.fecha_emision)}</td>
                   <td className="px-4 py-2 text-sm whitespace-nowrap">
                     {c.tiene_xml ? (
@@ -186,10 +189,148 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
         </table>
       </div>
 
+      <p className="text-[11px] text-gray-400 px-1">
+        El folio abre la representación del comprobante; <b>doble clic</b> en el renglón muestra su
+        <b> asiento contable</b> (la póliza).
+      </p>
+
       {detalle && (
         <ComprobanteModal id={detalle.id} modo={detalle.modo} emitido={emitidos}
           onClose={() => setDetalle(null)} />
       )}
+      {asiento && (
+        <AsientoModal uuid={asiento} onClose={() => setAsiento(null)}
+          claveVista={['sat-vista', direccion, anio, mes]} />
+      )}
+    </div>
+  );
+}
+
+/* ── El asiento contable de un CFDI (doble clic en el renglón) ─────────────────
+ * Muestra las pólizas que tocan el comprobante (su compra y su pago). Si es una
+ * factura PUE con compra pero sin pago, deja elegir el BANCO (de las cuentas
+ * activas) y generar el pago aquí mismo. */
+function AsientoModal({ uuid, onClose, claveVista }: {
+  uuid: string; onClose: () => void; claveVista: any[];
+}) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['asiento', uuid], queryFn: () => api.getAsientoPorUuid(uuid) });
+  const d: any = q.data?.data;
+  const bancosQ = useQuery({ queryKey: ['bancos-cuentas'], queryFn: () => api.getCuentasBancarias() });
+  const bancos: any[] = (bancosQ.data?.data?.cuentas || [])
+    .filter((c: any) => c.cuenta_contable_id && c.tipo !== 'TARJETA_CREDITO');
+  const [banco, setBanco] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+
+  const bancoSel = banco || bancos[0]?.id || '';
+
+  const pagar = async () => {
+    if (!bancoSel) { setErr('Elige el banco con que se pagó.'); return; }
+    setBusy(true); setErr(''); setMsg('');
+    try {
+      const r: any = await api.pagarPue(uuid, bancoSel);
+      setMsg(r?.message || 'Pago contabilizado.');
+      qc.invalidateQueries({ queryKey: ['asiento', uuid] });
+      qc.invalidateQueries({ queryKey: claveVista });
+      qc.invalidateQueries({ queryKey: ['pagos-pue'] });
+    } catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo generar el pago.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl my-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-2.5 border-b sticky top-0 bg-white rounded-t-xl z-10">
+          <span className="text-sm font-semibold text-gray-700">Asiento contable</span>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          {q.isLoading && <p className="text-center text-gray-500 py-8">Cargando…</p>}
+          {!q.isLoading && d?.comprobante && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm border-b pb-3">
+              <b>{d.comprobante.folio}</b>
+              <span className="text-gray-600 truncate max-w-xs">{d.comprobante.proveedor}</span>
+              <span className="font-mono text-xs text-gray-500">{d.comprobante.rfc}</span>
+              <span className="ml-auto font-semibold">{money(d.comprobante.total, d.comprobante.moneda)}</span>
+              {d.comprobante.metodoPago && (
+                <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{d.comprobante.metodoPago}</span>
+              )}
+            </div>
+          )}
+
+          {!q.isLoading && (!d?.asientos || d.asientos.length === 0) && (
+            <p className="text-sm text-gray-500 italic bg-gray-50 border rounded-lg p-4 text-center">
+              Este comprobante todavía no tiene póliza. Genera las <b>pólizas de compra</b>
+              {' '}(Proveedores → Pólizas de compra) y aquí verás su asiento.
+            </p>
+          )}
+
+          {(d?.asientos || []).map((a: any) => {
+            const cargos = a.lineas.reduce((s: number, l: any) => s + Number(l.cargo || 0), 0);
+            const abonos = a.lineas.reduce((s: number, l: any) => s + Number(l.abono || 0), 0);
+            return (
+              <div key={a.id} className="border rounded-lg overflow-hidden">
+                <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-gray-50 border-b text-sm">
+                  <b>#{a.folio}</b>
+                  <span className="text-gray-500">{fechaCorta(a.fecha)}</span>
+                  <span className="text-gray-700 truncate">{a.concepto}</span>
+                  <span className="ml-auto text-[10px] text-gray-400">{a.regla}</span>
+                </div>
+                <table className="w-full text-xs">
+                  <tbody>
+                    {a.lineas.map((l: any, i: number) => (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="px-3 py-1 font-mono text-gray-500 w-24">{l.codigo}</td>
+                        <td className="px-2 py-1">{l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}</td>
+                        <td className="px-3 py-1 text-right w-28 font-mono">{Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
+                        <td className="px-3 py-1 text-right w-28 font-mono">{Number(l.abono) > 0 ? money(l.abono) : ''}</td>
+                      </tr>
+                    ))}
+                    <tr className="font-semibold bg-gray-50">
+                      <td colSpan={2} className="px-3 py-1 text-right">Sumas</td>
+                      <td className="px-3 py-1 text-right font-mono">{money(cargos)}</td>
+                      <td className="px-3 py-1 text-right font-mono">{money(abonos)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+
+          {/* Pago PUE: elegir banco (cuentas activas) y generar */}
+          {!q.isLoading && d?.esPue && d?.tieneCompra && !d?.yaPagada && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+              <p className="text-sm text-emerald-900 font-medium">Factura de contado (PUE) sin pago contabilizado</p>
+              {bancos.length === 0 ? (
+                <p className="text-xs text-amber-800">
+                  No hay cuentas de banco activas con su cuenta contable (102-xx). Créala/actívala en
+                  <b> Tesorería → Bancos</b> para poder generar el pago.
+                </p>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-gray-600">Banco con que se pagó:</span>
+                  <select value={bancoSel} onChange={(e) => setBanco(e.target.value)} className="input py-1 text-xs">
+                    {bancos.map((b) => <option key={b.id} value={b.id}>{b.alias} · {b.banco_nombre}</option>)}
+                  </select>
+                  <button onClick={pagar} disabled={busy}
+                    className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm">
+                    {busy ? 'Generando…' : 'Generar pago'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {!q.isLoading && d?.esPue && d?.yaPagada && (
+            <p className="text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded px-3 py-2">
+              Esta factura de contado ya tiene su pago contabilizado.
+            </p>
+          )}
+          {msg && <p className="text-sm text-emerald-700">{msg}</p>}
+          {err && <p className="text-sm text-rose-600">{err}</p>}
+        </div>
+      </div>
     </div>
   );
 }

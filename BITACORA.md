@@ -5864,3 +5864,23 @@ que usa el uuid a secas). El banco es la **cuenta contable 102-xx** de la cuenta
 `getPagosPuePendientes`/`generarPagosPue`. **Ojo (a confirmar con el usuario):** el pago sólo se
 genera si la factura ya tiene su compra; el movimiento IVA 119→118 sigue el patrón del complemento —si
 su política de acreditamiento de PUE difiere, se ajusta. TSC back=0, front=0, build=0.
+
+---
+
+## 2026-09-14 (XML del SAT / contabilidad) — Doble clic en un recibido → su asiento contable, y pago PUE desde ahí
+
+En **XML del SAT → Recibidos** (y Emitidos), **doble clic** en un renglón abre su **asiento contable**:
+todas las pólizas que tocan ese CFDI (su compra y su pago, sea por complemento, conciliación o PUE),
+cada una con sus partidas (cuenta, cargo, abono) y sus sumas. Se ligan por `origen_uuid` (la compra)
+y por `uuid_cfdi` en las partidas (los pagos). El folio sigue abriendo la representación; el doble
+clic es el asiento (hay una pista bajo la tabla).
+
+`polizas.service.asientoPorUuid(companyId, uuid)` devuelve el comprobante + los asientos + banderas
+`tieneCompra`/`esPue`/`yaPagada`. Ruta `GET /accounting/asiento/:uuid`. API `getAsientoPorUuid`.
+
+**«Cuentas de banco activas» dentro del asiento:** si el recibido es **PUE con compra pero sin pago**,
+el modal muestra las **cuentas de banco activas** (las `bancos_cuentas` con `cuenta_contable_id`, sin
+tarjetas) y un botón **«Generar pago»** que crea la póliza `201/102` ahí mismo. Ruta
+`POST /accounting/polizas/pago-pue` ({uuid, bancoCuentaId}) → reusa `generarPagoPue`. Se reforzó
+`generarPagoPue` con un guard: si el CFDI ya se pagó desde el banco (conciliación: `bancos_movimientos`
+con ese uuid y `poliza_id`), **no** duplica el abono a la 102. API `pagarPue`. TSC back=0, front=0, build=0.

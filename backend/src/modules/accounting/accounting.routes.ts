@@ -1337,6 +1337,27 @@ router.post(
   })
 );
 
+/** POST /accounting/polizas/pago-pue — genera el pago de UNA factura PUE. body: { uuid, bancoCuentaId }. */
+router.post(
+  '/polizas/pago-pue',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await polizas.generarPagoPue(
+      companyId(req), String(req.body?.uuid || ''), String(req.body?.bancoCuentaId || ''), req.user?.userId);
+    if ('error' in r) { res.status(400).json({ success: false, message: r.error }); return; }
+    res.json({ success: true, data: r, message: `Pago contabilizado (póliza #${r.folio}).` });
+  })
+);
+
+/** GET /accounting/asiento/:uuid — el asiento contable (pólizas) que tocan un CFDI. */
+router.get(
+  '/asiento/:uuid',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await polizas.asientoPorUuid(companyId(req), String(req.params.uuid));
+    res.json({ success: true, data });
+  })
+);
+
 /** GET /accounting/cuentas-fijas — cuentas asignadas para cobros/pagos (IVA, banco). */
 router.get(
   '/cuentas-fijas',

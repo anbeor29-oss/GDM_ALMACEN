@@ -562,6 +562,12 @@ export async function generarPagoPue(
   const total = round2(c.total);
   if (total <= 0) return { error: 'el CFDI no tiene importe' };
 
+  // Si ese CFDI ya se pagó desde el banco (conciliación), no se duplica el abono a la 102.
+  const yaBanco = (await query<any>(
+    `SELECT 1 FROM bancos_movimientos WHERE company_id=$1 AND cfdi_uuid=$2 AND poliza_id IS NOT NULL LIMIT 1`,
+    [companyId, uuid])).rows[0];
+  if (yaBanco) return { error: 'esta factura ya se pagó desde el banco (conciliación); no se duplica' };
+
   const bc = (await query<any>(
     `SELECT cuenta_contable_id FROM bancos_cuentas WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL`,
     [bancoCuentaId, companyId])).rows[0];
@@ -614,6 +620,59 @@ export async function generarPagosPueDelMes(
     if ('ok' in r) creadas++; else omitidas.push({ folio: p.folio, motivo: r.error });
   }
   return { creadas, omitidas };
+}
+
+/**
+ * El ASIENTO CONTABLE de un CFDI: todas las pólizas que lo tocan (su compra y su
+ * pago, sea por complemento, conciliación o PUE), con sus partidas. Sirve para
+ * ver, desde el comprobante, cómo quedó contabilizado. Se ligan por `origen_uuid`
+ * (la compra) y por `uuid_cfdi` en las partidas (los pagos referencian el CFDI).
+ */
+export async function asientoPorUuid(companyId: string, uuid: string) {
+  const c = (await query<any>(
+    `SELECT uuid, serie, folio, total, moneda, metodo_pago, nombre_emisor, rfc_emisor, tipo_comprobante,
+            TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha
+       FROM cfdi_recibidos WHERE company_id=$1 AND uuid=$2 LIMIT 1`, [companyId, uuid])).rows[0];
+
+  const ents = (await query<any>(
+    `SELECT e.id, e.folio, TO_CHAR(e.fecha,'YYYY-MM-DD') AS fecha, e.concepto, e.regla, e.tipo, e.origen_uuid
+       FROM journal_entries e
+      WHERE e.company_id=$1
+        AND (e.origen_uuid=$2
+             OR e.id IN (SELECT entry_id FROM journal_lines WHERE company_id=$1 AND uuid_cfdi=$2))
+      ORDER BY e.fecha, e.folio`, [companyId, uuid])).rows;
+
+  const ids = ents.map((e) => e.id);
+  const lineas = ids.length ? (await query<any>(
+    `SELECT l.entry_id, l.cargo::float AS cargo, l.abono::float AS abono, l.concepto,
+            a.codigo, a.nombre
+       FROM journal_lines l JOIN accounting_accounts a ON a.id=l.account_id
+      WHERE l.entry_id = ANY($1::uuid[])
+      ORDER BY (l.cargo IS NULL), a.codigo`, [ids])).rows : [];
+
+  const asientos = ents.map((e) => ({
+    id: e.id, folio: e.folio, fecha: e.fecha, concepto: e.concepto, regla: e.regla, tipo: e.tipo,
+    lineas: lineas.filter((l) => l.entry_id === e.id)
+      .map((l) => ({ codigo: l.codigo, nombre: l.nombre, concepto: l.concepto, cargo: l.cargo, abono: l.abono })),
+  }));
+
+  // ¿Ya se pagó? PUE con su póliza PAGOPUE, o un pago (por banco/complemento) que
+  // abona una cuenta 102 referenciando este CFDI.
+  const pagadaPue = ents.some((e) => e.origen_uuid === `PAGOPUE:${uuid}`);
+  const pagadaBanco = asientos.some((a) =>
+    a.regla !== 'compras_cfdi_v1' && a.lineas.some((l: any) => /^102/.test(l.codigo || '') && Number(l.abono) > 0));
+
+  return {
+    comprobante: c ? {
+      uuid: c.uuid, folio: [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8),
+      proveedor: c.nombre_emisor || c.rfc_emisor || '', rfc: c.rfc_emisor,
+      total: round2(c.total), moneda: c.moneda || 'MXN', metodoPago: c.metodo_pago, fecha: c.fecha,
+    } : null,
+    asientos,
+    tieneCompra: ents.some((e) => e.origen_uuid === uuid),
+    esPue: (c?.metodo_pago || '') === 'PUE',
+    yaPagada: pagadaPue || pagadaBanco,
+  };
 }
 
 /**

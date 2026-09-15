@@ -1248,6 +1248,16 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-pagos-pue', { anio, mes, ...opts });
     return r.data;
   }
+  /** El asiento contable (pólizas) que tocan un CFDI, por su UUID. */
+  async getAsientoPorUuid(uuid: string) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/asiento/${uuid}`);
+    return r.data;
+  }
+  /** Genera el pago de UNA factura PUE contra el banco elegido. */
+  async pagarPue(uuid: string, bancoCuentaId: string) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/pago-pue', { uuid, bancoCuentaId });
+    return r.data;
+  }
 
   /* ── Pólizas (paso 1: ventas) ── */
   async getPolizas(anio: number, mes: number) {
