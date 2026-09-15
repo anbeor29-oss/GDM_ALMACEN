@@ -5905,3 +5905,10 @@ Tesorería→Bancos). El catálogo ya trae los agrupadores 102.01 Bancos naciona
 recibido) el **folio va en azul** (referencia para correcciones) y la póliza de **pago PUE** (`pago_pue_v1`)
 trae un **«Deshacer»** que la borra (para corregir el banco y regenerarla). La cancelación del IVA
 119→118 en el pago PUE quedó confirmada por el usuario. TSC back=0, front=0, build=0.
+
+**4. Ligar la cuenta contable del banco desde Tesorería → Bancos.** El caso «BANCREA no aparece» era
+que su registro bancario no estaba **ligado** a su cuenta del catálogo (`cuenta_contable_id` vacío), y
+la única forma de ligarlo era en Conciliación (poco visible). Ahora cada **tarjeta de banco** en
+Tesorería → Bancos trae un **selector de cuenta contable** (102-xx / pasivo de tarjeta) para ligarla
+ahí mismo; los sin ligar salen resaltados. Reusa `actualizarCuentaBancaria`. Con eso el banco queda
+disponible para conciliar y para los pagos PUE. Front build=0.

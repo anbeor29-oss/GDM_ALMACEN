@@ -48,8 +48,19 @@ export function BancosCuentas() {
   const q = useQuery({ queryKey: ['bancos-cuentas'], queryFn: () => api.getCuentasBancarias() });
   const cuentas: any[] = q.data?.data?.cuentas || [];
 
+  // Cuentas de movimiento del catálogo, para ligar cada banco a su cuenta contable
+  // aquí mismo (antes sólo se podía en Conciliación, y un banco sin ligar no se
+  // podía contabilizar ni usar para pagos).
+  const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
+  const ctasMov: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);
+
   const refrescar = () => qc.invalidateQueries({ queryKey: ['bancos-cuentas'] });
   const elegidaObj = cuentas.find((c: any) => c.id === elegida);
+
+  const ligarCuenta = async (bancoId: string, cuentaId: string) => {
+    try { await api.actualizarCuentaBancaria(bancoId, { cuentaContableId: cuentaId || null }); refrescar(); }
+    catch (e: any) { setError(e?.response?.data?.message || 'No se pudo ligar la cuenta contable.'); }
+  };
 
   return (
     <div className="space-y-4">
@@ -145,6 +156,23 @@ export function BancosCuentas() {
                 <p className="text-xs text-amber-700 mt-1">
                   {c.ultimo_advertencias} movimiento(s) con advertencia en el último mes.
                 </p>
+              )}
+            </div>
+
+            {/* Cuenta contable: ligar el banco a su cuenta del catálogo aquí mismo.
+                Sin ella no se puede contabilizar ni usar el banco para pagos. */}
+            <div className="mt-3 pt-3 border-t">
+              <p className="text-[11px] text-gray-500 uppercase tracking-wide">
+                {c.tipo === 'TARJETA_CREDITO' ? 'Cuenta de pasivo (201/205-xx)' : 'Cuenta contable (102-xx)'}
+              </p>
+              {puedeEditar ? (
+                <select value={c.cuenta_contable_id || ''} onChange={(e) => ligarCuenta(c.id, e.target.value)}
+                  className={`input py-1 text-xs w-full mt-1 ${c.cuenta_contable_id ? '' : 'border-amber-300 bg-amber-50'}`}>
+                  <option value="">— sin ligar: elige su cuenta —</option>
+                  {ctasMov.map((x) => <option key={x.id} value={x.id}>{x.codigo} — {x.nombre}</option>)}
+                </select>
+              ) : (
+                <p className="text-sm font-mono mt-0.5">{c.cuenta_contable_codigo || 'sin ligar'}</p>
               )}
             </div>
 
