@@ -6007,3 +6007,24 @@ registrados = conciliado; dos columnas de importe (Parcial / Importe). Reusa `da
 hoja por movimiento se descartó). **El nombre del archivo lleva fecha y hora** (`..._AAAAMMDD-HHMMSS.pdf`)
 para NO sobrescribir un PDF anterior. La variante de dos columnas lado a lado (2ª imagen) queda como
 opción si la pide (requiere layout a dos columnas, no el util tabular). TSC back=0.
+
+---
+
+## 2026-09-15 (contabilidad) — Cierre con 305.01/305.02 por año + «Reconstruir año» activa el ejercicio solo
+
+**Cuenta de resultado del ejercicio 305.01 / 305.02.** El cierre creaba una sola cuenta con agrupador
+305.01 fija. Ahora `resolverCuentaResultado(anio, utilidad)` usa **305.01 (utilidad, ACREEDORA)** o
+**305.02 (pérdida, DEUDORA)** según el signo, nombrada **«Resultado Ejercicio {año}»** (una por año);
+si entre corridas cambia el signo, corrige el agrupador/naturaleza de esa misma cuenta. La póliza de
+cierre sigue: salda ingresos/costos/gastos (4xx/5xx/6xx/7xx) contra esa cuenta; utilidad→abono,
+pérdida→cargo; re-ejecutable; fecha 31/12; `regla='cierre_ejercicio'` (excluida del arrastre de balanza).
+
+**«Reconstruir año» crea los periodos solos.** Los reportes 2025 salían vacíos porque el ejercicio no
+estaba «activado» (0/12 periodos), y `alimentarDesdePolizas` exige el periodo. Nuevo `asegurarEjercicio`
+(idempotente: crea el `accounting_fiscal_year` + 12 periodos calendario) se llama al inicio de
+`alimentarAnioDesdePolizas`, así «Reconstruir año» de 2025 crea los periodos Y alimenta la balanza en un
+clic, y de ahí se llenan todos los estados. TSC back=0.
+
+**Pendiente/nota (a confirmar con el usuario):** cierre MENSUAL (hoy sólo hay anual) y verificar el
+arrastre nominal→0 al cruzar a 2026 (la balanza excluye el cierre; el arrastre de saldos iniciales de
+enero 2026 debe partir de los saldos de balance, no de las nominales).

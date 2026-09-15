@@ -73,18 +73,39 @@ export async function determinarResultado(companyId: string, anio: number) {
   };
 }
 
-/** Cuenta de movimiento «Resultado del ejercicio» (agrupador 305). Si no existe,
- *  se crea —bajo su mayor 305 si lo hay— con un código libre. */
-async function resolverCuenta305(companyId: string): Promise<{ id: string; codigo: string; creada: boolean } | { error: string }> {
-  const mov = (await query<any>(
-    `SELECT id, codigo FROM accounting_accounts
-      WHERE company_id=$1 AND permite_movimientos AND codigo_agrupador LIKE '305%'
-      ORDER BY codigo_agrupador, codigo LIMIT 1`, [companyId])).rows[0];
-  if (mov) return { id: mov.id, codigo: mov.codigo, creada: false };
+/**
+ * Cuenta de capital del RESULTADO del ejercicio, por AÑO y según el signo:
+ *   · utilidad → agrupador 305.01, naturaleza ACREEDORA
+ *   · pérdida  → agrupador 305.02, naturaleza DEUDORA
+ * Se llama «Resultado Ejercicio {año}» (una por año). Si ya existe la de ese año y
+ * el resultado cambió de signo entre corridas, se le corrige agrupador/naturaleza.
+ * Si no existe, se crea colgada de su mayor 305 (o 305.01/305.02 si están como control).
+ */
+async function resolverCuentaResultado(
+  companyId: string, anio: number, utilidad: boolean,
+): Promise<{ id: string; codigo: string; creada: boolean } | { error: string }> {
+  const agr = utilidad ? '305.01' : '305.02';
+  const natur = utilidad ? 'ACREEDORA' : 'DEUDORA';
+  const nombre = `Resultado Ejercicio ${anio}`;
 
+  // ¿Ya existe la cuenta de resultado de ESTE año? (por nombre, bajo el 305).
+  const ya = (await query<any>(
+    `SELECT id, codigo, codigo_agrupador FROM accounting_accounts
+      WHERE company_id=$1 AND permite_movimientos AND codigo_agrupador LIKE '305%' AND nombre=$2
+      LIMIT 1`, [companyId, nombre])).rows[0];
+  if (ya) {
+    if (ya.codigo_agrupador !== agr) {
+      // El signo cambió (utilidad↔pérdida) entre corridas: corrige el rubro.
+      await query(`UPDATE accounting_accounts SET codigo_agrupador=$2, naturaleza=$3 WHERE id=$1`, [ya.id, agr, natur]);
+    }
+    return { id: ya.id, codigo: ya.codigo, creada: false };
+  }
+
+  // Mayor del que cuelga: 305.01/305.02 como control si existe; si no, el 305.
   const mayor = (await query<any>(
     `SELECT id, codigo, nivel FROM accounting_accounts
-      WHERE company_id=$1 AND codigo_agrupador='305' ORDER BY nivel LIMIT 1`, [companyId])).rows[0];
+      WHERE company_id=$1 AND NOT permite_movimientos AND codigo_agrupador IN ($2,'305')
+      ORDER BY (codigo_agrupador=$2) DESC, nivel DESC LIMIT 1`, [companyId, agr])).rows[0];
 
   const base = (mayor?.codigo ? String(mayor.codigo).replace(/\D+$/, '') : '305');
   let codigo = '';
@@ -99,10 +120,9 @@ async function resolverCuenta305(companyId: string): Promise<{ id: string; codig
     `INSERT INTO accounting_accounts
        (company_id, parent_id, codigo, nombre, codigo_agrupador, tipo, naturaleza,
         es_complementaria, nivel, permite_movimientos, requiere_tercero, moneda, activa)
-     VALUES ($1,$2,$3,'Resultado del ejercicio','305.01','CAPITAL','ACREEDORA',
-             false,$4,true,false,'MXN',true)
+     VALUES ($1,$2,$3,$4,$5,'CAPITAL',$6,false,$7,true,false,'MXN',true)
      RETURNING id, codigo`,
-    [companyId, mayor?.id || null, codigo, mayor ? mayor.nivel + 1 : 1])).rows[0];
+    [companyId, mayor?.id || null, codigo, nombre, agr, natur, mayor ? mayor.nivel + 1 : 1])).rows[0];
   return { id: ins.id, codigo: ins.codigo, creada: true };
 }
 
@@ -111,7 +131,7 @@ export async function generarPolizaDeCierre(companyId: string, anio: number, use
   const det = await determinarResultado(companyId, anio);
   if (!det.cuentas.length) return { error: `No hay movimientos de resultados en ${anio}: no hay nada que cerrar.` };
 
-  const c305 = await resolverCuenta305(companyId);
+  const c305 = await resolverCuentaResultado(companyId, anio, det.resultado >= 0);
   if ('error' in c305) return c305;
 
   const lineas: any[] = [];

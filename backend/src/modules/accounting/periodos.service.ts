@@ -543,7 +543,30 @@ export async function alimentarDesdePolizas(
  * apertura cargada de un «Respaldo de balanza», que no tiene pólizas y cuyos saldos
  * NO deben borrarse—. Sólo se re-derivan los meses con pólizas.
  */
+/** Crea (idempotente) el ejercicio anual y sus 12 periodos calendario si faltan.
+ *  Así «Reconstruir año» sirve aunque el ejercicio nunca se haya «activado». */
+async function asegurarEjercicio(companyId: string, anio: number) {
+  const fy = await query<any>(
+    `INSERT INTO accounting_fiscal_years (company_id, anio, fecha_inicio, fecha_fin)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (company_id, anio) DO UPDATE SET updated_at = NOW()
+     RETURNING id`,
+    [companyId, anio, `${anio}-01-01`, `${anio}-12-31`]);
+  const fyId = fy.rows[0].id;
+  for (let m = 1; m <= 12; m++) {
+    const fi = `${anio}-${String(m).padStart(2, '0')}-01`;
+    const ff = new Date(Date.UTC(anio, m, 0)).toISOString().slice(0, 10);
+    await query(
+      `INSERT INTO accounting_periods (company_id, fiscal_year_id, anio, mes, fecha_inicio, fecha_fin)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (company_id, anio, mes) DO NOTHING`,
+      [companyId, fyId, anio, m, fi, ff]);
+  }
+}
+
 export async function alimentarAnioDesdePolizas(companyId: string, anio: number, userId?: string) {
+  // Que existan los 12 periodos aunque nadie haya «activado» ese ejercicio: si hay
+  // pólizas del año, se pueden alimentar sin trámite previo.
+  await asegurarEjercicio(companyId, anio);
   const mm = await query<any>(
     `SELECT DISTINCT EXTRACT(MONTH FROM e.fecha)::int AS mes
        FROM journal_entries e JOIN journal_lines l ON l.entry_id = e.id
