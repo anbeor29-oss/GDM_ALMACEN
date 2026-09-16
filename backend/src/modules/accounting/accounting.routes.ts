@@ -30,6 +30,7 @@ import * as contpaqi from './contpaqi-import.service';
 import * as cambioCuenta from './cambio-cuenta.service';
 import * as validacion from './validacion-contable.service';
 import * as especiales from './reportes-especiales.service';
+import * as balanceGeneral from './balance-general.service';
 import * as contpaqiTxt from './contpaqi-txt.service';
 import * as cierre from './cierre-ejercicio.service';
 import * as diotSvc from './diot.service';
@@ -877,6 +878,36 @@ router.get(
     const { buffer, nombre } = await especiales.situacionEspecialExcel(
       companyId(req), Number(req.params.anio), Number(req.params.mes));
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
+/* ── Balance general (contable, no NIF): el árbol del catálogo con saldos ── */
+
+/** GET /accounting/balance-general/:anio/:mes — el balance como árbol de cuentas. */
+router.get(
+  '/balance-general/:anio/:mes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await balanceGeneral.balanceGeneral(
+      companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.json({ success: true, data });
+  })
+);
+
+/** GET /accounting/balance-general/:anio/:mes/:formato — descarga (excel|pdf). */
+router.get(
+  '/balance-general/:anio/:mes/:formato',
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = req.params.formato;
+    if (f !== 'pdf' && f !== 'excel') throw new ValidationError('Formato no válido (excel|pdf).');
+    const anio = Number(req.params.anio), mes = Number(req.params.mes);
+    const { buffer, nombre } = f === 'pdf'
+      ? await balanceGeneral.balanceGeneralPdf(companyId(req), anio, mes)
+      : await balanceGeneral.balanceGeneralExcel(companyId(req), anio, mes);
+    res.setHeader('Content-Type', f === 'pdf'
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
     res.send(buffer);
   })

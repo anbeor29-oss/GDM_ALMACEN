@@ -1434,6 +1434,16 @@ class APIClient {
     const r = await this.client.get(`/accounting/estados/${anio}/${mes}/balanza/pdf`, { responseType: 'blob' });
     await this.downloadFile(r.data as Blob, `Balanza_${anio}-${String(mes).padStart(2, '0')}.pdf`);
   }
+  /** Balance general (contable, no NIF): el árbol del catálogo con saldos al corte. */
+  async getBalanceGeneral(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/balance-general/${anio}/${mes}`);
+    return r.data;
+  }
+  async descargarBalanceGeneral(anio: number, mes: number, formato: 'excel' | 'pdf') {
+    const r = await this.client.get(`/accounting/balance-general/${anio}/${mes}/${formato}`, { responseType: 'blob' });
+    const ext = formato === 'pdf' ? 'pdf' : 'xlsx';
+    await this.downloadFile(r.data as Blob, `Balance_general_${anio}-${String(mes).padStart(2, '0')}.${ext}`);
+  }
   async descargarAuxiliarExcel(cuenta: string, anio: number, mes: number) {
     const r = await this.client.get(`/accounting/estados/${anio}/${mes}/auxiliar/excel`,
       { params: { cuenta }, responseType: 'blob' });
