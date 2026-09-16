@@ -12,6 +12,7 @@ import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
+import { TablaComprobantesSat } from '@/components/TablaComprobantesSat';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { aniosContables } from '@/utils/anios';
 
@@ -42,6 +43,10 @@ const ETIQUETA: Record<string, string> = {
 const FILTROS = [
   ['', 'Todas'], ['venta', 'Ventas'], ['compra', 'Compras'],
   ['cobropago', 'Cobros/Pagos'], ['nomina', 'Nómina'], ['manual', 'Manuales'],
+  // PPD/PUE no es un origen de póliza: es la pantalla de comprobantes recibidos
+  // (el mismo menú de EML → Recibidos) para, con doble clic, contabilizar el pago
+  // de las facturas recibidas con método PUE. No lleva conteo de pólizas.
+  ['ppdpue', 'PPD/PUE'],
 ] as const;
 
 export function PolizasListaPage() {
@@ -152,13 +157,18 @@ export function PolizasListaPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 text-sm">
-          <option value={0}>Todo el año</option>
-          {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-        </select>
-        <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
-          {anios.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
+        {/* En PPD/PUE manda la tabla de recibidos, que trae su propio mes/año. */}
+        {filtro !== 'ppdpue' && (
+          <>
+            <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 text-sm">
+              <option value={0}>Todo el año</option>
+              {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+            </select>
+            <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
+              {anios.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </>
+        )}
         <div className="flex flex-wrap gap-1 ml-2">
           {FILTROS.map(([k, label]) => (
             <button key={k} onClick={() => setFiltro(k)}
@@ -170,6 +180,7 @@ export function PolizasListaPage() {
         </div>
       </div>
 
+      {filtro !== 'ppdpue' && (
       <div className="flex flex-wrap items-center gap-2 bg-gray-50 border rounded-lg px-3 py-2">
         <span className="text-xs text-gray-500">{todoAnio ? `Generar todo ${anio}:` : 'Generar del mes:'}</span>
         <label className="flex items-center gap-1 text-xs text-gray-600" title="Genera Ventas/Compras/Cobros de todos los meses del año (la depreciación sigue siendo mensual)">
@@ -196,9 +207,15 @@ export function PolizasListaPage() {
             onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />
         </label>
       </div>
+      )}
 
-      {msg && <p className="text-sm text-emerald-700">{msg}</p>}
+      {msg && filtro !== 'ppdpue' && <p className="text-sm text-emerald-700">{msg}</p>}
 
+      {/* PPD/PUE: la misma pantalla de EML → Recibidos. Doble clic en un recibido
+          abre su asiento y genera el pago del CFDI recibido con método PUE. */}
+      {filtro === 'ppdpue' ? (
+        <TablaComprobantesSat direccion="recibidos" />
+      ) : (
       <div className="space-y-2">
         {q.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
         {!q.isLoading && polizas.length === 0 && (
@@ -249,6 +266,7 @@ export function PolizasListaPage() {
           );
         })}
       </div>
+      )}
 
       {previa && <PreviaPoliza poliza={previa} mascara={mascara} onCerrar={() => setPrevia(null)} />}
       {editar && (
