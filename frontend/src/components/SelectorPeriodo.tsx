@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '@/services/api';
+import { aniosContables } from '@/utils/anios';
 
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -30,6 +31,10 @@ export function SelectorPeriodo({ anio, mes, onAnio, onMes }: {
   onAnio: (a: number) => void; onMes: (m: number) => void;
 }) {
   const lista = useEjercicios(anio);
+  // Rango contable continuo (2017→año actual) UNIDO a los ejercicios y al año
+  // elegido: así un año con pólizas pero sin «activar» (p. ej. una contabilidad que
+  // empezó a medio año) SIEMPRE aparece, aunque el servidor tarde en listarlo.
+  const anios = [...new Set<number>([...aniosContables(), ...lista, anio])].sort((a, b) => b - a);
 
   return (
     <div className="flex items-center gap-2">
@@ -37,7 +42,7 @@ export function SelectorPeriodo({ anio, mes, onAnio, onMes }: {
         {MESES.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
       </select>
       <select value={anio} onChange={(e) => onAnio(Number(e.target.value))} className="input">
-        {lista.map((a) => <option key={a} value={a}>{a}</option>)}
+        {anios.map((a) => <option key={a} value={a}>{a}</option>)}
       </select>
     </div>
   );

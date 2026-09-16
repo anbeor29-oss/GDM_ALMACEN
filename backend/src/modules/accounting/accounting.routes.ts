@@ -1728,4 +1728,20 @@ router.get(
   })
 );
 
+/** GET /accounting/contabilidad-electronica/catalogo/:anio/:mes/preview — vista previa (JSON). */
+router.get(
+  '/contabilidad-electronica/catalogo/:anio/:mes/preview',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await contabElec.catalogoPreview(companyId(req), Number(req.params.anio), Number(req.params.mes)) });
+  })
+);
+
+/** GET /accounting/contabilidad-electronica/balanza/:anio/:mes/preview — vista previa (JSON). */
+router.get(
+  '/contabilidad-electronica/balanza/:anio/:mes/preview',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await contabElec.balanzaPreview(companyId(req), Number(req.params.anio), Number(req.params.mes)) });
+  })
+);
+
 export default router;

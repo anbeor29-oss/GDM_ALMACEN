@@ -1507,6 +1507,15 @@ class APIClient {
     await this.downloadFile(r.data as Blob,
       this.nombreDeHeader(r, `Balanza_${anio}-${String(mes).padStart(2, '0')}B${tipoEnvio}.xml`));
   }
+  /** Vista previa (JSON) del catálogo / balanza de Contabilidad Electrónica. */
+  async getCatalogoElectronicoPreview(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/contabilidad-electronica/catalogo/${anio}/${mes}/preview`);
+    return r.data;
+  }
+  async getBalanzaElectronicaPreview(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/contabilidad-electronica/balanza/${anio}/${mes}/preview`);
+    return r.data;
+  }
   /** Deriva/actualiza la balanza del mes desde las pólizas (journal_lines). */
   async actualizarBalanzaDesdePolizas(anio: number, mes: number) {
     const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/${mes}/desde-polizas`);

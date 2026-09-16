@@ -306,6 +306,110 @@ function Electronica({ anio, mes }: { anio: number; mes: number }) {
           Sólo entran las cuentas que tienen código agrupador del Anexo 24.
         </span>
       </div>
+
+      <PreviewContabElec anio={anio} mes={mes} />
+    </div>
+  );
+}
+
+/* ── Vista previa de la Contabilidad Electrónica (lo que va en el XML) ── */
+function PreviewContabElec({ anio, mes }: { anio: number; mes: number }) {
+  const [ver, setVer] = useState<'balanza' | 'catalogo'>('balanza');
+  const qBal = useQuery({ queryKey: ['ce-bal', anio, mes], queryFn: () => api.getBalanzaElectronicaPreview(anio, mes), enabled: ver === 'balanza' });
+  const qCat = useQuery({ queryKey: ['ce-cat', anio, mes], queryFn: () => api.getCatalogoElectronicoPreview(anio, mes), enabled: ver === 'catalogo' });
+  const bal: any = qBal.data?.data;
+  const cat: any = qCat.data?.data;
+  const cargando = ver === 'balanza' ? qBal.isLoading : qCat.isLoading;
+
+  return (
+    <div className="bg-white border rounded-lg overflow-hidden">
+      <div className="px-3 py-2 border-b flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-medium text-gray-700">Vista previa</span>
+        <div className="flex gap-1 border rounded-lg p-0.5 bg-gray-50 text-xs">
+          {(['balanza', 'catalogo'] as const).map((k) => (
+            <button key={k} onClick={() => setVer(k)}
+              className={`px-2.5 py-1 rounded-md ${ver === k ? 'bg-white shadow font-medium text-violet-700' : 'text-gray-600'}`}>
+              {k === 'balanza' ? 'Balanza' : 'Catálogo'}
+            </button>
+          ))}
+        </div>
+        {ver === 'balanza' && bal && !bal.vacia && (
+          <span className={`ml-auto text-xs ${bal.cuadra ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {bal.cuadra ? '✓ cuadra' : 'no cuadra'} · {bal.cuantos} cuenta(s)
+          </span>
+        )}
+        {ver === 'catalogo' && cat && <span className="ml-auto text-xs text-gray-500">{cat.cuantos} cuenta(s)</span>}
+      </div>
+      <div className="overflow-auto max-h-[55vh]">
+        {cargando ? (
+          <p className="p-4 text-sm text-gray-500">Cargando…</p>
+        ) : ver === 'balanza' ? (
+          bal?.vacia ? (
+            <p className="p-4 text-sm text-gray-500 italic">
+              La balanza de {MESES[mes]} {anio} está vacía. Actualízala desde pólizas primero
+              (Balanza de comprobación → «Actualizar desde pólizas» / «Reconstruir año»).
+            </p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 text-gray-500 sticky top-0">
+                <tr>
+                  <th className="px-3 py-1.5 text-left font-semibold">Cuenta</th>
+                  <th className="px-2 py-1.5 text-left font-semibold">Descripción</th>
+                  <th className="px-3 py-1.5 text-right font-semibold">Saldo ini.</th>
+                  <th className="px-3 py-1.5 text-right font-semibold">Debe</th>
+                  <th className="px-3 py-1.5 text-right font-semibold">Haber</th>
+                  <th className="px-3 py-1.5 text-right font-semibold">Saldo fin.</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {(bal?.cuentas || []).map((c: any, i: number) => (
+                  <tr key={i} className="hover:bg-gray-50">
+                    <td className="px-3 py-1 font-mono whitespace-nowrap">{c.numCta}</td>
+                    <td className="px-2 py-1 max-w-[240px] truncate" title={c.desc}>{c.desc}</td>
+                    <td className="px-3 py-1 text-right font-mono">{money(c.saldoIni)}</td>
+                    <td className="px-3 py-1 text-right font-mono">{c.debe ? money(c.debe) : ''}</td>
+                    <td className="px-3 py-1 text-right font-mono">{c.haber ? money(c.haber) : ''}</td>
+                    <td className="px-3 py-1 text-right font-mono">{money(c.saldoFin)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-50 font-semibold text-gray-700">
+                <tr className="border-t-2">
+                  <td className="px-3 py-1.5" colSpan={3}>Totales</td>
+                  <td className="px-3 py-1.5 text-right font-mono">{money(bal?.totales?.debe)}</td>
+                  <td className="px-3 py-1.5 text-right font-mono">{money(bal?.totales?.haber)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          )
+        ) : (
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 text-gray-500 sticky top-0">
+              <tr>
+                <th className="px-3 py-1.5 text-left font-semibold">Agrup.</th>
+                <th className="px-3 py-1.5 text-left font-semibold">Cuenta</th>
+                <th className="px-2 py-1.5 text-left font-semibold">Descripción</th>
+                <th className="px-2 py-1.5 text-left font-semibold">SubCta de</th>
+                <th className="px-2 py-1.5 text-center font-semibold">Nivel</th>
+                <th className="px-2 py-1.5 text-center font-semibold">Natur</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {(cat?.cuentas || []).map((c: any, i: number) => (
+                <tr key={i} className="hover:bg-gray-50">
+                  <td className="px-3 py-1 font-mono">{c.codAgrup}</td>
+                  <td className="px-3 py-1 font-mono whitespace-nowrap">{c.numCta}</td>
+                  <td className="px-2 py-1 max-w-[240px] truncate" title={c.desc}>{c.desc}</td>
+                  <td className="px-2 py-1 font-mono text-gray-500">{c.subCtaDe}</td>
+                  <td className="px-2 py-1 text-center">{c.nivel}</td>
+                  <td className="px-2 py-1 text-center">{c.natur}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }

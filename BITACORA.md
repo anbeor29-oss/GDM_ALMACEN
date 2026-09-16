@@ -6050,3 +6050,21 @@ del arrastre anual (no duplica ni descuadra el estado de resultados). Rutas `GET
 /accounting/cierre/:anio/:mes(/generar)`. API `getCierreMes`/`generarCierreMes`/`revertirCierreMes`.
 Pantalla «Cierre del ejercicio»: toggle **Anual / Mensual** + selector de mes. El que traspasa a capital
 al cambiar de año es el ANUAL; el mensual es un asiento formal (pagos provisionales). TSC back=0, front build=0.
+
+---
+
+## 2026-09-15 (contabilidad) — Combo de año robusto (2025 aparece) + vista previa de Contabilidad Electrónica
+
+**El año 2025 no aparecía en la Balanza.** `SelectorPeriodo` sólo listaba los ejercicios que devolvía el
+backend (activados), y una contabilidad que empezó a medio año (dic-2025) sin activar el ejercicio no
+salía. Además de la corrección en `/accounting/ejercicios` (unir años con pólizas), se hizo el combo
+**robusto en el frontend**: `SelectorPeriodo` ahora une los ejercicios del backend con `aniosContables()`
+(2017→año actual) y el año elegido, así los años recientes SIEMPRE aparecen aunque el backend tarde.
+
+**Vista previa de la Contabilidad Electrónica (como la DIOT).** `catalogoPreview`/`balanzaPreview`
+(`contabilidad-electronica.service`) devuelven en JSON los mismos renglones que van al XML; rutas
+`GET …/contabilidad-electronica/{catalogo,balanza}/:anio/:mes/preview`; API `getCatalogoElectronicoPreview`
+/`getBalanzaElectronicaPreview`. En la pestaña «Contabilidad Electrónica» de Reportes fiscales, un
+`PreviewContabElec` con toggle **Balanza / Catálogo** muestra la tabla (balanza: cuenta, saldo ini, debe,
+haber, saldo fin + totales y ✓cuadra; catálogo: agrupador, cuenta, desc, subctade, nivel, natur). TSC
+back=0, front build=0.
