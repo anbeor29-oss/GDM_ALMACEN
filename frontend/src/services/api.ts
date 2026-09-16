@@ -1043,6 +1043,19 @@ class APIClient {
     const r = await this.client.delete<APIResponse<any>>(`/accounting/cierre/${anio}`);
     return r.data;
   }
+  /* ── Cierre MENSUAL ── */
+  async getCierreMes(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/cierre/${anio}/${mes}`);
+    return r.data;
+  }
+  async generarCierreMes(anio: number, mes: number) {
+    const r = await this.client.post<APIResponse<any>>(`/accounting/cierre/${anio}/${mes}/generar`, {});
+    return r.data;
+  }
+  async revertirCierreMes(anio: number, mes: number) {
+    const r = await this.client.delete<APIResponse<any>>(`/accounting/cierre/${anio}/${mes}`);
+    return r.data;
+  }
   /** Máscara de despliegue del código de cuenta (por empresa). */
   async getMascaraCuenta(): Promise<string> {
     const r = await this.client.get<APIResponse<any>>('/accounting/mascara');

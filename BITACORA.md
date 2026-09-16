@@ -6028,3 +6028,25 @@ clic, y de ahí se llenan todos los estados. TSC back=0.
 **Pendiente/nota (a confirmar con el usuario):** cierre MENSUAL (hoy sólo hay anual) y verificar el
 arrastre nominal→0 al cruzar a 2026 (la balanza excluye el cierre; el arrastre de saldos iniciales de
 enero 2026 debe partir de los saldos de balance, no de las nominales).
+
+---
+
+## 2026-09-15 (contabilidad) — Traspaso de saldos a año nuevo (NIF) + cierre MENSUAL
+
+El usuario aprobó ambos.
+
+**Traspaso selectivo en ENERO (NIF).** En `alimentarDesdePolizas`, cuando `mes===1`, el saldo inicial
+ya no se copia del diciembre anterior tal cual (eso arrastraba las nominales). Ahora las cuentas de
+RESULTADOS (ingreso/costo/gasto) **arrancan en 0** y sólo pasan las de BALANCE (activo/pasivo/capital)
+con su **saldo acumulado al 31/12 anterior INCLUYENDO la póliza de cierre ANUAL** (así la 305 «Resultado
+del ejercicio» trae el resultado del año), EXCLUYENDO los cierres mensuales (no duplican). El arrastre
+de la balanza operativa ahora excluye `regla LIKE 'cierre%'` (anual y mensual).
+
+**Cierre MENSUAL.** `saldosDeResultados`/`determinarResultado` aceptan `mes` (excluyendo todos los
+cierres). Nuevos `generarPolizaDeCierreMes` / `revertirCierreMes`: determina la utilidad/pérdida del
+MES y arma su póliza formal (salda las nominales del mes contra 305.01/305.02), `regla='cierre_mensual'`,
+`origen_uuid='CIERREMES:AAAA-MM'`, fecha fin de mes, re-ejecutable, EXCLUIDA de la balanza operativa y
+del arrastre anual (no duplica ni descuadra el estado de resultados). Rutas `GET/POST/DELETE
+/accounting/cierre/:anio/:mes(/generar)`. API `getCierreMes`/`generarCierreMes`/`revertirCierreMes`.
+Pantalla «Cierre del ejercicio»: toggle **Anual / Mensual** + selector de mes. El que traspasa a capital
+al cambiar de año es el ANUAL; el mensual es un asiento formal (pagos provisionales). TSC back=0, front build=0.

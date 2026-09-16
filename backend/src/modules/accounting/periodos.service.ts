@@ -466,7 +466,7 @@ export async function alimentarDesdePolizas(
        JOIN journal_entries e ON e.id = l.entry_id
        JOIN accounting_accounts a ON a.id = l.account_id
       WHERE e.company_id=$1 AND e.fecha >= $2::date AND e.fecha <= $3::date
-        AND e.regla IS DISTINCT FROM 'cierre_ejercicio'
+        AND COALESCE(e.regla,'') NOT LIKE 'cierre%'
       GROUP BY l.account_id, a.naturaleza
       HAVING COALESCE(SUM(l.cargo),0) <> 0 OR COALESCE(SUM(l.abono),0) <> 0`,
     [companyId, p.fecha_inicio, p.fecha_fin]);
@@ -474,12 +474,35 @@ export async function alimentarDesdePolizas(
   // Saldo inicial = saldo_final del mes anterior (si ya tiene balanza).
   const mesPrev = mes === 1 ? 12 : mes - 1;
   const anioPrev = mes === 1 ? anio - 1 : anio;
-  const prev = await periodoDe(companyId, anioPrev, mesPrev);
   const ini = new Map<string, number>();
-  if (prev) {
-    const pb = await query<any>(
-      `SELECT account_id, saldo_final::float AS sf FROM accounting_period_balances WHERE periodo_id=$1`, [prev.id]);
-    for (const r of pb.rows) ini.set(r.account_id, r.sf);
+  if (mes === 1) {
+    /* AÑO NUEVO — traspaso de saldos (NIF): las cuentas de RESULTADOS
+     * (ingresos/costos/gastos) arrancan en 0; sólo pasan las de BALANCE
+     * (activo/pasivo/capital) con su saldo acumulado al 31/12 anterior INCLUYENDO
+     * la póliza de CIERRE ANUAL (así la 305 «Resultado del ejercicio» trae el
+     * resultado del año). Los cierres MENSUALES no cuentan aquí (no duplican). */
+    const acc = await query<any>(
+      `SELECT l.account_id, a.naturaleza,
+              COALESCE(SUM(l.cargo),0)::float AS cargos, COALESCE(SUM(l.abono),0)::float AS abonos
+         FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id
+         JOIN accounting_accounts a ON a.id=l.account_id
+        WHERE e.company_id=$1 AND e.fecha <= $2
+          AND a.tipo NOT IN ('INGRESO','COSTO','GASTO')
+          AND e.regla IS DISTINCT FROM 'cierre_mensual'
+        GROUP BY l.account_id, a.naturaleza`,
+      [companyId, `${anioPrev}-12-31`]);
+    for (const r of acc.rows) {
+      const saldo = r.naturaleza === 'ACREEDORA' ? r.abonos - r.cargos : r.cargos - r.abonos;
+      const s = Math.round(saldo * 100) / 100;
+      if (Math.abs(s) >= 0.005) ini.set(r.account_id, s);
+    }
+  } else {
+    const prev = await periodoDe(companyId, anioPrev, mesPrev);
+    if (prev) {
+      const pb = await query<any>(
+        `SELECT account_id, saldo_final::float AS sf FROM accounting_period_balances WHERE periodo_id=$1`, [prev.id]);
+      for (const r of pb.rows) ini.set(r.account_id, r.sf);
+    }
   }
 
   const r2 = (n: number) => Math.round(n * 100) / 100;

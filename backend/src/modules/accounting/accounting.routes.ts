@@ -123,6 +123,39 @@ router.post(
   })
 );
 
+/** GET /accounting/cierre/:anio/:mes — utilidad/pérdida del MES (sólo cálculo). */
+router.get(
+  '/cierre/:anio/:mes',
+  requireCapability('contabilidad:cerrar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await cierre.determinarResultado(companyId(req), Number(req.params.anio), Number(req.params.mes)) });
+  })
+);
+
+/** POST /accounting/cierre/:anio/:mes/generar — póliza de cierre MENSUAL (ADMIN). */
+router.post(
+  '/cierre/:anio/:mes/generar',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r: any = await cierre.generarPolizaDeCierreMes(companyId(req), Number(req.params.anio), Number(req.params.mes), req.user?.userId);
+    if (r?.error) { res.status(400).json({ success: false, message: r.error }); return; }
+    res.json({
+      success: true, data: r,
+      message: `Cierre ${req.params.mes}/${req.params.anio}: ${r.utilidad ? 'utilidad' : 'pérdida'} ${Math.abs(r.resultado).toFixed(2)} a ${r.cuenta305}` +
+        (r.cuenta305Creada ? ' (cuenta creada)' : '') + `. Póliza #${r.folio}.`,
+    });
+  })
+);
+
+/** DELETE /accounting/cierre/:anio/:mes — deshace la póliza de cierre mensual (ADMIN). */
+router.delete(
+  '/cierre/:anio/:mes',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await cierre.revertirCierreMes(companyId(req), Number(req.params.anio), Number(req.params.mes)) });
+  })
+);
+
 /** DELETE /accounting/cierre/:anio — deshace la póliza de cierre (ADMIN). */
 router.delete(
   '/cierre/:anio',
