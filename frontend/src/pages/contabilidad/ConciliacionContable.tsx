@@ -12,7 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SelectorCuenta } from '@/components/SelectorCuenta';
 import {
   Landmark, RefreshCw, Wand2, PlayCircle, Check, X, Upload, Settings2, Undo2, FileText, Link2, BookOpen,
-  Sparkles,
+  Sparkles, Coins,
 } from 'lucide-react';
 import { api } from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
@@ -103,6 +103,7 @@ export function ConciliacionContablePage() {
   const [modalComis, setModalComis] = useState(false);
   const [modalSubir, setModalSubir] = useState(false);
   const [ocultarConcil, setOcultarConcil] = useState(false);   // ocultar lo ya conciliado
+  const [seleccion, setSeleccion] = useState<Set<string>>(new Set());   // conciliación manual por lote
 
   const cuentasQ = useQuery({ queryKey: ['bancos-cuentas'], queryFn: () => api.getCuentasBancarias() });
   const cuentas: any[] = cuentasQ.data?.data?.cuentas || [];
@@ -169,6 +170,49 @@ export function ConciliacionContablePage() {
       (r.k.errores?.length ? ` ${r.k.errores.length} con detalle pendiente.` : ''));
     qc.invalidateQueries({ queryKey: ['libro', eid] });
   });
+  /* ── Conciliación MANUAL por lote (checkboxes a la izquierda) ──
+   * Movimientos que el auto-clasificador deja en «Otro» (p. ej. comisiones cuyo
+   * concepto es genérico «MOVIMIENTO BANCARIO») se marcan a mano y se contabilizan
+   * en bloque. Cada uno genera su póliza comisión→banco. */
+  const seleccionables = movsVis.filter((m) => !conciliado(m) && m.concil_estado !== 'omitido');
+  const toggleSel = (id: string) => setSeleccion((s) => {
+    const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+  const toggleSelTodos = (on: boolean) => setSeleccion(on ? new Set(seleccionables.map((m) => m.id)) : new Set());
+  const idsSel = () => [...seleccion].filter((id) => movs.some((m) => m.id === id && !conciliado(m)));
+
+  const contabilizarSelComoComision = () => {
+    if (!cfg.comisionesCodigo) {
+      setMsg('Primero elige la cuenta de comisiones (botón «Cuentas de comisiones»).');
+      setModalComis(true);
+      return;
+    }
+    const ids = idsSel();
+    if (!ids.length) return;
+    correr(async () => {
+      let ok = 0; const errs: string[] = [];
+      for (const id of ids) {
+        await api.marcarMovimiento(id, { clasificacion: 'comision', concilEstado: 'confirmado' });
+        const r: any = await api.contabilizarMovimiento(id);
+        if (r?.data?.error) errs.push(r.data.error); else ok++;
+      }
+      return { ok, errs };
+    }, (r) => {
+      setMsg(`${r.ok} comisión(es) contabilizada(s) en su póliza (comisión → banco).` +
+        (r.errs.length ? ` ${r.errs.length} con detalle: ${r.errs[0]}` : ''));
+      setSeleccion(new Set());
+      qc.invalidateQueries({ queryKey: ['libro', eid] });
+    });
+  };
+  const omitirSel = () => {
+    const ids = idsSel();
+    if (!ids.length) return;
+    correr(async () => {
+      for (const id of ids) await api.marcarMovimiento(id, { concilEstado: 'omitido' });
+      return {};
+    }, () => { setMsg(`${ids.length} movimiento(s) omitido(s).`); setSeleccion(new Set()); });
+  };
+
   const setBancoCuenta = (id: string) => correr(() => api.actualizarCuentaBancaria(cid, { cuentaContableId: id || null }));
   const marcar = (id: string, data: any) => correr(() => api.marcarMovimiento(id, data));
   const contabilizar = (m: any, contraId?: string) => correr(
@@ -199,12 +243,12 @@ export function ConciliacionContablePage() {
 
       {/* Controles */}
       <div className="bg-white rounded-lg border shadow-sm p-3 flex flex-wrap items-center gap-2">
-        <select value={cid} onChange={(e) => { setCuentaSel(e.target.value); setEstadoSel(''); setSelMov(''); }}
+        <select value={cid} onChange={(e) => { setCuentaSel(e.target.value); setEstadoSel(''); setSelMov(''); setSeleccion(new Set()); }}
           className="border border-gray-300 rounded px-2 py-1.5 text-sm">
           {cuentas.length === 0 && <option value="">— no hay cuentas —</option>}
           {cuentas.map((c) => <option key={c.id} value={c.id}>{c.alias} · {c.banco_nombre}</option>)}
         </select>
-        <select value={eid} onChange={(e) => { setEstadoSel(e.target.value); setSelMov(''); }}
+        <select value={eid} onChange={(e) => { setEstadoSel(e.target.value); setSelMov(''); setSeleccion(new Set()); }}
           className="border border-gray-300 rounded px-2 py-1.5 text-sm" disabled={!estados.length}>
           {estados.length === 0 && <option value="">— sin estados —</option>}
           {estados.map((e) => <option key={e.id} value={e.id}>{MESES[e.mes]} {e.anio}</option>)}
@@ -278,13 +322,33 @@ export function ConciliacionContablePage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Izquierda: movimientos del banco */}
         <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-          <div className="px-3 py-2 border-b text-xs text-gray-500">
-            {movs.length} movimiento(s){pendientes > 0 ? ` · ${pendientes} por conciliar` : movs.length ? ' · todo conciliado ✓' : ''}
+          <div className="px-3 py-2 border-b text-xs text-gray-500 flex items-center gap-2 flex-wrap min-h-[34px]">
+            <span>{movs.length} movimiento(s){pendientes > 0 ? ` · ${pendientes} por conciliar` : movs.length ? ' · todo conciliado ✓' : ''}</span>
+            {seleccion.size > 0 && (
+              <span className="ml-auto flex items-center gap-2">
+                <span className="text-emerald-700 font-medium">{seleccion.size} seleccionado(s)</span>
+                <button onClick={contabilizarSelComoComision} disabled={busy}
+                  className="flex items-center gap-1 bg-amber-500 text-white rounded px-2 py-1 hover:opacity-90 disabled:opacity-50"
+                  title="Marca los seleccionados como comisión y crea su póliza (comisión → banco)">
+                  <Coins size={12} /> Contabilizar como comisión
+                </button>
+                <button onClick={omitirSel} disabled={busy}
+                  className="border rounded px-2 py-1 hover:bg-gray-50 text-gray-600" title="Descartar los seleccionados">
+                  Omitir
+                </button>
+                <button onClick={() => setSeleccion(new Set())} className="text-gray-400 hover:text-gray-600">Limpiar</button>
+              </span>
+            )}
           </div>
           <div className="overflow-y-auto max-h-[70vh]">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-600 sticky top-0">
                 <tr>
+                  <th className="px-2 py-1.5 w-8" title="Seleccionar para conciliación manual">
+                    <input type="checkbox" aria-label="Seleccionar todos"
+                      checked={seleccionables.length > 0 && seleccion.size >= seleccionables.length}
+                      onChange={(e) => toggleSelTodos(e.target.checked)} disabled={!seleccionables.length} />
+                  </th>
                   <th className="px-2 py-1.5 text-left text-xs font-semibold">Fecha</th>
                   <th className="px-2 py-1.5 text-left text-xs font-semibold">Concepto</th>
                   <th className="px-2 py-1.5 text-right text-xs font-semibold">{esTarjeta ? 'Cargo' : 'Depósito'}</th>
@@ -294,7 +358,7 @@ export function ConciliacionContablePage() {
               </thead>
               <tbody className="divide-y">
                 {movsVis.length === 0 && (
-                  <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-500">
+                  <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-500">
                     {movs.length === 0
                       ? (eid ? 'Sin movimientos. Sube un estado o dale «Conciliar todo».' : 'Elige una cuenta y un estado.')
                       : 'Todo conciliado 🎉 — quita «Ocultar lo ya conciliado» para verlos.'}
@@ -305,7 +369,13 @@ export function ConciliacionContablePage() {
                   const e = EST[m.concil_estado || 'pendiente'];
                   return (
                     <tr key={m.id} onClick={() => setSelMov(m.id)}
-                      className={`cursor-pointer ${selMov === m.id ? 'bg-emerald-100' : conciliado(m) ? 'bg-emerald-50/50 hover:bg-emerald-50' : 'hover:bg-gray-50'}`}>
+                      className={`cursor-pointer ${selMov === m.id ? 'bg-emerald-100' : seleccion.has(m.id) ? 'bg-amber-50' : conciliado(m) ? 'bg-emerald-50/50 hover:bg-emerald-50' : 'hover:bg-gray-50'}`}>
+                      <td className="px-2 py-1.5 align-top" onClick={(e) => e.stopPropagation()}>
+                        {!conciliado(m) && m.concil_estado !== 'omitido' && (
+                          <input type="checkbox" checked={seleccion.has(m.id)} onChange={() => toggleSel(m.id)}
+                            aria-label="Seleccionar movimiento" />
+                        )}
+                      </td>
                       <td className="px-2 py-1.5 text-xs whitespace-nowrap align-top">{String(m.fecha).slice(0, 10)}</td>
                       <td className="px-2 py-1.5 text-xs max-w-[220px]">
                         <div className="truncate" title={m.concepto}>{m.concepto}</div>
