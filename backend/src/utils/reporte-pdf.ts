@@ -32,6 +32,7 @@ export interface ReportePdfOpts {
   totales?: Record<string, any> | null;   // fila de totales (por clave), opcional
   orientacion?: 'portrait' | 'landscape';
   nota?: string;                          // pie
+  firmas?: string[];                      // líneas de firma al pie (p. ej. Representante Legal · Contador Público)
 }
 
 const fmt = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -104,6 +105,22 @@ export async function reporteTablaPdf(o: ReportePdfOpts): Promise<Buffer> {
   if (o.nota) {
     if (y + 22 > bottom) { doc.addPage(); y = M; }
     doc.font('Helvetica-Oblique').fontSize(7).fillColor(GRIS).text(o.nota, M, y + 7, { width: contentW });
+    y = doc.y;
+  }
+
+  // Firmas al pie: una línea por cada etiqueta, repartidas al ancho de la hoja.
+  if (o.firmas && o.firmas.length) {
+    const necesita = 46;
+    if (y + necesita > bottom) { doc.addPage(); y = M; }
+    const yLinea = y + 34;
+    const n = o.firmas.length;
+    const hueco = 30;
+    const anchoFirma = (contentW - hueco * (n - 1)) / n;
+    o.firmas.forEach((f, i) => {
+      const x = M + i * (anchoFirma + hueco);
+      doc.moveTo(x + 10, yLinea).lineTo(x + anchoFirma - 10, yLinea).strokeColor('#111827').lineWidth(0.5).stroke();
+      doc.font('Helvetica').fontSize(8).fillColor('#111827').text(f, x, yLinea + 4, { width: anchoFirma, align: 'center' });
+    });
   }
 
   doc.end();

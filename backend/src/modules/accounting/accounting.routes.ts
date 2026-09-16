@@ -31,6 +31,7 @@ import * as cambioCuenta from './cambio-cuenta.service';
 import * as validacion from './validacion-contable.service';
 import * as especiales from './reportes-especiales.service';
 import * as balanceGeneral from './balance-general.service';
+import * as erContable from './estado-resultados-contable.service';
 import * as contpaqiTxt from './contpaqi-txt.service';
 import * as cierre from './cierre-ejercicio.service';
 import * as diotSvc from './diot.service';
@@ -905,6 +906,63 @@ router.get(
     const { buffer, nombre } = f === 'pdf'
       ? await balanceGeneral.balanceGeneralPdf(companyId(req), anio, mes)
       : await balanceGeneral.balanceGeneralExcel(companyId(req), anio, mes);
+    res.setHeader('Content-Type', f === 'pdf'
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
+/* ── Estado de resultados (contable, no NIF): el árbol de cuentas de resultados ── */
+
+/** GET /accounting/estado-resultados-contable/:anio/:mes — mensual (periodo + acumulado). */
+router.get(
+  '/estado-resultados-contable/:anio/:mes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await erContable.estadoResultadosMensual(
+      companyId(req), Number(req.params.anio), Number(req.params.mes));
+    res.json({ success: true, data });
+  })
+);
+
+/** GET /accounting/estado-resultados-contable/:anio/:mes/:formato — descarga mensual. */
+router.get(
+  '/estado-resultados-contable/:anio/:mes/:formato',
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = req.params.formato;
+    if (f !== 'pdf' && f !== 'excel') throw new ValidationError('Formato no válido (excel|pdf).');
+    const anio = Number(req.params.anio), mes = Number(req.params.mes);
+    const { buffer, nombre } = f === 'pdf'
+      ? await erContable.estadoResultadosMensualPdf(companyId(req), anio, mes)
+      : await erContable.estadoResultadosMensualExcel(companyId(req), anio, mes);
+    res.setHeader('Content-Type', f === 'pdf'
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
+/** GET /accounting/estado-resultados-contable-anual/:anio — anual (12 meses + total). */
+router.get(
+  '/estado-resultados-contable-anual/:anio',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await erContable.estadoResultadosAnual(companyId(req), Number(req.params.anio));
+    res.json({ success: true, data });
+  })
+);
+
+/** GET /accounting/estado-resultados-contable-anual/:anio/:formato — descarga anual. */
+router.get(
+  '/estado-resultados-contable-anual/:anio/:formato',
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = req.params.formato;
+    if (f !== 'pdf' && f !== 'excel') throw new ValidationError('Formato no válido (excel|pdf).');
+    const anio = Number(req.params.anio);
+    const { buffer, nombre } = f === 'pdf'
+      ? await erContable.estadoResultadosAnualPdf(companyId(req), anio)
+      : await erContable.estadoResultadosAnualExcel(companyId(req), anio);
     res.setHeader('Content-Type', f === 'pdf'
       ? 'application/pdf'
       : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

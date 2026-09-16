@@ -1444,6 +1444,25 @@ class APIClient {
     const ext = formato === 'pdf' ? 'pdf' : 'xlsx';
     await this.downloadFile(r.data as Blob, `Balance_general_${anio}-${String(mes).padStart(2, '0')}.${ext}`);
   }
+  /** Estado de resultados contable (no NIF): árbol de cuentas de resultados. */
+  async getEstadoResultadosContable(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/estado-resultados-contable/${anio}/${mes}`);
+    return r.data;
+  }
+  async getEstadoResultadosContableAnual(anio: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/estado-resultados-contable-anual/${anio}`);
+    return r.data;
+  }
+  async descargarEstadoResultadosContable(anio: number, mes: number, formato: 'excel' | 'pdf') {
+    const r = await this.client.get(`/accounting/estado-resultados-contable/${anio}/${mes}/${formato}`, { responseType: 'blob' });
+    const ext = formato === 'pdf' ? 'pdf' : 'xlsx';
+    await this.downloadFile(r.data as Blob, `Estado_resultados_${anio}-${String(mes).padStart(2, '0')}.${ext}`);
+  }
+  async descargarEstadoResultadosContableAnual(anio: number, formato: 'excel' | 'pdf') {
+    const r = await this.client.get(`/accounting/estado-resultados-contable-anual/${anio}/${formato}`, { responseType: 'blob' });
+    const ext = formato === 'pdf' ? 'pdf' : 'xlsx';
+    await this.downloadFile(r.data as Blob, `Estado_resultados_anual_${anio}.${ext}`);
+  }
   async descargarAuxiliarExcel(cuenta: string, anio: number, mes: number) {
     const r = await this.client.get(`/accounting/estados/${anio}/${mes}/auxiliar/excel`,
       { params: { cuenta }, responseType: 'blob' });

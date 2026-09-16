@@ -403,6 +403,7 @@ export function Layout() {
                           { to: '/contabilidad/periodos',   icon: emoji3D('🗓️'), label: 'Periodos y cierre' },
                           { to: '/contabilidad/balanza',    icon: emoji3D('⚖️'), label: 'Balanza de comprobación' },
                           { to: '/contabilidad/balance-general', icon: emoji3D('📋'), label: 'Balance general' },
+                          { to: '/contabilidad/estado-resultados-contable', icon: emoji3D('📑'), label: 'Estado de resultados (contable)' },
                           { to: '/contabilidad/situacion',  icon: emoji3D('🏛️'), label: 'Situación financiera' },
                           { to: '/contabilidad/resultados', icon: emoji3D('📈'), label: 'Resultado integral' },
                           { to: '/contabilidad/estado-resultados', icon: emoji3D('📈'), label: 'Estado de resultados' },
