@@ -23,6 +23,11 @@ import {
 import { reporteTablaPdf, ColumnaPdf } from '../../utils/reporte-pdf';
 
 const r2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
+/** El último día del mes como 'AAAA-MM-DD' (independiente del tipo de fecha_fin). */
+const ultimoDiaMes = (anio: number, mes: number) => {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${anio}-${p(mes)}-${p(new Date(anio, mes, 0).getDate())}`;
+};
 const MESES_LARGO = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
   'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const MES3 = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
@@ -141,12 +146,11 @@ export async function estadoResultadosMensual(companyId: string, anio: number, m
    * no pone en cero, y para que cuadre exactamente con el reporte anual. */
   const acum = new Map<string, number>();  // id → crédito acumulado ene…mes
   const periodo = new Map<string, number>(); // id → crédito del mes
-  let fechaCorte: string | null = null;
+  const fechaCorte = ultimoDiaMes(anio, mes);
   let hayAlgo = false;
   for (let m = 1; m <= mes; m++) {
     const bal = await balanzaDelPeriodo(companyId, anio, m);
     if (!bal) continue;
-    if (m === mes) fechaCorte = bal.fechaFin ? String(bal.fechaFin).slice(0, 10) : null;
     for (const f of bal.filas) {
       const id = idPorCod.get(String(f.codigo));
       if (!id) continue;

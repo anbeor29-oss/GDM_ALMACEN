@@ -90,7 +90,10 @@ export async function reporteTablaPdf(o: ReportePdfOpts): Promise<Buffer> {
     for (const c of cols) {
       const raw = f[c.clave];
       const txt = raw === null || raw === undefined || raw === '' ? '' : (c.pesos ? money(raw) : String(raw));
-      doc.text(txt, x + 3, y + 3.5, { width: c.w - 6, align: c.align || (c.pesos ? 'right' : 'left'), ellipsis: true });
+      // width + height (una línea) + ellipsis mantiene cada celda en UN renglón y la
+      // recorta con «…». Sin el height, un texto largo se parte y se encima con la
+      // fila de abajo, porque las filas avanzan una altura fija (rowH).
+      doc.text(txt, x + 3, y + 3.5, { width: c.w - 6, height: rowH - 3, align: c.align || (c.pesos ? 'right' : 'left'), ellipsis: true });
       x += c.w;
     }
     y += rowH;

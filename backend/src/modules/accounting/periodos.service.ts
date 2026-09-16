@@ -174,7 +174,7 @@ export async function contextoDelPeriodo(
   if (!p) return null;
 
   const r = await query<any>(
-    `SELECT c.codigo, c.nombre, c.codigo_agrupador, c.naturaleza,
+    `SELECT c.codigo, c.nombre, c.codigo_agrupador, c.naturaleza, c.tipo,
             c.es_complementaria, b.saldo_final::float, b.cargos::float, b.abonos::float
        FROM accounting_period_balances b
        JOIN accounting_accounts c ON c.id = b.account_id
@@ -190,6 +190,7 @@ export async function contextoDelPeriodo(
     naturaleza: x.naturaleza === 'ACREEDORA' ? 'A' : 'D',
     saldo: x.saldo_final,
     esComplementaria: x.es_complementaria,
+    tipo: x.tipo,
   }));
 
   const bajo = (pref: string[]) =>

@@ -33,6 +33,9 @@ export interface SaldoAgrupado {
   naturaleza: 'D' | 'A';
   saldo: number;
   esComplementaria?: boolean;
+  /** ACTIVO / PASIVO / CAPITAL / INGRESO / … — para clasificar por naturaleza de
+   *  cuenta cuando el agrupador SAT falta o no basta (p. ej. capital sin agrupador). */
+  tipo?: string;
 }
 
 export interface ContextoNif {

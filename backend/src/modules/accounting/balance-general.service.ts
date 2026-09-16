@@ -26,6 +26,11 @@ import {
 } from '../nomina/estilo-excel';
 
 const r2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
+/** El último día del mes como 'AAAA-MM-DD' (independiente del tipo de fecha_fin). */
+const ultimoDiaMes = (anio: number, mes: number) => {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${anio}-${p(mes)}-${p(new Date(anio, mes, 0).getDate())}`;
+};
 
 export interface NodoBalance {
   codigo: string;
@@ -158,7 +163,7 @@ export async function balanceGeneral(companyId: string, anio: number, mes: numbe
 
   return {
     vacio: false, anio, mes,
-    fechaCorte: bal.fechaFin ? String(bal.fechaFin).slice(0, 10) : null,
+    fechaCorte: ultimoDiaMes(anio, mes),
     empresa,
     activo, pasivo, capital,
     totalActivo, totalPasivo, totalCapital, resultadoEjercicio,
@@ -316,8 +321,11 @@ export async function balanceGeneralPdf(companyId: string, anio: number, mes: nu
     const sangria = 3 + Math.max(0, f.nivel - 1) * 10;
     const impTxt = f.saldo === null ? '' : money(f.saldo);
     const anchoImp = 66;
-    doc.text(f.nombre, x + sangria, yy + 3, { width: colW - sangria - anchoImp - 4, ellipsis: true });
-    doc.text(impTxt, x + colW - anchoImp - 3, yy + 3, { width: anchoImp, align: 'right' });
+    // width + height (una línea) + ellipsis mantiene el nombre en UN renglón y lo
+    // recorta con «…». Sin el height, un nombre largo se parte en dos y se encima
+    // con la fila de abajo (las filas avanzan una altura fija).
+    doc.text(f.nombre, x + sangria, yy + 3, { width: colW - sangria - anchoImp - 4, height: 10, ellipsis: true });
+    doc.text(impTxt, x + colW - anchoImp - 3, yy + 3, { width: anchoImp, align: 'right', height: 10, ellipsis: true });
   };
 
   const maxLen = Math.max(izq.length, der.length);

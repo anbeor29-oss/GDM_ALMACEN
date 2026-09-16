@@ -207,19 +207,40 @@ export function situacionFinanciera(c: ContextoNif): SituacionFinanciera {
    * cuenta 305: en una balanza mensual el resultado todavía no se ha
    * traspasado, y leer 305 daría cero mientras el negocio ganó dinero. */
   const r = resultadoIntegral(c);
+  /* ── Capital contable ──
+   * El capital se suma por NATURALEZA de cuenta (tipo CAPITAL o agrupador 3xx), no
+   * sólo por un puñado de agrupadores: así ninguna cuenta de capital se queda fuera
+   * del estado —lo que descuadra el balance— y cada saldo entra con el signo de su
+   * naturaleza respecto del lado ACREEDOR del capital. Una cuenta de capital DEUDORA
+   * (una pérdida, como «Resultado Ejercicio 2025» en 305) resta, en vez de perderse.
+   *
+   * El resultado DEL EJERCICIO en curso se presenta aparte (calculado de 4–7). El
+   * 305 que aquí recoge «otras» es el resultado de ejercicios ANTERIORES ya
+   * traspasado (la balanza de operación excluye la póliza de cierre del año en
+   * curso, así que 305 sólo trae lo arrastrado). */
+  const esCapital = (s: SaldoAgrupado) => s.tipo === 'CAPITAL' || (!!s.agrupador && s.agrupador.startsWith('3'));
+  const firmado = (s: SaldoAgrupado) => s.saldo * (s.naturaleza === 'A' ? 1 : -1);
+  const capSaldos = c.saldos.filter(esCapital);
+  const capBajo = (prefs: string[]) => capSaldos
+    .filter((s) => s.agrupador && prefs.some((p) => s.agrupador.startsWith(p)))
+    .reduce((a, s) => a + firmado(s), 0);
+  const enRubroCap = (s: SaldoAgrupado) =>
+    !!s.agrupador && ['301', '302', '303', '304'].some((p) => s.agrupador.startsWith(p));
+  const otrasCap = capSaldos.filter((s) => !enRubroCap(s)).reduce((a, s) => a + firmado(s), 0);
+
   const capital: Seccion = {
     clave: 'CAPITAL', nombre: 'Capital contable',
     rubros: [
       { clave: 'CAPITAL_SOCIAL', nombre: 'Capital social y aportaciones', codigos: '301, 302',
-        importe: redondear(c.suma('301', '302')) },
+        importe: redondear(capBajo(['301', '302'])) },
       { clave: 'RESERVAS', nombre: 'Reserva legal y otras reservas', codigos: '303',
-        importe: redondear(c.suma('303')) },
+        importe: redondear(capBajo(['303'])) },
       { clave: 'ACUMULADOS', nombre: 'Resultados de ejercicios anteriores', codigos: '304',
-        importe: redondear(c.suma('304')) },
-      { clave: 'RESULTADO', nombre: 'Resultado del ejercicio', codigos: '4–7 (o 305)',
+        importe: redondear(capBajo(['304'])) },
+      { clave: 'RESULTADO', nombre: 'Resultado del ejercicio', codigos: '4–7',
         importe: redondear(r.utilidadNeta) },
-      { clave: 'OTRAS_CAP', nombre: 'Otras cuentas de capital', codigos: '306',
-        importe: redondear(c.suma('306')) },
+      { clave: 'OTRAS_CAP', nombre: 'Otras cuentas de capital', codigos: '305, 306',
+        importe: redondear(otrasCap) },
     ],
     total: 0,
   };
