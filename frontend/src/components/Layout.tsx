@@ -431,21 +431,11 @@ export function Layout() {
                     las dos vistas de consulta —Emitidos (con representación, que
                     traen XML) y Recibidos (ficha de metadatos, el SAT no da su
                     XML)—. El header cae en la pantalla principal de descarga. */}
+                {/* XML: una sola entrada. Descarga, Emitidos, Recibidos y
+                    Calendario ya viven como pestañas DENTRO de la pantalla
+                    (/xml-sat), no como un menú que se despliega hacia abajo. */}
                 {show('auditoria') && (
-                  <NavGroup
-                    to="/xml-sat"
-                    icon={emoji3D('🗂️')}
-                    label="XML"
-                    accent="emerald"
-                    open={sidebarOpen}
-                    pathPrefix="/xml-sat"
-                    children={[
-                      { to: '/xml-sat',           icon: emoji3D('🛰️'), label: 'XML del SAT' },
-                      { to: '/xml-sat/emitidos',  icon: emoji3D('⬆️'), label: 'Emitidos' },
-                      { to: '/xml-sat/recibidos', icon: emoji3D('⬇️'), label: 'Recibidos' },
-                      { to: '/xml-sat/calendario', icon: emoji3D('📅'), label: 'Calendario' },
-                    ]}
-                  />
+                  <NavItem to="/xml-sat" icon={emoji3D('🗂️')} accent="emerald" label="XML" open={sidebarOpen} />
                 )}
                 {show('mensajes')     && <NavItem to="/mensajes"     icon={emoji3D('✉️')} accent="sky"     label="Mensajes"         open={sidebarOpen} contador={sinLeer} />}
                 {/* «Reportes» general se oculta a todos: ese mismo reporte ya vive

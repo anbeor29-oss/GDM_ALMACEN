@@ -1,52 +1,77 @@
 /**
- * XmlDelSat — el menú XML, con tres pantallas bajo /xml-sat.
+ * XmlDelSat — TODO el XML del SAT en UNA sola pantalla, con pestañas arriba
+ * (mismo patrón que Tesorería), no como un menú que se despliega hacia abajo.
  *
- *   /xml-sat            → "XML del SAT": la pantalla principal de descarga
- *                         (estado, cupo, pedir al SAT, trabajos). Es la que
- *                         alimenta a las otras dos.
- *   /xml-sat/emitidos   → sólo la tabla de emitidos (con su representación).
- *   /xml-sat/recibidos  → sólo la tabla de recibidos (ficha de metadatos).
+ *   Descarga    → "XML del SAT": pedir al SAT, cupo del día, trabajos.
+ *   Emitidos    → la tabla de emitidos (con su representación impresa).
+ *   Recibidos   → la tabla de recibidos (ficha de metadatos; el SAT no da su XML).
+ *   Calendario  → cobertura por día (emitidos + recibidos) y llenar huecos.
  *
- * Emitidos y recibidos son la MISMA tabla con la dirección puesta; no traen la
- * maquinaria de descarga, que vive en la pantalla principal. Recibidos aparece
- * con sus títulos aunque todavía no haya nada que mostrar.
+ * Las pestañas siguen siendo rutas reales (/xml-sat, /xml-sat/emitidos, …) para
+ * que los enlaces directos y el botón «atrás» del navegador funcionen; el sidebar
+ * ya sólo trae una entrada «XML» que cae en la de Descarga.
  */
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import { XmlRecibidos } from '@/components/XmlRecibidos';
 import { ProgramacionSat } from '@/components/ProgramacionSat';
 import { TablaComprobantesSat } from '@/components/TablaComprobantesSat';
+import { CalendarioSatPage } from '@/pages/CalendarioSat';
+
+type Tab = 'descarga' | 'emitidos' | 'recibidos' | 'calendario';
+
+/* [clave, etiqueta, ruta] — la ruta mantiene la pestaña enlazable. */
+const TABS: Array<[Tab, string, string]> = [
+  ['descarga',   'Descarga',   '/xml-sat'],
+  ['emitidos',   'Emitidos',   '/xml-sat/emitidos'],
+  ['recibidos',  'Recibidos',  '/xml-sat/recibidos'],
+  ['calendario', 'Calendario', '/xml-sat/calendario'],
+];
 
 export function XmlDelSatPage() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
 
-  // Emitidos / Recibidos: sólo la tabla, en su dirección.
-  if (pathname.endsWith('/emitidos')) {
-    return <div className="space-y-4"><TablaComprobantesSat direccion="emitidos" /></div>;
-  }
-  if (pathname.endsWith('/recibidos')) {
-    return <div className="space-y-4"><TablaComprobantesSat direccion="recibidos" /></div>;
-  }
+  const tab: Tab =
+    pathname.endsWith('/emitidos')   ? 'emitidos'   :
+    pathname.endsWith('/recibidos')  ? 'recibidos'  :
+    pathname.endsWith('/calendario') ? 'calendario' :
+    'descarga';
 
-  // Pantalla principal: la descarga.
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Download size={24} className="text-emerald-600" />
-          XML del SAT
+          <Download size={24} className="text-emerald-600" /> XML del SAT
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          Se piden aquí los comprobantes al SAT —emitidos y recibidos—; ya traídos se
-          consultan en sus pantallas de Emitidos y Recibidos.
+          Todo el XML del SAT en una sola pantalla: se pide la descarga, se consultan
+          los emitidos y recibidos, y se revisa el calendario de cobertura.
         </p>
       </div>
 
-      {/* Cómo va de verdad, el cupo del día y el histórico. */}
-      <ProgramacionSat />
+      {/* Pestañas arriba, en la misma pantalla (mismo patrón que Tesorería). */}
+      <div className="flex gap-1 border-b">
+        {TABS.map(([k, label, to]) => (
+          <button key={k} onClick={() => navigate(to)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+              tab === k
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {/* La maquinaria de descarga (credencial, pedir el periodo, trabajos). */}
-      <XmlRecibidos direccionInicial="recibidos" />
+      {tab === 'descarga' && (<>
+        {/* Cómo va de verdad, el cupo del día y el histórico. */}
+        <ProgramacionSat />
+        {/* La maquinaria de descarga (credencial, pedir el periodo, trabajos). */}
+        <XmlRecibidos direccionInicial="recibidos" />
+      </>)}
+      {tab === 'emitidos'   && <TablaComprobantesSat direccion="emitidos" />}
+      {tab === 'recibidos'  && <TablaComprobantesSat direccion="recibidos" />}
+      {tab === 'calendario' && <CalendarioSatPage />}
     </div>
   );
 }
