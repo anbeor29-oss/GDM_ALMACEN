@@ -377,12 +377,11 @@ export function Layout() {
                       { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },
                     ] : [
                       { to: '/contabilidad/activo-fijo',   icon: emoji3D('🏗️'), label: 'Activo fijo · Depreciación' },
-                      { to: '/contabilidad/asignacion',     icon: emoji3D('🏷️'), label: 'Asignación de cuentas' },
                       /* Auditoría: revisa lo timbrado contra lo contabilizado. La ruta es /auditoria. */
                       { to: '/auditoria', icon: emoji3D('🛡️'), label: 'Auditoría' },
-                      { to: '/contabilidad/auxiliar',      icon: emoji3D('📒'), label: 'Auxiliar de cuentas' },
-                      { to: '/contabilidad/cambio-cuenta', icon: emoji3D('🔀'), label: 'Cambio de cuenta' },
-                      { to: '/contabilidad/cuentas',        icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
+                      /* Catálogo de cuentas: hub con pestañas (Catálogo, Asignación,
+                         Auxiliar, Cambios de cuenta) — antes eran 4 entradas sueltas. */
+                      { to: '/contabilidad/catalogo',       icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
                       { to: '/contabilidad/conciliacion',  icon: emoji3D('🏦'), label: 'Conciliación bancaria' },
                       { to: '/contabilidad/validacion',    icon: emoji3D('🧮'), label: 'Cuadre contable' },
                       ...(esAdmin ? [{ to: '/contabilidad/cierre', icon: emoji3D('🔒'), label: 'Cierre del ejercicio' }] : []),

@@ -474,6 +474,30 @@ export async function cotejarConLibro(companyId: string, estadoId: string) {
   return { conciliados, enLibroSinBanco };
 }
 
+/* ── Cotejo MANUAL: liga a mano un movimiento del banco con una línea de la 102 ──
+ * Para cuando el importe/fecha no casaron solos pero el usuario SABE que
+ * corresponden (p. ej. un pago aplicado con otra fecha o con centavos de
+ * diferencia). Deja el movimiento «conciliado» contra esa póliza —igual que el
+ * cotejo automático—, sin crear otra póliza. */
+export async function cotejarManual(companyId: string, movId: string, lineId: string) {
+  const ln = (await query<any>(
+    `SELECT l.id, l.entry_id FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id
+      WHERE l.id=$1 AND e.company_id=$2`, [lineId, companyId])).rows[0];
+  if (!ln) return { error: 'no se encontró la línea de la contabilidad' };
+  const yaLine = (await query<any>(
+    `SELECT id FROM bancos_movimientos WHERE company_id=$1 AND conciliado_line_id=$2 AND id<>$3 LIMIT 1`,
+    [companyId, lineId, movId])).rows[0];
+  if (yaLine) return { error: 'esa línea de la contabilidad ya está conciliada con otro movimiento del banco' };
+  const m = (await query<any>(
+    `SELECT poliza_id FROM bancos_movimientos WHERE id=$1 AND company_id=$2`, [movId, companyId])).rows[0];
+  if (!m) return { error: 'no se encontró el movimiento del banco' };
+  if (m.poliza_id) return { error: 'ese movimiento ya está contabilizado o conciliado; deshazlo primero' };
+  await query(
+    `UPDATE bancos_movimientos SET concil_estado='conciliado', poliza_id=$2, conciliado_line_id=$3 WHERE id=$1`,
+    [movId, ln.entry_id, ln.id]);
+  return { ok: true };
+}
+
 /**
  * Los movimientos de la CUENTA 102 del banco en el rango del estado (el "libro"),
  * marcando cuáles ya empataron con un movimiento bancario. Sirve para ver el otro

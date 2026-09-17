@@ -82,6 +82,7 @@ import {
 import { BalanceGeneralPage } from '@/pages/contabilidad/BalanceGeneral';
 import { EstadoResultadosContablePage } from '@/pages/contabilidad/EstadoResultadosContable';
 import { NifReportesPage, EstadosFinancierosPage } from '@/pages/contabilidad/ReportesHubs';
+import { CuentasHubPage } from '@/pages/contabilidad/CuentasHub';
 import { PeriodosPage } from '@/pages/contabilidad/Periodos';
 import { CierreEjercicioPage } from '@/pages/contabilidad/CierreEjercicio';
 import { PhysicalCountPage }          from '@/pages/PhysicalCount';
@@ -320,6 +321,7 @@ export function App() {
 
             {/* Contabilidad. Mismo gateo que nómina: el backend manda con
                 requireModule, esto sólo evita la pantalla vacía. */}
+            <Route path="contabilidad/catalogo"           element={<ModuleRoute module="contabilidad"><CuentasHubPage /></ModuleRoute>} />
             <Route path="contabilidad/cuentas"            element={<ModuleRoute module="contabilidad"><CatalogoCuentasPage /></ModuleRoute>} />
             <Route path="contabilidad/asignacion"         element={<ModuleRoute module="contabilidad"><AsignacionCuentasPage /></ModuleRoute>} />
             <Route path="contabilidad/poliza-manual"      element={<ModuleRoute module="contabilidad"><PolizaManualPage /></ModuleRoute>} />

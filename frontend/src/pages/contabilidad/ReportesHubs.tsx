@@ -22,9 +22,9 @@ import { BalanceGeneralPage } from './BalanceGeneral';
 import { EstadoResultadosContablePage } from './EstadoResultadosContable';
 import { ReportesEspecialesPage } from './ReportesEspeciales';
 
-type Pestana = [clave: string, etiqueta: string, render: () => ReactElement];
+export type Pestana = [clave: string, etiqueta: string, render: () => ReactElement];
 
-function Hub({ titulo, subtitulo, icono, pestanas }: {
+export function Hub({ titulo, subtitulo, icono, pestanas }: {
   titulo: string; subtitulo: string; icono: ReactElement; pestanas: Pestana[];
 }) {
   const [tab, setTab] = useState(pestanas[0][0]);

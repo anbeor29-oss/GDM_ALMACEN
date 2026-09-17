@@ -475,6 +475,17 @@ router.post(
   })
 );
 
+/** Cotejo MANUAL: liga un movimiento del banco con una línea de la 102 (body: { lineId }). */
+router.post(
+  '/bancos/movimientos/:id/cotejar-manual',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const lineId = String(req.body?.lineId || '').trim();
+    if (!lineId) { res.status(400).json({ success: false, message: 'Falta la línea de la contabilidad.' }); return; }
+    res.json({ success: true, data: await concil.cotejarManual(companyId(req), req.params.id, lineId) });
+  })
+);
+
 /** Deshace la póliza de un movimiento (para rehacerlo). */
 router.post(
   '/bancos/movimientos/:id/descontabilizar',
