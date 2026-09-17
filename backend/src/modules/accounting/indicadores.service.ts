@@ -44,7 +44,7 @@ export async function resumen() {
     query<any>(
       `SELECT anio, uma_diaria::float, uma_mensual::float, umi_diaria::float,
               smg_general::float, smg_frontera::float, confirmado
-         FROM nomina_ejercicios ORDER BY anio DESC LIMIT 6`),
+         FROM nomina_ejercicios ORDER BY anio DESC LIMIT 12`),
     query<any>(
       `SELECT anio, COUNT(*)::int AS renglones
          FROM nomina_tarifa_isr WHERE periodicidad='MENSUAL' GROUP BY anio`),

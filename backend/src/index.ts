@@ -106,6 +106,15 @@ async function bootstrap() {
       logger.warn(`No se pudo registrar depreciacion-cron: ${e.message}`);
     }
 
+    // INPC: baja la serie del INEGI a fin de mes/quincena (solo si
+    // ENABLE_INPC_CRON=true y hay INEGI_TOKEN)
+    try {
+      const { registerInpcCron } = await import('./jobs/inpc-cron');
+      registerInpcCron();
+    } catch (e: any) {
+      logger.warn(`No se pudo registrar inpc-cron: ${e.message}`);
+    }
+
     // Graceful shutdown
     const shutdown = async (signal: string) => {
       logger.info(`Received ${signal}, shutting down gracefully...`);
