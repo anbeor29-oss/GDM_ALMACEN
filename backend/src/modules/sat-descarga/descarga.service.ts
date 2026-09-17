@@ -57,7 +57,29 @@ function diasDelPrimerCorte(dias: number): number {
 /** Hasta dónde se parte antes de pedir revisión humana. */
 const PROFUNDIDAD_MAXIMA = 4;
 /** Cuántas particiones y paquetes se atienden por corrida. */
-const POR_CORRIDA = { paquetes: 5, verificaciones: 10, solicitudes: 5 };
+const POR_CORRIDA = { paquetes: 12, verificaciones: 12, solicitudes: 5 };
+
+/* Cuántas llamadas al SAT van EN PARALELO dentro de una corrida.
+ *
+ * La velocidad de descarga es lo que vende NEXO, y hasta ahora todo iba en serie:
+ * un paquete tras otro, esperando la red de cada uno. Bajar y verificar en
+ * paralelo traslapa esas esperas. El tope está acotado por dos cosas: (a) el pool
+ * de Postgres —cada bajada indexa y toma una conexión, y el pool es de 10— y (b)
+ * no fustigar al SAT. PEDIR (SolicitaDescarga) se deja EN SERIE a propósito: gasta
+ * el cupo diario de solicitudes y el SAT penaliza las ráfagas. Ajustable por env
+ * si algún día crece el pool. */
+const PARALELO = {
+  paquetes: Math.min(6, Math.max(1, Number(process.env.SAT_PARALELO_PAQUETES) || 3)),
+  verificaciones: Math.min(8, Math.max(1, Number(process.env.SAT_PARALELO_VERIFICA) || 4)),
+};
+
+/** Corre `fn` sobre `items` con, como máximo, `limite` en vuelo a la vez. Cada
+ *  `fn` atrapa lo suyo: un fallo suelto no tumba a los demás. */
+async function enParalelo<T>(items: T[], limite: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let i = 0;
+  const worker = async () => { while (i < items.length) { const idx = i++; await fn(items[idx]); } };
+  await Promise.all(Array.from({ length: Math.min(limite, items.length) }, worker));
+}
 
 /* Espera exponencial del documento (§7), con un poco de azar para que dos
  * procesos no consulten al SAT en el mismo instante. */
@@ -150,18 +172,19 @@ export async function reiniciarDescarga(companyId: string): Promise<{ trabajos: 
 }
 
 /**
- * Limpia de la lista los trabajos ya TERMINADOS (y cancelados): su descarga acabó
- * y sus XML YA están en `cfdi_recibidos`, así que borrar el registro del trabajo no
- * pierde nada —el ON DELETE CASCADE quita sus particiones/paquetes y el paquete_id
- * de los CFDI queda en NULL (los comprobantes se conservan)—. Sirve para dejar la
- * consola de descarga sólo con lo que sigue en curso.
+ * Limpia de la lista los trabajos que ya no siguen en curso: TERMINADOS, cancelados
+ * y los que quedaron CON ERROR. Su descarga acabó (o ya no avanza) y los XML que
+ * alcanzaron a bajar YA están en `cfdi_recibidos`, así que borrar el registro del
+ * trabajo no pierde comprobantes —el ON DELETE CASCADE quita sus particiones/paquetes
+ * y el paquete_id de los CFDI queda en NULL—. Los con error simplemente se pueden
+ * volver a pedir por su periodo. Sirve para dejar la consola sólo con lo vivo.
  */
 export async function limpiarTrabajosTerminados(companyId: string): Promise<{ trabajos: number }> {
   const r = await query(
-    `DELETE FROM sat_trabajos WHERE company_id = $1 AND estado IN ('TERMINADO','CANCELADO')`,
+    `DELETE FROM sat_trabajos WHERE company_id = $1 AND estado IN ('TERMINADO','CANCELADO','CON_ERRORES')`,
     [companyId]);
   const trabajos = r.rowCount || 0;
-  logger.info(`[sat-descarga] limpieza de terminados (empresa ${companyId}): ${trabajos} trabajo(s) borrados`);
+  logger.info(`[sat-descarga] limpieza terminados/errores (empresa ${companyId}): ${trabajos} trabajo(s) borrados`);
   return { trabajos };
 }
 
@@ -474,7 +497,7 @@ export async function avanzar(companyId: string, trabajoId?: string, factor = 1)
       LIMIT ${cupo.paquetes}`,
     params
   );
-  for (const p of paquetes.rows) {
+  await enParalelo(paquetes.rows, PARALELO.paquetes, async (p) => {
     try {
       const antes = await xmlDelPaquete(p.id);
       await descargarPaquete(cred, token, p);
@@ -485,7 +508,7 @@ export async function avanzar(companyId: string, trabajoId?: string, factor = 1)
     } catch (e) {
       hecho.errores.push(`paquete ${p.id_paquete_sat}: ${(e as Error).message}`);
     }
-  }
+  });
 
   // ── 2. Solicitudes en curso ───────────────────────────────────────────
   const enCurso = await query<any>(
@@ -499,14 +522,14 @@ export async function avanzar(companyId: string, trabajoId?: string, factor = 1)
       LIMIT ${cupo.verificaciones}`,
     params
   );
-  for (const pa of enCurso.rows) {
+  await enParalelo(enCurso.rows, PARALELO.verificaciones, async (pa) => {
     try {
       await verificarParticion(cred, token, pa);
       hecho.verificados++;
     } catch (e) {
       hecho.errores.push(`verificación ${pa.id_solicitud_sat}: ${(e as Error).message}`);
     }
-  }
+  });
 
   // ── 3. Solicitudes nuevas, al final y dentro del presupuesto ──────────
   if (presupuesto.agotado) {

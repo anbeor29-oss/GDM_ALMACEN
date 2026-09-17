@@ -60,7 +60,8 @@ router.post(
 );
 
 /** POST /sat-descarga/limpiar-terminados — quita de la lista los trabajos ya
- *  terminados/cancelados (los XML ya están en el sistema, no se pierde nada). */
+ *  terminados/cancelados Y los que quedaron con error (los XML que sí bajaron se
+ *  conservan; los de error se pueden volver a pedir por su periodo). */
 router.post(
   '/limpiar-terminados',
   authorize('ADMIN', 'SUPER_ADMIN'),
@@ -68,7 +69,7 @@ router.post(
     const r = await service.limpiarTrabajosTerminados(companyId(req));
     res.json({
       success: true,
-      message: `${r.trabajos} trabajo(s) terminados quitados de la lista. Los comprobantes se conservan.`,
+      message: `${r.trabajos} trabajo(s) terminados y con error quitados de la lista. Los comprobantes se conservan.`,
       data: r,
     });
   })

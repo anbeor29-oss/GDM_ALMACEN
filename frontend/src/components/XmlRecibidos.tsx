@@ -108,9 +108,9 @@ export function XmlRecibidos({ direccionInicial }: {
     qc.invalidateQueries({ queryKey: ['sat-credencial'] });
   };
 
-  const terminados = trabajos.filter((t) => t.estado === 'TERMINADO' || t.estado === 'CANCELADO').length;
+  const limpiables = trabajos.filter((t) => ['TERMINADO', 'CANCELADO', 'CON_ERRORES'].includes(t.estado)).length;
   const limpiarTerminados = async () => {
-    if (!window.confirm(`¿Quitar de la lista los ${terminados} trabajo(s) terminados?\n\nSus comprobantes YA están en el sistema: no se pierde nada, sólo se limpia la lista.`)) return;
+    if (!window.confirm(`¿Quitar de la lista los ${limpiables} trabajo(s) terminados o con error?\n\nLos comprobantes que ya bajaron siguen en el sistema: no se pierde nada. Los que quedaron con error se pueden volver a pedir por su periodo.`)) return;
     try { const r: any = await api.limpiarTrabajosTerminados(); setAviso(r?.message || 'Lista limpia.'); refrescar(); }
     catch (e: any) { setError(e?.response?.data?.message || 'No se pudo limpiar.'); }
   };
@@ -150,7 +150,7 @@ export function XmlRecibidos({ direccionInicial }: {
       setAviso(
         `${d.trabajos.length} trabajo(s) creado(s) con ` +
         `${d.particiones_total} solicitud(es) de ${d.dias_por_bloque} días. El SAT tarda ` +
-        'de minutos a horas; el proceso avanza solo cada 15 minutos, o con "Avanzar ahora".'
+        'de minutos a horas; el proceso avanza solo cada corrida del motor, o con "Avanzar ahora".'
       );
       refrescar();
     } catch (e: any) {
@@ -349,10 +349,10 @@ export function XmlRecibidos({ direccionInicial }: {
             <p className="text-xs text-gray-500">
               Toca un renglón para ver, solicitud por solicitud, qué contestó el SAT.
             </p>
-            {terminados > 0 && (
+            {limpiables > 0 && (
               <button onClick={limpiarTerminados}
                 className="flex items-center gap-1 text-xs text-gray-500 hover:text-rose-600 border rounded px-2 py-1 hover:bg-rose-50 whitespace-nowrap">
-                <Trash2 size={13} /> Limpiar terminados ({terminados})
+                <Trash2 size={13} /> Limpiar terminados y con error ({limpiables})
               </button>
             )}
           </div>

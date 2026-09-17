@@ -26,9 +26,18 @@
  */
 
 import axios from 'axios';
+import * as https from 'https';
 import * as crypto from 'crypto';
 import logger from '../../middleware/logger';
 import { firmarSha1 } from './efirma';
+
+/* Conexión reutilizable al SAT (keep-alive).
+ *
+ * Sin esto, axios abría un TLS NUEVO en cada llamada —y el saludo TLS cuesta
+ * cientos de milisegundos—. Recogiendo muchos paquetes seguidos (y ahora en
+ * paralelo), reutilizar la conexión es de las mayores ganancias de velocidad.
+ * No aumenta la tasa de peticiones al SAT: sólo evita rehacer el handshake. */
+const agenteSat = new https.Agent({ keepAlive: true, maxSockets: 8, keepAliveMsecs: 15_000 });
 
 const ENDPOINTS = {
   autenticacion: process.env.SAT_URL_AUTENTICACION ||
@@ -416,7 +425,7 @@ async function enviar(url: string, accion: string, sobre: string, token?: Token)
   if (token) headers.Authorization = `WRAP access_token="${token.valor}"`;
 
   try {
-    const r = await axios.post(url, sobre, { headers, timeout: 120_000, maxBodyLength: Infinity });
+    const r = await axios.post(url, sobre, { headers, timeout: 120_000, maxBodyLength: Infinity, httpsAgent: agenteSat });
     return String(r.data || '');
   } catch (e: any) {
     const cuerpo = String(e?.response?.data || '');
