@@ -128,4 +128,126 @@ export async function actualizarInpc(): Promise<{ actualizados: number; desde?: 
   return { actualizados: filas.length, desde: p(filas[0]), hasta: p(filas[filas.length - 1]) };
 }
 
-export default { serieInpc, resumen, actualizarInpc };
+/* ═══════════════════════════════════════════════════════════════════════════
+   CALCULADORAS QUE USAN EL INPC (a la orden cuando se necesiten)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const f4 = (n: number) => Math.round(n * 10000) / 10000;   // factores: al diezmilésimo (Art. 17-A)
+
+/** El INPC de un mes concreto; si no está, dice que se actualice. */
+async function inpcDe(anio: number, mes: number): Promise<number> {
+  const r = await query<any>(`SELECT valor::float FROM fiscal_inpc WHERE anio=$1 AND mes=$2`, [anio, mes]);
+  if (!r.rows.length) {
+    throw new Error(`No hay INPC de ${String(mes).padStart(2, '0')}/${anio}. Actualízalo desde INEGI (botón «Actualizar desde INEGI»).`);
+  }
+  return Number(r.rows[0].valor);
+}
+
+/** La tasa de recargos por mora del año (o la del año más cercano si falta). */
+async function tasaRecargos(anio: number): Promise<number> {
+  const r = await query<any>(`SELECT tasa_mora::float FROM fiscal_tasa_recargos WHERE anio=$1`, [anio]);
+  if (r.rows.length) return Number(r.rows[0].tasa_mora);
+  const f = await query<any>(`SELECT tasa_mora::float FROM fiscal_tasa_recargos ORDER BY ABS(anio-$1), anio DESC LIMIT 1`, [anio]);
+  return f.rows.length ? Number(f.rows[0].tasa_mora) : 2.07;
+}
+
+interface Ymd { anio: number; mes: number; dia: number; }
+function parseYmd(s: string): Ymd | null {
+  const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return { anio: +m[1], mes: +m[2], dia: +m[3] };
+}
+const mesAnterior = (anio: number, mes: number) => mes <= 1 ? { anio: anio - 1, mes: 12 } : { anio, mes: mes - 1 };
+const mesSiguiente = (anio: number, mes: number) => mes >= 12 ? { anio: anio + 1, mes: 1 } : { anio, mes: mes + 1 };
+
+/* ── 1) Actualización + recargos (Art. 17-A y 21 CFF) — pagos extemporáneos ── */
+export async function actualizacionRecargos(d: { monto: number; fechaDebio: string; fechaPago: string }) {
+  const monto = Number(d.monto);
+  if (!(monto > 0)) throw new Error('El monto debe ser mayor que cero.');
+  const debio = parseYmd(d.fechaDebio), pago = parseYmd(d.fechaPago);
+  if (!debio || !pago) throw new Error('Las fechas deben ser AAAA-MM-DD.');
+
+  const clave = (x: Ymd) => x.anio * 372 + x.mes * 31 + x.dia;
+  if (clave(pago) <= clave(debio)) {
+    return { alCorriente: true, monto, fa: 1, montoActualizado: monto, actualizacion: 0, meses: 0, sumaTasas: 0, recargos: 0, total: monto };
+  }
+
+  // Actualización: INPC del mes anterior al pago / INPC del mes anterior al que debió pagarse.
+  const antPago = mesAnterior(pago.anio, pago.mes);
+  const antDebio = mesAnterior(debio.anio, debio.mes);
+  const inpcPago = await inpcDe(antPago.anio, antPago.mes);
+  const inpcDebio = await inpcDe(antDebio.anio, antDebio.mes);
+  let fa = f4(inpcPago / inpcDebio);
+  if (fa < 1) fa = 1;                                   // nunca a la baja (Art. 17-A)
+  const montoActualizado = r2(monto * fa);
+  const actualizacion = r2(montoActualizado - monto);
+
+  // Meses de mora: cada mes o fracción a partir del día en que debió pagarse.
+  let meses = (pago.anio - debio.anio) * 12 + (pago.mes - debio.mes);
+  if (pago.dia > debio.dia) meses += 1;
+  meses = Math.max(0, meses);
+
+  // Recargos: suma de la tasa de cada mes de mora (la del año que corresponda).
+  let sumaTasas = 0;
+  const tasasPorAnio: Record<number, { tasa: number; meses: number }> = {};
+  let cur = { anio: debio.anio, mes: debio.mes };
+  for (let i = 0; i < meses; i++) {
+    const t = await tasaRecargos(cur.anio);
+    sumaTasas += t;
+    tasasPorAnio[cur.anio] = { tasa: t, meses: (tasasPorAnio[cur.anio]?.meses || 0) + 1 };
+    cur = mesSiguiente(cur.anio, cur.mes);
+  }
+  sumaTasas = f4(sumaTasas);
+  const recargos = r2(montoActualizado * sumaTasas / 100);
+  const total = r2(montoActualizado + recargos);
+
+  return {
+    alCorriente: false, monto, fa, montoActualizado, actualizacion,
+    meses, sumaTasas, recargos, total,
+    tasas: Object.entries(tasasPorAnio).map(([anio, v]) => ({ anio: Number(anio), tasa: v.tasa, meses: v.meses })),
+    inpc: {
+      pago: { anio: antPago.anio, mes: antPago.mes, valor: inpcPago },
+      debio: { anio: antDebio.anio, mes: antDebio.mes, valor: inpcDebio },
+    },
+  };
+}
+
+/* ── 2) Ajuste anual por inflación (Art. 44 LISR) ── */
+export async function ajusteAnualInflacion(d: { anio: number; saldoPromedioCreditos: number; saldoPromedioDeudas: number }) {
+  const anio = Number(d.anio);
+  const inpcDic = await inpcDe(anio, 12);
+  const inpcDicPrev = await inpcDe(anio - 1, 12);
+  const factor = f4(inpcDic / inpcDicPrev - 1);
+  const creditos = Number(d.saldoPromedioCreditos) || 0;
+  const deudas = Number(d.saldoPromedioDeudas) || 0;
+  const diff = r2(deudas - creditos);
+  const ajuste = r2(Math.abs(diff) * factor);
+  const tipo = diff > 0 ? 'ACUMULABLE' : diff < 0 ? 'DEDUCIBLE' : 'NINGUNO';
+  return { anio, factor, ajuste, tipo, base: Math.abs(diff), creditos, deudas, inpcDic, inpcDicPrev };
+}
+
+/* ── 3) Actualización de pérdida fiscal (Art. 57 LISR) ── */
+export async function perdidaFiscalActualizada(d: { perdida: number; anioPerdida: number; anioAplicacion: number }) {
+  const perdida = Number(d.perdida);
+  const aP = Number(d.anioPerdida), aA = Number(d.anioAplicacion);
+  if (!(perdida > 0)) throw new Error('La pérdida debe ser mayor que cero.');
+  if (!Number.isInteger(aP) || !Number.isInteger(aA)) throw new Error('Años inválidos.');
+  if (aA < aP) throw new Error('El año de aplicación no puede ser anterior al de la pérdida.');
+
+  // 1ª actualización (cierre del año de la pérdida): dic / julio de ese año.
+  const jul = await inpcDe(aP, 7);
+  const dic = await inpcDe(aP, 12);
+  const fa1 = f4(dic / jul);
+  // 2ª actualización (al aplicarla): junio del año de aplicación / dic de la última actualización.
+  let fa2 = 1, jun: number | null = null;
+  if (aA > aP) { jun = await inpcDe(aA, 6); fa2 = f4(jun / dic); }
+  const factorTotal = f4(fa1 * fa2);
+  const actualizada = r2(perdida * fa1 * fa2);
+  return { perdida, anioPerdida: aP, anioAplicacion: aA, fa1, fa2, factorTotal, actualizada, inpc: { jul, dic, jun } };
+}
+
+export default {
+  serieInpc, resumen, actualizarInpc,
+  actualizacionRecargos, ajusteAnualInflacion, perdidaFiscalActualizada,
+};

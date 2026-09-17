@@ -6,9 +6,9 @@
  *   · UMA / SM / UMI / Tarifa Art. 96: se muestran de sólo lectura; se editan y
  *     confirman en Nómina → Parámetros (son anuales y no tienen API limpia).
  */
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { TrendingUp, RefreshCw, Landmark, ExternalLink, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { TrendingUp, RefreshCw, Landmark, ExternalLink, AlertTriangle, CheckCircle2, Calculator } from 'lucide-react';
 import api from '@/services/api';
 
 const MESES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -150,6 +150,165 @@ export function IndicadoresPage() {
           </table>
         </div>
       </div>
+
+      {/* ── Herramientas fiscales que usan el INPC ── */}
+      <HerramientasFiscales />
+    </div>
+  );
+}
+
+/* ═══════════ Calculadoras (INPC): actualización+recargos, ajuste anual, pérdidas ═══════════ */
+
+const hoyYmd = () => new Date().toISOString().slice(0, 10);
+
+function Campo({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-[11px] text-gray-600 block">{label}</span>
+      {children}
+    </label>
+  );
+}
+function Reng({ k, v, fuerte }: { k: string; v: string; fuerte?: boolean }) {
+  return (
+    <div className={`flex justify-between gap-4 py-1 ${fuerte ? 'font-bold text-gray-900 border-t pt-1.5' : 'text-gray-700'}`}>
+      <span>{k}</span><span className="tabular-nums">{v}</span>
+    </div>
+  );
+}
+
+function HerramientasFiscales() {
+  const [tab, setTab] = useState<'recargos' | 'inflacion' | 'perdida'>('recargos');
+  const money = (n: any) => Number(n || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+  const anioActual = new Date().getFullYear();
+
+  // 1) Actualización + recargos
+  const [rMonto, setRMonto] = useState('');
+  const [rDebio, setRDebio] = useState(`${anioActual}-01-17`);
+  const [rPago, setRPago] = useState(hoyYmd());
+  const [rRes, setRRes] = useState<any>(null);
+  const [rErr, setRErr] = useState('');
+  const calcR = async () => {
+    setRErr(''); setRRes(null);
+    try { const x: any = await api.calcActualizacionRecargos({ monto: Number(rMonto), fechaDebio: rDebio, fechaPago: rPago }); setRRes(x?.data); }
+    catch (e: any) { setRErr(e?.response?.data?.message || e?.message || 'No se pudo calcular.'); }
+  };
+
+  // 2) Ajuste anual por inflación
+  const [aAnio, setAAnio] = useState(anioActual - 1);
+  const [aCred, setACred] = useState('');
+  const [aDeu, setADeu] = useState('');
+  const [aRes, setARes] = useState<any>(null);
+  const [aErr, setAErr] = useState('');
+  const calcA = async () => {
+    setAErr(''); setARes(null);
+    try { const x: any = await api.calcAjusteInflacion({ anio: aAnio, saldoPromedioCreditos: Number(aCred), saldoPromedioDeudas: Number(aDeu) }); setARes(x?.data); }
+    catch (e: any) { setAErr(e?.response?.data?.message || e?.message || 'No se pudo calcular.'); }
+  };
+
+  // 3) Pérdida fiscal
+  const [pMonto, setPMonto] = useState('');
+  const [pAnioP, setPAnioP] = useState(anioActual - 1);
+  const [pAnioA, setPAnioA] = useState(anioActual);
+  const [pRes, setPRes] = useState<any>(null);
+  const [pErr, setPErr] = useState('');
+  const calcP = async () => {
+    setPErr(''); setPRes(null);
+    try { const x: any = await api.calcPerdidaFiscal({ perdida: Number(pMonto), anioPerdida: pAnioP, anioAplicacion: pAnioA }); setPRes(x?.data); }
+    catch (e: any) { setPErr(e?.response?.data?.message || e?.message || 'No se pudo calcular.'); }
+  };
+
+  const inputC = 'input text-sm w-full';
+
+  return (
+    <div className="bg-white rounded-lg border shadow-sm p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Calculator size={17} className="text-primary" />
+        <h2 className="font-semibold text-gray-800">Herramientas fiscales (con INPC)</h2>
+      </div>
+      <p className="text-xs text-gray-500">
+        Usan la serie del INPC de arriba. Si falta el INPC de algún mes, primero dale «Actualizar desde INEGI».
+      </p>
+      <div className="flex gap-1 border-b">
+        {([['recargos', 'Actualización y recargos'], ['inflacion', 'Ajuste anual por inflación'], ['perdida', 'Pérdida fiscal']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === k ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{l}</button>
+        ))}
+      </div>
+
+      {tab === 'recargos' && (
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">Pago extemporáneo de una contribución (Art. 17-A y 21 CFF).</p>
+            <Campo label="Monto de la contribución"><input type="number" value={rMonto} onChange={(e) => setRMonto(e.target.value)} className={`${inputC} text-right`} placeholder="0.00" /></Campo>
+            <div className="grid grid-cols-2 gap-2">
+              <Campo label="Debió pagarse el"><input type="date" value={rDebio} onChange={(e) => setRDebio(e.target.value)} className={inputC} /></Campo>
+              <Campo label="Se paga el"><input type="date" value={rPago} onChange={(e) => setRPago(e.target.value)} className={inputC} /></Campo>
+            </div>
+            <button onClick={calcR} className="btn-primary text-sm">Calcular</button>
+            {rErr && <p className="text-xs text-rose-600">{rErr}</p>}
+          </div>
+          {rRes && (
+            <div className="bg-gray-50 border rounded p-3 text-sm">
+              {rRes.alCorriente ? <p className="text-emerald-700">Está al corriente: no hay actualización ni recargos.</p> : (<>
+                <Reng k="Factor de actualización" v={Number(rRes.fa).toFixed(4)} />
+                <Reng k="Contribución actualizada" v={money(rRes.montoActualizado)} />
+                <Reng k="Actualización" v={money(rRes.actualizacion)} />
+                <Reng k={`Recargos (${rRes.meses} mes(es) · ${Number(rRes.sumaTasas).toFixed(2)}%)`} v={money(rRes.recargos)} />
+                <Reng k="TOTAL a pagar" v={money(rRes.total)} fuerte />
+                <p className="text-[10px] text-gray-400 mt-1">INPC {rRes.inpc.pago.mes}/{rRes.inpc.pago.anio} ÷ {rRes.inpc.debio.mes}/{rRes.inpc.debio.anio}</p>
+              </>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'inflacion' && (
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">Personas morales (Art. 44 LISR). Factor = INPC dic ÷ INPC dic del año anterior − 1.</p>
+            <Campo label="Ejercicio"><input type="number" value={aAnio} onChange={(e) => setAAnio(Number(e.target.value))} className={inputC} /></Campo>
+            <Campo label="Saldo promedio anual de CRÉDITOS"><input type="number" value={aCred} onChange={(e) => setACred(e.target.value)} className={`${inputC} text-right`} placeholder="0.00" /></Campo>
+            <Campo label="Saldo promedio anual de DEUDAS"><input type="number" value={aDeu} onChange={(e) => setADeu(e.target.value)} className={`${inputC} text-right`} placeholder="0.00" /></Campo>
+            <button onClick={calcA} className="btn-primary text-sm">Calcular</button>
+            {aErr && <p className="text-xs text-rose-600">{aErr}</p>}
+          </div>
+          {aRes && (
+            <div className="bg-gray-50 border rounded p-3 text-sm">
+              <Reng k="Factor de ajuste anual" v={Number(aRes.factor).toFixed(4)} />
+              <Reng k="Base (|deudas − créditos|)" v={money(aRes.base)} />
+              <Reng k={`Ajuste anual por inflación (${aRes.tipo})`} v={money(aRes.ajuste)} fuerte />
+              <p className="text-[10px] text-gray-400 mt-1">
+                {aRes.tipo === 'ACUMULABLE' ? 'Deudas > créditos → es INGRESO acumulable.' : aRes.tipo === 'DEDUCIBLE' ? 'Créditos > deudas → es DEDUCIBLE.' : 'Créditos = deudas.'}
+                {' '}INPC dic {aRes.anio} ({Number(aRes.inpcDic).toFixed(3)}) ÷ dic {aRes.anio - 1} ({Number(aRes.inpcDicPrev).toFixed(3)}).
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'perdida' && (
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">Actualización de pérdida fiscal (Art. 57 LISR): 1ª dic÷jul del año de la pérdida; 2ª jun del año de aplicación ÷ dic.</p>
+            <Campo label="Monto de la pérdida (histórica)"><input type="number" value={pMonto} onChange={(e) => setPMonto(e.target.value)} className={`${inputC} text-right`} placeholder="0.00" /></Campo>
+            <div className="grid grid-cols-2 gap-2">
+              <Campo label="Año de la pérdida"><input type="number" value={pAnioP} onChange={(e) => setPAnioP(Number(e.target.value))} className={inputC} /></Campo>
+              <Campo label="Año de aplicación"><input type="number" value={pAnioA} onChange={(e) => setPAnioA(Number(e.target.value))} className={inputC} /></Campo>
+            </div>
+            <button onClick={calcP} className="btn-primary text-sm">Calcular</button>
+            {pErr && <p className="text-xs text-rose-600">{pErr}</p>}
+          </div>
+          {pRes && (
+            <div className="bg-gray-50 border rounded p-3 text-sm">
+              <Reng k="Factor 1ª actualización (dic ÷ jul)" v={Number(pRes.fa1).toFixed(4)} />
+              <Reng k="Factor 2ª actualización (jun ÷ dic)" v={Number(pRes.fa2).toFixed(4)} />
+              <Reng k="Pérdida actualizada" v={money(pRes.actualizada)} fuerte />
+              <p className="text-[10px] text-gray-400 mt-1">Factor total {Number(pRes.factorTotal).toFixed(4)}.</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

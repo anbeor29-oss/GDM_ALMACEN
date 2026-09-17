@@ -139,6 +139,30 @@ router.post(
   })
 );
 
+/** POST /accounting/indicadores/actualizacion-recargos — pago extemporáneo (17-A y 21 CFF). */
+router.post(
+  '/indicadores/actualizacion-recargos',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await indicadores.actualizacionRecargos(req.body || {}) });
+  })
+);
+
+/** POST /accounting/indicadores/ajuste-inflacion — ajuste anual por inflación (44 LISR). */
+router.post(
+  '/indicadores/ajuste-inflacion',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await indicadores.ajusteAnualInflacion(req.body || {}) });
+  })
+);
+
+/** POST /accounting/indicadores/perdida-fiscal — actualización de pérdida fiscal (57 LISR). */
+router.post(
+  '/indicadores/perdida-fiscal',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await indicadores.perdidaFiscalActualizada(req.body || {}) });
+  })
+);
+
 /** GET /accounting/cierre/:anio — utilidad/pérdida del ejercicio (sólo cálculo). */
 router.get(
   '/cierre/:anio',

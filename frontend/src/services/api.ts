@@ -1395,6 +1395,18 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/indicadores/inpc/actualizar', {});
     return r.data;
   }
+  async calcActualizacionRecargos(payload: { monto: number; fechaDebio: string; fechaPago: string }) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/indicadores/actualizacion-recargos', payload);
+    return r.data;
+  }
+  async calcAjusteInflacion(payload: { anio: number; saldoPromedioCreditos: number; saldoPromedioDeudas: number }) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/indicadores/ajuste-inflacion', payload);
+    return r.data;
+  }
+  async calcPerdidaFiscal(payload: { perdida: number; anioPerdida: number; anioAplicacion: number }) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/indicadores/perdida-fiscal', payload);
+    return r.data;
+  }
   /** Auditoría de cuadre: pólizas descuadradas, balanza y balance↔resultados. mes=0 = año completo. */
   async getValidacionContable(anio: number, mes: number) {
     const r = await this.client.get<APIResponse<any>>(`/accounting/validacion/${anio}/${mes}`);
