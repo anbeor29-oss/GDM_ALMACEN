@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.onrender.gdm_almacen_frontend.twa",
+    "sha256_cert_fingerprints": ["75:1F:54:A4:3B:D5:D9:46:D4:8D:19:BA:60:4D:82:72:53:5C:3C:D3:D2:69:AC:F2:73:26:44:63:E2:C5:7E:C4"]
+  }
+}]
