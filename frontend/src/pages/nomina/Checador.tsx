@@ -127,11 +127,26 @@ function TabTurnos() {
   const turnos: any[] = q.data?.data || [];
   const vacio = { nombre: '', hora_entrada: '', comida_inicio: '', comida_fin: '', hora_salida: '', dias: [1, 2, 3, 4, 5] };
   const [nuevo, setNuevo] = useState<any>(vacio);
+  const [error, setError] = useState('');
 
   const crear = useMutation({
     mutationFn: () => api.crearCheckadorTurno(nuevo),
-    onSuccess: () => { setNuevo(vacio); qc.invalidateQueries({ queryKey: ['checador-turnos'] }); },
+    onSuccess: () => { setNuevo(vacio); setError(''); qc.invalidateQueries({ queryKey: ['checador-turnos'] }); },
+    onError: (e: any) => setError(e?.response?.data?.message || e?.message || 'No se pudo crear el turno.'),
   });
+
+  // Valida y avisa qué falta (en vez de dejar el botón muerto sin explicación).
+  const intentarCrear = () => {
+    const faltan: string[] = [];
+    if (!String(nuevo.nombre).trim()) faltan.push('nombre');
+    if (!nuevo.hora_entrada) faltan.push('hora de entrada');
+    if (!nuevo.hora_salida) faltan.push('hora de salida');
+    if (faltan.length) { setError(`Falta ${faltan.join(', ')}. Si el reloj muestra «-----», toca esa parte y elige AM/PM para que se guarde.`); return; }
+    if (!!nuevo.comida_inicio !== !!nuevo.comida_fin) { setError('La comida necesita inicio y fin (o deja ambos vacíos).'); return; }
+    if (!nuevo.dias.length) { setError('Elige al menos un día laboral.'); return; }
+    setError('');
+    crear.mutate();
+  };
   const borrar = useMutation({
     mutationFn: (id: string) => api.borrarCheckadorTurno(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['checador-turnos'] }),
@@ -183,6 +198,7 @@ function TabTurnos() {
           <Campo label="Comida inicio"><input type="time" className="input" value={nuevo.comida_inicio} onChange={(e) => setNuevo({ ...nuevo, comida_inicio: e.target.value })} /></Campo>
           <Campo label="Comida fin"><input type="time" className="input" value={nuevo.comida_fin} onChange={(e) => setNuevo({ ...nuevo, comida_fin: e.target.value })} /></Campo>
         </div>
+        <p className="text-[11px] text-gray-400 mt-1">Si un campo de hora muestra «-----», toca esa parte y elige AM/PM (o teclea la hora completa) para que se guarde.</p>
         <div className="mt-3">
           <span className="text-xs text-gray-500">Días laborales:</span>
           <div className="flex gap-1 mt-1">
@@ -194,9 +210,10 @@ function TabTurnos() {
             ))}
           </div>
         </div>
-        <button onClick={() => crear.mutate()} disabled={crear.isPending || !nuevo.nombre || !nuevo.hora_entrada || !nuevo.hora_salida}
+        {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+        <button onClick={intentarCrear} disabled={crear.isPending}
           className="btn-primary mt-4 inline-flex items-center gap-2">
-          <Plus size={16} /> Agregar turno
+          <Plus size={16} /> {crear.isPending ? 'Agregando…' : 'Agregar turno'}
         </button>
       </div>
     </div>
@@ -304,7 +321,7 @@ function EditorEmpleado({ empleado, turnos }: { empleado: any; turnos: any[] }) 
         <p className="text-sm text-gray-700">
           {(enrQ.data?.data?.plantillas ?? 0) > 0
             ? `${enrQ.data?.data?.plantillas} plantilla(s) registradas.`
-            : 'Sin rostro enrolado. La captura con cámara se habilita en la siguiente fase.'}
+            : 'Sin rostro enrolado. Usa el botón «Enrolar rostro» (arriba) para capturarlo con la cámara.'}
         </p>
       </div>
     </div>
