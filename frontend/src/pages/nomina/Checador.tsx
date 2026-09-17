@@ -7,12 +7,13 @@
  *   Empleados     — a cada quien su tipo (FIJO/ROTATIVO/EXENTO) y turno,
  *                   su consentimiento (LFPDPPP) y el estado de enrolamiento.
  *
- * La captura facial (enrolamiento con cámara) y el kiosco van en las siguientes
- * fases; aquí se deja todo lo administrativo listo.
+ * La captura facial con cámara (enrolamiento) y el kiosco viven en pantallas
+ * aparte —instalables como PWA en tabletas/celulares— y se abren desde aquí.
  */
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save } from 'lucide-react';
+import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save, UserPlus } from 'lucide-react';
 import api from '@/services/api';
 
 const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -28,12 +29,24 @@ export function ChecadorPage() {
   ];
   return (
     <div className="p-6 space-y-4 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Checador · Asistencia</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Control de asistencia biométrico. Aquí defines los parámetros, los turnos y a quién se le
-          registra. La asistencia alimenta la prenómina.
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Checador · Asistencia</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Control de asistencia biométrico. Aquí defines los parámetros, los turnos y a quién se le
+            registra. La asistencia alimenta la prenómina.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Link to="/checador/enrolar"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <UserPlus size={16} /> Enrolar rostro
+          </Link>
+          <Link to="/checador/kiosco"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+            <Camera size={16} /> Abrir kiosco
+          </Link>
+        </div>
       </div>
 
       <div className="flex gap-1 border-b">

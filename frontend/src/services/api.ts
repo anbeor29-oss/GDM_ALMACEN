@@ -3225,6 +3225,19 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/checador/empleados/${empleadoId}/enrolamiento`);
     return r.data;
   }
+  /* ── Kiosco / enrolamiento facial (PWA) ── */
+  async checadorEmpleadosEnrolar() {
+    const r = await this.client.get<APIResponse<any[]>>('/checador/empleados-enrolar');
+    return r.data;
+  }
+  async checadorEnrolar(empleadoId: string, descriptores: number[][]) {
+    const r = await this.client.post<APIResponse<any>>(`/checador/empleados/${empleadoId}/enrolar`, { descriptores });
+    return r.data;
+  }
+  async checadorChecada(payload: { descriptor: number[]; lat?: number | null; lng?: number | null; device?: any }) {
+    const r = await this.client.post<APIResponse<any>>('/checador/checada', payload);
+    return r.data;
+  }
 }
 
 export const api = new APIClient();

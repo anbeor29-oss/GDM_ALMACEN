@@ -47,4 +47,12 @@ router.post('/empleados/:id/enrolar', asyncHandler(async (req, res) =>
 router.post('/identificar', asyncHandler(async (req, res) =>
   ok(res, await checador.identificar(companyId(req), (req.body || {}).descriptor))));
 
+/* ── Checada del KIOSCO/APP: identifica y asienta la entrada/salida ── */
+router.post('/checada', asyncHandler(async (req, res) =>
+  ok(res, await checador.registrarChecada(companyId(req), req.body || {}), 201)));
+
+/* ── Empleados (con consentimiento y # de plantillas) para enrolar en el kiosco ── */
+router.get('/empleados-enrolar', asyncHandler(async (req, res) =>
+  ok(res, await checador.empleadosParaEnrolar(companyId(req)))));
+
 export default router;

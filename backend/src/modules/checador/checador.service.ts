@@ -230,10 +230,80 @@ export async function identificar(companyId: string, descriptor: any) {
   return null;
 }
 
+/**
+ * Registra una CHECADA desde el kiosco/app: identifica el rostro (1:N) y, si lo
+ * reconoce, asienta el evento (ENTRADA/SALIDA por toggle del último evento del
+ * día). Con «debounce» de 90 s para que la cámara no dispare varios seguidos.
+ */
+export async function registrarChecada(
+  companyId: string,
+  d: { descriptor: any; lat?: number | null; lng?: number | null; origen?: string; device?: any },
+) {
+  const origen = d.origen === 'APP' ? 'APP' : 'KIOSCO';
+  const ident = await identificar(companyId, d.descriptor);
+
+  if (!ident) {
+    await query(
+      `INSERT INTO checador_evento (company_id, empleado_id, tipo, origen, lat, lng, estado)
+       VALUES ($1, NULL, 'ENTRADA', $2, $3, $4, 'NO_RECONOCIDO')`,
+      [companyId, origen, d.lat ?? null, d.lng ?? null]);
+    return { reconocido: false };
+  }
+
+  const emp = await query<any>(
+    `SELECT id, TRIM(nombre || ' ' || apellido_pat || ' ' || COALESCE(apellido_mat,'')) AS nombre
+       FROM nomina_empleados WHERE id = $1 AND company_id = $2`, [ident.empleadoId, companyId]);
+  const nombre = emp.rows[0]?.nombre || 'Empleado';
+
+  // Debounce: si ya checó hace menos de 90 s, no se duplica el evento.
+  const reciente = await query<any>(
+    `SELECT tipo FROM checador_evento
+      WHERE company_id=$1 AND empleado_id=$2 AND ts > NOW() - INTERVAL '90 seconds'
+      ORDER BY ts DESC LIMIT 1`, [companyId, ident.empleadoId]);
+  if (reciente.rows.length) {
+    return { reconocido: true, repetido: true, empleado: { id: ident.empleadoId, nombre },
+      tipo: reciente.rows[0].tipo, confianza: ident.confianza };
+  }
+
+  // ENTRADA/SALIDA por el último evento de HOY (hora de México).
+  const ult = await query<any>(
+    `SELECT tipo FROM checador_evento
+      WHERE company_id=$1 AND empleado_id=$2
+        AND ts AT TIME ZONE 'America/Mexico_City' >= (NOW() AT TIME ZONE 'America/Mexico_City')::date
+        AND tipo IN ('ENTRADA','SALIDA')
+      ORDER BY ts DESC LIMIT 1`, [companyId, ident.empleadoId]);
+  const tipo = ult.rows.length && ult.rows[0].tipo === 'ENTRADA' ? 'SALIDA' : 'ENTRADA';
+
+  const ins = await query<any>(
+    `INSERT INTO checador_evento
+       (company_id, empleado_id, tipo, origen, lat, lng, confianza, estado, device)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'A_TIEMPO',$8) RETURNING ts`,
+    [companyId, ident.empleadoId, tipo, origen, d.lat ?? null, d.lng ?? null,
+     ident.confianza, d.device ? JSON.stringify(d.device) : null]);
+
+  return { reconocido: true, empleado: { id: ident.empleadoId, nombre }, tipo, confianza: ident.confianza, ts: ins.rows[0].ts };
+}
+
+/** Empleados con consentimiento, para elegir a quién enrolar en el kiosco. */
+export async function empleadosParaEnrolar(companyId: string) {
+  const r = await query<any>(
+    `SELECT e.id,
+            TRIM(e.nombre || ' ' || e.apellido_pat || ' ' || COALESCE(e.apellido_mat,'')) AS nombre,
+            e.num_empleado,
+            (SELECT COUNT(*)::int FROM checador_rostro r WHERE r.empleado_id = e.id) AS plantillas,
+            COALESCE(c.aceptado, false) AS consentimiento
+       FROM nomina_empleados e
+       LEFT JOIN checador_consentimiento c ON c.empleado_id = e.id AND c.company_id = e.company_id
+      WHERE e.company_id = $1 AND e.deleted_at IS NULL AND COALESCE(e.activo, true)
+      ORDER BY nombre`, [companyId]);
+  return r.rows;
+}
+
 export default {
   getConfig, setConfig,
   listarTurnos, crearTurno, actualizarTurno, borrarTurno,
   getHorario, setHorario, asignarDia,
   getConsentimiento, setConsentimiento,
   enrolarRostros, estadoEnrolamiento, identificar,
+  registrarChecada, empleadosParaEnrolar,
 };

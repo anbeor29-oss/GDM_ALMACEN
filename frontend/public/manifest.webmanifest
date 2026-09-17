@@ -1,0 +1,23 @@
+{
+  "id": "/checador/kiosco",
+  "name": "GDM NEXO · Checador",
+  "short_name": "Checador",
+  "description": "Control de asistencia biométrico (kiosco facial y enrolamiento) de GDM NEXO — para instalar en tabletas y celulares.",
+  "lang": "es-MX",
+  "dir": "ltr",
+  "start_url": "/checador/kiosco",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#111827",
+  "theme_color": "#1e3a8a",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/gdm-logo.png", "sizes": "256x256", "type": "image/png", "purpose": "any" },
+    { "src": "/gdm-logo.png", "sizes": "256x256", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Kiosco de asistencia", "short_name": "Kiosco", "url": "/checador/kiosco" },
+    { "name": "Enrolar rostro", "short_name": "Enrolar", "url": "/checador/enrolar" }
+  ]
+}

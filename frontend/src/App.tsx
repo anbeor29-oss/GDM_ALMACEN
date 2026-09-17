@@ -60,6 +60,8 @@ import { NominaCFDIPage } from '@/pages/nomina/NominaCFDI';
 import { NominaReportesPage } from '@/pages/nomina/NominaReportes';
 import { NominaImportarPage } from '@/pages/nomina/NominaImportar';
 import { ChecadorPage } from '@/pages/nomina/Checador';
+import { CheckadorKioscoPage } from '@/pages/nomina/CheckadorKiosco';
+import { CheckadorEnrolarPage } from '@/pages/nomina/CheckadorEnrolar';
 import { MotorImssIdsePage } from '@/pages/nomina/MotorImssIdse';
 import { CatalogoCuentasPage } from '@/pages/contabilidad/CatalogoCuentas';
 import { AsignacionCuentasPage } from '@/pages/contabilidad/AsignacionCuentas';
@@ -323,6 +325,9 @@ export function App() {
             <Route path="nomina/reportes"                 element={<ModuleRoute module="nomina"><NominaGuard><NominaReportesPage /></NominaGuard></ModuleRoute>} />
             <Route path="nomina/importar"                 element={<ModuleRoute module="nomina"><NominaGuard><NominaImportarPage /></NominaGuard></ModuleRoute>} />
             <Route path="checador"                        element={<ModuleRoute module="nomina"><NominaGuard><ChecadorPage /></NominaGuard></ModuleRoute>} />
+            {/* Kiosco y enrolamiento: operativos (no cálculo de nómina), NO van tras el NominaGuard. */}
+            <Route path="checador/kiosco"                 element={<ModuleRoute module="nomina"><CheckadorKioscoPage /></ModuleRoute>} />
+            <Route path="checador/enrolar"                element={<ModuleRoute module="nomina"><CheckadorEnrolarPage /></ModuleRoute>} />
 
             {/* Contabilidad. Mismo gateo que nómina: el backend manda con
                 requireModule, esto sólo evita la pantalla vacía. */}
