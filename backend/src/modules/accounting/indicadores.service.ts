@@ -60,29 +60,42 @@ export async function resumen() {
   return {
     inpc: inpc ? { anio: Number(inpc.anio), mes: Number(inpc.mes), valor: inpc.valor } : null,
     ejercicios: anios,
-    tieneToken: !!process.env.INEGI_TOKEN,
+    tieneToken: !!(process.env.INEGI_TOKEN || process.env.INEGI_INPC_URL),
   };
 }
 
 /* ── Actualización automática del INPC desde el INEGI ─────────────────────── */
 
 /* El indicador del INPC general (base 2ª quincena de julio 2018) en el Banco de
- * Indicadores del INEGI. Se puede sobreescribir con INEGI_INDICADOR_INPC si el
- * INEGI reasigna la clave (consolidó el BIE en dic-2025). */
+ * Indicadores del INEGI, y la fuente. Se pueden sobreescribir por si el INEGI
+ * reasigna la clave (consolidó el banco en dic-2025; los ejemplos ya usan BISE). */
 const INDICADOR_INPC = process.env.INEGI_INDICADOR_INPC || '910417';
-const FUENTE_INEGI = process.env.INEGI_FUENTE || 'BIE';
+const FUENTE_INEGI = process.env.INEGI_FUENTE || 'BISE';
+
+/**
+ * Arma la URL de la API del INEGI. Dos caminos:
+ *  · INEGI_INPC_URL — la URL COMPLETA que da el «Constructor de Consultas» del
+ *    INEGI (ya trae el indicador, la fuente y el token). Es la más a prueba de
+ *    cambios: se pega tal cual y se usa. Si trae `{TOKEN}`, se sustituye.
+ *  · si no, se construye con INEGI_TOKEN + el indicador y fuente por defecto.
+ */
+function urlInpc(): string | null {
+  const token = process.env.INEGI_TOKEN || '';
+  const plantilla = process.env.INEGI_INPC_URL;
+  if (plantilla) return plantilla.includes('{TOKEN}') ? plantilla.replace('{TOKEN}', token) : plantilla;
+  if (!token) return null;
+  return `https://www.inegi.org.mx/app/api/indicadores/desarrolladores/jsonxml/INDICATOR/` +
+    `${INDICADOR_INPC}/es/00/false/${FUENTE_INEGI}/2.0/${token}?type=json`;
+}
 
 /** Baja la serie del INPC del INEGI y la guarda en `fiscal_inpc`. */
 export async function actualizarInpc(): Promise<{ actualizados: number; desde?: string; hasta?: string; mensaje?: string }> {
-  const token = process.env.INEGI_TOKEN;
-  if (!token) {
+  const url = urlInpc();
+  if (!url) {
     throw new Error(
-      'Falta el token del INEGI. Regístrate gratis en la API del Banco de Indicadores del INEGI ' +
-      'y pon el token en la variable de entorno INEGI_TOKEN (en Render).');
+      'Falta la conexión con el INEGI. Pon el token en INEGI_TOKEN, o pega la URL completa del ' +
+      'Constructor de Consultas del INEGI en INEGI_INPC_URL (en Render).');
   }
-  const url =
-    `https://www.inegi.org.mx/app/api/indicadores/desarrolladores/jsonxml/INDICATOR/` +
-    `${INDICADOR_INPC}/es/00/false/${FUENTE_INEGI}/2.0/${token}?type=json`;
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 20000);

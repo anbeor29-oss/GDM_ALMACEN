@@ -33,8 +33,8 @@ export function registerInpcCron(): void {
     logger.info('[inpc-cron] Deshabilitado (ENABLE_INPC_CRON != true)');
     return;
   }
-  if (!process.env.INEGI_TOKEN) {
-    logger.warn('[inpc-cron] Habilitado pero SIN INEGI_TOKEN: no se puede bajar el INPC. Pon el token en Render.');
+  if (!process.env.INEGI_TOKEN && !process.env.INEGI_INPC_URL) {
+    logger.warn('[inpc-cron] Habilitado pero SIN INEGI_TOKEN ni INEGI_INPC_URL: no hay de dónde bajar el INPC. Pon uno de los dos en Render.');
     return;
   }
   // 10 y 11 (INPC mensual, ~día 9) y 24 y 25 (quincenal, ~día 24), 04:00 México.
