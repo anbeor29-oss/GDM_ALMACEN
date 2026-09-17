@@ -11,14 +11,20 @@
  * que los enlaces directos y el botón «atrás» del navegador funcionen; el sidebar
  * ya sólo trae una entrada «XML» que cae en la de Descarga.
  */
+import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Download } from 'lucide-react';
+import { Download, Archive } from 'lucide-react';
 import { XmlRecibidos } from '@/components/XmlRecibidos';
 import { ProgramacionSat } from '@/components/ProgramacionSat';
 import { TablaComprobantesSat } from '@/components/TablaComprobantesSat';
 import { CalendarioSatPage } from '@/pages/CalendarioSat';
+import { aniosContables } from '@/utils/anios';
+import api from '@/services/api';
 
-type Tab = 'descarga' | 'emitidos' | 'recibidos' | 'calendario';
+const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
+  'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+type Tab = 'descarga' | 'emitidos' | 'recibidos' | 'calendario' | 'respaldo';
 
 /* [clave, etiqueta, ruta] — la ruta mantiene la pestaña enlazable. */
 const TABS: Array<[Tab, string, string]> = [
@@ -26,6 +32,7 @@ const TABS: Array<[Tab, string, string]> = [
   ['emitidos',   'Emitidos',   '/xml-sat/emitidos'],
   ['recibidos',  'Recibidos',  '/xml-sat/recibidos'],
   ['calendario', 'Calendario', '/xml-sat/calendario'],
+  ['respaldo',   'Respaldo',   '/xml-sat/respaldo'],
 ];
 
 export function XmlDelSatPage() {
@@ -36,6 +43,7 @@ export function XmlDelSatPage() {
     pathname.endsWith('/emitidos')   ? 'emitidos'   :
     pathname.endsWith('/recibidos')  ? 'recibidos'  :
     pathname.endsWith('/calendario') ? 'calendario' :
+    pathname.endsWith('/respaldo')   ? 'respaldo'   :
     'descarga';
 
   return (
@@ -72,6 +80,66 @@ export function XmlDelSatPage() {
       {tab === 'emitidos'   && <TablaComprobantesSat direccion="emitidos" />}
       {tab === 'recibidos'  && <TablaComprobantesSat direccion="recibidos" />}
       {tab === 'calendario' && <CalendarioSatPage />}
+      {tab === 'respaldo'   && <RespaldoXml />}
+    </div>
+  );
+}
+
+/* ── Respaldo: descarga un ZIP con TODOS los XML almacenados (la fuente de la
+ *    verdad): emitidos y recibidos, en carpetas, con manifiesto. ── */
+function RespaldoXml() {
+  const hoy = new Date();
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  const [mes, setMes] = useState(0);
+  const [dir, setDir] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const descargar = async () => {
+    setBusy(true); setMsg('');
+    try { await api.descargarRespaldoXml(anio, mes || undefined, dir || undefined); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo generar el respaldo.'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="bg-white rounded-lg border shadow-sm p-4 space-y-3 max-w-2xl">
+      <div className="flex items-start gap-2">
+        <Archive size={18} className="text-emerald-600 mt-0.5 shrink-0" />
+        <div>
+          <h2 className="font-semibold text-gray-800">Respaldo de XML</h2>
+          <p className="text-sm text-gray-500">
+            Descarga un ZIP con los CFDI almacenados —la fuente de la verdad—: emitidos y
+            recibidos, en carpetas y con un manifiesto. Elige el periodo y la dirección.
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <div>
+          <label className="text-[11px] text-gray-600 block">Año</label>
+          <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input text-sm">
+            {aniosContables().map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[11px] text-gray-600 block">Mes</label>
+          <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input text-sm">
+            <option value={0}>Todo el año</option>
+            {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[11px] text-gray-600 block">Dirección</label>
+          <select value={dir} onChange={(e) => setDir(e.target.value)} className="input text-sm">
+            <option value="">Emitidos y recibidos</option>
+            <option value="emitidos">Solo emitidos</option>
+            <option value="recibidos">Solo recibidos</option>
+          </select>
+        </div>
+        <button onClick={descargar} disabled={busy}
+          className="flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
+          <Download size={15} /> {busy ? 'Generando…' : 'Descargar respaldo (.zip)'}
+        </button>
+      </div>
+      {msg && <p className="text-sm text-rose-600">{msg}</p>}
     </div>
   );
 }

@@ -1566,6 +1566,13 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/sat-descarga/programacion');
     return r.data;
   }
+  /** Respaldo (.zip) de los XML del SAT almacenados (la fuente de la verdad). */
+  async descargarRespaldoXml(anio?: number, mes?: number, direccion?: string) {
+    const r = await this.client.get('/sat-descarga/respaldo.zip',
+      { params: { anio, mes: mes || undefined, direccion: direccion || undefined }, responseType: 'blob' });
+    const nombre = `Respaldo_XML_${direccion || 'todos'}_${anio || 'todo'}${mes ? '-' + String(mes).padStart(2, '0') : ''}.zip`;
+    await this.downloadFile(r.data as Blob, nombre);
+  }
   async guardarProgramacionSat(cfg: any) {
     const r = await this.client.put<APIResponse<any>>('/sat-descarga/programacion', cfg);
     return r.data;

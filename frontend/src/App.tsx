@@ -306,6 +306,7 @@ export function App() {
             <Route path="xml-sat/recibidos"               element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
             <Route path="xml-sat/emitidos"                element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
             <Route path="xml-sat/calendario"              element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
+            <Route path="xml-sat/respaldo"                element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
             <Route path="mensajes"                        element={<ModuleRoute module="mensajes"><MensajesPage /></ModuleRoute>} />
             {/* Nómina. El gateo real lo hace el backend (requireModule) — esto
                 sólo evita que la URL escrita a mano pinte una pantalla vacía. */}

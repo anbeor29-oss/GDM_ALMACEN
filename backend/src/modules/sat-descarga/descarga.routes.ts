@@ -16,10 +16,14 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { authenticateToken, authorize } from '../../middleware/authentication';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
+import { query } from '../../config/database';
 import * as service from './descarga.service';
 import * as programacion from './programacion.service';
 import { bovedaLista } from './boveda';
 import { EfirmaInvalida } from './efirma';
+// archiver es CJS — require para evitar el namespace import (igual que /archive).
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const archiver = require('archiver');
 
 const router = Router();
 router.use(authenticateToken);
@@ -406,6 +410,52 @@ router.get(
       req.query.mes ? Number(req.query.mes) : undefined
     );
     res.json({ success: true, data: resumen });
+  })
+);
+
+/**
+ * GET /sat-descarga/respaldo.zip?anio=&mes=&direccion=
+ * El RESPALDO de los XML del SAT —la fuente de la verdad—: un ZIP con cada CFDI
+ * almacenado (emitidos y recibidos), en carpetas por dirección, con manifiesto.
+ * Se transmite en streaming (apto para miles de comprobantes).
+ */
+router.get(
+  '/respaldo.zip',
+  asyncHandler(async (req: Request, res: Response) => {
+    const cid = companyId(req);
+    const anio = req.query.anio ? Number(req.query.anio) : undefined;
+    const mes = req.query.mes ? Number(req.query.mes) : undefined;
+    const dir = ['emitidos', 'recibidos'].includes(String(req.query.direccion))
+      ? String(req.query.direccion) : undefined;
+
+    const filtros = ['company_id = $1', 'xml IS NOT NULL'];
+    const params: any[] = [cid];
+    if (anio) { params.push(anio); filtros.push(`EXTRACT(YEAR FROM fecha_emision) = $${params.length}`); }
+    if (mes) { params.push(mes); filtros.push(`EXTRACT(MONTH FROM fecha_emision) = $${params.length}`); }
+    if (dir) { params.push(dir); filtros.push(`direccion = $${params.length}`); }
+
+    const r = await query<any>(
+      `SELECT uuid, serie, folio, direccion, fecha_emision, xml
+         FROM cfdi_recibidos WHERE ${filtros.join(' AND ')} ORDER BY fecha_emision`, params);
+    if (!r.rows.length) throw new ValidationError('No hay XML respaldados en ese periodo.');
+
+    const nombre = `Respaldo_XML_${dir || 'todos'}_${anio || 'todo'}${mes ? '-' + String(mes).padStart(2, '0') : ''}.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    const safe = (s: any) => String(s || '').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80);
+    const zip = archiver('zip', { zlib: { level: 6 } });
+    zip.on('error', () => res.end());
+    zip.pipe(res);
+    for (const c of r.rows) {
+      const carpeta = c.direccion === 'emitidos' ? 'Emitidos' : 'Recibidos';
+      const base = safe([c.serie, c.folio].filter(Boolean).join('-') || c.uuid);
+      zip.append(c.xml, { name: `${carpeta}/${base}_${safe(c.uuid)}.xml` });
+    }
+    zip.append(JSON.stringify({
+      generado: new Date().toISOString(), empresa: cid, total: r.rows.length,
+      anio: anio || null, mes: mes || null, direccion: dir || 'todos',
+    }, null, 2), { name: 'MANIFIESTO.json' });
+    await zip.finalize();
   })
 );
 
