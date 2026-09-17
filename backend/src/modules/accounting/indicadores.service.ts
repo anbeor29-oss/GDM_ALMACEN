@@ -159,12 +159,28 @@ export async function importarInpc(buffer: Buffer, nombre: string): Promise<{ ac
 
   const esXml = /^\s*<\?xml|<(?:\w+:)?Obs\b|OBS_VALOR=/i.test(texto);
   if (esXml) {
-    // SDMX Compact del INEGI: <inegi:Obs PERIODO="2026/08" OBS_VALOR="145.462" .../>
-    for (const t of texto.match(/<(?:\w+:)?Obs\b[^>]*>/g) || []) {
-      const per = t.match(/PERIODO="(\d{4})[\/\-](\d{1,2})"/);
-      const val = t.match(/OBS_VALOR="(-?[\d.]+)"/i);
-      if (per && val) add(Number(per[1]), Number(per[2]), Number(val[1]));
+    /* SDMX Compact del INEGI. El archivo puede traer VARIAS <Series> (índice,
+     * variación mensual, variación anual…). Nos quedamos con la de valores más
+     * grandes: el ÍNDICE anda ~40–200; las variaciones, en unidades. */
+    const obsDe = (bloque: string) => {
+      const obs: Array<{ anio: number; mes: number; valor: number }> = [];
+      for (const t of bloque.match(/<(?:\w+:)?Obs\b[^>]*>/g) || []) {
+        const per = t.match(/PERIODO="(\d{4})[\/\-](\d{1,2})"/);
+        const val = t.match(/OBS_VALOR="(-?[\d.]+)"/i);
+        if (per && val) obs.push({ anio: Number(per[1]), mes: Number(per[2]), valor: Number(val[1]) });
+      }
+      return obs;
+    };
+    const bloques = texto.split(/<(?:\w+:)?Series\b/).slice(1);
+    let mejor: Array<{ anio: number; mes: number; valor: number }> = [];
+    let mejorMax = -Infinity;
+    for (const b of (bloques.length ? bloques : [texto])) {
+      const obs = obsDe(b);
+      if (!obs.length) continue;
+      const mx = Math.max(...obs.map((o) => o.valor));
+      if (mx > mejorMax) { mejorMax = mx; mejor = obs; }
     }
+    for (const o of mejor) add(o.anio, o.mes, o.valor);
   } else {
     let filas: any[][] = [];
     if (/\.xlsx?$/i.test(nombre)) {
