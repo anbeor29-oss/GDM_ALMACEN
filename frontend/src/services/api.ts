@@ -1382,6 +1382,19 @@ class APIClient {
     const r = await this.client.get<APIResponse<{ anio: number; mes: number }>>('/accounting/periodo-activo');
     return r.data;
   }
+  /* ── Indicadores económicos (INPC, UMA, SM, UMI) ── */
+  async getIndicadores() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/indicadores');
+    return r.data;
+  }
+  async getInpcSerie(limite = 36) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/indicadores/inpc', { params: { limite } });
+    return r.data;
+  }
+  async actualizarInpc() {
+    const r = await this.client.post<APIResponse<any>>('/accounting/indicadores/inpc/actualizar', {});
+    return r.data;
+  }
   /** Auditoría de cuadre: pólizas descuadradas, balanza y balance↔resultados. mes=0 = año completo. */
   async getValidacionContable(anio: number, mes: number) {
     const r = await this.client.get<APIResponse<any>>(`/accounting/validacion/${anio}/${mes}`);

@@ -32,6 +32,7 @@ import * as validacion from './validacion-contable.service';
 import * as especiales from './reportes-especiales.service';
 import * as balanceGeneral from './balance-general.service';
 import * as erContable from './estado-resultados-contable.service';
+import * as indicadores from './indicadores.service';
 import * as contpaqiTxt from './contpaqi-txt.service';
 import * as cierre from './cierre-ejercicio.service';
 import * as diotSvc from './diot.service';
@@ -107,6 +108,34 @@ router.get(
   '/periodo-activo',
   asyncHandler(async (req: Request, res: Response) => {
     res.json({ success: true, data: await periodos.periodoActivo(companyId(req)) });
+  })
+);
+
+/* ── Indicadores económicos (INPC, UMA, SM, UMI) ─────────────────────────── */
+
+/** GET /accounting/indicadores — INPC más reciente + UMA/SM/UMI/ISR por año. */
+router.get(
+  '/indicadores',
+  asyncHandler(async (_req: Request, res: Response) => {
+    res.json({ success: true, data: await indicadores.resumen() });
+  })
+);
+
+/** GET /accounting/indicadores/inpc — la serie mensual del INPC. */
+router.get(
+  '/indicadores/inpc',
+  asyncHandler(async (req: Request, res: Response) => {
+    const limite = Math.min(240, Math.max(1, Number(req.query.limite) || 36));
+    res.json({ success: true, data: await indicadores.serieInpc(limite) });
+  })
+);
+
+/** POST /accounting/indicadores/inpc/actualizar — baja el INPC del INEGI (ADMIN). */
+router.post(
+  '/indicadores/inpc/actualizar',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (_req: Request, res: Response) => {
+    res.json({ success: true, data: await indicadores.actualizarInpc() });
   })
 );
 

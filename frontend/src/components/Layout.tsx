@@ -384,6 +384,7 @@ export function Layout() {
                       { to: '/contabilidad/catalogo',       icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
                       { to: '/contabilidad/conciliacion',  icon: emoji3D('🏦'), label: 'Conciliación bancaria' },
                       { to: '/contabilidad/validacion',    icon: emoji3D('🧮'), label: 'Cuadre contable' },
+                      { to: '/contabilidad/indicadores',   icon: emoji3D('📈'), label: 'Indicadores económicos' },
                       ...(esAdmin ? [{ to: '/contabilidad/cierre', icon: emoji3D('🔒'), label: 'Cierre del ejercicio' }] : []),
                       { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },
                       {
