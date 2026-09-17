@@ -54,6 +54,7 @@ import { MensajesPage }               from '@/pages/Mensajes';
 import { NominaDashboardPage }        from '@/pages/nomina/NominaDashboard';
 import { EmpleadosPage }              from '@/pages/nomina/Empleados';
 import { NominaParametrosPage }       from '@/pages/nomina/NominaParametros';
+import { NominaGuard }                from '@/pages/nomina/NominaGuard';
 import { NominaCalculoPage } from '@/pages/nomina/NominaCalculo';
 import { NominaCFDIPage } from '@/pages/nomina/NominaCFDI';
 import { NominaReportesPage } from '@/pages/nomina/NominaReportes';
@@ -310,15 +311,17 @@ export function App() {
             <Route path="mensajes"                        element={<ModuleRoute module="mensajes"><MensajesPage /></ModuleRoute>} />
             {/* Nómina. El gateo real lo hace el backend (requireModule) — esto
                 sólo evita que la URL escrita a mano pinte una pantalla vacía. */}
-            <Route path="nomina"                          element={<ModuleRoute module="nomina"><NominaDashboardPage /></ModuleRoute>} />
-            <Route path="nomina/empleados"                element={<ModuleRoute module="nomina"><EmpleadosPage /></ModuleRoute>} />
-            <Route path="nomina/calculo"                  element={<ModuleRoute module="nomina"><NominaCalculoPage /></ModuleRoute>} />
-            <Route path="nomina/cfdi"                     element={<ModuleRoute module="nomina"><NominaCFDIPage /></ModuleRoute>} />
-            <Route path="nomina/imss"                     element={<ModuleRoute module="nomina"><MotorImssIdsePage /></ModuleRoute>} />
+            {/* Nómina bloqueada hasta capturar los parámetros patronales (NominaGuard).
+                La pantalla de Parámetros queda libre —es donde se capturan—. */}
+            <Route path="nomina"                          element={<ModuleRoute module="nomina"><NominaGuard><NominaDashboardPage /></NominaGuard></ModuleRoute>} />
+            <Route path="nomina/empleados"                element={<ModuleRoute module="nomina"><NominaGuard><EmpleadosPage /></NominaGuard></ModuleRoute>} />
+            <Route path="nomina/calculo"                  element={<ModuleRoute module="nomina"><NominaGuard><NominaCalculoPage /></NominaGuard></ModuleRoute>} />
+            <Route path="nomina/cfdi"                     element={<ModuleRoute module="nomina"><NominaGuard><NominaCFDIPage /></NominaGuard></ModuleRoute>} />
+            <Route path="nomina/imss"                     element={<ModuleRoute module="nomina"><NominaGuard><MotorImssIdsePage /></NominaGuard></ModuleRoute>} />
             <Route path="nomina/parametros"               element={<ModuleRoute module="nomina"><NominaParametrosPage /></ModuleRoute>} />
-            <Route path="nomina/reportes"                 element={<ModuleRoute module="nomina"><NominaReportesPage /></ModuleRoute>} />
-            <Route path="nomina/importar"                 element={<ModuleRoute module="nomina"><NominaImportarPage /></ModuleRoute>} />
-            <Route path="checador"                        element={<ModuleRoute module="nomina"><ChecadorPage /></ModuleRoute>} />
+            <Route path="nomina/reportes"                 element={<ModuleRoute module="nomina"><NominaGuard><NominaReportesPage /></NominaGuard></ModuleRoute>} />
+            <Route path="nomina/importar"                 element={<ModuleRoute module="nomina"><NominaGuard><NominaImportarPage /></NominaGuard></ModuleRoute>} />
+            <Route path="checador"                        element={<ModuleRoute module="nomina"><NominaGuard><ChecadorPage /></NominaGuard></ModuleRoute>} />
 
             {/* Contabilidad. Mismo gateo que nómina: el backend manda con
                 requireModule, esto sólo evita la pantalla vacía. */}
