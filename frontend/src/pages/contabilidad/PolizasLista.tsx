@@ -15,6 +15,7 @@ import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilida
 import { TablaComprobantesSat } from '@/components/TablaComprobantesSat';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { aniosContables } from '@/utils/anios';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -50,7 +51,6 @@ const FILTROS = [
 ] as const;
 
 export function PolizasListaPage() {
-  const hoy = new Date();
   const qc = useQueryClient();
   const mascara = useMascara();
   /* Se puede llegar desde el auxiliar de la balanza con ?editar=<id>&anio&mes:
@@ -58,8 +58,10 @@ export function PolizasListaPage() {
    * póliza. Es el «doble clic en la póliza → editarla» pedido desde la balanza. */
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const [anio, setAnio] = useState(Number(params.get('anio')) || hoy.getFullYear());
-  const [mes, setMes] = useState(Number(params.get('mes')) || hoy.getMonth() + 1);
+  // Arranca en el mes de trabajo (siguiente al último cerrado); la URL lo puede fijar.
+  const pAnio = params.get('anio') ? Number(params.get('anio')) : undefined;
+  const pMes = params.get('mes') != null && params.get('mes') !== '' ? Number(params.get('mes')) : undefined;
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo(pAnio, pMes);
   const [filtro, setFiltro] = useState<string>('');
   const [msg, setMsg] = useState('');
   const [generando, setGenerando] = useState('');

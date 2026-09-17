@@ -16,6 +16,7 @@ import { AlertTriangle, CheckCircle2, Info, TrendingUp, X, FileSpreadsheet, File
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { SelectorPeriodo } from '@/components/SelectorPeriodo';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 import {
   MarcoEstado, SeccionBalance, Total, ListaRubros, NoDisponible, Cuadre,
   mx, pct, MESES,
@@ -26,14 +27,16 @@ import {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export function BalanzaPage() {
-  const hoy = new Date();
   const qc = useQueryClient();
   const mascara = useMascara();
   /* Se puede volver aquí desde el editor de una póliza (que se abrió por el
    * auxiliar): el mes/año llegan en la URL para reabrir en el mismo periodo. */
   const [params] = useSearchParams();
-  const [anio, setAnio] = useState(Number(params.get('anio')) || hoy.getFullYear());
-  const [mes, setMes] = useState(Number(params.get('mes')) || hoy.getMonth() + 1);
+  // Arranca en el mes de trabajo (siguiente al último cerrado); si viene fijado por
+  // la URL (p. ej. al volver del auxiliar) respeta ese mes.
+  const pAnio = params.get('anio') ? Number(params.get('anio')) : undefined;
+  const pMes = params.get('mes') ? Number(params.get('mes')) : undefined;
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo(pAnio, pMes);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [auxiliar, setAuxiliar] = useState<string | null>(null);

@@ -111,6 +111,24 @@ export async function estadoDelPeriodo(
   };
 }
 
+/**
+ * El periodo de TRABAJO: el mes SIGUIENTE al último cerrado. Así, con el cierre a
+ * diciembre 2025, todas las pantallas arrancan en enero 2026; al cerrar enero, en
+ * febrero, y así sucesivamente —el usuario no anda cambiando el mes a mano—. Si
+ * todavía no se ha cerrado ningún mes, el mes en curso del calendario.
+ */
+export async function periodoActivo(companyId: string): Promise<{ anio: number; mes: number }> {
+  const r = await query<any>(
+    `SELECT anio, mes FROM accounting_periods
+      WHERE company_id=$1 AND estado='CERRADO' ORDER BY anio DESC, mes DESC LIMIT 1`, [companyId]);
+  if (r.rows.length) {
+    const anio = Number(r.rows[0].anio), mes = Number(r.rows[0].mes);
+    return mes >= 12 ? { anio: anio + 1, mes: 1 } : { anio, mes: mes + 1 };
+  }
+  const hoy = new Date();
+  return { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1 };
+}
+
 /** Los doce meses del año, con su estado. El hueco es el dato. */
 export async function anioCompleto(companyId: string, anio: number) {
   const meses: EstadoPeriodo[] = [];

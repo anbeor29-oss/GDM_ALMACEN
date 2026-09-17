@@ -13,6 +13,7 @@ import { FileSpreadsheet, FileDown, TrendingUp } from 'lucide-react';
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { SelectorPeriodo } from '@/components/SelectorPeriodo';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 import { mx, MESES } from './piezas';
 
 const MES3 = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
@@ -127,10 +128,8 @@ function VistaAnual({ d }: { d: any }) {
 }
 
 export function EstadoResultadosContablePage() {
-  const hoy = new Date();
   const mascara = useMascara();
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const [modo, setModo] = useState<'mensual' | 'anual'>('mensual');
   const [msg, setMsg] = useState('');
 

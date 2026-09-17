@@ -1377,6 +1377,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/estados/${anio}/${mes}/balanza`);
     return r.data;
   }
+  /** El mes de trabajo (siguiente al último cerrado): las pantallas arrancan ahí. */
+  async getPeriodoActivo() {
+    const r = await this.client.get<APIResponse<{ anio: number; mes: number }>>('/accounting/periodo-activo');
+    return r.data;
+  }
   /** Auditoría de cuadre: pólizas descuadradas, balanza y balance↔resultados. mes=0 = año completo. */
   async getValidacionContable(anio: number, mes: number) {
     const r = await this.client.get<APIResponse<any>>(`/accounting/validacion/${anio}/${mes}`);

@@ -15,6 +15,7 @@ import { FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, Scale } from 'l
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { SelectorPeriodo } from '@/components/SelectorPeriodo';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 import { mx, MESES } from './piezas';
 
 const fechaLarga = (iso?: string | null) =>
@@ -68,10 +69,8 @@ function Bloque({ titulo, nodos, total, etiquetaTotal, mascara, fuerte }: {
 }
 
 export function BalanceGeneralPage() {
-  const hoy = new Date();
   const mascara = useMascara();
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const [modo, setModo] = useState<'mensual' | 'anual'>('mensual');
   const [msg, setMsg] = useState('');
 

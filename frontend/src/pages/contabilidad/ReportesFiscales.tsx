@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { FileText, Download, ScrollText, AlertCircle } from 'lucide-react';
 import { api } from '@/services/api';
 import { aniosContables } from '@/utils/anios';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -18,9 +19,7 @@ const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 export function ReportesFiscalesPage() {
-  const hoy = new Date();
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const [tab, setTab] = useState<'diot' | 'electronica'>('diot');
 
   return (

@@ -101,6 +101,15 @@ router.get(
   })
 );
 
+/** GET /accounting/periodo-activo — el mes de trabajo (siguiente al último cerrado),
+ *  para que las pantallas arranquen ahí en vez del mes del calendario. */
+router.get(
+  '/periodo-activo',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await periodos.periodoActivo(companyId(req)) });
+  })
+);
+
 /** GET /accounting/cierre/:anio — utilidad/pérdida del ejercicio (sólo cálculo). */
 router.get(
   '/cierre/:anio',
