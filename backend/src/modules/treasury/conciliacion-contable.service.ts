@@ -479,23 +479,28 @@ export async function cotejarConLibro(companyId: string, estadoId: string) {
  * corresponden (p. ej. un pago aplicado con otra fecha o con centavos de
  * diferencia). Deja el movimiento «conciliado» contra esa póliza —igual que el
  * cotejo automático—, sin crear otra póliza. */
-export async function cotejarManual(companyId: string, movId: string, lineId: string) {
+export async function cotejarManual(companyId: string, movIds: string[], lineId: string) {
   const ln = (await query<any>(
     `SELECT l.id, l.entry_id FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id
       WHERE l.id=$1 AND e.company_id=$2`, [lineId, companyId])).rows[0];
   if (!ln) return { error: 'no se encontró la línea de la contabilidad' };
-  const yaLine = (await query<any>(
-    `SELECT id FROM bancos_movimientos WHERE company_id=$1 AND conciliado_line_id=$2 AND id<>$3 LIMIT 1`,
-    [companyId, lineId, movId])).rows[0];
-  if (yaLine) return { error: 'esa línea de la contabilidad ya está conciliada con otro movimiento del banco' };
-  const m = (await query<any>(
-    `SELECT poliza_id FROM bancos_movimientos WHERE id=$1 AND company_id=$2`, [movId, companyId])).rows[0];
-  if (!m) return { error: 'no se encontró el movimiento del banco' };
-  if (m.poliza_id) return { error: 'ese movimiento ya está contabilizado o conciliado; deshazlo primero' };
-  await query(
-    `UPDATE bancos_movimientos SET concil_estado='conciliado', poliza_id=$2, conciliado_line_id=$3 WHERE id=$1`,
-    [movId, ln.entry_id, ln.id]);
-  return { ok: true };
+  if (!movIds.length) return { error: 'no hay movimientos del banco seleccionados' };
+  /* Se permiten VARIOS movimientos del banco contra UNA línea de la 102 (p. ej.
+   * tres comisiones —150 + 5 + 24.80— que en la contabilidad son un solo cargo de
+   * 179.80). Es un cotejo a mano: el usuario decide qué corresponde. */
+  let ok = 0;
+  const omitidos: string[] = [];
+  for (const movId of movIds) {
+    const m = (await query<any>(
+      `SELECT poliza_id FROM bancos_movimientos WHERE id=$1 AND company_id=$2`, [movId, companyId])).rows[0];
+    if (!m) { omitidos.push('un movimiento no se encontró'); continue; }
+    if (m.poliza_id) { omitidos.push('un movimiento ya estaba contabilizado/conciliado'); continue; }
+    await query(
+      `UPDATE bancos_movimientos SET concil_estado='conciliado', poliza_id=$2, conciliado_line_id=$3 WHERE id=$1`,
+      [movId, ln.entry_id, ln.id]);
+    ok++;
+  }
+  return { ok, omitidos };
 }
 
 /**

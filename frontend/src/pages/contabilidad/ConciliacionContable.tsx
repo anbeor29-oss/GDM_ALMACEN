@@ -104,6 +104,7 @@ export function ConciliacionContablePage() {
   const [modalSubir, setModalSubir] = useState(false);
   const [ocultarConcil, setOcultarConcil] = useState(false);   // ocultar lo ya conciliado
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());   // conciliación manual por lote
+  const [selLinea, setSelLinea] = useState('');   // línea de la 102 elegida para cotejo manual
 
   const cuentasQ = useQuery({ queryKey: ['bancos-cuentas'], queryFn: () => api.getCuentasBancarias() });
   const cuentas: any[] = cuentasQ.data?.data?.cuentas || [];
@@ -213,6 +214,29 @@ export function ConciliacionContablePage() {
     }, () => { setMsg(`${ids.length} movimiento(s) omitido(s).`); setSeleccion(new Set()); });
   };
 
+  /* ── Cotejo MANUAL: banco (izq., checkboxes) ↔ 102 (der., checkbox) ──
+   * El usuario marca UNO O VARIOS movimientos del banco a la izquierda (p. ej. tres
+   * comisiones 150 + 5 + 24.80) y UNA línea de la 102 a la derecha (p. ej. el cargo
+   * de 179.80) y las liga a mano, aunque el importe/fecha no hayan casado solos. */
+  const lineaSel = libro.find((l: any) => l.id === selLinea) || null;
+  const lineaMonto = lineaSel ? (Number(lineaSel.cargo) || Number(lineaSel.abono)) : 0;
+  const movsSelPend = idsSel().map((id) => movs.find((m) => m.id === id)).filter(Boolean) as any[];
+  const sumaSel = movsSelPend.reduce(
+    (a, m) => a + (Number(m.deposito) > 0 ? Number(m.deposito) : Number(m.retiro)), 0);
+  const puedeCotejarManual = movsSelPend.length > 0 && !!lineaSel && !lineaSel.empatado_con;
+  const cotejarManual = () => {
+    if (!puedeCotejarManual) return;
+    correr(async () => {
+      const r: any = await api.cotejarManualMovimientos(idsSel(), selLinea);
+      if (r?.data?.error) throw new Error(r.data.error);
+      return r?.data;
+    }, (d: any) => {
+      setMsg(`${d?.ok ?? 0} movimiento(s) conciliado(s) a mano con la línea #${lineaSel!.folio}.`);
+      setSelLinea(''); setSeleccion(new Set());
+      qc.invalidateQueries({ queryKey: ['libro', eid] });
+    });
+  };
+
   const setBancoCuenta = (id: string) => correr(() => api.actualizarCuentaBancaria(cid, { cuentaContableId: id || null }));
   const marcar = (id: string, data: any) => correr(() => api.marcarMovimiento(id, data));
   const contabilizar = (m: any, contraId?: string) => correr(
@@ -243,12 +267,12 @@ export function ConciliacionContablePage() {
 
       {/* Controles */}
       <div className="bg-white rounded-lg border shadow-sm p-3 flex flex-wrap items-center gap-2">
-        <select value={cid} onChange={(e) => { setCuentaSel(e.target.value); setEstadoSel(''); setSelMov(''); setSeleccion(new Set()); }}
+        <select value={cid} onChange={(e) => { setCuentaSel(e.target.value); setEstadoSel(''); setSelMov(''); setSeleccion(new Set()); setSelLinea(''); }}
           className="border border-gray-300 rounded px-2 py-1.5 text-sm">
           {cuentas.length === 0 && <option value="">— no hay cuentas —</option>}
           {cuentas.map((c) => <option key={c.id} value={c.id}>{c.alias} · {c.banco_nombre}</option>)}
         </select>
-        <select value={eid} onChange={(e) => { setEstadoSel(e.target.value); setSelMov(''); setSeleccion(new Set()); }}
+        <select value={eid} onChange={(e) => { setEstadoSel(e.target.value); setSelMov(''); setSeleccion(new Set()); setSelLinea(''); }}
           className="border border-gray-300 rounded px-2 py-1.5 text-sm" disabled={!estados.length}>
           {estados.length === 0 && <option value="">— sin estados —</option>}
           {estados.map((e) => <option key={e.id} value={e.id}>{MESES[e.mes]} {e.anio}</option>)}
@@ -408,6 +432,31 @@ export function ConciliacionContablePage() {
                 onAbrirComis={() => setModalComis(true)} />
             </div>
           )}
+
+          {/* Cotejo manual: movimientos del banco (izq., checkboxes) ↔ línea de la 102 (der.). */}
+          {lineaSel && !lineaSel.empatado_con && (
+            <div className={`rounded-lg border p-3 text-sm flex items-center gap-2 flex-wrap ${
+              movsSelPend.length ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+              {movsSelPend.length ? (
+                <>
+                  <span>
+                    Conciliar a mano: <b>{movsSelPend.length}</b> movimiento(s) del banco
+                    {' '}(Σ <b>{money(sumaSel)}</b>) ↔ contabilidad <b>#{lineaSel.folio}</b> {money(lineaMonto)}
+                    {Math.abs(sumaSel - lineaMonto) > 0.01 && (
+                      <span className="text-rose-600"> · ⚠ los importes no cuadran (dif. {money(sumaSel - lineaMonto)})</span>
+                    )}
+                  </span>
+                  <button onClick={cotejarManual} disabled={busy}
+                    className="ml-auto flex items-center gap-1 bg-emerald-600 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
+                    <Link2 size={14} /> Conciliar
+                  </button>
+                </>
+              ) : (
+                <span className="flex items-center gap-1"><Link2 size={13} /> Marca a la izquierda uno o varios movimientos del banco que correspondan a esta línea de la 102, y dale Conciliar.</span>
+              )}
+            </div>
+          )}
+
           <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
             <div className="px-3 py-2 border-b text-xs text-gray-500 flex items-center gap-2">
               <BookOpen size={13} /> Contabilidad de la 102 · {libro.length} mov ·
@@ -418,6 +467,7 @@ export function ConciliacionContablePage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600 sticky top-0">
                   <tr>
+                    <th className="px-2 py-1.5 w-8" title="Marca la línea para conciliarla a mano con el movimiento seleccionado"></th>
                     <th className="px-2 py-1.5 text-left text-xs font-semibold">Fecha</th>
                     <th className="px-2 py-1.5 text-left text-xs font-semibold">Folio</th>
                     <th className="px-2 py-1.5 text-left text-xs font-semibold">Concepto</th>
@@ -428,7 +478,7 @@ export function ConciliacionContablePage() {
                 </thead>
                 <tbody className="divide-y">
                   {libroVis.length === 0 && (
-                    <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-500">
+                    <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-500">
                       {libro.length > 0 ? 'Todo empatado 🎉 — quita «Ocultar lo ya conciliado» para verlos.'
                         : !cuenta?.cuenta_contable_id ? 'Asigna la cuenta contable del banco (102) arriba.'
                         : libroQ.isFetching ? 'Cargando…'
@@ -436,7 +486,14 @@ export function ConciliacionContablePage() {
                     </td></tr>
                   )}
                   {libroVis.map((l) => (
-                    <tr key={l.id} className={l.empatado_con ? 'bg-teal-50/50' : ''}>
+                    <tr key={l.id} className={selLinea === l.id ? 'bg-amber-50' : l.empatado_con ? 'bg-teal-50/50' : ''}>
+                      <td className="px-2 py-1.5 align-top">
+                        {!l.empatado_con && (
+                          <input type="checkbox" checked={selLinea === l.id}
+                            onChange={() => setSelLinea(selLinea === l.id ? '' : l.id)}
+                            aria-label="Elegir línea para cotejo manual" />
+                        )}
+                      </td>
                       <td className="px-2 py-1.5 text-xs whitespace-nowrap">{l.fecha}</td>
                       <td className="px-2 py-1.5 text-xs text-gray-500">#{l.folio}</td>
                       <td className="px-2 py-1.5 text-xs truncate max-w-[200px]" title={l.concepto || l.poliza_concepto}>{l.concepto || l.poliza_concepto}</td>

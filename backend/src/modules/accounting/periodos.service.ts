@@ -118,13 +118,28 @@ export async function estadoDelPeriodo(
  * todavía no se ha cerrado ningún mes, el mes en curso del calendario.
  */
 export async function periodoActivo(companyId: string): Promise<{ anio: number; mes: number }> {
+  /* «Último mes cerrado» = el más reciente entre: (a) un periodo marcado CERRADO,
+   * y (b) un mes con PÓLIZA DE CIERRE (`regla LIKE 'cierre%'`). Esto último es
+   * clave: el «cierre del ejercicio» genera la póliza de cierre pero NO marca el
+   * periodo como CERRADO, así que sin esto un cierre a diciembre 2025 no movería el
+   * mes de trabajo y todo arrancaría en el mes del calendario. */
   const r = await query<any>(
-    `SELECT anio, mes FROM accounting_periods
-      WHERE company_id=$1 AND estado='CERRADO' ORDER BY anio DESC, mes DESC LIMIT 1`, [companyId]);
+    `SELECT anio, mes FROM (
+       SELECT anio, mes FROM accounting_periods WHERE company_id=$1 AND estado='CERRADO'
+       UNION
+       SELECT EXTRACT(YEAR FROM fecha)::int AS anio, EXTRACT(MONTH FROM fecha)::int AS mes
+         FROM journal_entries WHERE company_id=$1 AND COALESCE(regla,'') LIKE 'cierre%'
+     ) t ORDER BY anio DESC, mes DESC LIMIT 1`, [companyId]);
   if (r.rows.length) {
     const anio = Number(r.rows[0].anio), mes = Number(r.rows[0].mes);
     return mes >= 12 ? { anio: anio + 1, mes: 1 } : { anio, mes: mes + 1 };
   }
+  /* Nada cerrado todavía: el PRIMER mes con pólizas (no el del calendario), para
+   * arrancar donde de verdad empezó la contabilidad. */
+  const p = await query<any>(
+    `SELECT EXTRACT(YEAR FROM MIN(fecha))::int AS anio, EXTRACT(MONTH FROM MIN(fecha))::int AS mes
+       FROM journal_entries WHERE company_id=$1`, [companyId]);
+  if (p.rows[0]?.anio) return { anio: Number(p.rows[0].anio), mes: Number(p.rows[0].mes) };
   const hoy = new Date();
   return { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1 };
 }

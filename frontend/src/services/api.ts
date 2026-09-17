@@ -1001,9 +1001,9 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/descontabilizar`, {});
     return r.data;
   }
-  /** Cotejo manual: liga un movimiento del banco con una línea de la 102. */
-  async cotejarManualMovimiento(id: string, lineId: string) {
-    const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/cotejar-manual`, { lineId });
+  /** Cotejo manual: liga uno o varios movimientos del banco con una línea de la 102. */
+  async cotejarManualMovimientos(movIds: string[], lineId: string) {
+    const r = await this.client.post<APIResponse<any>>('/treasury/bancos/cotejar-manual', { movIds, lineId });
     return r.data;
   }
   /* ═══════════ CONTABILIDAD ═══════════ */
