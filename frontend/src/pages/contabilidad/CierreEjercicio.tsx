@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Lock, PlayCircle, RefreshCw, Undo2, AlertTriangle, CheckCircle2, TrendingUp, TrendingDown } from 'lucide-react';
 import api from '@/services/api';
 import { aniosContables } from '@/utils/anios';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 import { useAuthStore } from '@/store/auth';
 
 const money = (n: any) => Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -20,9 +21,10 @@ const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio
 export function CierreEjercicioPage() {
   const { user } = useAuthStore();
   const esAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
-  const [anio, setAnio] = useState(new Date().getFullYear() - 1);
-  const [modo, setModo] = useState<'anual' | 'mensual'>('anual');
-  const [mes, setMes] = useState(12);
+  // Arranca en el mes de trabajo, listo para el cierre MENSUAL (siguiente al último
+  // cerrado). Para el cierre anual se cambia el toggle a «Anual».
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
+  const [modo, setModo] = useState<'anual' | 'mensual'>('mensual');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');

@@ -10,6 +10,7 @@ import { FileSearch, AlertTriangle, CheckCircle2, Download } from 'lucide-react'
 import { api } from '@/services/api';
 import { aniosContables } from '@/utils/anios';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -17,10 +18,8 @@ const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 export function ReportesEspecialesPage() {
-  const hoy = new Date();
   const mascara = useMascara();
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const [tab, setTab] = useState<'balanza' | 'situacion'>('situacion');
   const [bajando, setBajando] = useState(false);
 

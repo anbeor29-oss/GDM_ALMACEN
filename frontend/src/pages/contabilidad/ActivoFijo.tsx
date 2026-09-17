@@ -15,6 +15,7 @@ import { Building2, Sparkles, PlayCircle, FileText, RefreshCw, Check, Pencil, Tr
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { useEjercicios } from '@/components/SelectorPeriodo';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 import { CampoFecha } from '@/components/CampoFecha';
 
 const money = (n: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -28,11 +29,9 @@ const mesAA = (s?: string) => s ? `${MESES[Number(s.slice(5, 7))]} ${s.slice(0, 
 const agrupador3 = (codigo?: string) => String(codigo || '').split('.')[0].replace(/\D/g, '').slice(0, 3);
 
 export function ActivoFijoPage() {
-  const hoy = new Date();
   const [modo, setModo] = useState<'depreciacion' | 'amortizacion'>('depreciacion');
   const [tab, setTab] = useState<'cedula' | 'detectar' | 'depreciacion'>('cedula');
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const anios = useEjercicios(anio);
   const amort = modo === 'amortizacion';
 

@@ -9,12 +9,12 @@
  *
  * No cambia nada: sólo diagnostica y señala DÓNDE está el descuadre.
  */
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ShieldCheck, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { api } from '@/services/api';
 import { aniosContables } from '@/utils/anios';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -37,10 +37,8 @@ function Prueba({ ok, titulo, children }: { ok: boolean; titulo: string; childre
 }
 
 export function ValidacionContablePage() {
-  const hoy = new Date();
   const mascara = useMascara();
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(0);
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const anios = aniosContables();
 
   const q = useQuery({

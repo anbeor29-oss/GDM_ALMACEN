@@ -20,6 +20,7 @@ import {
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
 import { aniosContables } from '@/utils/anios';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 import { mx, MESES, ETIQUETA_FUENTE } from './piezas';
 
 export function PeriodosPage() {
@@ -28,7 +29,7 @@ export function PeriodosPage() {
   const puedeCargar = puede(CAP.ctaCapturar);
   const puedeCerrar = puede(CAP.ctaCerrar);
 
-  const [anio, setAnio] = useState(new Date().getFullYear());
+  const { anio, setAnio } = usePeriodoTrabajo();
   const [cargando, setCargando] = useState<{ mes: number } | null>(null);
   const [error, setError] = useState('');
 

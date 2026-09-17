@@ -17,6 +17,7 @@ import {
 import { api } from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { aniosContables } from '@/utils/anios';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 
 const money = (n: any) =>
   Number(n || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -684,9 +685,8 @@ function ModalComisiones({ ctas, cfg, onClose, onSave }: any) {
 
 /* ── Modal: subir estado de cuenta desde aquí ── */
 function ModalSubir({ cid, onClose, onDone }: any) {
-  const hoy = new Date();
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  // El estado a subir arranca en el mes de trabajo (siguiente al último cerrado).
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const [archivo, setArchivo] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');

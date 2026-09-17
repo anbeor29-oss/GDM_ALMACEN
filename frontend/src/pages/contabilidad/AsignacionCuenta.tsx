@@ -17,6 +17,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Tag, Check, Users, RefreshCw, FileText, PlayCircle, Trash2, X } from 'lucide-react';
 import { api } from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -28,8 +29,7 @@ export function AsignacionCuentaPage() {
   const hoy = new Date();
   const qc = useQueryClient();
   const [dir, setDir] = useState<'recibidos' | 'emitidos'>('recibidos');
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
 
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
   const cuentas: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);

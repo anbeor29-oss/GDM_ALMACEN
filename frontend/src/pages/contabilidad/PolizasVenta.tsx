@@ -13,6 +13,7 @@ import { CuentaPicker } from '@/components/CuentaPicker';
 import { ModalCrearSubcuenta } from '@/components/ModalCrearSubcuenta';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { aniosContables } from '@/utils/anios';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 
 const money = (n: any, m = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: (m || 'MXN').trim() || 'MXN' }).format(Number(n) || 0);
@@ -21,10 +22,8 @@ const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 export function PolizasVentaPage() {
-  const hoy = new Date();
   const [tab, setTab] = useState<'ingresos' | 'clientes' | 'polizas'>('ingresos');
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const anios = aniosContables();
 
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });

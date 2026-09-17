@@ -5,11 +5,12 @@
  * entre dos fechas, partiendo del saldo anterior. El selector de cuenta va en
  * orden de catálogo (por código, como aparecen en la contabilidad).
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BookOpen, Search } from 'lucide-react';
 import { api } from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { usePeriodoActivo } from '@/utils/periodoActivo';
 import { CampoFecha } from '@/components/CampoFecha';
 
 const money = (n: any) =>
@@ -23,6 +24,19 @@ export function AuxiliarCuentasPage() {
   const [cuentaId, setCuentaId] = useState('');
   const [desde, setDesde] = useState(`${hoy.getFullYear()}-01-01`);
   const [hasta, setHasta] = useState(`${hoy.getFullYear()}-12-31`);
+  /* Arranca en el MES DE TRABAJO (siguiente al último cerrado): el auxiliar se abre
+   * en ese mes, no en todo el año del calendario. Sólo la primera vez; después el
+   * usuario mueve las fechas libremente. */
+  const activo = usePeriodoActivo();
+  const aplicado = useRef(false);
+  useEffect(() => {
+    if (!activo || aplicado.current) return;
+    aplicado.current = true;
+    const p = (n: number) => String(n).padStart(2, '0');
+    const ult = new Date(activo.anio, activo.mes, 0).getDate();
+    setDesde(`${activo.anio}-${p(activo.mes)}-01`);
+    setHasta(`${activo.anio}-${p(activo.mes)}-${p(ult)}`);
+  }, [activo]);
 
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
   // Orden por CÓDIGO (aparición en la contabilidad), no alfabético por nombre.

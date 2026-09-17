@@ -16,6 +16,7 @@ import { CuentaPicker } from '@/components/CuentaPicker';
 import { ModalCrearSubcuenta } from '@/components/ModalCrearSubcuenta';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { aniosContables } from '@/utils/anios';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 
 const money = (n: any, m = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: (m || 'MXN').trim() || 'MXN' }).format(Number(n) || 0);
@@ -32,10 +33,8 @@ const AvisoXml = () => (
 );
 
 export function PolizasCompraPage() {
-  const hoy = new Date();
   const [tab, setTab] = useState<'cargos' | 'proveedores' | 'polizas'>('cargos');
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const anios = aniosContables();
 
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });

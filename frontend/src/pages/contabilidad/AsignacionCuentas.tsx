@@ -21,6 +21,7 @@ import { TabIngresos } from './PolizasVenta';
 import { TabCargos } from './PolizasCompra';
 import { ConceptosCuentasNomina } from '../nomina/NominaReportes';
 import { aniosContables } from '@/utils/anios';
+import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -34,10 +35,8 @@ const PESTANAS: Array<{ id: Pest; nombre: string; icono: any }> = [
 ];
 
 export function AsignacionCuentasPage() {
-  const hoy = new Date();
   const [pest, setPest] = useState<Pest>('ventas');
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const anios = aniosContables();
 
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
