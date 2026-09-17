@@ -400,18 +400,13 @@ export function Layout() {
                       {
                         icon: emoji3D('📊'), label: 'Reportes',
                         children: [
+                          /* Todo agrupado en 3 pantallas con pestañas (como Tesorería),
+                             para no andar de un menú a otro: NIF (estados normados),
+                             Estados financieros (contables) y SAT (DIOT / Contab. elec.). */
                           { to: '/contabilidad/periodos',   icon: emoji3D('🗓️'), label: 'Periodos y cierre' },
-                          { to: '/contabilidad/balanza',    icon: emoji3D('⚖️'), label: 'Balanza de comprobación' },
-                          { to: '/contabilidad/balance-general', icon: emoji3D('📋'), label: 'Balance general' },
-                          { to: '/contabilidad/estado-resultados-contable', icon: emoji3D('📑'), label: 'Estado de resultados (contable)' },
-                          { to: '/contabilidad/situacion',  icon: emoji3D('🏛️'), label: 'Situación financiera' },
-                          { to: '/contabilidad/resultados', icon: emoji3D('📈'), label: 'Resultado integral' },
-                          { to: '/contabilidad/estado-resultados', icon: emoji3D('📈'), label: 'Estado de resultados' },
-                          { to: '/contabilidad/flujo',      icon: emoji3D('💧'), label: 'Flujos de efectivo' },
-                          { to: '/contabilidad/capital',    icon: emoji3D('🧾'), label: 'Cambios en el capital' },
-                          { to: '/contabilidad/razones',    icon: emoji3D('🔍'), label: 'Razones y análisis' },
-                          { to: '/contabilidad/reportes-fiscales', icon: emoji3D('📤'), label: 'DIOT / Contab. electrónica' },
-                          { to: '/contabilidad/reportes-especiales', icon: emoji3D('🔬'), label: 'Especiales' },
+                          { to: '/contabilidad/nif',        icon: emoji3D('📐'), label: 'NIF' },
+                          { to: '/contabilidad/estados-financieros', icon: emoji3D('📋'), label: 'Estados financieros' },
+                          { to: '/contabilidad/reportes-fiscales', icon: emoji3D('📤'), label: 'SAT' },
                         ],
                       },
                     ]}

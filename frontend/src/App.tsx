@@ -81,6 +81,7 @@ import {
 } from '@/pages/contabilidad/Estados';
 import { BalanceGeneralPage } from '@/pages/contabilidad/BalanceGeneral';
 import { EstadoResultadosContablePage } from '@/pages/contabilidad/EstadoResultadosContable';
+import { NifReportesPage, EstadosFinancierosPage } from '@/pages/contabilidad/ReportesHubs';
 import { PeriodosPage } from '@/pages/contabilidad/Periodos';
 import { CierreEjercicioPage } from '@/pages/contabilidad/CierreEjercicio';
 import { PhysicalCountPage }          from '@/pages/PhysicalCount';
@@ -334,6 +335,8 @@ export function App() {
             <Route path="contabilidad/reportes-fiscales"  element={<ModuleRoute module="contabilidad"><ReportesFiscalesPage /></ModuleRoute>} />
             <Route path="contabilidad/periodos"           element={<ModuleRoute module="contabilidad"><PeriodosPage /></ModuleRoute>} />
             <Route path="contabilidad/cierre"             element={<ModuleRoute module="contabilidad"><CierreEjercicioPage /></ModuleRoute>} />
+            <Route path="contabilidad/nif"                element={<ModuleRoute module="contabilidad"><NifReportesPage /></ModuleRoute>} />
+            <Route path="contabilidad/estados-financieros" element={<ModuleRoute module="contabilidad"><EstadosFinancierosPage /></ModuleRoute>} />
             <Route path="contabilidad/balanza"            element={<ModuleRoute module="contabilidad"><BalanzaPage /></ModuleRoute>} />
             <Route path="contabilidad/situacion"          element={<ModuleRoute module="contabilidad"><SituacionFinancieraPage /></ModuleRoute>} />
             <Route path="contabilidad/balance-general"    element={<ModuleRoute module="contabilidad"><BalanceGeneralPage /></ModuleRoute>} />

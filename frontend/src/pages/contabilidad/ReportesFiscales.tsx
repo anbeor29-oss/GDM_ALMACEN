@@ -27,7 +27,7 @@ export function ReportesFiscalesPage() {
     <div className="p-6 space-y-4 max-w-6xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <FileText size={22} className="text-violet-600" /> Reportes fiscales
+          <FileText size={22} className="text-violet-600" /> SAT
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
           DIOT (clientes y proveedores) y Contabilidad Electrónica del Anexo 24. Se arman
