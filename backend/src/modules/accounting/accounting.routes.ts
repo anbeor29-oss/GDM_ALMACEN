@@ -139,6 +139,18 @@ router.post(
   })
 );
 
+/** POST /accounting/indicadores/inpc/importar — sube el INPC (CSV/XLSX del INEGI), sin token. */
+router.post(
+  '/indicadores/inpc/importar',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  subir.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = (req as any).file as { buffer: Buffer; originalname?: string } | undefined;
+    if (!f?.buffer) throw new ValidationError('Sube el archivo del INPC (CSV o XLSX del INEGI).');
+    res.json({ success: true, data: await indicadores.importarInpc(f.buffer, f.originalname || 'inpc.csv') });
+  })
+);
+
 /** POST /accounting/indicadores/actualizacion-recargos — pago extemporáneo (17-A y 21 CFF). */
 router.post(
   '/indicadores/actualizacion-recargos',

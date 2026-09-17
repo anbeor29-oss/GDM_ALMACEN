@@ -1395,6 +1395,13 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/indicadores/inpc/actualizar', {});
     return r.data;
   }
+  /** Importa el INPC desde un archivo del INEGI (CSV/XLSX), sin token. */
+  async importarInpcArchivo(file: File) {
+    const fd = new FormData(); fd.append('archivo', file);
+    const r = await this.client.post<APIResponse<any>>('/accounting/indicadores/inpc/importar', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
   async calcActualizacionRecargos(payload: { monto: number; fechaDebio: string; fechaPago: string }) {
     const r = await this.client.post<APIResponse<any>>('/accounting/indicadores/actualizacion-recargos', payload);
     return r.data;

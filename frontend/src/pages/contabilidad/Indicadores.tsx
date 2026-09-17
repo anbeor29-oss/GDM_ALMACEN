@@ -8,7 +8,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { TrendingUp, RefreshCw, Landmark, ExternalLink, AlertTriangle, CheckCircle2, Calculator } from 'lucide-react';
+import { TrendingUp, RefreshCw, Landmark, ExternalLink, AlertTriangle, CheckCircle2, Calculator, Upload } from 'lucide-react';
 import api from '@/services/api';
 
 const MESES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -39,6 +39,19 @@ export function IndicadoresPage() {
     } finally { setBusy(false); }
   };
 
+  const importarArchivo = async (file: File) => {
+    setBusy(true); setMsg('');
+    try {
+      const r: any = await api.importarInpcArchivo(file);
+      const x = r?.data || {};
+      setMsg(`INPC importado del archivo: ${x.actualizados} periodo(s) (${x.desde} → ${x.hasta}).`);
+      qc.invalidateQueries({ queryKey: ['indicadores'] });
+      qc.invalidateQueries({ queryKey: ['inpc-serie'] });
+    } catch (e: any) {
+      setMsg(e?.response?.data?.message || e?.message || 'No se pudo importar el archivo.');
+    } finally { setBusy(false); }
+  };
+
   return (
     <div className="p-6 space-y-4 max-w-5xl">
       <div>
@@ -63,6 +76,12 @@ export function IndicadoresPage() {
                 <AlertTriangle size={13} /> Falta el token del INEGI
               </span>
             )}
+            <label className="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 hover:bg-gray-50 text-sm cursor-pointer"
+              title="Sin token: descarga «Índice general» del INPC en el INEGI (CSV o XLSX) y súbelo aquí">
+              <Upload size={15} /> Importar CSV/XLSX
+              <input type="file" accept=".csv,.xlsx,.xls,.txt" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) importarArchivo(f); e.currentTarget.value = ''; }} />
+            </label>
             <button onClick={actualizar} disabled={busy}
               className="flex items-center gap-1.5 bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm">
               <RefreshCw size={15} className={busy ? 'animate-spin' : ''} /> {busy ? 'Actualizando…' : 'Actualizar desde INEGI'}

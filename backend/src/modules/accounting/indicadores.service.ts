@@ -19,6 +19,7 @@
  */
 
 import { query } from '../../config/database';
+import { ExcelJS } from '../nomina/estilo-excel';
 
 /* ── INPC almacenado ──────────────────────────────────────────────────────── */
 
@@ -139,6 +140,52 @@ export async function actualizarInpc(): Promise<{ actualizados: number; desde?: 
   filas.sort((a, b) => (a.anio - b.anio) || (a.mes - b.mes));
   const p = (x: { anio: number; mes: number }) => `${x.anio}-${String(x.mes).padStart(2, '0')}`;
   return { actualizados: filas.length, desde: p(filas[0]), hasta: p(filas[filas.length - 1]) };
+}
+
+/* ── Importar el INPC desde un archivo del INEGI (CSV/XLSX), SIN token ──────
+ * Alternativa cuando no se puede generar el token: en la página del INPC del
+ * INEGI se descarga «Índice general» (botón CSV o XLS) y se sube aquí. El parser
+ * es tolerante con el formato: busca en cada renglón un PERIODO (2026/08, «Ago
+ * 2026», «Agosto 2026»…) y un ÍNDICE (número con decimales). */
+export async function importarInpc(buffer: Buffer, nombre: string): Promise<{ actualizados: number; desde?: string; hasta?: string }> {
+  let filas: any[][] = [];
+  if (/\.xlsx?$/i.test(nombre)) {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as any);
+    const ws = wb.worksheets[0];
+    if (ws) ws.eachRow((row: any) => { filas.push(((row.values as any[]) || []).slice(1)); });
+  } else {
+    filas = buffer.toString('utf8').split(/\r?\n/).map((l) => l.split(/[,;\t]/).map((c) => c.replace(/^"|"$/g, '').trim()));
+  }
+
+  const MES: Record<string, number> = { ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sep: 9, oct: 10, nov: 11, dic: 12 };
+  const reg = new Map<string, { anio: number; mes: number; valor: number }>();
+  for (const cells of filas) {
+    let anio: number | null = null, mes: number | null = null, valor: number | null = null;
+    for (const c of cells) {
+      const s = String(c ?? '').trim();
+      if (!s) continue;
+      let m = s.match(/^(19|20)(\d{2})[\/\-](\d{1,2})$/);         // 2026/08
+      if (m && anio === null) { anio = Number(m[1] + m[2]); mes = Number(m[3]); continue; }
+      const mm = s.toLowerCase().match(/^([a-záéíóú]{3})[a-z]*\.?[\s\-\/]+((?:19|20)\d{2})$/);  // Ago 2026
+      if (mm && MES[mm[1]] && anio === null) { mes = MES[mm[1]]; anio = Number(mm[2]); continue; }
+      const numTxt = s.replace(/,(?=\d{3}(\D|$))/g, '').replace(/[^\d.\-]/g, '');
+      if (/^-?\d+\.\d+$/.test(numTxt)) valor = Number(numTxt);   // el índice trae decimales
+    }
+    if (anio && mes && mes >= 1 && mes <= 12 && valor !== null && valor > 0) reg.set(`${anio}-${mes}`, { anio, mes, valor });
+  }
+  if (!reg.size) throw new Error('No se reconocieron periodos e índices en el archivo. Descarga «Índice general» del INPC (INEGI) en CSV o XLSX y súbelo.');
+
+  for (const r of reg.values()) {
+    await query(
+      `INSERT INTO fiscal_inpc (anio, mes, valor, base, fuente, updated_at)
+       VALUES ($1,$2,$3,$4,'INEGI archivo',NOW())
+       ON CONFLICT (anio, mes) DO UPDATE SET valor=EXCLUDED.valor, base=EXCLUDED.base, fuente='INEGI archivo', updated_at=NOW()`,
+      [r.anio, r.mes, r.valor, '2Q Jul 2018 = 100']);
+  }
+  const arr = [...reg.values()].sort((a, b) => (a.anio - b.anio) || (a.mes - b.mes));
+  const p = (x: { anio: number; mes: number }) => `${x.anio}-${String(x.mes).padStart(2, '0')}`;
+  return { actualizados: arr.length, desde: p(arr[0]), hasta: p(arr[arr.length - 1]) };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
