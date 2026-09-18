@@ -34,6 +34,10 @@ router.get('/empleados/:id/horario', asyncHandler(async (req, res) => ok(res, aw
 router.put('/empleados/:id/horario', asyncHandler(async (req, res) => ok(res, await checador.setHorario(companyId(req), req.params.id, req.body || {}))));
 router.post('/empleados/:id/asignacion', asyncHandler(async (req, res) => ok(res, await checador.asignarDia(companyId(req), req.params.id, req.body || {}), 201)));
 
+/* ── Asignación MASIVA de horario (varios empleados de un golpe) ── */
+router.put('/horarios/masivo', asyncHandler(async (req, res) =>
+  ok(res, await checador.asignarHorarioMasivo(companyId(req), (req.body || {}).empleadoIds, req.body || {}))));
+
 /* ── Consentimiento (LFPDPPP) ── */
 router.get('/empleados/:id/consentimiento', asyncHandler(async (req, res) => ok(res, await checador.getConsentimiento(companyId(req), req.params.id))));
 router.put('/empleados/:id/consentimiento', asyncHandler(async (req, res) => ok(res, await checador.setConsentimiento(companyId(req), req.params.id, req.body || {}))));

@@ -19,6 +19,7 @@ import { ProgramacionSat } from '@/components/ProgramacionSat';
 import { TablaComprobantesSat } from '@/components/TablaComprobantesSat';
 import { CalendarioSatPage } from '@/pages/CalendarioSat';
 import { aniosContables } from '@/utils/anios';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
@@ -59,13 +60,9 @@ export function XmlDelSatPage() {
       </div>
 
       {/* Pestañas arriba, en la misma pantalla (mismo patrón que Tesorería). */}
-      <div className="flex gap-1 border-b">
-        {TABS.map(([k, label, to]) => (
-          <button key={k} onClick={() => navigate(to)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-              tab === k
-                ? 'border-emerald-600 text-emerald-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+      <div className="flex gap-1.5 flex-wrap">
+        {TABS.map(([k, label, to], i) => (
+          <button key={k} onClick={() => navigate(to)} className={claseOpcion(i, tab === k)}>
             {label}
           </button>
         ))}

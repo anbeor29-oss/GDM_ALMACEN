@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, Search, Package, ClipboardList } from 'lucide-react';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 import { fechaMx } from '@/utils/fecha';
 
@@ -48,20 +49,16 @@ export function CartaPorteMercanciasPage() {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-slate-200 mb-4">
+      <div className="flex gap-1.5 flex-wrap mb-4">
         <button
           onClick={() => setTab('catalog')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-2 ${
-            tab === 'catalog' ? 'border-rose-500 text-rose-700' : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
+          className={`inline-flex items-center gap-2 ${claseOpcion(0, tab === 'catalog')}`}
         >
           <Package size={16} /> Catálogo (plantillas)
         </button>
         <button
           onClick={() => setTab('bitacora')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-2 ${
-            tab === 'bitacora' ? 'border-rose-500 text-rose-700' : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
+          className={`inline-flex items-center gap-2 ${claseOpcion(1, tab === 'bitacora')}`}
         >
           <ClipboardList size={16} /> Bitácora (viajes)
         </button>

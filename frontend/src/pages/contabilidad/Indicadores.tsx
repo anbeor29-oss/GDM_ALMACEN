@@ -9,6 +9,7 @@
 import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { TrendingUp, RefreshCw, Landmark, ExternalLink, AlertTriangle, CheckCircle2, Calculator, Upload } from 'lucide-react';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 
 const MESES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -248,10 +249,9 @@ function HerramientasFiscales() {
       <p className="text-xs text-gray-500">
         Usan la serie del INPC de arriba. Si falta el INPC de algún mes, primero dale «Actualizar desde INEGI».
       </p>
-      <div className="flex gap-1 border-b">
-        {([['recargos', 'Actualización y recargos'], ['inflacion', 'Ajuste anual por inflación'], ['perdida', 'Pérdida fiscal']] as const).map(([k, l]) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === k ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{l}</button>
+      <div className="flex gap-1.5 flex-wrap">
+        {([['recargos', 'Actualización y recargos'], ['inflacion', 'Ajuste anual por inflación'], ['perdida', 'Pérdida fiscal']] as const).map(([k, l], i) => (
+          <button key={k} onClick={() => setTab(k)} className={claseOpcion(i, tab === k)}>{l}</button>
         ))}
       </div>
 

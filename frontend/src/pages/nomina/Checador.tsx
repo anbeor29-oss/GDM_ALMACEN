@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save, UserPlus } from 'lucide-react';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 
 const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -49,13 +50,12 @@ export function ChecadorPage() {
         </div>
       </div>
 
-      <div className="flex gap-1 border-b">
-        {T.map((t) => {
+      <div className="flex gap-1.5 flex-wrap">
+        {T.map((t, i) => {
           const Ico = t.icon;
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-                tab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === t.id)}`}>
               <Ico size={15} /> {t.label}
             </button>
           );
@@ -222,30 +222,97 @@ function TabTurnos() {
 
 /* ── Empleados: horario + consentimiento + enrolamiento ── */
 function TabEmpleados() {
+  const qc = useQueryClient();
   const empQ = useQuery({ queryKey: ['checador-empleados'], queryFn: () => api.getEmpleados({}) });
   const empleados: any[] = empQ.data?.data?.empleados || empQ.data?.data || [];
   const turnosQ = useQuery({ queryKey: ['checador-turnos'], queryFn: () => api.getCheckadorTurnos() });
   const turnos: any[] = turnosQ.data?.data || [];
   const [sel, setSel] = useState<any>(null);
 
+  /* Selección múltiple para asignar el turno a varios de un golpe (la plantilla
+   * crece y abrir uno por uno no escala). */
+  const [marcados, setMarcados] = useState<Set<string>>(new Set());
+  const [turnoMasivo, setTurnoMasivo] = useState('');   // '' · id de turno · 'EXENTO'
+  const [avisoMasivo, setAvisoMasivo] = useState('');
+  const toggle = (id: string) => setMarcados((s) => {
+    const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+  const todos = empleados.length > 0 && marcados.size === empleados.length;
+  const toggleTodos = () => setMarcados(todos ? new Set() : new Set(empleados.map((e) => e.id)));
+
+  const asignar = useMutation({
+    mutationFn: () => {
+      const ids = Array.from(marcados);
+      return turnoMasivo === 'EXENTO'
+        ? api.asignarHorarioMasivo(ids, 'EXENTO')
+        : api.asignarHorarioMasivo(ids, 'FIJO', turnoMasivo);
+    },
+    onSuccess: (r: any) => {
+      setAvisoMasivo(`${r?.data?.asignados ?? marcados.size} empleado(s) actualizados.`);
+      setMarcados(new Set()); setTurnoMasivo('');
+      qc.invalidateQueries({ queryKey: ['checador-horario'] });   // refresca el editor abierto
+      setTimeout(() => setAvisoMasivo(''), 4000);
+    },
+  });
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div className="bg-white rounded-lg shadow border overflow-hidden md:col-span-1 max-h-[70vh] overflow-y-auto">
-        {empleados.length === 0 ? (
-          <p className="p-4 text-sm text-gray-500">Sin empleados. Dalos de alta en Empleados.</p>
-        ) : empleados.map((e) => (
-          <button key={e.id} onClick={() => setSel(e)}
-            className={`w-full text-left px-4 py-2.5 border-b text-sm hover:bg-gray-50 ${sel?.id === e.id ? 'bg-blue-50' : ''}`}>
-            <div className="font-medium text-gray-800">{e.nombre} {e.apellido_pat} {e.apellido_mat}</div>
-            <div className="text-xs text-gray-500 font-mono">#{e.num_empleado}</div>
-          </button>
-        ))}
+      <div className="md:col-span-1 space-y-2">
+        {/* Selección y asignación masiva */}
+        {empleados.length > 0 && (
+          <div className="bg-white rounded-lg shadow border p-3 space-y-2">
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+              <input type="checkbox" checked={todos} onChange={toggleTodos} />
+              {marcados.size > 0 ? `${marcados.size} seleccionado(s)` : 'Seleccionar todos'}
+            </label>
+            {marcados.size > 0 && (
+              <div className="flex flex-col gap-2 pt-2 border-t">
+                <span className="text-xs text-gray-500">Asignar horario a los {marcados.size} marcados:</span>
+                <div className="flex gap-2">
+                  <select value={turnoMasivo} onChange={(e) => setTurnoMasivo(e.target.value)}
+                    className="flex-1 rounded border px-2 py-1.5 text-sm min-w-0">
+                    <option value="">— Turno —</option>
+                    {turnos.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.nombre} ({String(t.hora_entrada).slice(0, 5)}–{String(t.hora_salida).slice(0, 5)})
+                      </option>
+                    ))}
+                    <option value="EXENTO">Exento (no checa)</option>
+                  </select>
+                  <button onClick={() => asignar.mutate()} disabled={!turnoMasivo || asignar.isPending}
+                    className="rounded bg-blue-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-50 whitespace-nowrap">
+                    {asignar.isPending ? '…' : 'Asignar'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {avisoMasivo && <p className="text-xs text-emerald-600">{avisoMasivo}</p>}
+          </div>
+        )}
+
+        {/* Lista con check por trabajador */}
+        <div className="bg-white rounded-lg shadow border overflow-hidden max-h-[62vh] overflow-y-auto">
+          {empleados.length === 0 ? (
+            <p className="p-4 text-sm text-gray-500">Sin empleados. Dalos de alta en Empleados.</p>
+          ) : empleados.map((e) => (
+            <div key={e.id}
+              className={`flex items-center gap-2.5 px-3 py-2.5 border-b text-sm ${sel?.id === e.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+              <input type="checkbox" checked={marcados.has(e.id)} onChange={() => toggle(e.id)}
+                className="shrink-0" aria-label={`Marcar ${e.nombre}`} />
+              <button onClick={() => setSel(e)} className="text-left flex-1 min-w-0">
+                <div className="font-medium text-gray-800 truncate">{e.nombre} {e.apellido_pat} {e.apellido_mat}</div>
+                <div className="text-xs text-gray-500 font-mono">#{e.num_empleado}</div>
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="md:col-span-2">
         {sel ? <EditorEmpleado empleado={sel} turnos={turnos} /> : (
           <div className="bg-white rounded-lg shadow border p-8 text-center text-gray-500 text-sm">
-            Elige un empleado de la lista para asignar su horario y registrar su consentimiento.
+            Elige un empleado para ver su horario, consentimiento y enrolamiento.<br />
+            O marca varios con el check y asígnales el turno de golpe.
           </div>
         )}
       </div>

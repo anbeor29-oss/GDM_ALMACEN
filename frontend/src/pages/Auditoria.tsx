@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, AlertTriangle, RefreshCw, Clock, HelpCircle } from 'lucide-react';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { Lista69B } from '@/components/Lista69B';
@@ -115,14 +116,10 @@ export function AuditoriaPage() {
         )}
       </div>
 
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1.5 flex-wrap">
         {([['emitidos', 'Nuestros comprobantes'],
-          ['lista69b', 'Listas 69-B']] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-              tab === k
-                ? 'border-emerald-600 text-emerald-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          ['lista69b', 'Listas 69-B']] as const).map(([k, label], i) => (
+          <button key={k} onClick={() => setTab(k)} className={claseOpcion(i, tab === k)}>
             {label}
           </button>
         ))}
@@ -130,10 +127,7 @@ export function AuditoriaPage() {
             señala el 69-B. El número avisa sin tener que entrar; rojo si hay
             alguno DEFINITIVO. */}
         <button onClick={() => setTab('resultados')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-1.5 ${
-            tab === 'resultados'
-              ? 'border-emerald-600 text-emerald-700'
-              : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          className={`inline-flex items-center gap-1.5 ${claseOpcion(2, tab === 'resultados')}`}>
           Resultados
           {coincidencias.length > 0 && (
             <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-semibold ${

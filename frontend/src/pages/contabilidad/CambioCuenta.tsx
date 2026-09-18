@@ -14,6 +14,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/services/api';
 import { ArrowLeftRight, GitMerge, Search, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import { fechaMx } from '@/utils/fecha';
 import { CampoFecha } from '@/components/CampoFecha';
 
@@ -242,10 +243,10 @@ export function CambioCuentaPage() {
         </p>
       </div>
 
-      <div className="flex gap-1 border-b">
-        {([['temporal', 'Sustituir cuenta temporal', ArrowLeftRight], ['unificar', 'Unificar duplicadas', GitMerge]] as const).map(([k, label, Icon]) => (
+      <div className="flex gap-1.5 flex-wrap">
+        {([['temporal', 'Sustituir cuenta temporal', ArrowLeftRight], ['unificar', 'Unificar duplicadas', GitMerge]] as const).map(([k, label, Icon], i) => (
           <button key={k} onClick={() => { setTab(k); setMsg(''); setError(''); }}
-            className={`flex items-center gap-1.5 px-3 py-2 text-sm border-b-2 -mb-px ${tab === k ? 'border-primary text-primary font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === k)}`}>
             <Icon size={15} /> {label}
           </button>
         ))}

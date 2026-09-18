@@ -12,6 +12,7 @@ import api from '@/services/api';
 import { CuentaPicker } from '@/components/CuentaPicker';
 import { ModalCrearSubcuenta } from '@/components/ModalCrearSubcuenta';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import { aniosContables } from '@/utils/anios';
 import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 
@@ -54,12 +55,11 @@ export function PolizasVentaPage() {
         </div>
       )}
 
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1.5 flex-wrap">
         {([['ingresos', 'Ingresos (401 por producto)'], ['clientes', 'Clientes'], ['polizas', 'Pólizas']] as const)
-          .map(([k, label]) => (
+          .map(([k, label], i) => (
             <button key={k} onClick={() => setTab(k)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-1.5 ${
-                tab === k ? 'border-amber-600 text-amber-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === k)}`}>
               {k === 'ingresos' ? <Tag size={14} /> : k === 'clientes' ? <Users size={14} /> : <FileText size={14} />}
               {label}
             </button>

@@ -8,6 +8,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import {
   Landmark, AlertTriangle, CalendarClock, Wallet, Check, CalendarDays,
   XCircle, Plus,
@@ -103,17 +104,13 @@ export function TreasuryPage() {
 
       {/* Dos vistas del mismo dinero: lo que se debe, y lo que se decidió pagar
           en la corrida de esta semana. */}
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1.5 flex-wrap">
         {/* Bancos va al final porque es el respaldo de lo demás: primero se ve
             qué se debe y cómo se va a pagar, y luego con qué. */}
         {([['pagos', 'Cuentas por pagar'], ['remesas', 'Pagos programados'],
            ['bancos', 'Bancos'],
-           ['cobrospagos', 'Cobros y pagos']] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-              tab === k
-                ? 'border-emerald-600 text-emerald-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+           ['cobrospagos', 'Cobros y pagos']] as const).map(([k, label], i) => (
+          <button key={k} onClick={() => setTab(k)} className={claseOpcion(i, tab === k)}>
             {label}
           </button>
         ))}

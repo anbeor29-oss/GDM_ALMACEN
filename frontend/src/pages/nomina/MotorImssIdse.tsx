@@ -20,6 +20,7 @@ import {
   Trash2, Paperclip, FileCheck2, ChevronDown, ChevronRight, ClipboardList,
 } from 'lucide-react';
 import api from '@/services/api';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import { CampoFecha, aTextoMx } from '@/components/CampoFecha';
 import { useCapacidades, CAP } from '@/utils/capacidades';
 
@@ -226,11 +227,9 @@ export function MotorImssIdsePage() {
       </div>
 
       {/* Pestañas */}
-      <div className="flex gap-1 border-b">
-        {([['movimientos', 'Movimientos'], ['validar', 'Validar archivo']] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setModo(k)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-              modo === k ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+      <div className="flex gap-1.5 flex-wrap">
+        {([['movimientos', 'Movimientos'], ['validar', 'Validar archivo']] as const).map(([k, label], i) => (
+          <button key={k} onClick={() => setModo(k)} className={claseOpcion(i, modo === k)}>
             {label}
           </button>
         ))}

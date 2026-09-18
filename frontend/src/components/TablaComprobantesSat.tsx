@@ -19,6 +19,7 @@ import { Wallet, Ban, FileText, X, RefreshCw, Search, Circle, Check, Pencil } fr
 import { api } from '@/services/api';
 import { useEjercicios } from '@/components/SelectorPeriodo';
 import { aniosContables } from '@/utils/anios';
+import { claseOpcion } from '@/utils/coloresOpciones';
 
 type Direccion = 'emitidos' | 'recibidos';
 type Modo = 'representacion' | 'pago' | 'cancelacion' | 'ficha';
@@ -112,13 +113,10 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
       </div>
 
       {/* Tabs por tipo (Anexo 20). Facturas siempre; los demás si tienen algo. */}
-      <div className="flex gap-1 border-b overflow-x-auto">
-        {TABS.filter(([k]) => k === 'I' || cuentaTab(k) > 0).map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${
-              tab === k ? 'border-emerald-600 text-emerald-700'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-            {label} <span className="text-xs text-gray-400">{cuentaTab(k)}</span>
+      <div className="flex gap-1.5 flex-wrap">
+        {TABS.filter(([k]) => k === 'I' || cuentaTab(k) > 0).map(([k, label], i) => (
+          <button key={k} onClick={() => setTab(k)} className={claseOpcion(i, tab === k)}>
+            {label} <span className="text-xs opacity-70">{cuentaTab(k)}</span>
           </button>
         ))}
       </div>

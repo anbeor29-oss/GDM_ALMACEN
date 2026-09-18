@@ -14,6 +14,7 @@
  */
 import { useState, type ReactElement } from 'react';
 import { Calculator, ClipboardList } from 'lucide-react';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import {
   BalanzaPage, SituacionFinancieraPage, ResultadoIntegralPage, EstadoResultadosPage,
   FlujoEfectivoPage, CambiosCapitalPage, RazonesPage,
@@ -34,13 +35,9 @@ export function Hub({ titulo, subtitulo, icono, pestanas }: {
       <div className="px-6 pt-5">
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">{icono} {titulo}</h1>
         <p className="text-xs text-gray-500 mt-0.5">{subtitulo}</p>
-        <div className="flex gap-1 border-b mt-3 overflow-x-auto">
-          {pestanas.map(([k, label]) => (
-            <button key={k} onClick={() => setTab(k)}
-              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${
-                tab === k
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+        <div className="flex gap-1.5 mt-3 flex-wrap">
+          {pestanas.map(([k, label], i) => (
+            <button key={k} onClick={() => setTab(k)} className={claseOpcion(i, tab === k)}>
               {label}
             </button>
           ))}

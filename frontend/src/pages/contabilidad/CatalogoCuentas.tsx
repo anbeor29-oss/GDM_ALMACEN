@@ -14,6 +14,7 @@
  * es lo que permite comprobar que la equivalencia con el SAT no se movió.
  */
 import { useState, useMemo, useEffect } from 'react';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight, ChevronDown, Search, Plus, AlertTriangle, CheckCircle2,
@@ -500,16 +501,12 @@ function PanelAnalisis() {
 
   return (
     <div className="bg-white rounded-lg shadow border flex flex-col xl:sticky xl:top-4 min-h-[420px]">
-      <div className="flex border-b text-sm">
-        {PESTANAS.map((p) => {
+      <div className="flex flex-wrap gap-1.5 p-2 text-sm">
+        {PESTANAS.map((p, i) => {
           const Ico = p.icono;
           return (
             <button key={p.id} onClick={() => setPestana(p.id)}
-              className={`flex items-center gap-1.5 px-3 py-2.5 border-b-2 -mb-px ${
-                pestana === p.id
-                  ? 'border-primary text-primary font-medium'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}>
+              className={`inline-flex items-center gap-1.5 ${claseOpcion(i, pestana === p.id)}`}>
               <Ico size={14} /> {p.nombre}
             </button>
           );

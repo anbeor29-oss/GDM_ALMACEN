@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Sparkles, PlayCircle, FileText, RefreshCw, Check, Pencil, Trash2, X, CalendarClock, Split } from 'lucide-react';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { useEjercicios } from '@/components/SelectorPeriodo';
@@ -74,12 +75,11 @@ export function ActivoFijoPage() {
         </div>
       )}
 
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1.5 flex-wrap">
         {([['cedula', 'Cédula', Building2], ['detectar', 'Detectar desde compras', Sparkles],
-           ['depreciacion', 'Pólizas del mes', FileText]] as const).map(([k, label, Icon]) => (
+           ['depreciacion', 'Pólizas del mes', FileText]] as const).map(([k, label, Icon], i) => (
           <button key={k} onClick={() => setTab(k)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-1.5 ${
-              tab === k ? 'border-emerald-700 text-emerald-800' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === k)}`}>
             <Icon size={14} /> {label}
           </button>
         ))}

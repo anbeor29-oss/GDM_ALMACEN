@@ -118,6 +118,43 @@ export async function setHorario(companyId: string, empleadoId: string, d: any) 
   return getHorario(companyId, empleadoId);
 }
 
+/**
+ * Asignación MASIVA de horario: el mismo turno (o EXENTO) a varios empleados de un
+ * golpe. Pensado para cuando la plantilla crece —marcar 30 y ponerles el matutino
+ * sin abrir uno por uno—. Sólo toca empleados de la empresa (ignora ids ajenos) y
+ * un solo upsert; conserva la tolerancia individual de cada quien.
+ */
+export async function asignarHorarioMasivo(
+  companyId: string,
+  empleadoIds: string[],
+  d: { tipo?: string; turno_id?: string | null },
+): Promise<{ asignados: number }> {
+  const tipo = String(d?.tipo || 'FIJO').toUpperCase();
+  if (!['FIJO', 'ROTATIVO', 'EXENTO'].includes(tipo)) {
+    throw new ValidationError('tipo debe ser FIJO, ROTATIVO o EXENTO.');
+  }
+  const ids = Array.from(new Set((empleadoIds || []).filter(Boolean)));
+  if (!ids.length) throw new ValidationError('Selecciona al menos un empleado.');
+  const turnoId = tipo === 'FIJO' ? (d.turno_id || null) : null;
+  if (tipo === 'FIJO' && !turnoId) throw new ValidationError('Elige el turno a asignar.');
+
+  // Sólo los que de verdad son de esta empresa (evita asignar a ajenos por id suelto).
+  const val = await query<any>(
+    `SELECT id FROM nomina_empleados
+      WHERE company_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL`,
+    [companyId, ids]);
+  const validos = val.rows.map((r) => r.id);
+  if (!validos.length) throw new ValidationError('Ninguno de los empleados es de esta empresa.');
+
+  await query(
+    `INSERT INTO checador_empleado_horario (empleado_id, company_id, tipo, turno_id)
+     SELECT e, $1, $2, $3 FROM unnest($4::uuid[]) AS e
+     ON CONFLICT (empleado_id) DO UPDATE SET
+       tipo = EXCLUDED.tipo, turno_id = EXCLUDED.turno_id, updated_at = NOW()`,
+    [companyId, tipo, turnoId, validos]);
+  return { asignados: validos.length };
+}
+
 /** Asignación por fecha: el rol del rotativo y el caso mixto (oficina/campo). */
 export async function asignarDia(companyId: string, empleadoId: string, d: any) {
   if (!d?.fecha) throw new ValidationError('Falta la fecha de la asignación.');
@@ -302,7 +339,7 @@ export async function empleadosParaEnrolar(companyId: string) {
 export default {
   getConfig, setConfig,
   listarTurnos, crearTurno, actualizarTurno, borrarTurno,
-  getHorario, setHorario, asignarDia,
+  getHorario, setHorario, asignarHorarioMasivo, asignarDia,
   getConsentimiento, setConsentimiento,
   enrolarRostros, estadoEnrolamiento, identificar,
   registrarChecada, empleadosParaEnrolar,

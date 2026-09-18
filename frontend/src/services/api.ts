@@ -3213,6 +3213,12 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>(`/checador/empleados/${empleadoId}/horario`, body);
     return r.data;
   }
+  /** Asigna el mismo turno (o EXENTO) a varios empleados de un golpe. */
+  async asignarHorarioMasivo(empleadoIds: string[], tipo: string, turnoId?: string | null) {
+    const r = await this.client.put<APIResponse<any>>('/checador/horarios/masivo',
+      { empleadoIds, tipo, turno_id: turnoId ?? null });
+    return r.data;
+  }
   async getCheckadorConsentimiento(empleadoId: string) {
     const r = await this.client.get<APIResponse<any>>(`/checador/empleados/${empleadoId}/consentimiento`);
     return r.data;

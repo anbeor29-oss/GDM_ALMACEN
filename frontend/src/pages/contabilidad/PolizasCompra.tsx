@@ -11,6 +11,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Tag, Truck, FileText, PlayCircle, RefreshCw, Check, Pencil, AlertTriangle } from 'lucide-react';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 import { CuentaPicker } from '@/components/CuentaPicker';
 import { ModalCrearSubcuenta } from '@/components/ModalCrearSubcuenta';
@@ -65,12 +66,11 @@ export function PolizasCompraPage() {
         </div>
       )}
 
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1.5 flex-wrap">
         {([['cargos', 'Cargos (115/601 por producto)'], ['proveedores', 'Proveedores'], ['polizas', 'Pólizas']] as const)
-          .map(([k, label]) => (
+          .map(([k, label], i) => (
             <button key={k} onClick={() => setTab(k)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-1.5 ${
-                tab === k ? 'border-emerald-700 text-emerald-800' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === k)}`}>
               {k === 'cargos' ? <Tag size={14} /> : k === 'proveedores' ? <Truck size={14} /> : <FileText size={14} />}
               {label}
             </button>

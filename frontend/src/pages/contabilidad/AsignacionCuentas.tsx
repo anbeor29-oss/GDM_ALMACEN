@@ -12,6 +12,7 @@
  *              comprueba que esas cuentas existan.
  */
 import { useMemo, useState } from 'react';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Tag, Truck, HeartPulse, ArrowLeftRight, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
@@ -54,13 +55,12 @@ export function AsignacionCuentasPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 justify-between">
-        <div className="flex flex-wrap gap-1 border-b flex-1">
-          {PESTANAS.map((p) => {
+        <div className="flex flex-wrap gap-1.5 flex-1">
+          {PESTANAS.map((p, i) => {
             const Ico = p.icono;
             return (
               <button key={p.id} onClick={() => setPest(p.id)}
-                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-                  pest === p.id ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                className={`inline-flex items-center gap-1.5 ${claseOpcion(i, pest === p.id)}`}>
                 <Ico size={14} /> {p.nombre}
               </button>
             );

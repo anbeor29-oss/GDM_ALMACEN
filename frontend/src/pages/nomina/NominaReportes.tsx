@@ -20,6 +20,7 @@ import {
   Sigma, List, Tag, Check, PlayCircle, CheckCircle2, BookOpen, Download, FileDown,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 import { aTextoMx } from '@/components/CampoFecha';
 import { CuentaPicker } from '@/components/CuentaPicker';
@@ -678,12 +679,10 @@ export function ConceptosCuentasNomina() {
         {cuentas.map((c) => <option key={c.id} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
       </datalist>
 
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1.5 flex-wrap">
         {([['ingresos', 'Ingresos (percepciones)'], ['egresos', 'Egresos (deducciones y provisiones)'], ['poliza', 'Póliza']] as const)
-          .map(([k, label]) => (
-            <button key={k} onClick={() => setSub(k)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-                sub === k ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          .map(([k, label], i) => (
+            <button key={k} onClick={() => setSub(k)} className={claseOpcion(i, sub === k)}>
               {label}
             </button>
           ))}

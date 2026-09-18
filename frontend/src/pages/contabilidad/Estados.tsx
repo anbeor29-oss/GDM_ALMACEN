@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Info, TrendingUp, X, FileSpreadsheet, FileDown } from 'lucide-react';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { SelectorPeriodo } from '@/components/SelectorPeriodo';
@@ -546,15 +547,13 @@ export function RazonesPage() {
       descargas={{ excel: (a, m) => api.descargarRazones(a, m, 'excel'), pdf: (a, m) => api.descargarRazones(a, m, 'pdf'), anual: (a) => api.descargarReporteAnual(a, 'razones') }}>
       {(d) => (
         <>
-          <div className="flex gap-1 border-b">
+          <div className="flex gap-1.5 flex-wrap">
             {([['razones', 'Razones'],
                ['horizontal', 'Comparativo con el mes anterior'],
                ['nif', `NIF${d.nif.noCumple ? ` (${d.nif.noCumple})` : ''}`]] as Array<[string, string]>)
-              .map(([k, t]) => (
+              .map(([k, t], i) => (
               <button key={k} onClick={() => setTab(k as any)}
-                className={`px-3 py-2 text-sm border-b-2 -mb-px ${
-                  tab === k ? 'border-primary text-primary font-medium'
-                            : 'border-transparent text-gray-500 hover:text-gray-800'}`}>{t}</button>
+                className={claseOpcion(i, tab === k)}>{t}</button>
             ))}
           </div>
 
