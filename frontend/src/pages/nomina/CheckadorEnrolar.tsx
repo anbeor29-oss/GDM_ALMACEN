@@ -7,7 +7,8 @@
  * ya firmó el consentimiento biométrico (LFPDPPP).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Check, Loader2, ShieldAlert, UserPlus, RefreshCw, Save } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Camera, Check, Loader2, ShieldAlert, UserPlus, RefreshCw, Save, Settings } from 'lucide-react';
 import { cargarFaceApi, descriptorDeVideo } from '@/utils/faceApi';
 import api from '@/services/api';
 
@@ -76,8 +77,14 @@ export function CheckadorEnrolarPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-4 space-y-4">
-      <h1 className="text-xl font-bold flex items-center gap-2"><UserPlus size={22} /> Enrolamiento facial</h1>
+    <div className="min-h-screen bg-gray-50 p-4">
+     <div className="max-w-3xl mx-auto space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold flex items-center gap-2"><UserPlus size={22} /> Enrolamiento facial</h1>
+        <Link to="/checador" className="text-gray-400 hover:text-gray-700 p-2" title="Administración" aria-label="Administración">
+          <Settings size={20} />
+        </Link>
+      </div>
       <p className="text-sm text-gray-500">
         Elige al empleado, captura {TOMAS} tomas de su rostro y guarda. Después el kiosco lo reconocerá al checar.
       </p>
@@ -149,6 +156,7 @@ export function CheckadorEnrolarPage() {
           {msg && <p className={`text-sm ${msg.startsWith('✓') ? 'text-emerald-600' : 'text-rose-600'}`}>{msg}</p>}
         </div>
       </div>
+     </div>
     </div>
   );
 }

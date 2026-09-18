@@ -9,7 +9,8 @@
  * El token de dispositivo sin login personal es la siguiente fase.
  */
 import { useEffect, useRef, useState } from 'react';
-import { UserCheck, UserX, Camera, LogIn, LogOut, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { UserCheck, UserX, Camera, LogIn, LogOut, Loader2, Settings } from 'lucide-react';
 import { cargarFaceApi, descriptorDeVideo } from '@/utils/faceApi';
 import api from '@/services/api';
 
@@ -69,7 +70,10 @@ export function CheckadorKioscoPage() {
   }, []);
 
   return (
-    <div className="min-h-[80vh] flex flex-col items-center justify-center gap-6 p-6 bg-gray-900 rounded-xl text-white relative overflow-hidden">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-6 p-4 sm:p-6 bg-gray-900 text-white relative overflow-hidden">
+      <Link to="/checador" className="absolute top-3 right-3 text-gray-400 hover:text-white p-2" title="Administración" aria-label="Administración">
+        <Settings size={20} />
+      </Link>
       <h1 className="text-2xl font-bold flex items-center gap-2"><Camera size={24} /> Checador · Kiosco</h1>
 
       <div className="relative">

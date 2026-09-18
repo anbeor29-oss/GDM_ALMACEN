@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import api from '@/services/api';
 import { Layout } from '@/components/Layout';
@@ -235,6 +235,15 @@ export function App() {
           <Route path="/terminos"   element={<TerminosPage />} />
           <Route path="/privacidad" element={<PrivacidadPage />} />
 
+          {/* PANTALLA COMPLETA, SIN la cáscara del ERP (sidebar/header): el checador
+              corre en tabletas y celulares y debe verse solo él —no "todo el
+              sistema"—. Requiere login (ProtectedRoute) y el módulo nómina, pero NO
+              el Layout de escritorio. */}
+          <Route element={<ProtectedRoute><Outlet /></ProtectedRoute>}>
+            <Route path="checador/kiosco"  element={<ModuleRoute module="nomina"><CheckadorKioscoPage /></ModuleRoute>} />
+            <Route path="checador/enrolar" element={<ModuleRoute module="nomina"><CheckadorEnrolarPage /></ModuleRoute>} />
+          </Route>
+
           {/* Layout privado — bajo "/" — pero la ruta index es el landing público */}
           <Route
             element={
@@ -325,9 +334,6 @@ export function App() {
             <Route path="nomina/reportes"                 element={<ModuleRoute module="nomina"><NominaGuard><NominaReportesPage /></NominaGuard></ModuleRoute>} />
             <Route path="nomina/importar"                 element={<ModuleRoute module="nomina"><NominaGuard><NominaImportarPage /></NominaGuard></ModuleRoute>} />
             <Route path="checador"                        element={<ModuleRoute module="nomina"><NominaGuard><ChecadorPage /></NominaGuard></ModuleRoute>} />
-            {/* Kiosco y enrolamiento: operativos (no cálculo de nómina), NO van tras el NominaGuard. */}
-            <Route path="checador/kiosco"                 element={<ModuleRoute module="nomina"><CheckadorKioscoPage /></ModuleRoute>} />
-            <Route path="checador/enrolar"                element={<ModuleRoute module="nomina"><CheckadorEnrolarPage /></ModuleRoute>} />
 
             {/* Contabilidad. Mismo gateo que nómina: el backend manda con
                 requireModule, esto sólo evita la pantalla vacía. */}
