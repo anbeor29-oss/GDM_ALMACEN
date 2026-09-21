@@ -62,6 +62,7 @@ import { NominaImportarPage } from '@/pages/nomina/NominaImportar';
 import { ChecadorPage } from '@/pages/nomina/Checador';
 import { CheckadorKioscoPage } from '@/pages/nomina/CheckadorKiosco';
 import { CheckadorEnrolarPage } from '@/pages/nomina/CheckadorEnrolar';
+import { ChecadorRegistroPage } from '@/pages/nomina/RegistroAsistencia';
 import { MotorImssIdsePage } from '@/pages/nomina/MotorImssIdse';
 import { CatalogoCuentasPage } from '@/pages/contabilidad/CatalogoCuentas';
 import { AsignacionCuentasPage } from '@/pages/contabilidad/AsignacionCuentas';
@@ -240,8 +241,9 @@ export function App() {
               sistema"—. Requiere login (ProtectedRoute) y el módulo nómina, pero NO
               el Layout de escritorio. */}
           <Route element={<ProtectedRoute><Outlet /></ProtectedRoute>}>
-            <Route path="checador/kiosco"  element={<ModuleRoute module="nomina"><CheckadorKioscoPage /></ModuleRoute>} />
-            <Route path="checador/enrolar" element={<ModuleRoute module="nomina"><CheckadorEnrolarPage /></ModuleRoute>} />
+            <Route path="checador/kiosco"   element={<ModuleRoute module="nomina"><CheckadorKioscoPage /></ModuleRoute>} />
+            <Route path="checador/enrolar"  element={<ModuleRoute module="nomina"><CheckadorEnrolarPage /></ModuleRoute>} />
+            <Route path="checador/registro" element={<ModuleRoute module="nomina"><ChecadorRegistroPage /></ModuleRoute>} />
           </Route>
 
           {/* Layout privado — bajo "/" — pero la ruta index es el landing público */}

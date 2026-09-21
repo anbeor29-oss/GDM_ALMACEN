@@ -59,4 +59,15 @@ router.post('/checada', asyncHandler(async (req, res) =>
 router.get('/empleados-enrolar', asyncHandler(async (req, res) =>
   ok(res, await checador.empleadosParaEnrolar(companyId(req)))));
 
+/* ── Registro de asistencia (requerimiento de ley): día y historial ── */
+router.get('/asistencia/dia', asyncHandler(async (req, res) =>
+  ok(res, await checador.asistenciaDelDia(companyId(req), req.query.fecha as string | undefined))));
+router.get('/asistencia/historial', asyncHandler(async (req, res) =>
+  ok(res, await checador.historialAsistencia(companyId(req), {
+    desde: req.query.desde as string | undefined,
+    hasta: req.query.hasta as string | undefined,
+    empleadoId: req.query.empleadoId as string | undefined,
+    limit: req.query.limit ? Number(req.query.limit) : undefined,
+  }))));
+
 export default router;

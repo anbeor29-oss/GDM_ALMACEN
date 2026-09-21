@@ -13,13 +13,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save, UserPlus } from 'lucide-react';
+import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save, UserPlus, ClipboardList } from 'lucide-react';
 import { claseOpcion } from '@/utils/coloresOpciones';
+import { RegistroAsistencia } from '@/pages/nomina/RegistroAsistencia';
 import api from '@/services/api';
 
 const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-type Tab = 'config' | 'turnos' | 'empleados';
+type Tab = 'config' | 'turnos' | 'empleados' | 'registro';
 
 export function ChecadorPage() {
   const [tab, setTab] = useState<Tab>('config');
@@ -27,6 +28,7 @@ export function ChecadorPage() {
     { id: 'config', label: 'Configuración', icon: Settings },
     { id: 'turnos', label: 'Turnos', icon: Clock },
     { id: 'empleados', label: 'Empleados', icon: Users },
+    { id: 'registro', label: 'Registro', icon: ClipboardList },
   ];
   return (
     <div className="p-6 space-y-4 max-w-5xl">
@@ -38,7 +40,11 @@ export function ChecadorPage() {
             registra. La asistencia alimenta la prenómina.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Link to="/checador/registro"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <ClipboardList size={16} /> Registro
+          </Link>
           <Link to="/checador/enrolar"
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
             <UserPlus size={16} /> Enrolar rostro
@@ -65,6 +71,7 @@ export function ChecadorPage() {
       {tab === 'config' && <TabConfig />}
       {tab === 'turnos' && <TabTurnos />}
       {tab === 'empleados' && <TabEmpleados />}
+      {tab === 'registro' && <RegistroAsistencia />}
     </div>
   );
 }

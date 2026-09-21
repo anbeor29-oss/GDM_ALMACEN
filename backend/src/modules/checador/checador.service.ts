@@ -336,6 +336,76 @@ export async function empleadosParaEnrolar(companyId: string) {
   return r.rows;
 }
 
+/* ── Registro de asistencia (requerimiento de ley) ───────────────────────── */
+
+/**
+ * Registro del DÍA: por trabajador, su PRIMERA entrada y ÚLTIMA salida, en hora
+ * de México. Sólo empleados que tuvieron movimiento ese día (el registro real).
+ * Las horas se calculan con la diferencia entrada→salida.
+ */
+export async function asistenciaDelDia(companyId: string, fecha?: string) {
+  const f = fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : new Date().toISOString().slice(0, 10);
+  const r = await query<any>(
+    `WITH ev AS (
+       SELECT e.empleado_id,
+              MIN(e.ts) FILTER (WHERE e.tipo = 'ENTRADA') AS entrada,
+              MAX(e.ts) FILTER (WHERE e.tipo = 'SALIDA')  AS salida,
+              COUNT(*)::int AS movimientos,
+              bool_or(e.origen = 'APP') AS hubo_campo
+         FROM checador_evento e
+        WHERE e.company_id = $1 AND e.empleado_id IS NOT NULL
+          AND (e.ts AT TIME ZONE 'America/Mexico_City')::date = $2::date
+        GROUP BY e.empleado_id)
+     SELECT ev.empleado_id,
+            TRIM(emp.nombre || ' ' || emp.apellido_pat || ' ' || COALESCE(emp.apellido_mat,'')) AS nombre,
+            emp.num_empleado,
+            TO_CHAR(ev.entrada AT TIME ZONE 'America/Mexico_City', 'HH24:MI') AS entrada,
+            TO_CHAR(ev.salida  AT TIME ZONE 'America/Mexico_City', 'HH24:MI') AS salida,
+            CASE WHEN ev.entrada IS NOT NULL AND ev.salida IS NOT NULL AND ev.salida > ev.entrada
+                 THEN ROUND((EXTRACT(EPOCH FROM (ev.salida - ev.entrada)) / 3600.0)::numeric, 2) END AS horas,
+            ev.movimientos, ev.hubo_campo
+       FROM ev JOIN nomina_empleados emp ON emp.id = ev.empleado_id
+      ORDER BY nombre`,
+    [companyId, f]);
+  return { fecha: f, filas: r.rows };
+}
+
+/**
+ * Historial (el registro electrónico legal): CADA checada, más reciente primero,
+ * con fecha/hora de México, tipo, origen, estado y coordenadas. Filtrable por
+ * rango de fechas y por empleado. Incluye los NO_RECONOCIDO (empleado NULL).
+ */
+export async function historialAsistencia(
+  companyId: string,
+  f: { desde?: string; hasta?: string; empleadoId?: string; limit?: number } = {},
+) {
+  const params: any[] = [companyId];
+  const where = ['e.company_id = $1'];
+  if (f.desde && /^\d{4}-\d{2}-\d{2}$/.test(f.desde)) {
+    params.push(f.desde); where.push(`(e.ts AT TIME ZONE 'America/Mexico_City')::date >= $${params.length}::date`);
+  }
+  if (f.hasta && /^\d{4}-\d{2}-\d{2}$/.test(f.hasta)) {
+    params.push(f.hasta); where.push(`(e.ts AT TIME ZONE 'America/Mexico_City')::date <= $${params.length}::date`);
+  }
+  if (f.empleadoId) { params.push(f.empleadoId); where.push(`e.empleado_id = $${params.length}`); }
+  const limit = Math.min(5000, Math.max(1, Number(f.limit) || 500));
+
+  const r = await query<any>(
+    `SELECT e.id,
+            TO_CHAR(e.ts AT TIME ZONE 'America/Mexico_City', 'YYYY-MM-DD') AS fecha,
+            TO_CHAR(e.ts AT TIME ZONE 'America/Mexico_City', 'HH24:MI:SS') AS hora,
+            e.tipo, e.origen, e.estado, e.lat, e.lng, e.confianza, e.empleado_id,
+            COALESCE(NULLIF(TRIM(emp.nombre || ' ' || emp.apellido_pat || ' ' || COALESCE(emp.apellido_mat,'')), ''), 'No reconocido') AS nombre,
+            emp.num_empleado
+       FROM checador_evento e
+       LEFT JOIN nomina_empleados emp ON emp.id = e.empleado_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY e.ts DESC
+      LIMIT ${limit}`,
+    params);
+  return r.rows;
+}
+
 export default {
   getConfig, setConfig,
   listarTurnos, crearTurno, actualizarTurno, borrarTurno,
@@ -343,4 +413,5 @@ export default {
   getConsentimiento, setConsentimiento,
   enrolarRostros, estadoEnrolamiento, identificar,
   registrarChecada, empleadosParaEnrolar,
+  asistenciaDelDia, historialAsistencia,
 };

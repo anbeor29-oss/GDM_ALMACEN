@@ -3240,8 +3240,18 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/checador/empleados/${empleadoId}/enrolar`, { descriptores });
     return r.data;
   }
-  async checadorChecada(payload: { descriptor: number[]; lat?: number | null; lng?: number | null; device?: any }) {
+  async checadorChecada(payload: { descriptor: number[]; lat?: number | null; lng?: number | null; origen?: string; device?: any }) {
     const r = await this.client.post<APIResponse<any>>('/checador/checada', payload);
+    return r.data;
+  }
+  /** Registro del día: por trabajador, entrada/salida (hora de México). */
+  async checadorAsistenciaDia(fecha?: string) {
+    const r = await this.client.get<APIResponse<any>>('/checador/asistencia/dia', { params: fecha ? { fecha } : {} });
+    return r.data;
+  }
+  /** Historial (registro electrónico legal) de checadas, filtrable. */
+  async checadorHistorial(f: { desde?: string; hasta?: string; empleadoId?: string; limit?: number } = {}) {
+    const r = await this.client.get<APIResponse<any[]>>('/checador/asistencia/historial', { params: f });
     return r.data;
   }
 }
