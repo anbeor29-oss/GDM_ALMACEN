@@ -1053,6 +1053,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/cierre/${anio}/${mes}`);
     return r.data;
   }
+  /** Meses del año que ya tienen cierre (para reabrir y corregir). */
+  async getMesesCerrados(anio: number) {
+    const r = await this.client.get<APIResponse<number[]>>(`/accounting/meses-cerrados/${anio}`);
+    return r.data;
+  }
   async generarCierreMes(anio: number, mes: number) {
     const r = await this.client.post<APIResponse<any>>(`/accounting/cierre/${anio}/${mes}/generar`, {});
     return r.data;

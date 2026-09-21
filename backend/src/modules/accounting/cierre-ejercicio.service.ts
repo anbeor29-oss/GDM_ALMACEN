@@ -72,11 +72,44 @@ export async function determinarResultado(companyId: string, anio: number, mes?:
     `SELECT id, folio, TO_CHAR(fecha,'YYYY-MM-DD') AS fecha, created_at
        FROM journal_entries WHERE company_id=$1 AND origen_uuid=$2 LIMIT 1`,
     [companyId, uuid])).rows[0] || null;
+
+  /* Operaciones en MONEDA EXTRANJERA del periodo, con el tipo de cambio con que
+   * se registraron. Sirve para el aviso del cierre: si el cliente operó en USD/EUR,
+   * quien cierra ve a qué tipo de cambio quedaron los pesos. Sale de los CFDI del
+   * periodo (moneda ≠ MXN). Si todo fue en pesos, la lista viene vacía. */
+  const mon = await query<any>(
+    `SELECT COALESCE(moneda,'MXN') AS moneda, COUNT(*)::int AS n,
+            MIN(NULLIF(tipo_cambio,0)) AS tc_min, MAX(tipo_cambio) AS tc_max
+       FROM cfdi_recibidos
+      WHERE company_id=$1 AND EXTRACT(YEAR FROM fecha_emision)=$2
+        AND ($3::int IS NULL OR EXTRACT(MONTH FROM fecha_emision)=$3)
+        AND COALESCE(moneda,'MXN') NOT IN ('MXN','XXX','')
+      GROUP BY moneda ORDER BY moneda`,
+    [companyId, anio, mes ?? null]);
+  const monedaExtranjera = mon.rows.map((x: any) => ({
+    moneda: x.moneda, operaciones: x.n,
+    tcMin: x.tc_min != null ? Number(x.tc_min) : null,
+    tcMax: x.tc_max != null ? Number(x.tc_max) : null,
+  }));
+
   return {
     anio, mes: mes ?? null, ingresos, egresos, resultado, utilidad: resultado >= 0,
     cuentas,
     cierreAsentado: cierre ? { folio: cierre.folio, fecha: cierre.fecha } : null,
+    monedaExtranjera,
   };
+}
+
+/** Los meses del año que YA tienen póliza de cierre (para reabrir y corregir). */
+export async function mesesCerrados(companyId: string, anio: number): Promise<number[]> {
+  const uuids = Array.from({ length: 12 }, (_, i) => uuidMesDe(anio, i + 1));
+  const r = await query<any>(
+    `SELECT origen_uuid FROM journal_entries WHERE company_id=$1 AND origen_uuid = ANY($2::text[])`,
+    [companyId, uuids]);
+  const set = new Set(r.rows.map((x: any) => x.origen_uuid));
+  const out: number[] = [];
+  for (let m = 1; m <= 12; m++) if (set.has(uuidMesDe(anio, m))) out.push(m);
+  return out;
 }
 
 /**

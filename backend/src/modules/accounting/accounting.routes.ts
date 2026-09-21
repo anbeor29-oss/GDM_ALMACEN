@@ -184,6 +184,15 @@ router.get(
   })
 );
 
+/** GET /accounting/meses-cerrados/:anio — qué meses del año ya tienen cierre. */
+router.get(
+  '/meses-cerrados/:anio',
+  requireCapability('contabilidad:cerrar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await cierre.mesesCerrados(companyId(req), Number(req.params.anio)) });
+  })
+);
+
 /** POST /accounting/cierre/:anio/generar — genera/regenera la póliza de cierre (ADMIN). */
 router.post(
   '/cierre/:anio/generar',
