@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { GdmLogo } from '@/components/GdmLogo';
+import { guardarKiosco, borrarKiosco, hayKiosco } from '@/utils/kioscoAuto';
 import api from '@/services/api';
 
 /** Sitio corporativo al que regresa el botón junto a "Ingresar". */
@@ -17,6 +18,9 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  /* Auto-entrada del checador en este equipo (kiosco): guarda la credencial y al
+   * reabrir la app entra solo al kiosco. Opt-in; conviene con la cuenta CHECADOR. */
+  const [kiosco, setKiosco] = useState(hayKiosco());
   const { login } = useAuthStore();
   const navigate = useNavigate();
 
@@ -30,7 +34,16 @@ export function LoginPage() {
 
       if (response.success && response.data) {
         login(response.data.user, response.data.token, response.data.refreshToken);
-        navigate('/dashboard');
+        /* Si marcó "entrar automático en este equipo", se recuerda la credencial y
+         * se cae directo en el kiosco. Si NO la marcó, se BORRA cualquier
+         * auto-entrada previa de este equipo (así se apaga a propósito). */
+        if (kiosco) {
+          guardarKiosco(email, password);
+          navigate('/checador/kiosco');
+        } else {
+          borrarKiosco();
+          navigate('/dashboard');
+        }
       } else {
         setError(response.message || 'Login failed');
       }
@@ -86,6 +99,18 @@ export function LoginPage() {
               required
             />
           </div>
+
+          {/* Auto-entrada del checador en este equipo (kiosco/tableta). */}
+          <label className="flex items-start gap-2 text-sm text-gray-600 select-none cursor-pointer">
+            <input type="checkbox" checked={kiosco} onChange={(e) => setKiosco(e.target.checked)} className="mt-0.5" />
+            <span>
+              Entrar automático al <strong>checador</strong> en este equipo
+              <span className="block text-xs text-gray-400">
+                Recuerda la credencial en este dispositivo y al abrir la app cae directo en el kiosco.
+                Úsalo sólo en equipos del checador, con la cuenta «checador».
+              </span>
+            </span>
+          </label>
 
           {/* Acceso + regreso al sitio corporativo, lado a lado */}
           <div className="grid grid-cols-2 gap-3">

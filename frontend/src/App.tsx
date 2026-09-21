@@ -3,7 +3,7 @@
  * Router configuration
  */
 
-import { useEffect, useRef, lazy, Suspense } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import api from '@/services/api';
@@ -16,6 +16,7 @@ import { ChecadorRegistroPage } from '@/pages/nomina/RegistroAsistencia';
 import { ChecadorCampoPage } from '@/pages/nomina/ChecadorCampo';
 import { useAuthStore } from '@/store/auth';
 import { canAccess, type ModuleKey, homeDe } from '@/utils/permissions';
+import { leerKiosco, borrarKiosco, hayKiosco } from '@/utils/kioscoAuto';
 
 /**
  * TODO el ERP de escritorio va aquí, cargado PEREZOSO. Así el kiosco/checador
@@ -27,6 +28,19 @@ const ErpPrivado = lazy(() => import('./ErpPrivado'));
 /** Se ve un instante mientras baja el pedazo del ERP (solo la primera vez). */
 function CargandoErp() {
   return <div className="min-h-screen flex items-center justify-center text-gray-400 text-sm">Cargando…</div>;
+}
+
+/** Se ve mientras un equipo del checador entra SOLO (auto-login del kiosco). */
+function PantallaEntrando() {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-gray-900 text-white">
+      <svg className="animate-spin h-8 w-8" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+      </svg>
+      <p className="text-sm text-gray-300">Entrando al checador…</p>
+    </div>
+  );
 }
 
 const queryClient = new QueryClient();
@@ -171,6 +185,32 @@ function AutoActualizar() {
 }
 
 export function App() {
+  const { login } = useAuthStore();
+  /* Auto-entrada del kiosco: si ESTE equipo guardó su credencial (opt-in) y no hay
+   * sesión, entra solo y cae en el kiosco (start_url). Aparte de la sesión normal
+   * —que es sessionStorage y se cierra al cerrar la app—. */
+  const [entrando, setEntrando] = useState<boolean>(
+    () => hayKiosco() && !useAuthStore.getState().isAuthenticated
+  );
+  useEffect(() => {
+    if (!entrando) return;
+    let vivo = true;
+    (async () => {
+      const cred = leerKiosco();
+      if (!cred) { setEntrando(false); return; }
+      try {
+        const r = await api.login(cred.email, cred.password);
+        if (r?.success && r?.data) login(r.data.user, r.data.token, r.data.refreshToken);
+        else borrarKiosco();
+      } catch { borrarKiosco(); }   // credencial ya no sirve: se apaga y va al login
+      finally { if (vivo) setEntrando(false); }
+    })();
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (entrando) return <PantallaEntrando />;
+
   return (
     <QueryClientProvider client={queryClient}>
       <Router basename={import.meta.env.BASE_URL}>
