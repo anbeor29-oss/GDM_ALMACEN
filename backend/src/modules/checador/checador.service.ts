@@ -11,7 +11,9 @@
  *  · La asistencia alimenta la PRENÓMINA (checador_resumen_dia); no reemplaza el
  *    cálculo.
  */
+import * as XLSX from 'xlsx';
 import { query } from '../../config/database';
+import { reporteTablaPdf } from '../../utils/reporte-pdf';
 import { NotFoundError, ValidationError } from '../../middleware/errorHandler';
 
 /* ── Config por empresa ──────────────────────────────────────────────────── */
@@ -358,7 +360,7 @@ export async function asistenciaDelDia(companyId: string, fecha?: string) {
         GROUP BY e.empleado_id)
      SELECT ev.empleado_id,
             TRIM(emp.nombre || ' ' || emp.apellido_pat || ' ' || COALESCE(emp.apellido_mat,'')) AS nombre,
-            emp.num_empleado,
+            emp.num_empleado, emp.puesto,
             TO_CHAR(ev.entrada AT TIME ZONE 'America/Mexico_City', 'HH24:MI') AS entrada,
             TO_CHAR(ev.salida  AT TIME ZONE 'America/Mexico_City', 'HH24:MI') AS salida,
             CASE WHEN ev.entrada IS NOT NULL AND ev.salida IS NOT NULL AND ev.salida > ev.entrada
@@ -396,7 +398,7 @@ export async function historialAsistencia(
             TO_CHAR(e.ts AT TIME ZONE 'America/Mexico_City', 'HH24:MI:SS') AS hora,
             e.tipo, e.origen, e.estado, e.lat, e.lng, e.confianza, e.empleado_id,
             COALESCE(NULLIF(TRIM(emp.nombre || ' ' || emp.apellido_pat || ' ' || COALESCE(emp.apellido_mat,'')), ''), 'No reconocido') AS nombre,
-            emp.num_empleado
+            emp.num_empleado, emp.puesto
        FROM checador_evento e
        LEFT JOIN nomina_empleados emp ON emp.id = e.empleado_id
       WHERE ${where.join(' AND ')}
@@ -406,6 +408,60 @@ export async function historialAsistencia(
   return r.rows;
 }
 
+/** Empresa (razón social + RFC) para el encabezado de los reportes. */
+async function empresaDe(companyId: string): Promise<{ nombre: string; rfc: string }> {
+  const r = await query<any>(`SELECT business_name, rfc FROM companies WHERE id = $1`, [companyId]);
+  return { nombre: r.rows[0]?.business_name || 'Empresa', rfc: r.rows[0]?.rfc || '' };
+}
+
+/** El historial a EXCEL (para revisar/ordenar). */
+export async function historialExcel(companyId: string, f: any): Promise<{ buffer: Buffer; nombre: string }> {
+  const filas: any[] = await historialAsistencia(companyId, f);
+  const rows = filas.map((x) => ({
+    Fecha: x.fecha, Hora: x.hora, Trabajador: x.nombre, Puesto: x.puesto || '',
+    'Núm.': x.num_empleado || '', Tipo: x.tipo,
+    Origen: x.origen === 'APP' ? 'Campo' : 'Kiosco', Estado: x.estado,
+    Latitud: x.lat ?? '', Longitud: x.lng ?? '',
+    Ubicación: (x.lat != null && x.lng != null) ? `https://www.google.com/maps?q=${x.lat},${x.lng}` : '',
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Asistencia');
+  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  return { buffer, nombre: `Asistencia_${f.desde || 'inicio'}_a_${f.hasta || 'hoy'}.xlsx` };
+}
+
+/** El historial a PDF (registro electrónico de asistencia, con encabezado de la casa). */
+export async function historialPdf(companyId: string, f: any): Promise<Buffer> {
+  const filas: any[] = await historialAsistencia(companyId, f);
+  const empresa = await empresaDe(companyId);
+  const sub: string[] = [];
+  if (f.desde || f.hasta) sub.push(`Periodo: ${f.desde || '…'} a ${f.hasta || '…'}`);
+  sub.push(`${filas.length} registro(s)`);
+  return reporteTablaPdf({
+    titulo: 'Registro de asistencia',
+    empresa: empresa.nombre, rfc: empresa.rfc,
+    subtitulos: sub,
+    orientacion: 'landscape',
+    columnas: [
+      { titulo: 'Fecha', clave: 'fecha', ancho: 12 },
+      { titulo: 'Hora', clave: 'hora', ancho: 10 },
+      { titulo: 'Trabajador', clave: 'nombre', ancho: 26, align: 'left' },
+      { titulo: 'Puesto', clave: 'puesto', ancho: 18, align: 'left' },
+      { titulo: 'Tipo', clave: 'tipo', ancho: 10 },
+      { titulo: 'Origen', clave: 'origenTxt', ancho: 10 },
+      { titulo: 'Estado', clave: 'estado', ancho: 14 },
+      { titulo: 'Ubicación', clave: 'ubic', ancho: 20, align: 'left' },
+    ],
+    filas: filas.map((x) => ({
+      ...x, puesto: x.puesto || '',
+      origenTxt: x.origen === 'APP' ? 'Campo' : 'Kiosco',
+      ubic: (x.lat != null && x.lng != null) ? `${x.lat}, ${x.lng}` : '',
+    })),
+    nota: 'Registro electrónico de asistencia — checador biométrico.',
+  });
+}
+
 export default {
   getConfig, setConfig,
   listarTurnos, crearTurno, actualizarTurno, borrarTurno,
@@ -413,5 +469,5 @@ export default {
   getConsentimiento, setConsentimiento,
   enrolarRostros, estadoEnrolamiento, identificar,
   registrarChecada, empleadosParaEnrolar,
-  asistenciaDelDia, historialAsistencia,
+  asistenciaDelDia, historialAsistencia, historialExcel, historialPdf,
 };

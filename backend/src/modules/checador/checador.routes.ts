@@ -75,12 +75,25 @@ router.get('/empleados-enrolar', asyncHandler(async (req, res) =>
 /* ── Registro de asistencia (requerimiento de ley): día y historial ── */
 router.get('/asistencia/dia', asyncHandler(async (req, res) =>
   ok(res, await checador.asistenciaDelDia(companyId(req), req.query.fecha as string | undefined))));
+const filtrosAsistencia = (req: Request) => ({
+  desde: req.query.desde as string | undefined,
+  hasta: req.query.hasta as string | undefined,
+  empleadoId: req.query.empleadoId as string | undefined,
+  limit: req.query.limit ? Number(req.query.limit) : undefined,
+});
 router.get('/asistencia/historial', asyncHandler(async (req, res) =>
-  ok(res, await checador.historialAsistencia(companyId(req), {
-    desde: req.query.desde as string | undefined,
-    hasta: req.query.hasta as string | undefined,
-    empleadoId: req.query.empleadoId as string | undefined,
-    limit: req.query.limit ? Number(req.query.limit) : undefined,
-  }))));
+  ok(res, await checador.historialAsistencia(companyId(req), filtrosAsistencia(req)))));
+router.get('/asistencia/historial.xlsx', asyncHandler(async (req, res) => {
+  const { buffer, nombre } = await checador.historialExcel(companyId(req), filtrosAsistencia(req));
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+  res.send(buffer);
+}));
+router.get('/asistencia/historial.pdf', asyncHandler(async (req, res) => {
+  const buffer = await checador.historialPdf(companyId(req), filtrosAsistencia(req));
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename="Registro_asistencia.pdf"');
+  res.send(buffer);
+}));
 
 export default router;

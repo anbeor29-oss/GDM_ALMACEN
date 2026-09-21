@@ -3254,6 +3254,17 @@ class APIClient {
     const r = await this.client.get<APIResponse<any[]>>('/checador/asistencia/historial', { params: f });
     return r.data;
   }
+  /** Descarga el historial en Excel o PDF (con token; dispara la descarga). */
+  async descargarHistorialChecador(f: { desde?: string; hasta?: string; empleadoId?: string }, formato: 'xlsx' | 'pdf') {
+    const r = await this.client.get(`/checador/asistencia/historial.${formato}`, { params: f, responseType: 'blob' });
+    const tipo = formato === 'pdf'
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const url = window.URL.createObjectURL(new Blob([r.data], { type: tipo }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `Registro_asistencia.${formato}`; a.click();
+    window.URL.revokeObjectURL(url);
+  }
 }
 
 export const api = new APIClient();
