@@ -2034,6 +2034,17 @@ class APIClient {
     await this.downloadFile(r.data as Blob, nombre);
   }
 
+  /** El reloj checador arma la nómina: aplica faltas (y detecta retardos) del periodo. */
+  async prenominaCargarChecador(periodoId: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/prenomina/${periodoId}/incidencias-checador`, {});
+    return r.data;
+  }
+  /** Asistencia completa a todos: quita las faltas del checador, deja días completos. */
+  async prenominaAsistenciaDefault(periodoId: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/prenomina/${periodoId}/asistencia-default`, {});
+    return r.data;
+  }
+
   /**
    * IMSS · IDSE — arma y descarga el TXT de movimientos afiliatorios.
    *

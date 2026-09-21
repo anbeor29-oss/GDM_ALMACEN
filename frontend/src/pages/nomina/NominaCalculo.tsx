@@ -21,6 +21,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   CalendarPlus, Users, AlertTriangle, RefreshCw, Plus, X, Info, FileSpreadsheet, Lock,
+  CalendarClock, CheckCircle2,
 } from 'lucide-react';
 import api from '@/services/api';
 import { CeldaDeConceptos } from './CeldaDeConceptos';
@@ -279,6 +280,41 @@ export function NominaCalculoPage() {
     } finally { setExportando(false); }
   };
 
+  /* El reloj checador arma la nómina: trae las faltas del periodo (y detecta los
+   * retardos) y las aplica como deducción. Escribe la captura en el servidor; el
+   * refetch reconstruye la rejilla con las faltas ya puestas. */
+  const cargarChecador = async () => {
+    setError(''); setAviso('');
+    try {
+      const r: any = await api.prenominaCargarChecador(periodoId);
+      const d = r?.data || {};
+      await prenominaQ.refetch();
+      setAviso(
+        d.sinTurno
+          ? 'Ningún trabajador tiene turno FIJO en el Checador. Asígnales turno en Nómina → Checador → Empleados para que se calculen las faltas.'
+          : `Del checador: ${d.faltas} falta(s) aplicada(s) a ${d.aplicados} trabajador(es)` +
+            (d.retardos ? ` · ${d.retardos} retardo(s) detectado(s)` : '') +
+            (d.faltas === 0 ? ' — nadie tuvo faltas en el periodo.' : '.')
+      );
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo cargar del checador');
+    }
+  };
+
+  /* Asistencia completa: quita las faltas del checador y deja los días completos
+   * del periodo (7/15/16/30) a todos. Para cuando no se usa el checador. */
+  const asistenciaCompleta = async () => {
+    setError(''); setAviso('');
+    try {
+      const r: any = await api.prenominaAsistenciaDefault(periodoId);
+      const d = r?.data || {};
+      await prenominaQ.refetch();
+      setAviso(`Asistencia completa: ${d.dias} día(s) del periodo a todos (se quitaron las faltas del checador).`);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo aplicar');
+    }
+  };
+
   /* Cerrar es lo único de esta pantalla que ESCRIBE. Por eso pregunta: después
    * del cierre el periodo ya no se recalcula, y sus recibos quedan como están. */
   const cerrarPeriodo = async () => {
@@ -488,6 +524,22 @@ export function NominaCalculoPage() {
                 <RefreshCw size={14} className={prenominaQ.isFetching ? 'animate-spin' : ''} />
                 Recalcular
               </button>
+              {/* El reloj checador arma la nómina: faltas/retardos del periodo, o
+                  asistencia completa a todos. */}
+              {pre?.periodo?.estatus !== 'CERRADO' && (
+                <>
+                  <button onClick={cargarChecador} disabled={prenominaQ.isFetching || !pre}
+                    className="text-sm text-cyan-700 hover:underline flex items-center gap-1 disabled:opacity-50"
+                    title="Trae las faltas y retardos del reloj checador y arma la nómina">
+                    <CalendarClock size={14} /> Checador
+                  </button>
+                  <button onClick={asistenciaCompleta} disabled={prenominaQ.isFetching || !pre}
+                    className="text-sm text-gray-600 hover:underline flex items-center gap-1 disabled:opacity-50"
+                    title="Asistencia completa: días del periodo a todos (quita las faltas del checador)">
+                    <CheckCircle2 size={14} /> Asistencia
+                  </button>
+                </>
+              )}
               {/* La prenómina se REVISA, y eso se hace en Excel: se ordena por
                   departamento, se filtra a quien tiene faltas, se compara contra
                   la semana pasada. Va con lo capturado en la rejilla, no con un

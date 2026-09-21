@@ -942,3 +942,133 @@ export async function aplicarAVarios(
   await guardarCaptura(companyId, periodoId, nuevas, userId);
   return { aplicados: nuevas.length, clave: d.clave, importe, dias: porDias ? dias : undefined };
 }
+
+/* ═════════════════ CHECADOR → PRENÓMINA ═════════════════ */
+
+/** Suma minutos a una hora 'HH:MM' (sin cruzar medianoche, que aquí no aplica). */
+function sumarMinutos(hhmm: string, min: number): string {
+  const [h, m] = String(hhmm).slice(0, 5).split(':').map(Number);
+  const tt = ((((h || 0) * 60 + (m || 0) + (Number(min) || 0)) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(tt / 60)).padStart(2, '0')}:${String(tt % 60).padStart(2, '0')}`;
+}
+
+/**
+ * El RELOJ CHECADOR arma la nómina: trae las FALTAS del periodo y las aplica como
+ * la deducción 020 (en días, con séptimo Art. 69), y detecta los RETARDOS
+ * (informativos: no hay regla de descuento configurada, así que no se descuentan).
+ *
+ * Sólo mira a quien tiene turno FIJO en el Checador —ahí se sabe qué días debía
+ * venir y a qué hora—. Un día laboral del turno sin ENTRADA es una falta; una
+ * ENTRADA después de la hora del turno + la tolerancia es un retardo. Respeta lo
+ * demás que el trabajador tuviera capturado: sólo reemplaza su línea 020.
+ */
+export async function incidenciasChecador(companyId: string, periodoId: string, userId?: string) {
+  const p = await periodosSvc.obtener(companyId, periodoId);
+  if (p.estatus === 'CERRADO') {
+    throw new ValidationError('Ese periodo ya está cerrado: sus importes no se mueven.');
+  }
+  const ini = String(p.fecha_inicio).slice(0, 10);
+  const fin = String(p.fecha_fin).slice(0, 10);
+
+  const cfg = await query<any>(
+    `SELECT tolerancia_retardo_min FROM checador_config WHERE company_id = $1`, [companyId]);
+  const tol = Number(cfg.rows[0]?.tolerancia_retardo_min) || 0;
+
+  /* Empleados con turno FIJO: el turno dice qué días laboran y a qué hora entran. */
+  const emps = await query<any>(
+    `SELECT h.empleado_id, t.hora_entrada, t.dias,
+            TO_CHAR(e.fecha_ingreso, 'YYYY-MM-DD')   AS fecha_ingreso,
+            TO_CHAR(e.fecha_baja, 'YYYY-MM-DD')      AS fecha_baja,
+            TO_CHAR(e.fecha_reingreso, 'YYYY-MM-DD') AS fecha_reingreso,
+            TRIM(e.nombre || ' ' || e.apellido_pat || ' ' || COALESCE(e.apellido_mat,'')) AS nombre
+       FROM checador_empleado_horario h
+       JOIN checador_turnos t ON t.id = h.turno_id
+       JOIN nomina_empleados e ON e.id = h.empleado_id
+      WHERE h.company_id = $1 AND h.tipo = 'FIJO' AND e.deleted_at IS NULL`,
+    [companyId]);
+  if (emps.rows.length === 0) {
+    return { aplicados: 0, faltas: 0, retardos: 0, sinTurno: true, detalle: [] };
+  }
+
+  /* Primera ENTRADA de cada empleado por día (hora de México). */
+  const ev = await query<any>(
+    `SELECT empleado_id,
+            TO_CHAR(ts AT TIME ZONE 'America/Mexico_City', 'YYYY-MM-DD') AS dia,
+            TO_CHAR(MIN(ts) AT TIME ZONE 'America/Mexico_City', 'HH24:MI') AS entrada
+       FROM checador_evento
+      WHERE company_id = $1 AND empleado_id IS NOT NULL AND tipo = 'ENTRADA'
+        AND (ts AT TIME ZONE 'America/Mexico_City')::date BETWEEN $2::date AND $3::date
+      GROUP BY empleado_id, dia`,
+    [companyId, ini, fin]);
+  const asistio = new Map<string, Map<string, string>>();
+  for (const r of ev.rows) {
+    if (!asistio.has(r.empleado_id)) asistio.set(r.empleado_id, new Map());
+    asistio.get(r.empleado_id)!.set(r.dia, r.entrada);
+  }
+
+  /* Las fechas del periodo con su día de la semana (0=Dom..6=Sáb). */
+  const fechas: Array<{ iso: string; dow: number }> = [];
+  for (let d = new Date(`${ini}T00:00:00Z`); d <= new Date(`${fin}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+    fechas.push({ iso: d.toISOString().slice(0, 10), dow: d.getUTCDay() });
+  }
+
+  const previas = await leerCaptura(companyId, periodoId);
+  const capMap = new Map(previas.map((c) => [c.empleadoId, c]));
+  const nuevas: CapturaPorTrabajador[] = [];
+  const detalle: Array<{ empleado_id: string; nombre: string; esperados: number; faltas: number; retardos: number }> = [];
+
+  for (const e of emps.rows) {
+    const diasTurno: number[] = (e.dias || []).map((x: any) => Number(x));
+    const entradaMap = asistio.get(e.empleado_id) || new Map<string, string>();
+    const desde = e.fecha_reingreso || e.fecha_ingreso;
+    const limite = sumarMinutos(String(e.hora_entrada), tol);
+    let esperados = 0, faltas = 0, retardos = 0;
+    for (const f of fechas) {
+      if (!diasTurno.includes(f.dow)) continue;      // no es día laboral del turno
+      if (desde && f.iso < desde) continue;          // antes de su ingreso/reingreso
+      if (e.fecha_baja && f.iso > e.fecha_baja) continue;   // después de su baja
+      esperados++;
+      const entrada = entradaMap.get(f.iso);
+      if (!entrada) { faltas++; continue; }
+      if (entrada > limite) retardos++;
+    }
+    detalle.push({ empleado_id: e.empleado_id, nombre: e.nombre, esperados, faltas, retardos });
+
+    if (faltas > 0) {
+      const previa = (capMap.get(e.empleado_id) || {
+        empleadoId: e.empleado_id, otrosIngresos: [], otrasDeducciones: [],
+      }) as CapturaPorTrabajador;
+      const ded = [...((previa.otrasDeducciones as any[]) || [])].filter((x: any) => x.clave !== '020');
+      ded.push({ clave: '020', dias: faltas } as any);
+      nuevas.push({ ...previa, otrasDeducciones: ded });
+    }
+  }
+  if (nuevas.length) await guardarCaptura(companyId, periodoId, nuevas, userId);
+
+  return {
+    aplicados: nuevas.length,
+    faltas: detalle.reduce((a, d) => a + d.faltas, 0),
+    retardos: detalle.reduce((a, d) => a + d.retardos, 0),
+    detalle,
+  };
+}
+
+/**
+ * Asistencia COMPLETA a todos: quita las faltas (línea 020) que el checador haya
+ * puesto y borra los días capturados a mano, para que la rejilla muestre los días
+ * completos del periodo (7/15/16/30). Lo demás capturado se respeta.
+ */
+export async function asistenciaPorDefecto(companyId: string, periodoId: string, userId?: string) {
+  const p = await periodosSvc.obtener(companyId, periodoId);
+  if (p.estatus === 'CERRADO') {
+    throw new ValidationError('Ese periodo ya está cerrado: sus importes no se mueven.');
+  }
+  const previas = await leerCaptura(companyId, periodoId);
+  const nuevas: CapturaPorTrabajador[] = previas.map((c) => ({
+    ...c,
+    dias: undefined,
+    otrasDeducciones: ((c.otrasDeducciones as any[]) || []).filter((x: any) => x.clave !== '020'),
+  }));
+  if (nuevas.length) await guardarCaptura(companyId, periodoId, nuevas, userId);
+  return { limpiados: nuevas.length, dias: p.dias };
+}

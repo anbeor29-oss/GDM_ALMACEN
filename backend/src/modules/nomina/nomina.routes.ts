@@ -230,6 +230,31 @@ router.post(
 );
 
 /**
+ * POST /prenomina/:periodoId/incidencias-checador — el reloj checador arma la
+ * nómina: trae las FALTAS del periodo (y detecta retardos) y las aplica como la
+ * deducción 020 (en días, con séptimo Art. 69). Sólo trabajadores con turno FIJO.
+ */
+router.post(
+  '/prenomina/:periodoId/incidencias-checador',
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await prenomina.incidenciasChecador(companyId(req), req.params.periodoId, req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
+
+/**
+ * POST /prenomina/:periodoId/asistencia-default — asistencia COMPLETA a todos:
+ * quita las faltas del checador y deja los días del periodo (7/15/16/30).
+ */
+router.post(
+  '/prenomina/:periodoId/asistencia-default',
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await prenomina.asistenciaPorDefecto(companyId(req), req.params.periodoId, req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
+
+/**
  * POST /prenomina/:periodoId/excel — la prenómina como hoja de cálculo.
  *
  * Es POST porque lleva la captura de la rejilla en el cuerpo: lo que se exporta
