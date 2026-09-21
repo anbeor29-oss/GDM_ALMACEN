@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save, UserPlus, ClipboardList } from 'lucide-react';
+import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save, UserPlus, ClipboardList, MapPin } from 'lucide-react';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import { RegistroAsistencia } from '@/pages/nomina/RegistroAsistencia';
 import api from '@/services/api';
@@ -48,6 +48,10 @@ export function ChecadorPage() {
           <Link to="/checador/enrolar"
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
             <UserPlus size={16} /> Enrolar rostro
+          </Link>
+          <Link to="/checador/campo"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <MapPin size={16} /> Campo
           </Link>
           <Link to="/checador/kiosco"
             className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
