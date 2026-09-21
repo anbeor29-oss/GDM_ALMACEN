@@ -10,11 +10,11 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { UserCheck, UserX, Camera, LogIn, LogOut, Loader2, Settings } from 'lucide-react';
+import { UserCheck, UserX, Camera, LogIn, LogOut, Loader2, Settings, Clock } from 'lucide-react';
 import { cargarFaceApi, descriptorDeVideo } from '@/utils/faceApi';
 import api from '@/services/api';
 
-type Resultado = { ok: boolean; nombre?: string; tipo?: string; repetido?: boolean; hora?: string };
+type Resultado = { ok: boolean; nombre?: string; tipo?: string; repetido?: boolean; hora?: string; espera?: boolean; mensaje?: string };
 
 export function CheckadorKioscoPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -41,6 +41,8 @@ export function CheckadorKioscoPage() {
           const x = r?.data || {};
           if (!x.reconocido) {
             setRes({ ok: false });
+          } else if (x.espera) {
+            setRes({ ok: true, espera: true, nombre: x.empleado?.nombre, mensaje: x.mensaje });
           } else {
             const hora = x.ts ? new Date(x.ts).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '';
             setRes({ ok: true, nombre: x.empleado?.nombre, tipo: x.tipo, repetido: x.repetido, hora });
@@ -90,9 +92,11 @@ export function CheckadorKioscoPage() {
 
       {res && (
         <div className={`w-full max-w-md rounded-xl p-5 text-center shadow-xl ${
-          !res.ok ? 'bg-rose-600' : res.tipo === 'ENTRADA' ? 'bg-emerald-600' : 'bg-sky-600'}`}>
+          !res.ok ? 'bg-rose-600' : res.espera ? 'bg-amber-600' : res.tipo === 'ENTRADA' ? 'bg-emerald-600' : 'bg-sky-600'}`}>
           {!res.ok ? (
             <div className="flex flex-col items-center gap-1"><UserX size={40} /><p className="text-lg font-bold">No te reconocí</p><p className="text-sm opacity-90">Intenta de nuevo o pide que te enrolen.</p></div>
+          ) : res.espera ? (
+            <div className="flex flex-col items-center gap-1"><Clock size={40} /><p className="text-xl font-bold">{res.nombre}</p><p className="text-sm opacity-95">{res.mensaje}</p></div>
           ) : (
             <div className="flex flex-col items-center gap-1">
               <UserCheck size={40} />

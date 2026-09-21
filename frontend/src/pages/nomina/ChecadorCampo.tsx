@@ -11,12 +11,12 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { UserCheck, UserX, MapPin, MapPinOff, LogIn, LogOut, Loader2, Settings, RefreshCw } from 'lucide-react';
+import { UserCheck, UserX, MapPin, MapPinOff, LogIn, LogOut, Loader2, Settings, RefreshCw, Clock } from 'lucide-react';
 import { cargarFaceApi, descriptorDeVideo } from '@/utils/faceApi';
 import api from '@/services/api';
 
 type Coords = { lat: number; lng: number } | null;
-type Resultado = { ok: boolean; nombre?: string; tipo?: string; repetido?: boolean; hora?: string; conUbicacion?: boolean };
+type Resultado = { ok: boolean; nombre?: string; tipo?: string; repetido?: boolean; hora?: string; conUbicacion?: boolean; espera?: boolean; mensaje?: string };
 
 export function ChecadorCampoPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -62,6 +62,8 @@ export function ChecadorCampoPage() {
           if (!x.reconocido) {
             setRes({ ok: false });
             activo.current = true;                // no te reconoció: deja reintentar solo
+          } else if (x.espera) {
+            setRes({ ok: true, espera: true, nombre: x.empleado?.nombre, mensaje: x.mensaje });
           } else {
             const hora = x.ts ? new Date(x.ts).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '';
             setRes({ ok: true, nombre: x.empleado?.nombre, tipo: x.tipo, repetido: x.repetido, hora, conUbicacion: !!c });
@@ -130,9 +132,11 @@ export function ChecadorCampoPage() {
 
       {res && (
         <div className={`w-full max-w-[420px] rounded-xl p-5 text-center shadow-xl ${
-          !res.ok ? 'bg-rose-600' : res.tipo === 'ENTRADA' ? 'bg-emerald-600' : 'bg-sky-600'}`}>
+          !res.ok ? 'bg-rose-600' : res.espera ? 'bg-amber-600' : res.tipo === 'ENTRADA' ? 'bg-emerald-600' : 'bg-sky-600'}`}>
           {!res.ok ? (
             <div className="flex flex-col items-center gap-1"><UserX size={40} /><p className="text-lg font-bold">No te reconocí</p><p className="text-sm opacity-90">Acomódate de frente, con buena luz.</p></div>
+          ) : res.espera ? (
+            <div className="flex flex-col items-center gap-1"><Clock size={40} /><p className="text-xl font-bold">{res.nombre}</p><p className="text-sm opacity-95">{res.mensaje}</p></div>
           ) : (
             <div className="flex flex-col items-center gap-1">
               <UserCheck size={40} />

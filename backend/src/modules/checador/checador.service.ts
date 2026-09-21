@@ -281,11 +281,10 @@ export async function registrarChecada(
   const origen = d.origen === 'APP' ? 'APP' : 'KIOSCO';
   const ident = await identificar(companyId, d.descriptor);
 
+  /* Si no se reconoce a nadie NO se guarda nada: antes se asentaba un
+   * NO_RECONOCIDO por cada cara desconocida y el historial se llenaba de basura.
+   * Simplemente se avisa en pantalla y no queda registro. */
   if (!ident) {
-    await query(
-      `INSERT INTO checador_evento (company_id, empleado_id, tipo, origen, lat, lng, estado)
-       VALUES ($1, NULL, 'ENTRADA', $2, $3, $4, 'NO_RECONOCIDO')`,
-      [companyId, origen, d.lat ?? null, d.lng ?? null]);
     return { reconocido: false };
   }
 
@@ -306,12 +305,28 @@ export async function registrarChecada(
 
   // ENTRADA/SALIDA por el último evento de HOY (hora de México).
   const ult = await query<any>(
-    `SELECT tipo FROM checador_evento
+    `SELECT tipo, ts FROM checador_evento
       WHERE company_id=$1 AND empleado_id=$2
         AND ts AT TIME ZONE 'America/Mexico_City' >= (NOW() AT TIME ZONE 'America/Mexico_City')::date
         AND tipo IN ('ENTRADA','SALIDA')
       ORDER BY ts DESC LIMIT 1`, [companyId, ident.empleadoId]);
-  const tipo = ult.rows.length && ult.rows[0].tipo === 'ENTRADA' ? 'SALIDA' : 'ENTRADA';
+  const ultimo = ult.rows[0];
+  const tipo = ultimo && ultimo.tipo === 'ENTRADA' ? 'SALIDA' : 'ENTRADA';
+
+  /* La SALIDA sólo se asienta si pasaron al menos 3 HORAS desde la ENTRADA: sin
+   * esto, checar entrada y salida seguidas llenaría el historial de pares inútiles.
+   * Antes del tope no se guarda nada; sólo se avisa cuánto falta. */
+  if (tipo === 'SALIDA' && ultimo) {
+    const horas = (Date.now() - new Date(ultimo.ts).getTime()) / 3_600_000;
+    if (horas < 3) {
+      const minutos = Math.max(1, Math.ceil((3 - horas) * 60));
+      return {
+        reconocido: true, espera: true, empleado: { id: ident.empleadoId, nombre },
+        tipo: 'ENTRADA', minutos, confianza: ident.confianza,
+        mensaje: `Ya registraste tu entrada. Podrás checar tu salida en ${minutos} min.`,
+      };
+    }
+  }
 
   const ins = await query<any>(
     `INSERT INTO checador_evento

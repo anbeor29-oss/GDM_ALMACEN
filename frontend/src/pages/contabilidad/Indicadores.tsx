@@ -24,7 +24,7 @@ export function IndicadoresPage() {
 
   const q = useQuery({ queryKey: ['indicadores'], queryFn: () => api.getIndicadores() });
   const d: any = q.data?.data || {};
-  const inpcQ = useQuery({ queryKey: ['inpc-serie'], queryFn: () => api.getInpcSerie(24) });
+  const inpcQ = useQuery({ queryKey: ['inpc-serie'], queryFn: () => api.getInpcSerie(240) });
   const serie: any[] = inpcQ.data?.data || [];
 
   const actualizar = async () => {
@@ -99,24 +99,46 @@ export function IndicadoresPage() {
           <p className="text-sm text-gray-500 italic">Todavía no hay serie del INPC. Dale «Actualizar desde INEGI».</p>
         )}
 
-        {serie.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="text-sm">
-              <thead className="text-xs text-gray-500">
-                <tr><th className="px-2 py-1 text-left">Periodo</th><th className="px-2 py-1 text-right">INPC</th><th className="px-2 py-1 text-left">Fuente</th></tr>
-              </thead>
-              <tbody className="divide-y">
-                {serie.slice(0, 24).map((s) => (
-                  <tr key={`${s.anio}-${s.mes}`}>
-                    <td className="px-2 py-1 whitespace-nowrap">{MESES[s.mes]} {s.anio}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{num(s.valor)}</td>
-                    <td className="px-2 py-1 text-xs text-gray-400">{s.fuente}</td>
+        {serie.length > 0 && (() => {
+          /* Cuadrícula: los AÑOS en vertical (una fila cada uno, del más reciente
+           * arriba) y los MESES en horizontal — aprovecha el espacio y deja ver
+           * de un vistazo cómo evolucionó el índice. */
+          const porAnio = new Map<number, Record<number, number>>();
+          for (const s of serie) {
+            if (!porAnio.has(s.anio)) porAnio.set(s.anio, {});
+            porAnio.get(s.anio)![s.mes] = s.valor;
+          }
+          const anios = [...porAnio.keys()].sort((a, b) => b - a);
+          const meses = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+          const MESCORTO = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+          return (
+            <div className="overflow-x-auto">
+              <table className="text-sm border-collapse tabular-nums">
+                <thead>
+                  <tr className="text-xs text-gray-500 border-b">
+                    <th className="px-2 py-1.5 text-left sticky left-0 bg-white">Año</th>
+                    {meses.map((m) => <th key={m} className="px-2 py-1.5 text-right font-medium">{MESCORTO[m]}</th>)}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody className="divide-y">
+                  {anios.map((anio) => (
+                    <tr key={anio} className="hover:bg-gray-50">
+                      <td className="px-2 py-1 font-semibold text-gray-800 sticky left-0 bg-white">{anio}</td>
+                      {meses.map((m) => {
+                        const v = porAnio.get(anio)![m];
+                        return (
+                          <td key={m} className="px-2 py-1 text-right text-gray-700">
+                            {v != null ? num(v) : <span className="text-gray-300">·</span>}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── UMA / SM / UMI / ISR (de sólo lectura) ── */}
