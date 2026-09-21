@@ -11,7 +11,7 @@
 
 export type WorkGroup =
   | 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA' | 'PUNTO_VENTA'
-  | 'RECURSOS_HUMANOS' | 'CONTABILIDAD';
+  | 'RECURSOS_HUMANOS' | 'CONTABILIDAD' | 'CHECADOR';
 
 /**
  * Una clave por bloque del menú. 'dashboard' es común a todos los grupos y se
@@ -76,6 +76,10 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
     'contabilidad', 'auditoria', 'treasury',
     'customers', 'suppliers', 'xml_reader', 'exchange_rates', 'mensajes',
   ],
+  /* CHECADOR: la cuenta universal que SÓLO checa. No pinta menú (llega directo al
+   * kiosco a pantalla completa). El acceso al kiosco/campo lo da <ChecadorRoute>,
+   * no este mapa; enrolar/registro/admin le quedan vedados (no tiene 'nomina'). */
+  CHECADOR: [],
 };
 
 /** Etiquetas legibles de cada grupo (para selectores). */
@@ -88,6 +92,7 @@ export const WORK_GROUP_LABELS: Record<WorkGroup, string> = {
   PUNTO_VENTA: 'Punto de venta (sólo caja)',
   RECURSOS_HUMANOS: 'Recursos Humanos (sólo nómina)',
   CONTABILIDAD: 'Contabilidad',
+  CHECADOR: 'Checador (sólo checar entrada/salida)',
 };
 
 /** Detalle de lo que ve cada grupo — se muestra bajo el selector al dar de alta. */
@@ -110,6 +115,9 @@ export const WORK_GROUP_DETAIL: Record<WorkGroup, string> = {
   CONTABILIDAD: 'Catálogo de cuentas, pólizas, balanza y estados financieros. '
     + 'Ve Clientes, Proveedores, Tesorería, Lector de XML y Auditoría (69-B) '
     + 'para explicar sus cifras; NO ve facturación, compras, almacén ni nómina.',
+  CHECADOR: 'Cuenta compartida para checar entrada/salida en el kiosco o el '
+    + 'celular. La cara identifica a cada quien. NO ve nómina, ni enrola, ni '
+    + 'administra: sólo registra su asistencia.',
 };
 
 export function canAccess(group: string | undefined, mod: ModuleKey): boolean {
@@ -158,6 +166,7 @@ export const HOME_POR_GRUPO: Record<string, string> = {
   PUNTO_VENTA:      '/pos',
   RECURSOS_HUMANOS: '/nomina',
   CONTABILIDAD: '/contabilidad/cuentas',
+  CHECADOR: '/checador/kiosco',
 };
 
 /** A dónde mandar a este usuario. Sin grupo conocido, al dashboard. */

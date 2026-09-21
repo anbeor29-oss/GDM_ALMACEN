@@ -17,7 +17,7 @@ import { Request, Response, NextFunction } from 'express';
 
 export type WorkGroup =
   | 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA' | 'PUNTO_VENTA'
-  | 'RECURSOS_HUMANOS' | 'CONTABILIDAD';
+  | 'RECURSOS_HUMANOS' | 'CONTABILIDAD' | 'CHECADOR';
 
 /**
  * Claves de módulo protegibles — una por bloque del menú.
@@ -32,13 +32,13 @@ export type ModuleKey =
   | 'invoices' | 'carta_porte' | 'credit_notes' | 'customers' | 'products'
   | 'xml_reader' | 'inventory' | 'purchasing' | 'suppliers' | 'pos'
   | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria' | 'mensajes'
-  | 'nomina' | 'contabilidad';
+  | 'nomina' | 'contabilidad' | 'checador';
 
 const ALL_MODULES: ModuleKey[] = [
   'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
   'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos',
   'treasury', 'reports', 'exchange_rates', 'auditoria', 'mensajes',
-  'nomina', 'contabilidad',
+  'nomina', 'contabilidad', 'checador',
 ];
 
 /**
@@ -95,7 +95,7 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
    * puede rescatar de los recibos ya timbrados, y ese es justamente su trabajo—
    * más reportes y mensajes. NO ve facturas, clientes, inventarios ni tesorería:
    * quien maneja sueldos no necesita ver las ventas, y al revés tampoco. */
-  RECURSOS_HUMANOS: ['nomina', 'xml_reader', 'mensajes'],
+  RECURSOS_HUMANOS: ['nomina', 'checador', 'xml_reader', 'mensajes'],
 
   /* Contabilidad: el catálogo, las pólizas y los estados financieros.
    *
@@ -111,7 +111,14 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   CONTABILIDAD: [
     'contabilidad', 'auditoria', 'treasury',
     'customers', 'suppliers', 'xml_reader', 'exchange_rates', 'mensajes',
-  ],};
+  ],
+
+  /* CHECADOR: la cuenta UNIVERSAL del personal que sólo checa (kiosko/celular).
+   * Nada de nómina —ni sueldos ni el enrolamiento—: sólo `checador`, que abre el
+   * check-in (POST /checador/checada). Quien enrola/administra es RECURSOS_HUMANOS
+   * o ADMIN. La CARA identifica a cada quien; la cuenta sólo abre la puerta. */
+  CHECADOR: ['checador'],
+};
 
 export function groupCanAccess(group: WorkGroup | undefined, mod: ModuleKey): boolean {
   const g = group || 'ADMIN_ALL';

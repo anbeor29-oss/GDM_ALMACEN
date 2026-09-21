@@ -234,7 +234,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/sat-descarga`,    ...gated('auditoria'), satDescargaRoutes);
   app.use(`/api/${config.apiVersion}/physical-counts`, physicalCountRoutes);
   app.use(`/api/${config.apiVersion}/nomina`,          ...gated('nomina'), nominaRoutes);
-  app.use(`/api/${config.apiVersion}/checador`,        ...gated('nomina'), checadorRoutes);
+  app.use(`/api/${config.apiVersion}/checador`,        ...gated('checador'), checadorRoutes);
   app.use(`/api/${config.apiVersion}/accounting`,      ...gated('contabilidad'), accountingRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);

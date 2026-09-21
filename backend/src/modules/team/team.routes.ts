@@ -235,7 +235,7 @@ router.post('/:id/reset-password', asyncHandler(async (req: Request, res: Respon
 
 /** Vocabulario único de grupos — espejo del CHECK de users.work_group
  *  (migración 2026-07-28c) y de middleware/permissions.ts. */
-const WORK_GROUPS = ['ADMIN_ALL', 'VENTAS', 'ALMACEN', 'COMPRAS', 'TESORERIA'];
+const WORK_GROUPS = ['ADMIN_ALL', 'VENTAS', 'ALMACEN', 'COMPRAS', 'TESORERIA', 'CHECADOR'];
 
 /** Roles que un ADMIN de empresa puede asignar dentro de su propia empresa. */
 const ASSIGNABLE_ROLES = ['USER', 'MANAGER'];

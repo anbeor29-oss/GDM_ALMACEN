@@ -1,12 +1,18 @@
 /**
  * /checador — control de asistencia biométrico.
  *
- * Se monta bajo el candado del módulo 'nomina' (ver app.ts): quien administra el
- * checador es Recursos Humanos / el administrador. La autenticación del KIOSCO
- * (token de dispositivo, sin login personal) se resolverá en la Fase 2.
+ * DOS NIVELES DE ACCESO (montado bajo el módulo 'checador', ver app.ts):
+ *   · CHECAR (POST /checada): lo alcanza la cuenta UNIVERSAL del grupo CHECADOR
+ *     —sólo registra su entrada/salida; la cara identifica a cada quien—.
+ *   · ADMINISTRAR (todo lo demás: enrolar, turnos, registro, config): exige
+ *     además el módulo 'nomina' → Recursos Humanos / ADMIN. La cuenta CHECADOR
+ *     NO lo alcanza.
+ *
+ * La autenticación del KIOSCO por token de dispositivo (sin login) es Fase 2.
  */
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../../middleware/authentication';
+import { requireModule } from '../../middleware/permissions';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import * as checador from './checador.service';
 
@@ -18,6 +24,17 @@ function companyId(req: Request): string {
   return req.user.companyId;
 }
 const ok = (res: Response, data: any, code = 200) => res.status(code).json({ success: true, data });
+
+/* ── CHECAR — el único endpoint del grupo CHECADOR (cuenta universal) ──
+ * Identifica el rostro (1:N) y asienta la entrada/salida. Va ANTES del candado
+ * de 'nomina' para que la cuenta que sólo checa lo alcance. */
+router.post('/checada', asyncHandler(async (req, res) =>
+  ok(res, await checador.registrarChecada(companyId(req), req.body || {}), 201)));
+
+/* ─────────────── De aquí para abajo: ADMINISTRACIÓN (exige 'nomina') ───────────────
+ * Enrolar, turnos, horarios, consentimiento, registro y configuración son de
+ * Recursos Humanos / ADMIN. La cuenta CHECADOR (sólo 'checador') se queda fuera. */
+router.use(requireModule('nomina'));
 
 /* ── Configuración ── */
 router.get('/config', asyncHandler(async (req, res) => ok(res, await checador.getConfig(companyId(req)))));
@@ -50,10 +67,6 @@ router.post('/empleados/:id/enrolar', asyncHandler(async (req, res) =>
 /* ── Identificación 1:N (base del check-in del kiosco) ── */
 router.post('/identificar', asyncHandler(async (req, res) =>
   ok(res, await checador.identificar(companyId(req), (req.body || {}).descriptor))));
-
-/* ── Checada del KIOSCO/APP: identifica y asienta la entrada/salida ── */
-router.post('/checada', asyncHandler(async (req, res) =>
-  ok(res, await checador.registrarChecada(companyId(req), req.body || {}), 201)));
 
 /* ── Empleados (con consentimiento y # de plantillas) para enrolar en el kiosco ── */
 router.get('/empleados-enrolar', asyncHandler(async (req, res) =>

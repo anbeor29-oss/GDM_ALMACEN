@@ -171,6 +171,20 @@ function ModuleRoute({ module, children }: { module: ModuleKey; children: React.
 }
 
 /**
+ * Rutas del CHECADOR a pantalla completa (kiosco y campo). Las alcanza la cuenta
+ * UNIVERSAL del grupo CHECADOR —que sólo checa— además de Recursos Humanos y
+ * ADMIN. Enrolar y el registro NO usan esto: siguen con ModuleRoute('nomina'),
+ * así que la cuenta CHECADOR queda fuera de ellos.
+ */
+function ChecadorRoute({ children }: { children: React.ReactNode }) {
+  const { user } = useAuthStore();
+  if (user?.role === 'SUPER_ADMIN') return <Navigate to="/admin/companies" replace />;
+  const g = (user?.workGroup || (user as any)?.work_group || 'ADMIN_ALL') as string;
+  if (!['ADMIN_ALL', 'RECURSOS_HUMANOS', 'CHECADOR'].includes(g)) return <Navigate to={homeDe(user)} replace />;
+  return <>{children}</>;
+}
+
+/**
  * Ruta gateada por ROL ADMIN de empresa. Gestionar usuarios es una cuestión de
  * AUTORIDAD, no de grupo de trabajo: por eso no pasa por ModuleRoute. El
  * SUPER_ADMIN administra usuarios desde /admin/users, no desde aquí.
@@ -242,10 +256,12 @@ export function App() {
               sistema"—. Requiere login (ProtectedRoute) y el módulo nómina, pero NO
               el Layout de escritorio. */}
           <Route element={<ProtectedRoute><Outlet /></ProtectedRoute>}>
-            <Route path="checador/kiosco"   element={<ModuleRoute module="nomina"><CheckadorKioscoPage /></ModuleRoute>} />
+            {/* Checar: lo alcanza la cuenta universal CHECADOR (+ RH/ADMIN). */}
+            <Route path="checador/kiosco"   element={<ChecadorRoute><CheckadorKioscoPage /></ChecadorRoute>} />
+            <Route path="checador/campo"    element={<ChecadorRoute><ChecadorCampoPage /></ChecadorRoute>} />
+            {/* Enrolar y registro: sólo RH/ADMIN (la cuenta CHECADOR rebota al kiosco). */}
             <Route path="checador/enrolar"  element={<ModuleRoute module="nomina"><CheckadorEnrolarPage /></ModuleRoute>} />
             <Route path="checador/registro" element={<ModuleRoute module="nomina"><ChecadorRegistroPage /></ModuleRoute>} />
-            <Route path="checador/campo"    element={<ModuleRoute module="nomina"><ChecadorCampoPage /></ModuleRoute>} />
           </Route>
 
           {/* Layout privado — bajo "/" — pero la ruta index es el landing público */}
