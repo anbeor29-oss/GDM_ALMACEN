@@ -20,12 +20,13 @@ import api from '@/services/api';
 
 const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-type Tab = 'config' | 'turnos' | 'empleados' | 'registro';
+type Tab = 'config' | 'kioscos' | 'turnos' | 'empleados' | 'registro';
 
 export function ChecadorPage() {
   const [tab, setTab] = useState<Tab>('config');
   const T: Array<{ id: Tab; label: string; icon: any }> = [
     { id: 'config', label: 'Configuración', icon: Settings },
+    { id: 'kioscos', label: 'Kioscos', icon: MapPin },
     { id: 'turnos', label: 'Turnos', icon: Clock },
     { id: 'empleados', label: 'Empleados', icon: Users },
     { id: 'registro', label: 'Registro', icon: ClipboardList },
@@ -73,9 +74,145 @@ export function ChecadorPage() {
       </div>
 
       {tab === 'config' && <TabConfig />}
+      {tab === 'kioscos' && <TabKioscos />}
       {tab === 'turnos' && <TabTurnos />}
       {tab === 'empleados' && <TabEmpleados />}
       {tab === 'registro' && <RegistroAsistencia />}
+    </div>
+  );
+}
+
+/* ── Kioscos (ubicación fija por centro de trabajo) ── */
+function TabKioscos() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['checador-kioscos'], queryFn: () => api.getCheckadorKioscos() });
+  const kioscos: any[] = q.data?.data || [];
+
+  const vacio = { id: '', nombre: '', lat: '', lng: '', radio_m: '' };
+  const [f, setF] = useState<any>(vacio);
+  const [msg, setMsg] = useState('');
+  const [ubicando, setUbicando] = useState(false);
+  const editando = !!f.id;
+
+  const guardar = useMutation({
+    mutationFn: () => {
+      const body = {
+        nombre: f.nombre,
+        lat: f.lat === '' ? null : Number(f.lat),
+        lng: f.lng === '' ? null : Number(f.lng),
+        radio_m: f.radio_m === '' ? null : Number(f.radio_m),
+      };
+      return editando ? api.actualizarCheckadorKiosco(f.id, body) : api.crearCheckadorKiosco(body);
+    },
+    onSuccess: () => { setF(vacio); setMsg(''); qc.invalidateQueries({ queryKey: ['checador-kioscos'] }); },
+    onError: (e: any) => setMsg(e?.response?.data?.message || 'No se pudo guardar el kiosco.'),
+  });
+  const borrar = useMutation({
+    mutationFn: (id: string) => api.borrarCheckadorKiosco(id),
+    onSuccess: () => { if (editando) setF(vacio); qc.invalidateQueries({ queryKey: ['checador-kioscos'] }); },
+  });
+
+  /* «Usar mi ubicación actual»: pensado para capturar la ubicación PARADO en el
+   * centro de trabajo (abre esta pantalla en la tableta del kiosco y toca el botón). */
+  const usarMiUbicacion = () => {
+    if (!navigator.geolocation) { setMsg('Este equipo no permite geolocalización; captura lat/lng a mano.'); return; }
+    setUbicando(true); setMsg('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setF((s: any) => ({ ...s, lat: pos.coords.latitude.toFixed(7), lng: pos.coords.longitude.toFixed(7) }));
+        setUbicando(false);
+      },
+      (err) => { setMsg(err?.message || 'No se pudo obtener la ubicación. Da permiso o captúrala a mano.'); setUbicando(false); },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  };
+
+  const puedeGuardar = f.nombre.trim() && !guardar.isPending;
+
+  return (
+    <div className="grid md:grid-cols-2 gap-4">
+      {/* Lista */}
+      <div className="bg-white rounded-lg shadow border overflow-hidden">
+        <div className="px-4 py-2.5 border-b bg-gray-50 text-sm font-semibold text-gray-700">
+          Kioscos / centros de trabajo
+        </div>
+        {q.isLoading ? (
+          <p className="p-4 text-sm text-gray-500">Cargando…</p>
+        ) : kioscos.length === 0 ? (
+          <p className="p-4 text-sm text-gray-500">
+            Aún no hay kioscos. Da de alta el primero (Kiosko 1, Recepción, Planta Norte…) y fíjale su ubicación.
+          </p>
+        ) : (
+          <ul className="divide-y">
+            {kioscos.map((k) => (
+              <li key={k.id} className="flex items-center gap-3 px-4 py-2.5">
+                <MapPin size={16} className={k.lat != null ? 'text-emerald-600' : 'text-gray-300'} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-800 truncate">{k.nombre}</p>
+                  <p className="text-[11px] text-gray-500">
+                    {k.lat != null && k.lng != null
+                      ? <>{Number(k.lat).toFixed(5)}, {Number(k.lng).toFixed(5)}{k.radio_m ? ` · radio ${k.radio_m} m` : ''}</>
+                      : <span className="text-amber-600">sin ubicación fijada</span>}
+                  </p>
+                </div>
+                <button onClick={() => setF({ id: k.id, nombre: k.nombre, lat: k.lat ?? '', lng: k.lng ?? '', radio_m: k.radio_m ?? '' })}
+                  className="text-xs text-primary hover:underline">Editar</button>
+                <button onClick={() => borrar.mutate(k.id)} className="text-gray-400 hover:text-rose-600" title="Quitar">
+                  <Trash2 size={15} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Alta / edición */}
+      <div className="bg-white rounded-lg shadow border p-4 space-y-3">
+        <h3 className="font-semibold text-gray-800 text-sm">{editando ? 'Editar kiosco' : 'Nuevo kiosco'}</h3>
+        <Campo label="Nombre del kiosco" hint="Cómo se llama este equipo / centro (Kiosko 1, Recepción…).">
+          <input className="input" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} placeholder="Kiosko 1" />
+        </Campo>
+
+        <div className="rounded-lg border border-dashed p-3 space-y-2">
+          <p className="text-xs text-gray-600">
+            <b>Ubicación del centro de trabajo.</b> Lo más fácil: abre esta pantalla en la tableta
+            del kiosco, parado donde va a quedar, y toca «Usar mi ubicación actual».
+          </p>
+          <button type="button" onClick={usarMiUbicacion} disabled={ubicando}
+            className="inline-flex items-center gap-1.5 text-sm border rounded-lg px-3 py-1.5 hover:bg-gray-50 disabled:opacity-50">
+            <MapPin size={15} /> {ubicando ? 'Obteniendo…' : 'Usar mi ubicación actual'}
+          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <Campo label="Latitud">
+              <input className="input" value={f.lat} onChange={(e) => setF({ ...f, lat: e.target.value })} placeholder="19.4326" />
+            </Campo>
+            <Campo label="Longitud">
+              <input className="input" value={f.lng} onChange={(e) => setF({ ...f, lng: e.target.value })} placeholder="-99.1332" />
+            </Campo>
+          </div>
+          {f.lat !== '' && f.lng !== '' && (
+            <a className="text-xs text-primary hover:underline" target="_blank" rel="noreferrer"
+              href={`https://www.google.com/maps?q=${f.lat},${f.lng}`}>Ver en el mapa</a>
+          )}
+        </div>
+
+        <Campo label="Radio permitido (m)" hint="Opcional. Vacío = usa el radio general de la Configuración.">
+          <input type="number" min={0} className="input" value={f.radio_m} onChange={(e) => setF({ ...f, radio_m: e.target.value })} placeholder="100" />
+        </Campo>
+
+        {msg && <p className="text-xs text-rose-600">{msg}</p>}
+        <div className="flex gap-2">
+          <button onClick={() => guardar.mutate()} disabled={!puedeGuardar}
+            className="btn-primary inline-flex items-center gap-2 disabled:opacity-50">
+            <Save size={16} /> {guardar.isPending ? 'Guardando…' : editando ? 'Guardar cambios' : 'Agregar kiosco'}
+          </button>
+          {editando && (
+            <button onClick={() => { setF(vacio); setMsg(''); }} className="text-sm text-gray-500 hover:text-gray-700 px-2">
+              Cancelar
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

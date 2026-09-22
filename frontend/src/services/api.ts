@@ -3221,6 +3221,23 @@ class APIClient {
     const r = await this.client.delete<APIResponse<any>>(`/checador/turnos/${id}`);
     return r.data;
   }
+  /* Kioscos: ubicación fija por centro de trabajo. */
+  async getCheckadorKioscos() {
+    const r = await this.client.get<APIResponse<any[]>>('/checador/kioscos');
+    return r.data;
+  }
+  async crearCheckadorKiosco(body: any) {
+    const r = await this.client.post<APIResponse<any>>('/checador/kioscos', body);
+    return r.data;
+  }
+  async actualizarCheckadorKiosco(id: string, body: any) {
+    const r = await this.client.put<APIResponse<any>>(`/checador/kioscos/${id}`, body);
+    return r.data;
+  }
+  async borrarCheckadorKiosco(id: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/checador/kioscos/${id}`);
+    return r.data;
+  }
   async getCheckadorHorario(empleadoId: string) {
     const r = await this.client.get<APIResponse<any>>(`/checador/empleados/${empleadoId}/horario`);
     return r.data;
@@ -3256,7 +3273,7 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/checador/empleados/${empleadoId}/enrolar`, { descriptores });
     return r.data;
   }
-  async checadorChecada(payload: { descriptor: number[]; lat?: number | null; lng?: number | null; origen?: string; device?: any }) {
+  async checadorChecada(payload: { descriptor: number[]; lat?: number | null; lng?: number | null; origen?: string; device?: any; kioscoId?: string | null }) {
     const r = await this.client.post<APIResponse<any>>('/checador/checada', payload);
     return r.data;
   }

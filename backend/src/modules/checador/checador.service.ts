@@ -14,6 +14,7 @@
 import * as XLSX from 'xlsx';
 import { query } from '../../config/database';
 import { reporteTablaPdf } from '../../utils/reporte-pdf';
+import { fechaMx } from '../../utils/fecha-mx';
 import { NotFoundError, ValidationError } from '../../middleware/errorHandler';
 
 /* ── Config por empresa ──────────────────────────────────────────────────── */
@@ -94,6 +95,55 @@ export async function actualizarTurno(companyId: string, id: string, d: any) {
 
 export async function borrarTurno(companyId: string, id: string) {
   await query(`UPDATE checador_turnos SET activo = false WHERE id = $1 AND company_id = $2`, [id, companyId]);
+  return { ok: true };
+}
+
+/* ── Kioscos (ubicación FIJA por centro de trabajo) ──────────────────────────
+ * Cada kiosco tiene NOMBRE y COORDENADAS del centro donde está la tableta. La
+ * tableta se amarra a uno (en su localStorage) y cada checada queda ligada a él;
+ * así el registro dice EN QUÉ CENTRO se marcó. No se rechaza por lejanía. */
+
+/** Valida coordenadas/radio; deja NULL lo que no venga o esté vacío. */
+function normalizarUbicacion(d: any): { lat: number | null; lng: number | null; radio: number | null } {
+  const lat = d?.lat != null && d.lat !== '' ? Number(d.lat) : null;
+  const lng = d?.lng != null && d.lng !== '' ? Number(d.lng) : null;
+  if (lat != null && (isNaN(lat) || lat < -90 || lat > 90)) throw new ValidationError('Latitud fuera de rango (-90 a 90).');
+  if (lng != null && (isNaN(lng) || lng < -180 || lng > 180)) throw new ValidationError('Longitud fuera de rango (-180 a 180).');
+  const radio = d?.radio_m != null && d.radio_m !== '' ? Math.max(0, Math.round(Number(d.radio_m))) : null;
+  return { lat, lng, radio };
+}
+
+export async function listarKioscos(companyId: string) {
+  const r = await query<any>(
+    `SELECT id, nombre, lat, lng, radio_m, activo
+       FROM checador_kioscos WHERE company_id = $1 AND activo ORDER BY nombre`, [companyId]);
+  return r.rows;
+}
+
+export async function crearKiosco(companyId: string, d: any) {
+  if (!d?.nombre || !String(d.nombre).trim()) throw new ValidationError('El kiosco necesita un nombre.');
+  const { lat, lng, radio } = normalizarUbicacion(d);
+  const r = await query<any>(
+    `INSERT INTO checador_kioscos (company_id, nombre, lat, lng, radio_m)
+     VALUES ($1,$2,$3,$4,$5) RETURNING id, nombre, lat, lng, radio_m, activo`,
+    [companyId, String(d.nombre).trim(), lat, lng, radio]);
+  return r.rows[0];
+}
+
+export async function actualizarKiosco(companyId: string, id: string, d: any) {
+  const { lat, lng, radio } = normalizarUbicacion(d);
+  const r = await query<any>(
+    `UPDATE checador_kioscos SET
+       nombre = COALESCE($3, nombre), lat = $4, lng = $5, radio_m = $6, updated_at = NOW()
+     WHERE id = $1 AND company_id = $2
+     RETURNING id, nombre, lat, lng, radio_m, activo`,
+    [id, companyId, d.nombre ? String(d.nombre).trim() : null, lat, lng, radio]);
+  if (!r.rows.length) throw new NotFoundError('Kiosco no encontrado');
+  return r.rows[0];
+}
+
+export async function borrarKiosco(companyId: string, id: string) {
+  await query(`UPDATE checador_kioscos SET activo = false, updated_at = NOW() WHERE id = $1 AND company_id = $2`, [id, companyId]);
   return { ok: true };
 }
 
@@ -251,6 +301,14 @@ function distanciaEuclidiana(a: number[], b: number[]): number {
   return Math.sqrt(s);
 }
 
+/** Distancia en METROS entre dos coordenadas (haversine). */
+function metrosEntre(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000, rad = (g: number) => (g * Math.PI) / 180;
+  const dLat = rad(lat2 - lat1), dLng = rad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.min(1, Math.sqrt(a))));
+}
+
 /**
  * Identifica a quién pertenece un rostro (1:N) entre los enrolados de la empresa.
  * Devuelve el empleado más cercano si la distancia ≤ umbral; si no, null.
@@ -279,7 +337,7 @@ export async function identificar(companyId: string, descriptor: any) {
  */
 export async function registrarChecada(
   companyId: string,
-  d: { descriptor: any; lat?: number | null; lng?: number | null; origen?: string; device?: any },
+  d: { descriptor: any; lat?: number | null; lng?: number | null; origen?: string; device?: any; kioscoId?: string | null },
 ) {
   const origen = d.origen === 'APP' ? 'APP' : 'KIOSCO';
   const ident = await identificar(companyId, d.descriptor);
@@ -331,12 +389,38 @@ export async function registrarChecada(
     }
   }
 
+  /* Kiosco/centro: liga el evento a su kiosco. Si la tableta no manda GPS, usa la
+   * ubicación FIJA del kiosco (la tableta está en el centro). No se rechaza por
+   * lejanía: sólo se calcula la distancia (si hubo GPS) y se clasifica FUERA_RANGO. */
+  let kioscoId: string | null = d.kioscoId || null;
+  let lat = d.lat ?? null;
+  let lng = d.lng ?? null;
+  let distancia: number | null = null;
+  let estado = 'A_TIEMPO';
+  if (kioscoId) {
+    const k = await query<any>(
+      `SELECT lat, lng, radio_m FROM checador_kioscos WHERE id=$1 AND company_id=$2 AND activo`,
+      [kioscoId, companyId]);
+    const kio = k.rows[0];
+    if (!kio) {
+      kioscoId = null;                                   // kiosco ajeno/desconocido: se ignora
+    } else {
+      if (lat == null && kio.lat != null) { lat = kio.lat; lng = kio.lng; }   // la tableta está en el centro
+      if (d.lat != null && d.lng != null && kio.lat != null) {
+        distancia = metrosEntre(Number(d.lat), Number(d.lng), Number(kio.lat), Number(kio.lng));
+        const cfg = await getConfig(companyId);
+        const radio = Number(kio.radio_m) || Number(cfg.radio_kiosco_m) || 0;
+        if (radio > 0 && distancia > radio) estado = 'FUERA_RANGO';
+      }
+    }
+  }
+
   const ins = await query<any>(
     `INSERT INTO checador_evento
-       (company_id, empleado_id, tipo, origen, lat, lng, confianza, estado, device)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,'A_TIEMPO',$8) RETURNING ts`,
-    [companyId, ident.empleadoId, tipo, origen, d.lat ?? null, d.lng ?? null,
-     ident.confianza, d.device ? JSON.stringify(d.device) : null]);
+       (company_id, empleado_id, tipo, origen, lat, lng, distancia_m, confianza, estado, device, kiosco_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING ts`,
+    [companyId, ident.empleadoId, tipo, origen, lat, lng, distancia,
+     ident.confianza, estado, d.device ? JSON.stringify(d.device) : null, kioscoId]);
 
   return { reconocido: true, empleado: { id: ident.empleadoId, nombre }, tipo, confianza: ident.confianza, ts: ins.rows[0].ts };
 }
@@ -416,9 +500,10 @@ export async function historialAsistencia(
             TO_CHAR(e.ts AT TIME ZONE 'America/Mexico_City', 'HH24:MI:SS') AS hora,
             e.tipo, e.origen, e.estado, e.lat, e.lng, e.confianza, e.empleado_id,
             COALESCE(NULLIF(TRIM(emp.nombre || ' ' || emp.apellido_pat || ' ' || COALESCE(emp.apellido_mat,'')), ''), 'No reconocido') AS nombre,
-            emp.num_empleado, emp.puesto
+            emp.num_empleado, emp.puesto, k.nombre AS kiosco
        FROM checador_evento e
        LEFT JOIN nomina_empleados emp ON emp.id = e.empleado_id
+       LEFT JOIN checador_kioscos k ON k.id = e.kiosco_id
       WHERE ${where.join(' AND ')}
       ORDER BY e.ts DESC
       LIMIT ${limit}`,
@@ -438,7 +523,7 @@ export async function historialExcel(companyId: string, f: any): Promise<{ buffe
   const rows = filas.map((x) => ({
     Fecha: x.fecha, Hora: x.hora, Trabajador: x.nombre, Puesto: x.puesto || '',
     'Núm.': x.num_empleado || '', Tipo: x.tipo,
-    Origen: x.origen === 'APP' ? 'Campo' : 'Kiosco', Estado: x.estado,
+    Origen: x.origen === 'APP' ? 'Campo' : 'Kiosco', Centro: x.kiosco || '', Estado: x.estado,
     Latitud: x.lat ?? '', Longitud: x.lng ?? '',
     Ubicación: (x.lat != null && x.lng != null) ? `https://www.google.com/maps?q=${x.lat},${x.lng}` : '',
   }));
@@ -454,7 +539,7 @@ export async function historialPdf(companyId: string, f: any): Promise<Buffer> {
   const filas: any[] = await historialAsistencia(companyId, f);
   const empresa = await empresaDe(companyId);
   const sub: string[] = [];
-  if (f.desde || f.hasta) sub.push(`Periodo: ${f.desde || '…'} a ${f.hasta || '…'}`);
+  if (f.desde || f.hasta) sub.push(`Periodo: ${f.desde ? fechaMx(f.desde) : '…'} a ${f.hasta ? fechaMx(f.hasta) : '…'}`);
   sub.push(`${filas.length} registro(s)`);
   return reporteTablaPdf({
     titulo: 'Registro de asistencia',
@@ -468,6 +553,7 @@ export async function historialPdf(companyId: string, f: any): Promise<Buffer> {
       { titulo: 'Puesto', clave: 'puesto', ancho: 18, align: 'left' },
       { titulo: 'Tipo', clave: 'tipo', ancho: 10 },
       { titulo: 'Origen', clave: 'origenTxt', ancho: 10 },
+      { titulo: 'Centro', clave: 'kiosco', ancho: 16, align: 'left' },
       { titulo: 'Estado', clave: 'estado', ancho: 14 },
       { titulo: 'Ubicación', clave: 'ubic', ancho: 20, align: 'left' },
     ],
@@ -483,6 +569,7 @@ export async function historialPdf(companyId: string, f: any): Promise<Buffer> {
 export default {
   getConfig, setConfig,
   listarTurnos, crearTurno, actualizarTurno, borrarTurno,
+  listarKioscos, crearKiosco, actualizarKiosco, borrarKiosco,
   getHorario, setHorario, asignarHorarioMasivo, asignarDia,
   getConsentimiento, setConsentimiento,
   enrolarRostros, estadoEnrolamiento, identificar,

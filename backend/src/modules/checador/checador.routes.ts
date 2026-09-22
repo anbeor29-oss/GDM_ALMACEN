@@ -31,6 +31,11 @@ const ok = (res: Response, data: any, code = 200) => res.status(code).json({ suc
 router.post('/checada', asyncHandler(async (req, res) =>
   ok(res, await checador.registrarChecada(companyId(req), req.body || {}), 201)));
 
+/* La tableta necesita LISTAR los kioscos para que el operador elija cuál es este
+ * equipo (se guarda en su localStorage). Va antes del candado para que la cuenta
+ * CHECADOR lo alcance; el ALTA/EDICIÓN de kioscos sí es de administración (abajo). */
+router.get('/kioscos', asyncHandler(async (req, res) => ok(res, await checador.listarKioscos(companyId(req)))));
+
 /* ─────────────── De aquí para abajo: ADMINISTRACIÓN (exige 'nomina') ───────────────
  * Enrolar, turnos, horarios, consentimiento, registro y configuración son de
  * Recursos Humanos / ADMIN. La cuenta CHECADOR (sólo 'checador') se queda fuera. */
@@ -39,6 +44,11 @@ router.use(requireModule('nomina'));
 /* ── Configuración ── */
 router.get('/config', asyncHandler(async (req, res) => ok(res, await checador.getConfig(companyId(req)))));
 router.put('/config', asyncHandler(async (req, res) => ok(res, await checador.setConfig(companyId(req), req.body || {}))));
+
+/* ── Kioscos (alta/edición: administración) ── */
+router.post('/kioscos', asyncHandler(async (req, res) => ok(res, await checador.crearKiosco(companyId(req), req.body || {}), 201)));
+router.put('/kioscos/:id', asyncHandler(async (req, res) => ok(res, await checador.actualizarKiosco(companyId(req), req.params.id, req.body || {}))));
+router.delete('/kioscos/:id', asyncHandler(async (req, res) => ok(res, await checador.borrarKiosco(companyId(req), req.params.id))));
 
 /* ── Turnos ── */
 router.get('/turnos', asyncHandler(async (req, res) => ok(res, await checador.listarTurnos(companyId(req)))));

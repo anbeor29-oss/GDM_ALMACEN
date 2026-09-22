@@ -98,10 +98,10 @@ function VistaHistorial() {
   const filas: any[] = q.data?.data || [];
 
   const descargarCsv = () => {
-    const cab = ['Fecha', 'Hora', 'Trabajador', 'Num', 'Tipo', 'Origen', 'Estado', 'Lat', 'Lng'];
+    const cab = ['Fecha', 'Hora', 'Trabajador', 'Num', 'Tipo', 'Origen', 'Centro', 'Estado', 'Lat', 'Lng'];
     const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const cuerpo = filas.map((f) =>
-      [f.fecha, f.hora, f.nombre, f.num_empleado || '', f.tipo, f.origen, f.estado, f.lat ?? '', f.lng ?? ''].map(esc).join(','));
+      [f.fecha, f.hora, f.nombre, f.num_empleado || '', f.tipo, f.origen, f.kiosco || '', f.estado, f.lat ?? '', f.lng ?? ''].map(esc).join(','));
     const blob = new Blob(['﻿' + [cab.join(','), ...cuerpo].join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -144,14 +144,14 @@ function VistaHistorial() {
             <tr>
               <th className="px-3 py-2 text-left">Fecha</th><th className="px-3 py-2">Hora</th>
               <th className="px-3 py-2 text-left">Trabajador</th><th className="px-3 py-2 text-left">Puesto</th><th className="px-3 py-2">Tipo</th>
-              <th className="px-3 py-2">Origen</th><th className="px-3 py-2">Estado</th><th className="px-3 py-2">Ubicación</th>
+              <th className="px-3 py-2">Origen</th><th className="px-3 py-2 text-left">Centro</th><th className="px-3 py-2">Estado</th><th className="px-3 py-2">Ubicación</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {q.isLoading ? (
-              <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-400">Cargando…</td></tr>
+              <tr><td colSpan={9} className="px-3 py-8 text-center text-gray-400">Cargando…</td></tr>
             ) : filas.length === 0 ? (
-              <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-500">Sin registros en el rango.</td></tr>
+              <tr><td colSpan={9} className="px-3 py-8 text-center text-gray-500">Sin registros en el rango.</td></tr>
             ) : filas.map((f) => (
               <tr key={f.id}>
                 <td className="px-3 py-2 font-mono text-gray-600">{f.fecha}</td>
@@ -166,6 +166,7 @@ function VistaHistorial() {
                     : f.tipo === 'SALIDA' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-600'}`}>{f.tipo}</span>
                 </td>
                 <td className="px-3 py-2 text-center text-gray-500">{f.origen === 'APP' ? 'Campo' : 'Kiosco'}</td>
+                <td className="px-3 py-2 text-gray-600">{f.kiosco || '—'}</td>
                 <td className="px-3 py-2 text-center text-gray-500">{f.estado}</td>
                 <td className="px-3 py-2 text-center">
                   {f.lat != null && f.lng != null
