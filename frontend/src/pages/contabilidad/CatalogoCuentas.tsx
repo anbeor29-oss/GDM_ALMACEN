@@ -182,7 +182,7 @@ export function CatalogoCuentasPage() {
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo descargar la plantilla.'); }
     finally { setHerr(''); }
   };
-  /* Importa el catálogo desde el TXT de CONTPAQi (crea las cuentas con su jerarquía). */
+  /* Importa el catálogo desde el TXT de CPQ (crea las cuentas con su jerarquía). */
   const importarTxt = async (file: File) => {
     setHerr('txt'); setMsg('');
     try {
@@ -257,9 +257,9 @@ export function CatalogoCuentasPage() {
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) importarExcel(f); e.currentTarget.value = ''; }} />
               </label>
               <label
-                title="Importa el catálogo desde el TXT de CONTPAQi: crea las cuentas con su jerarquía, naturaleza y agrupador del SAT"
+                title="Importa el catálogo desde el TXT de CPQ: crea las cuentas con su jerarquía, naturaleza y agrupador del SAT"
                 className={`btn-import ${herr ? 'opacity-50 pointer-events-none' : ''}`}>
-                <Upload size={14} /> {herr === 'txt' ? 'Importando…' : 'Importar CONTPAQi (.txt)'}
+                <Upload size={14} /> {herr === 'txt' ? 'Importando…' : 'Importar CPQ (.txt)'}
                 <input type="file" accept=".txt" className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />
               </label>
@@ -1298,7 +1298,7 @@ function SinCatalogo({ onListo }: any) {
     } finally { setBusy(''); }
   };
 
-  /* Arranca la contabilidad con el catálogo REAL de CONTPAQi (TXT):
+  /* Arranca la contabilidad con el catálogo REAL de CPQ (TXT):
      crea el ejercicio y los doce periodos SIN catálogo semilla, y luego
      importa las cuentas del archivo con su jerarquía y agrupador del SAT. */
   const importarTxt = async (file: File) => {
@@ -1361,13 +1361,13 @@ function SinCatalogo({ onListo }: any) {
       )}
 
       <label
-        title="Importa el catálogo del SAT desde el TXT de CONTPAQi: crea el ejercicio, los doce periodos y las cuentas con su jerarquía, naturaleza y agrupador del SAT"
+        title="Importa el catálogo del SAT desde el TXT de CPQ: crea el ejercicio, los doce periodos y las cuentas con su jerarquía, naturaleza y agrupador del SAT"
         className={`block mb-4 border-2 border-dashed border-violet-300 bg-violet-50 rounded-lg px-4 py-3 cursor-pointer hover:bg-violet-100 ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
         <div className="flex items-center gap-2 text-violet-800 font-medium text-sm">
-          <Upload size={16} /> {busy === 'txt' ? 'Importando catálogo…' : 'Importar catálogo CONTPAQi (.txt)'}
+          <Upload size={16} /> {busy === 'txt' ? 'Importando catálogo…' : 'Importar catálogo CPQ (.txt)'}
         </div>
         <p className="text-xs text-violet-700 mt-1">
-          Recomendado si vienes de CONTPAQi. Arranca la contabilidad del ejercicio {anio} con
+          Recomendado si vienes de CPQ. Arranca la contabilidad del ejercicio {anio} con
           TU catálogo (no el semilla) y su agrupador del SAT.
         </p>
         <input type="file" accept=".txt" className="hidden"

@@ -1182,13 +1182,13 @@ class APIClient {
       { headers: { 'Content-Type': 'multipart/form-data' } });
     return r.data;
   }
-  /** Importa el catálogo desde el TXT de CONTPAQi (crea las cuentas con su jerarquía). */
+  /** Importa el catálogo desde el TXT de CPQ (crea las cuentas con su jerarquía). */
   async importarCatalogoTxt(fd: FormData) {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/catalogo/importar-txt', fd,
       { headers: { 'Content-Type': 'multipart/form-data' } });
     return r.data;
   }
-  /** Importa pólizas desde el TXT de CONTPAQi (el catálogo debe estar importado antes). */
+  /** Importa pólizas desde el TXT de CPQ (el catálogo debe estar importado antes). */
   async importarPolizasTxt(fd: FormData) {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/importar-txt', fd,
       { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -1446,6 +1446,19 @@ class APIClient {
   async importarRespaldo(fd: FormData) {
     const r = await this.client.post<APIResponse<any>>('/accounting/contpaqi/importar', fd,
       { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 600000 });
+    return r.data;
+  }
+
+  /** Recupera los XML/CFDI de un .zip de respaldo CPQ a la bóveda (aparecen en el calendario). */
+  async recuperarXmlRespaldo(file: File) {
+    const fd = new FormData();
+    fd.append('archivo', file);
+    const r = await this.client.post<APIResponse<any>>('/accounting/recuperacion-cpq', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 900000 });
+    return r.data;
+  }
+  async getRecuperacionCorridas() {
+    const r = await this.client.get<APIResponse<any[]>>('/accounting/recuperacion-cpq/corridas');
     return r.data;
   }
 

@@ -37,6 +37,7 @@ import * as contpaqiTxt from './contpaqi-txt.service';
 import * as cierre from './cierre-ejercicio.service';
 import * as diotSvc from './diot.service';
 import * as contabElec from './contabilidad-electronica.service';
+import * as recuperacionCpq from './recuperacion-cpq.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
@@ -50,6 +51,11 @@ router.use(authenticateToken);
 /* 20 MB: una balanza de 5,000 cuentas en PDF no llega ni a la mitad. */
 const subir = multer({ storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 } });
+
+/* Respaldo .zip de CPQ: más grande. Un respaldo con .bak pesado se procesa con la
+ * herramienta local; aquí entra un .zip de XML (sueltos o exportados de la ADD). */
+const subirRespaldo = multer({ storage: multer.memoryStorage(),
+  limits: { fileSize: 300 * 1024 * 1024 } });
 
 function companyId(req: Request): string {
   if (!req.user?.companyId) throw new ValidationError('Company ID is required');
@@ -488,7 +494,7 @@ router.post(
 );
 
 /** POST /accounting/cuentas/catalogo/importar-txt — importa el catálogo desde el TXT de
- *  CONTPAQi (crea las cuentas con su jerarquía por el padre explícito y su agrupador SAT). */
+ *  CPQ (crea las cuentas con su jerarquía por el padre explícito y su agrupador SAT). */
 router.post(
   '/cuentas/catalogo/importar-txt',
   requireCapability('contabilidad:catalogo'),
@@ -499,7 +505,7 @@ router.post(
     const rep = await contpaqiTxt.importarCatalogoTxt(companyId(req), f.buffer);
     res.json({
       success: true, data: rep,
-      message: `Catálogo CONTPAQi: ${rep.creadas} creada(s), ${rep.yaExistian} ya existían` +
+      message: `Catálogo CPQ: ${rep.creadas} creada(s), ${rep.yaExistian} ya existían` +
         (rep.sinAgrupador ? `, ${rep.sinAgrupador} sin agrupador` : '') +
         (rep.errores.length ? `, ${rep.errores.length} con error` : '') + '.',
     });
@@ -1718,7 +1724,7 @@ router.post(
 );
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   IMPORTADOR CONTPAQi (migración de respaldos, cualquier empresa/RFC)
+   IMPORTADOR CPQ (migración de respaldos, cualquier empresa/RFC)
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
@@ -1763,7 +1769,32 @@ router.post(
   })
 );
 
-/** POST /accounting/polizas/importar-txt — importa pólizas desde el TXT de CONTPAQi
+/* ── Recuperación de XML desde un respaldo .zip de CPQ → bóveda + calendario ──
+ * Recupera los CFDI del respaldo (sueltos y embebidos) y los ingresa a
+ * `cfdi_recibidos` con `indexarCfdi`, así aparecen solos en el calendario. Idempotente. */
+router.post(
+  '/recuperacion-cpq',
+  requireCapability('contabilidad:capturar'),
+  subirRespaldo.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = (req as any).file;
+    if (!f) throw new ValidationError('Falta el archivo .zip del respaldo.');
+    const rep = await recuperacionCpq.recuperarXmlsDeZip(
+      companyId(req), f.originalname || 'respaldo.zip', f.buffer, req.user?.userId);
+    res.json({
+      success: true, data: rep,
+      message: `Recuperación: ${rep.cfdiValidos} CFDI (${rep.nuevos} nuevo(s), ${rep.duplicados} ya estaban) de ${rep.archivosEnZip} archivo(s).`,
+    });
+  })
+);
+router.get(
+  '/recuperacion-cpq/corridas',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) =>
+    res.json({ success: true, data: await recuperacionCpq.listarCorridas(companyId(req)) })),
+);
+
+/** POST /accounting/polizas/importar-txt — importa pólizas desde el TXT de CPQ
  *  (mapea las cuentas por su código; el catálogo debe estar importado antes). */
 router.post(
   '/polizas/importar-txt',
@@ -1775,7 +1806,7 @@ router.post(
     const rep = await contpaqiTxt.importarPolizasTxt(companyId(req), f.buffer, req.user?.userId);
     res.json({
       success: true, data: rep,
-      message: `Pólizas CONTPAQi: ${rep.creadas} creada(s), ${rep.yaExistian} ya existían` +
+      message: `Pólizas CPQ: ${rep.creadas} creada(s), ${rep.yaExistian} ya existían` +
         (rep.omitidas.length ? `, ${rep.omitidas.length} omitida(s)` : '') + '.',
     });
   })
@@ -1811,7 +1842,7 @@ router.delete(
 
 /**
  * GET /accounting/contpaqi/herramienta — descarga la herramienta local que lee
- * el .bak de CONTPAQi y deja un paquete .zip para subir aquí. Incluye nexo.txt
+ * el .bak de CPQ y deja un paquete .zip para subir aquí. Incluye nexo.txt
  * con la dirección de NEXO y el correo del usuario (para pre-llenar y confirmar
  * su identidad antes de generar el paquete). La subida sigue siendo por pantalla.
  */

@@ -1,5 +1,5 @@
 /**
- * Importador CONTPAQi → NEXO (reutilizable, para CUALQUIER empresa/RFC).
+ * Importador CPQ → NEXO (reutilizable, para CUALQUIER empresa/RFC).
  *
  * Consume el paquete JSON que produce `scripts/contpaqi/extraer-contpaqi.ps1`
  * (cuentas, pólizas, movimientos, poliza_cfdi, cfdi, saldos) y lo carga en la
@@ -10,7 +10,7 @@
  * paquete no duplica (las pólizas por su Guid, los CFDI por su UUID, las cuentas
  * por su código).
  *
- * Hechos de CONTPAQi que asume (verificados en la extracción, no inventados):
+ * Hechos de CPQ que asume (verificados en la extracción, no inventados):
  *   · MovimientosPoliza.TipoMovto: 0 = Cargo, 1 = Abono.
  *   · TipoPol 1/2/3 = Diario/Ingreso/Egreso (sólo etiqueta).
  *   · Afectable = 1 → cuenta de movimientos (hoja).
@@ -143,7 +143,7 @@ function codigoPadre(
   return null;
 }
 
-/** 'YYYYMMDD' (como lo guarda CONTPAQi) → 'YYYY-MM-DD', o null. */
+/** 'YYYYMMDD' (como lo guarda CPQ) → 'YYYY-MM-DD', o null. */
 function fechaCt(s: string): string | null {
   const t = String(s || '').trim();
   if (/^\d{8}$/.test(t)) return `${t.slice(0, 4)}-${t.slice(4, 6)}-${t.slice(6, 8)}`;
@@ -326,7 +326,7 @@ async function importarCuentas(companyId: string, cuentas: CuentaCt[], rep: Repo
     const tipo = TIPO_POR_DIGITO[c.codigo[0]] || 'ORDEN';
     const padreCod = codigoPadre(c.codigo, codigos, esHoja, anchos);
 
-    // Agrupador propio si es válido; si no, se HEREDA del mayor. En CONTPAQi la
+    // Agrupador propio si es válido; si no, se HEREDA del mayor. En CPQ la
     // subcuenta comparte el agrupador de su cuenta mayor, y las que se crearon en
     // automático por otro sistema suelen venir sin él: se rellena (y se reporta)
     // en vez de dejar la cuenta sin código agrupador del SAT.
@@ -450,7 +450,7 @@ async function importarPolizas(companyId: string, paquete: PaqueteContpaqi, user
       let accountId: string;
       if (cta && cta.mov) { accountId = cta.id; }
       else { accountId = await cuentaTemporal(); cuentasFaltantes.add(m.cuenta); } // cuenta faltante → temporal, no se pierde
-      // El importe puede venir NEGATIVO en CONTPAQi (una corrección). Un cargo
+      // El importe puede venir NEGATIVO en CPQ (una corrección). Un cargo
       // negativo ES un abono y al revés: se pasa al lado correcto para no violar
       // el CHECK (cargo>=0, abono>=0) —era la causa de las pólizas omitidas por
       // «jl_no_negativos»— y para que el asiento siga cuadrando.
@@ -482,7 +482,7 @@ async function importarPolizas(companyId: string, paquete: PaqueteContpaqi, user
       await crearPoliza(companyId, {
         tipo: TIPO_POL[p.tipoPol] || 'DIARIO',
         fecha,
-        concepto: `${(p.concepto || '').toString().slice(0, 180)}${uuids.length > 1 ? ` · ${uuids.length} CFDI` : ''}`.trim() || 'Póliza CONTPAQi',
+        concepto: `${(p.concepto || '').toString().slice(0, 180)}${uuids.length > 1 ? ` · ${uuids.length} CFDI` : ''}`.trim() || 'Póliza CPQ',
         origen: 'CONTPAQI', origen_uuid: p.guid, regla: clasificarRegla(p.concepto, p.tipoPol, agrupadores),
         lineas,
       }, userId);

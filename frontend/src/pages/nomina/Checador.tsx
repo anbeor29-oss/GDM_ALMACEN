@@ -15,6 +15,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save, UserPlus, ClipboardList, MapPin } from 'lucide-react';
 import { claseOpcion } from '@/utils/coloresOpciones';
+import { parseCoordenadas } from '@/utils/coords';
 import { RegistroAsistencia } from '@/pages/nomina/RegistroAsistencia';
 import api from '@/services/api';
 
@@ -182,6 +183,17 @@ function TabKioscos() {
             className="inline-flex items-center gap-1.5 text-sm border rounded-lg px-3 py-1.5 hover:bg-gray-50 disabled:opacity-50">
             <MapPin size={15} /> {ubicando ? 'Obteniendo…' : 'Usar mi ubicación actual'}
           </button>
+          {/* Pegar coordenadas de Google Maps: acepta GMS (21°55'19.8"N 102°17'04.1"W) o decimal. */}
+          <label className="block">
+            <span className="text-[11px] text-gray-600 block">…o pega de Google Maps</span>
+            <input className="input font-mono text-xs"
+              placeholder={`21°55'19.8"N 102°17'04.1"W   ·   o   21.922167, -102.284472`}
+              onChange={(e) => {
+                const c = parseCoordenadas(e.target.value);
+                if (c) setF((s: any) => ({ ...s, lat: c.lat.toFixed(7), lng: c.lng.toFixed(7) }));
+              }} />
+            <span className="text-[10px] text-gray-400">Al reconocerlas, llena latitud y longitud abajo.</span>
+          </label>
           <div className="grid grid-cols-2 gap-2">
             <Campo label="Latitud">
               <input className="input" value={f.lat} onChange={(e) => setF({ ...f, lat: e.target.value })} placeholder="19.4326" />

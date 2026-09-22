@@ -129,6 +129,9 @@ export function ImportarContpaqiPage() {
         </p>
       </div>
 
+      {/* Recuperar los XML/CFDI del respaldo a la bóveda (aparecen en el calendario). */}
+      <RecuperarXmlRespaldo />
+
       {/* Pasos + descargar herramienta */}
       <div className="bg-white rounded-lg shadow border p-5 space-y-4">
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -139,7 +142,7 @@ export function ImportarContpaqiPage() {
           <p className="text-xs text-emerald-900">
             Se baja <b>una vez</b> por computadora. <b>Descomprímela</b> y da doble clic en
             <b> «Importar respaldo»</b>: trae tu <b>dirección</b> y <b>correo</b> ya puestos; elige el
-            <b> .bak</b> de CONTPAQi, <b>confirma con tu contraseña de NEXO</b> y genera el <b>paquete .zip</b>.
+            <b> .bak</b> de CPQ, <b>confirma con tu contraseña de NEXO</b> y genera el <b>paquete .zip</b>.
           </p>
         </div>
         <ol className="space-y-2 text-sm text-gray-700">
@@ -298,6 +301,82 @@ function Tarjeta({ titulo, valor }: { titulo: string; valor: string }) {
     <div className="border rounded-lg px-3 py-2">
       <p className="text-[11px] uppercase tracking-wide text-gray-400">{titulo}</p>
       <p className="text-sm text-gray-800 mt-0.5">{valor}</p>
+    </div>
+  );
+}
+
+/* ── Recuperar XML del respaldo a la bóveda (aparecen en el calendario de XML) ── */
+function RecuperarXmlRespaldo() {
+  const [busy, setBusy] = useState(false);
+  const [rep, setRep] = useState<any>(null);
+  const [err, setErr] = useState('');
+  const [corridas, setCorridas] = useState<any[]>([]);
+  const cargarCorridas = () => api.getRecuperacionCorridas().then((r: any) => setCorridas(r?.data || [])).catch(() => {});
+  useEffect(() => { cargarCorridas(); }, []);
+
+  const subir = async (file: File) => {
+    setBusy(true); setErr(''); setRep(null);
+    try {
+      const r: any = await api.recuperarXmlRespaldo(file);
+      setRep(r?.data || null);
+      cargarCorridas();
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || 'No se pudo procesar el respaldo.');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow border p-5 space-y-3">
+      <div className="flex items-center gap-2">
+        <FileArchive size={18} className="text-sky-700" />
+        <h2 className="font-semibold text-gray-800">Recuperar XML del respaldo (a la bóveda)</h2>
+      </div>
+      <p className="text-xs text-gray-500">
+        Sube un <b>.zip</b> del respaldo con los <b>XML/CFDI</b> (sueltos o exportados de la ADD). NEXO los
+        recupera, los clasifica (emitidos / recibidos / nómina) y los acomoda en la <b>bóveda</b>; aparecen
+        solos en el <b>calendario de XML</b>. No duplica: repetirlo es seguro.
+      </p>
+      <label className="inline-flex items-center gap-2 border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer w-fit">
+        <Upload size={15} /> {busy ? 'Recuperando…' : 'Subir respaldo .zip'}
+        <input type="file" accept=".zip" className="hidden" disabled={busy}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.currentTarget.value = ''; }} />
+      </label>
+      <p className="text-[11px] text-gray-400">
+        ¿El respaldo es un <span className="font-mono">.bak</span> pesado? Los XML dentro de un .bak grande se
+        extraen con la herramienta local (abajo); aquí sube el <span className="font-mono">.zip</span> de XML.
+      </p>
+
+      {err && <p className="text-sm text-rose-600">{err}</p>}
+
+      {rep && (
+        <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 text-sm text-sky-900 space-y-1">
+          <p className="flex items-center gap-1.5 font-semibold"><CheckCircle2 size={15} /> {rep.cfdiValidos} CFDI recuperados</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5 text-xs">
+            <span>Nuevos: <b>{rep.nuevos}</b></span>
+            <span>Ya estaban: <b>{rep.duplicados}</b></span>
+            <span>Emitidos: <b>{rep.emitidos}</b></span>
+            <span>Recibidos: <b>{rep.recibidos}</b></span>
+            <span>Nómina: <b>{rep.nomina}</b></span>
+            <span>Contab. electrónica: <b>{rep.contabElectronica}</b></span>
+            <span>Archivos en el zip: <b>{rep.archivosEnZip}</b></span>
+            <span>No CFDI: <b>{rep.noCfdi}</b></span>
+          </div>
+        </div>
+      )}
+
+      {corridas.length > 0 && (
+        <details className="text-xs text-gray-600">
+          <summary className="cursor-pointer text-gray-500">Corridas anteriores ({corridas.length})</summary>
+          <ul className="mt-1 divide-y">
+            {corridas.map((c) => (
+              <li key={c.id} className="py-1 flex justify-between gap-3">
+                <span className="truncate">{c.archivo}</span>
+                <span className="shrink-0 text-gray-400">{c.cfdi_validos} CFDI · {c.nuevos} nuevos</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

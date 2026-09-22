@@ -95,7 +95,7 @@ export function PolizasListaPage() {
     } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo generar.'); }
     finally { setGenerando(''); }
   };
-  /* Importa las pólizas históricas desde el TXT de CONTPAQi (el catálogo debe estar antes). */
+  /* Importa las pólizas históricas desde el TXT de CPQ (el catálogo debe estar antes). */
   const importarTxt = async (file: File) => {
     setGenerando('txt'); setMsg('');
     try {
@@ -202,9 +202,9 @@ export function PolizasListaPage() {
           className="border bg-white px-2.5 py-1 rounded-lg text-xs text-gray-700 hover:bg-gray-100">Compras</button>
         <span className="mx-1 h-4 w-px bg-gray-300" />
         <label
-          title="Importa las pólizas históricas desde el TXT de CONTPAQi. Casa cada renglón por código de cuenta, así que importa el catálogo primero. No duplica: se salta las que ya tengan el mismo UUID."
+          title="Importa las pólizas históricas desde el TXT de CPQ. Casa cada renglón por código de cuenta, así que importa el catálogo primero. No duplica: se salta las que ya tengan el mismo UUID."
           className={`btn-import text-xs px-2.5 py-1 ${generando ? 'opacity-40 pointer-events-none' : ''}`}>
-          <BookOpen size={13} /> {generando === 'txt' ? 'Importando…' : 'Importar CONTPAQi (.txt)'}
+          <BookOpen size={13} /> {generando === 'txt' ? 'Importando…' : 'Importar CPQ (.txt)'}
           <input type="file" accept=".txt" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />
         </label>

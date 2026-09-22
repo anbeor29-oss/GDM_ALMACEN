@@ -1,5 +1,5 @@
 /**
- * Importadores de TXT de CONTPAQi (ancho fijo, codificación latin1).
+ * Importadores de TXT de CPQ (ancho fijo, codificación latin1).
  *
  * ── CATÁLOGO (registros `C`) ──
  * Posiciones medidas contra archivos reales (2026-09-09):
@@ -20,7 +20,7 @@ import { query } from '../../config/database';
 import { crearPoliza } from './polizas.service';
 import { asignarAgrupadorFaltante } from './catalogo.service';
 
-/* La letra de CONTPAQi codifica tipo + lado natural de la cuenta. */
+/* La letra de CPQ codifica tipo + lado natural de la cuenta. */
 const LETRA: Record<string, { tipo: string; nat: 'DEUDORA' | 'ACREEDORA' }> = {
   A: { tipo: 'ACTIVO', nat: 'DEUDORA' },
   B: { tipo: 'ACTIVO', nat: 'ACREEDORA' },   // complementaria de activo (deprec/amort acumulada)
@@ -69,7 +69,7 @@ export function parsearCatalogoTxt(texto: string): CuentaTxt[] {
 export async function importarCatalogoTxt(companyId: string, buffer: Buffer) {
   const cuentas = parsearCatalogoTxt(buffer.toString('latin1'));
   if (!cuentas.length) {
-    throw new Error('No se encontraron cuentas (registros «C») en el archivo. ¿Es el catálogo de CONTPAQi en TXT?');
+    throw new Error('No se encontraron cuentas (registros «C») en el archivo. ¿Es el catálogo de CPQ en TXT?');
   }
 
   const porCodigo = new Map(cuentas.map((c) => [c.codigo, c]));
@@ -168,7 +168,7 @@ function reglaMigrada(concepto: string): string {
 export async function importarPolizasTxt(companyId: string, buffer: Buffer, userId?: string) {
   const polizas = parsearPolizasTxt(buffer.toString('latin1'));
   if (!polizas.length) {
-    throw new Error('No se encontraron pólizas (registros «P») en el archivo. ¿Es el TXT de pólizas de CONTPAQi?');
+    throw new Error('No se encontraron pólizas (registros «P») en el archivo. ¿Es el TXT de pólizas de CPQ?');
   }
 
   const ctas = await query<any>(`SELECT id, codigo FROM accounting_accounts WHERE company_id=$1`, [companyId]);
@@ -201,7 +201,7 @@ export async function importarPolizasTxt(companyId: string, buffer: Buffer, user
       if (faltante) { rep.omitidas.push({ folio: etq, motivo: `la cuenta ${faltante} no está en el catálogo — importa el catálogo primero` }); continue; }
       if (lineas.length < 2) { rep.omitidas.push({ folio: etq, motivo: 'menos de 2 renglones con importe' }); continue; }
       await crearPoliza(companyId, {
-        tipo: p.tipo, fecha: p.fecha, concepto: p.concepto || 'Póliza CONTPAQi',
+        tipo: p.tipo, fecha: p.fecha, concepto: p.concepto || 'Póliza CPQ',
         origen: 'MANUAL', origen_uuid: p.uuid || undefined, regla: reglaMigrada(p.concepto), lineas,
       } as any, userId);
       rep.creadas++;
