@@ -111,7 +111,12 @@ function cfdisEnBinario(buf: Buffer): string[] {
     const c = cierra.exec(s);
     if (!c) break;
     const fin = c.index + c[0].length;
-    out.push(buf.subarray(m.index, fin).toString('utf8')); // re-decodifica utf8: conserva acentos
+    // Incluye la declaración <?xml…?> si está pegada antes del Comprobante (así se
+    // guarda el documento completo, como en el ADD: <?xml …?><cfdi:Comprobante …).
+    let ini = m.index;
+    const pre = s.lastIndexOf('<?xml', m.index);
+    if (pre >= 0 && m.index - pre < 120) ini = pre;
+    out.push(buf.subarray(ini, fin).toString('utf8'));     // re-decodifica utf8: conserva acentos
     abre.lastIndex = fin;
     if (out.length > 200_000) break;                       // guarda de seguridad
   }
