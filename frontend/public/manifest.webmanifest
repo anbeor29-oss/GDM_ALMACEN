@@ -1,7 +1,7 @@
 {
   "id": "/checador/kiosco",
-  "name": "Checador",
-  "short_name": "Checador",
+  "name": "Checador NEXO",
+  "short_name": "Checador NEXO",
   "description": "Control de asistencia biométrico (kiosco facial y enrolamiento) de GDM NEXO — para instalar en tabletas y celulares.",
   "lang": "es-MX",
   "dir": "ltr",
@@ -9,8 +9,8 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#00265e",
-  "theme_color": "#00265e",
+  "background_color": "#1a1a1a",
+  "theme_color": "#1a1a1a",
   "categories": ["business", "productivity"],
   "icons": [
     { "src": "/checador-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
