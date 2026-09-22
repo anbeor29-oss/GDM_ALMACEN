@@ -19,7 +19,8 @@ import * as reportsService from './reports.service';
 const BOTTOM_MARGIN = 60; // reservado para la paginación
 
 function fmtDate(d: any): string {
-  try { return new Date(d).toLocaleDateString('es-MX'); } catch { return ''; }
+  // DD/MM/AAAA con ceros (estándar de fecha de NEXO en todos los reportes).
+  try { return new Date(d).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' }); } catch { return ''; }
 }
 
 /** Caja de total en el header. Devuelve el ancho usado. */
@@ -72,7 +73,7 @@ export async function generateSalesSummaryPDF(companyId: string): Promise<Buffer
     doc.font('Helvetica').fontSize(8).fillColor('#475569')
       .text((company.business_name || '').toUpperCase(), PAGE_LEFT + 66, PAGE_TOP + 19);
     doc.text(`RFC: ${company.rfc || '—'}`, PAGE_LEFT + 66, PAGE_TOP + 30);
-    doc.text(`Impreso el: ${new Date().toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short' })}`,
+    doc.text(`Impreso el: ${new Date().toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
       PAGE_LEFT + 66, PAGE_TOP + 41);
 
     let x = PAGE_RIGHT - 128 * 2 - 8;
@@ -226,7 +227,7 @@ export async function generateUnpaidInvoicesPDF(companyId: string): Promise<Buff
     doc.font('Helvetica').fontSize(8).fillColor('#475569')
       .text((company.business_name || '').toUpperCase(), PAGE_LEFT + 66, PAGE_TOP + 19);
     doc.text(`RFC: ${company.rfc || '—'}`, PAGE_LEFT + 66, PAGE_TOP + 30);
-    doc.text(`Impreso el: ${new Date().toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short' })}`,
+    doc.text(`Impreso el: ${new Date().toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
       PAGE_LEFT + 66, PAGE_TOP + 41);
     doc.fontSize(7).fillColor('#94a3b8')
       .text('Todas las facturas con saldo, sin importar la antigüedad.', PAGE_LEFT + 66, PAGE_TOP + 52);

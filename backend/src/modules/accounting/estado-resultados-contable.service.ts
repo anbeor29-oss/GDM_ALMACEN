@@ -260,7 +260,7 @@ const fechaLarga = (iso: string | null) => {
   const d = new Date(iso + 'T12:00:00');
   return `1 de enero de ${d.getFullYear()} al ${d.getDate()} de ${MESES_LARGO[d.getMonth() + 1]} de ${d.getFullYear()}`;
 };
-const fechaGen = () => new Date().toLocaleString('es-MX');
+const fechaGen = () => new Date().toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const stamp = () => {
   const d = new Date(); const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;

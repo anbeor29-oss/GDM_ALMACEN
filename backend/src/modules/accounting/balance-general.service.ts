@@ -188,7 +188,7 @@ function aplanar(nodos: NodoBalance[], out: RenglonPlano[] = []): RenglonPlano[]
 
 const fechaLarga = (iso: string | null) =>
   iso ? new Date(iso + 'T12:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
-const fechaGen = () => new Date().toLocaleString('es-MX');
+const fechaGen = () => new Date().toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const stamp = () => {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');

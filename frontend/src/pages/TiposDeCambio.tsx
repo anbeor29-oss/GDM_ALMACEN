@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Save, Coins, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { aTextoMx } from '@/components/CampoFecha';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 
@@ -120,7 +121,7 @@ export function TiposDeCambioPage() {
               <>
                 <p className="mt-1 text-2xl font-semibold text-slate-900">{Number(t.valor).toFixed(4)}</p>
                 <p className={`text-[11px] ${t.vigente ? 'text-emerald-700' : 'text-amber-700'}`}>
-                  {t.vigente ? 'Vigente hoy' : `Arrastrado del ${t.fecha}`} · {t.fuente}
+                  {t.vigente ? 'Vigente hoy' : `Arrastrado del ${aTextoMx(t.fecha)}`} · {t.fuente}
                 </p>
               </>
             )}
@@ -175,7 +176,7 @@ export function TiposDeCambioPage() {
               <tbody>
                 {(historia.data?.items || []).map((h: any, i: number) => (
                   <tr key={i} className="border-b border-slate-50">
-                    <td className="py-1 font-mono">{h.fecha}</td>
+                    <td className="py-1 font-mono">{aTextoMx(h.fecha)}</td>
                     <td className="text-right font-mono">{Number(h.valor).toFixed(4)}</td>
                     <td className="pl-2 text-slate-400">{h.fuente}</td>
                   </tr>

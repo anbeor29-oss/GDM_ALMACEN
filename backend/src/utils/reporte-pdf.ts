@@ -13,6 +13,7 @@
  */
 
 import PDFDocument from 'pdfkit';
+import { fechaHoraMx } from './fecha-mx';
 
 export interface ColumnaPdf {
   titulo: string;
@@ -75,7 +76,7 @@ export async function reporteTablaPdf(o: ReportePdfOpts): Promise<Buffer> {
   doc.font('Helvetica-Bold').fontSize(11).fillColor(AZUL).text(o.titulo, M, y, { width: contentW });
   y += 15;
   doc.font('Helvetica').fontSize(8).fillColor(GRIS);
-  const meta = [o.rfc ? `RFC: ${o.rfc}` : '', ...(o.subtitulos || []), `Generado: ${new Date().toLocaleString('es-MX')}`].filter(Boolean);
+  const meta = [o.rfc ? `RFC: ${o.rfc}` : '', ...(o.subtitulos || []), `Generado: ${fechaHoraMx()}`].filter(Boolean);
   for (const m of meta) { doc.text(m, M, y, { width: contentW }); y += 11; }
   y += 5;
 

@@ -13,11 +13,11 @@
  * las declaraciones. La pantalla sólo ofrece los que de verdad están cerrados.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   FileBarChart, FileSpreadsheet, AlertTriangle, Users, Receipt, Landmark, HeartPulse,
-  Sigma, List, Tag, Check, PlayCircle, CheckCircle2, BookOpen, Download, FileDown,
+  Sigma, List, Tag, Check, PlayCircle, CheckCircle2, BookOpen, Download, FileDown, Sparkles,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { claseOpcion } from '@/utils/coloresOpciones';
@@ -650,12 +650,47 @@ export function ConceptosCuentasNomina() {
   const cuentas: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);
   const nombreCta = new Map<string, string>(cuentas.map((c: any) => [c.codigo, c.nombre]));
 
+  /* Índice por AGRUPADOR SAT: la sugerida (p.ej. 601.01) es un código del Anexo 24.
+   * Si el cliente NO usa la numeración del SAT, su cuenta propia lleva ese agrupador,
+   * así que la casamos por ahí y proponemos SU cuenta real. */
+  const porAgrupador = useMemo(() => {
+    const m = new Map<string, { codigo: string; nombre: string }>();
+    for (const c of cuentas) {
+      if (c.codigo_agrupador && !m.has(c.codigo_agrupador)) m.set(c.codigo_agrupador, { codigo: c.codigo, nombre: c.nombre });
+    }
+    return m;
+  }, [ctasQ.data]);
+
+  /* Resuelve la cuenta sugerida a una cuenta REAL del catálogo: primero por código
+   * exacto, luego por agrupador SAT. Null = el catálogo no la tiene todavía. */
+  const resolverSugerida = (sug: string | null | undefined): { codigo: string; nombre: string } | null => {
+    if (!sug) return null;
+    if (nombreCta.has(sug)) return { codigo: sug, nombre: nombreCta.get(sug)! };
+    return porAgrupador.get(sug) || null;
+  };
+
   const lista = conceptos.filter((c) => sub === 'ingresos' ? c.grupo === 'PERCEPCION' : c.grupo !== 'PERCEPCION');
   const faltan = conceptos.filter((c) => !c.cuenta).length;
 
   const guardar = async (c: any, codigo: string) => {
     await api.setConceptoCuentaNomina(c.grupo, c.clave, codigo.trim() || null);
     qc.invalidateQueries({ queryKey: ['nomina-conceptos-cuenta'] });
+  };
+
+  /* Asigna de un golpe la cuenta sugerida a los conceptos de ESTA lista que aún no
+   * tienen cuenta y sí tienen sugerencia resoluble. Para no batallar renglón a renglón. */
+  const [asignando, setAsignando] = useState(false);
+  const pendientesConSugerida = lista.filter((c) => !c.cuenta && resolverSugerida(c.sugerida));
+  const asignarSugeridas = async () => {
+    if (!pendientesConSugerida.length) return;
+    setAsignando(true);
+    try {
+      for (const c of pendientesConSugerida) {
+        const r = resolverSugerida(c.sugerida)!;
+        await api.setConceptoCuentaNomina(c.grupo, c.clave, r.codigo);
+      }
+      qc.invalidateQueries({ queryKey: ['nomina-conceptos-cuenta'] });
+    } finally { setAsignando(false); }
   };
 
   return (
@@ -679,13 +714,20 @@ export function ConceptosCuentasNomina() {
         {cuentas.map((c) => <option key={c.id} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
       </datalist>
 
-      <div className="flex gap-1.5 flex-wrap">
+      <div className="flex gap-1.5 flex-wrap items-center">
         {([['ingresos', 'Ingresos (percepciones)'], ['egresos', 'Egresos (deducciones y provisiones)'], ['poliza', 'Póliza']] as const)
           .map(([k, label], i) => (
             <button key={k} onClick={() => setSub(k)} className={claseOpcion(i, sub === k)}>
               {label}
             </button>
           ))}
+        {sub !== 'poliza' && pendientesConSugerida.length > 0 && (
+          <button onClick={asignarSugeridas} disabled={asignando}
+            className="ml-auto inline-flex items-center gap-1.5 text-sm text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-3 py-1.5 disabled:opacity-50"
+            title="Coloca la cuenta sugerida en cada concepto de esta lista que aún no la tenga">
+            <Sparkles size={15} /> {asignando ? 'Asignando…' : `Asignar sugeridas (${pendientesConSugerida.length})`}
+          </button>
+        )}
       </div>
 
       {sub === 'poliza' ? (
@@ -704,7 +746,8 @@ export function ConceptosCuentasNomina() {
             <tbody className="divide-y">
               {q.isLoading && <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>}
               {lista.map((c) => (
-                <RenglonConcepto key={`${c.grupo}-${c.clave}`} c={c} nombreCta={nombreCta} onGuardar={guardar} />
+                <RenglonConcepto key={`${c.grupo}-${c.clave}`} c={c} nombreCta={nombreCta}
+                  sugeridaReal={resolverSugerida(c.sugerida)} onGuardar={guardar} />
               ))}
             </tbody>
           </table>
@@ -714,10 +757,13 @@ export function ConceptosCuentasNomina() {
   );
 }
 
-function RenglonConcepto({ c, nombreCta, onGuardar }: {
-  c: any; nombreCta: Map<string, string>; onGuardar: (c: any, codigo: string) => void;
+function RenglonConcepto({ c, nombreCta, sugeridaReal, onGuardar }: {
+  c: any; nombreCta: Map<string, string>;
+  sugeridaReal: { codigo: string; nombre: string } | null;
+  onGuardar: (c: any, codigo: string) => void;
 }) {
   const etiqueta = c.grupo === 'PROVISION' ? 'provisión' : c.grupo === 'NETO' ? 'neto' : c.grupo === 'DEDUCCION' ? 'deducción' : '';
+  const yaEsSugerida = sugeridaReal && c.cuenta === sugeridaReal.codigo;
   return (
     <tr className="hover:bg-gray-50">
       <td className="px-4 py-2 text-xs font-mono text-gray-500">{c.clave}</td>
@@ -731,6 +777,24 @@ function RenglonConcepto({ c, nombreCta, onGuardar }: {
       <td className="px-4 py-2">
         <CuentaPicker listId="ctas-mov-nom" nombreCta={nombreCta} value={c.cuenta}
           onSave={(codigo) => onGuardar(c, codigo)} placeholder={`sugerido ${c.sugerida}`} ancho="w-56" />
+        {/* Ayuda a la contabilización: la cuenta sugerida a un clic (verde = "asignar"). */}
+        {sugeridaReal ? (
+          yaEsSugerida ? (
+            <p className="mt-1 text-[11px] text-emerald-600 inline-flex items-center gap-1">
+              <Check size={11} /> es la cuenta sugerida
+            </p>
+          ) : (
+            <button type="button" onClick={() => onGuardar(c, sugeridaReal.codigo)}
+              className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700 hover:underline"
+              title={`Asignar ${sugeridaReal.codigo} — ${sugeridaReal.nombre}`}>
+              <Sparkles size={12} /> Asignar {sugeridaReal.codigo} — {sugeridaReal.nombre}
+            </button>
+          )
+        ) : c.sugerida ? (
+          <p className="mt-1 text-[11px] text-gray-400">
+            Sugerido SAT {c.sugerida}: no está en tu catálogo — elígela o créala arriba.
+          </p>
+        ) : null}
       </td>
     </tr>
   );
@@ -789,7 +853,7 @@ function PolizaFiniquito() {
           className="border rounded-lg px-3 py-1.5 text-sm max-w-full">
           {finiquitos.map((f) => (
             <option key={f.recibo_id} value={f.recibo_id}>
-              {f.finiquito_tipo === 'LIQUIDACION' ? 'Liquidación' : 'Finiquito'} · {f.nombre} · baja {f.fecha_baja}
+              {f.finiquito_tipo === 'LIQUIDACION' ? 'Liquidación' : 'Finiquito'} · {f.nombre} · baja {aTextoMx(f.fecha_baja)}
               {f.con_poliza ? ' · (ya contabilizado)' : ''}
             </option>
           ))}
@@ -812,7 +876,7 @@ function PolizaFiniquito() {
                 {rep.periodo.tipo === 'LIQUIDACION' ? 'Liquidación' : 'Finiquito'} de {rep.empleado.nombre}
               </h4>
               <p className="text-xs text-gray-500">
-                {rep.empleado.num_empleado} · {rep.empleado.rfc} · baja {rep.periodo.fecha_fin} · {rep.periodo.dias} día(s)
+                {rep.empleado.num_empleado} · {rep.empleado.rfc} · baja {aTextoMx(rep.periodo.fecha_fin)} · {rep.periodo.dias} día(s)
               </p>
             </div>
 

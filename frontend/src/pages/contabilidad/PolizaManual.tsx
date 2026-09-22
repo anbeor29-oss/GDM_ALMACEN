@@ -5,10 +5,11 @@
  * si no cuadra: las sumas de cargo y abono tienen que ser iguales. El UUID es
  * opcional; si se captura, liga la póliza a un CFDI.
  */
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FileText, Plus, Save, Scale, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
+import { usePeriodoActivo } from '@/utils/periodoActivo';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
 
@@ -26,6 +27,18 @@ export function PolizaManualPage() {
   const hoy = new Date().toISOString().slice(0, 10);
   const [tipo, setTipo] = useState<'DIARIO' | 'INGRESO' | 'EGRESO'>('DIARIO');
   const [fecha, setFecha] = useState(hoy);
+  /* La póliza manual arranca en el MES DE TRABAJO (siguiente al último cerrado):
+   * si hoy ya cae en ese mes, se respeta hoy; si el mes de trabajo va atrasado,
+   * se posa en su día 1 para no capturar en un mes equivocado. Sólo la 1ª vez. */
+  const activo = usePeriodoActivo();
+  const fechaAplicada = useRef(false);
+  useEffect(() => {
+    if (!activo || fechaAplicada.current) return;
+    fechaAplicada.current = true;
+    const hoyD = new Date();
+    const esMesTrabajo = hoyD.getFullYear() === activo.anio && hoyD.getMonth() + 1 === activo.mes;
+    if (!esMesTrabajo) setFecha(`${activo.anio}-${String(activo.mes).padStart(2, '0')}-01`);
+  }, [activo]);
   const [concepto, setConcepto] = useState('');
   const [uuid, setUuid] = useState('');
   const [lineas, setLineas] = useState<LineaPoliza[]>([filaVacia(), filaVacia(), filaVacia()]);

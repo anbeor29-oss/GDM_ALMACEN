@@ -13,6 +13,7 @@ import { balanzaDelPeriodo, contextoDelPeriodo } from './periodos.service';
 import { situacionFinanciera, resultadoIntegral } from './estados-financieros.service';
 import { enRubro, seccionDe } from './validacion-contable.service';
 import { ExcelJS, C, titulo, dato, encabezado, celda, anchos, aBuffer } from '../nomina/estilo-excel';
+import { fechaHoraMx } from '../../utils/fecha-mx';
 
 const r2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -131,7 +132,7 @@ async function empresaDe(companyId: string) {
   const r = await query<any>(`SELECT business_name, rfc FROM companies WHERE id=$1`, [companyId]);
   return r.rows[0] || { business_name: '', rfc: '' };
 }
-const fechaGen = () => new Date().toLocaleString('es-MX');
+const fechaGen = () => fechaHoraMx();
 
 export async function balanzaEspecialExcel(companyId: string, anio: number, mes: number) {
   const [emp, d] = await Promise.all([empresaDe(companyId), balanzaEspecial(companyId, anio, mes)]);

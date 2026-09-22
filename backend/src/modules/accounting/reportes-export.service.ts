@@ -18,6 +18,7 @@ import {
   ExcelJS, C, titulo, dato, encabezado, celda, totales, anchos, aBuffer,
 } from '../nomina/estilo-excel';
 import { reporteTablaPdf, ColumnaPdf } from '../../utils/reporte-pdf';
+import { fechaMx, fechaHoraMx } from '../../utils/fecha-mx';
 import { listarCuentas } from './catalogo.service';
 
 interface Empresa { business_name: string; rfc: string; }
@@ -28,7 +29,7 @@ async function empresaDe(companyId: string): Promise<Empresa> {
   return { business_name: e.business_name || '', rfc: e.rfc || '' };
 }
 
-const fechaGen = () => new Date().toLocaleString('es-MX');
+const fechaGen = () => fechaHoraMx();
 
 /* ── Balanza de comprobación ─────────────────────────────────────────────── */
 
@@ -295,7 +296,7 @@ export async function auxiliarExcel(companyId: string, codigo: string, anio: num
 
   let fila = 8;
   for (const m of aux.movimientos) {
-    celda(ws, fila, 1, m.fecha, { centrado: true });
+    celda(ws, fila, 1, fechaMx(m.fecha), { centrado: true });
     celda(ws, fila, 2, m.folio, { centrado: true });
     celda(ws, fila, 3, m.linea_concepto || m.poliza_concepto || '');
     celda(ws, fila, 4, Number(m.cargo));
@@ -392,7 +393,7 @@ export async function auxiliarPdf(companyId: string, codigo: string, anio: numbe
     { titulo: 'Saldo', clave: 'saldo', ancho: 13, pesos: true },
   ];
   const filas = aux.movimientos.map((m: any) => ({
-    fecha: m.fecha, folio: m.folio, concepto: m.linea_concepto || m.poliza_concepto || '',
+    fecha: fechaMx(m.fecha), folio: m.folio, concepto: m.linea_concepto || m.poliza_concepto || '',
     cargo: m.cargo, abono: m.abono, saldo: m.saldo,
   }));
   const sumC = aux.movimientos.reduce((a: number, x: any) => a + Number(x.cargo), 0);

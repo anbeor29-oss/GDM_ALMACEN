@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Route as RouteIcon, Plus, FileText, MapPin, Package2 } from 'lucide-react';
 import api from '@/services/api';
+import { aTextoMx } from '@/components/CampoFecha';
 interface CartaPorteRow {
   invoiceId: string;
   invoiceNumber: string;
@@ -94,7 +95,7 @@ export function CartaPortePage() {
                   <td className="px-4 py-3">{r.origen}</td>
                   <td className="px-4 py-3">{r.destino}</td>
                   <td className="px-4 py-3">{r.transportista}</td>
-                  <td className="px-4 py-3">{r.fecha}</td>
+                  <td className="px-4 py-3">{aTextoMx(r.fecha)}</td>
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => navigate(`/invoices/${r.invoiceId}/edit`)}

@@ -327,7 +327,7 @@ function Entregas({ empleadoId, puedeEditar }: { empleadoId: string; puedeEditar
                 )}
                 {e.devuelto && (
                   <p className="text-xs text-gray-500 mt-0.5">
-                    devuelto el {e.fecha_devolucion}
+                    devuelto el {aTextoMx(e.fecha_devolucion)}
                     {e.estado_devolucion && ` · ${e.estado_devolucion.toLowerCase()}`}
                   </p>
                 )}

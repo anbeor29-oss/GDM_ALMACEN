@@ -413,7 +413,7 @@ export function MotorImssIdsePage() {
                 <span className="text-[10px] font-bold text-gray-500 w-16 shrink-0">{ETIQUETA_TIPO[p.tipo] || p.tipo}</span>
                 <div className="min-w-0 flex-1">
                   <p className="font-medium text-gray-700 truncate">{p.nombre_completo}</p>
-                  <p className="text-[11px] text-gray-400 font-mono">#{p.num_empleado || '—'} · {p.fecha}{p.enviado ? ` · confirmado ${p.enviado}` : ''}</p>
+                  <p className="text-[11px] text-gray-400 font-mono">#{p.num_empleado || '—'} · {aTextoMx(p.fecha)}{p.enviado ? ` · confirmado ${aTextoMx(p.enviado)}` : ''}</p>
                 </div>
                 <button onClick={() => regresar(p.id)} className="text-xs text-violet-700 hover:bg-violet-50 px-2 py-1 rounded">↩ regresar</button>
               </li>
@@ -522,7 +522,7 @@ function BitacoraIdse({ lotes, onCambio }: { lotes: any[]; onCambio: () => void 
                           <td className="py-1 pr-2 font-bold text-gray-500 w-14 whitespace-nowrap">{ETIQUETA_TIPO[m.tipo] || m.tipo}</td>
                           <td className="py-1 pr-2 text-gray-700">{m.nombre}</td>
                           <td className="py-1 pr-2 font-mono text-gray-400 whitespace-nowrap">{m.nss}</td>
-                          <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{m.fecha}</td>
+                          <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{aTextoMx(m.fecha)}</td>
                           <td className="py-1 text-right text-gray-500 whitespace-nowrap">
                             {m.sbc ? `SBC ${Number(m.sbc).toFixed(2)}` : ''}{m.causa_baja ? ` · causa ${m.causa_baja}` : ''}
                           </td>

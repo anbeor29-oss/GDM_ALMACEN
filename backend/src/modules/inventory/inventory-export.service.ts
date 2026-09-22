@@ -14,6 +14,7 @@ import { ValidationError } from '../../middleware/errorHandler';
 import * as companiesService from '../companies/companies.service';
 import { getOptimizedLogo } from '../cfdi/logo-cache';
 import { drawPageNumbers, fmtMoney, PAGE_TOP } from '../cfdi/pdf-helpers';
+import { fechaMx, fechaHoraMx } from '../../utils/fecha-mx';
 
 type ColType = 'text' | 'money' | 'qty' | 'int' | 'date' | 'pct';
 
@@ -274,7 +275,7 @@ function fmtCell(value: any, type?: ColType): string {
     case 'qty':   return Number(value).toLocaleString('es-MX', { maximumFractionDigits: 3 });
     case 'int':   return String(Math.round(Number(value)));
     case 'pct':   return `${Number(value).toFixed(1)}%`;
-    case 'date':  try { return new Date(value).toLocaleDateString('es-MX'); } catch { return String(value); }
+    case 'date':  return fechaMx(value);
     default:      return String(value);
   }
 }
@@ -287,7 +288,7 @@ export async function toExcel(reportKey: string, companyId: string, params: Expo
 
   const aoa: any[][] = [];
   aoa.push([def.title]);
-  aoa.push([`Generado: ${new Date().toLocaleString('es-MX')}${params.from ? ` · Del ${params.from} al ${params.to || 'hoy'}` : ''}`]);
+  aoa.push([`Generado: ${fechaHoraMx()}${params.from ? ` · Del ${fechaMx(params.from)} al ${params.to ? fechaMx(params.to) : 'hoy'}` : ''}`]);
   aoa.push([]);
   aoa.push(def.columns.map((c) => c.label));
   for (const row of rows) {
@@ -336,8 +337,8 @@ export async function toPdf(reportKey: string, companyId: string, params: Export
       .text(def.title.toUpperCase(), LEFT + 64, PAGE_TOP);
     doc.font('Helvetica').fontSize(8).fillColor('#475569')
       .text((company.business_name || '').toUpperCase(), LEFT + 64, PAGE_TOP + 20);
-    doc.text(`RFC: ${company.rfc || '—'} · Generado: ${new Date().toLocaleString('es-MX')}` +
-             (params.from ? ` · Del ${params.from} al ${params.to || 'hoy'}` : ''),
+    doc.text(`RFC: ${company.rfc || '—'} · Generado: ${fechaHoraMx()}` +
+             (params.from ? ` · Del ${fechaMx(params.from)} al ${params.to ? fechaMx(params.to) : 'hoy'}` : ''),
              LEFT + 64, PAGE_TOP + 31);
     doc.text(`${rows.length} registro(s)`, LEFT + 64, PAGE_TOP + 42);
     doc.moveTo(LEFT, PAGE_TOP + 58).lineTo(RIGHT, PAGE_TOP + 58).strokeColor('#e2e8f0').lineWidth(1).stroke();

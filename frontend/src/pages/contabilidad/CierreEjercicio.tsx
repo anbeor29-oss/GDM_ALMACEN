@@ -19,6 +19,7 @@ import {
 import api from '@/services/api';
 import { aniosContables } from '@/utils/anios';
 import { usePeriodoTrabajo } from '@/utils/periodoActivo';
+import { aTextoMx } from '@/components/CampoFecha';
 import { useAuthStore } from '@/store/auth';
 import { claseOpcion } from '@/utils/coloresOpciones';
 
@@ -200,7 +201,7 @@ function ResultadoMes({ d, periodo, mensual, onGenerar, onRevertir, busy, esAdmi
       <div className="bg-white rounded-lg border shadow-sm p-4 space-y-3">
         {d.cierreAsentado ? (
           <p className="text-sm text-sky-900 bg-sky-50 border border-sky-200 rounded px-3 py-2 flex items-center gap-2">
-            <CheckCircle2 size={16} /> Cierre asentado: <b>póliza #{d.cierreAsentado.folio}</b> ({d.cierreAsentado.fecha}). Puedes <b>regenerarla</b> si cambiaste pólizas.
+            <CheckCircle2 size={16} /> Cierre asentado: <b>póliza #{d.cierreAsentado.folio}</b> ({aTextoMx(d.cierreAsentado.fecha)}). Puedes <b>regenerarla</b> si cambiaste pólizas.
           </p>
         ) : (
           <p className="text-sm text-gray-600">Aún no hay póliza de cierre para {periodo}.</p>

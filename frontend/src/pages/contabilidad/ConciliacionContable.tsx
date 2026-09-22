@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SelectorCuenta } from '@/components/SelectorCuenta';
+import { aTextoMx } from '@/components/CampoFecha';
 import {
   Landmark, RefreshCw, Wand2, PlayCircle, Check, X, Upload, Settings2, Undo2, FileText, Link2, BookOpen,
   Sparkles, Coins,
@@ -495,7 +496,7 @@ export function ConciliacionContablePage() {
                             aria-label="Elegir línea para cotejo manual" />
                         )}
                       </td>
-                      <td className="px-2 py-1.5 text-xs whitespace-nowrap">{l.fecha}</td>
+                      <td className="px-2 py-1.5 text-xs whitespace-nowrap">{aTextoMx(l.fecha)}</td>
                       <td className="px-2 py-1.5 text-xs text-gray-500">#{l.folio}</td>
                       <td className="px-2 py-1.5 text-xs truncate max-w-[200px]" title={l.concepto || l.poliza_concepto}>{l.concepto || l.poliza_concepto}</td>
                       <td className="px-2 py-1.5 text-right text-xs">{Number(l.cargo) ? money(l.cargo) : ''}</td>

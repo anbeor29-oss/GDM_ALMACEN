@@ -106,7 +106,7 @@ export async function generarListaDeRaya(
   titulo(ws, 'GDM NEXO · Lista de Raya (Forma Tabular)', cols.length);
 
   dato(ws, 3, 3, empresa.business_name || '', true);
-  dato(ws, 3, 7, `Fecha:   ${new Date().toLocaleDateString('es-MX')}`);
+  dato(ws, 3, 7, `Fecha:   ${new Date().toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })}`);
   dato(ws, 4, 3, `Período:   ${etiquetaDelPeriodo(p)}`);
   dato(ws, 4, 7, `Hora:   ${new Date().toLocaleTimeString('es-MX')}`);
   dato(ws, 5, 3, `RFC:   ${empresa.rfc || ''}`);

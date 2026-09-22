@@ -15,6 +15,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { ArrowLeft, Trash2, Search, Save, Building2, User, X } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import api from '@/services/api';
+import { aTextoMx } from '@/components/CampoFecha';
 
 /* ─────────────── formatos es-MX ─────────────── */
 
@@ -477,7 +478,7 @@ export function NewInvoicePage() {
                   T.C. <b>{tc.valor}</b>{' '}
                   {tc.vigente
                     ? `(${tc.fuente === 'MANUAL' ? 'captura manual' : 'DOF'} de hoy)`
-                    : `del ${tc.fecha} — no hay uno más reciente`}
+                    : `del ${aTextoMx(tc.fecha)} — no hay uno más reciente`}
                 </span>
               ) : (
                 <span className="text-red-600">

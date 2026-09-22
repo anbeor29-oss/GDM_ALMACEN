@@ -412,7 +412,7 @@ export async function historialAsistencia(
 
   const r = await query<any>(
     `SELECT e.id,
-            TO_CHAR(e.ts AT TIME ZONE 'America/Mexico_City', 'YYYY-MM-DD') AS fecha,
+            TO_CHAR(e.ts AT TIME ZONE 'America/Mexico_City', 'DD/MM/YYYY') AS fecha,
             TO_CHAR(e.ts AT TIME ZONE 'America/Mexico_City', 'HH24:MI:SS') AS hora,
             e.tipo, e.origen, e.estado, e.lat, e.lng, e.confianza, e.empleado_id,
             COALESCE(NULLIF(TRIM(emp.nombre || ' ' || emp.apellido_pat || ' ' || COALESCE(emp.apellido_mat,'')), ''), 'No reconocido') AS nombre,

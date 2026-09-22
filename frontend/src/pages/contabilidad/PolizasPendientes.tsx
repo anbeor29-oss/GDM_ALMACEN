@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Trash2, RefreshCw, ChevronRight, ChevronDown } from 'lucide-react';
 import api from '@/services/api';
+import { aTextoMx } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   Number(n || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -115,7 +116,7 @@ function FilaPendiente({ p, onDescartar }: { p: any; onDescartar: (guid: string,
           </button>
         </td>
         <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">{p.folio}</td>
-        <td className="px-4 py-2 text-xs whitespace-nowrap">{p.fecha}</td>
+        <td className="px-4 py-2 text-xs whitespace-nowrap">{aTextoMx(p.fecha)}</td>
         <td className="px-4 py-2 text-xs truncate max-w-xs">{p.concepto || '—'}</td>
         <td className="px-4 py-2 text-center text-xs text-gray-500">{p.movimientos}</td>
         <td className="px-4 py-2 text-xs text-rose-700">{p.motivo}</td>

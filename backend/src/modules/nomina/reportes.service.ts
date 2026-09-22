@@ -194,9 +194,9 @@ export async function cfdi(companyId: string, f: Filtro) {
             TO_CHAR(p.fecha_fin,'YYYY-MM-DD')    AS fecha_fin,
             r.num_empleado, r.nombre, r.rfc, r.neto,
             r.estatus, r.uuid,
-            TO_CHAR(r.timbrado_at, 'YYYY-MM-DD HH24:MI') AS timbrado_at,
+            TO_CHAR(r.timbrado_at, 'DD/MM/YYYY HH24:MI') AS timbrado_at,
             r.enviar_por_correo,
-            TO_CHAR(r.enviado_at, 'YYYY-MM-DD HH24:MI')  AS enviado_at
+            TO_CHAR(r.enviado_at, 'DD/MM/YYYY HH24:MI')  AS enviado_at
        FROM nomina_recibos r
        JOIN nomina_periodos p ON p.id = r.periodo_id
       WHERE ${cond}
@@ -556,7 +556,7 @@ export async function generarExcel(
   dato(ws, 3, 1, `Empresa:   ${e.business_name || ''}`, true);
   dato(ws, 3, 5, `RFC:   ${e.rfc || ''}`);
   dato(ws, 4, 1, `Reg. Patronal:   ${e.registro_patronal || '(sin capturar)'}`);
-  dato(ws, 4, 5, `Generado:   ${new Date().toLocaleString('es-MX')}`);
+  dato(ws, 4, 5, `Generado:   ${new Date().toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`);
   dato(ws, 5, 1, `Períodos:   ${f.tipo} del ${f.desde} al ${f.hasta} de ${f.anio}`);
   dato(ws, 6, 1, 'Sólo periodos CERRADOS, con los importes tal como se pagaron.');
 

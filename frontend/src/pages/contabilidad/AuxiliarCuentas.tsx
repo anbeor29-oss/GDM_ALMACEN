@@ -11,7 +11,7 @@ import { BookOpen, Search } from 'lucide-react';
 import { api } from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { usePeriodoActivo } from '@/utils/periodoActivo';
-import { CampoFecha } from '@/components/CampoFecha';
+import { CampoFecha, aTextoMx } from '@/components/CampoFecha';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -129,7 +129,7 @@ export function AuxiliarCuentasPage() {
                 </tr>
                 {movs.map((m, i) => (
                   <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-3 py-1.5 text-xs whitespace-nowrap">{m.fecha}</td>
+                    <td className="px-3 py-1.5 text-xs whitespace-nowrap">{aTextoMx(m.fecha)}</td>
                     <td className="px-3 py-1.5 text-xs text-gray-500">#{m.folio}</td>
                     <td className="px-3 py-1.5 text-xs">{m.concepto || m.poliza_concepto || '—'}</td>
                     <td className="px-3 py-1.5 text-right font-mono text-xs">{m.cargo ? money(m.cargo) : ''}</td>

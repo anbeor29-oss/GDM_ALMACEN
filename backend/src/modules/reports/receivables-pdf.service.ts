@@ -19,7 +19,8 @@ import logger from '../../middleware/logger';
 const BOTTOM_MARGIN = 60; // reservado para paginación
 
 function fmtDate(d: any): string {
-  try { return new Date(d).toLocaleDateString('es-MX'); } catch { return ''; }
+  // DD/MM/AAAA con ceros (estándar de fecha de NEXO en todos los reportes).
+  try { return new Date(d).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' }); } catch { return ''; }
 }
 
 export async function generateReceivablesReportPDF(
@@ -68,7 +69,7 @@ export async function generateReceivablesReportPDF(
       .text((company.business_name || '').toUpperCase(), PAGE_LEFT + 82, PAGE_TOP + 22);
     doc.text(`RFC: ${company.rfc || '—'}`, PAGE_LEFT + 82, PAGE_TOP + 34);
     // Fecha de impresión (día + hora)
-    doc.text(`Impreso el: ${new Date().toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short' })}`,
+    doc.text(`Impreso el: ${new Date().toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
       PAGE_LEFT + 82, PAGE_TOP + 46);
     doc.text(`Umbral de saldo: > $${fmtMoney(report.threshold)}`, PAGE_LEFT + 82, PAGE_TOP + 58);
     // Cliente (solo cuando el reporte está filtrado por uno)

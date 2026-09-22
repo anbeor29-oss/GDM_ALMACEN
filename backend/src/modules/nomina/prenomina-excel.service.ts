@@ -21,6 +21,7 @@
 
 import * as XLSX from 'xlsx';
 import { calcular, CapturaPorTrabajador } from './prenomina.service';
+import { fechaMx, fechaHoraMx } from '../../utils/fecha-mx';
 
 /** Redondeo a dos decimales para que Excel no herede el ruido del binario. */
 const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
@@ -115,9 +116,9 @@ export async function generarExcel(
   const cabecera = [
     ['Prenómina'],
     [`${p.tipo} #${p.numero}${p.concepto ? ` · ${p.concepto}` : ''}`],
-    [`Del ${p.fecha_inicio} al ${p.fecha_fin} · ${p.dias} días`],
+    [`Del ${fechaMx(p.fecha_inicio)} al ${fechaMx(p.fecha_fin)} · ${p.dias} días`],
     [`Ejercicio ${pre.ejercicio.anio} · UMA ${pre.ejercicio.umaDiaria} · SMG ${pre.ejercicio.smgGeneral}`],
-    [`Generado el ${new Date().toLocaleString('es-MX')}`],
+    [`Generado el ${fechaHoraMx()}`],
   ];
   /* Los avisos van DENTRO del archivo y no sólo en la pantalla: el Excel se
    * manda por correo y se revisa lejos de aquí, y "las tarifas no están
