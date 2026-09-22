@@ -387,6 +387,7 @@ export function Layout() {
                       { to: '/contabilidad/indicadores',   icon: emoji3D('📈'), label: 'Indicadores económicos' },
                       ...(esAdmin ? [{ to: '/contabilidad/cierre', icon: emoji3D('🔒'), label: 'Cierre del ejercicio' }] : []),
                       { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },
+                      { to: '/contabilidad/cfdi',              icon: emoji3D('🧾'), label: 'CFDI (XML del SAT)' },
                       {
                         icon: emoji3D('📔'), label: 'Pólizas',
                         children: [

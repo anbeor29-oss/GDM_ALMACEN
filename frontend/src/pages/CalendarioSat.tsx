@@ -10,7 +10,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarDays, Download, RefreshCw, X } from 'lucide-react';
+import { CalendarDays, Download, RefreshCw, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '@/services/api';
 
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -84,10 +84,16 @@ export function CalendarioSatPage() {
 
       {/* Controles */}
       <div className="flex flex-wrap items-center gap-3">
-        <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-28">
-          {Array.from({ length: Math.max(1, hoy.getFullYear() - anioMin + 1) }, (_, i) => hoy.getFullYear() - i)
-            .map((y) => <option key={y} value={y}>{y}</option>)}
-        </select>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setAnio((a) => Math.max(anioMin, a - 1))} disabled={anio <= anioMin}
+            title="Año anterior" className="p-1.5 text-gray-500 hover:text-gray-700 disabled:opacity-30"><ChevronLeft size={18} /></button>
+          <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
+            {Array.from({ length: Math.max(1, hoy.getFullYear() - anioMin + 1) }, (_, i) => hoy.getFullYear() - i)
+              .map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button onClick={() => setAnio((a) => Math.min(hoy.getFullYear(), a + 1))} disabled={anio >= hoy.getFullYear()}
+            title="Año siguiente" className="p-1.5 text-gray-500 hover:text-gray-700 disabled:opacity-30"><ChevronRight size={18} /></button>
+        </div>
         <button onClick={() => q.refetch()} title="Actualizar" className="p-1.5 text-gray-500 hover:text-gray-700">
           <RefreshCw size={16} className={q.isFetching ? 'animate-spin' : ''} />
         </button>
@@ -132,9 +138,21 @@ function Mes({ anio, mes, porDia, onDia }: { anio: number; mes: number; porDia: 
   for (let i = 0; i < primero; i++) celdas.push(null);
   for (let d = 1; d <= dim; d++) celdas.push(d);
 
+  // Resumen del mes: cuántos comprobantes y en cuántos días (conteo claro por mes).
+  let totalMes = 0, diasConDatos = 0;
+  for (let d = 1; d <= dim; d++) {
+    const info = porDia.get(`${anio}-${String(mes + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+    if (info?.total) { totalMes += info.total; diasConDatos++; }
+  }
+
   return (
     <div className="bg-white rounded-lg border shadow-sm p-3">
-      <div className="text-sm font-medium text-gray-800 mb-2">{MESES[mes]}</div>
+      <div className="flex items-baseline justify-between mb-2 gap-2">
+        <span className="text-sm font-medium text-gray-800">{MESES[mes]}</span>
+        {totalMes > 0
+          ? <span className="text-[11px] text-gray-500 whitespace-nowrap">{totalMes.toLocaleString('es-MX')} comp. · {diasConDatos} día(s)</span>
+          : <span className="text-[11px] text-gray-300">sin comprobantes</span>}
+      </div>
       <div className="grid grid-cols-7 gap-1">
         {DOW.map((w, i) => <div key={i} className="text-[10px] text-gray-400 text-center">{w}</div>)}
         {celdas.map((d, i) => {
