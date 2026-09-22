@@ -1461,6 +1461,17 @@ class APIClient {
     const r = await this.client.get<APIResponse<any[]>>('/accounting/recuperacion-cpq/corridas');
     return r.data;
   }
+  /** Sube un LOTE de CFDI ya extraídos en el navegador (evita subir el .zip entero). */
+  async recuperarXmlLote(archivo: string, xmls: string[]) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/recuperacion-cpq/lote',
+      { archivo, xmls }, { timeout: 120000 });
+    return r.data;
+  }
+  /** Cierra la corrida: escribe una fila de bitácora con los totales acumulados. */
+  async registrarCorridaRecuperacion(archivo: string, resumen: any) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/recuperacion-cpq/corrida', { archivo, resumen });
+    return r.data;
+  }
 
   /** Descarga la herramienta de importación de respaldos, ya configurada con la
    *  dirección de ESTE servidor (nexo.txt dentro del zip). */

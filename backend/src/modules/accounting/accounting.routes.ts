@@ -1793,6 +1793,20 @@ router.get(
   asyncHandler(async (req: Request, res: Response) =>
     res.json({ success: true, data: await recuperacionCpq.listarCorridas(companyId(req)) })),
 );
+/* El navegador extrae los CFDI del respaldo y los sube en LOTES (JSON, pocos por vez):
+ * no se sube el .zip entero ni se procesa el .bak en el servidor. */
+router.post(
+  '/recuperacion-cpq/lote',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) =>
+    res.json({ success: true, data: await recuperacionCpq.ingestarLote(companyId(req), (req.body?.xmls) || []) })),
+);
+router.post(
+  '/recuperacion-cpq/corrida',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) =>
+    res.json({ success: true, data: await recuperacionCpq.registrarCorrida(companyId(req), req.body?.archivo, req.body?.resumen || {}, req.user?.userId) })),
+);
 
 /** POST /accounting/polizas/importar-txt — importa pólizas desde el TXT de CPQ
  *  (mapea las cuentas por su código; el catálogo debe estar importado antes). */

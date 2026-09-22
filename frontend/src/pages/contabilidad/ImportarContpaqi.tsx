@@ -12,6 +12,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { Database, Download, Upload, PlayCircle, CheckCircle2, FileArchive, ShieldAlert } from 'lucide-react';
 import api from '@/services/api';
 import { formatCuenta } from '@/utils/cuenta';
+import { extraerCfdisDeZip } from '@/utils/recuperarCfdi';
 
 const ARCHIVOS = ['empresa', 'cuentas', 'polizas', 'movimientos', 'poliza_cfdi', 'cfdi', 'saldos'] as const;
 type Archivo = typeof ARCHIVOS[number];
@@ -308,21 +309,42 @@ function Tarjeta({ titulo, valor }: { titulo: string; valor: string }) {
 /* ── Recuperar XML del respaldo a la bóveda (aparecen en el calendario de XML) ── */
 function RecuperarXmlRespaldo() {
   const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState('');
   const [rep, setRep] = useState<any>(null);
   const [err, setErr] = useState('');
   const [corridas, setCorridas] = useState<any[]>([]);
   const cargarCorridas = () => api.getRecuperacionCorridas().then((r: any) => setCorridas(r?.data || [])).catch(() => {});
   useEffect(() => { cargarCorridas(); }, []);
 
+  /* El navegador descomprime el respaldo, recorta los CFDI y los sube en lotes chicos:
+   * no se sube el .zip entero ni se procesa el .bak en el servidor (evita el error de red). */
   const subir = async (file: File) => {
-    setBusy(true); setErr(''); setRep(null);
+    setBusy(true); setErr(''); setRep(null); setProg('Leyendo el respaldo…');
     try {
-      const r: any = await api.recuperarXmlRespaldo(file);
-      setRep(r?.data || null);
+      const buf = await file.arrayBuffer();
+      setProg('Extrayendo CFDI del respaldo…');
+      const { xmls, archivos, sinTimbre } = extraerCfdisDeZip(buf);
+      if (!xmls.length) { setErr('No se encontraron CFDI con timbre en el respaldo.'); return; }
+
+      const tot: any = {
+        archivosEnZip: archivos, bytes: file.size, xmlEncontrados: 0, cfdiValidos: 0, nuevos: 0,
+        duplicados: 0, emitidos: 0, recibidos: 0, nomina: 0, contabElectronica: 0, noCfdi: sinTimbre, errores: 0, porTipo: {},
+      };
+      const LOTE = 200;
+      for (let i = 0; i < xmls.length; i += LOTE) {
+        setProg(`Subiendo a la bóveda… ${Math.min(i + LOTE, xmls.length)} / ${xmls.length}`);
+        const r: any = await api.recuperarXmlLote(file.name, xmls.slice(i, i + LOTE));
+        const c = r?.data || {};
+        for (const k of ['xmlEncontrados', 'cfdiValidos', 'nuevos', 'duplicados', 'emitidos', 'recibidos', 'nomina', 'contabElectronica', 'noCfdi', 'errores']) tot[k] += Number(c[k]) || 0;
+        for (const [t, v] of Object.entries(c.porTipo || {})) tot.porTipo[t] = (tot.porTipo[t] || 0) + Number(v);
+      }
+      setProg('');
+      await api.registrarCorridaRecuperacion(file.name, tot).catch(() => {});
+      setRep(tot);
       cargarCorridas();
     } catch (e: any) {
       setErr(e?.response?.data?.message || e?.message || 'No se pudo procesar el respaldo.');
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setProg(''); }
   };
 
   return (
@@ -341,6 +363,7 @@ function RecuperarXmlRespaldo() {
         <input type="file" accept=".zip" className="hidden" disabled={busy}
           onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.currentTarget.value = ''; }} />
       </label>
+      {busy && prog && <p className="text-xs text-sky-700">{prog}</p>}
       <p className="text-[11px] text-gray-400">
         ¿El respaldo es un <span className="font-mono">.bak</span> pesado? Los XML dentro de un .bak grande se
         extraen con la herramienta local (abajo); aquí sube el <span className="font-mono">.zip</span> de XML.

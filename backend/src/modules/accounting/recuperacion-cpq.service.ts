@@ -123,6 +123,50 @@ function cfdisEnBinario(buf: Buffer): string[] {
   return out;
 }
 
+/* ── Conteos + procesamiento de un CFDI (compartido por ZIP y por lotes) ────── */
+
+interface Conteos {
+  xmlEncontrados: number; cfdiValidos: number; nuevos: number; duplicados: number;
+  emitidos: number; recibidos: number; nomina: number; contabElectronica: number;
+  noCfdi: number; errores: number; porTipo: Record<string, number>;
+}
+function conteosVacios(): Conteos {
+  return { xmlEncontrados: 0, cfdiValidos: 0, nuevos: 0, duplicados: 0, emitidos: 0, recibidos: 0, nomina: 0, contabElectronica: 0, noCfdi: 0, errores: 0, porTipo: {} };
+}
+
+/** RFC de la empresa (para clasificar emitido/recibido). NO se escribe a mano. */
+async function companyRfc(companyId: string): Promise<string> {
+  const cr = await query<any>(`SELECT rfc FROM companies WHERE id = $1`, [companyId]);
+  const rfc = cr.rows[0]?.rfc;
+  if (!rfc) throw new ValidationError('La empresa no tiene RFC configurado; no se puede clasificar emitido/recibido.');
+  return String(rfc).toUpperCase();
+}
+
+/** Clasifica un XML y, si es CFDI, lo ingresa a la bóveda con indexarCfdi. */
+async function procesarUnCfdi(companyId: string, rfc: string, xml: string, rep: Conteos, vistos: Set<string>): Promise<void> {
+  if (!/<(?:\w+:)?Comprobante\b/.test(xml)) { if (esContabElectronica(xml)) rep.contabElectronica++; return; }
+  rep.xmlEncontrados++;
+  if (esContabElectronica(xml)) { rep.contabElectronica++; return; }
+  if (!esCfdi(xml)) { rep.noCfdi++; return; }
+  const uuid = (attr(/<(?:\w+:)?TimbreFiscalDigital\b[^>]*>/.exec(xml)?.[0] || '', 'UUID') || '').toUpperCase();
+  if (!uuid) { rep.noCfdi++; return; }
+  rep.cfdiValidos++;
+  const tipo = attr(/<(?:\w+:)?Comprobante\b[^>]*>/.exec(xml)?.[0] || '', 'TipoDeComprobante') || '?';
+  rep.porTipo[tipo] = (rep.porTipo[tipo] || 0) + 1;
+  if (esNomina(xml)) rep.nomina++;
+  const direccion = rfcDe(xml, 'Emisor') === rfc ? 'emitidos' : 'recibidos';
+  if (direccion === 'emitidos') rep.emitidos++; else rep.recibidos++;
+  if (vistos.has(uuid)) { rep.duplicados++; return; }
+  vistos.add(uuid);
+  try {
+    const nuevo = await indexarCfdi(companyId, rfc, direccion, xml);
+    if (nuevo) rep.nuevos++; else rep.duplicados++;
+  } catch (err: any) {
+    rep.errores++;
+    logger.warn(`[recuperacion-cpq] no se pudo indexar ${uuid}: ${err?.message || err}`);
+  }
+}
+
 /* ── Motor de recuperación ─────────────────────────────────────────────────── */
 
 export interface ReporteRecuperacion {
@@ -151,10 +195,7 @@ export interface ReporteRecuperacion {
 export async function recuperarXmlsDeZip(
   companyId: string, archivoNombre: string, zip: Buffer, userId?: string,
 ): Promise<ReporteRecuperacion> {
-  const cr = await query<any>(`SELECT rfc FROM companies WHERE id = $1`, [companyId]);
-  const rfcPropietario = cr.rows[0]?.rfc;
-  if (!rfcPropietario) throw new ValidationError('La empresa no tiene RFC configurado; no se puede clasificar emitido/recibido.');
-  const rfc = String(rfcPropietario).toUpperCase();
+  const rfc = await companyRfc(companyId);
   const sha256 = crypto.createHash('sha256').update(zip).digest('hex');
 
   const entradas = entradasDelZip(zip);
@@ -170,37 +211,7 @@ export async function recuperarXmlsDeZip(
     const esXml = /\.xml$/i.test(e.nombre);
     const candidatos: string[] = esXml ? [e.buffer.toString('utf8')] : cfdisEnBinario(e.buffer);
 
-    for (const xml of candidatos) {
-      if (!/<(?:\w+:)?Comprobante\b/.test(xml)) {
-        // XML que no es un comprobante: ¿contabilidad electrónica?
-        if (esXml && esContabElectronica(xml)) { rep.xmlEncontrados++; rep.contabElectronica++; }
-        continue;
-      }
-      rep.xmlEncontrados++;
-      if (esContabElectronica(xml)) { rep.contabElectronica++; continue; }
-      if (!esCfdi(xml)) { rep.noCfdi++; continue; }        // Comprobante sin timbre: no se indexa
-
-      const uuid = (attr(/<(?:\w+:)?TimbreFiscalDigital\b[^>]*>/.exec(xml)?.[0] || '', 'UUID') || '').toUpperCase();
-      if (!uuid) { rep.noCfdi++; continue; }
-      rep.cfdiValidos++;
-      const tipo = attr(/<(?:\w+:)?Comprobante\b[^>]*>/.exec(xml)?.[0] || '', 'TipoDeComprobante') || '?';
-      rep.porTipo[tipo] = (rep.porTipo[tipo] || 0) + 1;
-      if (esNomina(xml)) rep.nomina++;
-
-      const emisor = rfcDe(xml, 'Emisor');
-      const direccion = emisor === rfc ? 'emitidos' : 'recibidos';
-      if (direccion === 'emitidos') rep.emitidos++; else rep.recibidos++;
-
-      if (vistos.has(uuid)) { rep.duplicados++; continue; }
-      vistos.add(uuid);
-      try {
-        const nuevo = await indexarCfdi(companyId, rfc, direccion, xml);
-        if (nuevo) rep.nuevos++; else rep.duplicados++;
-      } catch (err: any) {
-        rep.errores++;
-        logger.warn(`[recuperacion-cpq] no se pudo indexar ${uuid}: ${err?.message || err}`);
-      }
-    }
+    for (const xml of candidatos) await procesarUnCfdi(companyId, rfc, xml, rep, vistos);
   }
 
   await query(
@@ -224,4 +235,33 @@ export async function listarCorridas(companyId: string, limite = 20) {
        FROM cpq_recuperacion_corridas WHERE company_id = $1 ORDER BY created_at DESC LIMIT $2`,
     [companyId, Math.min(100, Math.max(1, limite))]);
   return r.rows;
+}
+
+/* ── Ingesta por LOTES (el navegador extrae los CFDI del .zip y los sube por partes) ──
+ * Evita subir el respaldo entero y procesar el .bak de 64 MB en el servidor: cada
+ * lote es un puñado de XML ya recortados. La bitácora la cierra `registrarCorrida`. */
+export async function ingestarLote(companyId: string, xmls: string[]): Promise<Conteos> {
+  if (!Array.isArray(xmls) || xmls.length === 0) throw new ValidationError('El lote viene vacío.');
+  if (xmls.length > 500) throw new ValidationError('El lote trae demasiados XML (máximo 500).');
+  const rfc = await companyRfc(companyId);
+  const rep = conteosVacios();
+  const vistos = new Set<string>();
+  for (const xml of xmls) if (typeof xml === 'string' && xml) await procesarUnCfdi(companyId, rfc, xml, rep, vistos);
+  return rep;
+}
+
+/** Escribe UNA fila de bitácora con los totales que el navegador acumuló de todos los lotes. */
+export async function registrarCorrida(companyId: string, archivo: string, tot: any, userId?: string) {
+  const n = (v: any) => Math.max(0, Math.round(Number(v) || 0));
+  await query(
+    `INSERT INTO cpq_recuperacion_corridas
+       (company_id, archivo, sha256, bytes, xml_encontrados, cfdi_validos, nuevos, duplicados,
+        emitidos, recibidos, nomina, contab_electronica, no_cfdi, resumen, usuario_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+    [companyId, String(archivo || 'respaldo.zip').slice(0, 300), tot?.sha256 || null, n(tot?.bytes),
+     n(tot?.xmlEncontrados) || (n(tot?.cfdiValidos) + n(tot?.noCfdi)), n(tot?.cfdiValidos), n(tot?.nuevos),
+     n(tot?.duplicados), n(tot?.emitidos), n(tot?.recibidos), n(tot?.nomina), n(tot?.contabElectronica), n(tot?.noCfdi),
+     JSON.stringify({ porTipo: tot?.porTipo || {}, errores: n(tot?.errores), archivosEnZip: n(tot?.archivosEnZip), origen: 'cliente' }), userId || null],
+  );
+  return { ok: true };
 }
