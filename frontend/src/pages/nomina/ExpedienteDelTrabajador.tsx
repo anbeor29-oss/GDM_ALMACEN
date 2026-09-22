@@ -18,11 +18,32 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  BookText, Shirt, Plus, X, Lock, Award, AlertTriangle, Info, FileText, Undo2,
+  BookText, Shirt, Plus, X, Lock, Award, AlertTriangle, Info, FileText, Undo2, Camera, Image as ImageIcon,
 } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { aTextoMx } from '@/components/CampoFecha';
+
+/** Comprime una imagen de cámara a JPEG chico (≤~1000px) para que quepa en el campo. */
+function comprimirImagen(file: File, maxLado = 1000, calidad = 0.7): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const escala = Math.min(1, maxLado / Math.max(img.width, img.height));
+      const w = Math.round(img.width * escala), h = Math.round(img.height * escala);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject(new Error('sin canvas'));
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', calidad));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('no se pudo leer la imagen')); };
+    img.src = url;
+  });
+}
 
 const money = (n: any) =>
   n === null || n === undefined ? '—'
@@ -248,6 +269,13 @@ function FormaDeNota({ empleadoId, onCancelar, onGuardado }: any) {
 function Entregas({ empleadoId, puedeEditar }: { empleadoId: string; puedeEditar: boolean }) {
   const [alta, setAlta] = useState(false);
   const [error, setError] = useState('');
+  const [fotoVista, setFotoVista] = useState<string | null>(null);
+  const [cargandoFoto, setCargandoFoto] = useState(false);
+  const verFoto = async (id: string) => {
+    setCargandoFoto(true);
+    try { const r: any = await api.getFotoEntrega(id); if (r?.data?.foto) setFotoVista(r.data.foto); }
+    catch { /* noop */ } finally { setCargandoFoto(false); }
+  };
   const q = useQuery({
     queryKey: ['entregas', empleadoId],
     queryFn: () => api.getEntregas(empleadoId),
@@ -331,6 +359,12 @@ function Entregas({ empleadoId, puedeEditar }: { empleadoId: string; puedeEditar
                     {e.estado_devolucion && ` · ${e.estado_devolucion.toLowerCase()}`}
                   </p>
                 )}
+                {e.tiene_foto && (
+                  <button type="button" onClick={() => verFoto(e.id)} disabled={cargandoFoto}
+                    className="text-xs text-primary hover:underline flex items-center gap-1 mt-1 disabled:opacity-50">
+                    <ImageIcon size={12} /> {cargandoFoto ? 'Abriendo…' : 'Ver foto'}
+                  </button>
+                )}
               </div>
               {puedeEditar && !e.devuelto && (
                 <button type="button"
@@ -355,6 +389,16 @@ function Entregas({ empleadoId, puedeEditar }: { empleadoId: string; puedeEditar
           por eso lo que importa es la fecha y quién lo recibió.
         </p>
       </div>
+
+      {fotoVista && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setFotoVista(null)}>
+          <img src={fotoVista} alt="Entrega" className="max-h-[85vh] max-w-full rounded-lg shadow-xl"
+            onClick={(e) => e.stopPropagation()} />
+          <button onClick={() => setFotoVista(null)} className="absolute top-4 right-4 text-white/90 hover:text-white">
+            <X size={26} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -401,6 +445,27 @@ function FormaDeEntrega({ empleadoId, onCancelar, onGuardado }: any) {
       <div>
         <label className="block text-xs text-gray-600 mb-1">Cuándo toca reponerlo (opcional)</label>
         <CampoFecha value={f.fecha_reposicion} onChange={(v) => set('fecha_reposicion', v)} />
+      </div>
+
+      {/* Foto de lo entregado: una idea clara de qué se dio. Se comprime en el navegador. */}
+      <div>
+        <label className="block text-xs text-gray-600 mb-1">Foto de lo entregado (opcional)</label>
+        {f.foto ? (
+          <div className="flex items-center gap-2">
+            <img src={f.foto} alt="entrega" className="h-16 w-16 object-cover rounded border" />
+            <button type="button" onClick={() => set('foto', '')} className="text-xs text-rose-600 hover:underline">Quitar</button>
+          </div>
+        ) : (
+          <label className="inline-flex items-center gap-1.5 text-sm border rounded-lg px-3 py-1.5 hover:bg-gray-50 cursor-pointer w-fit">
+            <Camera size={15} /> Tomar / adjuntar foto
+            <input type="file" accept="image/*" capture="environment" className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0]; e.currentTarget.value = '';
+                if (!file) return;
+                try { set('foto', await comprimirImagen(file)); } catch { setError('No se pudo procesar la imagen'); }
+              }} />
+          </label>
+        )}
       </div>
 
       {/* ── El cobro ──
@@ -453,6 +518,7 @@ function FormaDeEntrega({ empleadoId, onCancelar, onGuardado }: any) {
                 fecha_reposicion: f.fecha_reposicion || null,
                 costo: f.costo === '' ? null : Number(f.costo),
                 descontar_desde: f.descontar_desde || undefined,
+                foto: f.foto || undefined,
               });
               onGuardado();
             } catch (e: any) {

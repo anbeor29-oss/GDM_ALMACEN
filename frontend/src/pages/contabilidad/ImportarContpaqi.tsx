@@ -306,8 +306,9 @@ function Tarjeta({ titulo, valor }: { titulo: string; valor: string }) {
   );
 }
 
-/* ── Recuperar XML del respaldo a la bóveda (aparecen en el calendario de XML) ── */
-function RecuperarXmlRespaldo() {
+/* ── Recuperar XML del respaldo a la bóveda (aparecen en el calendario de XML) ──
+ * Se EXPORTA para reusarla también en Nómina (clientes solo-nómina). */
+export function RecuperarXmlRespaldo() {
   const [busy, setBusy] = useState(false);
   const [prog, setProg] = useState('');
   const [rep, setRep] = useState<any>(null);

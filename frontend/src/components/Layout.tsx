@@ -349,6 +349,7 @@ export function Layout() {
                       { to: '/nomina/parametros', icon: emoji3D('⚙️'), label: 'Parámetros' },
                       { to: '/nomina/reportes',   icon: emoji3D('📊'), label: 'Reportes' },
                       { to: '/nomina/importar',   icon: emoji3D('📦'), label: 'Importar respaldo' },
+                      { to: '/nomina/importar-respaldo', icon: emoji3D('🧾'), label: 'Recuperar XML (respaldo)' },
                     ]}
                   />
                 )}

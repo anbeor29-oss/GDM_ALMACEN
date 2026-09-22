@@ -71,7 +71,8 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const params: any[] = [];
   if (search) {
     params.push(`%${search}%`);
-    filters.push(`(u.email ILIKE $${params.length} OR u.first_name ILIKE $${params.length} OR u.last_name ILIKE $${params.length})`);
+    // También casa por RFC y razón social de la empresa (filtrar usuarios por RFC).
+    filters.push(`(u.email ILIKE $${params.length} OR u.first_name ILIKE $${params.length} OR u.last_name ILIKE $${params.length} OR c.rfc ILIKE $${params.length} OR c.business_name ILIKE $${params.length})`);
   }
   if (/^[0-9a-f-]{36}$/i.test(companyId)) {
     params.push(companyId);
@@ -92,7 +93,9 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     params
   );
   const totalR = await query<{ total: string }>(
-    `SELECT COUNT(*)::text AS total FROM users u WHERE ${filters.join(' AND ')}`,
+    `SELECT COUNT(*)::text AS total FROM users u
+       LEFT JOIN companies c ON c.id = u.company_id
+      WHERE ${filters.join(' AND ')}`,
     params.slice(0, -2)
   );
   res.json({ success: true, data: { users: r.rows, total: Number(totalR.rows[0].total) } });

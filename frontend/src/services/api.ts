@@ -2018,6 +2018,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/nomina/entregas', datos);
     return r.data;
   }
+  /** La foto (evidencia) de una entrega, data-URL para <img src>. */
+  async getFotoEntrega(id: string) {
+    const r = await this.client.get<APIResponse<{ foto: string | null }>>(`/nomina/entregas/${id}/foto`);
+    return r.data;
+  }
   async registrarDevolucion(id: string, datos: any) {
     const r = await this.client.post<APIResponse<any>>(`/nomina/entregas/${id}/devolucion`, datos);
     return r.data;

@@ -169,6 +169,15 @@ router.post(
   })
 );
 
+/** La foto de una entrega (evidencia visual). Aparte del listado para no engordarlo. */
+router.get(
+  '/entregas/:id/foto',
+  asyncHandler(async (req: Request, res: Response) => {
+    const foto = await expediente.fotoDeEntrega(companyId(req), req.params.id);
+    res.json({ success: true, data: { foto } });
+  })
+);
+
 router.post(
   '/entregas/:id/devolucion',
   soloAdmin,

@@ -105,7 +105,7 @@ export function AdminUsersPage() {
       <div className="bg-white rounded-lg shadow border p-4">
         <input
           value={search} onChange={(e)=>setSearch(e.target.value)}
-          placeholder="Buscar por email o nombre…"
+          placeholder="Buscar por email, nombre o RFC…"
           className="input w-full md:w-96"
         />
       </div>

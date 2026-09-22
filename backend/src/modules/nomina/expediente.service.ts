@@ -177,7 +177,8 @@ export async function listarEntregas(companyId: string, empleadoId: string) {
             /* Cuándo toca reponerlo, mirado desde hoy: unas botas de seguridad
              * llevan tres años puestas y nadie se entera si no se dice. */
             (e.fecha_reposicion IS NOT NULL AND NOT e.devuelto
-             AND e.fecha_reposicion <= CURRENT_DATE) AS vencido
+             AND e.fecha_reposicion <= CURRENT_DATE) AS vencido,
+            (e.foto IS NOT NULL) AS tiene_foto
        FROM nomina_entregas e
        LEFT JOIN users u ON u.id = e.entregado_por
        LEFT JOIN nomina_periodos p ON p.id = e.descontado_periodo_id
@@ -188,12 +189,19 @@ export async function listarEntregas(companyId: string, empleadoId: string) {
   return r.rows;
 }
 
+/** La foto de una entrega (data-URL), para verla aparte del listado. */
+export async function fotoDeEntrega(companyId: string, id: string): Promise<string | null> {
+  const r = await query<any>(
+    `SELECT foto FROM nomina_entregas WHERE id = $1 AND company_id = $2`, [id, companyId]);
+  return r.rows[0]?.foto || null;
+}
+
 export async function registrarEntrega(
   companyId: string,
   datos: {
     empleado_id?: string; tipo?: string; articulo?: string; talla?: string;
     cantidad?: number; fecha_entrega?: string; fecha_reposicion?: string;
-    costo?: number; notas?: string; descontar_desde?: string;
+    costo?: number; notas?: string; descontar_desde?: string; foto?: string;
   },
   userId?: string
 ) {
@@ -243,14 +251,26 @@ export async function registrarEntrega(
     throw new ValidationError('No se puede empezar a descontar antes de haberlo entregado');
   }
 
+  // Foto de lo entregado (evidencia): mismo criterio que la foto del trabajador.
+  let foto: string | null = null;
+  if (datos.foto) {
+    foto = String(datos.foto);
+    if (!/^data:image\/(png|jpe?g|webp);base64,/.test(foto)) {
+      throw new ValidationError('La foto debe ser una imagen PNG, JPG o WEBP');
+    }
+    if (foto.length > 2 * 1024 * 1024) {
+      throw new ValidationError('La foto no debe pesar más de 1.5 MB aproximadamente');
+    }
+  }
+
   const r = await query<any>(
     `INSERT INTO nomina_entregas
        (company_id, empleado_id, tipo, articulo, talla, cantidad,
-        fecha_entrega, fecha_reposicion, costo, notas, entregado_por, descontar_desde)
-     VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8::date,$9,$10,$11,$12::date)
+        fecha_entrega, fecha_reposicion, costo, notas, entregado_por, descontar_desde, foto)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8::date,$9,$10,$11,$12::date,$13)
      RETURNING id`,
     [companyId, datos.empleado_id, tipo, articulo, texto(datos.talla, 20), cant,
-     f, rep, costo, texto(datos.notas, 2000), userId || null, desde]
+     f, rep, costo, texto(datos.notas, 2000), userId || null, desde, foto]
   );
   return { id: r.rows[0].id };
 }
