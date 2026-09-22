@@ -38,6 +38,24 @@ export function CheckadorKioscoPage() {
   // Si hay kioscos configurados y este equipo no tiene ninguno elegido, se pide elegir.
   const pidiendoKiosco = kioscos.length > 0 && !sel;
 
+  /* El kiosco es un PUNTO FIJO activo 24/7: se pide un «wake lock» para que la
+   * pantalla no se apague, y se re-pide al volver a primer plano (el sistema lo
+   * suelta al bloquear/cambiar de app). Si el navegador no lo permite, no pasa nada. */
+  useEffect(() => {
+    let lock: any = null;
+    const pedir = async () => {
+      try {
+        if ((navigator as any).wakeLock && document.visibilityState === 'visible') {
+          lock = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch { /* algunos navegadores lo niegan; el kiosco sigue funcionando */ }
+    };
+    pedir();
+    const onVis = () => { if (document.visibilityState === 'visible') pedir(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { document.removeEventListener('visibilitychange', onVis); try { lock?.release?.(); } catch { /* noop */ } };
+  }, []);
+
   useEffect(() => {
     let stream: MediaStream | null = null;
     let timer: any = null;

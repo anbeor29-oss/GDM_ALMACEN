@@ -15,19 +15,27 @@
  */
 const KEY = 'checador-auto';
 
-export function guardarKiosco(email: string, password: string): void {
+/** Modo del equipo: KIOSCO = punto fijo (tableta 24/7); CAMPO = móvil (teléfono con GPS). */
+export type ModoChecador = 'kiosco' | 'campo';
+
+export function guardarKiosco(email: string, password: string, modo: ModoChecador = 'kiosco'): void {
   try {
-    localStorage.setItem(KEY, btoa(unescape(encodeURIComponent(JSON.stringify({ email, password })))));
+    localStorage.setItem(KEY, btoa(unescape(encodeURIComponent(JSON.stringify({ email, password, modo })))));
   } catch { /* sin localStorage: no se recuerda, y ya */ }
 }
 
-export function leerKiosco(): { email: string; password: string } | null {
+export function leerKiosco(): { email: string; password: string; modo: ModoChecador } | null {
   try {
     const s = localStorage.getItem(KEY);
     if (!s) return null;
     const o = JSON.parse(decodeURIComponent(escape(atob(s))));
-    return o && o.email && o.password ? o : null;
+    return o && o.email && o.password ? { email: o.email, password: o.password, modo: o.modo === 'campo' ? 'campo' : 'kiosco' } : null;
   } catch { return null; }
+}
+
+/** Modo recordado en este equipo (kiosco por defecto). */
+export function modoKiosco(): ModoChecador {
+  return leerKiosco()?.modo || 'kiosco';
 }
 
 export function borrarKiosco(): void {

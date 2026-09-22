@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { GdmLogo } from '@/components/GdmLogo';
-import { guardarKiosco, borrarKiosco, hayKiosco } from '@/utils/kioscoAuto';
+import { guardarKiosco, borrarKiosco, hayKiosco, modoKiosco, type ModoChecador } from '@/utils/kioscoAuto';
 import api from '@/services/api';
 
 /** Sitio corporativo al que regresa el botón junto a "Ingresar". */
@@ -21,6 +21,8 @@ export function LoginPage() {
   /* Auto-entrada del checador en este equipo (kiosco): guarda la credencial y al
    * reabrir la app entra solo al kiosco. Opt-in; conviene con la cuenta CHECADOR. */
   const [kiosco, setKiosco] = useState(hayKiosco());
+  /* Modo del equipo: kiosco = punto fijo (tableta 24/7); campo = móvil (teléfono con GPS). */
+  const [modo, setModo] = useState<ModoChecador>(modoKiosco());
   const { login } = useAuthStore();
   const navigate = useNavigate();
 
@@ -38,8 +40,8 @@ export function LoginPage() {
          * se cae directo en el kiosco. Si NO la marcó, se BORRA cualquier
          * auto-entrada previa de este equipo (así se apaga a propósito). */
         if (kiosco) {
-          guardarKiosco(email, password);
-          navigate('/checador/kiosco');
+          guardarKiosco(email, password, modo);
+          navigate(modo === 'campo' ? '/checador/campo' : '/checador/kiosco');
         } else {
           borrarKiosco();
           navigate('/dashboard');
@@ -100,17 +102,30 @@ export function LoginPage() {
             />
           </div>
 
-          {/* Auto-entrada del checador en este equipo (kiosco/tableta). */}
-          <label className="flex items-start gap-2 text-sm text-gray-600 select-none cursor-pointer">
-            <input type="checkbox" checked={kiosco} onChange={(e) => setKiosco(e.target.checked)} className="mt-0.5" />
-            <span>
-              Entrar automático al <strong>checador</strong> en este equipo
-              <span className="block text-xs text-gray-400">
-                Recuerda la credencial en este dispositivo y al abrir la app cae directo en el kiosco.
-                Úsalo sólo en equipos del checador, con la cuenta «checador».
+          {/* Auto-entrada del checador en este equipo. El check va a la DERECHA. */}
+          <div className="space-y-2">
+            <label className="flex items-start justify-between gap-3 text-sm text-gray-600 select-none cursor-pointer">
+              <span>
+                Entrar automático al <strong>checador</strong> en este equipo
+                <span className="block text-xs text-gray-400">
+                  Recuerda la credencial en este dispositivo y al abrir la app cae directo en el checador.
+                  Úsalo sólo en equipos del checador, con la cuenta «checador».
+                </span>
               </span>
-            </span>
-          </label>
+              <input type="checkbox" checked={kiosco} onChange={(e) => setKiosco(e.target.checked)} className="mt-0.5 shrink-0" />
+            </label>
+            {kiosco && (
+              <div className="flex gap-2">
+                {([['kiosco', 'Kiosco (punto fijo)'], ['campo', 'Campo (móvil)']] as const).map(([k, l]) => (
+                  <button type="button" key={k} onClick={() => setModo(k)}
+                    className={`flex-1 text-xs rounded-lg border px-2 py-1.5 transition-colors ${
+                      modo === k ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Acceso + regreso al sitio corporativo, lado a lado */}
           <div className="grid grid-cols-2 gap-3">

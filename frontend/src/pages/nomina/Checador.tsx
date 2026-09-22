@@ -255,6 +255,9 @@ function TabConfig() {
         <Campo label="Tolerancia de retardo (min)" hint="Solo horarios fijos. Vacío = sin gracia.">
           <input type="number" min={0} className="input" value={f.tolerancia_retardo_min ?? ''} onChange={num('tolerancia_retardo_min')} />
         </Campo>
+        <Campo label="Horas para checar salida" hint="A las cuántas horas tras la entrada se acepta la salida. Default 3.">
+          <input type="number" min={0} step="0.5" className="input" value={f.horas_min_salida ?? ''} onChange={num('horas_min_salida')} />
+        </Campo>
         <Campo label="Horas semanales (ley)" hint="48 en 2026; baja a 40 escalonado desde 2027.">
           <input type="number" step="0.5" className="input" value={f.horas_semanales ?? ''} onChange={num('horas_semanales')} />
         </Campo>

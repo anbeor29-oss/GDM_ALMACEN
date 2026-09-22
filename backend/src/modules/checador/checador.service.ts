@@ -28,6 +28,8 @@ const CONFIG_DEFAULT = {
   horas_semanales: 48,
   radio_kiosco_m: 100,
   umbral_distancia: 0.6,
+  // Horas mínimas tras la ENTRADA para aceptar la SALIDA (configurable, default 3).
+  horas_min_salida: 3,
 };
 
 export async function getConfig(companyId: string) {
@@ -41,8 +43,8 @@ export async function setConfig(companyId: string, d: Partial<typeof CONFIG_DEFA
   const n = { ...a, ...d };
   await query(
     `INSERT INTO checador_config
-       (company_id, activo, tolerancia_retardo_min, retardos_por_falta, registra_comida, horas_semanales, radio_kiosco_m, umbral_distancia)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       (company_id, activo, tolerancia_retardo_min, retardos_por_falta, registra_comida, horas_semanales, radio_kiosco_m, umbral_distancia, horas_min_salida)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      ON CONFLICT (company_id) DO UPDATE SET
        activo = EXCLUDED.activo,
        tolerancia_retardo_min = EXCLUDED.tolerancia_retardo_min,
@@ -51,9 +53,11 @@ export async function setConfig(companyId: string, d: Partial<typeof CONFIG_DEFA
        horas_semanales = EXCLUDED.horas_semanales,
        radio_kiosco_m = EXCLUDED.radio_kiosco_m,
        umbral_distancia = EXCLUDED.umbral_distancia,
+       horas_min_salida = EXCLUDED.horas_min_salida,
        updated_at = NOW()`,
     [companyId, n.activo, n.tolerancia_retardo_min, n.retardos_por_falta, n.registra_comida,
-     n.horas_semanales, n.radio_kiosco_m, n.umbral_distancia]);
+     n.horas_semanales, n.radio_kiosco_m, n.umbral_distancia,
+     (n.horas_min_salida == null || (n as any).horas_min_salida === '') ? 3 : Number(n.horas_min_salida)]);
   return getConfig(companyId);
 }
 
@@ -374,13 +378,15 @@ export async function registrarChecada(
   const ultimo = ult.rows[0];
   const tipo = ultimo && ultimo.tipo === 'ENTRADA' ? 'SALIDA' : 'ENTRADA';
 
-  /* La SALIDA sólo se asienta si pasaron al menos 3 HORAS desde la ENTRADA: sin
-   * esto, checar entrada y salida seguidas llenaría el historial de pares inútiles.
-   * Antes del tope no se guarda nada; sólo se avisa cuánto falta. */
+  /* La SALIDA sólo se asienta si pasaron al menos N HORAS desde la ENTRADA (config
+   * `horas_min_salida`, default 3): sin esto, checar entrada y salida seguidas
+   * llenaría el historial de pares inútiles. Antes del tope no se guarda nada. */
+  const cfg = await getConfig(companyId);
+  const minSalida = Number(cfg.horas_min_salida) || 3;
   if (tipo === 'SALIDA' && ultimo) {
     const horas = (Date.now() - new Date(ultimo.ts).getTime()) / 3_600_000;
-    if (horas < 3) {
-      const minutos = Math.max(1, Math.ceil((3 - horas) * 60));
+    if (horas < minSalida) {
+      const minutos = Math.max(1, Math.ceil((minSalida - horas) * 60));
       return {
         reconocido: true, espera: true, empleado: { id: ident.empleadoId, nombre },
         tipo: 'ENTRADA', minutos, confianza: ident.confianza,
@@ -408,7 +414,6 @@ export async function registrarChecada(
       if (lat == null && kio.lat != null) { lat = kio.lat; lng = kio.lng; }   // la tableta está en el centro
       if (d.lat != null && d.lng != null && kio.lat != null) {
         distancia = metrosEntre(Number(d.lat), Number(d.lng), Number(kio.lat), Number(kio.lng));
-        const cfg = await getConfig(companyId);
         const radio = Number(kio.radio_m) || Number(cfg.radio_kiosco_m) || 0;
         if (radio > 0 && distancia > radio) estado = 'FUERA_RANGO';
       }
