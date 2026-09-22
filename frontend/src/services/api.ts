@@ -2376,6 +2376,19 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/nomina/recibos', { params });
     return r.data;
   }
+  /** CFDI de nómina recuperados del respaldo (histórico timbrado en la bóveda). */
+  async getCfdiNominaRecuperados() {
+    const r = await this.client.get<APIResponse<any[]>>('/nomina/cfdi-recuperados');
+    return r.data;
+  }
+  async descargarXmlNominaRecuperado(uuid: string, nombre: string) {
+    const r = await this.client.get(`/nomina/cfdi-recuperados/${uuid}/xml`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, nombre);
+  }
+  async activarTrabajadorRecuperado(uuid: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/cfdi-recuperados/${uuid}/activar`, {});
+    return r.data;
+  }
   async getXmlRecibo(id: string) {
     const r = await this.client.get<APIResponse<any>>(`/nomina/recibos/${id}/xml`);
     return r.data;

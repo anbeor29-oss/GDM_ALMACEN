@@ -17,10 +17,10 @@
  * permite revisar la lista sin arriesgar que salga un correo con un recibo que
  * todavía tiene un error.
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  FileCode2, FileDown, Download, Eye, Mail, AlertTriangle, X, CheckCircle2, Stamp, Check,
+  FileCode2, FileDown, Download, Eye, Mail, AlertTriangle, X, CheckCircle2, Stamp, Check, Search,
 } from 'lucide-react';
 import api from '@/services/api';
 import { aTextoMx } from '@/components/CampoFecha';
@@ -60,6 +60,7 @@ export function NominaCFDIPage() {
   const q = useQuery({
     queryKey: ['nomina-recibos', estatus],
     queryFn: () => api.getRecibosNomina({ estatus: estatus || undefined }),
+    enabled: estatus !== 'RECUPERADOS',
   });
   const recibos: any[] = q.data?.data?.recibos || [];
 
@@ -186,6 +187,7 @@ export function NominaCFDIPage() {
             { id: 'PENDIENTE', label: 'Sin timbrar' },
             { id: 'TIMBRADO', label: 'Timbrados' },
             { id: '', label: 'Todos' },
+            { id: 'RECUPERADOS', label: 'Recuperados' },
           ].map((f) => (
             <button key={f.id} onClick={() => setEstatus(f.id)}
               className={`px-3 py-1.5 text-sm rounded-lg ${
@@ -224,6 +226,7 @@ export function NominaCFDIPage() {
         )}
       </div>
 
+      {estatus === 'RECUPERADOS' ? <CfdiRecuperados /> : (<>
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="w-full text-sm tabular-nums">
           <thead className="bg-gray-50 border-b">
@@ -400,6 +403,7 @@ export function NominaCFDIPage() {
         revisar cincuenta recibos y timbrar cuarenta y nueve. Un recibo que ya tiene UUID
         no se vuelve a timbrar: sería un segundo CFDI por el mismo pago.
       </p>
+      </>)}
 
       {viendo && (
         <div className="fixed inset-0 bg-black/40 flex items-start justify-center z-50 p-4 overflow-y-auto">
@@ -458,6 +462,113 @@ export function NominaCFDIPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── CFDI de nómina RECUPERADOS del respaldo (histórico timbrado en la bóveda) ──
+ * Timbrados de periodos anteriores: ordenar por fecha/trabajador, descargar XML y
+ * pasar al trabajador a activo de un clic (si ya existe; el alta va por Empleados). */
+function CfdiRecuperados() {
+  const q = useQuery({ queryKey: ['nomina-cfdi-recuperados'], queryFn: () => api.getCfdiNominaRecuperados() });
+  const filas: any[] = q.data?.data || [];
+  const [busca, setBusca] = useState('');
+  const [orden, setOrden] = useState<{ campo: 'fecha' | 'nombre'; dir: 1 | -1 }>({ campo: 'fecha', dir: -1 });
+  const [msg, setMsg] = useState('');
+  const [activando, setActivando] = useState('');
+
+  const ordenar = (campo: 'fecha' | 'nombre') =>
+    setOrden((o) => ({ campo, dir: (o.campo === campo ? (o.dir === 1 ? -1 : 1) : 1) as 1 | -1 }));
+
+  const lista = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    const arr = filas.filter((f) => !t || `${f.nombre} ${f.rfc}`.toLowerCase().includes(t));
+    arr.sort((a, b) => {
+      const va = orden.campo === 'fecha' ? String(a.fecha_emision || '') : String(a.nombre || '');
+      const vb = orden.campo === 'fecha' ? String(b.fecha_emision || '') : String(b.nombre || '');
+      return va < vb ? -orden.dir : va > vb ? orden.dir : 0;
+    });
+    return arr;
+  }, [filas, busca, orden]);
+
+  const activar = async (f: any) => {
+    setActivando(f.uuid); setMsg('');
+    try {
+      const r: any = await api.activarTrabajadorRecuperado(f.uuid);
+      const d = r?.data || {};
+      setMsg(
+        d.estado === 'activado' ? `${d.nombre} pasó a trabajadores activos.`
+          : d.estado === 'ya_activo' ? `${d.nombre} ya estaba activo.`
+            : `${d.nombre || d.rfc} no existe como empleado: descarga su XML y dálo de alta en Empleados.`);
+      q.refetch();
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo activar.'); }
+    finally { setActivando(''); }
+  };
+
+  const flecha = (campo: string) => (orden.campo === campo ? (orden.dir === 1 ? ' ▲' : ' ▼') : '');
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white rounded-lg border shadow-sm p-3 text-sm text-gray-600">
+        Timbrados de <b>periodos anteriores</b> rescatados del respaldo. Descarga el XML de quien necesites
+        para darlo de alta (Empleados → alta con XML). El <b>check</b> pasa al trabajador a <b>activo</b> si ya existe.
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 max-w-xs">
+          <Search size={14} className="absolute left-2.5 top-2.5 text-gray-400" />
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar trabajador o RFC…"
+            className="w-full border rounded-lg pl-8 pr-3 py-1.5 text-sm" />
+        </div>
+        <span className="text-xs text-gray-500">{lista.length} de {filas.length}</span>
+      </div>
+      {msg && <p className="text-sm bg-sky-50 border border-sky-200 text-sky-900 rounded px-3 py-2">{msg}</p>}
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b text-xs text-gray-600">
+            <tr>
+              <th className="px-2 py-2 text-center w-16" title="Pasar a activos">Activar</th>
+              <th className="px-3 py-2 text-left cursor-pointer select-none" onClick={() => ordenar('nombre')}>Trabajador{flecha('nombre')}</th>
+              <th className="px-3 py-2 text-left cursor-pointer select-none w-32" onClick={() => ordenar('fecha')}>Fecha{flecha('fecha')}</th>
+              <th className="px-3 py-2 text-left">Folio fiscal (UUID)</th>
+              <th className="px-2 py-2 text-center w-16">XML</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {q.isLoading && <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>}
+            {!q.isLoading && lista.length === 0 && (
+              <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-500 italic">
+                No hay CFDI de nómina recuperados. Recupéralos en Contabilidad → Importar respaldo.
+              </td></tr>)}
+            {lista.map((f) => (
+              <tr key={f.uuid} className="hover:bg-gray-50">
+                <td className="px-2 py-1.5 text-center">
+                  {!f.existe ? (
+                    <span title="No existe como empleado: dálo de alta con su XML"><AlertTriangle size={15} className="inline text-amber-500" /></span>
+                  ) : f.activo ? (
+                    <span title="Ya está activo"><CheckCircle2 size={16} className="inline text-emerald-600" /></span>
+                  ) : (
+                    <button onClick={() => activar(f)} disabled={activando === f.uuid}
+                      title="Pasar a trabajadores activos"
+                      className="p-1 rounded hover:bg-emerald-100 text-gray-400 hover:text-emerald-700 disabled:opacity-50">
+                      <Check size={15} />
+                    </button>
+                  )}
+                </td>
+                <td className="px-3 py-1.5">
+                  <span className="text-gray-900">{f.nombre || '—'}</span>
+                  <span className="block text-[11px] text-gray-400 font-mono">{f.rfc}{f.num_empleado ? ` · #${f.num_empleado}` : ''}</span>
+                </td>
+                <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{aTextoMx(f.fecha_emision)}</td>
+                <td className="px-3 py-1.5"><span className="font-mono text-[11px] text-gray-700 select-all break-all">{f.uuid}</span></td>
+                <td className="px-2 py-1.5 text-center">
+                  <button onClick={() => api.descargarXmlNominaRecuperado(f.uuid, `nomina_${f.rfc}_${String(f.uuid).slice(0, 8)}.xml`)}
+                    title="Descargar XML" className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"><Download size={16} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

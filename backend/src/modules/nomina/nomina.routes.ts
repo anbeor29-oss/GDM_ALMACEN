@@ -40,6 +40,7 @@ import * as cierre from './cierre.service';
 import * as conceptosCuenta from './conceptos-cuenta.service';
 import * as nominaPoliza from './nomina-poliza.service';
 import * as plantillaEmp from './plantilla-empleados.service';
+import * as nominaRecuperados from './nomina-recuperados.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -369,6 +370,22 @@ router.get(
     res.json({ success: true, data: r });
   })
 );
+
+/* ── CFDI de nómina RECUPERADOS (histórico timbrado en la bóveda) ──
+ * Timbrados de periodos anteriores rescatados del respaldo: se listan, se descarga
+ * su XML (para dar de alta con el otro menú) y de un clic se pasa al trabajador a activo. */
+router.get('/cfdi-recuperados', asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await nominaRecuperados.listar(companyId(req)) })));
+
+router.get('/cfdi-recuperados/:uuid/xml', asyncHandler(async (req: Request, res: Response) => {
+  const r = await nominaRecuperados.xmlDeUuid(companyId(req), req.params.uuid);
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${r.nombre}"`);
+  res.send(r.xml);
+}));
+
+router.post('/cfdi-recuperados/:uuid/activar', soloAdmin, asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await nominaRecuperados.activarTrabajador(companyId(req), req.params.uuid) })));
 
 /** Marca a quién se le manda el recibo por correo. Es decisión, no envío. */
 router.put(
