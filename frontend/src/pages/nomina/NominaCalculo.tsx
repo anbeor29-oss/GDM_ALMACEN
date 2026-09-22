@@ -289,12 +289,18 @@ export function NominaCalculoPage() {
       const r: any = await api.prenominaCargarChecador(periodoId);
       const d = r?.data || {};
       await prenominaQ.refetch();
+      const totalDias = (d.faltas || 0) + (d.faltasPorRetardo || 0);
       setAviso(
         d.sinTurno
           ? 'Ningún trabajador tiene turno FIJO en el Checador. Asígnales turno en Nómina → Checador → Empleados para que se calculen las faltas.'
-          : `Del checador: ${d.faltas} falta(s) aplicada(s) a ${d.aplicados} trabajador(es)` +
-            (d.retardos ? ` · ${d.retardos} retardo(s) detectado(s)` : '') +
-            (d.faltas === 0 ? ' — nadie tuvo faltas en el periodo.' : '.')
+          : totalDias === 0
+            ? 'Del checador: nadie tuvo faltas en el periodo' +
+              (d.retardos ? ` · ${d.retardos} retardo(s) detectado(s).` : '.')
+            : `Del checador: ${totalDias} día(s) de falta a ${d.aplicados} trabajador(es) ` +
+              `(${d.faltas} por ausencia` +
+              (d.faltasPorRetardo ? ` + ${d.faltasPorRetardo} por acumular retardos, ${d.retardosPorFalta}=1 falta` : '') +
+              ')' +
+              (d.retardos ? ` · ${d.retardos} retardo(s) detectado(s).` : '.')
       );
     } catch (e: any) {
       setError(e?.response?.data?.message || 'No se pudo cargar del checador');

@@ -54,7 +54,7 @@ export function IndicadoresPage() {
   };
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-6 space-y-4 max-w-6xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
           <TrendingUp size={22} className="text-primary" /> Indicadores económicos
@@ -112,8 +112,8 @@ export function IndicadoresPage() {
           const meses = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
           const MESCORTO = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
           return (
-            <div className="overflow-x-auto">
-              <table className="text-sm border-collapse tabular-nums">
+            <div className="overflow-x-auto border rounded-md">
+              <table className="text-sm border-collapse tabular-nums min-w-max">
                 <thead>
                   <tr className="text-xs text-gray-500 border-b">
                     <th className="px-2 py-1.5 text-left sticky left-0 bg-white">Año</th>
@@ -154,8 +154,8 @@ export function IndicadoresPage() {
           Son anuales (UMA 1-feb · salarios mínimos y UMI 1-ene) y sin API pública limpia, así que se
           capturan y se confirman a mano una vez al año. Aquí se muestran para tenerlos a la vista.
         </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto border rounded-md">
+          <table className="w-full min-w-[760px] text-sm">
             <thead className="bg-gray-50 text-xs text-gray-600">
               <tr>
                 <th className="px-2 py-1.5 text-left">Año</th>

@@ -971,8 +971,10 @@ export async function incidenciasChecador(companyId: string, periodoId: string, 
   const fin = String(p.fecha_fin).slice(0, 10);
 
   const cfg = await query<any>(
-    `SELECT tolerancia_retardo_min FROM checador_config WHERE company_id = $1`, [companyId]);
+    `SELECT tolerancia_retardo_min, retardos_por_falta FROM checador_config WHERE company_id = $1`, [companyId]);
   const tol = Number(cfg.rows[0]?.tolerancia_retardo_min) || 0;
+  // Regla configurable (Checador → Configuración): cada N retardos = 1 falta. 0 = sólo informativos.
+  const retFalta = Math.max(0, Number(cfg.rows[0]?.retardos_por_falta) || 0);
 
   /* Empleados con turno FIJO: el turno dice qué días laboran y a qué hora entran. */
   const emps = await query<any>(
@@ -1015,7 +1017,7 @@ export async function incidenciasChecador(companyId: string, periodoId: string, 
   const previas = await leerCaptura(companyId, periodoId);
   const capMap = new Map(previas.map((c) => [c.empleadoId, c]));
   const nuevas: CapturaPorTrabajador[] = [];
-  const detalle: Array<{ empleado_id: string; nombre: string; esperados: number; faltas: number; retardos: number }> = [];
+  const detalle: Array<{ empleado_id: string; nombre: string; esperados: number; faltas: number; retardos: number; faltasPorRetardo: number }> = [];
 
   for (const e of emps.rows) {
     const diasTurno: number[] = (e.dias || []).map((x: any) => Number(x));
@@ -1032,14 +1034,18 @@ export async function incidenciasChecador(companyId: string, periodoId: string, 
       if (!entrada) { faltas++; continue; }
       if (entrada > limite) retardos++;
     }
-    detalle.push({ empleado_id: e.empleado_id, nombre: e.nombre, esperados, faltas, retardos });
+    // Si el usuario activó la regla, cada N retardos acumulados = 1 falta extra;
+    // el sobrante (retardos % N) queda informativo. Sin regla, 0.
+    const faltasPorRetardo = retFalta > 0 ? Math.floor(retardos / retFalta) : 0;
+    const faltasTotal = faltas + faltasPorRetardo;
+    detalle.push({ empleado_id: e.empleado_id, nombre: e.nombre, esperados, faltas, retardos, faltasPorRetardo });
 
-    if (faltas > 0) {
+    if (faltasTotal > 0) {
       const previa = (capMap.get(e.empleado_id) || {
         empleadoId: e.empleado_id, otrosIngresos: [], otrasDeducciones: [],
       }) as CapturaPorTrabajador;
       const ded = [...((previa.otrasDeducciones as any[]) || [])].filter((x: any) => x.clave !== '020');
-      ded.push({ clave: '020', dias: faltas } as any);
+      ded.push({ clave: '020', dias: faltasTotal } as any);
       nuevas.push({ ...previa, otrasDeducciones: ded });
     }
   }
@@ -1049,6 +1055,8 @@ export async function incidenciasChecador(companyId: string, periodoId: string, 
     aplicados: nuevas.length,
     faltas: detalle.reduce((a, d) => a + d.faltas, 0),
     retardos: detalle.reduce((a, d) => a + d.retardos, 0),
+    faltasPorRetardo: detalle.reduce((a, d) => a + d.faltasPorRetardo, 0),
+    retardosPorFalta: retFalta,   // N configurado (0 = regla apagada), para el aviso
     detalle,
   };
 }

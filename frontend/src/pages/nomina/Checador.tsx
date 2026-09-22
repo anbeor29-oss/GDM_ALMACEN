@@ -117,6 +117,28 @@ function TabConfig() {
         </Campo>
       </div>
 
+      {/* Regla configurable: N retardos = 1 falta (sólo si el usuario la enciende). */}
+      <div className="border-t pt-3 space-y-2">
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input type="checkbox" checked={(f.retardos_por_falta ?? 0) > 0}
+            onChange={(e) => setF({ ...f, retardos_por_falta: e.target.checked ? (f.retardos_por_falta > 0 ? f.retardos_por_falta : 3) : null })} />
+          Convertir retardos acumulados en falta
+        </label>
+        {(f.retardos_por_falta ?? 0) > 0 && (
+          <div className="flex items-center gap-2 text-sm text-gray-700 pl-6">
+            Cada
+            <input type="number" min={1} max={5} className="input w-16 text-center"
+              value={f.retardos_por_falta ?? ''}
+              onChange={(e) => setF({ ...f, retardos_por_falta: Math.min(5, Math.max(1, Number(e.target.value) || 1)) })} />
+            retardo(s) = <b>1 falta</b>
+          </div>
+        )}
+        <p className="text-xs text-gray-500 pl-6">
+          Al «Cargar del checador» en la prenómina, los retardos acumulados del periodo se vuelven
+          falta (deducción 020, en días). Apagado: los retardos sólo se informan, no se descuentan.
+        </p>
+      </div>
+
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={!!f.registra_comida} onChange={(e) => setF({ ...f, registra_comida: e.target.checked })} />
         Registrar entrada/salida de comida

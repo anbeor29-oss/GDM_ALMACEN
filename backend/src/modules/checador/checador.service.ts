@@ -21,6 +21,8 @@ import { NotFoundError, ValidationError } from '../../middleware/errorHandler';
 const CONFIG_DEFAULT = {
   activo: true,
   tolerancia_retardo_min: null as number | null,
+  // Si >0, cada N retardos del periodo cuentan como 1 falta. NULL/0 = informativos.
+  retardos_por_falta: null as number | null,
   registra_comida: false,
   horas_semanales: 48,
   radio_kiosco_m: 100,
@@ -38,17 +40,18 @@ export async function setConfig(companyId: string, d: Partial<typeof CONFIG_DEFA
   const n = { ...a, ...d };
   await query(
     `INSERT INTO checador_config
-       (company_id, activo, tolerancia_retardo_min, registra_comida, horas_semanales, radio_kiosco_m, umbral_distancia)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
+       (company_id, activo, tolerancia_retardo_min, retardos_por_falta, registra_comida, horas_semanales, radio_kiosco_m, umbral_distancia)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      ON CONFLICT (company_id) DO UPDATE SET
        activo = EXCLUDED.activo,
        tolerancia_retardo_min = EXCLUDED.tolerancia_retardo_min,
+       retardos_por_falta = EXCLUDED.retardos_por_falta,
        registra_comida = EXCLUDED.registra_comida,
        horas_semanales = EXCLUDED.horas_semanales,
        radio_kiosco_m = EXCLUDED.radio_kiosco_m,
        umbral_distancia = EXCLUDED.umbral_distancia,
        updated_at = NOW()`,
-    [companyId, n.activo, n.tolerancia_retardo_min, n.registra_comida,
+    [companyId, n.activo, n.tolerancia_retardo_min, n.retardos_por_falta, n.registra_comida,
      n.horas_semanales, n.radio_kiosco_m, n.umbral_distancia]);
   return getConfig(companyId);
 }
