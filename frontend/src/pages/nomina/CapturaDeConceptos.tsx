@@ -31,6 +31,9 @@ export interface Linea {
   importe: number | string;
   gravadoManual?: number | string;
   concepto?: string;
+  /** Para conceptos que se capturan en DÍAS (faltas, clave 020): el motor calcula
+   *  el importe con el salario de cada quien. Lo llena, p. ej., «Faltas del checador». */
+  dias?: number | string;
 }
 
 interface Props {

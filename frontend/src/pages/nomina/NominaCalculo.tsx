@@ -192,6 +192,9 @@ export function NominaCalculoPage() {
         })),
         otrasDeducciones: (c.otrasDeducciones || []).map((l: any) => ({
           clave: l.clave, importe: String(l.importe),
+          // Las faltas (020) se capturan en DÍAS; se conserva para que un
+          // recálculo manual no las degrade a un importe fijo.
+          dias: l.dias === undefined || l.dias === null ? undefined : String(l.dias),
         })),
       };
     }
@@ -240,6 +243,7 @@ export function NominaCalculoPage() {
         })),
         otrasDeducciones: c.otrasDeducciones.map((l) => ({
           clave: l.clave, importe: Number(l.importe),
+          dias: l.dias === '' || l.dias === undefined || l.dias === null ? undefined : Number(l.dias),
         })),
       }));
       const r = await api.recalcularPrenomina(periodoId, cuerpo);
@@ -264,6 +268,7 @@ export function NominaCalculoPage() {
       })),
       otrasDeducciones: c.otrasDeducciones.map((l) => ({
         clave: l.clave, importe: Number(l.importe),
+        dias: l.dias === '' || l.dias === undefined || l.dias === null ? undefined : Number(l.dias),
       })),
     }));
 

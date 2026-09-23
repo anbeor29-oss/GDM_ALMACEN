@@ -976,20 +976,35 @@ export async function incidenciasChecador(companyId: string, periodoId: string, 
   // Regla configurable (Checador → Configuración): cada N retardos = 1 falta. 0 = sólo informativos.
   const retFalta = Math.max(0, Number(cfg.rows[0]?.retardos_por_falta) || 0);
 
-  /* Empleados con turno FIJO: el turno dice qué días laboran y a qué hora entran. */
+  /* Empleados con horario (NO exentos). El turno FIJO base dice qué días y a qué
+   * hora; para ROTATIVO/MIXTO manda la ASIGNACIÓN por fecha (se carga abajo). */
   const emps = await query<any>(
-    `SELECT h.empleado_id, t.hora_entrada, t.dias,
+    `SELECT h.empleado_id, h.tipo, t.hora_entrada AS base_entrada, t.dias AS base_dias,
             TO_CHAR(e.fecha_ingreso, 'YYYY-MM-DD')   AS fecha_ingreso,
             TO_CHAR(e.fecha_baja, 'YYYY-MM-DD')      AS fecha_baja,
             TO_CHAR(e.fecha_reingreso, 'YYYY-MM-DD') AS fecha_reingreso,
             TRIM(e.nombre || ' ' || e.apellido_pat || ' ' || COALESCE(e.apellido_mat,'')) AS nombre
        FROM checador_empleado_horario h
-       JOIN checador_turnos t ON t.id = h.turno_id
+       LEFT JOIN checador_turnos t ON t.id = h.turno_id
        JOIN nomina_empleados e ON e.id = h.empleado_id
-      WHERE h.company_id = $1 AND h.tipo = 'FIJO' AND e.deleted_at IS NULL`,
+      WHERE h.company_id = $1 AND h.tipo <> 'EXENTO' AND e.deleted_at IS NULL`,
     [companyId]);
   if (emps.rows.length === 0) {
     return { aplicados: 0, faltas: 0, retardos: 0, sinTurno: true, detalle: [] };
+  }
+
+  /* Asignaciones por fecha (rotativo/mixto): empleado → día → hora de entrada del
+   * turno asignado ese día. Manda sobre el turno base cuando existe. */
+  const asig = await query<any>(
+    `SELECT a.empleado_id, TO_CHAR(a.fecha, 'YYYY-MM-DD') AS dia, t.hora_entrada
+       FROM checador_asignacion a
+       JOIN checador_turnos t ON t.id = a.turno_id
+      WHERE a.company_id = $1 AND a.fecha BETWEEN $2::date AND $3::date`,
+    [companyId, ini, fin]);
+  const asignado = new Map<string, Map<string, string>>();
+  for (const r of asig.rows) {
+    if (!asignado.has(r.empleado_id)) asignado.set(r.empleado_id, new Map());
+    asignado.get(r.empleado_id)!.set(r.dia, String(r.hora_entrada));
   }
 
   /* Primera ENTRADA de cada empleado por día (hora de México). */
@@ -1020,19 +1035,24 @@ export async function incidenciasChecador(companyId: string, periodoId: string, 
   const detalle: Array<{ empleado_id: string; nombre: string; esperados: number; faltas: number; retardos: number; faltasPorRetardo: number }> = [];
 
   for (const e of emps.rows) {
-    const diasTurno: number[] = (e.dias || []).map((x: any) => Number(x));
+    const diasBase: number[] = (e.base_dias || []).map((x: any) => Number(x));
+    const asigEmp = asignado.get(e.empleado_id);
     const entradaMap = asistio.get(e.empleado_id) || new Map<string, string>();
     const desde = e.fecha_reingreso || e.fecha_ingreso;
-    const limite = sumarMinutos(String(e.hora_entrada), tol);
     let esperados = 0, faltas = 0, retardos = 0;
     for (const f of fechas) {
-      if (!diasTurno.includes(f.dow)) continue;      // no es día laboral del turno
+      // Turno esperado del día: la asignación por fecha manda; si no, el turno
+      // base FIJO cuando el día de la semana es laboral. Sin ninguno → no se espera.
+      let horaEntrada: string | null = null;
+      if (asigEmp && asigEmp.has(f.iso)) horaEntrada = asigEmp.get(f.iso)!;
+      else if (e.base_entrada && diasBase.includes(f.dow)) horaEntrada = String(e.base_entrada);
+      if (!horaEntrada) continue;
       if (desde && f.iso < desde) continue;          // antes de su ingreso/reingreso
       if (e.fecha_baja && f.iso > e.fecha_baja) continue;   // después de su baja
       esperados++;
       const entrada = entradaMap.get(f.iso);
       if (!entrada) { faltas++; continue; }
-      if (entrada > limite) retardos++;
+      if (entrada > sumarMinutos(horaEntrada, tol)) retardos++;
     }
     // Si el usuario activó la regla, cada N retardos acumulados = 1 falta extra;
     // el sobrante (retardos % N) queda informativo. Sin regla, 0.
