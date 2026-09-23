@@ -6181,3 +6181,22 @@ previsualiza. **UI:** en «Respaldo de balanza» una sección **«Póliza de ape
 **«Previsualizar»** (muestra cuántas cuentas, cargo/abono, si cuadra y qué falta) y **«Asentar»** —habilitado
 sólo si cuadra y no hay faltantes—. La previsualización es la red de seguridad: se ve qué se asentaría antes
 de crear el asiento. TSC back=0, front=0.
+
+---
+
+## 2026-09-23 (contabilidad) — Diagnóstico de cuadre / organización de XML (cierra el motor contable)
+
+Último punto del motor. Un panel de **SOLO LECTURA** en el libro diario (**Contabilidad → Pólizas**) que,
+por periodo, cruza los CFDI (emitidos/recibidos tipo I vigentes) contra el journal por **UUID** y clasifica
+lo que AÚN no tiene póliza en cubetas **accionables**: `contabilizados` (ya tienen póliza), `listos` (con
+XML y todos los productos con cuenta → sólo falta «Generar»), `sin cuenta de producto` (devuelve las
+**CLAVES** a asignar → «Auto-asignar todo»), `sin XML` (recibidos que bajaron como metadato) y `otros`
+(sin conceptos). Además cuenta las **pólizas descuadradas** del mes (defensivo: el trigger DEFERRABLE las
+evita). `diagnostico-cfdi.service.diagnosticarContabilizacion` **no escribe** —reusa los mapas
+producto→cuenta y `conceptosDeXml`, distinto de las funciones de generación que sí crean subcuentas—. Ruta
+`GET /accounting/cuadre-cfdi/:anio/:mes`. **UI:** sección colapsable **«Cuadre de XML»** junto a los botones
+«Auto-asignar todo» y «Generar Ventas/Compras», cerrando el bucle **diagnosticar → corregir → generar** en
+una sola pantalla. TSC back=0, front=0.
+
+**Con esto queda cerrado el «Motor contable — listos para construir»:** auto-asignar de un tirón, póliza de
+nómina ordinaria, póliza de apertura y cuadre/organización de XML.
