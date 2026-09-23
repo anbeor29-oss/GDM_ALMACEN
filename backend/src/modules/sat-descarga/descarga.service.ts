@@ -189,6 +189,24 @@ export async function limpiarTrabajosTerminados(companyId: string): Promise<{ tr
 }
 
 /**
+ * Borra las descargas que siguen PENDIENTES / EN CURSO (no terminadas): trabajos
+ * en estado CREADO o EN_PROCESO, con sus particiones y paquetes (ON DELETE
+ * CASCADE). Igual que al limpiar terminados, los XML que ya hubieran bajado se
+ * CONSERVAN en `cfdi_recibidos` (su paquete_id queda en NULL). Complementa a
+ * `limpiarTrabajosTerminados`: aquí se quita lo que quedó a medias/en cola, sin
+ * el «reiniciar» que borra TODO el histórico. Para volver a pedir ese periodo,
+ * se vuelve a solicitar por sus fechas.
+ */
+export async function borrarPendientes(companyId: string): Promise<{ trabajos: number }> {
+  const r = await query(
+    `DELETE FROM sat_trabajos WHERE company_id = $1 AND estado IN ('CREADO','EN_PROCESO')`,
+    [companyId]);
+  const trabajos = r.rowCount || 0;
+  logger.info(`[sat-descarga] borrar pendientes/en curso (empresa ${companyId}): ${trabajos} trabajo(s) borrados`);
+  return { trabajos };
+}
+
+/**
  * Vuelve a armar las solicitudes atoradas (RECHAZADA / FALLIDA) para que el motor
  * las pida otra vez. Se usa después de corregir la causa del rechazo —p. ej. el
  * filtro de cancelados—: sin esto habría que borrar TODO y empezar de cero,

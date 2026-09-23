@@ -75,6 +75,25 @@ router.post(
   })
 );
 
+/** POST /sat-descarga/borrar-pendientes — borra SÓLO las descargas que siguen
+ *  PENDIENTES / EN CURSO (trabajos CREADO/EN_PROCESO) con sus solicitudes; los XML
+ *  ya bajados se conservan. Es lo contrario de "limpiar terminados": quita lo que
+ *  quedó a medias/en cola, sin el "reiniciar" que borra TODO. */
+router.post(
+  '/borrar-pendientes',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await service.borrarPendientes(companyId(req));
+    res.json({
+      success: true,
+      message: r.trabajos
+        ? `${r.trabajos} descarga(s) pendiente(s)/en curso borradas. Los comprobantes ya bajados se conservan.`
+        : 'No había descargas pendientes que borrar.',
+      data: r,
+    });
+  })
+);
+
 /**
  * POST /sat-descarga/reintentar — re-arma las solicitudes atoradas (rechazadas o
  * fallidas) sin borrar nada más. Para usar tras corregir la causa del rechazo:

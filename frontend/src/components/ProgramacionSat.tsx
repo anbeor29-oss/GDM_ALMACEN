@@ -18,7 +18,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock, Gauge, History, AlertTriangle, CheckCircle2,
-  Loader2, Play, Settings2, Info, RotateCcw, RefreshCw, Stethoscope,
+  Loader2, Play, Settings2, Info, RotateCcw, RefreshCw, Stethoscope, Eraser,
 } from 'lucide-react';
 import api from '@/services/api';
 
@@ -199,6 +199,20 @@ export function ProgramacionSat() {
               className="btn-secondary text-sm flex items-center gap-1.5 text-amber-700 disabled:opacity-50">
               {busy === 'reintentar' ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
               Reintentar las {n(d.atoradas)} atoradas
+            </button>
+          )}
+
+          {d.enVuelo > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm(`¿Borrar las ${n(d.enVuelo)} descarga(s) pendientes / en curso?\n\nSólo se quitan las que quedaron a medias o en cola. Los XML que ya bajaron se CONSERVAN. Podrás volver a pedir ese periodo por sus fechas.`))
+                  accion('borrar-pend', () => api.borrarPendientesSat());
+              }}
+              disabled={!!busy}
+              title="Quita sólo las descargas pendientes/en curso, sin borrar lo ya descargado (no es el 'Reiniciar' que borra todo)"
+              className="btn-secondary text-sm flex items-center gap-1.5 text-amber-700 disabled:opacity-50">
+              {busy === 'borrar-pend' ? <Loader2 size={14} className="animate-spin" /> : <Eraser size={14} />}
+              Borrar pendientes
             </button>
           )}
 

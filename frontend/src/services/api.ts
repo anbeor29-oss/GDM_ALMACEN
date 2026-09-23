@@ -1695,6 +1695,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/limpiar-terminados');
     return r.data;
   }
+  /** Borra SÓLO las descargas pendientes/en curso (los XML ya bajados se conservan). */
+  async borrarPendientesSat() {
+    const r = await this.client.post<APIResponse<any>>('/sat-descarga/borrar-pendientes');
+    return r.data;
+  }
   async reintentarSatAtoradas() {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/reintentar');
     return r.data;

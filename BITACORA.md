@@ -6128,6 +6128,9 @@ inferior DERECHA, en formato «N/total»** (1/5, 2/5, …), recorriendo las pág
 conocer el total; aplica a **todos** los reportes sin tocar cada llamador. Probado con 140 filas → 8
 páginas, PDF válido. TSC back=0, front=0.
 
-**Pendiente aclarar:** «borrar descargas pendientes» — el único lugar con descargas pendientes reales es
-el módulo de descarga XML del SAT (solicitudes/paquetes por estado, con `reiniciar` que borra todo); se
-consultó al usuario en qué pantalla lo quiere antes de programar.
+**«Borrar descargas pendientes» (resuelto).** El usuario confirmó que es el módulo de **descarga XML del
+SAT**. Se agregó `borrarPendientes` (`descarga.service`) + `POST /sat-descarga/borrar-pendientes` (ADMIN):
+borra SÓLO los trabajos **CREADO/EN_PROCESO** (las descargas en cola/a medias) con sus particiones/paquetes;
+los XML ya bajados se **conservan** en `cfdi_recibidos` (paquete_id → NULL). Es el complemento de
+`limpiar-terminados` y NO el «reiniciar» que borra todo. En **Programación SAT** aparece el botón «Borrar
+pendientes» (ámbar, con confirmación) cuando hay algo en vuelo (`d.enVuelo > 0`). TSC back=0, front=0.
