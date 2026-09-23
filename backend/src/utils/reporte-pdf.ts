@@ -13,7 +13,7 @@
  */
 
 import PDFDocument from 'pdfkit';
-import { fechaHoraMx } from './fecha-mx';
+import { fechaHoraMx, fechaMx } from './fecha-mx';
 
 export interface ColumnaPdf {
   titulo: string;
@@ -34,6 +34,8 @@ export interface ReportePdfOpts {
   orientacion?: 'portrait' | 'landscape';
   nota?: string;                          // pie
   firmas?: string[];                      // líneas de firma al pie (p. ej. Representante Legal · Contador Público)
+  /** Rango de fechas SOLICITADO del reporte; se imprime en el encabezado en DD/MM/AAAA. */
+  rango?: { desde?: any; hasta?: any; etiqueta?: string };
 }
 
 const fmt = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -76,7 +78,16 @@ export async function reporteTablaPdf(o: ReportePdfOpts): Promise<Buffer> {
   doc.font('Helvetica-Bold').fontSize(11).fillColor(AZUL).text(o.titulo, M, y, { width: contentW });
   y += 15;
   doc.font('Helvetica').fontSize(8).fillColor(GRIS);
-  const meta = [o.rfc ? `RFC: ${o.rfc}` : '', ...(o.subtitulos || []), `Generado: ${fechaHoraMx()}`].filter(Boolean);
+  // Rango de fechas SOLICITADO (DD/MM/AAAA), si el reporte lo trae.
+  const rangoTxt = o.rango && (o.rango.desde || o.rango.hasta)
+    ? `${o.rango.etiqueta || 'Periodo solicitado'}: ${fechaMx(o.rango.desde) || '—'} al ${fechaMx(o.rango.hasta) || '—'}`
+    : '';
+  const meta = [
+    o.rfc ? `RFC: ${o.rfc}` : '',
+    ...(o.subtitulos || []),
+    rangoTxt,
+    `Elaborado: ${fechaHoraMx()}`,        // fecha de elaboración, DD/MM/AAAA HH:MM
+  ].filter(Boolean);
   for (const m of meta) { doc.text(m, M, y, { width: contentW }); y += 11; }
   y += 5;
 
@@ -125,6 +136,16 @@ export async function reporteTablaPdf(o: ReportePdfOpts): Promise<Buffer> {
       doc.moveTo(x + 10, yLinea).lineTo(x + anchoFirma - 10, yLinea).strokeColor('#111827').lineWidth(0.5).stroke();
       doc.font('Helvetica').fontSize(8).fillColor('#111827').text(f, x, yLinea + 4, { width: anchoFirma, align: 'center' });
     });
+  }
+
+  // Número de página al pie, en la parte inferior DERECHA: "1/5", "2/5", … El
+  // total se conoce hasta el final gracias a bufferPages: se recorre cada página
+  // ya dibujada y se estampa "actual/total".
+  const paginas = doc.bufferedPageRange();   // { start, count }
+  for (let i = 0; i < paginas.count; i++) {
+    doc.switchToPage(paginas.start + i);
+    doc.font('Helvetica').fontSize(8).fillColor(GRIS)
+      .text(`${i + 1}/${paginas.count}`, M, doc.page.height - 26, { width: contentW, align: 'right', lineBreak: false });
   }
 
   doc.end();
