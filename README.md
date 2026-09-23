@@ -139,7 +139,7 @@ Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
   cuelga de Contabilidad; **Asignación de cuenta** como puente.
   Pendiente: **balanza derivada** (pasar los saldos de `journal_lines` a la balanza
   de comprobación) y la póliza de apertura (balanza anterior).
-- **Autofacturación (Anexo 20 / RMF 2.7.3)** — *Contabilidad → Autofacturación*: la
+- **Autofacturación (Anexo 20 / RMF 2.7.3)** — *Facturas → Autofacturación*: la
   empresa (adquirente) **captura y previsualiza** el CFDI que emitiría **por cuenta
   del enajenante** que no factura (sector primario régimen 622, arrendador, minero,
   artesano, vehículos usados, desperdicios, arte, antigüedades). En el CFDI el emisor

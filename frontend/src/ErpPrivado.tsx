@@ -173,7 +173,7 @@ export default function ErpPrivado() {
         <Route path="contabilidad/activo-fijo"        element={<ModuleRoute module="contabilidad"><ActivoFijoPage /></ModuleRoute>} />
         <Route path="contabilidad/importar-contpaqi"  element={<ModuleRoute module="contabilidad"><ImportarContpaqiPage /></ModuleRoute>} />
         <Route path="contabilidad/cfdi"               element={<ModuleRoute module="contabilidad"><CfdiContabilidadPage /></ModuleRoute>} />
-        <Route path="contabilidad/autofactura"        element={<ModuleRoute module="contabilidad"><AutofacturacionPage /></ModuleRoute>} />
+        <Route path="invoices/autofactura"            element={<ModuleRoute module="invoices"><AutofacturacionPage /></ModuleRoute>} />
         <Route path="contabilidad/opinion-cumplimiento" element={<ModuleRoute module="contabilidad"><OpinionCumplimientoPage /></ModuleRoute>} />
         <Route path="contabilidad/cambio-cuenta"      element={<ModuleRoute module="contabilidad"><CambioCuentaPage /></ModuleRoute>} />
         <Route path="contabilidad/conciliacion"       element={<ModuleRoute module="contabilidad"><ConciliacionContablePage /></ModuleRoute>} />

@@ -233,6 +233,7 @@ export function Layout() {
                     pathPrefix="/invoices"
                     children={[
                       { to: '/invoices',             icon: emoji3D('🧾'), label: 'Facturas' },
+                      { to: '/invoices/autofactura', icon: emoji3D('🌾'), label: 'Autofacturación' },
                       { to: '/invoices/cobranza-detallada', icon: emoji3D('📋'), label: 'Cobranza detallada' },
                       ...(show('credit_notes') ? [
                         { to: '/credit-notes',       icon: emoji3D('📉'), label: 'Notas de Crédito' },
@@ -391,7 +392,6 @@ export function Layout() {
                       ...(esAdmin ? [{ to: '/contabilidad/cierre', icon: emoji3D('🔒'), label: 'Cierre del ejercicio' }] : []),
                       { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },
                       { to: '/contabilidad/cfdi',              icon: emoji3D('🧾'), label: 'CFDI (XML del SAT)' },
-                      { to: '/contabilidad/autofactura',      icon: emoji3D('🌾'), label: 'Autofacturación' },
                       {
                         icon: emoji3D('📔'), label: 'Pólizas',
                         children: [

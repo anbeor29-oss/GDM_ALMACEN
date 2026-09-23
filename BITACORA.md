@@ -6111,6 +6111,9 @@ receptor azul + conceptos + aviso). Menú y ruta en `Layout`/`ErpPrivado`; API e
 sellado NO usa el CSD del emisor, que aquí no existe). `timbrarComprobante` responde con el motivo y **no
 emite nada** hasta activarlo. Por ahora se captura y previsualiza (BORRADOR). TSC back=0, front=0.
 
+**Movida a Facturas (2026-09-23):** como emite CFDI, Autofacturación pasó del menú de Contabilidad al de
+**Facturas** (ruta `/invoices/autofactura`, gate `invoices` en front y back). Sin cambios de lógica.
+
 ---
 
 ## 2026-09-22 (tesorería/UI) — Cuenta contable del cliente en Cobranza + encabezado y paginación de reportes

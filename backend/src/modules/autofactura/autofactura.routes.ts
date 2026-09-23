@@ -1,10 +1,9 @@
 /**
  * /autofactura — Autofacturación (Anexo 20 / RMF 2.7.3).
  *
- * Se monta con `gated('contabilidad')` (authenticateToken + requireModule) en
- * app.ts, así que aquí req.user ya viene resuelto. Es comprobación de erogaciones
- * a enajenantes que no facturan (sector primario, etc.), y vive junto a las
- * pólizas de compra en Contabilidad.
+ * Se monta con `gated('invoices')` (authenticateToken + requireModule) en app.ts,
+ * así que aquí req.user ya viene resuelto. Emite CFDI por cuenta del enajenante que
+ * no factura (sector primario, etc.), así que vive en el menú de Facturas.
  */
 import { Router, Request, Response } from 'express';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
