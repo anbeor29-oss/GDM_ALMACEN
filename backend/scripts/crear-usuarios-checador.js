@@ -1,14 +1,18 @@
 /*
- * crear-usuarios-checador.js — crea (o resetea) las DOS cuentas universales del
+ * crear-usuarios-checador.js — crea (o resetea) las cuentas universales del
  * checador para una empresa:
  *
  *   · Admin del kiosko → grupo RECURSOS_HUMANOS, rol MANAGER: enrola rostros y ve
  *                        el registro. Lo usan 1 o pocas personas.
- *   · Checador         → grupo CHECADOR, rol USER: SÓLO checa (kiosko/campo). No
- *                        ve nómina, ni enrola, ni administra.
+ *   · Checador KIOSKO  → grupo CHECADOR, rol USER: SÓLO checa en las TABLETAS
+ *                        (kioskos fijos). No ve nómina, ni enrola, ni administra.
+ *   · Checador CAMPO   → grupo CHECADOR, rol USER: la cuenta universal FLOTANTE
+ *                        para los CELULARES (modo campo, GPS, sin ubicación fija).
+ *                        Se crea SÓLO si defines CHECADOR_CAMPO_PASSWORD.
  *
- * La CARA identifica a cada trabajador (1:N en el servidor); estas cuentas sólo
- * abren la app en el equipo.
+ * Kiosko y campo van en cuentas SEPARADAS a propósito: una credencial para las
+ * tabletas y otra para los teléfonos. La CARA identifica a cada trabajador (1:N
+ * en el servidor); estas cuentas sólo abren la app en el equipo.
  *
  * DÓNDE SE CORRE: en el **Web Shell de Render** del servicio backend (ahí vive
  * DATABASE_URL). Es idempotente: si las cuentas ya existen, actualiza su
@@ -18,12 +22,14 @@
  *   CHECADOR_COMPANY_RFC     RFC de la empresa   (o CHECADOR_COMPANY_ID con el UUID)
  *   CHECADOR_ADMIN_EMAIL     correo del admin del kiosko  (def: kiosko-admin@<rfc>.local)
  *   CHECADOR_ADMIN_PASSWORD  contraseña del admin   (OBLIGATORIA, mínimo 8)
- *   CHECADOR_USER_EMAIL      correo del checador     (def: checador@<rfc>.local)
- *   CHECADOR_USER_PASSWORD   contraseña del checador (OBLIGATORIA, mínimo 8)
+ *   CHECADOR_USER_EMAIL      correo del checador kiosko (def: checador@<rfc>.local)
+ *   CHECADOR_USER_PASSWORD   contraseña del checador kiosko (OBLIGATORIA, mínimo 8)
+ *   CHECADOR_CAMPO_EMAIL     correo del checador de campo (def: checador-campo@<rfc>.local)
+ *   CHECADOR_CAMPO_PASSWORD  contraseña del checador de campo (OPCIONAL; si la pones, mínimo 8)
  *
  * Ejemplo:
  *   CHECADOR_COMPANY_RFC=AABA020418BW2 \
- *   CHECADOR_ADMIN_PASSWORD='...' CHECADOR_USER_PASSWORD='...' \
+ *   CHECADOR_ADMIN_PASSWORD='...' CHECADOR_USER_PASSWORD='...' CHECADOR_CAMPO_PASSWORD='...' \
  *   node scripts/crear-usuarios-checador.js
  */
 const { Pool } = require('pg');
@@ -87,21 +93,37 @@ async function main() {
   const slug = (rfc || 'empresa').toLowerCase();
   const adminEmail = (process.env.CHECADOR_ADMIN_EMAIL || `kiosko-admin@${slug}.local`).toLowerCase();
   const userEmail = (process.env.CHECADOR_USER_EMAIL || `checador@${slug}.local`).toLowerCase();
+  const campoEmail = (process.env.CHECADOR_CAMPO_EMAIL || `checador-campo@${slug}.local`).toLowerCase();
+  const campoPass = process.env.CHECADOR_CAMPO_PASSWORD || '';
 
-  // 3. Crear/actualizar las dos cuentas.
-  const r1 = await upsertUsuario(pool, {
+  // 3. Crear/actualizar las cuentas.
+  const cuentas = [];
+  cuentas.push(await upsertUsuario(pool, {
     email: adminEmail, password: adminPass, nombre: 'Admin del kiosko',
-    role: 'MANAGER', workGroup: 'RECURSOS_HUMANOS', companyId });
-  const r2 = await upsertUsuario(pool, {
-    email: userEmail, password: userPass, nombre: 'Checador',
-    role: 'USER', workGroup: 'CHECADOR', companyId });
+    role: 'MANAGER', workGroup: 'RECURSOS_HUMANOS', companyId }));
+  cuentas.push(await upsertUsuario(pool, {
+    email: userEmail, password: userPass, nombre: 'Checador kiosko',
+    role: 'USER', workGroup: 'CHECADOR', companyId }));
+
+  // La cuenta de CAMPO (flotante, celulares) SÓLO si defines su contraseña.
+  if (campoPass) {
+    if (campoPass.length < 8) throw new Error('CHECADOR_CAMPO_PASSWORD debe tener mínimo 8 caracteres.');
+    cuentas.push(await upsertUsuario(pool, {
+      email: campoEmail, password: campoPass, nombre: 'Checador de campo',
+      role: 'USER', workGroup: 'CHECADOR', companyId }));
+  }
 
   console.log('\n== Cuentas del checador ==');
-  for (const r of [r1, r2]) {
+  for (const r of cuentas) {
     console.log(`  ${r.email}  ·  ${r.workGroup}/${r.role}  ·  ${r.accion}`);
   }
-  console.log('\nEn la tableta/celular inicia sesión con la cuenta "checador" (solo checa) o');
-  console.log('con "kiosko-admin" para enrolar. La cara identifica a cada trabajador.');
+  console.log('\nTABLETAS (kiosko fijo): inicia sesión con "checador" y elige modo «Kiosco».');
+  if (campoPass) {
+    console.log('CELULARES (campo flotante): inicia sesión con "checador-campo" y elige modo «Campo».');
+  } else {
+    console.log('(Para la cuenta de CAMPO de los celulares, define CHECADOR_CAMPO_PASSWORD y vuelve a correr esto.)');
+  }
+  console.log('Para enrolar rostros usa "kiosko-admin". La cara identifica a cada trabajador.');
   await pool.end();
 }
 
