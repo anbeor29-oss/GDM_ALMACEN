@@ -186,7 +186,9 @@ export function Layout() {
               pertenecen a cada empresa usuaria y aparecen cuando impersona. */}
           {user?.role !== 'SUPER_ADMIN' && (() => {
             const g = user?.workGroup;
-            const show = (m: ModuleKey) => canAccess(g, m);
+            // Además del grupo, los módulos EXTRA que se le otorgaron (varias funciones).
+            const extra = (user?.extraModules || []) as ModuleKey[];
+            const show = (m: ModuleKey) => canAccess(g, m) || extra.includes(m);
             const esAdmin = user?.role === 'ADMIN';   // aquí ya se excluyó SUPER_ADMIN
             // Cada entrada se muestra solo si el grupo de trabajo la permite.
             // El dashboard es común a todos.

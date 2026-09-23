@@ -20,6 +20,8 @@ declare global {
         companyId?: string;
         /** Grupo de trabajo (VENTAS/ALMACEN/COMPRAS/TESORERIA/ADMIN_ALL). */
         workGroup?: string;
+        /** Módulos EXTRA que se le otorgaron además de los de su grupo (una persona con varias funciones). */
+        extraModules?: string[];
         /** Si presente, indica que el SUPER_ADMIN está suplantando a este usuario. */
         impersonatedBy?: { userId: string; email: string };
       };
@@ -34,6 +36,8 @@ interface TokenPayload {
   role: string;
   companyId?: string;
   workGroup?: string;
+  /** Módulos EXTRA otorgados además de los del grupo. */
+  extraModules?: string[];
   /** Trazabilidad de impersonación — el JWT del usuario suplantado lleva quién lo está suplantando. */
   impersonatedBy?: { userId: string; email: string };
   iat?: number;
@@ -141,6 +145,7 @@ export const authenticateToken = async (
       role: payload.role,
       companyId: payload.companyId,
       workGroup: payload.workGroup,
+      extraModules: payload.extraModules || [],
       impersonatedBy: payload.impersonatedBy,
     };
     req.token = token;
@@ -151,8 +156,8 @@ export const authenticateToken = async (
     if (!req.user.companyId || !req.user.workGroup) {
       try {
         const { query } = await import('../config/database');
-        const r = await query<{ company_id: string | null; work_group: string | null }>(
-          'SELECT company_id, work_group FROM users WHERE id = $1 AND deleted_at IS NULL',
+        const r = await query<{ company_id: string | null; work_group: string | null; extra_modules: string[] | null }>(
+          'SELECT company_id, work_group, extra_modules FROM users WHERE id = $1 AND deleted_at IS NULL',
           [payload.userId]
         );
         if (r.rows[0]?.company_id && !req.user.companyId) {
@@ -160,6 +165,9 @@ export const authenticateToken = async (
         }
         if (r.rows[0]?.work_group && !req.user.workGroup) {
           req.user.workGroup = r.rows[0].work_group;
+        }
+        if (r.rows[0]?.extra_modules && (!req.user.extraModules || req.user.extraModules.length === 0)) {
+          req.user.extraModules = r.rows[0].extra_modules;
         }
       } catch (e) {
         logger.warn('Could not recover companyId/workGroup from DB', {

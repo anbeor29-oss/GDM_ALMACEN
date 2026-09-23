@@ -400,7 +400,7 @@ router.post('/:id/impersonate', asyncHandler(async (req, res) => {
 /** GET /admin/users/:id/permissions — estado actual + catálogos para la UI. */
 router.get('/:id/permissions', asyncHandler(async (req: Request, res: Response) => {
   const r = await query<any>(
-    `SELECT id, email, first_name, last_name, role, work_group, company_id
+    `SELECT id, email, first_name, last_name, role, work_group, company_id, extra_modules
        FROM users WHERE id = $1`,
     [req.params.id]
   );
@@ -424,6 +424,9 @@ router.get('/:id/permissions', asyncHandler(async (req: Request, res: Response) 
       work_group: u.work_group,
       /** Módulos que ve hoy con ese grupo — para enseñarlos sin adivinar. */
       modules: (GROUP_MODULES as any)[u.work_group] || [],
+      /** Módulos EXTRA otorgados (además del grupo) y TODOS los módulos para elegir. */
+      extra_modules: u.extra_modules || [],
+      all_modules: (GROUP_MODULES as any).ADMIN_ALL || [],
       granted_capabilities: granted.rows.map((x) => x.capability),
       effective_capabilities: await getEffectiveCapabilities(u.id, u.role),
       /** El rol ya se las da todas: la UI desactiva el bloque. */
@@ -436,9 +439,9 @@ router.get('/:id/permissions', asyncHandler(async (req: Request, res: Response) 
   });
 }));
 
-/** PUT /admin/users/:id/permissions — { workGroup?, capabilities? } */
+/** PUT /admin/users/:id/permissions — { workGroup?, capabilities?, extraModules? } */
 router.put('/:id/permissions', asyncHandler(async (req: Request, res: Response) => {
-  const { workGroup, capabilities } = req.body as any;
+  const { workGroup, capabilities, extraModules } = req.body as any;
 
   const r = await query<any>('SELECT id, email, role FROM users WHERE id = $1', [req.params.id]);
   if (r.rows.length === 0) throw new NotFoundError('Usuario no encontrado');
@@ -450,6 +453,16 @@ router.put('/:id/permissions', asyncHandler(async (req: Request, res: Response) 
       throw new ValidationError(`workGroup inválido. Válidos: ${VALID_WORK_GROUPS.join(', ')}`);
     }
     await query('UPDATE users SET work_group = $1, updated_at = NOW() WHERE id = $2', [wg, u.id]);
+  }
+
+  // Módulos EXTRA (además del grupo): una persona con varias funciones. Aditivo.
+  if (extraModules !== undefined) {
+    const { GROUP_MODULES } = await import('../../middleware/permissions');
+    const validos = new Set<string>((GROUP_MODULES as any).ADMIN_ALL || []);
+    const mods = Array.from(new Set((Array.isArray(extraModules) ? extraModules : []).map((m: any) => String(m))));
+    const invalid = mods.filter((m) => !validos.has(m));
+    if (invalid.length) throw new ValidationError(`Módulos desconocidos: ${invalid.join(', ')}`);
+    await query('UPDATE users SET extra_modules = $1, updated_at = NOW() WHERE id = $2', [mods, u.id]);
   }
 
   if (capabilities !== undefined) {

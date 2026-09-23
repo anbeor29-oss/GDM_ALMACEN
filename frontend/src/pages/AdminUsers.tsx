@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { X, Shield, Plus, Pencil, Building2, Key, Drama, Ban, CheckCircle } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
-import { WORK_GROUP_LABELS, WORK_GROUP_DETAIL, WorkGroup } from '@/utils/permissions';
+import { WORK_GROUP_LABELS, WORK_GROUP_DETAIL, WorkGroup, MODULE_LABELS, canAccess } from '@/utils/permissions';
 
 const ROLES = [
   { value: 'SUPER_ADMIN', label: 'Super Admin (plataforma)' },
@@ -332,6 +332,7 @@ function PermissionsModal({ user, onClose, onDone }: any) {
   const [data, setData] = useState<any | null>(null);
   const [workGroup, setWorkGroup] = useState<string>('');
   const [caps, setCaps] = useState<Set<string>>(new Set());
+  const [extraMods, setExtraMods] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -342,6 +343,7 @@ function PermissionsModal({ user, onClose, onDone }: any) {
       setData(d);
       setWorkGroup(d.work_group || 'ADMIN_ALL');
       setCaps(new Set(d.granted_capabilities || []));
+      setExtraMods(new Set(d.extra_modules || []));
     } catch (e: any) {
       setError(e?.response?.data?.message || e.message);
     }
@@ -353,6 +355,7 @@ function PermissionsModal({ user, onClose, onDone }: any) {
     try {
       await api.adminSetUserPermissions(user.id, {
         workGroup,
+        extraModules: Array.from(extraMods),
         // Solo se mandan si aplican: para ADMIN/MANAGER el backend lo rechaza
         // a propósito, y mandarlas sería pedirle que falle.
         ...(data?.capabilities_apply ? { capabilities: Array.from(caps) } : {}),
@@ -362,6 +365,10 @@ function PermissionsModal({ user, onClose, onDone }: any) {
       setError(e?.response?.data?.message || e.message);
     } finally { setBusy(false); }
   };
+
+  // Un módulo YA lo da el grupo elegido (no se marca como "extra": ya lo tiene).
+  const esDelGrupo = (m: string) => canAccess(workGroup, m as any);
+  const toggleMod = (m: string) => setExtraMods((s) => { const n = new Set(s); n.has(m) ? n.delete(m) : n.add(m); return n; });
 
   const toggle = (k: string) => setCaps(s => {
     const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n;
@@ -396,6 +403,27 @@ function PermissionsModal({ user, onClose, onDone }: any) {
                 <p className="text-xs text-slate-600 mt-2 bg-slate-50 border border-slate-200 rounded px-3 py-2">
                   {WORK_GROUP_DETAIL[workGroup as WorkGroup]}
                 </p>
+              </section>
+
+              {/* ── Módulos EXTRA: una persona que hace varias funciones ── */}
+              <section>
+                <h3 className="text-sm font-semibold text-slate-700 mb-1">Módulos adicionales</h3>
+                <p className="text-xs text-slate-500 mb-2">
+                  Además de los de su grupo, dale acceso a otros módulos (p.ej. Ventas <b>y</b> Nómina).
+                  Los que ya trae el grupo salen en gris.
+                </p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 border rounded-lg p-2">
+                  {(data.all_modules || []).map((m: string) => {
+                    const base = esDelGrupo(m);
+                    return (
+                      <label key={m} className={`flex items-center gap-2 text-sm px-1 py-0.5 rounded ${base ? 'text-slate-400' : 'text-slate-700 hover:bg-slate-50 cursor-pointer'}`}>
+                        <input type="checkbox" disabled={base} checked={base || extraMods.has(m)} onChange={() => toggleMod(m)} />
+                        {MODULE_LABELS[m] || m}
+                        {base && <span className="text-[10px] text-slate-400">· del grupo</span>}
+                      </label>
+                    );
+                  })}
+                </div>
               </section>
 
               {/* ── Capa 2: qué puede hacer ── */}

@@ -104,12 +104,14 @@ export async function cambiarDeEmpresa(
 
   /* El grupo de trabajo es EL DE ESA EMPRESA. Arrastrar el de la anterior sería
    * darle permisos que aquí no le tocan. */
-  const ug = await query<{ work_group: string | null }>(
-    `SELECT work_group FROM users WHERE id = $1`, [userId]
+  const ug = await query<{ work_group: string | null; extra_modules: string[] | null }>(
+    `SELECT work_group, extra_modules FROM users WHERE id = $1`, [userId]
   );
   const workGroup = empresa.work_group || ug.rows[0]?.work_group || 'ADMIN_ALL';
+  // Los módulos EXTRA son del USUARIO (no de la empresa): se conservan al cambiar.
+  const extraModules = ug.rows[0]?.extra_modules || [];
 
-  const token = generateToken({ userId, email, role, companyId: empresa.id, workGroup });
+  const token = generateToken({ userId, email, role, companyId: empresa.id, workGroup, extraModules });
 
   logger.info(`Usuario ${email} cambió a la empresa ${empresa.rfc} (${empresa.business_name})`);
 

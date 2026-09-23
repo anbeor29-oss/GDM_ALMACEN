@@ -24,6 +24,8 @@ export interface AuthResponse {
     companyId?: string;
     /** Grupo de trabajo (VENTAS/ALMACEN/COMPRAS/TESORERIA/ADMIN_ALL). */
     workGroup?: string;
+    /** Módulos EXTRA otorgados además del grupo (una persona con varias funciones). */
+    extraModules?: string[];
     /** True si el backend requiere cambio de contraseña antes de operar. */
     passwordChangeRequired?: boolean;
     /** Si presente, indica que el usuario fue suplantado por este super-admin. */

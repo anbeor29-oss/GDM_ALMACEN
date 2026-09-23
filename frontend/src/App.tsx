@@ -109,8 +109,10 @@ export function ModuleRoute({ module, children }: { module: ModuleKey; children:
   const { user } = useAuthStore();
   if (user?.role === 'SUPER_ADMIN') return <Navigate to="/admin/companies" replace />;
   /* Se rebota a la casa del grupo, NO al dashboard: si el grupo tampoco lo
-   * alcanza —y seis de los siete no— el rebote sería a otra negativa. */
-  if (!canAccess(user?.workGroup, module)) return <Navigate to={homeDe(user)} replace />;
+   * alcanza —y seis de los siete no— el rebote sería a otra negativa.
+   * Además del grupo, se respetan los MÓDULOS EXTRA del usuario (varias funciones). */
+  const extra = (user?.extraModules || []) as ModuleKey[];
+  if (!canAccess(user?.workGroup, module) && !extra.includes(module)) return <Navigate to={homeDe(user)} replace />;
   return <>{children}</>;
 }
 

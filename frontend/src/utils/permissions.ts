@@ -35,6 +35,16 @@ const ALL_MODULES: ModuleKey[] = [
   'nomina', 'contabilidad',
 ];
 
+/** Etiquetas legibles de cada módulo (para elegir módulos EXTRA de un usuario). */
+export const MODULE_LABELS: Record<string, string> = {
+  dashboard: 'Tablero', invoices: 'Facturación', carta_porte: 'Carta Porte',
+  credit_notes: 'Notas de crédito', customers: 'Clientes', products: 'Productos',
+  xml_reader: 'XML del SAT', inventory: 'Inventario', purchasing: 'Compras',
+  suppliers: 'Proveedores', pos: 'Punto de venta', treasury: 'Tesorería',
+  reports: 'Reportes', exchange_rates: 'Tipos de cambio', auditoria: 'Auditoría',
+  mensajes: 'Mensajes', nomina: 'Nómina', contabilidad: 'Contabilidad',
+};
+
 /**
  * Criterio de reparto: cada grupo alcanza lo que necesita para trabajar, no lo
  * que "le podría servir". Los cruces son deliberados — VENTAS ve tipos de

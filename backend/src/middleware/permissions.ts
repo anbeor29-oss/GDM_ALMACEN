@@ -137,7 +137,10 @@ export function requireModule(mod: ModuleKey) {
     }
     if (req.user.role === 'SUPER_ADMIN') return next();
     const group = (req.user.workGroup as WorkGroup) || 'ADMIN_ALL';
-    if (!groupCanAccess(group, mod)) {
+    // Además del grupo, se respetan los MÓDULOS EXTRA otorgados al usuario
+    // (una persona que hace varias funciones principales).
+    const extra = (req.user.extraModules as ModuleKey[]) || [];
+    if (!groupCanAccess(group, mod) && !extra.includes(mod)) {
       return res.status(403).json({
         success: false,
         message: `Tu grupo de trabajo (${group}) no tiene acceso a este módulo.`,

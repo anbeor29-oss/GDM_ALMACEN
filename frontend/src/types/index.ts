@@ -10,6 +10,8 @@ export interface User {
   companyId?: string;
   /** Grupo de trabajo: define qué módulos ve (VENTAS/ALMACEN/COMPRAS/TESORERIA/ADMIN_ALL). */
   workGroup?: string;
+  /** Módulos EXTRA otorgados además de los del grupo (una persona con varias funciones). */
+  extraModules?: string[];
   /** True si el backend requiere que el usuario cambie su contraseña antes de operar. */
   passwordChangeRequired?: boolean;
   /** Si está presente, el usuario actual está siendo suplantado por este super-admin. */

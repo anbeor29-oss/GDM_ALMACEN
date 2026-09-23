@@ -84,6 +84,7 @@ export async function login(email: string, password: string): Promise<AuthRespon
     role: user.role,
     companyId: user.company_id,
     workGroup: (user as any).work_group || 'ADMIN_ALL',
+    extraModules: (user as any).extra_modules || [],
   });
 
   const refreshToken = generateRefreshToken({
@@ -106,6 +107,7 @@ export async function login(email: string, password: string): Promise<AuthRespon
       role: user.role,
       companyId: user.company_id,
       workGroup: (user as any).work_group || 'ADMIN_ALL',
+      extraModules: (user as any).extra_modules || [],
       // Flag para que el frontend fuerce el cambio de contraseña antes de
       // entregarle la app (super-admin recién creado, reset reciente, etc.)
       passwordChangeRequired: Boolean((user as any).password_change_required),
@@ -146,6 +148,8 @@ export async function refreshAccessToken(userId: string, refreshToken: string): 
     email: user.email,
     role: user.role,
     companyId: user.company_id,
+    workGroup: (user as any).work_group || 'ADMIN_ALL',
+    extraModules: (user as any).extra_modules || [],
   });
 
   logger.info(`Token refreshed for user: ${user.email}`);

@@ -2851,7 +2851,7 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/admin/users/${id}/permissions`);
     return r.data;
   }
-  async adminSetUserPermissions(id: string, data: { workGroup?: string; capabilities?: string[] }) {
+  async adminSetUserPermissions(id: string, data: { workGroup?: string; capabilities?: string[]; extraModules?: string[] }) {
     const r = await this.client.put<APIResponse<any>>(`/admin/users/${id}/permissions`, data);
     return r.data;
   }
