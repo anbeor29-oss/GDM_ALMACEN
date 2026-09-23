@@ -6200,3 +6200,38 @@ una sola pantalla. TSC back=0, front=0.
 
 **Con esto queda cerrado el «Motor contable — listos para construir»:** auto-asignar de un tirón, póliza de
 nómina ordinaria, póliza de apertura y cuadre/organización de XML.
+
+---
+
+## 2026-09-23 (checador/nómina) — Asistencia → prenómina también para ROTATIVO/MIXTO
+
+El botón «Cargar del checador» (Nómina → Cálculo) ya armaba las faltas para turnos FIJOS. Ahora
+`incidenciasChecador` mira TODOS los horarios **no EXENTOS**: para **ROTATIVO** y el caso **MIXTO** manda la
+**asignación por fecha** (`checador_asignacion` → turno del día) y el **FIJO** sigue por su turno base; el
+retardo se mide contra la hora del turno esperado ESE día. Las faltas (deducción **020**, en DÍAS) conservan
+sus `dias` al repoblar la rejilla y al recalcular a mano (`Linea.dias` + los dos armadores de cuerpo), para
+que un recálculo no las degrade a un importe fijo. TSC back=0, front=0.
+
+---
+
+## 2026-09-23 (contabilidad) — Submenú «Opinión de Cumplimiento» (SAT 32-D / IMSS / INFONAVIT)
+
+Nuevo apartado en **Contabilidad → Reportes → «Opinión 32-D»** para **registrar y dar seguimiento** a las
+tres opiniones de cumplimiento: sentido (Positiva/Negativa/Sin adeudos/…), fecha, folio, observaciones y el
+**PDF**. La más reciente por tipo es la vigente; se guarda el histórico. Tabla `opinion_cumplimiento`
+(migración `2026-09-23_opinion_cumplimiento.sql`), `opinion-cumplimiento.service`
+(resumen/historial/registrar/borrar/pdf) y rutas `/accounting/opinion-cumplimiento`. Pantalla con 3 pestañas
++ tarjetas resumen + alta con PDF adjunto. Es la **estructura** que pidió el usuario para acomodar el 32-D;
+la descarga en vivo (Buzón/e.firma de cada dependencia) queda como fase posterior (ver [[imss-32d-opinion-pendiente]]).
+
+---
+
+## 2026-09-23 (nómina) — Documento legal de la baja (finiquito / renuncia / liquidación)
+
+Al timbrar la baja a la nómina especial, ahora se puede generar el **documento en prosa** que la acompaña,
+fundado en la **LFT** y con los importes del recibo: **finiquito** (recibo-convenio, Art. 82/87/76/80),
+**renuncia** (carta voluntaria, Art. 53-I) y **liquidación** (convenio por despido, Art. 48/50/162). Tabla de
+conceptos con su fundamento, neto **con letra**, firmas (trabajador/patrón) y leyenda «revíselo con su asesor
+legal». `documento-baja.service.documentoLegalBaja` reusa `representacionFiniquito` + `fmtMoney`/`montoEnLetra`,
+con paginación N/total. Ruta `GET /nomina/baja/:reciboId/documento?variante=`. En **Nómina → Reportes →
+Conceptos y cuentas → Póliza (Finiquito)** aparecen los botones junto al recibo timbrado. TSC back=0, front=0.
