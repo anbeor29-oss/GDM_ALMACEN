@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown } from 'lucide-react';
+import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown, Wand2 } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
@@ -116,6 +116,23 @@ export function PolizasListaPage() {
     } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo importar el TXT.'); }
     finally { setGenerando(''); }
   };
+  /* «De un tirón»: asigna cuentas de producto (ventas+compras) con match claro y
+   * genera las subcuentas de terceros. Deja sólo los dudosos por revisar. */
+  const autoAsignar = async () => {
+    setGenerando('auto'); setMsg('');
+    try {
+      const mesEfectivo = (todoAnio || mes === 0) ? 0 : mes;
+      const r: any = await api.autoAsignarCuentasTodo(anio, mesEfectivo);
+      const d = r.data;
+      const pend = (d.ventas?.pendientes?.length || 0) + (d.compras?.pendientes?.length || 0);
+      setMsg(
+        `Auto-asignado: ${d.ventas?.asignadas || 0} de venta y ${d.compras?.asignadas || 0} de compra. ` +
+        `Subcuentas nuevas: ${d.subClientes?.creadas || 0} cliente(s), ${d.subProveedores?.creadas || 0} proveedor(es). ` +
+        (pend ? `Quedan ${pend} producto(s) dudoso(s) por revisar en «Asignar cuentas».` : 'Sin dudosos: todo quedó asignado.'));
+      await qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
+    } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo auto-asignar.'); }
+    finally { setGenerando(''); }
+  };
   const GENERADORES: Array<[string, string, () => Promise<any>]> = [
     ['ventas', 'Ventas', () => api.generarVentas(anio, mes, todoAnio || mes === 0)],
     ['compras', 'Compras', () => api.generarCompras(anio, mes, todoAnio || mes === 0)],
@@ -203,6 +220,11 @@ export function PolizasListaPage() {
         ))}
         <span className="mx-1 h-4 w-px bg-gray-300" />
         <span className="text-xs text-gray-500">Asignar cuentas:</span>
+        <button onClick={autoAsignar} disabled={!!generando}
+          title="Asigna de un tirón las cuentas de producto con match claro (misma familia SAT) de ventas y compras, y genera las subcuentas de clientes/proveedores. Sólo deja los dudosos por revisar a mano."
+          className="flex items-center gap-1 border border-emerald-300 bg-white px-2.5 py-1 rounded-lg text-xs text-emerald-700 hover:bg-emerald-50 disabled:opacity-40">
+          <Wand2 size={13} /> {generando === 'auto' ? 'Asignando…' : 'Auto-asignar todo'}
+        </button>
         <button onClick={() => navigate('/invoices/polizas-venta')}
           className="border bg-white px-2.5 py-1 rounded-lg text-xs text-gray-700 hover:bg-gray-100">Ventas</button>
         <button onClick={() => navigate('/compras/polizas')}

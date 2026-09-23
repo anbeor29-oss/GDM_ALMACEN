@@ -1142,6 +1142,16 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/sugerencias-cuenta', { params: { direccion } });
     return r.data;
   }
+  /** Auto-asigna «de un tirón» las cuentas de producto con match claro (una dirección). */
+  async autoAsignarCuentas(direccion: 'ventas' | 'compras', anio: number, mes: number) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/auto-asignar', { direccion, anio, mes });
+    return r.data;
+  }
+  /** «De un tirón» completo: ventas + compras + subcuentas de terceros del periodo. */
+  async autoAsignarCuentasTodo(anio: number, mes: number) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/auto-asignar-todo', { anio, mes });
+    return r.data;
+  }
   /** Pólizas del respaldo que no se pudieron importar (pendientes). */
   async getPolizasPendientes() {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas-pendientes');

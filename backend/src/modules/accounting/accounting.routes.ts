@@ -28,6 +28,7 @@ import * as activos from './activos-fijos.service';
 import * as reportesExport from './reportes-export.service';
 import * as contpaqi from './contpaqi-import.service';
 import * as cambioCuenta from './cambio-cuenta.service';
+import * as autoAsignar from './auto-asignar-cuentas.service';
 import * as validacion from './validacion-contable.service';
 import * as especiales from './reportes-especiales.service';
 import * as balanceGeneral from './balance-general.service';
@@ -1430,6 +1431,31 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const dir = req.body?.direccion === 'recibidos' ? 'recibidos' : 'emitidos';
     res.json({ success: true, data: await terceros.generarSubcuentasDeComprobantes(companyId(req), dir) });
+  })
+);
+
+/** POST /accounting/cuentas/auto-asignar — «de un tirón»: asigna la cuenta a los
+ *  productos con match CLARO (familia SAT) de una dirección; deja los dudosos. */
+router.post(
+  '/cuentas/auto-asignar',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const dir = req.body?.direccion === 'compras' ? 'compras' : 'ventas';
+    const anio = Number(req.body?.anio); const mes = Number(req.body?.mes);
+    if (!anio) throw new ValidationError('Falta el año.');
+    res.json({ success: true, data: await autoAsignar.autoAsignarCuentasProducto(companyId(req), dir, anio, mes) });
+  })
+);
+
+/** POST /accounting/cuentas/auto-asignar-todo — «de un tirón» completo: ventas +
+ *  compras + subcuentas de clientes/proveedores del periodo, en una sola pasada. */
+router.post(
+  '/cuentas/auto-asignar-todo',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = Number(req.body?.anio); const mes = Number(req.body?.mes);
+    if (!anio) throw new ValidationError('Falta el año.');
+    res.json({ success: true, data: await autoAsignar.autoAsignarTodo(companyId(req), anio, mes) });
   })
 );
 
