@@ -2026,6 +2026,19 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/nomina/poliza/${reciboId}/generar`);
     return r.data;
   }
+  /* ── Póliza de nómina ORDINARIA (agregada por periodo) ── */
+  async getPeriodosOrdinariosPoliza() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/poliza-periodos');
+    return r.data;
+  }
+  async getPolizaPeriodoNomina(periodoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/poliza-periodo/${periodoId}`);
+    return r.data;
+  }
+  async generarPolizaPeriodoNomina(periodoId: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/poliza-periodo/${periodoId}/generar`);
+    return r.data;
+  }
   async getNominaParametros() {
     const r = await this.client.get<APIResponse<any>>('/nomina/parametros');
     return r.data;

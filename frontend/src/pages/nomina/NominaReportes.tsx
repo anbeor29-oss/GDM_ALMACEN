@@ -731,7 +731,7 @@ export function ConceptosCuentasNomina() {
       </div>
 
       {sub === 'poliza' ? (
-        <PolizaFiniquito />
+        <PolizaNomina />
       ) : (
         <div className="bg-white rounded-lg shadow overflow-x-auto">
           <table className="w-full">
@@ -998,6 +998,148 @@ function PolizaFiniquito() {
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {msg && <p className="text-sm text-emerald-700">{msg}</p>}
+    </div>
+  );
+}
+
+/* ── Póliza de nómina: ORDINARIA (por periodo) o FINIQUITO ── */
+function PolizaNomina() {
+  const [modo, setModo] = useState<'ordinaria' | 'finiquito'>('ordinaria');
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1.5">
+        {([['ordinaria', 'Ordinaria (por periodo)'], ['finiquito', 'Finiquito / liquidación']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setModo(k)}
+            className={`px-3 py-1.5 rounded-lg text-sm border ${modo === k ? 'bg-violet-600 text-white border-violet-600' : 'text-gray-600 hover:bg-gray-50'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {modo === 'ordinaria' ? <PolizaOrdinaria /> : <PolizaFiniquito />}
+    </div>
+  );
+}
+
+/* La póliza AGREGADA de una corrida de nómina: todos los recibos del periodo en
+ * una sola póliza de pasivo (percepciones→601, subsidio→110, deducciones→216/205,
+ * neto→210). Una por periodo, no una por trabajador. */
+function PolizaOrdinaria() {
+  const qc = useQueryClient();
+  const [periodoSel, setPeriodoSel] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const listaQ = useQuery({ queryKey: ['nomina-periodos-poliza'], queryFn: () => api.getPeriodosOrdinariosPoliza() });
+  const periodos: any[] = listaQ.data?.data?.periodos || [];
+  const sel = periodoSel || periodos[0]?.id || '';
+
+  const detQ = useQuery({
+    queryKey: ['nomina-poliza-periodo', sel],
+    queryFn: () => api.getPolizaPeriodoNomina(sel),
+    enabled: !!sel,
+  });
+  const pol = detQ.data?.data?.poliza;
+
+  const generar = async () => {
+    setBusy(true); setMsg('');
+    try {
+      const r: any = await api.generarPolizaPeriodoNomina(sel);
+      setMsg(r.data?.creada ? `Póliza #${r.data.poliza?.folio} generada en la contabilidad.` : (r.data?.motivo || 'Sin cambios.'));
+      qc.invalidateQueries({ queryKey: ['nomina-periodos-poliza'] });
+      qc.invalidateQueries({ queryKey: ['nomina-poliza-periodo', sel] });
+    } catch (e: any) { setMsg(e?.response?.data?.message || e.message || 'No se pudo generar.'); }
+    finally { setBusy(false); }
+  };
+
+  const etTipo = (t: string) => t === 'SEMANAL' ? 'Semana' : t === 'QUINCENAL' ? 'Quincena' : 'Mes';
+
+  if (listaQ.isLoading) return <p className="text-sm text-gray-500 bg-white border rounded-lg p-4">Cargando…</p>;
+  if (periodos.length === 0) return (
+    <p className="text-sm text-gray-600 bg-white border rounded-lg p-4">
+      No hay periodos de nómina ordinaria calculados. Calcula una nómina (Nómina → Cálculo) y aquí
+      aparece para contabilizarla en una sola póliza por corrida.
+    </p>
+  );
+
+  return (
+    <div className="space-y-3">
+      <select value={sel} onChange={(e) => { setPeriodoSel(e.target.value); setMsg(''); }}
+        className="border rounded-lg px-3 py-1.5 text-sm max-w-full">
+        {periodos.map((p) => (
+          <option key={p.id} value={p.id}>
+            {etTipo(p.tipo)} {p.numero}/{p.anio} · {p.recibos} recibo(s) · pago {aTextoMx(p.fecha_pago || p.fecha_fin)}
+            {p.con_poliza ? ' · (ya contabilizado)' : ''}
+          </option>
+        ))}
+      </select>
+
+      {detQ.isLoading && <p className="text-sm text-gray-500 bg-white border rounded-lg p-4">Cargando…</p>}
+
+      {pol && (
+        <div className="bg-white rounded-lg shadow border p-4 space-y-3 max-w-2xl">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-gray-800 flex items-center gap-1.5">
+              <BookOpen size={16} className="text-violet-600" /> {pol.periodo.etiqueta} — provisión de nómina
+            </h4>
+            <span className="text-xs text-gray-500">{pol.periodo.recibos} recibo(s) · {pol.periodo.timbrados} timbrado(s)</span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[10px] uppercase text-gray-400 border-b">
+                  <th className="text-left py-1">Cuenta</th>
+                  <th className="text-right py-1">Cargo</th>
+                  <th className="text-right py-1">Abono</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pol.lineas.map((l: any, i: number) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-1"><span className="font-mono text-gray-700">{l.codigo}</span><span className="text-gray-500 ml-1.5">{l.concepto}</span></td>
+                    <td className="py-1 text-right">{l.cargo ? money(l.cargo) : ''}</td>
+                    <td className="py-1 text-right">{l.abono ? money(l.abono) : ''}</td>
+                  </tr>
+                ))}
+                <tr className="font-semibold bg-gray-50">
+                  <td className="py-1 text-right">Sumas</td>
+                  <td className="py-1 text-right">{money(pol.sumaCargo)}</td>
+                  <td className="py-1 text-right">{money(pol.sumaAbono)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {pol.faltantes.length > 0 && (
+            <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              <p className="flex items-center gap-1.5 font-medium"><AlertTriangle size={13} /> Faltan {pol.faltantes.length} concepto(s) por asignar cuenta:</p>
+              <ul className="mt-1 list-disc pl-5 space-y-0.5">
+                {pol.faltantes.map((f: any, i: number) => (
+                  <li key={i}>{f.concepto} — {money(f.importe)}{f.sugerida ? ` (sugerida ${f.sugerida})` : ''}</li>
+                ))}
+              </ul>
+              <p className="mt-1">Asígnalas en Ingresos/Egresos y vuelve.</p>
+            </div>
+          )}
+          {pol.faltantes.length === 0 && (
+            <p className={`text-xs flex items-center gap-1.5 ${pol.cuadra ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {pol.cuadra ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+              {pol.cuadra ? 'La póliza cuadra.' : 'La póliza no cuadra — revisa las cuentas.'}
+            </p>
+          )}
+
+          {pol.yaGenerada ? (
+            <p className="text-sm text-gray-500 flex items-center gap-1.5"><Check size={14} className="text-emerald-500" /> Ya está contabilizada.</p>
+          ) : (
+            <button onClick={generar} disabled={busy || pol.faltantes.length > 0 || !pol.cuadra}
+              className="flex items-center gap-1.5 bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 disabled:opacity-50 text-sm">
+              <PlayCircle size={15} /> {busy ? 'Generando…' : 'Generar póliza'}
+            </button>
+          )}
         </div>
       )}
 

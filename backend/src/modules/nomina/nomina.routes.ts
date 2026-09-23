@@ -1321,6 +1321,28 @@ router.post(
   })
 );
 
+/* ── Póliza de nómina ORDINARIA (agregada por periodo) ── */
+router.get(
+  '/poliza-periodos',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: { periodos: await nominaPoliza.periodosOrdinarios(companyId(req)) } });
+  })
+);
+router.get(
+  '/poliza-periodo/:periodoId',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: { poliza: await nominaPoliza.armarPolizaPeriodo(companyId(req), req.params.periodoId) } });
+  })
+);
+router.post(
+  '/poliza-periodo/:periodoId/generar',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await nominaPoliza.generarPolizaPeriodo(companyId(req), req.params.periodoId, req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
+
 /**
  * POST /nomina/importar — sube el paquete JSON del extractor de NomiPaq (empresa,
  * departamentos, puestos, empleados, periodos, conceptos, movimientos, cfdi) y lo
