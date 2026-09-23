@@ -6068,3 +6068,21 @@ salía. Además de la corrección en `/accounting/ejercicios` (unir años con p�
 `PreviewContabElec` con toggle **Balanza / Catálogo** muestra la tabla (balanza: cuenta, saldo ini, debe,
 haber, saldo fin + totales y ✓cuadra; catálogo: agrupador, cuenta, desc, subctade, nivel, natur). TSC
 back=0, front build=0.
+
+---
+
+## 2026-09-22 (contabilidad/UI) — Pólizas: pestañas reordenadas y libro diario compacto (un renglón por póliza)
+
+**Orden de las pestañas.** En **Pólizas de venta** el orden pasó a **Pólizas · Clientes · Ingresos**
+(la pantalla arranca en Pólizas) y en **Pólizas de compra** a **Pólizas · Proveedores · Cargos**
+(arranca en Pólizas). Antes ambas abrían en la configuración de cuentas (ingresos 401 / cargos
+115-601); ahora lo primero que se ve es el resultado —las pólizas— y la configuración de cuentas
+queda al final, que es donde se toca de vez en cuando. Sólo cambió el orden del arreglo de tabs y el
+`useState` inicial; los iconos y el resto siguen amarrados por su `key`.
+
+**Libro diario compacto (`PolizasLista`).** Cada póliza es ahora **un solo renglón**: chevron +
+`#folio` azul + fecha + concepto + etiqueta + importe. **Doble clic** en el renglón —o el chevron—
+**despliega/contrae** sus partidas, para ver muchas pólizas de un vistazo sin gastar pantalla. El
+**`#folio` en azul** sigue abriendo el **editor manual** (cambios a mano), y el ojo/lápiz/bote quedan a
+la derecha; esos botones hacen `stopPropagation` en el doble clic para no togglear al usarlos. Las filas
+abiertas se recuerdan en un `Set` en estado para no cerrarse al refrescar. TSC front=0.

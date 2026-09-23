@@ -131,8 +131,11 @@ Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
   con descuento (neto) y retenciones ISR/IVA, una por factura. **Póliza de nómina**
   del finiquito timbrado (percep. a 601, deducciones a 216, neto a 210). **Póliza
   manual** con cualquier cuenta y atajo "−" para cuadrar. Menú **Pólizas** = el
-  libro diario del mes (todas, por origen, con borrar). La asignación de cuentas se
-  **valida contra el catálogo**. Reportes en submenú **Reportes**; **Auditoría**
+  libro diario del mes (todas, por origen, con borrar), **compacto**: una póliza por
+  renglón, **doble clic** (o el chevron) despliega sus partidas y el `#folio` azul
+  abre el editor manual. Las pantallas de venta/compra arrancan en la pestaña
+  **Pólizas** (Clientes/Proveedores e Ingresos/Cargos quedan después). La asignación
+  de cuentas se **valida contra el catálogo**. Reportes en submenú **Reportes**; **Auditoría**
   cuelga de Contabilidad; **Asignación de cuenta** como puente.
   Pendiente: **balanza derivada** (pasar los saldos de `journal_lines` a la balanza
   de comprobación) y la póliza de apertura (balanza anterior).
