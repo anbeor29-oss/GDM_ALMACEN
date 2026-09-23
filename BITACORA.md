@@ -6270,3 +6270,14 @@ conceptos con su fundamento, neto **con letra**, firmas (trabajador/patrón) y l
 legal». `documento-baja.service.documentoLegalBaja` reusa `representacionFiniquito` + `fmtMoney`/`montoEnLetra`,
 con paginación N/total. Ruta `GET /nomina/baja/:reciboId/documento?variante=`. En **Nómina → Reportes →
 Conceptos y cuentas → Póliza (Finiquito)** aparecen los botones junto al recibo timbrado. TSC back=0, front=0.
+
+---
+
+## 2026-09-23 (súper admin) — Borrado DEFINITIVO de usuarios (paso extra, solo deshabilitados)
+
+En Súper Admin → Usuarios, los usuarios **DESHABILITADOS** ganan un botón **«Eliminar definitivamente»**
+(bote rojo) — un segundo paso tras darlos de baja. Abre un modal que exige teclear el **correo exacto**
+(misma fricción que el borrado de empresa). Backend: `DELETE /admin/users/:id` ya existía (pide confirmEmail,
+no permite auto-borrado, y BLOQUEA si el usuario tiene historial que es evidencia —contratos, ventas, CSD,
+manifiestos—); se le agregó la guarda de que **solo borra si `is_active=false`** (primero deshabilitar,
+luego borrar). No aparece para SUPER_ADMIN ni para uno mismo. `api.adminDeleteUser(id, confirmEmail)`. TSC back=0, front=0.

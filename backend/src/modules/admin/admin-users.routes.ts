@@ -218,9 +218,15 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw new ValidationError('id inválido');
 
-  const uR = await query<any>('SELECT id, email, role FROM users WHERE id = $1', [id]);
+  const uR = await query<any>('SELECT id, email, role, is_active FROM users WHERE id = $1', [id]);
   if (uR.rows.length === 0) throw new NotFoundError('Usuario no encontrado');
   const user = uR.rows[0];
+
+  // PASO EXTRA de seguridad: el borrado DEFINITIVO solo aplica a usuarios ya
+  // DESHABILITADOS. Primero se da de baja (soft, reversible), luego se elimina.
+  if (user.is_active) {
+    throw new ValidationError('Primero deshabilita al usuario; el borrado definitivo solo aplica a usuarios deshabilitados.');
+  }
 
   // Confirmación server-side: hay que escribir el email exacto. Mismo patrón
   // que el borrado de empresa — la fricción es deliberada.

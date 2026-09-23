@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { X, Shield, Plus, Pencil, Building2, Key, Drama, Ban, CheckCircle } from 'lucide-react';
+import { X, Shield, Plus, Pencil, Building2, Key, Drama, Ban, CheckCircle, Trash2 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { WORK_GROUP_LABELS, WORK_GROUP_DETAIL, WorkGroup, MODULE_LABELS, canAccess } from '@/utils/permissions';
@@ -65,6 +65,14 @@ export function AdminUsersPage() {
   const enable = useMutation({
     mutationFn: (id: string) => api.adminEnableUser(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
+  });
+  /* Borrado DEFINITIVO (paso extra, solo deshabilitados): abre un modal que exige
+   * teclear el correo exacto — la misma fricción que el borrado de empresa. */
+  const [eliminar, setEliminar] = useState<any>(null);
+  const del = useMutation({
+    mutationFn: ({ id, email }: { id: string; email: string }) => api.adminDeleteUser(id, email),
+    onSuccess: () => { setEliminar(null); qc.invalidateQueries({ queryKey: ['admin-users'] }); },
+    onError: (e: any) => alert(e?.response?.data?.message || 'No se pudo borrar.'),
   });
 
   /** Impersonar: reemplaza el JWT local por el del usuario target y navega al dashboard. */
@@ -192,9 +200,17 @@ export function AdminUsersPage() {
                         <Ban size={16} />
                       </IconBtn>
                     ) : (
-                      <IconBtn title="Re-activar" color="green" onClick={() => enable.mutate(u.id)}>
-                        <CheckCircle size={16} />
-                      </IconBtn>
+                      <>
+                        <IconBtn title="Re-activar" color="green" onClick={() => enable.mutate(u.id)}>
+                          <CheckCircle size={16} />
+                        </IconBtn>
+                        {/* Paso extra: los deshabilitados se pueden BORRAR definitivamente. */}
+                        {u.role !== 'SUPER_ADMIN' && u.id !== user?.userId && (
+                          <IconBtn title="Eliminar definitivamente" color="red" onClick={() => setEliminar(u)}>
+                            <Trash2 size={16} />
+                          </IconBtn>
+                        )}
+                      </>
                     )}
                   </div>
                 </td>
@@ -237,6 +253,54 @@ export function AdminUsersPage() {
           onDone={() => { setEditUser(null); qc.invalidateQueries({ queryKey: ['admin-users'] }); }}
         />
       )}
+
+      {eliminar && (
+        <ModalEliminarUsuario
+          usuario={eliminar}
+          busy={del.isPending}
+          onClose={() => setEliminar(null)}
+          onConfirmar={(email: string) => del.mutate({ id: eliminar.id, email })}
+        />
+      )}
+    </div>
+  );
+}
+
+/* Borrado DEFINITIVO de un usuario DESHABILITADO: exige teclear el correo exacto
+ * (misma fricción que el borrado de empresa). El backend lo vuelve a validar y
+ * bloquea si el usuario tiene historial que es evidencia. */
+function ModalEliminarUsuario({ usuario, busy, onClose, onConfirmar }: any) {
+  const [txt, setTxt] = useState('');
+  const coincide = txt.trim().toLowerCase() === String(usuario.email).toLowerCase();
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 p-5 border-b">
+          <div className="w-10 h-10 bg-rose-100 rounded-lg flex items-center justify-center"><Trash2 className="text-rose-700" size={20} /></div>
+          <div>
+            <h3 className="font-semibold text-gray-900">Eliminar definitivamente</h3>
+            <p className="text-xs text-gray-500">Esta acción NO se puede deshacer.</p>
+          </div>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-sm text-gray-700">
+            Vas a borrar permanentemente a <b>{usuario.email}</b>. Si tiene historial que es evidencia
+            (contratos, ventas, CSD…), el sistema lo impedirá y deberás dejarlo sólo deshabilitado.
+          </p>
+          <label className="block">
+            <span className="text-xs text-gray-600">Para confirmar, escribe su correo exacto:</span>
+            <input autoFocus value={txt} onChange={(e) => setTxt(e.target.value)} placeholder={usuario.email}
+              className="input w-full font-mono mt-1" />
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 p-5 border-t bg-slate-50">
+          <button onClick={onClose} disabled={busy} className="px-4 py-2 border rounded-lg hover:bg-white text-sm disabled:opacity-50">Cancelar</button>
+          <button onClick={() => onConfirmar(txt.trim())} disabled={!coincide || busy}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-sm">
+            <Trash2 size={15} /> {busy ? 'Borrando…' : 'Eliminar definitivamente'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

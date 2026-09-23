@@ -1981,6 +1981,11 @@ class APIClient {
     const r = await this.client.post(`/admin/users/${id}/enable`, {});
     return r.data;
   }
+  /** Borrado DEFINITIVO (solo usuarios deshabilitados). Exige el correo exacto. */
+  async adminDeleteUser(id: string, confirmEmail: string) {
+    const r = await this.client.delete(`/admin/users/${id}`, { data: { confirmEmail } });
+    return r.data;
+  }
   async adminEnterCompany(companyId: string) {
     const r = await this.client.post<{ data: { token: string; user: any; company: any } }>(`/admin/companies/${companyId}/enter`, {});
     return r.data;
