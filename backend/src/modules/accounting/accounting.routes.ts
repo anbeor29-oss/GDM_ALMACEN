@@ -31,6 +31,7 @@ import * as cambioCuenta from './cambio-cuenta.service';
 import * as autoAsignar from './auto-asignar-cuentas.service';
 import * as apertura from './apertura.service';
 import * as diagnosticoCfdi from './diagnostico-cfdi.service';
+import * as opinionCumpl from './opinion-cumplimiento.service';
 import * as validacion from './validacion-contable.service';
 import * as especiales from './reportes-especiales.service';
 import * as balanceGeneral from './balance-general.service';
@@ -764,6 +765,31 @@ router.get(
     res.json({ success: true, data: await diagnosticoCfdi.diagnosticarContabilizacion(companyId(req), anio, mes) });
   })
 );
+
+/* ── Opinión de Cumplimiento (SAT 32-D / IMSS / INFONAVIT) ── */
+router.get('/opinion-cumplimiento', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await opinionCumpl.resumen(companyId(req)) });
+}));
+router.get('/opinion-cumplimiento/historial', asyncHandler(async (req: Request, res: Response) => {
+  const tipo = req.query.tipo ? String(req.query.tipo).toUpperCase() : undefined;
+  res.json({ success: true, data: await opinionCumpl.historial(companyId(req), tipo) });
+}));
+router.post('/opinion-cumplimiento', requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.status(201).json({ success: true, data: await opinionCumpl.registrar(companyId(req), req.body, req.user?.userId) });
+  }));
+router.delete('/opinion-cumplimiento/:id', requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await opinionCumpl.borrar(companyId(req), req.params.id) });
+  }));
+router.get('/opinion-cumplimiento/:id/pdf', asyncHandler(async (req: Request, res: Response) => {
+  const dataUrl = await opinionCumpl.pdfDe(companyId(req), req.params.id);
+  const base64 = dataUrl.replace(/^data:application\/pdf;base64,/, '');
+  const buf = Buffer.from(base64, 'base64');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'inline; filename="opinion-cumplimiento.pdf"');
+  res.send(buf);
+}));
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PERIODOS — el acumulador que alimenta a todos los estados

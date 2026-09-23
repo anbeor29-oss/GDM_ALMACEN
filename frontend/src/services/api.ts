@@ -1157,6 +1157,32 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/cuadre-cfdi/${anio}/${mes}`);
     return r.data;
   }
+
+  /* ── Opinión de Cumplimiento (SAT 32-D / IMSS / INFONAVIT) ── */
+  async getOpinionCumplimiento() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/opinion-cumplimiento');
+    return r.data;
+  }
+  async getOpinionHistorial(tipo?: string) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/opinion-cumplimiento/historial', { params: { tipo } });
+    return r.data;
+  }
+  async registrarOpinion(data: any) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/opinion-cumplimiento', data);
+    return r.data;
+  }
+  async borrarOpinion(id: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/accounting/opinion-cumplimiento/${id}`);
+    return r.data;
+  }
+  async verOpinionPdf(id: string) {
+    const token = localStorage.getItem('token');
+    const base = this.client.defaults.baseURL || '/api/v1';
+    const r = await fetch(`${base}/accounting/opinion-cumplimiento/${id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) throw new Error('No se pudo abrir el PDF.');
+    const blob = await r.blob();
+    window.open(URL.createObjectURL(blob), '_blank');
+  }
   /** Pólizas del respaldo que no se pudieron importar (pendientes). */
   async getPolizasPendientes() {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas-pendientes');
