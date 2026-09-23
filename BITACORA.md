@@ -6244,6 +6244,23 @@ con e.firma, que NEXO ya guarda). Investigación en la memoria [[imss-32d-opinio
 
 ---
 
+## 2026-09-23 (facturación/PAC) — Ambiente de timbrado POR EMPRESA (pruebas vs en vivo) con toggle en Súper Admin
+
+Antes el ambiente del PAC era **global** (`SW_SAPIEN_ENV`) para todo el despliegue. Ahora cada empresa
+tiene **`companies.timbrado_ambiente`** = **PRUEBAS** (sandbox, por defecto) / **PRODUCCION** (CFDI reales
+ante el SAT), y el motor **rutea URL + token por empresa**. Así el mismo despliegue tiene unas empresas en
+vivo y otras en pruebas (un cliente nuevo en PRUEBAS hasta cargar su CSD real). Migración
+`2026-09-23c_timbrado_ambiente.sql`. `getCredentials(companyId)` pasó a **async** y cuelga el ambiente en
+`PACCredentials.env`; `SWSapienProvider.readEnvConfig(env)`/`http(env)` eligen `services.test.sw.com.mx` vs
+`services.sw.com.mx` y el token: **`SW_SAPIEN_TOKEN`** (sandbox) o **`SW_SAPIEN_TOKEN_PROD`** (producción, sin
+caer al de sandbox). El candado del RFC de prueba EKU9003173C9 se evalúa por el ambiente de la empresa.
+`SW_SAPIEN_ENV` queda como default/fallback del despliegue. **Súper Admin → Empresas → editar → «Ambiente de
+timbrado»** (con advertencia de CFDI reales) + insignia **EN VIVO** en la lista; `PUT /admin/companies/:id`
+acepta `timbradoAmbiente`. **Por defecto PRUEBAS: nadie emite real hasta marcarlo a propósito** (y con el CSD
+real cargado). Va de la mano con la separación de ramas [[despliegue-dev-produccion]]. TSC back=0, front=0.
+
+---
+
 ## 2026-09-23 (nómina) — Documento legal de la baja (finiquito / renuncia / liquidación)
 
 Al timbrar la baja a la nómina especial, ahora se puede generar el **documento en prosa** que la acompaña,

@@ -75,6 +75,10 @@ export interface PACCredentials {
   password: string;
   api_key?: string;
   is_test_mode: boolean;
+  /** Ambiente de timbrado de ESTA empresa: 'sandbox' (pruebas) o 'production'
+   *  (en vivo). Lo pone getCredentials leyendo companies.timbrado_ambiente; el
+   *  provider elige URL + token con él. Sin él, se usa el default del despliegue. */
+  env?: 'sandbox' | 'production';
 }
 
 /**

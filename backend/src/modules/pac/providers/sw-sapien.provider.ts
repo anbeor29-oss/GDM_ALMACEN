@@ -47,14 +47,18 @@ interface SWTokenSource {
  * Lee las credenciales SW desde variables de entorno.
  * Nunca vienen del cliente ni del body del request.
  */
-function readEnvConfig(): SWTokenSource | null {
-  const token = process.env.SW_SAPIEN_TOKEN?.trim();
-  const env   = (process.env.SW_SAPIEN_ENV || 'sandbox').toLowerCase();
-  if (!token) return null;
+function readEnvConfig(envOverride?: 'sandbox' | 'production'): SWTokenSource | null {
+  const env = (envOverride || (process.env.SW_SAPIEN_ENV || 'sandbox').toLowerCase()) as string;
   if (env !== 'sandbox' && env !== 'production') {
-    throw new Error(`SW_SAPIEN_ENV inválido: ${env} — usa 'sandbox' o 'production'`);
+    throw new Error(`Ambiente SW inválido: ${env} — usa 'sandbox' o 'production'`);
   }
-  return { token, env };
+  // Token POR AMBIENTE: producción usa SW_SAPIEN_TOKEN_PROD (NO cae al de sandbox,
+  // que no sirve en el endpoint real); pruebas usa SW_SAPIEN_TOKEN.
+  const token = (env === 'production'
+    ? process.env.SW_SAPIEN_TOKEN_PROD
+    : process.env.SW_SAPIEN_TOKEN)?.trim();
+  if (!token) return null;
+  return { token, env: env as 'sandbox' | 'production' };
 }
 
 export class SWSapienProvider implements IPACProvider {
@@ -63,12 +67,14 @@ export class SWSapienProvider implements IPACProvider {
   private lastConfigKey = '';
 
   /** Reconstruye el cliente axios si cambió el env o el token. */
-  private http(): AxiosInstance {
-    const cfg = readEnvConfig();
+  private http(envOverride?: 'sandbox' | 'production'): AxiosInstance {
+    const cfg = readEnvConfig(envOverride);
     if (!cfg) {
       throw new Error(
-        'SW_SAPIEN_TOKEN no configurado en .env — genera un token en ' +
-        'https://swpanel.mx (Configuración → Tokens) y agrégalo al backend.'
+        (envOverride === 'production'
+          ? 'SW_SAPIEN_TOKEN_PROD (token de PRODUCCIÓN) no configurado en el backend. '
+          : 'SW_SAPIEN_TOKEN no configurado en el backend. ') +
+        'Genera el token en https://swpanel.mx (Configuración → Tokens) y agrégalo.'
       );
     }
     const key = `${cfg.env}:${cfg.token.slice(0, 20)}`;
@@ -89,7 +95,7 @@ export class SWSapienProvider implements IPACProvider {
 
   /* ─────────────── TIMBRADO ─────────────── */
 
-  async stamp(xmlContent: string, _credentials: PACCredentials): Promise<StampResult> {
+  async stamp(xmlContent: string, credentials: PACCredentials): Promise<StampResult> {
     try {
       /* Vuelve a /cfdi33/stamp/v4 SIN prefijo: con /v3 devolvió 404 en las cinco
        * formas, así que ese path no existe. El original sí — respondía con un
@@ -135,7 +141,7 @@ export class SWSapienProvider implements IPACProvider {
        * en 'Bearer' (mayúscula, como pide la documentación; la instancia usaba
        * 'bearer'), para que cada forma viaje con la cabecera que le corresponde.
        */
-      const cfgSW = readEnvConfig()!;
+      const cfgSW = readEnvConfig(credentials.env)!;
       const limpio = axios.create({
         baseURL: SW_ENDPOINTS[cfgSW.env],
         timeout: 30_000,
@@ -210,9 +216,9 @@ export class SWSapienProvider implements IPACProvider {
    *   · Respuesta idéntica a stamp(): data.uuid, data.cfdi, sellos, qrCode.
    *   · Ventaja: no manejamos CSD/.key en nuestro backend, solo en el vault SW.
    */
-  async stampFromJson(payload: any, _credentials: PACCredentials): Promise<StampResult> {
+  async stampFromJson(payload: any, credentials: PACCredentials): Promise<StampResult> {
     try {
-      const http = this.http();
+      const http = this.http(credentials.env);
 
       /* La documentación de SW (developers.sw.com.mx → emision-timbrado-json-cfdi)
        * especifica el cuerpo envuelto en "data", con Sello/NoCertificado/
@@ -330,12 +336,12 @@ export class SWSapienProvider implements IPACProvider {
     uuid: string,
     rfcEmisor: string,
     motivo: string,
-    _credentials: PACCredentials,
+    credentials: PACCredentials,
     folioSustitucion?: string,
     csd?: CsdParaCancelar
   ): Promise<CancelResult> {
     try {
-      const http = this.http();
+      const http = this.http(credentials.env);
 
       /* CON CERTIFICADO PROPIO NO HACE FALTA LA BÓVEDA DE SW.
        *
@@ -435,9 +441,9 @@ export class SWSapienProvider implements IPACProvider {
 
   /* ─────────────── ESTADO DE CUENTA ─────────────── */
 
-  async getAccountStatus(_credentials: PACCredentials): Promise<PACAccountStatus> {
+  async getAccountStatus(credentials: PACCredentials): Promise<PACAccountStatus> {
     try {
-      const http = this.http();
+      const http = this.http(credentials.env);
       const r = await http.get('/account/balance');
       // SW responde en español: saldoTimbres, timbresUtilizados, unlimited
       const d = r.data?.data || r.data;
@@ -446,7 +452,7 @@ export class SWSapienProvider implements IPACProvider {
         provider: this.name,
         timbres_disponibles: unlimited ? Infinity : Number(d?.saldoTimbres ?? 0),
         timbres_consumidos: Number(d?.timbresUtilizados ?? 0),
-        is_test_mode: (process.env.SW_SAPIEN_ENV || 'sandbox') !== 'production',
+        is_test_mode: credentials.env !== 'production',
       };
     } catch (e) {
       logger.error(`SW getAccountStatus falló: ${(e as Error).message}`);
@@ -454,16 +460,16 @@ export class SWSapienProvider implements IPACProvider {
         provider: this.name,
         timbres_disponibles: -1,
         timbres_consumidos: -1,
-        is_test_mode: (process.env.SW_SAPIEN_ENV || 'sandbox') !== 'production',
+        is_test_mode: credentials.env !== 'production',
       };
     }
   }
 
   /* ─────────────── CONEXIÓN ─────────────── */
 
-  async testConnection(_credentials: PACCredentials): Promise<boolean> {
+  async testConnection(credentials: PACCredentials): Promise<boolean> {
     try {
-      const http = this.http();
+      const http = this.http(credentials.env);
       // Ping ligero: pide balance; si responde con status, la auth va bien.
       const r = await http.get('/account/balance', { timeout: 8_000 });
       return r.status === 200;

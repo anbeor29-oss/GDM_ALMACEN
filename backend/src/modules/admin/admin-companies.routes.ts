@@ -48,6 +48,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   }
   const r = await query<any>(
     `SELECT c.id, c.rfc, c.business_name, c.fiscal_regime, c.postal_code, c.is_active,
+            c.timbrado_ambiente,
             c.billing_plan, c.cap_timbres, c.monthly_fee, c.extra_stamp_fee,
             c.street, c.ext_number, c.neighborhood, c.city, c.municipality, c.state,
             c.contact_email, c.phone, c.website,
@@ -143,7 +144,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   const {
     businessName, fiscalRegime, postalCode, billingPlan, capTimbres, monthlyFee,
-    extraStampFee, isActive,
+    extraStampFee, isActive, timbradoAmbiente,
     // Domicilio fiscal completo (para la CFDI de cobro y el expediente)
     street, extNumber, neighborhood, city, municipality, state,
     // Contacto (contact_email es el remitente/destino de correos automáticos)
@@ -164,6 +165,13 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   if (monthlyFee   !== undefined) push('monthly_fee',     parseFloat(monthlyFee));
   if (extraStampFee!== undefined) push('extra_stamp_fee', parseFloat(extraStampFee));
   if (isActive     !== undefined) push('is_active',       Boolean(isActive));
+  /* Ambiente de timbrado de la empresa: PRODUCCION emite CFDI REALES ante el SAT.
+   * Sólo se marca a propósito y con el CSD real cargado. Por defecto PRUEBAS. */
+  if (timbradoAmbiente !== undefined) {
+    const amb = String(timbradoAmbiente).toUpperCase();
+    if (!['PRUEBAS', 'PRODUCCION'].includes(amb)) throw new ValidationError('timbradoAmbiente inválido (PRUEBAS o PRODUCCION)');
+    push('timbrado_ambiente', amb);
+  }
   // Domicilio
   if (street       !== undefined) push('street',        street || null);
   if (extNumber    !== undefined) push('ext_number',    extNumber || null);

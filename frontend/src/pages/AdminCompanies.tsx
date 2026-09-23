@@ -89,7 +89,12 @@ export function AdminCompaniesPage() {
             {rows.map((c: any) => (
               <tr key={c.id} className="hover:bg-gray-50">
                 <td className="px-4 py-2 text-sm font-mono">{c.rfc}</td>
-                <td className="px-4 py-2 text-sm font-medium">{c.business_name}</td>
+                <td className="px-4 py-2 text-sm font-medium">
+                  {c.business_name}
+                  {c.timbrado_ambiente === 'PRODUCCION' && (
+                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold align-middle">EN VIVO</span>
+                  )}
+                </td>
                 <td className="px-4 py-2">
                   <span className={`text-xs px-2 py-1 rounded font-medium ${
                     c.billing_plan==='iguala' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
@@ -253,6 +258,7 @@ function EditCompanyModal({
     contactEmail: company.contact_email || '',
     phone:        company.phone || '',
     website:      company.website || '',
+    timbradoAmbiente: company.timbrado_ambiente || 'PRUEBAS',
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -352,6 +358,31 @@ function EditCompanyModal({
             >
               <FileKey size={14}/> {company.has_csd ? 'Actualizar CSD' : 'Cargar CSD'}
             </button>
+          </div>
+
+          {/* Ambiente de timbrado — PRODUCCIÓN emite CFDI reales ante el SAT. */}
+          <div className={`rounded-lg p-3 border ${form.timbradoAmbiente === 'PRODUCCION' ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200'}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs">
+                <p className="font-semibold text-gray-800">Ambiente de timbrado</p>
+                <p className="text-gray-600">
+                  {form.timbradoAmbiente === 'PRODUCCION'
+                    ? 'EN VIVO — emite CFDI REALES ante el SAT. Necesita el CSD real cargado y el token de producción del PAC en el servidor.'
+                    : 'Pruebas (sandbox) — no emite CFDI reales.'}
+                </p>
+              </div>
+              <select value={form.timbradoAmbiente}
+                onChange={(e) => setForm({ ...form, timbradoAmbiente: e.target.value })}
+                className="border rounded-lg px-3 py-1.5 text-sm shrink-0">
+                <option value="PRUEBAS">Pruebas</option>
+                <option value="PRODUCCION">Producción (en vivo)</option>
+              </select>
+            </div>
+            {form.timbradoAmbiente === 'PRODUCCION' && company.timbrado_ambiente !== 'PRODUCCION' && (
+              <p className="text-[11px] text-rose-700 mt-1.5 flex items-center gap-1">
+                <AlertTriangle size={12} /> Al guardar, esta empresa emitirá comprobantes fiscales REALES. Confirma que su CSD real está cargado.
+              </p>
+            )}
           </div>
         </div>
 

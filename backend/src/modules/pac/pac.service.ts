@@ -75,12 +75,23 @@ function getProvider(providerName?: string): IPACProvider {
  * Obtener credenciales del PAC (placeholder).
  * En producción se leerán cifradas desde la tabla companies.
  */
-function getCredentials(_companyId: string): PACCredentials {
+/** Ambiente de timbrado de la empresa: PRODUCCION → 'production', si no 'sandbox'
+ *  (por defecto y ante cualquier duda, PRUEBAS: nunca emite real sin activarlo). */
+async function ambienteEmpresa(companyId: string): Promise<'sandbox' | 'production'> {
+  try {
+    const r = await query<any>(`SELECT timbrado_ambiente FROM companies WHERE id=$1`, [companyId]);
+    return r.rows[0]?.timbrado_ambiente === 'PRODUCCION' ? 'production' : 'sandbox';
+  } catch { return 'sandbox'; }
+}
+
+async function getCredentials(companyId: string): Promise<PACCredentials> {
+  const env = await ambienteEmpresa(companyId);
   return {
     provider: DEFAULT_PROVIDER,
     username: 'mock_user',
     password: 'mock_pass',
-    is_test_mode: true,
+    is_test_mode: env !== 'production',
+    env,
   };
 }
 
@@ -99,7 +110,7 @@ function getCredentials(_companyId: string): PACCredentials {
  */
 export async function timbrarXml(companyId: string, xml: string): Promise<StampResult> {
   const provider = getProvider();
-  return provider.stamp(xml, getCredentials(companyId));
+  return provider.stamp(xml, await getCredentials(companyId));
 }
 
 /**
@@ -126,19 +137,19 @@ export async function timbrarJson(
   xmlFallback: string,
 ): Promise<StampResult> {
   const provider = getProvider();
-  const credentials = getCredentials(companyId);
+  const credentials = await getCredentials(companyId);
 
   if (typeof provider.stampFromJson === 'function') {
     // Mismo candado que las facturas: el sandbox de SW solo acepta su RFC de
     // prueba, y sin este aviso el rechazo llega como un 401 indescifrable.
     const esSandbox =
       provider.name === 'SW_SAPIEN' &&
-      (process.env.SW_SAPIEN_ENV || 'sandbox') !== 'production';
+      credentials.env !== 'production';
     if (esSandbox && payload?.Emisor?.Rfc !== 'EKU9003173C9') {
       throw new ValidationError(
         `SW Sapien sandbox solo acepta el RFC de prueba EKU9003173C9. ` +
         `Esta empresa emite con ${payload?.Emisor?.Rfc}. ` +
-        `Para timbrado real: SW_SAPIEN_ENV=production y el CSD en el vault de SW.`
+        `Para timbrado real marca esta empresa como PRODUCCIÓN (Súper Admin) y sube su CSD al vault de SW.`
       );
     }
     logger.info(
@@ -375,7 +386,7 @@ export async function stampInvoice(companyId: string, invoiceId: string): Promis
   //     no manejamos la .key en el backend — SW la trae del vault + sella + timbra.
   //   · Fallback a la ruta XML clásica (MOCK y providers legacy).
   const provider = getProvider();
-  const credentials = getCredentials(companyId);
+  const credentials = await getCredentials(companyId);
   let result: StampResult;
 
   if (typeof provider.stampFromJson === 'function') {
@@ -385,12 +396,12 @@ export async function stampInvoice(companyId: string, invoiceId: string): Promis
     // Si el emisor no coincide, SW rechaza con 401/CFDI40140 sin timbrar.
     const isSwSandbox =
       provider.name === 'SW_SAPIEN' &&
-      (process.env.SW_SAPIEN_ENV || 'sandbox') !== 'production';
+      credentials.env !== 'production';
     if (isSwSandbox && payload.Emisor.Rfc !== 'EKU9003173C9') {
       throw new ValidationError(
         `SW Sapien sandbox solo acepta el RFC de prueba EKU9003173C9. ` +
         `Esta empresa emite con ${payload.Emisor.Rfc}. ` +
-        `Para timbrado real cambia SW_SAPIEN_ENV=production en el backend y sube tu CSD al vault SW.`
+        `Para timbrado real marca esta empresa como PRODUCCIÓN (Súper Admin) y sube su CSD al vault de SW.`
       );
     }
 
@@ -630,7 +641,7 @@ export async function cancelInvoice(
     };
   }
 
-  const credentials = getCredentials(companyId);
+  const credentials = await getCredentials(companyId);
 
   /* El CSD lo resuelve csd-loader: base de datos primero, disco como respaldo,
    * y SIEMPRE deja constancia de cuál usó o por qué no encontró ninguno. Antes
@@ -681,7 +692,7 @@ export async function cancelInvoice(
  */
 export async function getAccountStatus(companyId: string) {
   const provider = getProvider();
-  const credentials = getCredentials(companyId);
+  const credentials = await getCredentials(companyId);
   return provider.getAccountStatus(credentials);
 }
 
@@ -690,7 +701,7 @@ export async function getAccountStatus(companyId: string) {
  */
 export async function testConnection(companyId: string): Promise<boolean> {
   const provider = getProvider();
-  const credentials = getCredentials(companyId);
+  const credentials = await getCredentials(companyId);
   return provider.testConnection(credentials);
 }
 
@@ -733,7 +744,7 @@ export async function cancelarComprobante(
   folioSustitucion?: string,
 ) {
   const provider = getProvider();
-  const credentials = getCredentials(companyId);
+  const credentials = await getCredentials(companyId);
 
   const rfcR = await query<{ rfc: string }>(`SELECT rfc FROM companies WHERE id = $1`, [companyId]);
   const rfcEmisor = (rfcR.rows[0]?.rfc || '').toUpperCase().trim();
