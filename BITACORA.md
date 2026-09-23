@@ -6229,6 +6229,21 @@ la descarga en vivo (Buzón/e.firma de cada dependencia) queda como fase posteri
 
 ---
 
+## 2026-09-23 (contabilidad) — Cumplimiento: CSF + configuración de descarga automática (cifrada)
+
+Ampliando el tracker de opiniones: se agregó la **CSF** (Constancia de Situación Fiscal) como 4º tipo (con
+sentido VIGENTE), y una **configuración por empresa+dependencia** para automatizar la descarga —**método**
+(API/e.firma/portal), **endpoint (URL)**, **usuario** y **contraseña/token**, con los secretos **CIFRADOS**
+con la bóveda (`SAT_VAULT_KEY`, `boveda.cifrar`); nunca en claro ni devueltos al front (sólo «guardada»)—.
+Tabla `cumplimiento_config` (migración `2026-09-23b_cumplimiento_config.sql`), `getConfig/setConfig` en
+`opinion-cumplimiento.service` (candado de secretos: vacío = conservar), rutas
+`/accounting/opinion-cumplimiento/config[/:tipo]`; UI con modal **«Configurar»** y botón **«Descargar
+automático»**. Ese botón está **GATED** (`descargarAutomatico` explica el siguiente paso): **NO hay scraper
+que evada CAPTCHA/MFA**; el motor real necesita elegir proveedor/método e inspeccionar el flujo oficial (todos
+con e.firma, que NEXO ya guarda). Investigación en la memoria [[imss-32d-opinion-pendiente]]. TSC back=0, front=0.
+
+---
+
 ## 2026-09-23 (nómina) — Documento legal de la baja (finiquito / renuncia / liquidación)
 
 Al timbrar la baja a la nómina especial, ahora se puede generar el **documento en prosa** que la acompaña,
