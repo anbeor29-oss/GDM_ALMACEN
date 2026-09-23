@@ -1229,6 +1229,16 @@ class APIClient {
       { headers: { 'Content-Type': 'multipart/form-data' } });
     return r.data;
   }
+  /** Póliza de APERTURA desde la balanza anterior. dryRun=true sólo previsualiza. */
+  async polizaApertura(archivo: File, fecha: string, dryRun: boolean) {
+    const fd = new FormData();
+    fd.append('archivo', archivo);
+    fd.append('fecha', fecha);
+    const r = await this.client.post<APIResponse<any>>(
+      `/accounting/apertura${dryRun ? '?dryRun=true' : ''}`, fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
   /* ── Subcuentas por tercero (máscara 000-00-000) ── */
   async generarSubcuentas(direccion: 'emitidos' | 'recibidos') {
     const r = await this.client.post<APIResponse<any>>('/accounting/subcuentas/generar', { direccion });

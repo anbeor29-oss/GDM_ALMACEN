@@ -29,6 +29,7 @@ import * as reportesExport from './reportes-export.service';
 import * as contpaqi from './contpaqi-import.service';
 import * as cambioCuenta from './cambio-cuenta.service';
 import * as autoAsignar from './auto-asignar-cuentas.service';
+import * as apertura from './apertura.service';
 import * as validacion from './validacion-contable.service';
 import * as especiales from './reportes-especiales.service';
 import * as balanceGeneral from './balance-general.service';
@@ -708,6 +709,43 @@ router.post(
         : `Balanza leída con ${analisis.avisos.filter((a) => a.nivel === 'ERROR').length} ` +
           `problema(s) que hay que resolver antes de cargarla.`,
     });
+  })
+);
+
+/**
+ * POST /accounting/apertura — la póliza de apertura (saldos iniciales) desde la
+ * balanza del sistema anterior. Con `?dryRun=true` sólo PREVISUALIZA (arma las
+ * partidas, resuelve cuentas y dice si cuadra) sin asentar; sin él, crea el
+ * asiento. Idempotente por la fecha de apertura.
+ */
+router.post(
+  '/apertura',
+  requireCapability('contabilidad:capturar'),
+  subir.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = (req as any).file;
+    if (!f) throw new ValidationError('Falta el archivo de la balanza.');
+    const fecha = String(req.body?.fecha || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      throw new ValidationError('Indica la fecha de apertura (AAAA-MM-DD), normalmente el último día del sistema anterior.');
+    }
+    const nombre = (f.originalname || '').toLowerCase();
+    const esExcel = /\.xlsx?$/.test(nombre) || /spreadsheet|excel/.test(f.mimetype || '');
+    const esPdf = /\.pdf$/.test(nombre) || /pdf/.test(f.mimetype || '');
+    if (!esExcel && !esPdf) throw new ValidationError('El archivo tiene que ser Excel (.xlsx) o PDF.');
+
+    let lectura;
+    try { lectura = esExcel ? await balanza.leerBalanzaExcel(f.buffer) : await balanza.leerBalanzaPdf(f.buffer); }
+    catch (e: any) { throw new ValidationError(e.message); }
+
+    const dry = req.query.dryRun === 'true' || req.body?.dryRun === 'true';
+    if (dry) {
+      const armado = await apertura.armarApertura(companyId(req), lectura, fecha);
+      res.json({ success: true, data: { ...armado, lineas: armado.lineas.slice(0, 1000), lineasTotal: armado.lineas.length } });
+    } else {
+      const r = await apertura.generarApertura(companyId(req), lectura, fecha, req.user?.userId);
+      res.json({ success: true, data: r, message: r.creada ? `Póliza de apertura #${r.poliza?.folio} asentada con ${r.asentadas} cuenta(s).` : r.motivo });
+    }
   })
 );
 

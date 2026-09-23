@@ -19,7 +19,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight, ChevronDown, Search, Plus, AlertTriangle, CheckCircle2,
   Link2, BookOpen, X, Info, Layers, Upload, Loader2, Scale, Pencil, Trash2,
-  Users, Tag, Download,
+  Users, Tag, Download, Eye, PlayCircle,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
@@ -478,12 +478,13 @@ const CONF_COLOR: Record<string, string> = {
 function PanelAnalisis() {
   const [pestana, setPestana] = useState<'respaldo' | 'catalogos'>('respaldo');
   const [res, setRes] = useState<any>(null);
+  const [archivo, setArchivo] = useState<File | null>(null);
   const [nombre, setNombre] = useState('');
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
 
   const analizar = async (file: File) => {
-    setError(''); setCargando(true); setNombre(file.name); setRes(null);
+    setError(''); setCargando(true); setNombre(file.name); setRes(null); setArchivo(file);
     try {
       const fd = new FormData();
       fd.append('archivo', file);
@@ -535,7 +536,7 @@ function PanelAnalisis() {
           <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{error}</p>
         )}
         {!res && !cargando && !error && <Vacio pestana={pestana} />}
-        {res && !cargando && pestana === 'respaldo'  && <VistaRespaldo res={res} />}
+        {res && !cargando && pestana === 'respaldo'  && <VistaRespaldo res={res} archivo={archivo} />}
         {res && !cargando && pestana === 'catalogos' && <VistaCatalogos res={res} />}
       </div>
     </div>
@@ -565,7 +566,7 @@ function Vacio({ pestana }: any) {
   );
 }
 
-function VistaRespaldo({ res }: any) {
+function VistaRespaldo({ res, archivo }: any) {
   const a = res.analisis || {};
   const enc = res.encabezado || {};
   return (
@@ -637,6 +638,80 @@ function VistaRespaldo({ res }: any) {
       {res.filasOmitidas > 0 && (
         <p className="text-xs text-gray-400">Balanza grande: {res.filasOmitidas} renglones; se muestra el resumen.</p>
       )}
+
+      <SeccionApertura archivo={archivo} encabezado={enc} />
+    </div>
+  );
+}
+
+/* De la balanza revisada, el asiento de APERTURA (saldos iniciales). Previsualiza
+ * primero (dryRun): resuelve cada cuenta al catálogo, dice si cuadra y qué falta;
+ * asentar es otra decisión. Idempotente por fecha. */
+function SeccionApertura({ archivo, encabezado }: { archivo: File | null; encabezado: any }) {
+  const isoDefault = /^\d{4}-\d{2}-\d{2}$/.test(String(encabezado?.fechaCorte || '')) ? encabezado.fechaCorte : '';
+  const [fecha, setFecha] = useState<string>(isoDefault);
+  const [prev, setPrev] = useState<any>(null);
+  const [busy, setBusy] = useState<'' | 'prev' | 'gen'>('');
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+
+  const previsualizar = async () => {
+    if (!archivo || !fecha) { setError('Sube la balanza y elige la fecha de apertura.'); return; }
+    setBusy('prev'); setError(''); setMsg(''); setPrev(null);
+    try { const r: any = await api.polizaApertura(archivo, fecha, true); setPrev(r.data); }
+    catch (e: any) { setError(e?.response?.data?.message || 'No se pudo previsualizar.'); }
+    finally { setBusy(''); }
+  };
+  const asentar = async () => {
+    if (!archivo || !fecha) return;
+    const cuantas = prev?.lineasTotal ?? prev?.lineas?.length ?? '';
+    if (!window.confirm(`¿Asentar la póliza de apertura al ${fecha} con ${cuantas} cuenta(s)?`)) return;
+    setBusy('gen'); setError(''); setMsg('');
+    try { const r: any = await api.polizaApertura(archivo, fecha, false); setMsg(r.message || 'Póliza de apertura asentada.'); setPrev(null); }
+    catch (e: any) { setError(e?.response?.data?.message || 'No se pudo asentar.'); }
+    finally { setBusy(''); }
+  };
+
+  return (
+    <div className="border-t pt-3 space-y-2">
+      <h4 className="text-[10px] font-semibold text-gray-500 uppercase">Póliza de apertura (saldos iniciales)</h4>
+      <p className="text-xs text-gray-500">
+        Convierte esta balanza en el asiento de apertura: cada cuenta a su saldo inicial. Necesita que las
+        cuentas ya existan en el catálogo (impórtalo antes).
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-xs text-gray-600 flex items-center gap-1.5">Fecha:
+          <input type="date" value={fecha} onChange={(e) => { setFecha(e.target.value); setPrev(null); }} className="input py-1 text-sm" />
+        </label>
+        <button onClick={previsualizar} disabled={!archivo || !fecha || !!busy}
+          className="inline-flex items-center gap-1.5 border rounded-lg px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+          {busy === 'prev' ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} Previsualizar
+        </button>
+      </div>
+
+      {prev && (
+        <div className={`rounded border px-3 py-2 text-xs ${prev.cuadra ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+          <p className="flex items-center gap-1.5 font-medium">
+            {prev.cuadra ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+            {prev.lineasTotal ?? prev.lineas?.length} cuenta(s) · cargo {money(prev.sumaCargo)} · abono {money(prev.sumaAbono)}
+            {prev.yaGenerada ? ' · (ya existe una apertura a esta fecha)' : ''}
+          </p>
+          {prev.faltantes?.length > 0 && (
+            <p className="mt-1">
+              Faltan {prev.faltantes.length} cuenta(s) en el catálogo: {prev.faltantes.slice(0, 6).map((f: any) => f.cuenta).join(', ')}
+              {prev.faltantes.length > 6 ? '…' : ''}. Impórtalas antes de asentar.
+            </p>
+          )}
+          {prev.cuadra && !prev.yaGenerada && (
+            <button onClick={asentar} disabled={busy === 'gen'}
+              className="mt-2 inline-flex items-center gap-1.5 bg-primary text-white rounded-lg px-3 py-1 hover:opacity-90 disabled:opacity-50">
+              {busy === 'gen' ? <Loader2 size={13} className="animate-spin" /> : <PlayCircle size={13} />} Asentar póliza de apertura
+            </button>
+          )}
+        </div>
+      )}
+      {msg && <p className="text-xs text-emerald-700">{msg}</p>}
+      {error && <p className="text-xs text-rose-700">{error}</p>}
     </div>
   );
 }
