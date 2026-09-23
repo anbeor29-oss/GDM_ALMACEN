@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown, Wand2 } from 'lucide-react';
+import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown, Wand2, CheckCircle2, Stethoscope } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
@@ -239,6 +239,8 @@ export function PolizasListaPage() {
         </label>
       </div>
       )}
+
+      {filtro !== 'ppdpue' && <DiagnosticoCuadre anio={anio} mes={mes} />}
 
       {msg && filtro !== 'ppdpue' && <p className="text-sm text-emerald-700">{msg}</p>}
 
@@ -552,6 +554,81 @@ function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
           {error && <p className="text-sm text-rose-700">{error}</p>}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* Diagnóstico de cuadre / organización de XML del periodo: qué CFDI ya tienen
+ * póliza, cuáles están listos, a cuáles les falta cuenta de producto (con las
+ * claves) o bajaron sin XML, y si hay pólizas descuadradas. Solo lectura; se
+ * calcula al abrirlo. Cierra el bucle con «Auto-asignar todo» y «Generar». */
+function DiagnosticoCuadre({ anio, mes }: { anio: number; mes: number }) {
+  const [abierto, setAbierto] = useState(false);
+  const q = useQuery({
+    queryKey: ['cuadre-cfdi', anio, mes],
+    queryFn: () => api.getDiagnosticoCuadre(anio, mes),
+    enabled: abierto,
+  });
+  const d: any = q.data?.data;
+
+  const Fila = ({ titulo, x }: { titulo: string; x: any }) => (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs py-1.5 border-b last:border-0">
+      <span className="font-medium text-gray-700 w-20">{titulo}</span>
+      <span className="text-gray-500">{x.total} en total</span>
+      <span className="text-emerald-700">{x.contabilizados} contabilizados</span>
+      {x.listos > 0 && <span className="text-sky-700">{x.listos} listos para generar</span>}
+      {x.sinCuenta > 0 && <span className="text-amber-700">{x.sinCuenta} sin cuenta de producto</span>}
+      {x.sinXml > 0 && <span className="text-gray-500">{x.sinXml} sin XML (metadato)</span>}
+      {x.otros > 0 && <span className="text-gray-400">{x.otros} otros</span>}
+      {x.noClasificados > 0 && <span className="text-gray-400">(+{x.noClasificados} sin revisar)</span>}
+    </div>
+  );
+
+  return (
+    <div className="border rounded-lg bg-white">
+      <button onClick={() => setAbierto((v) => !v)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+        {abierto ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+        <Stethoscope size={15} className="text-primary" />
+        <span className="font-medium">Cuadre de XML</span>
+        <span className="text-xs text-gray-400">— qué falta por contabilizar y por qué</span>
+      </button>
+      {abierto && (
+        <div className="px-3 pb-3">
+          {q.isLoading && <p className="text-sm text-gray-500">Analizando…</p>}
+          {d && (
+            <div className="space-y-2">
+              <div className="rounded-lg border divide-y px-3">
+                <Fila titulo="Emitidos" x={d.emitidos} />
+                <Fila titulo="Recibidos" x={d.recibidos} />
+              </div>
+
+              {(d.emitidos.clavesSinCuenta.length > 0 || d.recibidos.clavesSinCuenta.length > 0) && (
+                <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  <p className="font-medium">Productos sin cuenta (asígnalos con «Auto-asignar todo», arriba):</p>
+                  {d.emitidos.clavesSinCuenta.length > 0 && (
+                    <p className="mt-0.5">Ventas: <span className="font-mono">{d.emitidos.clavesSinCuenta.slice(0, 12).join(', ')}{d.emitidos.clavesSinCuenta.length > 12 ? '…' : ''}</span></p>
+                  )}
+                  {d.recibidos.clavesSinCuenta.length > 0 && (
+                    <p className="mt-0.5">Compras: <span className="font-mono">{d.recibidos.clavesSinCuenta.slice(0, 12).join(', ')}{d.recibidos.clavesSinCuenta.length > 12 ? '…' : ''}</span></p>
+                  )}
+                </div>
+              )}
+
+              <p className={`text-xs flex items-center gap-1.5 ${d.descuadradas > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                {d.descuadradas > 0 ? <AlertTriangle size={13} /> : <CheckCircle2 size={13} />}
+                {d.descuadradas > 0 ? `${d.descuadradas} póliza(s) descuadrada(s) en el mes — revísalas.` : 'Ninguna póliza descuadrada.'}
+              </p>
+
+              <p className="text-[11px] text-gray-500">
+                Los «listos» sólo esperan «Generar Ventas/Compras». Los «sin cuenta» necesitan «Auto-asignar
+                todo» antes. Los «sin XML» (recibidos que bajaron como metadato) no se contabilizan hasta subir su XML.
+              </p>
+              <button onClick={() => q.refetch()} className="text-xs text-gray-500 hover:text-gray-700 underline">Actualizar</button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

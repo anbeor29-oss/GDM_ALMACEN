@@ -30,6 +30,7 @@ import * as contpaqi from './contpaqi-import.service';
 import * as cambioCuenta from './cambio-cuenta.service';
 import * as autoAsignar from './auto-asignar-cuentas.service';
 import * as apertura from './apertura.service';
+import * as diagnosticoCfdi from './diagnostico-cfdi.service';
 import * as validacion from './validacion-contable.service';
 import * as especiales from './reportes-especiales.service';
 import * as balanceGeneral from './balance-general.service';
@@ -746,6 +747,21 @@ router.post(
       const r = await apertura.generarApertura(companyId(req), lectura, fecha, req.user?.userId);
       res.json({ success: true, data: r, message: r.creada ? `Póliza de apertura #${r.poliza?.folio} asentada con ${r.asentadas} cuenta(s).` : r.motivo });
     }
+  })
+);
+
+/**
+ * GET /accounting/cuadre-cfdi/:anio/:mes — diagnóstico de contabilización de CFDI
+ * (solo lectura): cuántos emitidos/recibidos ya tienen póliza, cuántos están listos,
+ * cuántos les falta cuenta de producto (con las claves) o bajaron sin XML, y si hay
+ * pólizas descuadradas. Es el «cuadre / organización de XML».
+ */
+router.get(
+  '/cuadre-cfdi/:anio/:mes',
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = Number(req.params.anio); const mes = Number(req.params.mes);
+    if (!anio) throw new ValidationError('Año inválido.');
+    res.json({ success: true, data: await diagnosticoCfdi.diagnosticarContabilizacion(companyId(req), anio, mes) });
   })
 );
 

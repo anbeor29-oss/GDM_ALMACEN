@@ -1152,6 +1152,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/auto-asignar-todo', { anio, mes });
     return r.data;
   }
+  /** Diagnóstico de contabilización de CFDI del periodo (cuadre / organización de XML). */
+  async getDiagnosticoCuadre(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/cuadre-cfdi/${anio}/${mes}`);
+    return r.data;
+  }
   /** Pólizas del respaldo que no se pudieron importar (pendientes). */
   async getPolizasPendientes() {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas-pendientes');
