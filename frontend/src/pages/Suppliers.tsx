@@ -53,6 +53,27 @@ export function SuppliersPage() {
   const rows: Supplier[] = q.data?.data?.suppliers || [];
   const refresh = () => qc.invalidateQueries({ queryKey: ['suppliers'] });
 
+  /* Correlación de la CUENTA CONTABLE por RFC: la subcuenta (201.01-###) de cada
+   * proveedor, aunque el campo venga vacío. Se genera con el motor existente. */
+  const { data: subctasData } = useQuery({
+    queryKey: ['subcuentas-proveedor'],
+    queryFn: () => api.getSubcuentasTercero('proveedor'),
+  });
+  const cuentaPorRfc = new Map<string, string>();
+  for (const s of ((subctasData as any)?.data?.subcuentas || []) as any[]) {
+    if (s.tercero_rfc) cuentaPorRfc.set(String(s.tercero_rfc).toUpperCase(), s.codigo);
+  }
+  const [generando, setGenerando] = useState(false);
+  const generarCuentas = async () => {
+    setGenerando(true);
+    try {
+      await api.generarSubcuentas('recibidos');   // 'recibidos' = proveedores
+      qc.invalidateQueries({ queryKey: ['subcuentas-proveedor'] });
+      qc.invalidateQueries({ queryKey: ['suppliers'] });
+    } catch (e: any) { alert(e?.response?.data?.message || 'No se pudieron generar las cuentas contables.'); }
+    finally { setGenerando(false); }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -65,10 +86,17 @@ export function SuppliersPage() {
           </p>
         </div>
         {canEdit && (
-          <button onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-lg hover:bg-blue-600 shadow">
-            <Plus size={18}/> Nuevo Proveedor
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={generarCuentas} disabled={generando}
+              title="Crea/correlaciona la subcuenta contable de cada proveedor por su RFC (201.01-###)"
+              className="flex items-center gap-2 border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-lg disabled:opacity-50">
+              {generando ? 'Generando…' : 'Generar cuentas contables'}
+            </button>
+            <button onClick={() => setCreateOpen(true)}
+              className="flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-lg hover:bg-blue-600 shadow">
+              <Plus size={18}/> Nuevo Proveedor
+            </button>
+          </div>
         )}
       </div>
 
@@ -113,7 +141,10 @@ export function SuppliersPage() {
                 <td className="px-4 py-2 font-mono">{s.rfc}</td>
                 <td className="px-4 py-2 font-medium uppercase">{s.business_name}</td>
                 <td className="px-4 py-2 text-sm font-mono text-gray-700">
-                  {s.cuenta_contable ? formatCuenta(s.cuenta_contable, mascara) : <span className="text-gray-400">—</span>}
+                  {(() => {
+                    const cta = s.cuenta_contable || cuentaPorRfc.get(String(s.rfc || '').toUpperCase());
+                    return cta ? formatCuenta(cta, mascara) : <span className="text-gray-400" title="Usa «Generar cuentas contables»">—</span>;
+                  })()}
                 </td>
                 <td className="px-4 py-2 text-sm">
                   {(s.bank_name || s.bank_account || s.bank_clabe) ? (

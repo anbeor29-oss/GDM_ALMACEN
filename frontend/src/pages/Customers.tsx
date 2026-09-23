@@ -37,6 +37,30 @@ export function CustomersPage() {
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['customers'] });
 
+  /* Correlación de la CUENTA CONTABLE por RFC: la subcuenta (105.01-###) de cada
+   * cliente en el catálogo, aunque el campo del cliente venga vacío. */
+  const { data: subctasData } = useQuery({
+    queryKey: ['subcuentas-cliente'],
+    queryFn: () => api.getSubcuentasTercero('cliente'),
+  });
+  const cuentaPorRfc = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of ((subctasData as any)?.data?.subcuentas || []) as any[]) {
+      if (s.tercero_rfc) m.set(String(s.tercero_rfc).toUpperCase(), s.codigo);
+    }
+    return m;
+  }, [subctasData]);
+  const [generando, setGenerando] = useState(false);
+  const generarCuentas = async () => {
+    setGenerando(true);
+    try {
+      await api.generarSubcuentas('emitidos');   // 'emitidos' = clientes
+      queryClient.invalidateQueries({ queryKey: ['subcuentas-cliente'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+    } catch (e: any) { alert(e?.response?.data?.message || 'No se pudieron generar las cuentas contables.'); }
+    finally { setGenerando(false); }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -44,13 +68,24 @@ export function CustomersPage() {
           <h1 className="text-4xl font-bold text-gray-900">Clientes</h1>
           <p className="text-gray-600 mt-2">Receptores conforme a CFDI 4.0 (CFF Art. 29-A)</p>
         </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors shadow"
-        >
-          <Plus size={20} />
-          Nuevo Cliente
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={generarCuentas}
+            disabled={generando}
+            title="Crea/correlaciona la subcuenta contable de cada cliente por su RFC (105.01-###)"
+            className="flex items-center gap-2 border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-3 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {generando ? <Loader2 size={18} className="animate-spin" /> : null}
+            Generar cuentas contables
+          </button>
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors shadow"
+          >
+            <Plus size={20} />
+            Nuevo Cliente
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-lg overflow-hidden">
@@ -77,7 +112,10 @@ export function CustomersPage() {
                   <td className="px-6 py-4 text-sm font-medium text-gray-900 uppercase">{c.business_name}</td>
                   <td className="px-6 py-4 text-sm text-gray-600 font-mono">{c.rfc}</td>
                   <td className="px-6 py-4 text-sm text-gray-700 font-mono">
-                    {c.cuenta_contable ? formatCuenta(c.cuenta_contable, mascara) : <span className="text-gray-400">—</span>}
+                    {(() => {
+                      const cta = c.cuenta_contable || cuentaPorRfc.get(String(c.rfc || '').toUpperCase());
+                      return cta ? formatCuenta(cta, mascara) : <span className="text-gray-400" title="Usa «Generar cuentas contables»">—</span>;
+                    })()}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600 font-mono">{c.fiscal_regime || '—'}</td>
                   <td className="px-6 py-4 text-sm text-gray-600 font-mono">{c.postal_code || '—'}</td>
