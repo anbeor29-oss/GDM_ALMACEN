@@ -39,6 +39,7 @@ import { generarReciboPDF } from './pdf-recibo.service';
 import * as cierre from './cierre.service';
 import * as conceptosCuenta from './conceptos-cuenta.service';
 import * as nominaPoliza from './nomina-poliza.service';
+import * as docBaja from './documento-baja.service';
 import * as plantillaEmp from './plantilla-empleados.service';
 import * as nominaRecuperados from './nomina-recuperados.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
@@ -1318,6 +1319,20 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const r = await nominaPoliza.generarPoliza(companyId(req), req.params.reciboId, req.user?.userId);
     res.json({ success: true, data: r });
+  })
+);
+
+/* ── Documento legal de la baja (finiquito / renuncia / liquidación) ── */
+router.get(
+  '/baja/:reciboId/documento',
+  asyncHandler(async (req: Request, res: Response) => {
+    await docBaja.asegurarBaja(companyId(req), req.params.reciboId);
+    const q = String(req.query.variante || '');
+    const variante = (['finiquito', 'renuncia', 'liquidacion'].includes(q) ? q : undefined) as docBaja.VarianteDoc | undefined;
+    const { buffer, nombre } = await docBaja.documentoLegalBaja(companyId(req), req.params.reciboId, variante);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${nombre}"`);
+    res.send(buffer);
   })
 );
 

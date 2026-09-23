@@ -17,7 +17,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   FileBarChart, FileSpreadsheet, AlertTriangle, Users, Receipt, Landmark, HeartPulse,
-  Sigma, List, Tag, Check, PlayCircle, CheckCircle2, BookOpen, Download, FileDown, Sparkles,
+  Sigma, List, Tag, Check, PlayCircle, CheckCircle2, BookOpen, Download, FileDown, Sparkles, FileText,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { claseOpcion } from '@/utils/coloresOpciones';
@@ -860,10 +860,27 @@ function PolizaFiniquito() {
         </select>
         {sel && (
           <button onClick={pdf} className="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
-            <Download size={14} /> PDF
+            <Download size={14} /> Recibo (PDF)
           </button>
         )}
       </div>
+
+      {/* Documento legal que acompaña a la baja timbrada — fundado en la LFT. */}
+      {sel && (() => {
+        const selTipo = finiquitos.find((f: any) => f.recibo_id === sel)?.finiquito_tipo;
+        const abrir = (variante: string) => api.verDocumentoBaja(sel, variante).catch(() => setMsg('No se pudo abrir el documento.'));
+        const btn = 'flex items-center gap-1 border rounded-lg px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50';
+        return (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-gray-400">Documento legal:</span>
+            {selTipo === 'LIQUIDACION' && (
+              <button onClick={() => abrir('liquidacion')} className={btn}><FileText size={13} /> Convenio de liquidación</button>
+            )}
+            <button onClick={() => abrir('finiquito')} className={btn}><FileText size={13} /> Recibo de finiquito</button>
+            <button onClick={() => abrir('renuncia')} className={btn}><FileText size={13} /> Carta de renuncia</button>
+          </div>
+        );
+      })()}
 
       {detQ.isLoading && <p className="text-sm text-gray-500 bg-white border rounded-lg p-4">Cargando…</p>}
 

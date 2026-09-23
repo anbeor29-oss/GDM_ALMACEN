@@ -2518,6 +2518,15 @@ class APIClient {
   }
 
   /** Recalcula con lo capturado en la rejilla. NO guarda: sigue siendo cálculo. */
+  /** Abre el documento legal de la baja (finiquito | renuncia | liquidacion) en PDF. */
+  async verDocumentoBaja(reciboId: string, variante: string) {
+    const token = localStorage.getItem('token');
+    const base = this.client.defaults.baseURL || '/api/v1';
+    const r = await fetch(`${base}/nomina/baja/${reciboId}/documento?variante=${variante}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) throw new Error('No se pudo abrir el documento.');
+    const blob = await r.blob();
+    window.open(URL.createObjectURL(blob), '_blank');
+  }
   async recalcularPrenomina(periodoId: string, captura: any[]) {
     const r = await this.client.post<APIResponse<any>>(
       `/nomina/prenomina/${periodoId}`, { captura }, { timeout: 120_000 }
