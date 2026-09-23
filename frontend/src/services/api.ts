@@ -1238,6 +1238,45 @@ class APIClient {
     return r.data;
   }
 
+  /* ── Autofacturación (Anexo 20 / RMF 2.7.3) ── */
+  async getEnajenantes() {
+    const r = await this.client.get<APIResponse<any>>('/autofactura/enajenantes');
+    return r.data;
+  }
+  async crearEnajenante(data: any) {
+    const r = await this.client.post<APIResponse<any>>('/autofactura/enajenantes', data);
+    return r.data;
+  }
+  async actualizarEnajenante(id: string, data: any) {
+    const r = await this.client.put<APIResponse<any>>(`/autofactura/enajenantes/${id}`, data);
+    return r.data;
+  }
+  async borrarEnajenante(id: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/autofactura/enajenantes/${id}`);
+    return r.data;
+  }
+  async getComprobantesAutofactura(anio?: number, mes?: number) {
+    const r = await this.client.get<APIResponse<any>>('/autofactura/comprobantes', { params: { anio, mes } });
+    return r.data;
+  }
+  async getComprobanteAutofactura(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/autofactura/comprobantes/${id}`);
+    return r.data;
+  }
+  async crearComprobanteAutofactura(data: any) {
+    const r = await this.client.post<APIResponse<any>>('/autofactura/comprobantes', data);
+    return r.data;
+  }
+  async borrarComprobanteAutofactura(id: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/autofactura/comprobantes/${id}`);
+    return r.data;
+  }
+  /** Timbrado gated: hoy responde con el motivo (rol SAT de adquirente + PAC). */
+  async timbrarComprobanteAutofactura(id: string) {
+    const r = await this.client.post<APIResponse<any>>(`/autofactura/comprobantes/${id}/timbrar`);
+    return r.data;
+  }
+
   /* ── Ingresos por producto (ClaveProdServ → 401) ── */
   async getVentasProductos(anio: number, mes: number) {
     const r = await this.client.get<APIResponse<any>>('/accounting/ventas/productos', { params: { anio, mes } });

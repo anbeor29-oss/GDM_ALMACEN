@@ -75,6 +75,7 @@ const gated = (mod: ModuleKey) => [authenticateToken, requireModule(mod)];
 import nominaRoutes          from './modules/nomina/nomina.routes';
 import checadorRoutes        from './modules/checador/checador.routes';
 import accountingRoutes      from './modules/accounting/accounting.routes';
+import autofacturaRoutes     from './modules/autofactura/autofactura.routes';
 
 export function createApp(): Express {
   const app = express();
@@ -236,6 +237,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/nomina`,          ...gated('nomina'), nominaRoutes);
   app.use(`/api/${config.apiVersion}/checador`,        ...gated('checador'), checadorRoutes);
   app.use(`/api/${config.apiVersion}/accounting`,      ...gated('contabilidad'), accountingRoutes);
+  app.use(`/api/${config.apiVersion}/autofactura`,     ...gated('contabilidad'), autofacturaRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);
 

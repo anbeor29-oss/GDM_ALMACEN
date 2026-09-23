@@ -391,6 +391,7 @@ export function Layout() {
                       ...(esAdmin ? [{ to: '/contabilidad/cierre', icon: emoji3D('🔒'), label: 'Cierre del ejercicio' }] : []),
                       { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },
                       { to: '/contabilidad/cfdi',              icon: emoji3D('🧾'), label: 'CFDI (XML del SAT)' },
+                      { to: '/contabilidad/autofactura',      icon: emoji3D('🌾'), label: 'Autofacturación' },
                       {
                         icon: emoji3D('📔'), label: 'Pólizas',
                         children: [
