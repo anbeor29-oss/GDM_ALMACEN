@@ -3,7 +3,7 @@
  * Cobranza, Ventas, Fiscal
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { TrendingUp, DollarSign, Receipt, ClipboardList, Download } from 'lucide-react';
 import {
@@ -71,6 +71,21 @@ export function ReceivablesReport() {
     queryFn: () => api.getReceivablesReport(customerId || undefined),
   });
 
+  /* Cuenta contable por RFC: la subcuenta (105.01-###) de cada cliente en el
+   * catálogo, para mostrarla junto al cliente igual que en la pantalla de
+   * Clientes (correlación pedida en «tesorería de facturas»). */
+  const { data: subctasData } = useQuery({
+    queryKey: ['subcuentas-cliente'],
+    queryFn: () => api.getSubcuentasTercero('cliente'),
+  });
+  const cuentaPorRfc = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of ((subctasData as any)?.data?.subcuentas || []) as any[]) {
+      if (s.tercero_rfc) m.set(String(s.tercero_rfc).toUpperCase(), s.codigo);
+    }
+    return m;
+  }, [subctasData]);
+
   const report = data?.data;
 
   const openPDF = () => {
@@ -131,7 +146,13 @@ export function ReceivablesReport() {
           <div className="bg-blue-50 border-b border-blue-100 px-5 py-3 flex items-center justify-between">
             <div>
               <p className="font-bold text-blue-900 uppercase">{c.business_name}</p>
-              <p className="text-xs text-gray-500 font-mono">{c.rfc} · {c.invoice_count} factura(s)</p>
+              <p className="text-xs text-gray-500 font-mono">
+                {c.rfc} · {c.invoice_count} factura(s)
+                {(() => {
+                  const cta = c.cuenta_contable || cuentaPorRfc.get(String(c.rfc || '').toUpperCase());
+                  return cta ? <> · <span className="text-emerald-700">cuenta {cta}</span></> : null;
+                })()}
+              </p>
             </div>
             <div className="text-right">
               <p className="text-xs text-gray-500 uppercase">Saldo del cliente</p>
