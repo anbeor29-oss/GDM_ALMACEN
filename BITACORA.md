@@ -6164,3 +6164,20 @@ de concepto, resuelve cuentas y reporta faltantes) y `generarPolizaPeriodo` (**i
 `/poliza/:reciboId` para no chocar—. **UI:** la pestaña **«Póliza»** (Nómina → Reportes → Conceptos y
 cuentas) ganó un toggle **«Ordinaria (por periodo)» / «Finiquito»**; la ordinaria lista los periodos,
 previsualiza la póliza agregada y la genera. El motor por-recibo del finiquito quedó intacto. TSC back=0, front=0.
+
+---
+
+## 2026-09-23 (contabilidad) — Póliza de APERTURA desde la balanza del sistema anterior
+
+Faltaba el asiento de **saldos iniciales**. Ahora la balanza que ya lee el panel **«Respaldo de balanza»**
+(Catálogo) se convierte en la **póliza de apertura**: de las **HOJAS** (cuentas de detalle con saldo), cada
+**deudora al CARGO** y cada **acreedora al ABONO** por su `saldoFinal` (cierre del sistema viejo = inicial
+del nuevo; un saldo negativo va al lado contrario). El **código** de cada cuenta se liga al catálogo por
+**código exacto o por dígitos** (tolera guiones/espacios); lo que no exista se reporta como **FALTANTE** —no
+se inventa ni se omite—. `apertura.service`: `armarApertura` (previsualiza: resuelve cuentas, cuadre,
+faltantes) y `generarApertura` (asienta; exige cuadre y catálogo completo; **idempotente** por
+`APERTURA:<fecha>`, regla `apertura_v1`). Ruta `POST /accounting/apertura` con **`?dryRun=true`** = sólo
+previsualiza. **UI:** en «Respaldo de balanza» una sección **«Póliza de apertura»** con fecha,
+**«Previsualizar»** (muestra cuántas cuentas, cargo/abono, si cuadra y qué falta) y **«Asentar»** —habilitado
+sólo si cuadra y no hay faltantes—. La previsualización es la red de seguridad: se ve qué se asentaría antes
+de crear el asiento. TSC back=0, front=0.
