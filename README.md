@@ -139,6 +139,14 @@ Detalle día a día en `BITACORA.md`. En corto, lo que se agregó/arregló:
   cuelga de Contabilidad; **Asignación de cuenta** como puente.
   Pendiente: **balanza derivada** (pasar los saldos de `journal_lines` a la balanza
   de comprobación) y la póliza de apertura (balanza anterior).
+- **Autofacturación (Anexo 20 / RMF 2.7.3)** — *Contabilidad → Autofacturación*: la
+  empresa (adquirente) **captura y previsualiza** el CFDI que emitiría **por cuenta
+  del enajenante** que no factura (sector primario régimen 622, arrendador, minero,
+  artesano, vehículos usados, desperdicios, arte, antigüedades). En el CFDI el emisor
+  es el enajenante y el receptor la empresa; sin RFC va el **genérico** + CURP.
+  Registro de enajenantes + comprobantes (BORRADOR) con el JSON CFDI 4.0 armado.
+  **Timbrado GATED**: requiere el «rol de facturación a través del adquirente» ante
+  el SAT + un PAC con servicio de adquirentes (el sellado no usa el CSD del emisor).
 - **Contabilidad — importar respaldo (migración CONTPAQi)**: pasa la contabilidad
   histórica de un respaldo `.bak` a la empresa activa, **reutilizable para cualquier
   RFC**. Un `.bak` es binario de SQL Server: no se abre en el navegador ni en Render

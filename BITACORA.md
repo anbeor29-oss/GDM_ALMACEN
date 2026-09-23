@@ -6086,3 +6086,48 @@ queda al final, que es donde se toca de vez en cuando. Sólo cambió el orden de
 **`#folio` en azul** sigue abriendo el **editor manual** (cambios a mano), y el ojo/lápiz/bote quedan a
 la derecha; esos botones hacen `stopPropagation` en el doble clic para no togglear al usarlos. Las filas
 abiertas se recuerdan en un `Set` en estado para no cerrarse al refrescar. TSC front=0.
+
+---
+
+## 2026-09-22 (autofacturación) — Módulo de Autofacturación (Anexo 20 / RMF 2.7.3): captura y previsualización, timbrado GATED
+
+**Qué es.** El ADQUIRENTE (nuestra empresa) expide el CFDI POR CUENTA del ENAJENANTE que no factura
+—sector primario, arrendador, minero, artesano, vehículos usados, desperdicios, arte, antigüedades
+(RMF Sección 2.7.3)—. En el CFDI el **emisor es el enajenante** (régimen **622 AGAPES** para primario) y
+el **receptor es la empresa**, al revés de una factura normal. Si el enajenante **no tiene RFC** se usa el
+**genérico nacional** (`XAXX010101000`) registrando su **nombre + CURP**.
+
+**Qué se construyó.** Migración `2026-09-22_autofactura.sql` con `autofactura_enajenantes` (registro) y
+`autofactura_comprobantes` (erogaciones; estado BORRADOR/TIMBRADO/CANCELADO, `json_cfdi` con la
+previsualización, idempotencia por UUID). Servicio `autofactura.service` (CRUD de enajenantes; captura de
+comprobantes con cálculo de IVA/retenciones y armado del **JSON CFDI 4.0** reutilizando `fmtFechaSAT` de
+`build-cfdi-json`; emisor=enajenante, receptor=empresa). Rutas `/autofactura` gated **contabilidad** en
+`app.ts`. Pantalla **Contabilidad → Autofacturación** (`Autofacturacion.tsx`), 2 pestañas
+(Comprobantes / Enajenantes), captura con totales en vivo y modal de previsualización (emisor lima /
+receptor azul + conceptos + aviso). Menú y ruta en `Layout`/`ErpPrivado`; API en `api.ts`.
+
+**TIMBRADO GATED a propósito.** Emitir por cuenta del adquirente **no es la emisión normal**: requiere el
+**«rol de facturación a través del adquirente»** ante el SAT y un **PAC con servicio de adquirentes** (el
+sellado NO usa el CSD del emisor, que aquí no existe). `timbrarComprobante` responde con el motivo y **no
+emite nada** hasta activarlo. Por ahora se captura y previsualiza (BORRADOR). TSC back=0, front=0.
+
+---
+
+## 2026-09-22 (tesorería/UI) — Cuenta contable del cliente en Cobranza + encabezado y paginación de reportes
+
+**Correlación de cuenta en «tesorería de facturas».** En **Cobranza detallada → «Facturas de NEXO con
+saldo»** (`ReceivablesReport` en `Reports.tsx`), el encabezado de cada cliente muestra ahora su **cuenta
+contable** (105.01-###), tomada del catálogo por RFC (`getSubcuentasTercero('cliente')` → mapa por RFC),
+igual que en la pantalla de **Clientes**. (La sección de saldos por contabilidad ya la mostraba.)
+
+**Personalización de reportes (`utils/reporte-pdf.ts`, base de los 7 de Contabilidad + 4 de Nómina).** El
+encabezado —que ya traía empresa · nombre del reporte · RFC— gana el **«Periodo solicitado: DD/MM/AAAA al
+DD/MM/AAAA»** (nueva opción `rango`, opcional y retrocompatible) y la línea de generación pasa a
+**«Elaborado: DD/MM/AAAA HH:MM»** (`fechaHoraMx`). Y lo pedido: **número de página al pie, en la parte
+inferior DERECHA, en formato «N/total»** (1/5, 2/5, …), recorriendo las páginas con `bufferPages` para
+conocer el total; aplica a **todos** los reportes sin tocar cada llamador. Probado con 140 filas → 8
+páginas, PDF válido. TSC back=0, front=0.
+
+**Pendiente aclarar:** «borrar descargas pendientes» — el único lugar con descargas pendientes reales es
+el módulo de descarga XML del SAT (solicitudes/paquetes por estado, con `reiniciar` que borra todo); se
+consultó al usuario en qué pantalla lo quiere antes de programar.
