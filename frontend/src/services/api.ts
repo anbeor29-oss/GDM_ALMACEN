@@ -1183,6 +1183,18 @@ class APIClient {
     const blob = await r.blob();
     window.open(URL.createObjectURL(blob), '_blank');
   }
+  async getConfigCumplimiento() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/opinion-cumplimiento/config');
+    return r.data;
+  }
+  async setConfigCumplimiento(tipo: string, data: any) {
+    const r = await this.client.put<APIResponse<any>>(`/accounting/opinion-cumplimiento/config/${tipo}`, data);
+    return r.data;
+  }
+  async descargarCumplimiento(tipo: string) {
+    const r = await this.client.post<APIResponse<any>>(`/accounting/opinion-cumplimiento/${tipo}/descargar`, {});
+    return r.data;
+  }
   /** Pólizas del respaldo que no se pudieron importar (pendientes). */
   async getPolizasPendientes() {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas-pendientes');

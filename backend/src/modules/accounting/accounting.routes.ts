@@ -782,6 +782,18 @@ router.delete('/opinion-cumplimiento/:id', requireCapability('contabilidad:captu
   asyncHandler(async (req: Request, res: Response) => {
     res.json({ success: true, data: await opinionCumpl.borrar(companyId(req), req.params.id) });
   }));
+router.get('/opinion-cumplimiento/config', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await opinionCumpl.getConfigTodas(companyId(req)) });
+}));
+router.put('/opinion-cumplimiento/config/:tipo', requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await opinionCumpl.setConfig(companyId(req), String(req.params.tipo).toUpperCase(), req.body) });
+  }));
+router.post('/opinion-cumplimiento/:tipo/descargar', requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    await opinionCumpl.descargarAutomatico(companyId(req), String(req.params.tipo).toUpperCase());
+    res.json({ success: true });
+  }));
 router.get('/opinion-cumplimiento/:id/pdf', asyncHandler(async (req: Request, res: Response) => {
   const dataUrl = await opinionCumpl.pdfDe(companyId(req), req.params.id);
   const base64 = dataUrl.replace(/^data:application\/pdf;base64,/, '');

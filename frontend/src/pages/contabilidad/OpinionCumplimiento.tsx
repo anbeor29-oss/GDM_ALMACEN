@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, Plus, Trash2, FileText, X, Save, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, Plus, Trash2, FileText, X, Save, AlertTriangle, Settings, DownloadCloud } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha, aTextoMx } from '@/components/CampoFecha';
 import { claseOpcion } from '@/utils/coloresOpciones';
@@ -16,11 +16,13 @@ import { claseOpcion } from '@/utils/coloresOpciones';
 const TIPOS: Array<[string, string, string]> = [
   ['SAT', 'SAT (32-D)', 'Opinión del cumplimiento de obligaciones fiscales (Art. 32-D CFF).'],
   ['IMSS', 'IMSS', 'Opinión de cumplimiento de obligaciones en materia de seguridad social.'],
-  ['INFONAVIT', 'INFONAVIT', 'Constancia de situación fiscal en materia de aportaciones de vivienda.'],
+  ['INFONAVIT', 'INFONAVIT', 'Cumplimiento en materia de aportaciones de vivienda (INFONAVIT).'],
+  ['CSF', 'CSF', 'Constancia de Situación Fiscal — la identidad fiscal de la empresa (RFC, régimen, domicilio).'],
 ];
 const SENTIDOS: Array<[string, string]> = [
   ['POSITIVA', 'Positiva (al corriente)'],
   ['SIN_ADEUDOS', 'Sin adeudos'],
+  ['VIGENTE', 'Vigente'],
   ['NEGATIVA', 'Negativa (con adeudos)'],
   ['SUSPENDIDA', 'Suspendida'],
   ['OTRO', 'Otro'],
@@ -41,6 +43,15 @@ export function OpinionCumplimientoPage() {
   const vigentes: any = resumenQ.data?.data?.vigentes || {};
   const histQ = useQuery({ queryKey: ['opinion-hist', tab], queryFn: () => api.getOpinionHistorial(tab) });
   const historial: any[] = histQ.data?.data || [];
+  const [cfgModal, setCfgModal] = useState(false);
+  const configQ = useQuery({ queryKey: ['cumpl-config'], queryFn: () => api.getConfigCumplimiento() });
+  const cfgActual: any = configQ.data?.data?.configs?.[tab];
+
+  const descargar = async () => {
+    setMsg('');
+    try { const r: any = await api.descargarCumplimiento(tab); setMsg(r?.message || 'Descarga iniciada.'); qc.invalidateQueries({ queryKey: ['opinion-hist', tab] }); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'La descarga automática aún no está activa.'); }
+  };
 
   const borrar = async (id: string) => {
     if (!window.confirm('¿Borrar este registro de opinión?')) return;
@@ -62,8 +73,8 @@ export function OpinionCumplimientoPage() {
         </p>
       </div>
 
-      {/* Tarjetas resumen de las tres */}
-      <div className="grid sm:grid-cols-3 gap-3">
+      {/* Tarjetas resumen */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {TIPOS.map(([k, nombre]) => {
           const v = vigentes[k];
           return (
@@ -91,14 +102,27 @@ export function OpinionCumplimientoPage() {
         ))}
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-600">{tipoActual[2]}</p>
-        <button onClick={() => setForm(true)}
-          className="flex items-center gap-1.5 bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 text-sm">
-          <Plus size={15} /> Registrar opinión
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-gray-600 flex-1 min-w-[14rem]">{tipoActual[2]}</p>
+        <div className="flex items-center gap-1.5">
+          <button onClick={descargar}
+            title="Descarga automática (requiere configurar el proveedor/portal; hoy explica el siguiente paso)"
+            className="flex items-center gap-1.5 border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 text-sm">
+            <DownloadCloud size={15} /> Descargar automático
+          </button>
+          <button onClick={() => setCfgModal(true)}
+            title="Configurar la descarga: endpoint, usuario y contraseña/token (se guardan cifrados)"
+            className="flex items-center gap-1.5 border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600">
+            <Settings size={15} /> Configurar
+            {cfgActual?.activo && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="configurada y activa" />}
+          </button>
+          <button onClick={() => setForm(true)}
+            className="flex items-center gap-1.5 bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 text-sm">
+            <Plus size={15} /> Registrar
+          </button>
+        </div>
       </div>
-      {msg && <p className="text-sm text-rose-700">{msg}</p>}
+      {msg && <p className="text-sm text-gray-700 bg-gray-50 border rounded px-3 py-2">{msg}</p>}
 
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="w-full">
@@ -139,6 +163,79 @@ export function OpinionCumplimientoPage() {
           onCerrar={() => setForm(false)}
           onHecho={() => { setForm(false); qc.invalidateQueries({ queryKey: ['opinion-hist', tab] }); qc.invalidateQueries({ queryKey: ['opinion-resumen'] }); }} />
       )}
+      {cfgModal && (
+        <ModalConfig tipo={tab} tipoNombre={tipoActual[1]} actual={cfgActual}
+          onCerrar={() => setCfgModal(false)}
+          onHecho={() => { setCfgModal(false); qc.invalidateQueries({ queryKey: ['cumpl-config'] }); }} />
+      )}
+    </div>
+  );
+}
+
+function ModalConfig({ tipo, tipoNombre, actual, onCerrar, onHecho }: any) {
+  const [metodo, setMetodo] = useState(actual?.metodo || 'API');
+  const [baseUrl, setBaseUrl] = useState(actual?.base_url || '');
+  const [usuario, setUsuario] = useState(actual?.usuario || '');
+  const [credencial, setCredencial] = useState('');   // vacío = conservar el guardado
+  const [token, setToken] = useState('');
+  const [activo, setActivo] = useState(!!actual?.activo);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const guardar = async () => {
+    setBusy(true); setError('');
+    try {
+      const payload: any = { metodo, base_url: baseUrl.trim(), usuario: usuario.trim(), activo };
+      if (credencial !== '') payload.credencial = credencial;   // sólo se manda si se teclea
+      if (token !== '') payload.token = token;
+      await api.setConfigCumplimiento(tipo, payload);
+      onHecho();
+    } catch (e: any) { setError(e?.response?.data?.message || 'No se pudo guardar.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <h3 className="font-semibold text-gray-900">Configurar descarga · {tipoNombre}</h3>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-start gap-1.5">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" /> Las contraseñas/tokens se guardan
+            <b> cifrados</b> en el servidor y no se vuelven a mostrar. Deja el campo vacío para conservar el actual.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block"><span className="text-xs text-gray-600">Método</span>
+              <select value={metodo} onChange={(e) => setMetodo(e.target.value)} className="input w-full">
+                <option value="API">API (proveedor externo)</option>
+                <option value="EFIRMA">e.firma (flujo oficial SAT)</option>
+                <option value="PORTAL">Portal (navegación)</option>
+              </select></label>
+            <label className="flex items-center gap-2 mt-5 text-sm text-gray-600">
+              <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} /> Activa
+            </label>
+          </div>
+          <label className="block"><span className="text-xs text-gray-600">Endpoint / URL</span>
+            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://…" className="input w-full font-mono text-xs" /></label>
+          <label className="block"><span className="text-xs text-gray-600">Usuario / RFC</span>
+            <input value={usuario} onChange={(e) => setUsuario(e.target.value)} className="input w-full font-mono" /></label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block"><span className="text-xs text-gray-600">Contraseña / CIEC {actual?.tiene_credencial && <span className="text-emerald-600">· guardada</span>}</span>
+              <input type="password" value={credencial} onChange={(e) => setCredencial(e.target.value)} placeholder={actual?.tiene_credencial ? '•••• (sin cambio)' : ''} className="input w-full" /></label>
+            <label className="block"><span className="text-xs text-gray-600">Token / API key {actual?.tiene_token && <span className="text-emerald-600">· guardado</span>}</span>
+              <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={actual?.tiene_token ? '•••• (sin cambio)' : ''} className="input w-full" /></label>
+          </div>
+          {error && <p className="text-sm text-rose-700">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={onCerrar} className="px-3 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
+            <button onClick={guardar} disabled={busy} className="flex items-center gap-1.5 bg-primary text-white px-4 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
+              <Save size={15} /> {busy ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
