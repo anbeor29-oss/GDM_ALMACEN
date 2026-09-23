@@ -6134,3 +6134,33 @@ borra SÓLO los trabajos **CREADO/EN_PROCESO** (las descargas en cola/a medias) 
 los XML ya bajados se **conservan** en `cfdi_recibidos` (paquete_id → NULL). Es el complemento de
 `limpiar-terminados` y NO el «reiniciar» que borra todo. En **Programación SAT** aparece el botón «Borrar
 pendientes» (ámbar, con confirmación) cuando hay algo en vuelo (`d.enVuelo > 0`). TSC back=0, front=0.
+
+---
+
+## 2026-09-23 (contabilidad) — SÉPTIMO: auto-asignar cuentas «de un tirón» (asigna lo claro, deja lo dudoso)
+
+**Cierra el SÉPTIMO** («afina los motores»). Motor **server-side** `auto-asignar-cuentas.service`:
+`autoAsignarCuentasProducto(dir, anio, mes)` recorre los productos del periodo y asigna la cuenta cuando
+el match es **CLARO** —prefijo de ClaveProdServ **≥ 4** (misma familia del SAT) contra las ya asignadas, o
+la **única** cuenta si la empresa siempre usa una—; lo que no tiene match claro queda **PENDIENTE**
+(dudoso), nunca se inventa. `autoAsignarTodo(anio, mes)` hace ventas + compras + subcuentas de clientes y
+proveedores en una pasada. Rutas `POST /accounting/cuentas/auto-asignar` y `/auto-asignar-todo` (cap.
+`contabilidad:catalogo`). En el **libro diario** (Pólizas), botón verde **«Auto-asignar todo»** junto a
+«Asignar cuentas»; reporta cuántas asignó y cuántos dudosos quedan, y respeta el «todo el año». Antes el
+match por prefijo lo hacía sólo el frontend, producto por producto; ahora es de un jalón. TSC back=0, front=0.
+
+---
+
+## 2026-09-23 (nómina) — Póliza de nómina ORDINARIA (agregada por periodo)
+
+Antes sólo se contabilizaba el **finiquito** (una póliza por recibo timbrado). Ahora la **nómina ordinaria**
+(semanal/quincenal/mensual) se contabiliza en **UNA póliza por corrida**, agregando TODOS los recibos del
+periodo: percepciones→**601**, subsidio→**110**, deducciones→**216/205**, neto→**210** (misma regla de
+cuentas que el finiquito, vía `conceptosConCuenta`). En `nomina-poliza.service`: `periodosOrdinarios`
+(lista los periodos NO finiquito con recibos/timbrados/`con_poliza`), `armarPolizaPeriodo` (suma por CLAVE
+de concepto, resuelve cuentas y reporta faltantes) y `generarPolizaPeriodo` (**idempotente** por
+`NOMINA-PERIODO:<id>`, regla `nomina_ordinaria_v1`). Rutas `GET /nomina/poliza-periodos`,
+`GET /poliza-periodo/:id`, `POST /poliza-periodo/:id/generar` (generar sólo admin) —con prefijo distinto de
+`/poliza/:reciboId` para no chocar—. **UI:** la pestaña **«Póliza»** (Nómina → Reportes → Conceptos y
+cuentas) ganó un toggle **«Ordinaria (por periodo)» / «Finiquito»**; la ordinaria lista los periodos,
+previsualiza la póliza agregada y la genera. El motor por-recibo del finiquito quedó intacto. TSC back=0, front=0.
