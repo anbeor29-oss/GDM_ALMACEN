@@ -34,7 +34,7 @@ const AvisoXml = () => (
 );
 
 export function PolizasCompraPage() {
-  const [tab, setTab] = useState<'cargos' | 'proveedores' | 'polizas'>('cargos');
+  const [tab, setTab] = useState<'polizas' | 'proveedores' | 'cargos'>('polizas');
   const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const anios = aniosContables();
 
@@ -67,7 +67,7 @@ export function PolizasCompraPage() {
       )}
 
       <div className="flex gap-1.5 flex-wrap">
-        {([['cargos', 'Cargos (115/601 por producto)'], ['proveedores', 'Proveedores'], ['polizas', 'Pólizas']] as const)
+        {([['polizas', 'Pólizas'], ['proveedores', 'Proveedores'], ['cargos', 'Cargos (115/601 por producto)']] as const)
           .map(([k, label], i) => (
             <button key={k} onClick={() => setTab(k)}
               className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === k)}`}>

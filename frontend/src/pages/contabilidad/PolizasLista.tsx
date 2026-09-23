@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer } from 'lucide-react';
+import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
@@ -68,6 +68,13 @@ export function PolizasListaPage() {
   const [todoAnio, setTodoAnio] = useState(false);
   const [editar, setEditar] = useState<any>(null);
   const [previa, setPrevia] = useState<any>(null);   // póliza en previsualización/PDF
+  /* Lista COMPACTA: cada póliza es un solo renglón (folio + concepto); con doble
+   * clic (o el chevron) se despliegan sus partidas. Se recuerda cuáles están
+   * abiertas para no cerrarlas al refrescar. El #folio en azul abre el editor. */
+  const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
+  const alternar = (id: string) => setAbiertas((s) => {
+    const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
   /* Si se llegó desde el auxiliar de la balanza, al cerrar/guardar el editor se
    * regresa allá (no a esta lista): es donde estaba trabajando el usuario. */
   const [volverBalanza, setVolverBalanza] = useState(false);
@@ -229,10 +236,17 @@ export function PolizasListaPage() {
           const cargos = (p.lineas || []).reduce((a: number, l: any) => a + Number(l.cargo || 0), 0);
           const abonos = (p.lineas || []).reduce((a: number, l: any) => a + Number(l.abono || 0), 0);
           const cuadra = Math.abs(cargos - abonos) <= 0.02;
+          const abierta = abiertas.has(p.id);
           return (
             <div key={p.id} className="bg-white border rounded-lg overflow-hidden">
-              <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-gray-50 border-b text-sm">
-                <button onClick={() => setEditar(p)} title="Editar esta póliza"
+              {/* Renglón compacto: doble clic en él (o el chevron) despliega/contrae. */}
+              <div onDoubleClick={() => alternar(p.id)} title="Doble clic para desplegar o contraer"
+                className="flex flex-wrap items-center gap-2 px-3 py-2 bg-gray-50 border-b text-sm cursor-pointer select-none hover:bg-gray-100">
+                <button onClick={() => alternar(p.id)} onDoubleClick={(e) => e.stopPropagation()}
+                  className="text-gray-400 hover:text-gray-600 shrink-0" title={abierta ? 'Contraer' : 'Desplegar'}>
+                  {abierta ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                </button>
+                <button onClick={() => setEditar(p)} onDoubleClick={(e) => e.stopPropagation()} title="Editar esta póliza (cambios manuales)"
                   className="font-bold text-blue-600 hover:underline">#{p.folio}</button>
                 <span className="text-gray-500">{fecha(p.fecha)}</span>
                 <span className="text-gray-700 truncate">{p.concepto}</span>
@@ -240,30 +254,34 @@ export function PolizasListaPage() {
                 {!cuadra && (
                   <span className="text-[10px] text-rose-600 flex items-center gap-0.5"><AlertTriangle size={11} /> descuadrada</span>
                 )}
-                <button onClick={() => setPrevia(p)} title="Previsualizar / PDF"
-                  className="ml-auto text-gray-300 hover:text-sky-600"><Eye size={15} /></button>
-                <button onClick={() => setEditar(p)} title="Editar póliza"
+                {/* Compacta: el importe se ve sin desplegar. */}
+                {!abierta && <span className="ml-auto text-xs text-gray-400 font-mono tabular-nums">{money(cargos)}</span>}
+                <button onClick={() => setPrevia(p)} onDoubleClick={(e) => e.stopPropagation()} title="Previsualizar / PDF"
+                  className={`${abierta ? 'ml-auto' : ''} text-gray-300 hover:text-sky-600`}><Eye size={15} /></button>
+                <button onClick={() => setEditar(p)} onDoubleClick={(e) => e.stopPropagation()} title="Editar póliza"
                   className="text-gray-300 hover:text-primary"><Pencil size={14} /></button>
-                <button onClick={() => borrar(p)} title="Eliminar póliza"
+                <button onClick={() => borrar(p)} onDoubleClick={(e) => e.stopPropagation()} title="Eliminar póliza"
                   className="text-gray-300 hover:text-rose-500"><Trash2 size={15} /></button>
               </div>
-              <table className="w-full text-xs">
-                <tbody>
-                  {(p.lineas || []).map((l: any, i: number) => (
-                    <tr key={i} className="border-b last:border-0">
-                      <td className="px-3 py-1 font-mono text-gray-500 w-24">{formatCuenta(l.codigo, mascara)}</td>
-                      <td className="px-2 py-1">{l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}</td>
-                      <td className="px-3 py-1 text-right w-28">{Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
-                      <td className="px-3 py-1 text-right w-28">{Number(l.abono) > 0 ? money(l.abono) : ''}</td>
+              {abierta && (
+                <table className="w-full text-xs">
+                  <tbody>
+                    {(p.lineas || []).map((l: any, i: number) => (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="px-3 py-1 font-mono text-gray-500 w-24">{formatCuenta(l.codigo, mascara)}</td>
+                        <td className="px-2 py-1">{l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}</td>
+                        <td className="px-3 py-1 text-right w-28">{Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
+                        <td className="px-3 py-1 text-right w-28">{Number(l.abono) > 0 ? money(l.abono) : ''}</td>
+                      </tr>
+                    ))}
+                    <tr className="font-semibold bg-gray-50">
+                      <td colSpan={2} className="px-3 py-1 text-right">Sumas</td>
+                      <td className="px-3 py-1 text-right">{money(cargos)}</td>
+                      <td className="px-3 py-1 text-right">{money(abonos)}</td>
                     </tr>
-                  ))}
-                  <tr className="font-semibold bg-gray-50">
-                    <td colSpan={2} className="px-3 py-1 text-right">Sumas</td>
-                    <td className="px-3 py-1 text-right">{money(cargos)}</td>
-                    <td className="px-3 py-1 text-right">{money(abonos)}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              )}
             </div>
           );
         })}

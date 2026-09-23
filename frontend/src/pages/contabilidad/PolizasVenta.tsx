@@ -23,7 +23,7 @@ const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 export function PolizasVentaPage() {
-  const [tab, setTab] = useState<'ingresos' | 'clientes' | 'polizas'>('ingresos');
+  const [tab, setTab] = useState<'polizas' | 'clientes' | 'ingresos'>('polizas');
   const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const anios = aniosContables();
 
@@ -56,7 +56,7 @@ export function PolizasVentaPage() {
       )}
 
       <div className="flex gap-1.5 flex-wrap">
-        {([['ingresos', 'Ingresos (401 por producto)'], ['clientes', 'Clientes'], ['polizas', 'Pólizas']] as const)
+        {([['polizas', 'Pólizas'], ['clientes', 'Clientes'], ['ingresos', 'Ingresos (401 por producto)']] as const)
           .map(([k, label], i) => (
             <button key={k} onClick={() => setTab(k)}
               className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === k)}`}>
