@@ -9,15 +9,23 @@
  * El token de dispositivo sin login personal es la siguiente fase.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { UserCheck, UserX, Camera, LogIn, LogOut, Loader2, Settings, Clock, MapPin } from 'lucide-react';
 import { cargarFaceApi, descriptorDeVideo } from '@/utils/faceApi';
 import { leerKioscoSel, guardarKioscoSel, borrarKioscoSel, type KioscoSel } from '@/utils/kioscoSel';
+import { modoKiosco } from '@/utils/kioscoAuto';
 import api from '@/services/api';
 
 type Resultado = { ok: boolean; nombre?: string; tipo?: string; repetido?: boolean; hora?: string; espera?: boolean; mensaje?: string };
 
 export function CheckadorKioscoPage() {
+  const navigate = useNavigate();
+  /* Si ESTE equipo se configuró como CAMPO (celular, flotante), no es un kiosco:
+   * se va directo al checador de campo (GPS, sin ubicación fija). Una sola app
+   * sirve para tableta (kiosco fijo) y celular (campo móvil). */
+  const esCampo = modoKiosco() === 'campo';
+  useEffect(() => { if (esCampo) navigate('/checador/campo', { replace: true }); }, [esCampo, navigate]);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const [fase, setFase] = useState<'iniciando' | 'listo' | 'error'>('iniciando');
   const [error, setError] = useState('');
@@ -57,6 +65,7 @@ export function CheckadorKioscoPage() {
   }, []);
 
   useEffect(() => {
+    if (esCampo) return;              // este equipo es campo (celular): no abre la cámara del kiosco
     let stream: MediaStream | null = null;
     let timer: any = null;
     let vivo = true;
@@ -102,6 +111,8 @@ export function CheckadorKioscoPage() {
 
     return () => { vivo = false; if (timer) clearInterval(timer); stream?.getTracks().forEach((t) => t.stop()); };
   }, []);
+
+  if (esCampo) return null;           // redirigiendo al checador de campo
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-6 p-4 sm:p-6 bg-gray-900 text-white relative overflow-hidden">
