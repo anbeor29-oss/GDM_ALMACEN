@@ -6281,3 +6281,26 @@ En Súper Admin → Usuarios, los usuarios **DESHABILITADOS** ganan un botón **
 no permite auto-borrado, y BLOQUEA si el usuario tiene historial que es evidencia —contratos, ventas, CSD,
 manifiestos—); se le agregó la guarda de que **solo borra si `is_active=false`** (primero deshabilitar,
 luego borrar). No aparece para SUPER_ADMIN ni para uno mismo. `api.adminDeleteUser(id, confirmEmail)`. TSC back=0, front=0.
+
+---
+
+## 2026-09-23 (contabilidad) — Cédulas fiscales (papel de trabajo): ISR PF 612 + IVA (v1)
+
+Primera versión de la **determinación mensual de impuestos** desde los CFDI (ingresos = emitidos,
+deducciones = recibidos), en **Contabilidad → Reportes → «Cédulas fiscales»**. Se activa por **régimen
+fiscal**: la de **ISR** solo si la empresa es **612** (PF con Actividad Empresarial y Profesional); la
+**cédula de IVA** para **todos** los regímenes.
+
+- **ISR 612 (pago provisional ACUMULADO):** ingresos acumulables − deducciones acumuladas = base; se aplica
+  la **tarifa Art. 96 ACUMULADA al mes** (la tarifa mensual de `nomina_tarifa_isr` × número de mes: límite
+  inferior, cuota fija × N, % igual); menos pagos provisionales previos e ISR retenido acumulado = ISR por
+  pagar. Reproduce la hoja «Personas Fisicas Act. Emp.» del papel de trabajo del contador.
+- **Cédula de IVA (mensual definitivo):** IVA trasladado (16/8/0/exento − retenido) contra IVA acreditable,
+  con **arrastre del saldo a favor**. Reproduce la hoja «Cedula de IVA». Reusa `impuestosDeXml` de
+  `diot.service` (IVA por tasa) + un extractor de ISR retenido.
+- `cedulas-fiscales.service` (`cedulaIsrPF`/`cedulaIva`/`regimenEmpresa`); rutas `/accounting/cedulas/...`.
+  Pantalla `CedulasFiscales.tsx` con tabla transpuesta (conceptos en filas, meses en columnas) como el Excel.
+
+**v1 — a validar contra el papel de trabajo del contador.** Pendiente de afinación: base de FLUJO (efectivo,
+con complementos de pago), deducciones personales, pérdida fiscal de ejercicios anteriores, y las demás
+tasas/retenciones finas. TSC back=0, front=0.

@@ -82,6 +82,7 @@ import { ImportarContpaqiPage } from '@/pages/contabilidad/ImportarContpaqi';
 import { CfdiContabilidadPage } from '@/pages/contabilidad/CfdiContabilidad';
 import { AutofacturacionPage } from '@/pages/contabilidad/Autofacturacion';
 import { OpinionCumplimientoPage } from '@/pages/contabilidad/OpinionCumplimiento';
+import { CedulasFiscalesPage } from '@/pages/contabilidad/CedulasFiscales';
 import { CambioCuentaPage } from '@/pages/contabilidad/CambioCuenta';
 import {
   BalanzaPage, SituacionFinancieraPage, ResultadoIntegralPage, EstadoResultadosPage,
@@ -175,6 +176,7 @@ export default function ErpPrivado() {
         <Route path="contabilidad/cfdi"               element={<ModuleRoute module="contabilidad"><CfdiContabilidadPage /></ModuleRoute>} />
         <Route path="invoices/autofactura"            element={<ModuleRoute module="invoices"><AutofacturacionPage /></ModuleRoute>} />
         <Route path="contabilidad/opinion-cumplimiento" element={<ModuleRoute module="contabilidad"><OpinionCumplimientoPage /></ModuleRoute>} />
+        <Route path="contabilidad/cedulas"            element={<ModuleRoute module="contabilidad"><CedulasFiscalesPage /></ModuleRoute>} />
         <Route path="contabilidad/cambio-cuenta"      element={<ModuleRoute module="contabilidad"><CambioCuentaPage /></ModuleRoute>} />
         <Route path="contabilidad/conciliacion"       element={<ModuleRoute module="contabilidad"><ConciliacionContablePage /></ModuleRoute>} />
         <Route path="contabilidad/auxiliar"           element={<ModuleRoute module="contabilidad"><AuxiliarCuentasPage /></ModuleRoute>} />

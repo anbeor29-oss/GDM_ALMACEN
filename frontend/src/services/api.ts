@@ -1158,6 +1158,20 @@ class APIClient {
     return r.data;
   }
 
+  /* ── Cédulas fiscales (papel de trabajo): ISR PF 612 + IVA ── */
+  async getCedulaRegimen() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/cedulas/regimen');
+    return r.data;
+  }
+  async getCedulaIsrPF(anio: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/cedulas/isr-pf/${anio}`);
+    return r.data;
+  }
+  async getCedulaIva(anio: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/cedulas/iva/${anio}`);
+    return r.data;
+  }
+
   /* ── Opinión de Cumplimiento (SAT 32-D / IMSS / INFONAVIT) ── */
   async getOpinionCumplimiento() {
     const r = await this.client.get<APIResponse<any>>('/accounting/opinion-cumplimiento');

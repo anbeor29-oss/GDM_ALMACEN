@@ -412,6 +412,7 @@ export function Layout() {
                           { to: '/contabilidad/nif',        icon: emoji3D('📐'), label: 'NIF' },
                           { to: '/contabilidad/estados-financieros', icon: emoji3D('📋'), label: 'Estados financieros' },
                           { to: '/contabilidad/reportes-fiscales', icon: emoji3D('📤'), label: 'SAT' },
+                          { to: '/contabilidad/cedulas',           icon: emoji3D('📑'), label: 'Cédulas fiscales (ISR/IVA)' },
                           { to: '/contabilidad/opinion-cumplimiento', icon: emoji3D('🛡️'), label: 'Opinión 32-D (SAT/IMSS/INFONAVIT)' },
                         ],
                       },

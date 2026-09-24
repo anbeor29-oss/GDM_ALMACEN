@@ -32,6 +32,7 @@ import * as autoAsignar from './auto-asignar-cuentas.service';
 import * as apertura from './apertura.service';
 import * as diagnosticoCfdi from './diagnostico-cfdi.service';
 import * as opinionCumpl from './opinion-cumplimiento.service';
+import * as cedulas from './cedulas-fiscales.service';
 import * as validacion from './validacion-contable.service';
 import * as especiales from './reportes-especiales.service';
 import * as balanceGeneral from './balance-general.service';
@@ -765,6 +766,21 @@ router.get(
     res.json({ success: true, data: await diagnosticoCfdi.diagnosticarContabilizacion(companyId(req), anio, mes) });
   })
 );
+
+/* ── Cédulas fiscales (papel de trabajo): ISR PF 612 + IVA ── */
+router.get('/cedulas/regimen', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: { regimen: await cedulas.regimenEmpresa(companyId(req)) } });
+}));
+router.get('/cedulas/isr-pf/:anio', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.params.anio);
+  if (!anio) throw new ValidationError('Año inválido.');
+  res.json({ success: true, data: await cedulas.cedulaIsrPF(companyId(req), anio) });
+}));
+router.get('/cedulas/iva/:anio', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.params.anio);
+  if (!anio) throw new ValidationError('Año inválido.');
+  res.json({ success: true, data: await cedulas.cedulaIva(companyId(req), anio) });
+}));
 
 /* ── Opinión de Cumplimiento (SAT 32-D / IMSS / INFONAVIT) ── */
 router.get('/opinion-cumplimiento', asyncHandler(async (req: Request, res: Response) => {
