@@ -7,18 +7,23 @@
  *     (límite inferior, excedente × %, + cuota fija, todo × número de mes); menos
  *     pagos provisionales previos, subsidio e ISR retenido = ISR por pagar.
  *
+ *   · ISR del RÉGIMEN SIMPLIFICADO DE CONFIANZA (626, RESICO PF): ingresos cobrados
+ *     × tasa de la tabla del Art. 113-E, sin deducciones; menos el ISR retenido.
+ *
  *   · CÉDULA DE IVA (mensual, definitivo) — sirve para TODOS los regímenes: IVA
  *     trasladado (16/8/0/exento − retenido) contra IVA acreditable, con arrastre
  *     del saldo a favor.
  *
- * Los datos salen de la bóveda de CFDI: ingresos = EMITIDOS (tipo I), deducciones
- * = RECIBIDOS con XML. La tarifa ISR mensual vive en `nomina_tarifa_isr` (la misma
- * que cotejó Nómina). PRIMERA VERSIÓN: validar contra el papel de trabajo del
- * contador (base de flujo/efectivo, deducciones personales y pérdidas quedan como
- * afinación posterior).
+ * BASE DE FLUJO DE EFECTIVO: se reconoce lo COBRADO/PAGADO — los CFDI PUE en su mes
+ * de emisión y los PPD en el mes de su complemento de pago (tipo P). Los datos salen
+ * de la bóveda de CFDI (ingresos = EMITIDOS, deducciones = RECIBIDOS); la tarifa ISR
+ * mensual vive en `nomina_tarifa_isr`. PRIMERA VERSIÓN: validar contra el papel de
+ * trabajo del contador (deducciones personales, pérdidas y el desglose por tasa del
+ * complemento quedan como afinación posterior).
  */
 import { query } from '../../config/database';
 import { impuestosDeXml } from './diot.service';
+import { complementoDeXml } from './ventas-cuentas.service';
 import { NotFoundError, ValidationError } from '../../middleware/errorHandler';
 
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
@@ -45,28 +50,55 @@ interface MesAgg {
 }
 const mesVacio = (): MesAgg => ({ base16: 0, iva16: 0, base8: 0, iva8: 0, base0: 0, exento: 0, ivaRet: 0, isrRet: 0, subtotal: 0 });
 
-/** Agrupa por mes (1..12) los CFDI tipo I con XML de una dirección, con su desglose. */
-async function porMes(companyId: string, direccion: 'emitidos' | 'recibidos', anio: number): Promise<MesAgg[]> {
-  const r = await query<any>(
+function sumaImp(a: MesAgg, imp: ReturnType<typeof impuestosDeXml>, isrRet: number) {
+  a.base16 += imp.base16; a.iva16 += imp.iva16;
+  a.base8 += imp.base8; a.iva8 += imp.iva8;
+  a.base0 += imp.base0; a.exento += imp.exento; a.ivaRet += imp.ivaRet;
+  a.isrRet += isrRet;
+  a.subtotal += imp.base16 + imp.base8 + imp.base0 + imp.exento;
+}
+const redondearMes = (a: MesAgg): MesAgg =>
+  Object.fromEntries(Object.entries(a).map(([k, v]) => [k, r2(v)])) as unknown as MesAgg;
+
+/**
+ * Agrupa por mes (1..12) en BASE DE FLUJO DE EFECTIVO (lo cobrado/pagado):
+ *   · CFDI tipo I con MetodoPago = PUE (pago en una exhibición) → en su mes de emisión.
+ *   · Complementos de pago (tipo P) → en el mes del complemento (lo cobrado/pagado de
+ *     los PPD). Los PPD tipo I NO se cuentan al emitirse: se reconocen al pagarse.
+ * (v1: el desglose del complemento va a la tasa 16 %; el total sí es exacto.)
+ */
+async function porMesFlujo(companyId: string, direccion: 'emitidos' | 'recibidos', anio: number): Promise<MesAgg[]> {
+  const meses: MesAgg[] = Array.from({ length: 12 }, mesVacio);
+
+  const pue = await query<any>(
     `SELECT EXTRACT(MONTH FROM fecha_emision)::int AS mes, xml
        FROM cfdi_recibidos
-      WHERE company_id=$1 AND direccion=$2 AND tipo_comprobante='I' AND xml IS NOT NULL
+      WHERE company_id=$1 AND direccion=$2 AND tipo_comprobante='I' AND metodo_pago='PUE' AND xml IS NOT NULL
         AND (estado_sat IS NULL OR estado_sat <> 'Cancelado')
         AND EXTRACT(YEAR FROM fecha_emision) = $3`,
     [companyId, direccion, anio]);
-  const meses: MesAgg[] = Array.from({ length: 12 }, mesVacio);
-  for (const row of r.rows) {
-    const m = Number(row.mes);
-    if (m < 1 || m > 12) continue;
-    const imp = impuestosDeXml(String(row.xml));
-    const a = meses[m - 1];
-    a.base16 += imp.base16; a.iva16 += imp.iva16;
-    a.base8 += imp.base8; a.iva8 += imp.iva8;
-    a.base0 += imp.base0; a.exento += imp.exento; a.ivaRet += imp.ivaRet;
-    a.isrRet += isrRetenidoDeXml(String(row.xml));
-    a.subtotal += imp.base16 + imp.base8 + imp.base0 + imp.exento;
+  for (const row of pue.rows) {
+    const m = Number(row.mes); if (m < 1 || m > 12) continue;
+    sumaImp(meses[m - 1], impuestosDeXml(String(row.xml)), isrRetenidoDeXml(String(row.xml)));
   }
-  return meses.map((a) => Object.fromEntries(Object.entries(a).map(([k, v]) => [k, r2(v)])) as unknown as MesAgg);
+
+  const comp = await query<any>(
+    `SELECT EXTRACT(MONTH FROM fecha_emision)::int AS mes, xml
+       FROM cfdi_recibidos
+      WHERE company_id=$1 AND direccion=$2 AND tipo_comprobante='P' AND xml IS NOT NULL
+        AND (estado_sat IS NULL OR estado_sat <> 'Cancelado')
+        AND EXTRACT(YEAR FROM fecha_emision) = $3`,
+    [companyId, direccion, anio]);
+  for (const row of comp.rows) {
+    const m = Number(row.mes); if (m < 1 || m > 12) continue;
+    const c = complementoDeXml(String(row.xml));
+    const base = r2(c.monto - c.iva);   // Monto incluye IVA; la base cobrada es la diferencia.
+    const a = meses[m - 1];
+    a.base16 += base; a.iva16 += c.iva; a.subtotal += base;
+    a.isrRet += isrRetenidoDeXml(String(row.xml));
+  }
+
+  return meses.map(redondearMes);
 }
 
 /** La tarifa ISR mensual (Art. 96) del año, para derivar la acumulada del mes. */
@@ -99,8 +131,8 @@ function isrDeBase(base: number, tarifa: Array<{ li: number; ls: number; cuota: 
 /** Cédula de ISR — PF con Actividad Empresarial y Profesional (612). */
 export async function cedulaIsrPF(companyId: string, anio: number) {
   const [ingresos, deducciones, tarifa] = await Promise.all([
-    porMes(companyId, 'emitidos', anio),
-    porMes(companyId, 'recibidos', anio),
+    porMesFlujo(companyId, 'emitidos', anio),
+    porMesFlujo(companyId, 'recibidos', anio),
     tarifaMensual(anio),
   ]);
 
@@ -131,8 +163,8 @@ export async function cedulaIsrPF(companyId: string, anio: number) {
 /** Cédula de IVA (mensual definitivo) — para cualquier régimen. */
 export async function cedulaIva(companyId: string, anio: number) {
   const [ing, ded] = await Promise.all([
-    porMes(companyId, 'emitidos', anio),
-    porMes(companyId, 'recibidos', anio),
+    porMesFlujo(companyId, 'emitidos', anio),
+    porMesFlujo(companyId, 'recibidos', anio),
   ]);
   const filas: any[] = [];
   let saldoFavor = 0;
@@ -154,6 +186,36 @@ export async function cedulaIva(companyId: string, anio: number) {
     });
   }
   return { anio, filas };
+}
+
+/* Tarifa mensual del RESICO (Art. 113-E LISR): tasa sobre ingresos cobrados. */
+const TABLA_RESICO: Array<{ hasta: number; tasa: number }> = [
+  { hasta: 25000, tasa: 0.01 },
+  { hasta: 50000, tasa: 0.011 },
+  { hasta: 83333.33, tasa: 0.015 },
+  { hasta: 208333.33, tasa: 0.02 },
+  { hasta: 3500000, tasa: 0.025 },
+];
+const tasaResico = (ingreso: number) =>
+  (TABLA_RESICO.find((t) => ingreso <= t.hasta) || TABLA_RESICO[TABLA_RESICO.length - 1]).tasa;
+
+/**
+ * Cédula de ISR — Régimen Simplificado de Confianza (626, PF): el ISR del mes es
+ * los ingresos EFECTIVAMENTE COBRADOS × la tasa de la tabla (SIN deducciones para
+ * ISR); menos el ISR retenido (1.25 % que retienen las personas morales, Art. 113-J).
+ */
+export async function cedulaResico(companyId: string, anio: number) {
+  const ing = await porMesFlujo(companyId, 'emitidos', anio);
+  const filas: any[] = [];
+  for (let i = 0; i < 12; i++) {
+    const ingreso = ing[i].subtotal;
+    const tasa = tasaResico(ingreso);
+    const determinado = r2(ingreso * tasa);
+    const isrRet = ing[i].isrRet;
+    const porPagar = Math.max(0, r2(determinado - isrRet));
+    filas.push({ mes: MESES[i], n: i + 1, ingreso, tasa, isrDeterminado: determinado, isrRetenido: isrRet, isrPorPagar: porPagar });
+  }
+  return { anio, regimen: '626', filas };
 }
 
 /** El régimen fiscal de la empresa (para activar la cédula correcta). */

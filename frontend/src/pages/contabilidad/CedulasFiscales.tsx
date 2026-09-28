@@ -53,6 +53,13 @@ const FILAS_IVA: Def[] = [
   ['Saldo a favor (arrastre)', 'saldoFavorArrastre'],
   ['(=) IVA A CARGO', 'aCargo', 'money', true],
 ];
+const FILAS_RESICO: Def[] = [
+  ['Ingresos cobrados del mes', 'ingreso'],
+  ['(×) Tasa RESICO', 'tasa', 'pct'],
+  ['(=) ISR determinado', 'isrDeterminado', 'money', true],
+  ['(−) ISR retenido (1.25%)', 'isrRetenido'],
+  ['(=) ISR POR PAGAR', 'isrPorPagar', 'money', true],
+];
 
 function TablaCedula({ filas, defs }: { filas: any[]; defs: Def[] }) {
   return (
@@ -83,20 +90,23 @@ function TablaCedula({ filas, defs }: { filas: any[]; defs: Def[] }) {
 
 export function CedulasFiscalesPage() {
   const [anio, setAnio] = useState(new Date().getFullYear());
-  const [tab, setTab] = useState<'isr' | 'iva'>('iva');
+  const [tab, setTab] = useState<'isr' | 'resico' | 'iva'>('iva');
   const anios = aniosContables();
 
   const regQ = useQuery({ queryKey: ['cedula-regimen'], queryFn: () => api.getCedulaRegimen() });
   const regimen: string = regQ.data?.data?.regimen || '';
   const esPF612 = regimen === '612';
+  const esRESICO = regimen === '626';
 
   const isrQ = useQuery({ queryKey: ['cedula-isr', anio], queryFn: () => api.getCedulaIsrPF(anio), enabled: tab === 'isr' && esPF612 });
+  const resicoQ = useQuery({ queryKey: ['cedula-resico', anio], queryFn: () => api.getCedulaResico(anio), enabled: tab === 'resico' && esRESICO });
   const ivaQ = useQuery({ queryKey: ['cedula-iva', anio], queryFn: () => api.getCedulaIva(anio), enabled: tab === 'iva' });
 
-  const tabs: Array<['isr' | 'iva', string]> = [];
+  const tabs: Array<['isr' | 'resico' | 'iva', string]> = [];
   if (esPF612) tabs.push(['isr', 'ISR (PF Act. Emp. 612)']);
+  if (esRESICO) tabs.push(['resico', 'ISR RESICO (626)']);
   tabs.push(['iva', 'Cédula de IVA']);
-  // El tab de ISR solo se ofrece a régimen 612; el default es IVA (aplica a todos).
+  // El tab de ISR se ofrece según el régimen; el default es IVA (aplica a todos).
 
   return (
     <div className="p-6 space-y-4 max-w-full">
@@ -122,8 +132,9 @@ export function CedulasFiscalesPage() {
       </div>
 
       <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-start gap-1.5">
-        <Info size={14} className="mt-0.5 shrink-0" /> Primera versión: coteja los números contra tu papel de trabajo.
-        Las deducciones personales, la pérdida fiscal y la base de flujo (efectivo) quedan como afinación posterior.
+        <Info size={14} className="mt-0.5 shrink-0" /> Base de <b>flujo de efectivo</b> (lo cobrado/pagado: PUE al emitir,
+        PPD por su complemento de pago). Primera versión — coteja los números contra tu papel de trabajo; las deducciones
+        personales, la pérdida fiscal y el desglose por tasa del complemento quedan como afinación posterior.
       </p>
 
       {tab === 'isr' && esPF612 && (
@@ -131,13 +142,15 @@ export function CedulasFiscalesPage() {
         : isrQ.error ? <p className="text-sm text-rose-700">{(isrQ.error as any)?.response?.data?.message || 'No se pudo calcular.'}</p>
         : isrQ.data?.data ? <TablaCedula filas={isrQ.data.data.filas} defs={FILAS_ISR} /> : null
       )}
+      {tab === 'resico' && esRESICO && (
+        resicoQ.isLoading ? <p className="text-sm text-gray-500">Calculando…</p>
+        : resicoQ.error ? <p className="text-sm text-rose-700">{(resicoQ.error as any)?.response?.data?.message || 'No se pudo calcular.'}</p>
+        : resicoQ.data?.data ? <TablaCedula filas={resicoQ.data.data.filas} defs={FILAS_RESICO} /> : null
+      )}
       {tab === 'iva' && (
         ivaQ.isLoading ? <p className="text-sm text-gray-500">Calculando…</p>
         : ivaQ.error ? <p className="text-sm text-rose-700">{(ivaQ.error as any)?.response?.data?.message || 'No se pudo calcular.'}</p>
         : ivaQ.data?.data ? <TablaCedula filas={ivaQ.data.data.filas} defs={FILAS_IVA} /> : null
-      )}
-      {tab === 'isr' && !esPF612 && (
-        <p className="text-sm text-gray-600 bg-white border rounded-lg p-4">La cédula de ISR de esta pantalla es para el régimen <b>612</b> (PF con Actividad Empresarial y Profesional). Esta empresa es <b>{regimen || 'otro régimen'}</b>. La cédula de IVA sí aplica.</p>
       )}
     </div>
   );

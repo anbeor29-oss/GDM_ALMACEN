@@ -781,6 +781,11 @@ router.get('/cedulas/iva/:anio', asyncHandler(async (req: Request, res: Response
   if (!anio) throw new ValidationError('Año inválido.');
   res.json({ success: true, data: await cedulas.cedulaIva(companyId(req), anio) });
 }));
+router.get('/cedulas/resico/:anio', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.params.anio);
+  if (!anio) throw new ValidationError('Año inválido.');
+  res.json({ success: true, data: await cedulas.cedulaResico(companyId(req), anio) });
+}));
 
 /* ── Opinión de Cumplimiento (SAT 32-D / IMSS / INFONAVIT) ── */
 router.get('/opinion-cumplimiento', asyncHandler(async (req: Request, res: Response) => {

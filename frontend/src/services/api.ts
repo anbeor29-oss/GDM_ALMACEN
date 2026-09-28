@@ -1171,6 +1171,10 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/cedulas/iva/${anio}`);
     return r.data;
   }
+  async getCedulaResico(anio: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/cedulas/resico/${anio}`);
+    return r.data;
+  }
 
   /* ── Opinión de Cumplimiento (SAT 32-D / IMSS / INFONAVIT) ── */
   async getOpinionCumplimiento() {
