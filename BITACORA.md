@@ -6372,5 +6372,11 @@ módulos con **iconos nuevos**, resumen visible + detalle al abrir (el primero a
 «Módulos» en el menú superior. Nota lucide: `ReceiptText` no existe en la versión instalada → `Receipt`.
 
 Verificado: TSC front=0, `vite build` OK, y la landing servida del build confirma que el acordeón abre/cierra
-(prueba por DOM; las capturas salieron en blanco por la ventana detrás). Los planes con precio y el FAQ de la
-landing quedaron **sin tocar** (el usuario no lo pidió); si se quiere coherencia total, se quitan después.
+(prueba por DOM; las capturas salieron en blanco por la ventana detrás).
+
+**Seguimiento — landing 100% informativa (commit `f341ae4`).** El usuario pidió rematar: se quitaron de la
+landing la sección «Planes de timbrado» (`PLANS` + tarjetas) y el «FAQ» (`FAQ_ITEMS` + `FaqItem`). Menú
+superior: fuera «Planes»/«FAQ», entra «Cómo funciona». Hero «Ver planes» → «Ver módulos»; contacto y CTA sin
+menciones a «plan»; paso 1 de «Cómo funciona» sin «elige tu plan». Flujo final: Hero → Módulos (acordeón) →
+Cómo funciona → Contacto → CTA. Ya no hay venta de paquetes con precio en ninguna parte visible (super admin +
+landing). Verificado por DOM sobre el build servido. TSC=0, build OK.
