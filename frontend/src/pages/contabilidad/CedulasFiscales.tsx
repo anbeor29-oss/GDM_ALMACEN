@@ -19,7 +19,7 @@ import { aniosContables } from '@/utils/anios';
 const money = (n: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
 const pct = (n: any) => `${((Number(n) || 0) * 100).toFixed(2)}%`;
 
-type Def = [string, string, ('money' | 'pct')?, boolean?];
+type Def = [string, string, ('money' | 'pct' | 'coef')?, boolean?];
 
 const FILAS_ISR: Def[] = [
   ['Ingreso del periodo', 'ingresoMes'],
@@ -60,6 +60,17 @@ const FILAS_RESICO: Def[] = [
   ['(−) ISR retenido (1.25%)', 'isrRetenido'],
   ['(=) ISR POR PAGAR', 'isrPorPagar', 'money', true],
 ];
+const FILAS_PM: Def[] = [
+  ['Ingreso nominal del mes', 'ingresoMes'],
+  ['(=) Ingreso nominal acum.', 'ingresoAcum'],
+  ['(×) Coeficiente de utilidad', 'coeficiente', 'coef'],
+  ['(=) Utilidad estimada', 'utilidad'],
+  ['(×) Tasa ISR', 'tasa', 'pct'],
+  ['(=) ISR determinado', 'isrDeterminado', 'money', true],
+  ['(−) Pagos prov. previos', 'pagosProvPrevios'],
+  ['(−) ISR retenido acum.', 'isrRetenidoAcum'],
+  ['(=) ISR POR PAGAR', 'isrPorPagar', 'money', true],
+];
 
 function TablaCedula({ filas, defs }: { filas: any[]; defs: Def[] }) {
   return (
@@ -77,7 +88,7 @@ function TablaCedula({ filas, defs }: { filas: any[]; defs: Def[] }) {
               <td className={`px-3 py-1.5 text-gray-700 sticky left-0 ${hi ? 'bg-indigo-50/60 font-semibold' : 'bg-white'}`}>{label}</td>
               {filas.map((f) => (
                 <td key={f.n} className="px-3 py-1.5 text-right tabular-nums text-gray-800">
-                  {tipo === 'pct' ? pct(f[key]) : money(f[key])}
+                  {tipo === 'pct' ? pct(f[key]) : tipo === 'coef' ? (Number(f[key]) || 0).toFixed(4) : money(f[key])}
                 </td>
               ))}
             </tr>
@@ -90,21 +101,31 @@ function TablaCedula({ filas, defs }: { filas: any[]; defs: Def[] }) {
 
 export function CedulasFiscalesPage() {
   const [anio, setAnio] = useState(new Date().getFullYear());
-  const [tab, setTab] = useState<'isr' | 'resico' | 'iva'>('iva');
+  const [tab, setTab] = useState<'isr' | 'resico' | 'pm' | 'iva'>('iva');
+  const [coefInput, setCoefInput] = useState('');
   const anios = aniosContables();
 
   const regQ = useQuery({ queryKey: ['cedula-regimen'], queryFn: () => api.getCedulaRegimen() });
   const regimen: string = regQ.data?.data?.regimen || '';
   const esPF612 = regimen === '612';
   const esRESICO = regimen === '626';
+  const esPM601 = regimen === '601';
 
   const isrQ = useQuery({ queryKey: ['cedula-isr', anio], queryFn: () => api.getCedulaIsrPF(anio), enabled: tab === 'isr' && esPF612 });
   const resicoQ = useQuery({ queryKey: ['cedula-resico', anio], queryFn: () => api.getCedulaResico(anio), enabled: tab === 'resico' && esRESICO });
+  const pmQ = useQuery({ queryKey: ['cedula-pm', anio], queryFn: () => api.getCedulaPM601(anio), enabled: tab === 'pm' && esPM601 });
   const ivaQ = useQuery({ queryKey: ['cedula-iva', anio], queryFn: () => api.getCedulaIva(anio), enabled: tab === 'iva' });
 
-  const tabs: Array<['isr' | 'resico' | 'iva', string]> = [];
+  const guardarCoef = async () => {
+    await api.setCoeficienteUtilidad(anio, Number(coefInput) || 0);
+    setCoefInput('');
+    pmQ.refetch();
+  };
+
+  const tabs: Array<['isr' | 'resico' | 'pm' | 'iva', string]> = [];
   if (esPF612) tabs.push(['isr', 'ISR (PF Act. Emp. 612)']);
   if (esRESICO) tabs.push(['resico', 'ISR RESICO (626)']);
+  if (esPM601) tabs.push(['pm', 'ISR PM (601, coeficiente)']);
   tabs.push(['iva', 'Cédula de IVA']);
   // El tab de ISR se ofrece según el régimen; el default es IVA (aplica a todos).
 
@@ -146,6 +167,24 @@ export function CedulasFiscalesPage() {
         resicoQ.isLoading ? <p className="text-sm text-gray-500">Calculando…</p>
         : resicoQ.error ? <p className="text-sm text-rose-700">{(resicoQ.error as any)?.response?.data?.message || 'No se pudo calcular.'}</p>
         : resicoQ.data?.data ? <TablaCedula filas={resicoQ.data.data.filas} defs={FILAS_RESICO} /> : null
+      )}
+      {tab === 'pm' && esPM601 && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2 bg-gray-50 border rounded-lg px-3 py-2">
+            <span className="text-sm text-gray-600">
+              Coeficiente de utilidad {anio}: <b>{(Number(pmQ.data?.data?.coeficiente) || 0).toFixed(4)}</b>
+              {(!pmQ.data?.data?.coeficiente) && <span className="text-amber-700"> — captúralo (sin él el ISR sale en cero)</span>}
+            </span>
+            <input value={coefInput} onChange={(e) => setCoefInput(e.target.value)} placeholder="0.1234"
+              className="input py-1 text-sm w-28 font-mono" />
+            <button onClick={guardarCoef} disabled={coefInput === ''}
+              className="border border-emerald-300 text-emerald-700 px-3 py-1 rounded-lg hover:bg-emerald-50 text-sm disabled:opacity-50">Guardar coeficiente</button>
+            <span className="text-xs text-gray-400">(sale de la declaración anual anterior: utilidad fiscal ÷ ingresos nominales)</span>
+          </div>
+          {pmQ.isLoading ? <p className="text-sm text-gray-500">Calculando…</p>
+          : pmQ.error ? <p className="text-sm text-rose-700">{(pmQ.error as any)?.response?.data?.message || 'No se pudo calcular.'}</p>
+          : pmQ.data?.data ? <TablaCedula filas={pmQ.data.data.filas} defs={FILAS_PM} /> : null}
+        </div>
       )}
       {tab === 'iva' && (
         ivaQ.isLoading ? <p className="text-sm text-gray-500">Calculando…</p>

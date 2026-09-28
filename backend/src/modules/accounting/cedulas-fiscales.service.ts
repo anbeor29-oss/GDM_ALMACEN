@@ -218,6 +218,66 @@ export async function cedulaResico(companyId: string, anio: number) {
   return { anio, regimen: '626', filas };
 }
 
+/** Agrupa por mes en base DEVENGADA (todos los tipo I en su mes de emisión). Para
+ *  personas MORALES (601), cuyo ISR provisional es sobre ingresos NOMINALES. */
+async function porMesDevengado(companyId: string, direccion: 'emitidos' | 'recibidos', anio: number): Promise<MesAgg[]> {
+  const meses: MesAgg[] = Array.from({ length: 12 }, mesVacio);
+  const r = await query<any>(
+    `SELECT EXTRACT(MONTH FROM fecha_emision)::int AS mes, xml
+       FROM cfdi_recibidos
+      WHERE company_id=$1 AND direccion=$2 AND tipo_comprobante='I' AND xml IS NOT NULL
+        AND (estado_sat IS NULL OR estado_sat <> 'Cancelado')
+        AND EXTRACT(YEAR FROM fecha_emision) = $3`,
+    [companyId, direccion, anio]);
+  for (const row of r.rows) {
+    const m = Number(row.mes); if (m < 1 || m > 12) continue;
+    sumaImp(meses[m - 1], impuestosDeXml(String(row.xml)), isrRetenidoDeXml(String(row.xml)));
+  }
+  return meses.map(redondearMes);
+}
+
+/** Coeficiente de utilidad capturado (empresa/año); 0 si no se ha capturado. */
+export async function getCoeficiente(companyId: string, anio: number): Promise<number> {
+  const r = await query<any>(`SELECT coeficiente FROM cedula_pm_coeficiente WHERE company_id=$1 AND anio=$2`, [companyId, anio]);
+  return r.rows.length ? Number(r.rows[0].coeficiente) : 0;
+}
+export async function setCoeficiente(companyId: string, anio: number, coef: any): Promise<{ coeficiente: number }> {
+  const c = Math.max(0, Number(coef) || 0);
+  if (c > 9.9999) throw new ValidationError('El coeficiente parece inválido (debe ir en fracción, p. ej. 0.1234).');
+  await query(
+    `INSERT INTO cedula_pm_coeficiente (company_id, anio, coeficiente, updated_at) VALUES ($1,$2,$3,NOW())
+     ON CONFLICT (company_id, anio) DO UPDATE SET coeficiente=EXCLUDED.coeficiente, updated_at=NOW()`,
+    [companyId, anio, c]);
+  return { coeficiente: c };
+}
+
+/**
+ * Cédula ISR — Persona Moral, Régimen General de Ley (601): pago provisional con el
+ * COEFICIENTE DE UTILIDAD. Ingresos NOMINALES acumulados × coeficiente = utilidad
+ * estimada; × 30 % = ISR; − pagos provisionales previos − ISR retenido = por pagar.
+ * (v1: sin PTU ni pérdidas de ejercicios anteriores.)
+ */
+export async function cedulaPM601(companyId: string, anio: number) {
+  const [ing, coef] = await Promise.all([porMesDevengado(companyId, 'emitidos', anio), getCoeficiente(companyId, anio)]);
+  const filas: any[] = [];
+  let ingAcum = 0, isrRetAcum = 0, pagosPrevios = 0;
+  for (let i = 0; i < 12; i++) {
+    const ingMes = ing[i].subtotal;
+    ingAcum = r2(ingAcum + ingMes);
+    isrRetAcum = r2(isrRetAcum + ing[i].isrRet);
+    const utilidad = r2(ingAcum * coef);
+    const determinado = r2(utilidad * 0.30);
+    const porPagar = Math.max(0, r2(determinado - pagosPrevios - isrRetAcum));
+    filas.push({
+      mes: MESES[i], n: i + 1, ingresoMes: ingMes, ingresoAcum: ingAcum,
+      coeficiente: coef, utilidad, tasa: 0.30, isrDeterminado: determinado,
+      pagosProvPrevios: pagosPrevios, isrRetenidoAcum: isrRetAcum, isrPorPagar: porPagar,
+    });
+    pagosPrevios = r2(pagosPrevios + porPagar);
+  }
+  return { anio, regimen: '601', coeficiente: coef, filas };
+}
+
 /** El régimen fiscal de la empresa (para activar la cédula correcta). */
 export async function regimenEmpresa(companyId: string): Promise<string> {
   const r = await query<any>(`SELECT fiscal_regime FROM companies WHERE id=$1`, [companyId]);
