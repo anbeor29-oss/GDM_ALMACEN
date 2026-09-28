@@ -441,7 +441,10 @@ export function Layout() {
                 {show('auditoria') && (
                   <NavItem to="/xml-sat" icon={emoji3D('🗂️')} accent="emerald" label="XML" open={sidebarOpen} />
                 )}
-                {show('mensajes')     && <NavItem to="/mensajes"     icon={emoji3D('✉️')} accent="sky"     label="Mensajes"         open={sidebarOpen} contador={sinLeer} />}
+                {/* Mensajería: el ADMIN de la empresa siempre la ve (recados internos
+                    para dar mantenimiento a su gente); además, cualquier grupo que
+                    traiga el módulo 'mensajes'. */}
+                {(show('mensajes') || esAdmin) && <NavItem to="/mensajes"     icon={emoji3D('✉️')} accent="sky"     label="Mensajes"         open={sidebarOpen} contador={sinLeer} />}
                 {/* «Reportes» general se oculta a todos: ese mismo reporte ya vive
                     dentro de Facturas. La ruta /reports sigue existiendo por si se
                     necesita, pero no se muestra en el menú. */}
@@ -472,9 +475,14 @@ export function Layout() {
 
                     Con esto, el administrador que crea el super admin da de
                     alta a su propia gente —con su grupo de trabajo— sin
-                    depender de nosotros para cada usuario nuevo. */}
-                {user?.role === 'ADMIN' && show('dashboard') && (
-                  <NavItem to="/team"       icon={emoji3D('👥')} accent="violet"  label="Equipo"           open={sidebarOpen} />
+                    depender de nosotros para cada usuario nuevo.
+
+                    Se muestra SIEMPRE al ADMIN de la empresa (antes exigía además
+                    el módulo 'dashboard', y un admin acotado a otro grupo perdía
+                    el control de sus usuarios). Gestionar al equipo es cuestión de
+                    AUTORIDAD, no de grupo de trabajo. */}
+                {esAdmin && (
+                  <NavItem to="/team"       icon={emoji3D('👥')} accent="violet"  label="Equipo · Usuarios" open={sidebarOpen} />
                 )}
                 {/* El contrato lo ve el ADMINISTRADOR de la empresa, y sólo
                     él: son las condiciones comerciales con GDM —qué se paga,

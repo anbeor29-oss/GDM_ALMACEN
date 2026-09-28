@@ -50,6 +50,18 @@ export function TeamPage() {
     }
   };
 
+  /* Tras guardar: se refresca la lista y, si fue el ALTA de un operativo (USER),
+   * se ENCADENA su sección de capacidades finas —el admin termina ahí mismo el
+   * mantenimiento del usuario, sin buscarlo luego en la lista y abrir el candado.
+   * En MANAGER/ADMIN (acceso completo, no editable) no se encadena nada. */
+  const alGuardarUsuario = async (creado?: { email: string; role: string }) => {
+    const fresh = await usersQ.refetch();
+    if (creado?.role === 'USER') {
+      const nuevo = (fresh.data?.data?.users || []).find((x: any) => x.email === creado.email);
+      if (nuevo?.editable) setEditUser(nuevo);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -156,7 +168,7 @@ export function TeamPage() {
         <UserModal
           user={userModal.user}
           onClose={() => setUserModal({ open: false, user: null })}
-          onSaved={() => qc.invalidateQueries({ queryKey: ['team-users'] })}
+          onSaved={alGuardarUsuario}
         />
       )}
     </div>
@@ -165,7 +177,7 @@ export function TeamPage() {
 
 /* ─── Alta / edición de usuario ─── */
 
-function UserModal({ user, onClose, onSaved }: { user: any | null; onClose: () => void; onSaved: () => void }) {
+function UserModal({ user, onClose, onSaved }: { user: any | null; onClose: () => void; onSaved: (creado?: { email: string; role: string }) => void }) {
   const isEdit = !!user;
   const [form, setForm] = useState({
     email:     user?.email || '',
@@ -190,6 +202,7 @@ function UserModal({ user, onClose, onSaved }: { user: any | null; onClose: () =
           workGroup: form.workGroup,
           isActive:  form.isActive,
         });
+        onSaved();
       } else {
         await api.createTeamUser({
           email:     form.email,
@@ -199,8 +212,10 @@ function UserModal({ user, onClose, onSaved }: { user: any | null; onClose: () =
           role:      form.role,
           workGroup: form.workGroup,
         });
+        // Se avisa el alta con email+rol: si es USER, el padre encadena las
+        // capacidades finas del nuevo usuario.
+        onSaved({ email: form.email, role: form.role });
       }
-      onSaved();
       onClose();
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'No se pudo guardar');
