@@ -195,9 +195,11 @@ export function CedulasFiscalesPage() {
   const esPM601 = regimen === '601';
   const esPlataformas = regimen === '625';
 
-  const isrQ = useQuery({ queryKey: ['cedula-isr', anio], queryFn: () => api.getCedulaIsrPF(anio), enabled: tab === 'isr' && esPF612 });
-  const resicoQ = useQuery({ queryKey: ['cedula-resico', anio], queryFn: () => api.getCedulaResico(anio), enabled: tab === 'resico' && esRESICO });
-  const pmQ = useQuery({ queryKey: ['cedula-pm', anio], queryFn: () => api.getCedulaPM601(anio), enabled: tab === 'pm' && esPM601 });
+  // Las cédulas se calculan desde los CFDI sin importar el régimen: enable solo
+  // por el tab activo, para poder desplegarlas todas y ver el panorama completo.
+  const isrQ = useQuery({ queryKey: ['cedula-isr', anio], queryFn: () => api.getCedulaIsrPF(anio), enabled: tab === 'isr' });
+  const resicoQ = useQuery({ queryKey: ['cedula-resico', anio], queryFn: () => api.getCedulaResico(anio), enabled: tab === 'resico' });
+  const pmQ = useQuery({ queryKey: ['cedula-pm', anio], queryFn: () => api.getCedulaPM601(anio), enabled: tab === 'pm' });
   const ivaQ = useQuery({ queryKey: ['cedula-iva', anio], queryFn: () => api.getCedulaIva(anio), enabled: tab === 'iva' });
 
   const guardarCoef = async () => {
@@ -206,13 +208,17 @@ export function CedulasFiscalesPage() {
     pmQ.refetch();
   };
 
-  const tabs: Array<['isr' | 'resico' | 'pm' | 'plat' | 'iva', string]> = [];
-  if (esPF612) tabs.push(['isr', 'ISR (PF Act. Emp. 612)']);
-  if (esRESICO) tabs.push(['resico', 'ISR RESICO (626)']);
-  if (esPM601) tabs.push(['pm', 'ISR PM (601, coeficiente)']);
-  if (esPlataformas) tabs.push(['plat', 'Plataformas (625)']);
-  tabs.push(['iva', 'Cédula de IVA']);
-  // El tab de ISR se ofrece según el régimen; el default es IVA (aplica a todos).
+  // Antes cada cédula de ISR aparecía solo si la empresa era de ese régimen.
+  // Ahora se despliegan TODAS para dar el panorama de lo que se procesa; la que
+  // corresponde al régimen de la empresa va marcada con un punto verde. El
+  // default sigue siendo IVA (aplica a todos los regímenes).
+  const tabs: Array<{ k: 'isr' | 'resico' | 'pm' | 'plat' | 'iva'; label: string; propio: boolean }> = [
+    { k: 'isr',    label: 'ISR (PF Act. Emp. 612)',   propio: esPF612 },
+    { k: 'resico', label: 'ISR RESICO (626)',         propio: esRESICO },
+    { k: 'pm',     label: 'ISR PM (601, coeficiente)', propio: esPM601 },
+    { k: 'plat',   label: 'Plataformas (625)',         propio: esPlataformas },
+    { k: 'iva',    label: 'Cédula de IVA',             propio: false },
+  ];
 
   return (
     <div className="p-6 space-y-4 max-w-full">
@@ -231,29 +237,34 @@ export function CedulasFiscalesPage() {
           {anios.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
         <div className="flex gap-1.5 flex-wrap">
-          {tabs.map(([k, label], i) => (
-            <button key={k} onClick={() => setTab(k)} className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === k)}`}>{label}</button>
+          {tabs.map((t, i) => (
+            <button key={t.k} onClick={() => setTab(t.k)} className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === t.k)}`}>
+              {t.label}
+              {t.propio && <span title="Régimen de tu empresa" className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0" />}
+            </button>
           ))}
         </div>
       </div>
 
       <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-start gap-1.5">
-        <Info size={14} className="mt-0.5 shrink-0" /> Base de <b>flujo de efectivo</b> (lo cobrado/pagado: PUE al emitir,
-        PPD por su complemento de pago). Primera versión — coteja los números contra tu papel de trabajo; las deducciones
-        personales, la pérdida fiscal y el desglose por tasa del complemento quedan como afinación posterior.
+        <Info size={14} className="mt-0.5 shrink-0" /> Se muestran <b>todas</b> las cédulas de ISR para dar el panorama;
+        la que aplica oficialmente a esta empresa es la de su régimen (<span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 align-middle" /> punto verde).
+        Base de <b>flujo de efectivo</b> (lo cobrado/pagado: PUE al emitir, PPD por su complemento de pago). Primera versión —
+        coteja los números contra tu papel de trabajo; las deducciones personales, la pérdida fiscal y el desglose por tasa
+        del complemento quedan como afinación posterior.
       </p>
 
-      {tab === 'isr' && esPF612 && (
+      {tab === 'isr' && (
         isrQ.isLoading ? <p className="text-sm text-gray-500">Calculando…</p>
         : isrQ.error ? <p className="text-sm text-rose-700">{(isrQ.error as any)?.response?.data?.message || 'No se pudo calcular.'}</p>
         : isrQ.data?.data ? <TablaCedula filas={isrQ.data.data.filas} defs={FILAS_ISR} /> : null
       )}
-      {tab === 'resico' && esRESICO && (
+      {tab === 'resico' && (
         resicoQ.isLoading ? <p className="text-sm text-gray-500">Calculando…</p>
         : resicoQ.error ? <p className="text-sm text-rose-700">{(resicoQ.error as any)?.response?.data?.message || 'No se pudo calcular.'}</p>
         : resicoQ.data?.data ? <TablaCedula filas={resicoQ.data.data.filas} defs={FILAS_RESICO} /> : null
       )}
-      {tab === 'pm' && esPM601 && (
+      {tab === 'pm' && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2 bg-gray-50 border rounded-lg px-3 py-2">
             <span className="text-sm text-gray-600">
@@ -271,7 +282,7 @@ export function CedulasFiscalesPage() {
           : pmQ.data?.data ? <TablaCedula filas={pmQ.data.data.filas} defs={FILAS_PM} /> : null}
         </div>
       )}
-      {tab === 'plat' && esPlataformas && <PanelPlataformas anio={anio} />}
+      {tab === 'plat' && <PanelPlataformas anio={anio} />}
       {tab === 'iva' && (
         ivaQ.isLoading ? <p className="text-sm text-gray-500">Calculando…</p>
         : ivaQ.error ? <p className="text-sm text-rose-700">{(ivaQ.error as any)?.response?.data?.message || 'No se pudo calcular.'}</p>

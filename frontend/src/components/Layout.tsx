@@ -502,7 +502,7 @@ export function Layout() {
               <NavItem to="/admin/companies" icon={navIcon('🏢')} accent="sky"     label="Empresas"              open={sidebarOpen} />
               <NavItem to="/admin/users"     icon={navIcon('🛡️')} accent="emerald" label="Usuarios"              open={sidebarOpen} />
               <NavItem to="/admin/accesos"  icon={navIcon('🔗')} accent="sky"     label="Accesos por empresa"   open={sidebarOpen} />
-              <NavItem to="/admin/packages"  icon={navIcon('💳')} accent="violet"  label="Paquetes fiscales"     open={sidebarOpen} />
+              <NavItem to="/admin/packages"  icon={navIcon('📦')} accent="violet"  label="Paquetes de uso"       open={sidebarOpen} />
               <NavItem to="/admin/billing"   icon={navIcon('💰')} accent="emerald" label="Facturación y consumo" open={sidebarOpen} />
               <NavItem to="/admin/prepaid"   icon={navIcon('🛒')} accent="fuchsia" label="Compras prepago"       open={sidebarOpen} />
               <NavItem to="/admin/promocion" icon={navIcon('🎁')} accent="amber"   label="Promoción y cobros"    open={sidebarOpen} />

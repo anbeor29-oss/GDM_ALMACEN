@@ -1,153 +1,27 @@
 /**
- * Super-Admin → Paquetes fiscales.
+ * Super-Admin → Paquetes de uso.
  *
- *  Dos secciones en una página:
- *    (A) Planes de timbrado — muestra los 4 paquetes con precios (PKG_100,
- *        PKG_200, PKG_500, PKG_FLEX). El SUPER_ADMIN los asigna a cada
- *        empresa desde el módulo Empresas.
- *    (B) Descarga de paquete SAT — genera ZIP con XMLs (+ opcional PDF) de
- *        una compañía para respaldo fiscal de 5 años (Anexo 20).
+ *  Antes esta pantalla vendía "paquetes fiscales" (los 4 planes de timbrado con
+ *  precio). En NEXO el sistema se despliega completo y los módulos se controlan
+ *  desde el super administrador, así que los planes con precio ya no aplican: la
+ *  sección quedó en blanco, reservada para el concepto de "paquetes de uso".
+ *
+ *  Lo que SÍ se conserva es la descarga de respaldo SAT (ZIP con los XMLs de una
+ *  compañía por rango de fechas) — es la única herramienta funcional de la página
+ *  y sirve para la retención fiscal de 5 años (Anexo 20).
  *
  *  Guard duro: role === 'SUPER_ADMIN'. El backend también lo valida.
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Download, Building2, Calendar, Check, Coins, Zap, Star, Rocket, CreditCard } from 'lucide-react';
+import { Download, Building2, Calendar, Package } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { CampoFecha } from '@/components/CampoFecha';
 
-/* ─────────────── Catálogo de planes (espejo de stamp_packages) ─────────────── */
-
-interface StampPlan {
-  code: string;
-  name: string;
-  monthlyStamps: number | null;   // null = uso libre / pay-per-stamp
-  monthlyFeeMXN: number;
-  extraStampMXN: number;
-  color: string;                   // clases Tailwind del color de acento
-  ring: string;
-  bg: string;
-  icon: JSX.Element;
-  highlight?: boolean;             // el plan destacado
-  bulletpoints: string[];
-}
-
-const PLANS: StampPlan[] = [
-  {
-    code: 'PKG_100',
-    name: 'Esencial',
-    monthlyStamps: 100,
-    monthlyFeeMXN: 399,
-    extraStampMXN: 2.5,
-    color: 'text-emerald-700',
-    ring: 'border-emerald-200',
-    bg: 'bg-emerald-50',
-    icon: <Zap size={20} />,
-    bulletpoints: [
-      '100 timbres CFDI 4.0 al mes',
-      'Timbrado ilimitado dentro del cap',
-      'Reportes de cobranza, ventas y fiscal',
-      'Notas de crédito y complementos de pago',
-      'Multi-usuario (ADMIN + operativos)',
-      'Timbre extra: $2.50 MXN + IVA',
-    ],
-  },
-  {
-    code: 'PKG_200',
-    name: 'Pyme',
-    monthlyStamps: 200,
-    monthlyFeeMXN: 699,
-    extraStampMXN: 2.25,
-    color: 'text-indigo-700',
-    ring: 'border-indigo-200',
-    bg: 'bg-indigo-50',
-    icon: <Star size={20} />,
-    highlight: true,
-    bulletpoints: [
-      '200 timbres CFDI 4.0 al mes',
-      'Todo lo del plan Esencial',
-      'Importación de XMLs recibidos',
-      'Gestión de proveedores',
-      'Reporte de cobranza detallado',
-      'Timbre extra: $2.25 MXN + IVA',
-    ],
-  },
-  {
-    code: 'PKG_500',
-    name: 'Empresarial',
-    monthlyStamps: 500,
-    /* Vigente desde 2026-08-05. Es sólo el valor de respaldo mientras carga el
-     * catálogo, pero tiene que estar bien: un respaldo que miente se ve igual
-     * que el dato bueno durante el segundo que dura. */
-    monthlyFeeMXN: 1800,
-    extraStampMXN: 2.0,
-    color: 'text-violet-700',
-    ring: 'border-violet-200',
-    bg: 'bg-violet-50',
-    icon: <Rocket size={20} />,
-    bulletpoints: [
-      '500 timbres CFDI 4.0 al mes',
-      'Todo lo del plan Pyme',
-      'Prioridad en soporte',
-      'Backup mensual SAT en ZIP',
-      'Multi-empresa (multi-tenant)',
-      'Timbre extra: $2.00 MXN + IVA',
-    ],
-  },
-  {
-    code: 'PKG_FLEX',
-    name: 'Uso libre',
-    monthlyStamps: null,
-    monthlyFeeMXN: 0,
-    extraStampMXN: 4.99,
-    color: 'text-slate-700',
-    ring: 'border-slate-200',
-    bg: 'bg-slate-50',
-    icon: <Coins size={28} className="text-slate-600" />,
-    bulletpoints: [
-      'Sin renta mensual',
-      'Timbre a $4.99 MXN + IVA',
-      'Ideal para bajo volumen (< 30/mes)',
-      'Facturación al final del mes',
-      'Sin compromiso de permanencia',
-    ],
-  },
-];
-
 /* ─────────────── Página ─────────────── */
 
 export function AdminPackagesPage() {
-  /* Los precios y los cupos salen de la BASE, no de la constante de abajo.
-   *
-   * PLANS conserva lo que es presentación —color, icono, viñetas— porque eso no
-   * vive en `stamp_packages`. Pero el importe, los timbres incluidos y el
-   * timbre extra se toman del servidor: estaban escritos a mano en TRES
-   * pantallas y el 2026-08-05 las tres decían $1,399 cuando Empresarial ya
-   * costaba $1,800. Una pantalla de administración que miente con cara de dato
-   * oficial es peor que no tenerla.
-   *
-   * Si la consulta aún no responde se muestran los valores de la constante:
-   * quedarse sin tarjetas mientras carga sería un retroceso, y el desfase dura
-   * lo que tarda una petición. */
-  const paquetesQ = useQuery({
-    queryKey: ['catalogo-paquetes'],
-    queryFn: () => api.promoPaquetes(),
-  });
-  const planesVigentes: StampPlan[] = (() => {
-    const filas: any[] = (paquetesQ.data as any)?.data?.paquetes ?? [];
-    if (!filas.length) return PLANS;
-    return PLANS.map((p) => {
-      const f = filas.find((x) => x.code === p.code);
-      return f ? {
-        ...p,
-        monthlyStamps: Number(f.monthly_stamps),
-        monthlyFeeMXN: Number(f.monthly_fee_mxn),
-        extraStampMXN: Number(f.extra_stamp_mxn),
-      } : p;
-    });
-  })();
-
   const { user } = useAuthStore();
 
   if (user?.role !== 'SUPER_ADMIN') {
@@ -165,87 +39,19 @@ export function AdminPackagesPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-          <CreditCard size={20} /> Paquetes fiscales
+          <Package size={20} /> Paquetes de uso
         </h1>
         <p className="text-gray-600 mt-2">
-          Planes de timbrado disponibles y descarga de respaldos SAT.
+          Descarga de respaldos SAT por empresa.
         </p>
       </div>
 
-      {/* ─── SECCIÓN A: Planes de timbrado ─── */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Planes de timbrado</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {planesVigentes.map((p) => <PlanCard key={p.code} plan={p} />)}
-        </div>
-        <p className="text-xs text-gray-500 mt-4">
-          La asignación de plan a una empresa se hace desde el módulo{' '}
-          <b>Empresas → editar → Plan de timbrado</b>.
-        </p>
-      </section>
+      {/* ─── SECCIÓN A: reservada (en blanco) ───
+          Sin planes de timbrado con precio: el sistema se despliega completo y
+          los módulos se activan desde el super administrador. */}
 
       {/* ─── SECCIÓN B: Descarga de respaldo SAT ─── */}
       <SectionDownloadZip />
-    </div>
-  );
-}
-
-/* ─────────────── Componente: card de plan ─────────────── */
-
-function PlanCard({ plan }: { plan: StampPlan }) {
-  const priceLabel = plan.monthlyFeeMXN === 0
-    ? 'Sin renta'
-    : `$${plan.monthlyFeeMXN.toLocaleString('es-MX')}`;
-  /* Con "Sin renta" arriba, pegarle "MXN pay-per-stamp" se leía como una
-   * frase partida a la mitad. */
-  const perLabel = plan.monthlyFeeMXN === 0 ? 'pagas solo lo que timbras' : 'MXN / mes';
-
-  return (
-    <div
-      className={`bg-white rounded-xl border-2 ${plan.ring} p-5 flex flex-col relative overflow-hidden ${
-        plan.highlight ? 'shadow-lg' : 'shadow-sm'
-      }`}
-    >
-      {plan.highlight && (
-        <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-bl-lg">
-          Recomendado
-        </div>
-      )}
-
-      <div className={`w-14 h-14 ${plan.bg} rounded-xl flex items-center justify-center mb-3`}>
-        {plan.icon}
-      </div>
-
-      <h3 className={`text-xl font-bold ${plan.color}`}>{plan.name}</h3>
-      <p className="text-xs text-gray-500 font-mono mb-3">{plan.code}</p>
-
-      <div className="mb-1">
-        <span className="text-3xl font-bold text-gray-900">{priceLabel}</span>
-        {' '}
-        <span className="text-sm text-gray-500">{perLabel}</span>
-      </div>
-      <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-4">Precios más IVA</p>
-
-      {plan.monthlyStamps !== null && (
-        <div className={`${plan.bg} rounded-lg px-3 py-2 mb-4 flex items-center justify-between`}>
-          <span className="text-xs text-gray-600">Timbres/mes</span>
-          <span className={`font-bold ${plan.color}`}>{plan.monthlyStamps}</span>
-        </div>
-      )}
-
-      <ul className="space-y-1.5 flex-1 text-sm text-gray-700">
-        {plan.bulletpoints.map((b) => (
-          <li key={b} className="flex items-start gap-2">
-            <Check size={16} className={`${plan.color} shrink-0 mt-0.5`} />
-            <span>{b}</span>
-          </li>
-        ))}
-      </ul>
-
-      <div className="mt-4 pt-4 border-t border-gray-100 text-[11px] text-gray-500">
-        Timbre extra: <b>${plan.extraStampMXN.toFixed(2)} MXN</b>
-        <span className="text-gray-400"> (+ IVA)</span>
-      </div>
     </div>
   );
 }

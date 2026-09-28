@@ -12,10 +12,11 @@
 import { Link } from 'react-router-dom';
 import {
   Zap, Star, Rocket, Coins, Check,
-  FileText, ShieldCheck, LogIn, Mail, Scale,
+  FileText, LogIn, Mail, Scale,
   ClipboardCheck, Building2, FileSignature, Send,
-  ChevronDown, BookOpen, Stamp,
-  Warehouse, ShoppingCart, Landmark, Truck,
+  ChevronDown, BookOpen, Truck,
+  Receipt, Boxes, ShoppingBag, Banknote,
+  Calculator, BadgeDollarSign, FileCheck2,
 } from 'lucide-react';
 import { useState } from 'react';
 import { GdmLogo } from '@/components/GdmLogo';
@@ -73,64 +74,86 @@ const PLANS = [
   },
 ];
 
-/**
- * Módulos de la landing. El `tint` NO es decorativo al azar: reproduce el color
- * con el que ese módulo aparece dentro del sistema (acento del menú lateral o
- * color del icono en el panel de facturas), para que quien entra reconozca lo
- * que vio aquí. Las clases van completas porque Tailwind no compila strings
- * construidos en tiempo de ejecución.
- */
-/* Los módulos, agrupados por área.
+/* Los módulos de NEXO, uno por acordeón.
  *
- * Antes eran doce tarjetas sueltas, cada una con su icono y su color: para
- * saber si el sistema hace lo que uno busca había que leerlas de una en una, y
- * la pantalla parecía un tablero de estampas. Agrupados en seis áreas, el
- * icono señala el área y las líneas se leen de corrido.
+ * El `tint` NO es decorativo al azar: reproduce el color con el que ese módulo
+ * aparece dentro del sistema (acento del menú lateral o color del icono en el
+ * panel), para que quien entra reconozca lo que vio aquí. Las clases van
+ * completas porque Tailwind no compila strings armados en tiempo de ejecución.
  *
- * Y caben los módulos que ya existían sin anunciarse — almacén, compras,
- * tesorería, Carta Porte—: quien evaluaba el sistema no se enteraba de ellos.
+ * Cada módulo trae un `resumen` (visible siempre) y su detalle (`items`) que se
+ * despliega al abrir el acordeón: se ve todo lo que hace el ERP sin llenar la
+ * pantalla, y quien evalúa abre solo lo que le interesa.
  */
-const AREAS = [
+const MODULOS = [
   {
-    icon: <Stamp size={20}/>, tint: 'bg-indigo-50 text-indigo-600',
+    icon: <Receipt size={20}/>, tint: 'bg-indigo-50 text-indigo-600',
     title: 'Facturación CFDI 4.0',
+    resumen: 'Emisión y timbrado real ante el SAT, con todo el ciclo del comprobante.',
     items: [
-      'Emisión con retenciones RESICO, honorarios y arrendamiento; timbrado real ante el SAT con PAC autorizado',
-      'Notas de crédito tipo E con prorrateo automático de IVA, vinculadas a su factura origen',
-      'Complemento de pago tipo P para facturas PPD, descontando pagos previos y NC del saldo insoluto',
+      'Emisión con retenciones RESICO, honorarios y arrendamiento; timbrado real con PAC autorizado (SW Sapien)',
+      'Notas de crédito tipo E con prorrateo automático de IVA, ligadas a su factura origen',
+      'Complemento de pago tipo P para PPD, descontando pagos previos y NC del saldo insoluto',
       'Cancelación en cascada: primero pagos y NC, después la factura padre',
+      'QR de verificación SAT en el PDF y envío de PDF + XML por correo con dominio propio',
+      'Autofacturación (Anexo 20) para enajenantes registrados',
     ],
   },
   {
-    icon: <Warehouse size={20}/>, tint: 'bg-sky-50 text-sky-600',
+    icon: <Boxes size={20}/>, tint: 'bg-sky-50 text-sky-600',
     title: 'Almacén e inventarios',
+    resumen: 'Varios almacenes conectados con la factura y la compra.',
     items: [
-      'Varios almacenes con kardex por producto y costeo promedio, último o por capas',
+      'Kardex por producto con costeo promedio, último o por capas',
       'Timbrar descuenta existencias; cancelar o hacer nota de crédito las devuelve',
       'Inventario físico con conciliación de diferencias y reportes de rotación',
     ],
   },
   {
-    icon: <ShoppingCart size={20}/>, tint: 'bg-amber-50 text-amber-600',
+    icon: <ShoppingBag size={20}/>, tint: 'bg-amber-50 text-amber-600',
     title: 'Compras y proveedores',
+    resumen: 'El XML del proveedor da de alta al proveedor, los productos y la entrada.',
     items: [
-      'El XML del proveedor da de alta al proveedor, los productos y la entrada al almacén',
-      'Cada partida puede entrar a un almacén distinto, y se captura lo recibido de verdad',
+      'El XML recibido da de alta al proveedor, los productos y la entrada al almacén',
+      'Cada partida puede entrar a un almacén distinto, capturando lo recibido de verdad',
       'Órdenes de compra con punto de reorden y proyección a 15 días',
     ],
   },
   {
-    icon: <Landmark size={20}/>, tint: 'bg-emerald-50 text-emerald-600',
+    icon: <Banknote size={20}/>, tint: 'bg-emerald-50 text-emerald-600',
     title: 'Tesorería y cobranza',
+    resumen: 'Cuentas por pagar y por cobrar, con conciliación bancaria.',
     items: [
       'La factura de compra genera su cuenta por pagar con los días de crédito del proveedor',
       'Programación de pagos y control de línea de crédito',
-      'Cobranza por cliente, ventas por período y reportes fiscales auditables',
+      'Cobranza por cliente, ventas por período y conciliación bancaria contra el estado de cuenta',
+    ],
+  },
+  {
+    icon: <Calculator size={20}/>, tint: 'bg-rose-50 text-rose-600',
+    title: 'Contabilidad electrónica',
+    resumen: 'Pólizas automáticas desde el CFDI y todos los reportes del SAT.',
+    items: [
+      'Pólizas de ingreso, egreso y diario generadas desde los CFDI, cuadradas por diseño',
+      'Catálogo con agrupador SAT, balanza, y estados financieros (Balance y Resultados)',
+      'DIOT, contabilidad electrónica (Anexo 24), cédulas fiscales y cédula de IVA',
+      'Activo fijo con depreciación, conciliación bancaria, cierre y traspaso de ejercicio',
+    ],
+  },
+  {
+    icon: <BadgeDollarSign size={20}/>, tint: 'bg-violet-50 text-violet-600',
+    title: 'Nómina CFDI 4.0',
+    resumen: 'Recibos timbrados, cálculo de ISR y control de asistencia.',
+    items: [
+      'Cálculo de ISR con tarifa y subsidio del año, cuotas IMSS y recibos timbrados',
+      'Prenómina desde incidencias y checador biométrico facial (kiosco PWA)',
+      'Finiquitos y documentos legales de baja fundados en la LFT',
     ],
   },
   {
     icon: <Truck size={20}/>, tint: 'bg-orange-50 text-orange-600',
     title: 'Carta Porte 3.1',
+    resumen: 'Traslado multimodal con validación previa al timbre.',
     items: [
       'Autotransporte, marítimo, aéreo y ferroviario, incluido comercio exterior',
       'Catálogos de vehículos, remolques, operadores, aseguradoras y lugares frecuentes',
@@ -138,12 +161,14 @@ const AREAS = [
     ],
   },
   {
-    icon: <ShieldCheck size={20}/>, tint: 'bg-slate-100 text-slate-600',
-    title: 'Catálogos y control',
+    icon: <FileCheck2 size={20}/>, tint: 'bg-slate-100 text-slate-600',
+    title: 'Catálogos y cumplimiento',
+    resumen: 'Lector CIF, claves SAT, CSD cifrado y opinión 32-D.',
     items: [
       'Lector de la Constancia de Situación Fiscal: autollena RFC, razón social, régimen y CP',
       'Clientes, proveedores y productos con preset fiscal y 52 mil claves SAT indexadas',
       'CSD cifrado, bitácora de 5 años, y un correo puede administrar varias empresas',
+      'Opinión de cumplimiento 32-D (SAT, IMSS, INFONAVIT) y descarga masiva de XML del SAT',
     ],
   },
 ];
@@ -230,6 +255,48 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   );
 }
 
+/* Acordeón de un módulo: icono + título + resumen siempre visibles; el detalle
+ * se despliega al pulsar. Igual que FaqItem pero con encabezado de dos líneas. */
+function ModuloItem({
+  icon, tint, title, resumen, items, defaultOpen,
+}: {
+  icon: JSX.Element; tint: string; title: string; resumen: string; items: string[]; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
+  return (
+    <div className="border border-slate-200 rounded-xl bg-white overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-3 text-left px-4 py-3.5 hover:bg-slate-50 transition-colors"
+      >
+        <div className={`w-10 h-10 ${tint} rounded-lg flex items-center justify-center shrink-0`}>
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-slate-900 leading-tight">{title}</h3>
+          <p className="text-xs text-slate-500 mt-0.5">{resumen}</p>
+        </div>
+        <ChevronDown
+          size={18}
+          className={`text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && (
+        <ul className="px-4 pb-4 pt-1 space-y-2 border-t border-slate-100">
+          {items.map((t) => (
+            <li key={t} className="flex gap-2.5 text-sm text-slate-600 leading-relaxed">
+              <Check size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+              <span>{t}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function PublicHomePage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
@@ -247,6 +314,7 @@ export function PublicHomePage() {
           </div>
           <div className="flex items-center gap-4">
             <nav className="hidden md:flex items-center gap-5 text-sm text-slate-600 font-medium">
+              <a href="#modulos" className="hover:text-indigo-600 transition-colors">Módulos</a>
               <a href="#planes" className="hover:text-indigo-600 transition-colors">Planes</a>
               <a href="#faq" className="hover:text-indigo-600 transition-colors">FAQ</a>
               <a href="#contacto" className="hover:text-indigo-600 transition-colors">Contacto</a>
@@ -298,28 +366,13 @@ export function PublicHomePage() {
         </div>
       </section>
 
-      {/* Módulos */}
-      <section className="max-w-6xl mx-auto px-6 py-12">
-        <h2 className="text-3xl font-bold text-slate-900 text-center mb-2">Módulos incluidos</h2>
-        <p className="text-slate-600 text-center mb-10">Facturación, almacén, compras y tesorería, conectados entre sí</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8 max-w-5xl mx-auto">
-          {AREAS.map((a) => (
-            <div key={a.title}>
-              <div className="flex items-center gap-3 mb-3">
-                <div className={`w-9 h-9 ${a.tint} rounded-lg flex items-center justify-center shrink-0`}>
-                  {a.icon}
-                </div>
-                <h3 className="font-bold text-slate-900">{a.title}</h3>
-              </div>
-              <ul className="space-y-2 pl-1">
-                {a.items.map((t) => (
-                  <li key={t} className="flex gap-2.5 text-sm text-slate-600 leading-relaxed">
-                    <Check size={15} className="text-emerald-500 shrink-0 mt-0.5" />
-                    <span>{t}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+      {/* Módulos — un acordeón desplegable por módulo */}
+      <section id="modulos" className="max-w-5xl mx-auto px-6 py-12">
+        <h2 className="text-3xl font-bold text-slate-900 text-center mb-2">Todo lo que hace NEXO</h2>
+        <p className="text-slate-600 text-center mb-10">Un ERP completo — abre cada módulo para ver el detalle</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+          {MODULOS.map((m, i) => (
+            <ModuloItem key={m.title} {...m} defaultOpen={i === 0} />
           ))}
         </div>
       </section>
