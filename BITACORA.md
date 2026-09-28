@@ -6380,3 +6380,33 @@ superior: fuera «Planes»/«FAQ», entra «Cómo funciona». Hero «Ver planes�
 menciones a «plan»; paso 1 de «Cómo funciona» sin «elige tu plan». Flujo final: Hero → Módulos (acordeón) →
 Cómo funciona → Contacto → CTA. Ya no hay venta de paquetes con precio en ninguna parte visible (super admin +
 landing). Verificado por DOM sobre el build servido. TSC=0, build OK.
+
+---
+
+## 2026-09-28 (checador / admin de empresa / landing) — Menú del checador en una línea; menús de Mensajería y Usuarios para el admin; 2 módulos más; face-api autohospedado
+
+Cuatro cambios de front, 4 commits, a dev (`main`).
+
+**Checador — menú en UNA sola línea (commit `089c526`).** El usuario pidió no tener «3 arriba y 4-5 abajo»:
+todos los accesos del Checador (Configuración, Turnos, Kioscos, Empleados, Enrolar rostro, Abrir kiosco,
+Campo, Registro) van en una fila, como pastillas de color (`claseOpcion` por índice fijo). Se quitó el
+«Registro» duplicado (salía como botón arriba y como pestaña).
+
+**Admin de empresa — Mensajería + Usuarios + encadenar funciones finas (commit `f67a4ad`).** Resultó que la
+página **Equipo** (`/team`) ya traía alta de usuarios, edición y **capacidades finas** — sólo faltaba verla.
+Ahora en `Layout.tsx` el ADMIN de la empresa ve **siempre** «Mensajes» y «Equipo · Usuarios» (antes se
+ocultaban si su grupo no traía `mensajes`/`dashboard`). Y en `Team.tsx`, al **crear** un usuario operativo
+(USER) se **encadena** su modal de capacidades finas, para que el admin dé el mantenimiento ahí mismo. El
+usuario ya verificó las funciones.
+
+**Landing — dos módulos más (commit `8ebf580`).** El acordeón «Todo lo que hace NEXO» pasó de 8 a 10 tarjetas:
+**Punto de venta (POS)** y **XML del SAT · Bóveda**. Verificado en el build servido.
+
+**Checador móvil «no abre» — face-api AUTOHOSPEDADO (commit `ae73000`).** El kiosco no abría en celulares
+modestos con datos móviles (había que reiniciar el equipo): bajaba face-api (~1.3 MB) + 3 modelos (~7 MB,
+reconocimiento 6.4 MB) del **CDN jsdelivr** y se atoraba. Ahora la librería y los modelos se sirven del
+**mismo origen** (`frontend/public/vendor/face-api.js` y `public/models/*.{json,bin}`, bajados del propio
+paquete), que el navegador cachea; el CDN queda de respaldo (try local → catch CDN). Además `inputSize`
+320→224 (½ de cómputo/cuadro) y la carga se reintenta si falla. Verificado que Render los sirve same-origin
+(manifest JSON 200, .bin octet-stream 200). **Pendiente: prueba en celular real (la hace el usuario).** Si
+aún pesa: cachear en service worker y/o checar a demanda (sin cámara continua). TSC=0, build OK, 4 commits a dev.
