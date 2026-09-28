@@ -20,6 +20,7 @@ import {
   ChevronDown, BookOpen, Truck,
   Receipt, Boxes, ShoppingBag, Banknote,
   Calculator, BadgeDollarSign, FileCheck2,
+  Store, Archive,
 } from 'lucide-react';
 import { useState } from 'react';
 import { GdmLogo } from '@/components/GdmLogo';
@@ -119,6 +120,26 @@ const MODULOS = [
       'Clientes, proveedores y productos con preset fiscal y 52 mil claves SAT indexadas',
       'CSD cifrado, bitácora de 5 años, y un correo puede administrar varias empresas',
       'Opinión de cumplimiento 32-D (SAT, IMSS, INFONAVIT) y descarga masiva de XML del SAT',
+    ],
+  },
+  {
+    icon: <Store size={20}/>, tint: 'bg-teal-50 text-teal-600',
+    title: 'Punto de venta (POS)',
+    resumen: 'Venta de mostrador con ticket, corte de caja y factura global.',
+    items: [
+      'Cobro rápido con búsqueda de productos, descuentos y varias formas de pago',
+      'Corte de caja por turno y arqueo, con la venta ligada al almacén',
+      'Factura global del periodo timbrada ante el SAT, o factura al cliente que la pida',
+    ],
+  },
+  {
+    icon: <Archive size={20}/>, tint: 'bg-cyan-50 text-cyan-600',
+    title: 'XML del SAT · Bóveda',
+    resumen: 'Descarga masiva de tus CFDI directo del SAT, con bóveda de 5 años.',
+    items: [
+      'Descarga de emitidos y recibidos con tu e.firma, y calendario de cobertura',
+      'Bóveda de todos los XML como fuente de verdad, con respaldo en ZIP',
+      'Base para las pólizas, la DIOT y la contabilidad electrónica (Anexo 24)',
     ],
   },
 ];
