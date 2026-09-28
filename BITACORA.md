@@ -6347,3 +6347,30 @@ de la plataforma (esquema `Retenciones`, que HOY NO se ingestan como tipo I —`
 
 **Con esto quedan las 4 cédulas del usuario:** 612, RESICO 626, PM 601 y Plataformas 625 (+ la de IVA, para
 todos los regímenes). Todas a validar contra el papel de trabajo del contador. TSC back=0, front=0.
+
+---
+
+## 2026-09-28 (contabilidad / super admin / landing) — Cédulas ISR: desplegar todas; «Paquetes de uso» en blanco; landing NEXO por módulos con acordeón
+
+Tres cambios de front, un commit (`e1cbd1e`), a dev (`main`).
+
+**Cédulas fiscales — se despliegan TODAS las de ISR.** El usuario quiere ver «el panorama de lo que se
+procesa», así que la pantalla ya no oculta las cédulas de ISR que no son del régimen de la empresa: muestra los
+**4 tabs** (612, RESICO 626, PM 601, Plataformas 625) **+ IVA, siempre**. La que corresponde al régimen propio
+va con un **punto verde**. El cálculo del backend ya era independiente del régimen (era puro gating de UI);
+se quitó de `tabs`, del `enabled` de las queries y de las condiciones de render en `CedulasFiscales.tsx`. Los
+demás regímenes se irán afinando. **Pendiente del usuario:** revisar Anexo 20 y que las cédulas «se acoplen».
+
+**Super admin: «Paquetes fiscales» → «Paquetes de uso», en blanco.** NEXO se despliega completo y los módulos
+se controlan desde el super admin: los planes de timbrado con precio (PKG_100/200/500/FLEX) ya no aplican. Se
+quitaron de `AdminPackages.tsx`; la sección quedó **en blanco**. Se **conserva** la herramienta «Respaldo SAT
+(ZIP)» (elección del usuario) por ser lo único funcional. Menú lateral renombrado (📦).
+
+**Landing = página de inicio del sitio.** El panel «Módulos incluidos» (6 áreas en tarjetas) se rehízo como
+**«Todo lo que hace NEXO»**: un **acordeón desplegable por módulo** (`ModuloItem` en `PublicHome.tsx`), 8
+módulos con **iconos nuevos**, resumen visible + detalle al abrir (el primero abierto por defecto). Enlace
+«Módulos» en el menú superior. Nota lucide: `ReceiptText` no existe en la versión instalada → `Receipt`.
+
+Verificado: TSC front=0, `vite build` OK, y la landing servida del build confirma que el acordeón abre/cierra
+(prueba por DOM; las capturas salieron en blanco por la ventana detrás). Los planes con precio y el FAQ de la
+landing quedaron **sin tocar** (el usuario no lo pidió); si se quiere coherencia total, se quitan después.
