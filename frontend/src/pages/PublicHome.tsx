@@ -3,15 +3,18 @@
  *
  * Contiene:
  *   · Hero con nombre del sistema y CTA "Iniciar sesión"
- *   · Los 4 planes de timbrado (misma info que /admin/packages)
- *   · Sección de módulos y features (CIF, XML, PDF, timbrado real)
+ *   · Acordeón informativo de módulos ("Todo lo que hace NEXO")
+ *   · Cómo funciona (4 pasos) y datos de contacto
  *   · CTA final para entrar al sistema
+ *
+ * Es 100% informativa: no vende planes de timbrado con precio (NEXO se despliega
+ * completo y los módulos se controlan desde el super admin).
  *
  * Ruta: `/` (redirige a `/dashboard` o `/admin/companies` si ya hay sesión).
  */
 import { Link } from 'react-router-dom';
 import {
-  Zap, Star, Rocket, Coins, Check,
+  Check,
   FileText, LogIn, Mail, Scale,
   ClipboardCheck, Building2, FileSignature, Send,
   ChevronDown, BookOpen, Truck,
@@ -20,59 +23,6 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { GdmLogo } from '@/components/GdmLogo';
-
-const PLANS = [
-  {
-    code: 'PKG_100', name: 'Esencial',
-    price: '$399', stamps: 100, extra: '$2.50',
-    color: 'emerald', highlight: false,
-    icon: <Zap size={28} className="text-emerald-600" />,
-    bullets: [
-      '100 timbres CFDI 4.0 al mes',
-      'Reportes de cobranza, ventas y fiscal',
-      'Notas de crédito y complementos de pago',
-      'Multi-usuario (Admin + operativos)',
-    ],
-  },
-  {
-    code: 'PKG_200', name: 'Pyme',
-    price: '$699', stamps: 200, extra: '$2.25',
-    color: 'indigo', highlight: true,
-    icon: <Star size={28} className="text-indigo-600" />,
-    bullets: [
-      '200 timbres CFDI 4.0 al mes',
-      'Todo lo del plan Esencial',
-      'Importación de XMLs recibidos',
-      'Gestión de proveedores',
-      'Reporte de cobranza detallado',
-    ],
-  },
-  {
-    code: 'PKG_500', name: 'Empresarial',
-    price: '$1,399', stamps: 500, extra: '$2.00',
-    color: 'violet', highlight: false,
-    icon: <Rocket size={28} className="text-violet-600" />,
-    bullets: [
-      '500 timbres CFDI 4.0 al mes',
-      'Todo lo del plan Pyme',
-      'Prioridad en soporte',
-      'Backup mensual SAT en ZIP',
-      'Multi-empresa (multi-tenant)',
-    ],
-  },
-  {
-    code: 'PKG_FLEX', name: 'Uso libre',
-    price: 'Sin renta', stamps: null, extra: '$4.99',
-    color: 'slate', highlight: false,
-    icon: <Coins size={28} className="text-slate-600" />,
-    bullets: [
-      'Sin renta mensual',
-      'Timbre a $4.99 MXN + IVA',
-      'Ideal para bajo volumen (< 30/mes)',
-      'Sin compromiso de permanencia',
-    ],
-  },
-];
 
 /* Los módulos de NEXO, uno por acordeón.
  *
@@ -178,7 +128,7 @@ const HOW_STEPS = [
     n: 1,
     icon: <Building2 size={24}/>,
     title: 'Registra tu empresa',
-    desc: 'Sube la Constancia de Situación Fiscal en PDF. El sistema lee RFC, razón social, régimen y CP automáticamente. Elige tu plan de timbrado.',
+    desc: 'Sube la Constancia de Situación Fiscal en PDF. El sistema lee RFC, razón social, régimen y CP automáticamente, y tu empresa queda lista para operar.',
   },
   {
     n: 2,
@@ -200,63 +150,8 @@ const HOW_STEPS = [
   },
 ];
 
-const FAQ_ITEMS = [
-  {
-    q: '¿El sistema timbra realmente ante el SAT?',
-    a: 'Sí. Estamos integrados con SW Sapien, PAC autorizado por el SAT. Cada factura recibe un UUID (Folio Fiscal) oficial, sellos SAT y CFD, y un QR de verificación que el receptor puede validar en verificacfdi.facturaelectronica.sat.gob.mx.',
-  },
-  {
-    q: '¿Qué pasa con mi CSD (certificado)?',
-    a: 'Tu .cer y .key se guardan cifrados en la base de datos con pgcrypto usando una master key rotable. Solo se descifran en memoria al momento de sellar, nunca se envían en texto plano ni se muestran por API.',
-  },
-  {
-    q: '¿Puedo cancelar facturas?',
-    a: 'Sí, con los 4 motivos SAT (01–04). Si la factura tiene notas de crédito o complementos de pago vigentes, el sistema pide cancelarlos primero desde el modal Historia. Todo se propaga al PAC y al SAT automáticamente.',
-  },
-  {
-    q: '¿El plan incluye los timbres reales del SAT?',
-    a: 'Sí. La renta mensual cubre el volumen indicado. Si superas el cupo, cada timbre extra se cobra al precio adicional del plan. El plan Uso libre no tiene renta — pagas solo por lo que timbras.',
-  },
-  {
-    q: '¿Puedo administrar más de una empresa?',
-    a: 'Sí. El sistema es multi-tenant. Como SUPER_ADMIN puedes agregar varias empresas con RFCs distintos, cada una con su plan, sus usuarios operativos y sus CSDs. Los datos están aislados por empresa.',
-  },
-  {
-    q: '¿Cómo respaldo mis XMLs mensualmente?',
-    a: 'Desde SUPER_ADMIN → Paquetes fiscales puedes descargar un ZIP con todos los XMLs timbrados del mes por empresa. Ideal para envío a contabilidad o auditorías SAT.',
-  },
-  {
-    q: '¿Qué pasa si el correo no llega al cliente?',
-    a: 'El sistema devuelve un reporte de adjuntos enviados y omitidos. Si algún XML no está listo o falla, el correo se manda con los que sí — nunca se cancela todo el envío por un solo problema.',
-  },
-];
-
-function FaqItem({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border border-slate-200 rounded-lg bg-white">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between text-left px-5 py-4 hover:bg-slate-50 transition-colors"
-      >
-        <span className="font-semibold text-slate-900">{q}</span>
-        <ChevronDown
-          size={18}
-          className={`text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-      {open && (
-        <div className="px-5 pb-4 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
-          {a}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* Acordeón de un módulo: icono + título + resumen siempre visibles; el detalle
- * se despliega al pulsar. Igual que FaqItem pero con encabezado de dos líneas. */
+ * (lista de features) se despliega al pulsar el encabezado. */
 function ModuloItem({
   icon, tint, title, resumen, items, defaultOpen,
 }: {
@@ -315,8 +210,7 @@ export function PublicHomePage() {
           <div className="flex items-center gap-4">
             <nav className="hidden md:flex items-center gap-5 text-sm text-slate-600 font-medium">
               <a href="#modulos" className="hover:text-indigo-600 transition-colors">Módulos</a>
-              <a href="#planes" className="hover:text-indigo-600 transition-colors">Planes</a>
-              <a href="#faq" className="hover:text-indigo-600 transition-colors">FAQ</a>
+              <a href="#como" className="hover:text-indigo-600 transition-colors">Cómo funciona</a>
               <a href="#contacto" className="hover:text-indigo-600 transition-colors">Contacto</a>
             </nav>
             <Link
@@ -348,10 +242,10 @@ export function PublicHomePage() {
             <LogIn size={18} /> Entrar al sistema
           </Link>
           <a
-            href="#planes"
+            href="#modulos"
             className="inline-flex items-center gap-2 border-2 border-slate-300 hover:border-indigo-400 text-slate-700 px-8 py-3.5 rounded-lg font-semibold text-base transition-colors"
           >
-            Ver planes
+            Ver módulos
           </a>
           <a
             href={`${import.meta.env.BASE_URL}manual-usuario.pdf`}
@@ -378,7 +272,7 @@ export function PublicHomePage() {
       </section>
 
       {/* Cómo funciona */}
-      <section className="bg-slate-50 border-y border-slate-200">
+      <section id="como" className="bg-slate-50 border-y border-slate-200">
         <div className="max-w-6xl mx-auto px-6 py-14">
           <h2 className="text-3xl font-bold text-slate-900 text-center mb-2">Cómo funciona</h2>
           <p className="text-slate-600 text-center mb-10">De cero a factura timbrada en 4 pasos</p>
@@ -399,83 +293,12 @@ export function PublicHomePage() {
         </div>
       </section>
 
-      {/* Planes */}
-      <section id="planes" className="max-w-6xl mx-auto px-6 py-12">
-        <h2 className="text-3xl font-bold text-slate-900 text-center mb-2">Planes de timbrado</h2>
-        <p className="text-slate-600 text-center mb-10">Elige el plan que se adapta al volumen de tu operación</p>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {PLANS.map((p) => (
-            <div
-              key={p.code}
-              className={`bg-white rounded-xl border-2 p-5 flex flex-col relative overflow-hidden ${
-                p.highlight
-                  ? 'border-indigo-400 shadow-xl'
-                  : 'border-slate-200 shadow-sm hover:shadow-md transition-shadow'
-              }`}
-            >
-              {p.highlight && (
-                <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-bl-lg">
-                  Recomendado
-                </div>
-              )}
-              <div className={`w-14 h-14 bg-${p.color}-50 rounded-xl flex items-center justify-center mb-3`}>
-                {p.icon}
-              </div>
-              <h3 className={`text-xl font-bold text-${p.color}-700`}>{p.name}</h3>
-              <p className="text-xs text-slate-500 font-mono mb-3">{p.code}</p>
-              <div className="mb-1">
-                <span className="text-3xl font-bold text-slate-900">{p.price}</span>
-                {' '}
-                <span className="text-sm text-slate-500">
-                  {/* En Uso libre el precio grande dice "Sin renta", así que
-                      pegarle "MXN pay-per-stamp" salía como "Sin renta MXN
-                      pay-per-stamp" y el renglón se partía a media palabra. */}
-                  {p.stamps !== null ? 'MXN / mes' : 'pagas solo lo que timbras'}
-                </span>
-              </div>
-              <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-4">Precios más IVA</p>
-
-              {p.stamps !== null && (
-                <div className={`bg-${p.color}-50 rounded-lg px-3 py-2 mb-4 flex items-center justify-between`}>
-                  <span className="text-xs text-slate-600">Timbres/mes</span>
-                  <span className={`font-bold text-${p.color}-700`}>{p.stamps}</span>
-                </div>
-              )}
-
-              <ul className="space-y-1.5 flex-1 text-sm text-slate-700">
-                {p.bullets.map((b) => (
-                  <li key={b} className="flex items-start gap-2">
-                    <Check size={16} className={`text-${p.color}-600 shrink-0 mt-0.5`} />
-                    <span>{b}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-4 pt-4 border-t border-slate-100 text-[11px] text-slate-500">
-                Timbre extra: <b>{p.extra} MXN</b> <span className="text-slate-400">(+ IVA)</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section id="faq" className="max-w-4xl mx-auto px-6 py-14">
-        <h2 className="text-3xl font-bold text-slate-900 text-center mb-2">Preguntas frecuentes</h2>
-        <p className="text-slate-600 text-center mb-8">Lo que suelen preguntarnos antes de empezar</p>
-        <div className="space-y-3">
-          {FAQ_ITEMS.map((item) => (
-            <FaqItem key={item.q} q={item.q} a={item.a} />
-          ))}
-        </div>
-      </section>
-
       {/* Contacto */}
       <section id="contacto" className="bg-slate-50 border-y border-slate-200">
         <div className="max-w-4xl mx-auto px-6 py-14">
           <h2 className="text-3xl font-bold text-slate-900 text-center mb-2">¿Necesitas más información?</h2>
           <p className="text-slate-600 text-center mb-8">
-            Escríbenos y te ayudamos a elegir el plan ideal para tu operación.
+            Escríbenos y con gusto te mostramos el sistema y resolvemos tus dudas.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <a
@@ -501,14 +324,14 @@ export function PublicHomePage() {
               <p className="text-sm text-indigo-700 font-medium">hcgm.com.mx</p>
             </a>
             <a
-              href="#planes"
+              href="#modulos"
               className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-shadow text-center"
             >
               <div className="w-11 h-11 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 mx-auto mb-3">
                 <ClipboardCheck size={22}/>
               </div>
-              <h3 className="font-bold text-slate-900 mb-1">Ver planes</h3>
-              <p className="text-sm text-indigo-700 font-medium">Comparativa completa</p>
+              <h3 className="font-bold text-slate-900 mb-1">Ver módulos</h3>
+              <p className="text-sm text-indigo-700 font-medium">Todo lo que hace NEXO</p>
             </a>
           </div>
         </div>
@@ -519,8 +342,8 @@ export function PublicHomePage() {
         <div className="max-w-6xl mx-auto px-6 py-16 text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">¿Listo para empezar?</h2>
           <p className="text-indigo-100 text-lg mb-8 max-w-xl mx-auto">
-            Ingresa al sistema para comenzar a emitir tus facturas. Si aún no tienes cuenta,
-            contáctanos para elegir el plan que mejor te acomode.
+            Ingresa al sistema para comenzar a operar. Si aún no tienes cuenta,
+            contáctanos y te damos acceso.
           </p>
           <Link
             to="/login"
