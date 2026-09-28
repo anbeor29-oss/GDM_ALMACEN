@@ -6332,3 +6332,18 @@ los CFDI (sale de la declaración anual anterior). Rutas `GET /accounting/cedula
 `PUT /coeficiente/:anio`; tab «ISR PM (601, coeficiente)» con su captura. **Estado de las 4 cédulas del
 usuario:** 612 ✅, RESICO 626 ✅, PM 601 ✅; falta **Plataformas Digitales 625** (por actividad, con los CFDI de
 retención del SAT). TSC back=0, front=0.
+
+---
+
+## 2026-09-24 (contabilidad) — Cédula Plataformas Digitales (625): captura por actividad (v1)
+
+Cuarta y última de las cédulas que mandó el usuario. Por **ACTIVIDAD** (transporte/entrega 2.1 %, hospedaje
+4 %, enajenación 1 %) se calcula el **ISR retenido** (ingreso × tasa Art. 113-A) y el **IVA** (16 % causado,
+8 % retenido). La clasificación por actividad no se infiere de un CFDI normal: sale de los CFDI de RETENCIÓN
+de la plataforma (esquema `Retenciones`, que HOY NO se ingestan como tipo I —`indexarCfdi` solo parsea
+`<Comprobante>`—), así que la v1 es **captura manual** del ingreso por actividad y mes (tabla
+`cedula_plataformas`, migración `2026-09-24b`). Servicio `setPlataformas`/`cedulaPlataformas`; rutas GET/PUT
+`/accounting/cedulas/plataformas/:anio`; pantalla con tab «Plataformas (625)» y grid editable por actividad.
+
+**Con esto quedan las 4 cédulas del usuario:** 612, RESICO 626, PM 601 y Plataformas 625 (+ la de IVA, para
+todos los regímenes). Todas a validar contra el papel de trabajo del contador. TSC back=0, front=0.
