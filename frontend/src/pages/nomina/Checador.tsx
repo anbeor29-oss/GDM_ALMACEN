@@ -25,52 +25,43 @@ type Tab = 'config' | 'kioscos' | 'turnos' | 'empleados' | 'registro';
 
 export function ChecadorPage() {
   const [tab, setTab] = useState<Tab>('config');
-  const T: Array<{ id: Tab; label: string; icon: any }> = [
-    { id: 'config', label: 'Configuración', icon: Settings },
-    { id: 'kioscos', label: 'Kioscos', icon: MapPin },
-    { id: 'turnos', label: 'Turnos', icon: Clock },
-    { id: 'empleados', label: 'Empleados', icon: Users },
-    { id: 'registro', label: 'Registro', icon: ClipboardList },
+
+  /* TODOS los accesos en UNA sola línea, cada uno con su color (claseOpcion por
+   * índice fijo). Orden por lógica: configurar → checar → consultar. Las que
+   * cambian el contenido in-page son pestañas (resaltan al estar activas);
+   * enrolar/kiosco/campo son pantallas completas de cámara, por eso navegan.
+   * Antes «Registro» salía dos veces (botón arriba + pestaña abajo): ahora una. */
+  const items: Array<
+    | { kind: 'tab'; id: Tab; label: string; icon: any }
+    | { kind: 'link'; to: string; label: string; icon: any }
+  > = [
+    { kind: 'tab',  id: 'config',            label: 'Configuración',  icon: Settings },
+    { kind: 'tab',  id: 'turnos',            label: 'Turnos',         icon: Clock },
+    { kind: 'tab',  id: 'kioscos',           label: 'Kioscos',        icon: MapPin },
+    { kind: 'tab',  id: 'empleados',         label: 'Empleados',      icon: Users },
+    { kind: 'link', to: '/checador/enrolar', label: 'Enrolar rostro', icon: UserPlus },
+    { kind: 'link', to: '/checador/kiosco',  label: 'Abrir kiosco',   icon: Camera },
+    { kind: 'link', to: '/checador/campo',   label: 'Campo',          icon: MapPin },
+    { kind: 'tab',  id: 'registro',          label: 'Registro',       icon: ClipboardList },
   ];
+
   return (
     <div className="p-6 space-y-4 max-w-5xl">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Checador · Asistencia</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Control de asistencia biométrico. Aquí defines los parámetros, los turnos y a quién se le
-            registra. La asistencia alimenta la prenómina.
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <Link to="/checador/registro"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-            <ClipboardList size={16} /> Registro
-          </Link>
-          <Link to="/checador/enrolar"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-            <UserPlus size={16} /> Enrolar rostro
-          </Link>
-          <Link to="/checador/campo"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-            <MapPin size={16} /> Campo
-          </Link>
-          <Link to="/checador/kiosco"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
-            <Camera size={16} /> Abrir kiosco
-          </Link>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Checador · Asistencia</h1>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Control de asistencia biométrico. Aquí defines los parámetros, los turnos y a quién se le
+          registra. La asistencia alimenta la prenómina.
+        </p>
       </div>
 
-      <div className="flex gap-1.5 flex-wrap">
-        {T.map((t, i) => {
-          const Ico = t.icon;
-          return (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === t.id)}`}>
-              <Ico size={15} /> {t.label}
-            </button>
-          );
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((it, i) => {
+          const Ico = it.icon;
+          const cls = `inline-flex items-center gap-1.5 ${claseOpcion(i, it.kind === 'tab' && tab === it.id)}`;
+          return it.kind === 'tab'
+            ? <button key={it.id} onClick={() => setTab(it.id)} className={cls}><Ico size={15} /> {it.label}</button>
+            : <Link key={it.to} to={it.to} className={cls}><Ico size={15} /> {it.label}</Link>;
         })}
       </div>
 
