@@ -6319,3 +6319,16 @@ ingresos cobrados × tasa **Art. 113-E** (1 %→2.5 %), **sin deducciones**; men
 **Analizados y PENDIENTES** (el usuario mandó 4 papeles de trabajo): **Plataformas Digitales (625)** — ISR/IVA
 por actividad (pasaje-entrega/hospedaje/enajenación) con tasas de retención; y **Coeficiente de utilidad /
 PM (601)** — ingresos nominales × coeficiente de utilidad (capturado por empresa) × 30 %. TSC back=0, front=0.
+
+---
+
+## 2026-09-24 (contabilidad) — Cédula ISR PM 601 (coeficiente de utilidad)
+
+Nueva cédula para **Persona Moral, Régimen General (601)**: pago provisional con **coeficiente de utilidad**.
+Base **DEVENGADA** (ingresos nominales, no flujo —el PM tributa sobre lo devengado—): ingresos nominales
+acumulados × coeficiente = utilidad; × 30 % = ISR; − pagos previos − ISR retenido = por pagar. El coeficiente
+se **CAPTURA** por empresa/año (tabla `cedula_pm_coeficiente`, migración `2026-09-24`), porque no se infiere de
+los CFDI (sale de la declaración anual anterior). Rutas `GET /accounting/cedulas/pm-601/:anio` y
+`PUT /coeficiente/:anio`; tab «ISR PM (601, coeficiente)» con su captura. **Estado de las 4 cédulas del
+usuario:** 612 ✅, RESICO 626 ✅, PM 601 ✅; falta **Plataformas Digitales 625** (por actividad, con los CFDI de
+retención del SAT). TSC back=0, front=0.
