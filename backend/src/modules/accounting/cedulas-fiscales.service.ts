@@ -278,6 +278,61 @@ export async function cedulaPM601(companyId: string, anio: number) {
   return { anio, regimen: '601', coeficiente: coef, filas };
 }
 
+/* ─────────────── PLATAFORMAS DIGITALES (625) ─────────────── */
+
+/** Actividades de plataformas con su tasa de retención de ISR (Art. 113-A LISR). */
+export const ACTIVIDADES_PLATAFORMA: Array<{ clave: string; nombre: string; tasaIsr: number }> = [
+  { clave: 'PASAJE_ENTREGA', nombre: 'Transporte de pasajeros y entrega de bienes', tasaIsr: 0.021 },
+  { clave: 'HOSPEDAJE', nombre: 'Servicios de hospedaje', tasaIsr: 0.04 },
+  { clave: 'ENAJENACION', nombre: 'Enajenación de bienes y prestación de servicios', tasaIsr: 0.01 },
+];
+const CLAVES_PLAT = ACTIVIDADES_PLATAFORMA.map((a) => a.clave);
+
+/** Guarda (batch) los ingresos capturados por actividad y mes. */
+export async function setPlataformas(companyId: string, anio: number, filas: Array<{ mes: number; actividad: string; ingreso: number }>) {
+  let n = 0;
+  for (const f of filas || []) {
+    const mes = Number(f.mes);
+    if (mes < 1 || mes > 12 || !CLAVES_PLAT.includes(f.actividad)) continue;
+    await query(
+      `INSERT INTO cedula_plataformas (company_id, anio, mes, actividad, ingreso, updated_at)
+       VALUES ($1,$2,$3,$4,$5,NOW())
+       ON CONFLICT (company_id, anio, mes, actividad) DO UPDATE SET ingreso=EXCLUDED.ingreso, updated_at=NOW()`,
+      [companyId, anio, mes, f.actividad, r2(f.ingreso)]);
+    n++;
+  }
+  return { guardadas: n };
+}
+
+/**
+ * Cédula de Plataformas Digitales (625): por ACTIVIDAD y mes, el ISR retenido por la
+ * plataforma (ingreso × tasa Art. 113-A) y el IVA (causado 16 %, retenido 8 %). Los
+ * ingresos salen de la captura (`cedula_plataformas`); la vía automática desde los
+ * CFDI de retención queda pendiente (hoy esos CFDI no se ingestan como tipo I).
+ */
+export async function cedulaPlataformas(companyId: string, anio: number) {
+  const r = await query<any>(
+    `SELECT mes, actividad, ingreso FROM cedula_plataformas WHERE company_id=$1 AND anio=$2`,
+    [companyId, anio]);
+  const capt = new Map<string, number>();   // `${mes}|${actividad}` → ingreso
+  for (const row of r.rows) capt.set(`${row.mes}|${row.actividad}`, Number(row.ingreso) || 0);
+
+  const actividades = ACTIVIDADES_PLATAFORMA.map((act) => {
+    const filas = [];
+    for (let m = 1; m <= 12; m++) {
+      const ingreso = r2(capt.get(`${m}|${act.clave}`) || 0);
+      filas.push({
+        mes: MESES[m - 1], n: m, ingreso,
+        isrRetenido: r2(ingreso * act.tasaIsr),
+        ivaCausado: r2(ingreso * 0.16),
+        ivaRetenido: r2(ingreso * 0.08),
+      });
+    }
+    return { clave: act.clave, nombre: act.nombre, tasaIsr: act.tasaIsr, filas };
+  });
+  return { anio, actividades };
+}
+
 /** El régimen fiscal de la empresa (para activar la cédula correcta). */
 export async function regimenEmpresa(companyId: string): Promise<string> {
   const r = await query<any>(`SELECT fiscal_regime FROM companies WHERE id=$1`, [companyId]);

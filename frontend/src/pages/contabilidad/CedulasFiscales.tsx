@@ -99,9 +99,92 @@ function TablaCedula({ filas, defs }: { filas: any[]; defs: Def[] }) {
   );
 }
 
+/* Plataformas Digitales (625): captura el ingreso cobrado por actividad y mes; el
+ * ISR retenido (tasa Art. 113-A) y el IVA (16 % causado, 8 % retenido) se calculan. */
+function PanelPlataformas({ anio }: { anio: number }) {
+  const q = useQuery({ queryKey: ['cedula-plataformas', anio], queryFn: () => api.getCedulaPlataformas(anio) });
+  const actividades: any[] = q.data?.data?.actividades || [];
+  const [edit, setEdit] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const valorIngreso = (clave: string, m: number, capt: number) => {
+    const k = `${clave}|${m}`;
+    return edit[k] !== undefined ? edit[k] : (capt ? String(capt) : '');
+  };
+  const num = (clave: string, m: number, capt: number) => Number(valorIngreso(clave, m, capt)) || 0;
+
+  const guardar = async () => {
+    setBusy(true); setMsg('');
+    try {
+      const filas: Array<{ mes: number; actividad: string; ingreso: number }> = [];
+      for (const act of actividades) for (const f of act.filas) filas.push({ mes: f.n, actividad: act.clave, ingreso: num(act.clave, f.n, f.ingreso) });
+      await api.setCedulaPlataformas(anio, filas);
+      setEdit({}); await q.refetch(); setMsg('Guardado.');
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo guardar.'); }
+    finally { setBusy(false); }
+  };
+
+  if (q.isLoading) return <p className="text-sm text-gray-500">Cargando…</p>;
+  const th = 'px-3 py-1.5 text-right font-semibold text-gray-600 min-w-[84px]';
+  const c0 = 'px-3 py-1.5 text-gray-700 sticky left-0 bg-white min-w-[160px]';
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={guardar} disabled={busy}
+          className="bg-primary text-white px-4 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
+          {busy ? 'Guardando…' : 'Guardar ingresos'}
+        </button>
+        {msg && <span className="text-sm text-emerald-700">{msg}</span>}
+        <span className="text-xs text-gray-400">Captura el ingreso cobrado por actividad; el ISR retenido y el IVA se calculan.</span>
+      </div>
+      {actividades.map((act) => (
+        <div key={act.clave} className="bg-white rounded-lg shadow overflow-x-auto">
+          <div className="px-3 py-2 bg-gray-50 border-b text-sm font-semibold text-gray-800">
+            {act.nombre} <span className="text-xs font-normal text-gray-500">· retención ISR {(act.tasaIsr * 100).toFixed(1)}%</span>
+          </div>
+          <table className="w-full text-xs">
+            <thead className="border-b">
+              <tr>
+                <th className="px-3 py-1.5 text-left font-semibold text-gray-700 sticky left-0 bg-white min-w-[160px]">Concepto</th>
+                {act.filas.map((f: any) => <th key={f.n} className={th}>{f.mes}</th>)}
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              <tr>
+                <td className={c0}>Ingreso cobrado</td>
+                {act.filas.map((f: any) => (
+                  <td key={f.n} className="px-1 py-1">
+                    <input value={valorIngreso(act.clave, f.n, f.ingreso)}
+                      onChange={(e) => setEdit({ ...edit, [`${act.clave}|${f.n}`]: e.target.value })}
+                      className="input py-1 text-xs w-20 text-right" />
+                  </td>
+                ))}
+              </tr>
+              <tr className="bg-indigo-50/60 font-semibold">
+                <td className={`${c0} bg-indigo-50/60`}>ISR retenido</td>
+                {act.filas.map((f: any) => <td key={f.n} className="px-3 py-1.5 text-right tabular-nums">{money(num(act.clave, f.n, f.ingreso) * act.tasaIsr)}</td>)}
+              </tr>
+              <tr>
+                <td className={c0}>IVA causado 16%</td>
+                {act.filas.map((f: any) => <td key={f.n} className="px-3 py-1.5 text-right tabular-nums">{money(num(act.clave, f.n, f.ingreso) * 0.16)}</td>)}
+              </tr>
+              <tr>
+                <td className={c0}>IVA retenido 8%</td>
+                {act.filas.map((f: any) => <td key={f.n} className="px-3 py-1.5 text-right tabular-nums">{money(num(act.clave, f.n, f.ingreso) * 0.08)}</td>)}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function CedulasFiscalesPage() {
   const [anio, setAnio] = useState(new Date().getFullYear());
-  const [tab, setTab] = useState<'isr' | 'resico' | 'pm' | 'iva'>('iva');
+  const [tab, setTab] = useState<'isr' | 'resico' | 'pm' | 'plat' | 'iva'>('iva');
   const [coefInput, setCoefInput] = useState('');
   const anios = aniosContables();
 
@@ -110,6 +193,7 @@ export function CedulasFiscalesPage() {
   const esPF612 = regimen === '612';
   const esRESICO = regimen === '626';
   const esPM601 = regimen === '601';
+  const esPlataformas = regimen === '625';
 
   const isrQ = useQuery({ queryKey: ['cedula-isr', anio], queryFn: () => api.getCedulaIsrPF(anio), enabled: tab === 'isr' && esPF612 });
   const resicoQ = useQuery({ queryKey: ['cedula-resico', anio], queryFn: () => api.getCedulaResico(anio), enabled: tab === 'resico' && esRESICO });
@@ -122,10 +206,11 @@ export function CedulasFiscalesPage() {
     pmQ.refetch();
   };
 
-  const tabs: Array<['isr' | 'resico' | 'pm' | 'iva', string]> = [];
+  const tabs: Array<['isr' | 'resico' | 'pm' | 'plat' | 'iva', string]> = [];
   if (esPF612) tabs.push(['isr', 'ISR (PF Act. Emp. 612)']);
   if (esRESICO) tabs.push(['resico', 'ISR RESICO (626)']);
   if (esPM601) tabs.push(['pm', 'ISR PM (601, coeficiente)']);
+  if (esPlataformas) tabs.push(['plat', 'Plataformas (625)']);
   tabs.push(['iva', 'Cédula de IVA']);
   // El tab de ISR se ofrece según el régimen; el default es IVA (aplica a todos).
 
@@ -186,6 +271,7 @@ export function CedulasFiscalesPage() {
           : pmQ.data?.data ? <TablaCedula filas={pmQ.data.data.filas} defs={FILAS_PM} /> : null}
         </div>
       )}
+      {tab === 'plat' && esPlataformas && <PanelPlataformas anio={anio} />}
       {tab === 'iva' && (
         ivaQ.isLoading ? <p className="text-sm text-gray-500">Calculando…</p>
         : ivaQ.error ? <p className="text-sm text-rose-700">{(ivaQ.error as any)?.response?.data?.message || 'No se pudo calcular.'}</p>

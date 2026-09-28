@@ -1183,6 +1183,14 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>(`/accounting/cedulas/coeficiente/${anio}`, { coeficiente });
     return r.data;
   }
+  async getCedulaPlataformas(anio: number) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/cedulas/plataformas/${anio}`);
+    return r.data;
+  }
+  async setCedulaPlataformas(anio: number, filas: Array<{ mes: number; actividad: string; ingreso: number }>) {
+    const r = await this.client.put<APIResponse<any>>(`/accounting/cedulas/plataformas/${anio}`, { filas });
+    return r.data;
+  }
 
   /* ── Opinión de Cumplimiento (SAT 32-D / IMSS / INFONAVIT) ── */
   async getOpinionCumplimiento() {
