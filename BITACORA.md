@@ -6304,3 +6304,18 @@ fiscal**: la de **ISR** solo si la empresa es **612** (PF con Actividad Empresar
 **v1 — a validar contra el papel de trabajo del contador.** Pendiente de afinación: base de FLUJO (efectivo,
 con complementos de pago), deducciones personales, pérdida fiscal de ejercicios anteriores, y las demás
 tasas/retenciones finas. TSC back=0, front=0.
+
+---
+
+## 2026-09-24 (contabilidad) — Cédulas fiscales: base de flujo de efectivo + RESICO (626)
+
+Sobre las cédulas fiscales: (1) pasan a **BASE DE FLUJO DE EFECTIVO** — `porMesFlujo` reconoce lo
+COBRADO/PAGADO: los CFDI **PUE** en su mes de emisión y los **PPD** en el mes de su **complemento de pago
+(tipo P)** (reusa `complementoDeXml`); los PPD ya no se cuentan al emitirse. Aplica a ISR 612 e IVA. (v1: el
+desglose por tasa del complemento va a 16 %; el total es exacto.) (2) Nueva cédula **ISR RESICO (626, PF):**
+ingresos cobrados × tasa **Art. 113-E** (1 %→2.5 %), **sin deducciones**; menos ISR retenido (1.25 %). Ruta
+`/accounting/cedulas/resico/:anio`; tab «ISR RESICO (626)», activo solo para 626.
+
+**Analizados y PENDIENTES** (el usuario mandó 4 papeles de trabajo): **Plataformas Digitales (625)** — ISR/IVA
+por actividad (pasaje-entrega/hospedaje/enajenación) con tasas de retención; y **Coeficiente de utilidad /
+PM (601)** — ingresos nominales × coeficiente de utilidad (capturado por empresa) × 30 %. TSC back=0, front=0.
