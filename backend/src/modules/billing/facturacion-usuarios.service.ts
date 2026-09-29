@@ -1,0 +1,169 @@
+/**
+ * facturacion-usuarios.service — cobro POR USUARIO (modelo nuevo).
+ *
+ *   Renta del mes = precio_usuario × usuarios facturables (sin checador)
+ *                 + (timbres del mes por arriba de los incluidos) × timbre_extra
+ *
+ * Prepago: la lista se genera el día 30; a quien entró después del día 1 se le
+ * prorratea el primer mes (por días). El conteo de timbres sale de `stamp_usage`
+ * (lo que NEXO timbró vía SW). Config editable por el super admin (sube por INPC).
+ */
+import { query } from '../../config/database';
+import { NotFoundError, ConflictError, ValidationError } from '../../middleware/errorHandler';
+import logger from '../../middleware/logger';
+
+export interface FacturacionConfig { precioUsuario: number; timbresIncluidos: number; timbreExtra: number; }
+
+const iso = (d: Date) => { const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const primerDia = (input?: string) => { const b = input ? new Date(input + 'T00:00:00') : new Date(); return { anio: b.getFullYear(), mes: b.getMonth() }; };
+
+/* ── Config ── */
+export async function getConfig(): Promise<FacturacionConfig> {
+  const r = await query<any>(`SELECT precio_usuario_mxn, timbres_incluidos, timbre_extra_mxn FROM facturacion_config WHERE id = 1`);
+  const row = r.rows[0] || { precio_usuario_mxn: 500, timbres_incluidos: 2000, timbre_extra_mxn: 2 };
+  return { precioUsuario: Number(row.precio_usuario_mxn), timbresIncluidos: Number(row.timbres_incluidos), timbreExtra: Number(row.timbre_extra_mxn) };
+}
+
+export async function setConfig(d: Partial<FacturacionConfig>): Promise<FacturacionConfig> {
+  const cur = await getConfig();
+  const precio = d.precioUsuario ?? cur.precioUsuario;
+  const incl = d.timbresIncluidos ?? cur.timbresIncluidos;
+  const extra = d.timbreExtra ?? cur.timbreExtra;
+  if (precio < 0 || incl < 0 || extra < 0) throw new ValidationError('Los valores no pueden ser negativos.');
+  await query(
+    `INSERT INTO facturacion_config (id, precio_usuario_mxn, timbres_incluidos, timbre_extra_mxn, updated_at)
+     VALUES (1, $1, $2, $3, NOW())
+     ON CONFLICT (id) DO UPDATE SET precio_usuario_mxn = $1, timbres_incluidos = $2, timbre_extra_mxn = $3, updated_at = NOW()`,
+    [precio, incl, extra]);
+  return { precioUsuario: precio, timbresIncluidos: incl, timbreExtra: extra };
+}
+
+/** Usuarios facturables de una empresa: activos, NO checador, NO super admin. */
+async function usuariosFacturables(companyId: string): Promise<number> {
+  const r = await query<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM users
+      WHERE company_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+        AND role <> 'SUPER_ADMIN' AND COALESCE(work_group, '') <> 'CHECADOR'`,
+    [companyId]);
+  return Number(r.rows[0]?.n) || 0;
+}
+
+/**
+ * Genera (o refresca) la lista de facturación del periodo. Idempotente: las
+ * filas ya PAGADO/SUSPENDIDO no se tocan; las PENDIENTE se recalculan (por si
+ * cambió el número de usuarios o los timbres).
+ */
+export async function generarLista(periodoInput?: string, userId?: string) {
+  const { anio, mes } = primerDia(periodoInput);
+  const periodo = iso(new Date(anio, mes, 1));
+  const diasMes = new Date(anio, mes + 1, 0).getDate();
+  const cfg = await getConfig();
+
+  const empresas = await query<any>(
+    `SELECT id, rfc, business_name, created_at FROM companies
+      WHERE deleted_at IS NULL AND is_active = TRUE
+        AND COALESCE(billing_exempt, FALSE) = FALSE
+        AND COALESCE(stamp_package_code, '') <> 'PKG_TRIAL'`);
+
+  let creadas = 0;
+  for (const e of empresas.rows) {
+    const ex = await query<{ status: string }>(`SELECT status FROM facturacion_mensual WHERE company_id = $1 AND periodo = $2`, [e.id, periodo]);
+    if (ex.rows[0] && ex.rows[0].status !== 'PENDIENTE') continue;   // pagado/suspendido: no tocar
+
+    const usuarios = await usuariosFacturables(e.id);
+
+    // Prorrateo: solo si la empresa se creó DENTRO de este mes y después del día 1.
+    const cre = new Date(e.created_at);
+    let diasCobrados = diasMes, prorrateado = false;
+    if (cre.getFullYear() === anio && cre.getMonth() === mes && cre.getDate() > 1) {
+      diasCobrados = diasMes - cre.getDate() + 1;   // el día de alta se cobra
+      prorrateado = true;
+    }
+    const renta = r2(cfg.precioUsuario * usuarios * (diasCobrados / diasMes));
+
+    // Timbres del periodo (los de SW: stamp_usage tiene billing_period = 1.º de mes).
+    const tR = await query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM stamp_usage WHERE company_id = $1 AND billing_period = $2`, [e.id, periodo]);
+    const timbresUsados = Number(tR.rows[0]?.n) || 0;
+    const timbresExtra = Math.max(0, timbresUsados - cfg.timbresIncluidos);
+    const extra = r2(timbresExtra * cfg.timbreExtra);
+    const total = r2(renta + extra);
+
+    await query(
+      `INSERT INTO facturacion_mensual
+         (company_id, periodo, usuarios, dias_cobrados, dias_mes, prorrateado,
+          precio_usuario_mxn, renta_mxn, timbres_usados, timbres_incluidos,
+          timbres_extra, timbre_extra_mxn, extra_mxn, total_mxn, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'PENDIENTE')
+       ON CONFLICT (company_id, periodo) DO UPDATE SET
+         usuarios=EXCLUDED.usuarios, dias_cobrados=EXCLUDED.dias_cobrados, dias_mes=EXCLUDED.dias_mes,
+         prorrateado=EXCLUDED.prorrateado, precio_usuario_mxn=EXCLUDED.precio_usuario_mxn, renta_mxn=EXCLUDED.renta_mxn,
+         timbres_usados=EXCLUDED.timbres_usados, timbres_incluidos=EXCLUDED.timbres_incluidos,
+         timbres_extra=EXCLUDED.timbres_extra, timbre_extra_mxn=EXCLUDED.timbre_extra_mxn,
+         extra_mxn=EXCLUDED.extra_mxn, total_mxn=EXCLUDED.total_mxn
+       WHERE facturacion_mensual.status = 'PENDIENTE'`,
+      [e.id, periodo, usuarios, diasCobrados, diasMes, prorrateado, cfg.precioUsuario, renta,
+       timbresUsados, cfg.timbresIncluidos, timbresExtra, cfg.timbreExtra, extra, total]);
+    creadas++;
+  }
+  logger.info(`[facturacion] lista ${periodo}: ${creadas} empresas por ${userId || 'sistema'}`);
+  return getLista(periodo);
+}
+
+/** Lee la lista de un periodo (con totales). */
+export async function getLista(periodoInput?: string) {
+  const { anio, mes } = primerDia(periodoInput);
+  const periodo = iso(new Date(anio, mes, 1));
+  const r = await query<any>(
+    `SELECT f.id, f.periodo, f.usuarios, f.dias_cobrados, f.dias_mes, f.prorrateado,
+            f.precio_usuario_mxn, f.renta_mxn, f.timbres_usados, f.timbres_incluidos,
+            f.timbres_extra, f.timbre_extra_mxn, f.extra_mxn, f.total_mxn, f.status,
+            TO_CHAR(f.pagado_at,'YYYY-MM-DD') AS pagado_at,
+            c.rfc, c.business_name, c.servicio_suspendido
+       FROM facturacion_mensual f JOIN companies c ON c.id = f.company_id
+      WHERE f.periodo = $1
+      ORDER BY c.business_name`, [periodo]);
+  const filas = r.rows;
+  const suma = (k: string) => filas.reduce((a, x) => a + Number(x[k] || 0), 0);
+  return {
+    periodo,
+    filas,
+    totales: {
+      empresas: filas.length,
+      usuarios: suma('usuarios'),
+      renta: r2(suma('renta_mxn')),
+      extra: r2(suma('extra_mxn')),
+      total: r2(suma('total_mxn')),
+      porCobrar: r2(filas.filter((x: any) => x.status === 'PENDIENTE').reduce((a: number, x: any) => a + Number(x.total_mxn || 0), 0)),
+    },
+  };
+}
+
+/** Marca un cargo como PAGADO (prepago recibido) y reactiva el servicio. */
+export async function marcarPagado(id: string, facturaId?: string) {
+  const r = await query<{ company_id: string }>(
+    `UPDATE facturacion_mensual SET status='PAGADO', pagado_at=NOW(), factura_id=COALESCE($2, factura_id)
+      WHERE id=$1 AND status <> 'PAGADO' RETURNING company_id`, [id, facturaId || null]);
+  if (!r.rows.length) throw new NotFoundError('Cargo no encontrado o ya pagado.');
+  await query(`UPDATE companies SET servicio_suspendido = FALSE, updated_at = NOW() WHERE id = $1`, [r.rows[0].company_id]);
+  return { pagado: true };
+}
+
+/** Suspende el servicio de la empresa por falta de pago (corte del día 5). */
+export async function suspender(id: string) {
+  const r = await query<{ company_id: string; status: string }>(`SELECT company_id, status FROM facturacion_mensual WHERE id = $1`, [id]);
+  if (!r.rows.length) throw new NotFoundError('Cargo no encontrado.');
+  if (r.rows[0].status === 'PAGADO') throw new ConflictError('Ese cargo ya está pagado; no se suspende.');
+  await query(`UPDATE facturacion_mensual SET status='SUSPENDIDO', suspendido_at=NOW() WHERE id=$1`, [id]);
+  await query(`UPDATE companies SET servicio_suspendido = TRUE, updated_at = NOW() WHERE id = $1`, [r.rows[0].company_id]);
+  return { suspendido: true };
+}
+
+/** Levanta la suspensión (vuelve a PENDIENTE). */
+export async function reactivar(id: string) {
+  const r = await query<{ company_id: string }>(
+    `UPDATE facturacion_mensual SET status='PENDIENTE', suspendido_at=NULL WHERE id=$1 AND status='SUSPENDIDO' RETURNING company_id`, [id]);
+  if (!r.rows.length) throw new NotFoundError('Ese cargo no estaba suspendido.');
+  await query(`UPDATE companies SET servicio_suspendido = FALSE, updated_at = NOW() WHERE id = $1`, [r.rows[0].company_id]);
+  return { reactivado: true };
+}

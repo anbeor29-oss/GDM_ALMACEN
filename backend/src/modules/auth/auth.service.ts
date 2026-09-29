@@ -71,6 +71,18 @@ export async function login(email: string, password: string): Promise<AuthRespon
     throw new UnauthorizedError('User account is inactive');
   }
 
+  // Servicio suspendido por falta de pago: bloquea el acceso a la empresa
+  // (el SUPER_ADMIN de la plataforma nunca se bloquea). La columna trae
+  // DEFAULT FALSE, así que ninguna empresa al corriente se ve afectada.
+  if (user.company_id && (user.role as string) !== 'SUPER_ADMIN') {
+    const cr = await query<{ servicio_suspendido: boolean }>(
+      'SELECT servicio_suspendido FROM companies WHERE id = $1', [user.company_id]);
+    if (cr.rows[0]?.servicio_suspendido) {
+      logger.warn(`Login bloqueado por servicio suspendido: ${email}`);
+      throw new UnauthorizedError('El servicio de tu empresa está suspendido por falta de pago. Contacta a tu proveedor para reactivarlo.');
+    }
+  }
+
   // Reset failed login attempts and update last login
   await query(
     'UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_login = NOW(), updated_at = NOW() WHERE id = $1',

@@ -508,6 +508,7 @@ export function Layout() {
                 </p>
               </div>
               <NavItem to="/admin/companies" icon={navIcon('🏢')} accent="sky"     label="Empresas"              open={sidebarOpen} />
+              <NavItem to="/admin/facturacion" icon={navIcon('💰')} accent="emerald" label="Facturación mensual"  open={sidebarOpen} />
               <NavItem to="/admin/users"     icon={navIcon('🛡️')} accent="emerald" label="Usuarios"              open={sidebarOpen} />
               <NavItem to="/admin/accesos"  icon={navIcon('🔗')} accent="sky"     label="Accesos por empresa"   open={sidebarOpen} />
               <NavItem to="/admin/packages"  icon={navIcon('📦')} accent="violet"  label="Paquetes de uso"       open={sidebarOpen} />

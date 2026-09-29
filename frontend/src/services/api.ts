@@ -2991,6 +2991,29 @@ class APIClient {
     const r = await this.client.get('/admin/companies', { params });
     return r.data;
   }
+
+  /* ── Facturación por usuario (SUPER_ADMIN) ── */
+  async getFacturacionConfig() {
+    return (await this.client.get('/admin/facturacion/config')).data;
+  }
+  async setFacturacionConfig(d: { precioUsuario?: number; timbresIncluidos?: number; timbreExtra?: number }) {
+    return (await this.client.put('/admin/facturacion/config', d)).data;
+  }
+  async generarFacturacion(periodo?: string) {
+    return (await this.client.post('/admin/facturacion/generar', { periodo })).data;
+  }
+  async getFacturacionLista(periodo?: string) {
+    return (await this.client.get('/admin/facturacion/lista', { params: { periodo } })).data;
+  }
+  async pagarFacturacion(id: string) {
+    return (await this.client.post(`/admin/facturacion/${id}/pagar`)).data;
+  }
+  async suspenderFacturacion(id: string) {
+    return (await this.client.post(`/admin/facturacion/${id}/suspender`)).data;
+  }
+  async reactivarFacturacion(id: string) {
+    return (await this.client.post(`/admin/facturacion/${id}/reactivar`)).data;
+  }
   async adminCreateCompany(data: { rfc: string; businessName: string; fiscalRegime: string;
                                    postalCode?: string; billingPlan?: string; capTimbres?: number;
                                    monthlyFee?: number; extraStampFee?: number;
