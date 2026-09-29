@@ -153,4 +153,8 @@ Piezas creadas (`backend/src/modules/compliance/` salvo donde se indica):
 
 Ese origen es la **consulta pública opt-in del SAT por RFC** (o el servicio que la exponga), y **validar la URL real es el paso que requiere inspección del portal / tu confirmación** — no se cablea a mano una URL del SAT. Sin origen configurado, el adaptador responde `REQUIRES_USER_ACTION` (no inventa). Se prueba de punta a punta apuntándolo a un endpoint propio que devuelva el JSON de arriba.
 
-**Siguiente:** validar/definir el origen SAT real; luego Fase 3 (IMSS) y el panel (Fase 5).
+**Origen SAT elegido (2026-09-29): herramienta LOCAL con e.firma** (como la del IMSS). Creada en `tools/sat-opinion/` (Playwright): accede al SAT **con e.firma, no con CIEC**, para evitar el CAPTCHA; baja el PDF de la Opinión 32-D (`npm run sat`) o de la CSF (`npm run csf`); lee el **sentido del propio documento** (pdf-parse) y **lo registra en NEXO** (`POST /accounting/opinion-cumplimiento`, opcional con `NEXO_TOKEN`). Incluye `inspeccionar.mjs` + `--inspect` para calibrar selectores y **detección de CAPTCHA** (si aparece, se detiene: no se evade). Corre en la PowerShell del usuario, NO en Render. **Pendiente:** el usuario calibra los selectores del portal real con `npm run inspect:sat32d` y me pasa el JSON para fijar `selectors` + `tramites.SAT.docUrl`.
+
+Nota: el `SatProvider` server-to-server (Fase 2, camino API por RFC) sigue disponible para cuando exista un origen HTTP directo; hoy el camino operativo del SAT es esta herramienta local con e.firma.
+
+**Siguiente:** calibrar selectores del SAT (usuario); luego Fase 3 (IMSS) y el panel (Fase 5).

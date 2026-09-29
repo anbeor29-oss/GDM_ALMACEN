@@ -1,0 +1,19 @@
+{
+  "name": "sat-opinion-32d",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Descarga automática LOCAL de la Opinión de Cumplimiento 32-D del SAT y de la CSF (acceso con e.firma, sin CIEC/CAPTCHA). Corre en tu máquina; la e.firma nunca sale de tu equipo.",
+  "scripts": {
+    "sat": "node descargar-opinion.mjs --tipo SAT",
+    "csf": "node descargar-opinion.mjs --tipo CSF",
+    "inspect:sat": "node descargar-opinion.mjs --tipo SAT --inspect",
+    "inspect:sat32d": "node inspeccionar.mjs --portal sat32d",
+    "inspect:csf": "node inspeccionar.mjs --portal csf",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "pdf-parse": "^1.1.4",
+    "playwright": "^1.48.0"
+  }
+}
