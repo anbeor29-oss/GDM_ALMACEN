@@ -16,14 +16,14 @@
     "logout": "https://buzon.imss.gob.mx/buzonimss/logout"
   },
 
-  "_selectores": "Déjalos vacíos para usar los respaldos automáticos. Si el portal cambia, corre 'npm run inspect' y pega aquí el selector exacto (id/name/placeholder).",
+  "_selectores": "Calibrados el 2026-09-29 contra el iframe FIEL real. Si el portal cambia, corre 'npm run inspect' y pega aquí el selector exacto (id/name/placeholder).",
   "selectors": {
     "fielFrame": "#formFirmaDigital",
-    "rfc": "",
-    "cer": "",
-    "key": "",
-    "password": "",
-    "validar": "",
+    "rfc": "#inputRFC",
+    "cer": "#inputCertificado",
+    "key": "#inputKey",
+    "password": "#inputPassword",
+    "validar": "#botonValidarCert",
     "descargar": ""
   },
   "cerIndex": 0,
