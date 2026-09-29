@@ -1,0 +1,38 @@
+{
+  "_comentario": "Copia este archivo a config.json y edítalo. La CONTRASEÑA de la e.firma NO va aquí: se pone en la variable de entorno IMSS_FIEL_PASSWORD antes de correr.",
+
+  "rfc": "GHC1707275Y0",
+  "cerPath": "C:\\Users\\EQ-7\\Downloads\\00001000000710623395.cer",
+  "keyPath": "C:\\Users\\EQ-7\\Downloads\\Claveprivada_FIEL_PRO...8F6_20241009_114044.key",
+  "passwordEnv": "IMSS_FIEL_PASSWORD",
+
+  "downloadDir": "C:\\Users\\EQ-7\\Downloads\\Opiniones_IMSS",
+  "headless": false,
+  "timeoutMs": 45000,
+
+  "urls": {
+    "login": "https://buzon.imss.gob.mx/buzonimss/login",
+    "opinion32d": "https://buzon.imss.gob.mx/buzonimss/opinionCumplimiento/consultaMiOpinion",
+    "logout": "https://buzon.imss.gob.mx/buzonimss/logout"
+  },
+
+  "_selectores": "Déjalos vacíos para usar los respaldos automáticos. Si el portal cambia, corre 'npm run inspect' y pega aquí el selector exacto (id/name/placeholder).",
+  "selectors": {
+    "fielFrame": "#formFirmaDigital",
+    "rfc": "",
+    "cer": "",
+    "key": "",
+    "password": "",
+    "validar": "",
+    "descargar": ""
+  },
+  "cerIndex": 0,
+  "keyIndex": 1,
+
+  "_nexo": "Opcional: registrar la opinión en NEXO automáticamente. Requiere un token (variable NEXO_TOKEN). Déjalo en false hasta tenerlo.",
+  "nexo": {
+    "enabled": false,
+    "baseUrl": "https://gdm-almacen-backend.onrender.com",
+    "tokenEnv": "NEXO_TOKEN"
+  }
+}

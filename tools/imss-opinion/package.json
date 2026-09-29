@@ -1,0 +1,15 @@
+{
+  "name": "imss-opinion-32d",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Descarga automática LOCAL de la Opinión de Cumplimiento IMSS 32-D (Buzón IMSS con e.firma). Corre en tu máquina; la e.firma nunca sale de tu equipo.",
+  "scripts": {
+    "start": "node descargar-opinion.mjs",
+    "inspect": "node descargar-opinion.mjs --inspect",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}
