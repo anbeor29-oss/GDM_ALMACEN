@@ -6410,3 +6410,26 @@ paquete), que el navegador cachea; el CDN queda de respaldo (try local → catch
 320→224 (½ de cómputo/cuadro) y la carga se reintenta si falla. Verificado que Render los sirve same-origin
 (manifest JSON 200, .bin octet-stream 200). **Pendiente: prueba en celular real (la hace el usuario).** Si
 aún pesa: cachear en service worker y/o checar a demanda (sin cámara continua). TSC=0, build OK, 4 commits a dev.
+
+---
+
+## 2026-09-28 (checador / IMSS / PWA) — Consentimiento al enrolar; asistente IMSS 32-D; PWA más liviano
+
+Tres cambios de front, 3 commits, a dev (`main`).
+
+**Consentimiento biométrico que el trabajador acepta AL enrolarse (commit `5f9f0ea`).** Antes lo marcaba el
+admin. Ahora en `CheckadorEnrolar.tsx`, al elegir un empleado sin consentimiento, se muestra el texto
+(`ConsentimientoBiometrico.tsx`, reutilizable) + check «leyó y acepta» → `setCheckadorConsentimiento` (habilita
+la captura) + «Imprimir para firma» (`window.print` con campos para firma autógrafa por duplicado). Alcance
+acotado: datos biométricos ÚNICA Y EXCLUSIVAMENTE para el reloj checador NEXO; **Responsable = la Empresa**;
+GDM NEXO/GDM High/GRUPO HCGM = solo PROVEEDOR (encargado), NO responsable de los rostros del usuario final.
+
+**Asistente guiado de la Opinión IMSS 32-D (commit `64d0e8c`).** «Proceso interno-externo»: el botón IMSS abre
+`ModalAsistenteImss` que abre el Buzón IMSS oficial y lista los pasos exactos (e.firma → Buzón de la empresa →
+8.º menú → 3.ª opción 32-D → descargar → registrar). La e.firma se captura en el sitio del IMSS, no en NEXO
+(no se automatiza el login a un portal de gobierno). El motor 100% automático (Playwright) sigue pendiente.
+
+**PWA del checador más liviano (commit `4e8e197`).** Service worker v2: cache-first para `/models` y `/vendor`
+(los ~7 MB de face-api se bajan una vez y se cachean). `App.tsx`: login/landing/legales a `React.lazy` (index
+405→384 KB; PublicHome/Login/LegalDoc salen a chunks aparte). Verificado: build OK, landing renderiza con el
+PublicHome perezoso bajo Suspense. TSC=0.
