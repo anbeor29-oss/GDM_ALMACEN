@@ -6476,3 +6476,23 @@ y restaurar. Resultado verificado: **19 páginas reales, 0 en blanco**, pie «P�
 **Documentación (Tarea 2).** Bitácora y memorias al día; se especificó el **algoritmo de cobro por usuario**
 (pendiente para después): cobro por usuario/rol, 1 super admin, checador gratis, 3000 timbres/mes con corte el
 día 30, excedente cobrado.
+
+---
+
+## 2026-09-29 (comercial / super admin) — Precio por usuario, plan comercial y Facturación mensual
+
+**Precio y estrategia.** Con comparación de mercado (WebSearch: Bind $570-1700, Alegra $138-1999, CONTPAQi
+$390-590/sistema; timbres mayoreo ~$0.30) se fijó **$500/usuario/mes PLANO** (igual sin importar el tamaño),
+**checador gratis**, **2,000 timbres incluidos** (corte día 30) y **extra $2.00+IVA**. Aumentos anuales por
+**INPC** (que NEXO ya jala de INEGI). Estrategia de intro: migración gratis desde CONTPAQi/Aspel, precio
+congelado 12 meses, canal de contadores. Todo en **`docs/PLAN_COMERCIAL_NEXO.pdf`** (3 pp, commit `1edaa35`).
+
+**Facturación mensual en el super admin (commit `f3fc201`, dev).** Menú «Facturación mensual»
+(`/admin/facturacion`): genera la **lista de cobro del periodo** (día 30) — por empresa, $500 × usuarios
+facturables (sin checador) + excedente de timbres (de `stamp_usage`, los de SW) — **prorrateando** a quien
+entró después del día 1. **Prepago** con acciones marcar pagado / suspender / reactivar. **Suspensión REAL:**
+`companies.servicio_suspendido` + el **login bloquea** a la empresa suspendida (auth.service; SUPER_ADMIN nunca;
+DEFAULT FALSE no afecta a los que pagan); al pagar se reactiva. Migración `2026-09-29_facturacion_usuarios`
+(`facturacion_config` editable — sube por INPC —, `facturacion_mensual` idempotente por empresa+periodo). TSC
+back=0, front build OK. **Pendiente (cron):** generar la lista sola el día 30, emitir CFDI el día 1,
+auto-suspender el día 5.
