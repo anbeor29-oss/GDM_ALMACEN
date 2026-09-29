@@ -832,10 +832,17 @@ router.put('/opinion-cumplimiento/config/:tipo', requireCapability('contabilidad
   asyncHandler(async (req: Request, res: Response) => {
     res.json({ success: true, data: await opinionCumpl.setConfig(companyId(req), String(req.params.tipo).toUpperCase(), req.body) });
   }));
+router.get('/opinion-cumplimiento/bitacora', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await opinionCumpl.bitacora(companyId(req), Number(req.query.limite) || 50) });
+}));
+router.post('/opinion-cumplimiento/todas/descargar', requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await opinionCumpl.descargarTodas(companyId(req), req.user?.userId) });
+  }));
 router.post('/opinion-cumplimiento/:tipo/descargar', requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
-    await opinionCumpl.descargarAutomatico(companyId(req), String(req.params.tipo).toUpperCase());
-    res.json({ success: true });
+    const data = await opinionCumpl.descargarAutomatico(companyId(req), String(req.params.tipo).toUpperCase(), req.user?.userId);
+    res.json({ success: true, data });
   }));
 router.get('/opinion-cumplimiento/:id/pdf', asyncHandler(async (req: Request, res: Response) => {
   const dataUrl = await opinionCumpl.pdfDe(companyId(req), req.params.id);

@@ -8,10 +8,14 @@
 import { query } from '../../config/database';
 import { NotFoundError, ValidationError } from '../../middleware/errorHandler';
 import { cifrar, bovedaLista } from '../sat-descarga/boveda';
+import * as motor from '../compliance/compliance.service';
+import { proximaFecha } from '../compliance/programacion';
+import type { OrganismoTipo } from '../compliance/types';
 
 export const TIPOS = ['SAT', 'IMSS', 'INFONAVIT', 'CSF'] as const;
 export const SENTIDOS = ['POSITIVA', 'NEGATIVA', 'SIN_ADEUDOS', 'SUSPENDIDA', 'VIGENTE', 'OTRO'] as const;
 export const METODOS = ['PORTAL', 'API', 'EFIRMA'] as const;
+export const MODOS = ['MANUAL', 'AUTOMATICO', 'AMBOS'] as const;
 const RX_PDF = /^data:application\/pdf;base64,[A-Za-z0-9+/=\s]+$/;
 
 /** Resumen: la opinión vigente (más reciente) de cada tipo. */
@@ -80,11 +84,19 @@ export async function pdfDe(companyId: string, id: string): Promise<string> {
 export async function getConfig(companyId: string, tipo: string) {
   const r = await query<any>(
     `SELECT metodo, base_url, usuario, extra, activo,
+            modo, dia_mes, frecuencia_dias, ultimo_estado,
+            TO_CHAR(ultima_ejecucion,'YYYY-MM-DD HH24:MI')  AS ultima_ejecucion,
+            TO_CHAR(proxima_ejecucion,'YYYY-MM-DD HH24:MI') AS proxima_ejecucion,
             (credencial IS NOT NULL) AS tiene_credencial,
             (token IS NOT NULL)      AS tiene_token
        FROM cumplimiento_config WHERE company_id=$1 AND tipo=$2`,
     [companyId, tipo]);
-  if (!r.rows.length) return { tipo, metodo: 'API', base_url: '', usuario: '', extra: null, activo: false, tiene_credencial: false, tiene_token: false };
+  if (!r.rows.length) return {
+    tipo, metodo: 'API', base_url: '', usuario: '', extra: null, activo: false,
+    modo: 'MANUAL', dia_mes: null, frecuencia_dias: null,
+    ultimo_estado: null, ultima_ejecucion: null, proxima_ejecucion: null,
+    tiene_credencial: false, tiene_token: false,
+  };
   return { tipo, ...r.rows[0] };
 }
 
@@ -103,9 +115,17 @@ export async function setConfig(companyId: string, tipo: string, d: any) {
   if (!TIPOS.includes(tipo as any)) throw new ValidationError('Tipo inválido.');
   const metodo = String(d?.metodo || 'API').toUpperCase();
   if (!METODOS.includes(metodo as any)) throw new ValidationError('Método inválido (PORTAL, API o EFIRMA).');
+  const modo = String(d?.modo || 'MANUAL').toUpperCase();
+  if (!MODOS.includes(modo as any)) throw new ValidationError('Modo inválido (MANUAL, AUTOMATICO o AMBOS).');
   if ((d?.credencial || d?.token) && !bovedaLista()) {
     throw new ValidationError('Falta la variable SAT_VAULT_KEY en el servidor para cifrar las credenciales.');
   }
+  // Programación: día del mes (1–28) o cada N días. '' / null = sin ese criterio.
+  const diaMes = d?.dia_mes != null && d.dia_mes !== ''
+    ? (Math.max(1, Math.min(28, parseInt(String(d.dia_mes), 10) || 0)) || null) : null;
+  const frecDias = d?.frecuencia_dias != null && d.frecuencia_dias !== ''
+    ? (Math.max(1, parseInt(String(d.frecuencia_dias), 10) || 0) || null) : null;
+
   const actual = await query<any>(`SELECT credencial, token FROM cumplimiento_config WHERE company_id=$1 AND tipo=$2`, [companyId, tipo]);
   const prev = actual.rows[0] || {};
   // undefined = conservar; '' = borrar; valor = cifrar.
@@ -114,30 +134,45 @@ export async function setConfig(companyId: string, tipo: string, d: any) {
   const credencial = secreto(d?.credencial, prev.credencial);
   const token = secreto(d?.token, prev.token);
 
+  const proxima = proximaFecha({ modo, dia_mes: diaMes, frecuencia_dias: frecDias }, tipo as OrganismoTipo);
+
   await query(
-    `INSERT INTO cumplimiento_config (company_id, tipo, metodo, base_url, usuario, credencial, token, extra, activo, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,NOW())
+    `INSERT INTO cumplimiento_config
+       (company_id, tipo, metodo, base_url, usuario, credencial, token, extra, activo,
+        modo, dia_mes, frecuencia_dias, proxima_ejecucion, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,NOW())
      ON CONFLICT (company_id, tipo) DO UPDATE SET
        metodo=EXCLUDED.metodo, base_url=EXCLUDED.base_url, usuario=EXCLUDED.usuario,
        credencial=EXCLUDED.credencial, token=EXCLUDED.token, extra=EXCLUDED.extra,
-       activo=EXCLUDED.activo, updated_at=NOW()`,
+       activo=EXCLUDED.activo, modo=EXCLUDED.modo, dia_mes=EXCLUDED.dia_mes,
+       frecuencia_dias=EXCLUDED.frecuencia_dias, proxima_ejecucion=EXCLUDED.proxima_ejecucion,
+       updated_at=NOW()`,
     [companyId, tipo, metodo, d?.base_url || null, d?.usuario || null, credencial, token,
-     d?.extra ? JSON.stringify(d.extra) : null, d?.activo === true || d?.activo === 'true']);
+     d?.extra ? JSON.stringify(d.extra) : null, d?.activo === true || d?.activo === 'true',
+     modo, diaMes, frecDias, proxima]);
   return getConfig(companyId, tipo);
 }
 
 /**
- * DESCARGA AUTOMÁTICA — gated. El motor que navega el portal / llama al proveedor y
- * guarda el PDF firmado NO está activado: requiere (1) elegir proveedor/método por
- * dependencia y su inspección real del portal (SAT con e.firma, IMSS Escritorio
- * Virtual, INFONAVIT), y (2) respetar CAPTCHA/MFA (nunca evadirlos: pausa a modo
- * asistido). Por ahora valida que exista configuración y explica el siguiente paso.
+ * DESCARGA AUTOMÁTICA — delega al MOTOR de cumplimiento (modules/compliance).
+ *
+ * El motor abre una ejecución en la bitácora, descifra las credenciales sólo en
+ * memoria y llama al adaptador del organismo. Con COMPLIANCE_MOCK=true se prueba
+ * el flujo completo; sin el adaptador real conectado, el motor responde
+ * REQUIRES_USER_ACTION (no inventa la opinión) y deja registrado el intento.
+ * CAPTCHA/MFA nunca se evaden: el adaptador los reporta como REQUIRES_USER_ACTION.
  */
-export async function descargarAutomatico(_companyId: string, tipo: string): Promise<never> {
+export async function descargarAutomatico(companyId: string, tipo: string, userId?: string) {
   if (!TIPOS.includes(tipo as any)) throw new ValidationError('Tipo inválido.');
-  throw new ValidationError(
-    `La descarga automática de ${tipo} está pendiente de activar el motor. Ya puedes capturar su ` +
-    `configuración (endpoint, usuario y contraseña/token, que se guardan cifrados). Para conectarla ` +
-    `hace falta definir el proveedor/método (SAT: e.firma o API tipo SatGo; IMSS/INFONAVIT: su portal) ` +
-    `e inspeccionar el flujo real, sin evadir CAPTCHA/MFA. Mientras, registra la opinión a mano.`);
+  return motor.ejecutar(companyId, tipo as OrganismoTipo, 'MANUAL', userId);
+}
+
+/** Consulta los cuatro tipos de una empresa en serie (botón "Consultar todo"). */
+export async function descargarTodas(companyId: string, userId?: string) {
+  return motor.ejecutarTodos(companyId, undefined, 'MANUAL', userId);
+}
+
+/** Bitácora reciente de ejecuciones del motor (sin secretos). */
+export async function bitacora(companyId: string, limite?: number) {
+  return motor.bitacora(companyId, limite ?? 50);
 }

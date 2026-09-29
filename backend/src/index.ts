@@ -115,6 +115,16 @@ async function bootstrap() {
       logger.warn(`No se pudo registrar inpc-cron: ${e.message}`);
     }
 
+    // Cumplimiento (Opinión 32-D/CSF/IMSS/INFONAVIT): refresca las opiniones de
+    // las empresas con config activa cuando vence su próxima ejecución
+    // (solo si ENABLE_COMPLIANCE_CRON=true — usa las credenciales guardadas)
+    try {
+      const { registerComplianceCron } = await import('./jobs/compliance-cron');
+      registerComplianceCron();
+    } catch (e: any) {
+      logger.warn(`No se pudo registrar compliance-cron: ${e.message}`);
+    }
+
     // Graceful shutdown
     const shutdown = async (signal: string) => {
       logger.info(`Received ${signal}, shutting down gracefully...`);
