@@ -8,8 +8,10 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Camera, Check, Loader2, ShieldAlert, UserPlus, RefreshCw, Save, Settings } from 'lucide-react';
+import { Camera, Check, Loader2, ShieldCheck, UserPlus, RefreshCw, Save, Settings, Printer } from 'lucide-react';
 import { cargarFaceApi, descriptorDeVideo } from '@/utils/faceApi';
+import { useAuthStore } from '@/store/auth';
+import { ConsentimientoTexto, htmlConsentimientoImprimir } from './ConsentimientoBiometrico';
 import api from '@/services/api';
 
 type Empleado = { id: string; nombre: string; num_empleado?: string; plantillas: number; consentimiento: boolean };
@@ -25,8 +27,41 @@ export function CheckadorEnrolarPage() {
   const [capturando, setCapturando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [msg, setMsg] = useState('');
+  const { user } = useAuthStore();
+  const [empresa, setEmpresa] = useState('');
+  const [acepta, setAcepta] = useState(false);      // el trabajador marcó que acepta
+  const [regConsent, setRegConsent] = useState(false);
 
   const emp = useMemo(() => empleados.find((e) => e.id === empId), [empleados, empId]);
+
+  // Nombre de la empresa (Responsable del tratamiento) para el consentimiento.
+  useEffect(() => {
+    api.misEmpresas().then((r: any) => {
+      const e = (r?.data || []).find((x: any) => x.id === user?.companyId);
+      setEmpresa(e?.business_name || '');
+    }).catch(() => {});
+  }, [user?.companyId]);
+
+  // El trabajador acepta el consentimiento AL enrolarse: se registra y se habilita la captura.
+  const aceptarConsentimiento = async () => {
+    if (!empId || !acepta) return;
+    setRegConsent(true); setMsg('');
+    try {
+      await api.setCheckadorConsentimiento(empId, { aceptado: true });
+      await cargarEmpleados();
+      setAcepta(false);
+    } catch (e: any) {
+      setMsg(e?.response?.data?.message || 'No se pudo registrar el consentimiento.');
+    } finally { setRegConsent(false); }
+  };
+
+  // Versión IMPRESA (para firma autógrafa por duplicado).
+  const imprimirConsentimiento = () => {
+    const html = htmlConsentimientoImprimir({ empresa, empleado: emp?.nombre });
+    const w = window.open('', '_blank', 'width=820,height=920');
+    if (w) { w.document.write(html); w.document.close(); }
+    else setMsg('Permite las ventanas emergentes para imprimir el consentimiento.');
+  };
 
   const cargarEmpleados = async () => {
     try { const r: any = await api.checadorEmpleadosEnrolar(); setEmpleados(r?.data || []); }
@@ -139,13 +174,38 @@ export function CheckadorEnrolarPage() {
           </select>
 
           {emp && !emp.consentimiento && (
-            <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-              <ShieldAlert size={18} className="mt-0.5 shrink-0" />
-              <span>Este empleado aún no firma el consentimiento biométrico (LFPDPPP). Regístralo en Nómina → Checador antes de enrolar su rostro.</span>
+            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                <ShieldCheck size={18} className="shrink-0" /> Consentimiento biométrico (LFPDPPP)
+              </div>
+              <div className="max-h-56 overflow-y-auto rounded-md border border-amber-100 bg-white p-3">
+                <ConsentimientoTexto empresa={empresa} />
+              </div>
+              <label className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={acepta} onChange={(e) => setAcepta(e.target.checked)} className="mt-0.5" />
+                <span>El trabajador <b>leyó y acepta</b> el consentimiento para el uso de su rostro, única y exclusivamente para el reloj checador NEXO.</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={aceptarConsentimiento} disabled={!acepta || regConsent}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 text-white px-3 py-2 text-sm font-medium disabled:opacity-50">
+                  {regConsent ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />} Aceptar y habilitar captura
+                </button>
+                <button onClick={imprimirConsentimiento} type="button"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  <Printer size={15} /> Imprimir para firma
+                </button>
+              </div>
+              <p className="text-[11px] text-amber-800">Sin aceptar el consentimiento no se puede capturar su rostro. Es voluntario: si no acepta, usa un método alterno de asistencia.</p>
             </div>
           )}
-          {emp && emp.consentimiento && emp.plantillas > 0 && (
-            <p className="text-xs text-gray-500">Ya tiene {emp.plantillas} plantillas; guardar de nuevo las reemplaza.</p>
+          {emp && emp.consentimiento && (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1 text-emerald-700"><ShieldCheck size={14} /> Consentimiento otorgado.</span>
+              {emp.plantillas > 0 && <span className="text-gray-500">Ya tiene {emp.plantillas} plantillas; guardar de nuevo las reemplaza.</span>}
+              <button onClick={imprimirConsentimiento} type="button" className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-700 underline">
+                <Printer size={13} /> Imprimir
+              </button>
+            </div>
           )}
 
           <button onClick={guardar} disabled={!empId || tomas.length < TOMAS || guardando || !emp?.consentimiento}
