@@ -67,6 +67,19 @@ sesión NEXO. Al terminar la descarga, el script hace `POST /api/v1/accounting/o
 y la registra como *IMSS · Positiva* del día, con su PDF. (Mientras no tengas token, déjalo en
 `false` y sube el PDF a mano con el botón «Registrar» de NEXO.)
 
+## Otros portales (SAT 32-D, CSF) — ojo con el CAPTCHA
+El **login del SAT por CIEC** (RFC + contraseña) trae **CAPTCHA** y **clave dinámica (2FA)**:
+un CAPTCHA existe para frenar robots y **no se resuelve ni se evade** — ese camino **no se
+automatiza**. El SAT también ofrece **e.firma**; si ese camino NO tiene CAPTCHA, se puede automatizar
+igual que el IMSS. Para saberlo, usa el **inspector** (no usa credenciales, solo mira la página):
+```bash
+node inspeccionar.mjs "https://url-del-login-del-sat"
+node inspeccionar.mjs "https://url-del-login" --click "#buttonFiel"   # para pasar a e.firma y reinspeccionar
+```
+Te dice si hay CAPTCHA y anota los campos. Pásame ese JSON y armo el trámite del SAT. Si el camino de
+e.firma del SAT también trae anti-bot, se queda como **asistente guiado** (abrir portal + pasos +
+registrar), no como automatización.
+
 ## Seguridad
 - La contraseña se lee de una **variable de entorno**, nunca del código ni del `config.json`.
 - `config.json`, `*.cer`, `*.key`, `logs/` y `descargas/` están en `.gitignore`: **no se suben al repo.**
