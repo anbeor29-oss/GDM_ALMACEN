@@ -6433,3 +6433,22 @@ GDM NEXO/GDM High/GRUPO HCGM = solo PROVEEDOR (encargado), NO responsable de los
 (los ~7 MB de face-api se bajan una vez y se cachean). `App.tsx`: login/landing/legales a `React.lazy` (index
 405→384 KB; PublicHome/Login/LegalDoc salen a chunks aparte). Verificado: build OK, landing renderiza con el
 PublicHome perezoso bajo Suspense. TSC=0.
+
+---
+
+## 2026-09-28 (IMSS 32-D) — Automatización REAL local (Playwright) + asistente afinado
+
+**Asistente IMSS afinado (commit `9d5f083`).** Con las capturas reales del usuario: botón «Ir directo a la 32-D»
+(URL `consultaMiOpinion`), aclara que el menú es el último ícono → 3.ª opción, el ícono ↓, y que el PDF sale
+como `MiOpinion_[RFC].pdf`. Nota honesta: una web no puede tomar sola el archivo de Descargas (seguridad del
+navegador); la toma automática la haría una app nativa.
+
+**Automatización REAL — herramienta LOCAL (commit `3b41a25`).** El usuario pidió programar la automatización de
+verdad y LOCAL («nadie está seguro en la nube»). Se construyó `tools/imss-opinion/` (Node + Playwright), que
+corre EN SU MÁQUINA — la e.firma nunca sale del equipo. Entra al Buzón IMSS con la e.firma (RFC+.cer+.key+
+contraseña en el iframe `#formFirmaDigital`, confirmado inspeccionando el DOM del login), abre la 32-D por URL
+directa, descarga el PDF y cierra sesión; opción de registrarlo en NEXO. TODO configurable (URLs/selectores/
+tiempos) con respaldos + modo `--inspect` para calibrar sin credenciales + capturas de error. Contraseña por
+env, secretos en .gitignore. Vive fuera del deploy (no hay workspace raíz). Falta que el usuario corra
+`npm run inspect` y me pase el volcado del iframe FIEL para fijar los selectores exactos. Claude no corre el
+login (no teclea la e.firma en el portal de gobierno). `node --check` OK.
