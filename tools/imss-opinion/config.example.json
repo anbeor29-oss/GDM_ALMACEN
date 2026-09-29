@@ -34,5 +34,17 @@
     "enabled": false,
     "baseUrl": "https://gdm-almacen-backend.onrender.com",
     "tokenEnv": "NEXO_TOKEN"
+  },
+
+  "_portales": "URLs de login para inspeccionar (sin pegar la URL en la terminal): node inspeccionar.mjs --portal sat32d",
+  "portales": {
+    "sat32d": {
+      "url": "https://loginda.siat.sat.gob.mx/nidp/app/login?id=ciec&sid=2&option=credential",
+      "click": "#buttonFiel"
+    },
+    "csf": {
+      "url": "https://login.siat.sat.gob.mx/nidp/idff/sso?id=mat-ptsc-totp_Aviso&sid=0&option=credential&sid=0&target=https%3A%2F%2Fwwwmat.sat.gob.mx%2Fapp%2Fseg%2Fcont%2FaccesoC%3Fparametro%3D1%26url%3D%2Foperacion%2F43824%2Freimprime-tus-acuses-del-rfc%26target%3Dprincipal%26tipoLogeo%3Dc%26hostServer%3Dhttps%3A%2F%2Fwwwmat.sat.gob.mx",
+      "click": null
+    }
   }
 }

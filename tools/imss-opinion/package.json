@@ -7,6 +7,8 @@
   "scripts": {
     "start": "node descargar-opinion.mjs",
     "inspect": "node descargar-opinion.mjs --inspect",
+    "inspect:sat32d": "node inspeccionar.mjs --portal sat32d",
+    "inspect:csf": "node inspeccionar.mjs --portal csf",
     "postinstall": "playwright install chromium"
   },
   "dependencies": {

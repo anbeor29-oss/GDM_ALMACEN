@@ -7,6 +7,7 @@
  * (no se resuelven ni se evaden — es la regla). Guarda un JSON + captura en ./logs.
  *
  * Uso:
+ *   node inspeccionar.mjs --portal sat32d      (lee la URL de config.json → portales; EVITA pegar la URL)
  *   node inspeccionar.mjs "https://url-del-login"
  *   node inspeccionar.mjs "https://url-del-login" --frame "#idDelIframe"
  *   node inspeccionar.mjs "https://url-del-login" --click "#botonEfirma"   (pulsa algo y reinspecciona)
@@ -23,13 +24,24 @@ fs.mkdirSync(logDir, { recursive: true });
 const ts = () => new Date().toISOString().replace(/[:.]/g, '-');
 
 const args = process.argv.slice(2);
-const url = args.find((a) => /^https?:\/\//.test(a));
-const frameSel = flag('--frame');
-const clickSel = flag('--click');
 function flag(name) { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; }
+let url = args.find((a) => /^https?:\/\//.test(a));
+let frameSel = flag('--frame');
+let clickSel = flag('--click');
+
+// --portal <nombre>: toma la URL (y click/frame) de config.json → portales,
+// para no pegar URLs enormes con & en la terminal (PowerShell las rompe).
+const portalName = flag('--portal');
+if (portalName) {
+  const cfgPath = path.join(AQUI, 'config.json');
+  const cfg = fs.existsSync(cfgPath) ? JSON.parse(fs.readFileSync(cfgPath, 'utf8')) : {};
+  const p = (cfg.portales || {})[portalName];
+  if (!p || !p.url) { console.error(`No hay portal "${portalName}" con url en config.json → portales.`); process.exit(1); }
+  url = p.url; clickSel = clickSel || p.click || null; frameSel = frameSel || p.frame || null;
+}
 
 if (!url) {
-  console.error('Uso: node inspeccionar.mjs "https://url-del-login" [--frame "#iframe"] [--click "#boton"]');
+  console.error('Uso: node inspeccionar.mjs --portal <nombre>  |  node inspeccionar.mjs "https://url" [--frame "#iframe"] [--click "#boton"]');
   process.exit(1);
 }
 
