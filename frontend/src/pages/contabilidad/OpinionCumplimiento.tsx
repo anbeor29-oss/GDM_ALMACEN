@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, Plus, Trash2, FileText, X, Save, AlertTriangle, Settings, DownloadCloud } from 'lucide-react';
+import { ShieldCheck, Plus, Trash2, FileText, X, Save, AlertTriangle, Settings, DownloadCloud, ExternalLink, Download } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha, aTextoMx } from '@/components/CampoFecha';
 import { claseOpcion } from '@/utils/coloresOpciones';
@@ -44,11 +44,15 @@ export function OpinionCumplimientoPage() {
   const histQ = useQuery({ queryKey: ['opinion-hist', tab], queryFn: () => api.getOpinionHistorial(tab) });
   const historial: any[] = histQ.data?.data || [];
   const [cfgModal, setCfgModal] = useState(false);
+  const [asistenteImss, setAsistenteImss] = useState(false);
   const configQ = useQuery({ queryKey: ['cumpl-config'], queryFn: () => api.getConfigCumplimiento() });
   const cfgActual: any = configQ.data?.data?.configs?.[tab];
 
   const descargar = async () => {
     setMsg('');
+    // IMSS: proceso interno-externo. En vez del motor (gated), abre el ASISTENTE
+    // guiado del Buzón IMSS (login con e.firma → 32-D → descargar → registrar aquí).
+    if (tab === 'IMSS') { setAsistenteImss(true); return; }
     try { const r: any = await api.descargarCumplimiento(tab); setMsg(r?.message || 'Descarga iniciada.'); qc.invalidateQueries({ queryKey: ['opinion-hist', tab] }); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'La descarga automática aún no está activa.'); }
   };
@@ -106,9 +110,11 @@ export function OpinionCumplimientoPage() {
         <p className="text-sm text-gray-600 flex-1 min-w-[14rem]">{tipoActual[2]}</p>
         <div className="flex items-center gap-1.5">
           <button onClick={descargar}
-            title="Descarga automática (requiere configurar el proveedor/portal; hoy explica el siguiente paso)"
+            title={tab === 'IMSS'
+              ? 'Asistente guiado del Buzón IMSS: entra con tu e.firma, baja la 32-D y regístrala aquí'
+              : 'Descarga automática (requiere configurar el proveedor/portal; hoy explica el siguiente paso)'}
             className="flex items-center gap-1.5 border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 text-sm">
-            <DownloadCloud size={15} /> Descargar automático
+            <DownloadCloud size={15} /> {tab === 'IMSS' ? 'Asistente IMSS' : 'Descargar automático'}
           </button>
           <button onClick={() => setCfgModal(true)}
             title="Configurar la descarga: endpoint, usuario y contraseña/token (se guardan cifrados)"
@@ -168,6 +174,66 @@ export function OpinionCumplimientoPage() {
           onCerrar={() => setCfgModal(false)}
           onHecho={() => { setCfgModal(false); qc.invalidateQueries({ queryKey: ['cumpl-config'] }); }} />
       )}
+      {asistenteImss && (
+        <ModalAsistenteImss
+          onCerrar={() => setAsistenteImss(false)}
+          onRegistrar={() => { setAsistenteImss(false); setForm(true); }} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Asistente guiado del Buzón IMSS (proceso interno-externo). No automatiza el login
+ * con e.firma (es un portal de gobierno: la autenticación la hace el usuario en el
+ * sitio oficial), pero abre el portal y desglosa los pasos exactos para bajar la
+ * 32-D, y deja registrar el PDF descargado de un clic.
+ */
+const PASOS_IMSS: Array<{ t: string; d?: string }> = [
+  { t: 'Abre el Buzón IMSS', d: 'En el botón de abajo (se abre en otra pestaña, es el sitio oficial del IMSS).' },
+  { t: 'Entra con tu e.firma', d: 'Captura tu RFC, sube tu archivo .cer y tu .key, escribe la contraseña de la e.firma y da «Acceder».' },
+  { t: 'Entra al Buzón de la empresa', d: 'Una vez dentro, abre la aplicación del Buzón.' },
+  { t: 'Ve al 8.º menú → 3.ª opción', d: '«32-D — Consultar mi opinión».' },
+  { t: 'Descarga la opinión', d: 'Da clic en el ícono de descarga (la flecha ↓). El PDF se guarda en tu carpeta de Descargas.' },
+  { t: 'Cierra el portal del IMSS', d: 'Regresa aquí para registrarla.' },
+];
+
+function ModalAsistenteImss({ onCerrar, onRegistrar }: { onCerrar: () => void; onRegistrar: () => void }) {
+  const PORTAL = 'https://buzon.imss.gob.mx/buzonimss/login';
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2"><ShieldCheck size={18} className="text-primary" /> Asistente · Opinión IMSS (32-D)</h3>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <a href={PORTAL} target="_blank" rel="noopener noreferrer"
+            className="w-full inline-flex items-center justify-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg hover:opacity-90 text-sm font-medium">
+            <ExternalLink size={16} /> Abrir el Buzón IMSS
+          </a>
+          <ol className="space-y-2.5">
+            {PASOS_IMSS.map((p, i) => (
+              <li key={i} className="flex gap-3">
+                <span className="shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">{i + 1}</span>
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{p.t}</p>
+                  {p.d && <p className="text-xs text-gray-500 leading-relaxed">{p.d}</p>}
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-start gap-1.5">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" /> La e.firma se captura <b>en el sitio oficial del IMSS</b>, no aquí — por seguridad, el sistema no automatiza el login a un portal de gobierno.
+          </p>
+          <div className="flex justify-end gap-2 pt-1 border-t">
+            <button onClick={onCerrar} className="px-3 py-1.5 mt-3 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">Cerrar</button>
+            <button onClick={onRegistrar} className="mt-3 flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-1.5 rounded-lg hover:opacity-90 text-sm">
+              <Download size={15} /> Ya lo descargué — Registrar el PDF
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
