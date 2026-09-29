@@ -143,4 +143,14 @@ Piezas creadas (`backend/src/modules/compliance/` salvo donde se indica):
 
 **Cómo probar el flujo sin portales:** poner `COMPLIANCE_MOCK=true` (y `SAT_VAULT_KEY`), pulsar "Consultar" en el tracker → se registra una ejecución SUCCESS con evidencia y hash; con la variable apagada, responde `REQUIRES_USER_ACTION` (no inventa).
 
-**Siguiente:** Fase 2 — adaptador SAT real (Opinión 32-D por RFC opt-in + CSF), y el panel (Fase 5).
+**Fase 2 — Adaptador SAT: IMPLEMENTADA (2026-09-29, `tsc` OK + `jest` 12/12).**
+- **`providers/sat.provider.ts`** — `SatProvider` para Opinión 32-D y CSF. Consulta por RFC (en el CUERPO, nunca en la URL) contra el ORIGEN configurado; despacha por `content-type` (PDF → lee texto con `pdf-parse` e infiere sentido; JSON → parser; HTML → detecta login/CAPTCHA → `REQUIRES_USER_ACTION`). e.firma/portal → `REQUIRES_USER_ACTION` (no se automatiza aquí). Errores HTTP mapeados (401/403, 404, 429, 5xx, timeout). Ruteado en la factory para SAT y CSF.
+- **`sat-parse.ts`** — funciones PURAS (mapear sentido, detectar login/CAPTCHA, clasificar HTTP, interpretar JSON, validar RFC) con **12 pruebas** (`sat-parse.test.ts`). Nunca traduce un error técnico a sentido fiscal ni inventa opinión.
+
+**Contrato del ORIGEN SAT (lo que falta validar — Fase 0 del SAT):** el adaptador está listo; para encenderlo se captura en `cumplimiento_config` (método **API**) la **URL del origen** + token. El adaptador hace `POST {url}` con `{"rfc","tipo"}` y espera **una de dos**:
+- **JSON:** `{ "sentido": "Positiva|Negativa|Sin adeudos|Vigente", "fecha": "AAAA-MM-DD", "folio": "…", "pdfBase64": "…" }`, o
+- **PDF** directo (`content-type: application/pdf`) — infiere el sentido del texto.
+
+Ese origen es la **consulta pública opt-in del SAT por RFC** (o el servicio que la exponga), y **validar la URL real es el paso que requiere inspección del portal / tu confirmación** — no se cablea a mano una URL del SAT. Sin origen configurado, el adaptador responde `REQUIRES_USER_ACTION` (no inventa). Se prueba de punta a punta apuntándolo a un endpoint propio que devuelva el JSON de arriba.
+
+**Siguiente:** validar/definir el origen SAT real; luego Fase 3 (IMSS) y el panel (Fase 5).
