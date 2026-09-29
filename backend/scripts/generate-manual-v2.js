@@ -31,9 +31,9 @@ const W = 595.28 - M * 2; // ancho útil A4
 
 const doc = new PDFDocument({ size: 'A4', margin: M, bufferPages: true,
   info: {
-    Title: 'Manual de Usuario · GDM Facturación V2',
+    Title: 'Manual de Usuario · GDM NEXO',
     Author: 'GRUPO HCGM S.A. DE C.V.',
-    Subject: 'CFDI 4.0 + Complemento Carta Porte 3.1',
+    Subject: 'ERP CFDI 4.0 — Facturación, Almacén, Compras, Tesorería, Nómina y Contabilidad',
   },
 });
 doc.pipe(fs.createWriteStream(OUT));
@@ -47,9 +47,14 @@ function needSpace(pts) {
   return false;
 }
 
-/** Capítulo: página nueva + barra dorada + título grande. */
+/** Capítulo: barra dorada + título grande. Para NO dejar huecos, solo salta a
+ *  página nueva si no queda espacio razonable; si hay lugar, continúa en la misma
+ *  con un respiro. El primero siempre en hoja nueva (después del índice). */
+let _primerCap = true;
 function chapter(num, title) {
-  doc.addPage();
+  if (_primerCap) { doc.addPage(); _primerCap = false; }
+  else if ((doc.page.height - 80) - doc.y < 300) { doc.addPage(); }
+  else { doc.moveDown(2); }
   toc.push({ titulo: `${num}. ${title}`, pagina: pageNo(), nivel: 1 });
   doc.rect(M, doc.y, 48, 4).fill(GOLD);
   doc.y += 14;
@@ -246,18 +251,18 @@ doc.rect(595.28 / 2 - 30, 268, 60, 3).fill(GOLD);
 doc.font('Helvetica-Bold').fontSize(34).fillColor('#ffffff')
    .text('Manual de Usuario', M, 305, { width: W, align: 'center' });
 doc.font('Helvetica').fontSize(17).fillColor(GOLD)
-   .text('GDM Facturación · Versión 2', M, 348, { width: W, align: 'center' });
+   .text('GDM NEXO · ERP CFDI 4.0', M, 348, { width: W, align: 'center' });
 
 doc.font('Helvetica').fontSize(11).fillColor('#cbd5e1')
-   .text('CFDI 4.0 con Complemento Carta Porte 3.1', M, 392, { width: W, align: 'center' });
-doc.text('Timbrado real ante el SAT vía PAC autorizado', M, 410, { width: W, align: 'center' });
+   .text('Tu empresa en un solo sistema: factura, almacén, compras, tesorería,', M, 392, { width: W, align: 'center' });
+doc.text('nómina y contabilidad, con timbrado real ante el SAT.', M, 410, { width: W, align: 'center' });
 
 // Tarjetas de novedades
 const cards = [
-  ['Carta Porte 3.1', 'Traslado de mercancías'],
-  ['Lector de XML', 'Importación masiva'],
-  ['Mercancías', 'Bitácora para inspecciones'],
-  ['Plantillas', 'Captura en un clic'],
+  ['Facturación y Carta Porte', 'CFDI 4.0 + traslado 3.1'],
+  ['Almacén y Compras', 'El XML da de alta y surte'],
+  ['Nómina y Checador', 'Recibos y asistencia facial'],
+  ['Contabilidad', 'Pólizas, SAT y cédulas'],
 ];
 let cy = 470;
 cards.forEach((c, i) => {
@@ -287,7 +292,9 @@ doc.rect(M, doc.y + 6, 48, 3).fill(GOLD);
 ══════════════════════════════════════════════════════════ */
 chapter(1, 'Primeros pasos');
 
-p('GDM Facturación es un sistema en línea para emitir facturas electrónicas CFDI 4.0 con timbrado real ante el SAT. La versión 2 añade el Complemento Carta Porte 3.1 para amparar el traslado de mercancías, un lector de XML que importa datos masivamente, y un catálogo de mercancías transportadas para responder ante inspecciones.');
+p('GDM NEXO es un ERP en línea que reúne, en un solo sistema y con una sola base de datos, todo el ciclo de tu empresa: facturación CFDI 4.0 con timbrado real ante el SAT, almacén e inventarios, compras a proveedores, punto de venta, tesorería, nómina con checador de asistencia, y contabilidad electrónica. Todo está conectado: lo que se factura sale del almacén, lo que se compra entra con su cuenta por pagar, y cada CFDI se refleja en la contabilidad.');
+
+p('Cada usuario ve únicamente los módulos de su grupo de trabajo. Este manual describe todos los módulos; tú verás en tu menú los que te correspondan según tu rol (Ventas, Almacén, Compras, Tesorería, Nómina o Contabilidad).');
 
 h2('Cómo entrar');
 steps([
@@ -587,9 +594,192 @@ h2('Si el contrato cambia');
 p('Cada versión del contrato lleva número y fecha. Las firmas que ya emitiste quedan atadas al texto exacto que firmaste, así que siguen siendo válidas. Si HCGM publica una versión nueva, se te notificará y deberás firmarla para que tu consentimiento corresponda al documento vigente.');
 
 /* ══════════════════════════════════════════════════════════
-   CAP 9 — PREGUNTAS FRECUENTES
+   CAP 9 — ALMACÉN E INVENTARIOS
 ══════════════════════════════════════════════════════════ */
-chapter(9, 'Preguntas frecuentes');
+chapter(9, 'Almacén e inventarios');
+
+p('El Almacén lleva el control de existencias de lo que compras y vendes. Está conectado con la facturación y con las compras: al timbrar una factura descuenta lo vendido y al recibir una compra lo suma, así el inventario refleja la realidad sin doble captura.');
+
+h2('Existencias y Kardex');
+p('En Existencias ves cuánto tienes de cada producto y en qué almacén. El Kardex es el historial de movimientos de un producto —entradas, salidas y ajustes— con su costo, para saber de dónde sale cada cifra. El costeo puede ser promedio, último o por capas, según lo configures.');
+
+h2('Varios almacenes e inventario físico');
+p('Puedes dar de alta varios almacenes (matriz, sucursal, bodega) en Almacenes; cada movimiento indica de qué almacén sale o a cuál entra. Para cuadrar contra la realidad, en Inventario físico capturas lo que contaste, el sistema muestra las diferencias contra la existencia teórica y, al confirmar, ajusta y deja el registro.');
+
+box('info', 'Timbrar descuenta, cancelar devuelve',
+  'La existencia se mueve con los documentos: al timbrar una factura baja; si cancelas la factura o haces una nota de crédito, la mercancía regresa al almacén. No ajustas a mano.');
+
+/* ══════════════════════════════════════════════════════════
+   CAP 10 — COMPRAS Y PROVEEDORES
+══════════════════════════════════════════════════════════ */
+chapter(10, 'Compras y proveedores');
+
+p('El corazón de Compras es el XML del proveedor: al leer un CFDI recibido, el sistema da de alta al proveedor, sus productos y la entrada al almacén, todo de un tirón. Además genera la cuenta por pagar en Tesorería con los días de crédito del proveedor.');
+
+h2('Recibir un XML de compra');
+steps([
+  'Entra a Compras y luego a Recibir XML.',
+  'Arrastra el CFDI que te envió tu proveedor.',
+  'Revisa qué detectó: el proveedor, los productos y las cantidades.',
+  'Indica a qué almacén entra cada partida (pueden ir a almacenes distintos) y captura lo que recibiste de verdad.',
+  'Confirma. Se registra la entrada al almacén y la cuenta por pagar.',
+]);
+
+h2('Órdenes de compra y faltantes');
+p('En Órdenes de compra generas pedidos a tus proveedores. La pantalla de Faltantes te avisa qué productos están por debajo de su punto de reorden y proyecta el consumo, para que compres a tiempo. Proveedores es el catálogo con la dirección fiscal, el régimen y el saldo de cada uno.');
+
+/* ══════════════════════════════════════════════════════════
+   CAP 11 — PUNTO DE VENTA (POS)
+══════════════════════════════════════════════════════════ */
+chapter(11, 'Punto de venta (POS)');
+
+p('El Punto de Venta es la pantalla de mostrador: cobro rápido, ticket y corte de caja. Es la más usada del día en una tienda, por eso vive justo debajo del Dashboard en el menú.');
+
+h2('Vender en el mostrador');
+steps([
+  'Busca cada producto por nombre o código y agrégalo al ticket.',
+  'Aplica descuentos si corresponde y elige la forma de pago (efectivo, tarjeta, etc.).',
+  'Cobra. La venta descuenta del almacén al instante.',
+  'Al cierre del turno, haz el Corte de caja: el sistema cuadra lo cobrado contra lo registrado.',
+]);
+
+box('tip', 'Factura global del periodo',
+  'Las ventas de mostrador que nadie pidió facturar se agrupan en una factura global timbrada ante el SAT al cierre del periodo. Si un cliente sí pide su factura, se la emites desde el mismo ticket.');
+
+/* ══════════════════════════════════════════════════════════
+   CAP 12 — TESORERÍA Y COBRANZA
+══════════════════════════════════════════════════════════ */
+chapter(12, 'Tesorería y cobranza');
+
+p('Tesorería reúne lo que te deben y lo que debes. Las cuentas por cobrar nacen de tus facturas; las cuentas por pagar, de tus compras, con los días de crédito de cada proveedor. Desde aquí programas pagos y controlas tu línea de crédito.');
+
+h2('Conciliación bancaria');
+p('En Contabilidad → Conciliación bancaria subes el estado de cuenta del banco y el sistema lo coteja contra tus movimientos. El botón Conciliar todo sugiere y contabiliza los que empatan, oculta lo ya conciliado y genera un PDF formal de saldos ajustados. Cada banco necesita su cuenta contable ligada.');
+
+box('info', 'La cobranza vive en Facturas',
+  'El detalle de cobranza por cliente y el reporte de ventas por período están dentro del módulo de Facturas (Cobranza detallada), porque nacen de lo facturado.');
+
+/* ══════════════════════════════════════════════════════════
+   CAP 13 — NÓMINA CFDI 4.0
+══════════════════════════════════════════════════════════ */
+chapter(13, 'Nómina CFDI 4.0');
+
+p('El módulo de Nómina calcula y timbra los recibos de tus trabajadores. Toma la plantilla de empleados, calcula el ISR con la tarifa y el subsidio del año, las cuotas del IMSS, y emite el CFDI de nómina de cada quien.');
+
+h2('El ciclo de la nómina');
+steps([
+  'Captura o importa tu plantilla en Empleados.',
+  'Verifica los parámetros patronales del ejercicio en Parámetros (UMA, tarifas, cuotas). Sin ellos, la nómina queda bloqueada.',
+  'En Nómina (cálculo) arma el periodo: el sistema calcula percepciones, deducciones e ISR.',
+  'Revisa la prenómina, ajusta incidencias y genera los recibos.',
+  'Timbra los CFDI de nómina y consúltalos en CFDI.',
+]);
+
+h2('IMSS, reportes y bajas');
+p('En IMSS · IDSE preparas lo que se presenta ante el Seguro Social. Reportes entrega los resúmenes de nómina en Excel y PDF. Cuando das de baja a un trabajador, el sistema arma su finiquito y el documento legal (finiquito, renuncia o liquidación) fundado en la Ley Federal del Trabajo, que acompaña al recibo timbrado.');
+
+/* ══════════════════════════════════════════════════════════
+   CAP 14 — CHECADOR · ASISTENCIA
+══════════════════════════════════════════════════════════ */
+chapter(14, 'Checador · Asistencia biométrica');
+
+p('El Checador registra la asistencia por reconocimiento facial y alimenta la prenómina: las faltas y retardos del periodo se vuelven deducciones sin captura manual. Corre como app instalable (PWA) en tabletas fijas (kiosco) y en celulares (personal en campo, con GPS).');
+
+h2('Cómo se monta (una vez)');
+p('El menú del Checador se organiza en tres bloques: Configuración (parámetros, turnos, kioscos, empleados y enrolar rostro), Proceso (abrir kiosco o modo campo) y Reportes (registro de asistencia). Primero fijas la tolerancia de retardo, los turnos y a quién se le registra; luego enrolas el rostro de cada quien.');
+
+h2('El consentimiento del trabajador');
+p('El rostro es un dato personal sensible. Al enrolar a un trabajador, él lee y acepta en pantalla el consentimiento —acotado única y exclusivamente al reloj checador— y puede imprimirlo para firma. Hasta que acepta, no se captura su cara. Es voluntario: quien no acepte usa un método alterno.');
+
+box('warn', 'La empresa es la responsable de los rostros',
+  'Los datos biométricos los trata la empresa (el patrón) para el control de asistencia. GDM NEXO es solo el proveedor de la tecnología, no el responsable de los datos.');
+
+/* ══════════════════════════════════════════════════════════
+   CAP 15 — CONTABILIDAD ELECTRÓNICA
+══════════════════════════════════════════════════════════ */
+chapter(15, 'Contabilidad electrónica');
+
+p('La Contabilidad genera las pólizas a partir de los CFDI —ingreso, egreso y diario— cuadradas por diseño, y de ahí salen la balanza y los estados financieros. Si tu empresa viene de otro programa, puedes importar tu respaldo para arrancar con tus saldos.');
+
+h2('Catálogo, pólizas y cuadre');
+p('El Catálogo de cuentas es un hub con pestañas (catálogo, asignación, auxiliar y cambios de cuenta) donde cada cuenta lleva su agrupador del SAT. En Pólizas están la póliza manual, las de venta, las de compra, todas y las pendientes. Cuadre contable detecta descuadres —casi siempre cuentas sin agrupador— antes de que afecten tus estados.');
+
+h2('Activo fijo, conciliación y cierre');
+bullets([
+  '**Activo fijo · Depreciación.** Deprecia en línea recta desde el XML de compra y genera su póliza mensual.',
+  '**Conciliación bancaria.** Coteja el estado de cuenta contra los movimientos (ver capítulo 12).',
+  '**Cierre del ejercicio.** Cierre mensual y anual, con el traspaso de saldos al año nuevo.',
+  '**Indicadores.** UMA, tarifas e INPC del periodo, para los cálculos.',
+]);
+
+/* ══════════════════════════════════════════════════════════
+   CAP 16 — REPORTES FISCALES Y CÉDULAS
+══════════════════════════════════════════════════════════ */
+chapter(16, 'Reportes fiscales y cédulas');
+
+p('Dentro de Contabilidad → Reportes están los papeles que se presentan o se revisan ante el SAT, agrupados en tres apartados: NIF (estados financieros normados), Estados financieros (contables) y SAT.');
+
+h2('Lo que entrega el apartado SAT');
+bullets([
+  '**DIOT.** La declaración de operaciones con terceros, con su archivo de carga masiva.',
+  '**Contabilidad electrónica.** El XML del catálogo y la balanza (Anexo 24) para el buzón del SAT.',
+  '**Cédulas fiscales.** El papel de trabajo mensual de ISR e IVA, calculado desde los CFDI sobre base de flujo. Se muestran todas las cédulas de ISR (612, RESICO 626, PM 601, Plataformas 625) y la de IVA para todos los regímenes; la que corresponde a tu empresa va marcada.',
+]);
+
+box('warn', 'Valida el archivo en el portal del SAT',
+  'Los archivos de carga (DIOT, contabilidad electrónica) se generan con los datos que capturas; antes de presentarlos, valídalos en el portal oficial del SAT.');
+
+/* ══════════════════════════════════════════════════════════
+   CAP 17 — OPINIÓN DE CUMPLIMIENTO 32-D
+══════════════════════════════════════════════════════════ */
+chapter(17, 'Opinión de cumplimiento (32-D)');
+
+p('En Contabilidad → Reportes → Opinión 32-D registras y das seguimiento a la opinión de cumplimiento de SAT, IMSS e INFONAVIT, además de tu Constancia de Situación Fiscal. La más reciente por dependencia es la vigente y se conserva el histórico, con su PDF.');
+
+h2('Cómo la registras');
+steps([
+  'Obtén la opinión del portal de cada dependencia (con tu e.firma).',
+  'En NEXO, elige la dependencia y pulsa Registrar.',
+  'Captura el sentido (positiva, sin adeudos…), la fecha y adjunta el PDF.',
+]);
+
+box('tip', 'Asistente del IMSS',
+  'La pestaña IMSS trae un asistente que abre el Buzón IMSS oficial y te guía paso a paso (entrar con e.firma, menú 32-D, descargar) para que registres el PDF de un clic.');
+
+/* ══════════════════════════════════════════════════════════
+   CAP 18 — XML DEL SAT Y LA BÓVEDA
+══════════════════════════════════════════════════════════ */
+chapter(18, 'XML del SAT y la bóveda');
+
+p('El módulo XML descarga tus comprobantes directo del SAT con tu e.firma y los guarda en una bóveda que es la fuente de verdad de la contabilidad. Los emitidos y los recibidos se piden por separado, porque responden preguntas distintas: los recibidos son lo que hay que pagar y deducir; los emitidos, la comprobación de lo timbrado.');
+
+h2('Descarga y calendario');
+p('La pantalla arranca en la descarga y trae, como pestañas, los Emitidos, los Recibidos y un Calendario de cobertura que muestra qué meses ya están completos y cuáles tienen huecos por llenar. Para un respaldo formal, el super administrador genera un ZIP con los XML de la empresa por rango de fechas (retención SAT de 5 años).');
+
+box('warn', 'Requiere e.firma vigente',
+  'La descarga del SAT usa tu e.firma. Si está vencida, el sistema te avisa y no baja comprobantes hasta que la renueves.');
+
+/* ══════════════════════════════════════════════════════════
+   CAP 19 — EQUIPO, USUARIOS Y MENSAJERÍA
+══════════════════════════════════════════════════════════ */
+chapter(19, 'Equipo, usuarios y mensajería');
+
+p('El administrador de la empresa gestiona a su propia gente en Equipo · Usuarios, sin depender de nadie. Cada usuario se da de alta con un rol y un grupo de trabajo que define qué módulos ve: Ventas ve facturas y Carta Porte, Almacén ve existencias, Tesorería ve pagos, y así.');
+
+h2('Alta de un usuario');
+steps([
+  'Entra a Equipo · Usuarios y pulsa Nuevo usuario.',
+  'Captura nombre, correo, una contraseña temporal, el rol y el grupo de trabajo.',
+  'Al crearlo, si es operativo, se abre enseguida su sección de capacidades finas para afinar exactamente qué puede hacer.',
+]);
+
+box('info', 'Mensajería interna',
+  'El menú Mensajes es el recadero interno de la empresa: avisos entre el administrador y su equipo, con un contador de no leídos en el menú.');
+
+/* ══════════════════════════════════════════════════════════
+   CAP 20 — PREGUNTAS FRECUENTES
+══════════════════════════════════════════════════════════ */
+chapter(20, 'Preguntas frecuentes');
 
 const faq = [
   ['El icono del barco está gris y no puedo pulsarlo',
@@ -608,6 +798,16 @@ const faq = [
    'Es el comportamiento correcto: el sistema no duplica registros. Los renglones en verde con la leyenda "ya existe" indican que ese dato ya estaba en tu catálogo.'],
   ['La factura salió con un dato equivocado',
    'Si aún es borrador, edítala. Si ya está timbrada, cancélala y emite una nueva. El SAT no permite modificar un comprobante certificado.'],
+  ['No veo un módulo que sé que existe',
+   'Tu menú muestra solo los módulos de tu grupo de trabajo. Si necesitas otro, pídele al administrador de tu empresa que te lo habilite en Equipo · Usuarios.'],
+  ['La nómina no me deja calcular',
+   'Falta capturar los parámetros patronales del ejercicio (UMA, tarifas y cuotas) en Nómina → Parámetros. Sin ellos, el módulo queda bloqueado.'],
+  ['El checador no reconoce a un trabajador',
+   'Verifica que haya aceptado el consentimiento y que su rostro esté enrolado en Checador → Enrolar rostro. Sin enrolamiento, el kiosco no puede identificarlo.'],
+  ['El balance no cuadra',
+   'Casi siempre es una cuenta sin agrupador del SAT. La pantalla Contabilidad → Cuadre contable te indica cuál es.'],
+  ['La descarga del SAT no baja nada',
+   'Revisa que tu e.firma esté vigente. La descarga del XML del SAT y la contabilidad la usan; si venció, el sistema lo avisa y no baja comprobantes.'],
 ];
 
 faq.forEach(([q, a]) => {
@@ -631,7 +831,10 @@ const range = doc.bufferedPageRange();
 // Rellenar índice
 doc.switchToPage(tocPageIndex);
 doc.y = M + 60;
-toc.forEach(t => {
+// Solo capítulos (nivel 1): con 20 capítulos, un índice por capítulos cabe
+// completo y limpio en una página; meter también los subtítulos lo desbordaría
+// y se perderían entradas al final.
+toc.filter(t => t.nivel === 1).forEach(t => {
   if (doc.y > doc.page.height - 90) return;
   const isCap = t.nivel === 1;
   doc.font(isCap ? 'Helvetica-Bold' : 'Helvetica')
@@ -657,15 +860,24 @@ toc.forEach(t => {
   doc.moveDown(isCap ? 0.55 : 0.35);
 });
 
-// Pie en todas menos portada
+// Pie en todas menos portada.
+// CLAVE: el pie se dibuja en el área del margen inferior. Si no se baja el margen
+// a 0, PDFKit cree que el texto se sale de la hoja y AGREGA una página nueva por
+// cada pie (así se colaban ~36 páginas fantasma). Se pone el margen en 0 mientras
+// se dibuja y se restaura enseguida.
 for (let i = 1; i < range.count; i++) {
   doc.switchToPage(i);
+  const _mb = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
   const yF = doc.page.height - 46;
   doc.moveTo(M, yF).lineTo(M + W, yF).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
   doc.font('Helvetica').fontSize(7.5).fillColor(GRAY_LIGHT)
-     .text('GDM Facturación V2 · Manual de Usuario', M, yF + 6, { width: W / 2, lineBreak: false });
-  doc.text(`Página ${i + 1} de ${range.count}`, M + W / 2, yF + 6,
+     .text('GDM NEXO · Manual de Usuario', M, yF + 6, { width: W / 2, lineBreak: false });
+  // Número de página SIEMPRE al pie, alineado a la derecha.
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(GRAY)
+     .text(`Página ${i + 1} de ${range.count}`, M + W / 2, yF + 6,
            { width: W / 2, align: 'right', lineBreak: false });
+  doc.page.margins.bottom = _mb;
 }
 
 doc.end();
