@@ -6,11 +6,14 @@
  *    kiosco de la tableta abra aunque el wifi se caiga un momento).
  *  · Estáticos con hash de Vite (/assets/...): cache-first (el nombre cambia en
  *    cada build, así que nunca queda viejo).
- *  · Todo lo demás —API (otro origen), CDN de face-api, etc.— pasa de largo.
+ *  · Modelos faciales y librería (/models/..., /vendor/...): cache-first — pesan
+ *    ~7 MB y son estáticos; así el checador los baja UNA vez y luego los sirve del
+ *    caché (rápido y sin datos móviles). Al cambiar de versión se sube CACHE.
+ *  · Todo lo demás —API (otro origen), etc.— pasa de largo.
  *
  * Existe sobre todo para que la app sea INSTALABLE como PWA en tabletas/celulares.
  */
-const CACHE = 'gdm-nexo-v1';
+const CACHE = 'gdm-nexo-v2';
 const SHELL = '/checador/kiosco';
 
 self.addEventListener('install', () => { self.skipWaiting(); });
@@ -45,8 +48,8 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Estáticos con hash de Vite → caché primero.
-  if (url.pathname.startsWith('/assets/')) {
+  // Estáticos con hash de Vite + modelos/librería facial → caché primero.
+  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/models/') || url.pathname.startsWith('/vendor/')) {
     e.respondWith((async () => {
       const hit = await caches.match(req);
       if (hit) return hit;

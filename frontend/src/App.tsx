@@ -7,9 +7,6 @@ import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import api from '@/services/api';
-import { LoginPage } from '@/pages/Login';
-import { PublicHomePage } from '@/pages/PublicHome';
-import { TerminosPage, PrivacidadPage } from '@/pages/LegalDoc';
 import { CheckadorKioscoPage } from '@/pages/nomina/CheckadorKiosco';
 import { CheckadorEnrolarPage } from '@/pages/nomina/CheckadorEnrolar';
 import { ChecadorRegistroPage } from '@/pages/nomina/RegistroAsistencia';
@@ -24,6 +21,14 @@ import { leerKiosco, borrarKiosco, hayKiosco } from '@/utils/kioscoAuto';
  * baja este pedazo quien entra de verdad al sistema. Ver ErpPrivado.tsx.
  */
 const ErpPrivado = lazy(() => import('./ErpPrivado'));
+
+/* Login, landing y páginas legales van PEREZOSAS: el kiosco/checador (tabletas y
+ * celulares modestos) entra directo a su pantalla y NO necesita descargarlas, así
+ * su carga inicial es lo más liviana posible. */
+const LoginPage = lazy(() => import('@/pages/Login').then((m) => ({ default: m.LoginPage })));
+const PublicHomePage = lazy(() => import('@/pages/PublicHome').then((m) => ({ default: m.PublicHomePage })));
+const TerminosPage = lazy(() => import('@/pages/LegalDoc').then((m) => ({ default: m.TerminosPage })));
+const PrivacidadPage = lazy(() => import('@/pages/LegalDoc').then((m) => ({ default: m.PrivacidadPage })));
 
 /** Se ve un instante mientras baja el pedazo del ERP (solo la primera vez). */
 function CargandoErp() {
@@ -217,6 +222,7 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <Router basename={import.meta.env.BASE_URL}>
         <AutoActualizar />
+        <Suspense fallback={<CargandoErp />}>
         <Routes>
           {/* Rutas públicas */}
           <Route path="/login" element={<LoginPage />} />
@@ -244,6 +250,7 @@ export function App() {
               arriba y NO lo descarga. */}
           <Route path="/*" element={<Suspense fallback={<CargandoErp />}><ErpPrivado /></Suspense>} />
         </Routes>
+        </Suspense>
       </Router>
     </QueryClientProvider>
   );
