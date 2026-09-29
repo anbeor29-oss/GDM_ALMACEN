@@ -1210,12 +1210,11 @@ class APIClient {
     return r.data;
   }
   async verOpinionPdf(id: string) {
-    const token = localStorage.getItem('token');
-    const base = this.client.defaults.baseURL || '/api/v1';
-    const r = await fetch(`${base}/accounting/opinion-cumplimiento/${id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!r.ok) throw new Error('No se pudo abrir el PDF.');
-    const blob = await r.blob();
-    window.open(URL.createObjectURL(blob), '_blank');
+    // Vía el cliente axios (su interceptor toma el token de sessionStorage||localStorage).
+    // Antes leía el token SOLO de localStorage y, como la sesión vive en sessionStorage,
+    // salía 401 → «No se pudo abrir el PDF».
+    const r = await this.client.get(`/accounting/opinion-cumplimiento/${id}/pdf`, { responseType: 'blob' });
+    window.open(URL.createObjectURL(r.data as Blob), '_blank');
   }
   async getConfigCumplimiento() {
     const r = await this.client.get<APIResponse<any>>('/accounting/opinion-cumplimiento/config');
@@ -2571,12 +2570,10 @@ class APIClient {
   /** Recalcula con lo capturado en la rejilla. NO guarda: sigue siendo cálculo. */
   /** Abre el documento legal de la baja (finiquito | renuncia | liquidacion) en PDF. */
   async verDocumentoBaja(reciboId: string, variante: string) {
-    const token = localStorage.getItem('token');
-    const base = this.client.defaults.baseURL || '/api/v1';
-    const r = await fetch(`${base}/nomina/baja/${reciboId}/documento?variante=${variante}`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!r.ok) throw new Error('No se pudo abrir el documento.');
-    const blob = await r.blob();
-    window.open(URL.createObjectURL(blob), '_blank');
+    // Mismo arreglo que verOpinionPdf: el token sale del interceptor (sessionStorage),
+    // no de localStorage (que salía null → 401).
+    const r = await this.client.get(`/nomina/baja/${reciboId}/documento`, { params: { variante }, responseType: 'blob' });
+    window.open(URL.createObjectURL(r.data as Blob), '_blank');
   }
   async recalcularPrenomina(periodoId: string, captura: any[]) {
     const r = await this.client.post<APIResponse<any>>(
