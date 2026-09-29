@@ -6452,3 +6452,27 @@ tiempos) con respaldos + modo `--inspect` para calibrar sin credenciales + captu
 env, secretos en .gitignore. Vive fuera del deploy (no hay workspace raíz). Falta que el usuario corra
 `npm run inspect` y me pase el volcado del iframe FIEL para fijar los selectores exactos. Claude no corre el
 login (no teclea la e.firma en el portal de gobierno). `node --check` OK.
+
+---
+
+## 2026-09-28 (manual / documentación) — Manual de usuario reescrito para el ERP + fix de páginas fantasma
+
+**Manual PDF reescrito a GDM NEXO (commit `25d8d66`).** `backend/scripts/generate-manual-v2.js` (PDFKit)
+generaba solo el manual de Facturación V2. Se agregaron **11 capítulos** de los módulos del ERP (Almacén,
+Compras, POS, Tesorería, Nómina, Checador, Contabilidad, Reportes fiscales/Cédulas, Opinión 32-D, XML del SAT
+y bóveda, Equipo/Usuarios/Mensajería), retitulado a «GDM NEXO · ERP CFDI 4.0» (20 capítulos). Portada y pie
+actualizados.
+
+**Encuadre (petición del usuario: «no dejes huecos entre páginas»).** Los capítulos ahora **fluyen** en la
+misma hoja cuando queda espacio (>300 pt), en vez de saltar SIEMPRE a página nueva; el índice es por
+capítulos (con 20, meter también subtítulos desbordaba una página y se perdían entradas).
+
+**FIX de bug pre-existente — páginas fantasma.** El pie de página se dibujaba en el área del margen inferior;
+PDFKit creía que el texto se salía de la hoja y **agregaba una página por cada `text()` del pie** → el PDF
+tenía **55 páginas** (36 fantasma con solo un pedacito de pie) aunque PDFKit reportaba 19. Se detectó revisando
+`/Count` y el texto por página (pdf-parse). Fix: bajar `doc.page.margins.bottom = 0` mientras se dibuja el pie
+y restaurar. Resultado verificado: **19 páginas reales, 0 en blanco**, pie «Página X de 19» abajo a la derecha.
+
+**Documentación (Tarea 2).** Bitácora y memorias al día; se especificó el **algoritmo de cobro por usuario**
+(pendiente para después): cobro por usuario/rol, 1 super admin, checador gratis, 3000 timbres/mes con corte el
+día 30, excedente cobrado.
