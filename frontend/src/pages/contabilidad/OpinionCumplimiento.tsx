@@ -189,29 +189,36 @@ export function OpinionCumplimientoPage() {
  * sitio oficial), pero abre el portal y desglosa los pasos exactos para bajar la
  * 32-D, y deja registrar el PDF descargado de un clic.
  */
+const PORTAL_IMSS_LOGIN = 'https://buzon.imss.gob.mx/buzonimss/login';
+const PORTAL_IMSS_32D = 'https://buzon.imss.gob.mx/buzonimss/opinionCumplimiento/consultaMiOpinion';
+
 const PASOS_IMSS: Array<{ t: string; d?: string }> = [
-  { t: 'Abre el Buzón IMSS', d: 'En el botón de abajo (se abre en otra pestaña, es el sitio oficial del IMSS).' },
-  { t: 'Entra con tu e.firma', d: 'Captura tu RFC, sube tu archivo .cer y tu .key, escribe la contraseña de la e.firma y da «Acceder».' },
-  { t: 'Entra al Buzón de la empresa', d: 'Una vez dentro, abre la aplicación del Buzón.' },
-  { t: 'Ve al 8.º menú → 3.ª opción', d: '«32-D — Consultar mi opinión».' },
-  { t: 'Descarga la opinión', d: 'Da clic en el ícono de descarga (la flecha ↓). El PDF se guarda en tu carpeta de Descargas.' },
-  { t: 'Cierra el portal del IMSS', d: 'Regresa aquí para registrarla.' },
+  { t: 'Entra con tu e.firma', d: 'En el botón «Abrir Buzón IMSS» captura tu RFC, sube tu .cer y tu .key, la contraseña de la e.firma y «Validar». (Es el sitio oficial del IMSS.)' },
+  { t: 'Abre «32D Consultar Mi Opinión»', d: 'En la barra superior, el ÚLTIMO ícono (hoja con ✓) → 3.ª opción. O usa el enlace directo de abajo (ya con sesión iniciada).' },
+  { t: 'Descarga la opinión', d: 'Clic en el ícono de descarga (↓) junto a «Consultar Mi Opinión del Cumplimiento» y espera «Procesando…».' },
+  { t: 'Regístrala aquí', d: 'El PDF se guarda en Descargas como «MiOpinion_[tu RFC].pdf». Regresa, súbelo con el botón de abajo y cierra el portal del IMSS.' },
 ];
 
 function ModalAsistenteImss({ onCerrar, onRegistrar }: { onCerrar: () => void; onRegistrar: () => void }) {
-  const PORTAL = 'https://buzon.imss.gob.mx/buzonimss/login';
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-3 border-b">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2"><ShieldCheck size={18} className="text-primary" /> Asistente · Opinión IMSS (32-D)</h3>
           <button onClick={onCerrar} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4">
-          <a href={PORTAL} target="_blank" rel="noopener noreferrer"
-            className="w-full inline-flex items-center justify-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg hover:opacity-90 text-sm font-medium">
-            <ExternalLink size={16} /> Abrir el Buzón IMSS
-          </a>
+          <div className="grid grid-cols-2 gap-2">
+            <a href={PORTAL_IMSS_LOGIN} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 bg-primary text-white px-3 py-2.5 rounded-lg hover:opacity-90 text-sm font-medium">
+              <ExternalLink size={16} /> Abrir Buzón IMSS
+            </a>
+            <a href={PORTAL_IMSS_32D} target="_blank" rel="noopener noreferrer"
+              title="Atajo directo a la pantalla 32-D (funciona una vez que ya iniciaste sesión con tu e.firma)"
+              className="inline-flex items-center justify-center gap-2 border border-primary/40 text-primary px-3 py-2.5 rounded-lg hover:bg-primary/5 text-sm font-medium">
+              <ExternalLink size={16} /> Ir directo a la 32-D
+            </a>
+          </div>
           <ol className="space-y-2.5">
             {PASOS_IMSS.map((p, i) => (
               <li key={i} className="flex gap-3">
@@ -224,11 +231,11 @@ function ModalAsistenteImss({ onCerrar, onRegistrar }: { onCerrar: () => void; o
             ))}
           </ol>
           <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-start gap-1.5">
-            <AlertTriangle size={13} className="mt-0.5 shrink-0" /> La e.firma se captura <b>en el sitio oficial del IMSS</b>, no aquí — por seguridad, el sistema no automatiza el login a un portal de gobierno.
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" /> Por seguridad, la e.firma se captura <b>en el sitio del IMSS</b>, no aquí. Además, una página web no puede tomar sola el archivo de tu carpeta de Descargas: por eso el PDF se adjunta con un clic (la toma automática la haría una app nativa).
           </p>
-          <div className="flex justify-end gap-2 pt-1 border-t">
-            <button onClick={onCerrar} className="px-3 py-1.5 mt-3 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">Cerrar</button>
-            <button onClick={onRegistrar} className="mt-3 flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-1.5 rounded-lg hover:opacity-90 text-sm">
+          <div className="flex justify-end gap-2 pt-3 border-t">
+            <button onClick={onCerrar} className="px-3 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">Cerrar</button>
+            <button onClick={onRegistrar} className="flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-1.5 rounded-lg hover:opacity-90 text-sm">
               <Download size={15} /> Ya lo descargué — Registrar el PDF
             </button>
           </div>
