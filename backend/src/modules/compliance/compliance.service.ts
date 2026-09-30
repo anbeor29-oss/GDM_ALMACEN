@@ -51,7 +51,7 @@ export async function ejecutar(
   const t0 = Date.now();
 
   try {
-    const provider = getProvider(tipo);
+    const provider = await getProvider(tipo);
     const r = await provider.ejecutar(
       { companyId, tipo, rfc, disparo, userId },
       cred || ({ metodo: 'API' } as CredContext),

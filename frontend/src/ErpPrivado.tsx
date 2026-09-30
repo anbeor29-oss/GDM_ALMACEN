@@ -30,6 +30,7 @@ import { AdminCompaniesPage } from '@/pages/AdminCompanies';
 import { AdminBillingPage }   from '@/pages/AdminBilling';
 import { AdminPrepaidPage }   from '@/pages/AdminPrepaid';
 import { AdminFacturacionPage } from '@/pages/AdminFacturacion';
+import { AdminSatgoPage } from '@/pages/AdminSatgo';
 import { AdminPromocionPage } from '@/pages/AdminPromocion';
 import AdminAccesosPage from '@/pages/AdminAccesos';
 import { ImportXMLWizardPage } from '@/pages/ImportXMLWizard';
@@ -198,6 +199,7 @@ export default function ErpPrivado() {
         <Route path="admin/packages"  element={<SuperAdminRoute><AdminPackagesPage /></SuperAdminRoute>} />
         <Route path="admin/billing"   element={<SuperAdminRoute><AdminBillingPage /></SuperAdminRoute>} />
         <Route path="admin/facturacion" element={<SuperAdminRoute><AdminFacturacionPage /></SuperAdminRoute>} />
+        <Route path="admin/satgo" element={<SuperAdminRoute><AdminSatgoPage /></SuperAdminRoute>} />
         <Route path="admin/prepaid"   element={<SuperAdminRoute><AdminPrepaidPage /></SuperAdminRoute>} />
         <Route path="admin/promocion" element={<SuperAdminRoute><AdminPromocionPage /></SuperAdminRoute>} />
         <Route path="admin/accesos"   element={<SuperAdminRoute><AdminAccesosPage /></SuperAdminRoute>} />

@@ -3019,6 +3019,16 @@ class APIClient {
   async reactivarFacturacion(id: string) {
     return (await this.client.post(`/admin/facturacion/${id}/reactivar`)).data;
   }
+  // ── SatGo (proveedor fiscal) ──
+  async getSatgoConfig() {
+    return (await this.client.get('/admin/satgo/config')).data;
+  }
+  async setSatgoConfig(d: { baseUrl?: string; ambiente?: string }) {
+    return (await this.client.put('/admin/satgo/config', d)).data;
+  }
+  async bootstrapSatgo(portalToken: string) {
+    return (await this.client.post('/admin/satgo/bootstrap', { portalToken })).data;
+  }
   async adminCreateCompany(data: { rfc: string; businessName: string; fiscalRegime: string;
                                    postalCode?: string; billingPlan?: string; capTimbres?: number;
                                    monthlyFee?: number; extraStampFee?: number;
