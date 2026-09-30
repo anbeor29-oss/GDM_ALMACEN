@@ -103,6 +103,17 @@ async function inferirSentido(pdfPath) {
   return TIPO === 'CSF' ? 'VIGENTE' : 'OTRO';
 }
 
+/** Espera una descarga en CUALQUIER pestaña del contexto (el SAT suele abrir el
+ *  PDF en una pestaña nueva). Se resuelve con el primer download; null al expirar. */
+function esperarDescargaEnContexto(context, timeout) {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), timeout);
+    const onDownload = (d) => { clearTimeout(t); resolve(d); };
+    for (const p of context.pages()) p.on('download', onDownload);
+    context.on('page', (p) => p.on('download', onDownload));
+  });
+}
+
 async function main() {
   const password = process.env[cfg.passwordEnv || 'SAT_FIEL_PASSWORD'] || '';
   if (!MODO_INSPECCION) {
@@ -152,7 +163,8 @@ async function main() {
       log('  2) Navega hasta tu Opinión del Cumplimiento (o CSF) con el botón Descargar/Imprimir.');
       log('  3) Dale descargar: atrapo el PDF y (si activaste nexo) lo subo a NEXO.');
       log(`  Te espero hasta ${Math.round(espera / 1000)}s. NO cierres la ventana.`);
-      const download = await page.waitForEvent('download', { timeout: espera });
+      const download = await esperarDescargaEnContexto(context, espera);
+      if (!download) throw new Error('No detecté ninguna descarga en el tiempo de espera. Vuelve a correrlo y descarga el PDF dentro de la ventana.');
       await guardarYSubir(download);
       log('✔ Listo.');
       await browser.close();
