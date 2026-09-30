@@ -48,8 +48,14 @@ SW Sapien.
   día 1, IMSS día 17), bitácora y credenciales cifradas en bóveda. Al **subir el PDF**, NEXO lo
   **lee** (pdf-parse) y autollena sentido/fecha/folio; un asistente abre el sitio oficial en el
   navegador del usuario. La **auto-descarga DESATENDIDA del SAT** choca con su portal blindado (SPA
-  anti-automatización + OAuth): para un flujo oculto/semanal y confiable se recomienda un **proveedor
-  fiscal** (SatGo/Satws) integrado al motor; hoy funciona el flujo asistido + lectura del PDF. Ver **BITACORA.md**.
+  anti-automatización + OAuth), por eso se integró el **proveedor fiscal SatGo** de punta a punta:
+  hub **Servicios SAT** (Opinión 32-D, CIF/CSF, Declaraciones, Info Fiscal, Validar CFDI) + IMSS e
+  INFONAVIT aparte. Un clic baja por SatGo y registra solo (IMSS por RFC; SAT/CIF con CIEC; probado en
+  vivo — el 403 era cuota del plan Free, no un fallo). Para que sea 100% directo falta cuota (contrato)
+  y CIEC. El asistente queda como plan B. Ver **BITACORA.md** (2026-09-30).
+  **Nota (decisión 2026-09-30):** el motor de **descarga masiva de XML** sigue siendo el de **NEXO**
+  (WS oficial del SAT con e.firma), NO el de SatGo — es la **fuente de verdad** del respaldo, completo y
+  sin costo por documento; SatGo (medido por cuota) se usa para opiniones/validación/info, no para el backup.
 - 🟢 **Tesorería**: cuentas por pagar, pagos programados, bancos y
   **conciliación bancaria** (con export a Excel).
 - 🟢 **Permisos por grupo de trabajo**: siete grupos, cada uno con sus módulos,

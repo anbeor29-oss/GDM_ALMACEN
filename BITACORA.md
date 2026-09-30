@@ -6585,3 +6585,50 @@ sólido (cuadre garantizado por trigger). **Riesgos/pendientes reales:** (1) PAC
 real es un flip que decide el usuario; (2) **auto-descarga de cumplimiento** bloqueada por el SAT (proveedor
 recomendado); (3) faltan los crons de cobro y algunos extractores. Veredicto: producto fuerte; la opinión del
 SAT es **un borde de la industria**, no un reflejo de la calidad de NEXO.
+
+---
+
+## 2026-09-30 (cumplimiento / SatGo) — SatGo en vivo: contrato confirmado, hub «Servicios SAT» y decisión sobre el motor de XML
+
+**Proveedor = SatGo, integrado de punta a punta.** Se corrigió el contrato real (Swagger + Postman, base
+`https://api.sat-go.com`): auth 2 pasos `Createkey` (token del portal → **API Key permanente**) y
+`POST /api/Auth/token?key=<API Key>` → JWT; consultas `GET /api/v2/Consultar/*` con `Authorization: Bearer <JWT>` +
+header `RFC`; `Secret` (CIEC) sólo para `csf`/`oc`/`dec`/`informacionfiscal`; **`imssoc` y `ocpublico` van SOLO con
+RFC** (sin CIEC). **Error que corrijo (documentado):** al principio `accessToken` mandaba `POST /api/Auth/token`
+con body `{apiKey}` — era una **suposición mía, estaba mal**; el real es `?key=` / `token-json` (`tokens.access.value`).
+
+**Prueba EN VIVO exitosa.** La consulta IMSS (`imssoc`) por RFC **funcionó de extremo a extremo** contra SatGo; el
+`403` que salió era **cuota del plan Free** (`monthlyLimit:3, monthlyUsage:6`, "Límite mensual excedido"), no un
+fallo de código. Se tradujo ese JSON a un mensaje legible (con la cuota) y el asistente dejó de saltar solo: ahora
+«Descargar» carga directo por el motor y, si SatGo no puede (sin CIEC / cuota agotada), muestra el motivo y ofrece
+el asistente como plan B detrás de un enlace. Conclusión: **para que el PDF se cargue directo (sin asistente) sólo
+falta cuota (formalizar contrato) y, para SAT/CIF, la clave CIEC.**
+
+**Reorganización por organismo (hub con pestañas, elegido por el usuario).** Se creó **«Servicios SAT»**
+(`contabilidad/servicios-sat`) con pestañas **Opinión 32-D · CIF/CSF · Declaraciones · Información Fiscal · Validar
+CFDI**; **IMSS** e **INFONAVIT** en su propia pantalla (menú SAT → IMSS → INFONAVIT; el path viejo
+`opinion-cumplimiento` redirige). Se extrajo `PanelOpinion.tsx` (panel por-organismo reutilizable). Backend
+company-scoped en `/satgo/consultas` (info-fiscal, declaraciones ZIP, validar-cfdi) gated contabilidad; la CIEC se
+lee de la bóveda (SAT→CSF) y se suelta de memoria. **Declaraciones en cuadrícula año×mes** (clic en celda baja y
+**descomprime** el ZIP con `extraerBinarios` de `zip-seguro`, una consulta por celda para cuidar cuota); **Info
+Fiscal** en vista legible (encabezado + domicilio + secciones/tablas, toggle «Ver JSON»); **círculo de estado** en
+32-D y CIF. `INEGI_TOKEN` nuevo `6a05…ab61` va en Render env (no en BD).
+
+**DECISIÓN (punto 4 del usuario) — ¿el motor de descarga de XML de SatGo es mejor que el de NEXO? → NO. NEXO se
+queda como fuente de verdad; NO se reemplaza.** Comparación con base en el código:
+- **NEXO** usa el **WS OFICIAL de Descarga Masiva del SAT** (`cfdidescargamasiva*.clouda.sat.gob.mx`: Autenticación
+  → SolicitaDescarga Emitidos/Recibidos → VerificaSolicitud → Descargar) con **e.firma (FIEL)**. Motor de grado
+  producción: partición adaptativa (7→~10 h ante 5003), prioridades del §8 (recoger paquetes antes de pedir más;
+  vencen a 72 h), dedupe por huella, **estado reanudable en BD**, paralelismo acotado al pool. Baja el universo
+  COMPLETO de CFDI + metadatos + acuses, **sin costo por documento**.
+- **SatGo** es un **intermediario** que a su vez consulta al SAT, **medido por cuota** (lo acabamos de ver: Free =
+  3/mes en imssoc; los planes de pago rondan 2,000/**día**). Para un **respaldo** de años × miles de CFDI eso es
+  caro, topado y dependiente de un tercero para tu backup legal.
+- **Veredicto:** el respaldo de XML es la **fuente de verdad** de NEXO ([[respaldo-xml-fuente-verdad]]); enrutarlo
+  por un tercero medido sería un **downgrade** (control, costo, propiedad del dato) y un reescribir para valor
+  negativo. **SatGo se queda para lo que sí conviene: opiniones (32-D/CSF/IMSS), validación de CFDI, info fiscal y
+  declaraciones** — trámites sin API oficial cómoda. El `fac` de SatGo podría ser, más adelante, una vista de
+  conveniencia de "facturas recientes", **secundaria**, nunca el respaldo. **No se tocó el motor de XML.**
+
+Commits (dev, rama gdmalmacen main): `f3438a2` (contrato+IMSS+Configurar), `f7c205d` (hub Servicios SAT),
+`f739e6f` (mensaje de cuota + asistente plan B), `0940ee0` (cuadrícula declaraciones + Info Fiscal + círculo).
