@@ -56,7 +56,23 @@ export function OpinionCumplimientoPage() {
     // oficial EN TU NAVEGADOR (ahí sí renderiza), bajas el PDF y lo registras aquí
     // —NEXO lo lee y llena los campos solo.
     if (tab === 'IMSS') { setAsistenteImss(true); return; }
-    if (tab === 'SAT' || tab === 'CSF') { setAsistenteSat(true); return; }
+    if (tab === 'SAT' || tab === 'CSF') {
+      // Intenta el motor (usa SatGo si está configurado); si pide acción del usuario, abre el asistente.
+      try {
+        const r: any = await api.descargarCumplimiento(tab);
+        const d = r?.data;
+        if (d?.estado === 'SUCCESS') {
+          setMsg('Descargado y registrado (SatGo).');
+          qc.invalidateQueries({ queryKey: ['opinion-hist', tab] });
+          qc.invalidateQueries({ queryKey: ['opinion-resumen'] });
+        } else if (d?.estado === 'REQUIRES_USER_ACTION') {
+          setAsistenteSat(true);
+        } else {
+          setMsg(d?.mensaje || 'No se pudo descargar.');
+        }
+      } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo.'); setAsistenteSat(true); }
+      return;
+    }
     try { const r: any = await api.descargarCumplimiento(tab); setMsg(r?.message || 'Descarga iniciada.'); qc.invalidateQueries({ queryKey: ['opinion-hist', tab] }); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'La descarga automática aún no está activa.'); }
   };
