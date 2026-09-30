@@ -45,14 +45,14 @@ doc.font('Helvetica').fontSize(8).fillColor('#64748b').text(`GRUPO HCGM, S.A. DE
 doc.y = 224;
 
 /* ── 1. Precio ── */
-h1('1 · Precio: por usuario, plano', 'La misma tarifa para una empresa de 1 usuario o de 100 (sin descuentos por tamaño).');
+h1('1 · Precio: por usuario, plano', 'La misma tarifa para una empresa de 1 usuario o de 100 (sin descuentos por tamaño). Los timbres incluidos crecen con tus usuarios.');
 table([{ label: 'Concepto', w: 300 }, { label: 'Valor', w: W - 300 }], [
   ['Usuario facturable (cualquier rol)', '$750 / mes'],
   ['Checador (kioscos + celulares)', '$0 — gratis, ilimitados'],
-  ['Timbres incluidos', '2,000 / mes · corte el día 30 · no se acumulan'],
-  ['Timbre extra (del 2,001)', '$2.00 + IVA'],
+  ['Timbres incluidos', '1,000 / mes base · +500 por cada usuario adicional'],
+  ['Timbre extra (excedente, +IVA)', 'desde $1.30 (1 usuario) · +$0.20 por usuario'],
 ]);
-box('Fórmula de la renta mensual', 'Renta = $750 × (usuarios facturables) + (timbres por arriba de 2,000 × $2.00). Los checadores no suman.', NAVY, '#eff6ff');
+box('Fórmula de la renta mensual', 'Renta = $750 × (usuarios facturables) + (timbres por encima de los incluidos × el precio del timbre de tu nivel). Timbres incluidos = 1,000 + 500 × (usuarios − 1). Los checadores no suman.', NAVY, '#eff6ff');
 
 h2('Rango por usuario');
 table([{ label: 'Usuarios', w: 130, align: 'right' }, { label: 'Renta/mes', w: 150, align: 'right' }, { label: 'Anual (−16%)', w: W - 280, align: 'right' }], [
@@ -60,6 +60,14 @@ table([{ label: 'Usuarios', w: 130, align: 'right' }, { label: 'Renta/mes', w: 1
   ['5', '$3,750', '$3,150'], ['6', '$4,500', '$3,780'], ['8', '$6,000', '$5,040'], ['10', '$7,500', '$6,300'],
   ['N', '$750 × N', '$630 × N'],
 ]);
+
+h2('Timbres incluidos y excedente por nivel');
+table([{ label: 'Usuarios', w: 130, align: 'right' }, { label: 'Timbres incluidos', w: 170, align: 'right' }, { label: 'Timbre extra (+IVA)', w: W - 300, align: 'right' }], [
+  ['1', '1,000', '$1.30'], ['2', '1,500', '$1.50'], ['3', '2,000', '$1.70'], ['4', '2,500', '$1.90'],
+  ['5', '3,000', '$2.10'], ['6', '3,500', '$2.30'], ['8', '4,500', '$2.70'], ['10', '5,500', '$3.10'],
+  ['N', '1,000 + 500×(N−1)', '$1.30 + $0.20×(N−1)'],
+]);
+p('Entre más usuarios, más timbres incluidos (+500 por usuario), así que es menos probable que pagues excedente. El timbre extra sube por nivel; los incluidos se reinician el día 30 y no se acumulan.', { size: 9 });
 
 /* ── 2. Mercado ── */
 h1('2 · Comparación de mercado (2026)', 'Precios de referencia en México (MXN/mes, sin IVA).');
@@ -70,7 +78,7 @@ table([{ label: 'Producto', w: 150 }, { label: 'Modelo', w: 110 }, { label: 'Pre
   ['CONTPAQi nube', 'Por sistema', '$390 – $590 c/u', 'Se suman: Contabiliza, Vende, Personia'],
 ]);
 p('No es manzana con manzana: Bind y Alegra cobran POR PLAN (2–5 usuarios incluidos) y CONTPAQi POR SISTEMA (se apilan). NEXO cobra por usuario. La medida justa no es el precio por asiento, sino qué obtiene UNA persona por su dinero.', { size: 9.5 });
-box('Un usuario = todo el ERP', 'Con NEXO, un solo usuario ($750) tiene factura + almacén + compras + tesorería + nómina + contabilidad + carta porte + POS + checador facial GRATIS + 2,000 timbres. Igualarlo con CONTPAQi (Contabiliza + Vende + Personia) cuesta ~$1,470 en 3 sistemas sueltos, y aun así SIN checador ni carta porte. Ese "todo en un asiento" no lo tiene ningún competidor.', GOLD, '#fffbeb');
+box('Un usuario = todo el ERP', 'Con NEXO, un solo usuario ($750) tiene factura + almacén + compras + tesorería + nómina + contabilidad + carta porte + POS + checador facial GRATIS + 1,000 timbres. Igualarlo con CONTPAQi (Contabiliza + Vende + Personia) cuesta ~$1,470 en 3 sistemas sueltos, y aun así SIN checador ni carta porte. Ese "todo en un asiento" no lo tiene ningún competidor.', GOLD, '#fffbeb');
 box('¿Se puede competir a $750? Sí — y dónde (honesto)', 'GANAS en micro-PyME y en consolidación: quien hoy paga 2–3 suscripciones sueltas (facturador + contable + nómina) reemplaza todo por un asiento de $750, con MENOR costo total. El pitch es «un usuario = todo el ERP, reemplaza 3 suscripciones», no «asiento barato». Donde el por-usuario pesa es en equipos grandes con gente que usa UN solo módulo; ahí se compite por valor (consolidación + checador gratis + profundidad fiscal MX), y queda como palanca a futuro un asiento «operativo» más barato junto al «full» de $750 (no ahora).', NAVY, '#eff6ff');
 
 /* ── 3. Estrategia ── */
@@ -83,16 +91,16 @@ h2('Fase 2 · Canal de contadores (mes 3–9)');
 bullets(['El contador maneja muchas PyMEs: es el multiplicador (así crecieron Alegra y Contalink).', 'Cuenta multi-empresa con descuento + comisión por cada cliente que traiga.']);
 h2('Fase 3 · Nichos y escala (mes 9+)');
 bullets(['Transportistas → Carta Porte 3.1 multimodal.', 'Comercios → POS + checador facial gratis.', 'Programa de referidos cliente-trae-cliente.']);
-box('Diferenciadores de venta', '1) Todo en uno, un solo precio por usuario. 2) Checador facial GRATIS (nadie más). 3) 2,000 timbres incluidos. 4) Migración sin costo desde tu sistema actual.', NAVY, '#eff6ff');
+box('Diferenciadores de venta', '1) Todo en uno, un solo precio por usuario. 2) Checador facial GRATIS (nadie más). 3) Timbres incluidos que crecen con tus usuarios (1,000 → 5,500). 4) Migración sin costo desde tu sistema actual.', NAVY, '#eff6ff');
 
 /* ── 4. Inflación + facturación ── */
 h1('4 · Aumentos por inflación (INPC)');
 box('Regla', 'Cada 1.º de enero el precio sube el % del INPC (INEGI) del año anterior, avisado con 30–60 días. Es un índice público, no un capricho — y NEXO ya lo trae automático de la API de INEGI.', GREEN);
-table([{ label: 'Año', w: 90 }, { label: 'Usuario/mes', w: 130, align: 'right' }, { label: 'Timbre extra', w: 130, align: 'right' }, { label: 'Timbres incl.', w: W - 350, align: 'right' }], [
-  ['2026 (lanz.)', '$750', '$2.00', '2,000'], ['2027', '~$785', '$2.10', '2,000'], ['2028', '~$820', '$2.20', '2,000'],
-  ['2029', '~$855', '$2.30', '2,000'], ['2030', '~$895', '$2.40', '2,000'],
+table([{ label: 'Año', w: 90 }, { label: 'Usuario/mes', w: 120, align: 'right' }, { label: 'Timbre extra (1 usr)', w: 130, align: 'right' }, { label: 'Timbres incl. (1 usr)', w: W - 340, align: 'right' }], [
+  ['2026 (lanz.)', '$750', '$1.30', '1,000'], ['2027', '~$785', '~$1.36', '1,000'], ['2028', '~$820', '~$1.42', '1,000'],
+  ['2029', '~$855', '~$1.48', '1,000'], ['2030', '~$895', '~$1.55', '1,000'],
 ]);
-p('(Estimando INPC ~4.5 %/año; se ajusta al dato real de INEGI cada año. Cliente de lanzamiento: su 1.er año no sube. Cliente anual: tarifa fija hasta su renovación.)', { size: 9 });
+p('(Estimando INPC ~4.5 %/año; se ajusta al dato real de INEGI cada año. La tabla es el nivel base de 1 usuario: los timbres incluidos crecen +500 por usuario y el timbre extra sube +$0.20 por usuario. Cliente de lanzamiento: su 1.er año no sube. Cliente anual: tarifa fija hasta su renovación.)', { size: 9 });
 
 h1('5 · Reglas de facturación (super admin)');
 bullets([
@@ -101,7 +109,7 @@ bullets([
   '**Prorrateo:** a quien entra después del día 1 se le cobra proporcional a los días del mes.',
   '**Prepago:** se cobra por adelantado. Las facturas salen el día 1.',
   '**Corte del servicio el día 5** si no paga (suspende el acceso de la empresa; al pagar se reactiva sola).',
-  '**Conteo de timbres** desde lo timbrado vía SW (2,000 incluidos, del 2,001 se cobra $2.00).',
+  '**Conteo de timbres** vía SW: incluidos = 1,000 + 500 por usuario; del excedente se cobra el timbre de tu nivel ($1.30 con 1 usuario, hasta $3.10 con 10).',
 ]);
 
 /* ── Pie ── */
