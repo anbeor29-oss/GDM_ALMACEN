@@ -64,7 +64,10 @@ export async function registrar(companyId: string, d: any, userId?: string) {
     `INSERT INTO opinion_cumplimiento (company_id, tipo, sentido, fecha_opinion, folio, observaciones, pdf, created_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
     [companyId, tipo, sentido, fecha, d?.folio || null, d?.observaciones || null, pdf, userId || null]);
-  return { id: r.rows[0].id };
+  const id = r.rows[0].id;
+  // No acumular: se conserva SOLO la vigente por (empresa, tipo) (ahorra espacio).
+  await query(`DELETE FROM opinion_cumplimiento WHERE company_id=$1 AND tipo=$2 AND id<>$3`, [companyId, tipo, id]);
+  return { id };
 }
 
 export async function borrar(companyId: string, id: string) {
@@ -174,7 +177,7 @@ export async function setConfig(companyId: string, tipo: string, d: any) {
   const credencial = secreto(d?.credencial, prev.credencial);
   const token = secreto(d?.token, prev.token);
 
-  const proxima = proximaFecha({ modo, dia_mes: diaMes, frecuencia_dias: frecDias }, tipo as OrganismoTipo);
+  const proxima = proximaFecha({ modo }, tipo as OrganismoTipo);   // regla: domingo en la noche
 
   await query(
     `INSERT INTO cumplimiento_config

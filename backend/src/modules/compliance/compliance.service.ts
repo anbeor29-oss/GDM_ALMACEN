@@ -68,6 +68,10 @@ export async function ejecutar(
          r.fechaOpinion || new Date().toISOString().slice(0, 10),
          r.folio || null, r.observaciones || null, r.pdfBase64, sha, executionId, userId || null]);
       resultadoId = ins.rows[0].id;
+      // No acumular: se conserva SOLO la vigente por (empresa, tipo), para no ocupar
+      // espacio (el PDF va en base64). Se borran las anteriores de ese mismo tipo.
+      await query(`DELETE FROM opinion_cumplimiento WHERE company_id=$1 AND tipo=$2 AND id<>$3`,
+        [companyId, tipo, resultadoId]);
     }
 
     await query(

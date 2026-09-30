@@ -1,23 +1,22 @@
 /**
- * compliance-cron — corre el motor de cumplimiento para las empresas con
- * configuración ACTIVA y en modo automático, cuando su próxima ejecución vence.
+ * compliance-cron — BARRIDO DOMINICAL: cada domingo en la noche refresca todas las
+ * opiniones de las empresas con configuración ACTIVA en automático, vía SatGo, y
+ * SUSTITUYE la vigente (no se acumula: solo se conserva la más reciente por tipo,
+ * para no ocupar espacio — ver compliance.service).
  *
- * La frecuencia efectiva la define cada config (SAT/CSF día 1, IMSS día 17). El
- * cron sólo "despierta" cada hora y ejecuta lo VENCIDO; el motor recalcula la
- * próxima. Es idempotente: si nada vence, no hace nada.
- *
- * Activación: sólo si ENABLE_COMPLIANCE_CRON=true (usa credenciales guardadas,
- * así que se enciende a conciencia; en dev/réplicas queda apagado).
+ * Activación: sólo si ENABLE_COMPLIANCE_CRON=true (usa credenciales guardadas, así
+ * que se enciende a conciencia; en dev/réplicas queda apagado).
  */
 import cron from 'node-cron';
 import logger from '../middleware/logger';
-import { pendientes } from '../modules/compliance/programacion';
+import { todasActivas } from '../modules/compliance/programacion';
 import { ejecutar } from '../modules/compliance/compliance.service';
 
-export async function correrPendientes(): Promise<void> {
-  const items = await pendientes();
+/** Barre TODAS las opiniones activas en automático y sustituye la vigente. */
+export async function correrDominical(): Promise<void> {
+  const items = await todasActivas();
   if (!items.length) return;
-  logger.info(`[compliance-cron] ${items.length} consulta(s) por correr…`);
+  logger.info(`[compliance-cron] barrido dominical: ${items.length} opinión(es)…`);
   for (const it of items) {
     try {
       const r = await ejecutar(it.company_id, it.tipo, 'SCHEDULER');
@@ -33,9 +32,9 @@ export function registerComplianceCron(): void {
     logger.info('[compliance-cron] Deshabilitado (ENABLE_COMPLIANCE_CRON != true)');
     return;
   }
-  // Cada hora en punto: ejecuta lo vencido.
-  cron.schedule('0 * * * *', () => {
-    correrPendientes().catch((e) => logger.error(`[compliance-cron] error: ${e.message}`));
+  // Domingo en la noche (CDMX). Render corre en UTC: lunes 04:00 UTC = domingo 22:00 CDMX.
+  cron.schedule('0 4 * * 1', () => {
+    correrDominical().catch((e) => logger.error(`[compliance-cron] error: ${e.message}`));
   });
-  logger.info('[compliance-cron] Registrado: revisa cada hora las consultas vencidas.');
+  logger.info('[compliance-cron] Registrado: barrido dominical (domingo ~22:00 CDMX).');
 }

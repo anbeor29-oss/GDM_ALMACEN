@@ -355,7 +355,7 @@ function ModalConfig({ tipo, tipoNombre, actual, onCerrar, onHecho }: any) {
                 <option value="PORTAL">Portal (navegación)</option>
               </select></label>
             <label className="flex items-center gap-2 mt-5 text-sm text-gray-600">
-              <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} /> Activa
+              <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} /> Refrescar auto (domingos)
             </label>
           </div>
           <label className="block"><span className="text-xs text-gray-600">Endpoint / URL</span>
