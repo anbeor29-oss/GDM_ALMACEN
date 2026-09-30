@@ -55,6 +55,28 @@ export async function setConfig(d: { baseUrl?: string; apiKey?: string; ambiente
   return getConfig();
 }
 
+/**
+ * Convierte un cuerpo de error de SatGo en un mensaje claro para el usuario.
+ * SatGo devuelve JSON como {"success":false,"message":"Límite mensual excedido",
+ * "featureCode":"imssoc","monthlyLimit":3,"monthlyUsage":6}; detectamos el tope de
+ * cuota (plan de pruebas) y lo explicamos, en vez de mostrar el JSON crudo.
+ */
+function mensajeErrorSatgo(status: number, body: string, recurso: string): string {
+  let j: any = null;
+  try { j = JSON.parse(body); } catch { /* texto plano */ }
+  if (j && typeof j === 'object') {
+    const base = String(j.message || j.error || j.title || `respondió ${status}`);
+    if (j.monthlyLimit != null || j.dailyLimit != null) {
+      const lim = j.monthlyLimit != null
+        ? `${j.monthlyUsage ?? '?'}/${j.monthlyLimit} al mes`
+        : `${j.dailyUsage ?? '?'}/${j.dailyLimit} al día`;
+      return `SatGo (${recurso}): ${base} — cuota del plan de pruebas (${lim}). Al formalizar el contrato sube el límite; mientras, bájala con el asistente.`;
+    }
+    return `SatGo (${recurso}): ${base}`;
+  }
+  return `SatGo ${recurso} respondió ${status}. ${body}`.trim();
+}
+
 /** Extrae el primer valor de una lista de posibles nombres de campo. */
 function pick(obj: any, ...keys: string[]): string | null {
   if (typeof obj === 'string') return obj;
@@ -124,8 +146,8 @@ export async function consultarPdf(recurso: RecursoPdf, rfc: string, secretCiec?
     responseType: 'arraybuffer', timeout: T, validateStatus: () => true,
   });
   if (r.status < 200 || r.status >= 300) {
-    const msg = Buffer.isBuffer(r.data) ? r.data.toString('utf8').slice(0, 300) : '';
-    throw new ValidationError(`SatGo ${recurso} respondió ${r.status}. ${msg}`);
+    const msg = Buffer.isBuffer(r.data) ? r.data.toString('utf8').slice(0, 400) : '';
+    throw new ValidationError(mensajeErrorSatgo(r.status, msg, recurso));
   }
   return Buffer.isBuffer(r.data) ? r.data : Buffer.from(r.data || []);
 }

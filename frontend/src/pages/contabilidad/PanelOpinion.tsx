@@ -40,6 +40,7 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
   const [cfgModal, setCfgModal] = useState(false);
   const [asistenteImss, setAsistenteImss] = useState(false);
   const [asistenteSat, setAsistenteSat] = useState(false);
+  const [manual, setManual] = useState(false);   // ofrecer el asistente SOLO si SatGo falló
 
   const histQ = useQuery({ queryKey: ['opinion-hist', tipo], queryFn: () => api.getOpinionHistorial(tipo) });
   const historial: any[] = histQ.data?.data || [];
@@ -54,9 +55,10 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
       setMsg('Se abrió el portal del INFONAVIT. Descarga tu constancia/opinión y súbela con «Registrar» (NEXO la lee sola).');
       return;
     }
-    // SAT / CIF-CSF / IMSS → un clic: el MOTOR lo baja por SatGo y lo registra solo; si no
-    // puede (no configurado / requiere acción), abre el ASISTENTE guiado.
-    const abrirAsistente = () => (tipo === 'IMSS' ? setAsistenteImss(true) : setAsistenteSat(true));
+    // SAT / CIF-CSF / IMSS → un clic: el MOTOR lo baja por SatGo y lo registra solo.
+    // Si no puede (sin CIEC, cuota agotada, etc.) NO se abre nada solo: se muestra el
+    // motivo y queda a la mano el asistente guiado (plan B) para bajarla manualmente.
+    setManual(false);
     try {
       const r: any = await api.descargarCumplimiento(tipo);
       const d = r?.data;
@@ -67,12 +69,12 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
         qc.invalidateQueries({ queryKey: ['opinion-hist', tipo] });
         qc.invalidateQueries({ queryKey: ['opinion-resumen'] });
       } else {
-        if (d?.mensaje) setMsg(d.mensaje);
-        abrirAsistente();
+        setMsg(d?.mensaje || 'SatGo no pudo obtenerla. Revisa la clave CIEC (Configurar) o bájala a mano.');
+        setManual(true);
       }
     } catch (e: any) {
-      setMsg(e?.response?.data?.message || 'No se pudo por SatGo; usa el asistente.');
-      abrirAsistente();
+      setMsg(e?.response?.data?.message || 'No se pudo conectar con SatGo.');
+      setManual(true);
     }
   };
 
@@ -108,7 +110,17 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
           </button>
         </div>
       </div>
-      {msg && <p className="text-sm text-gray-700 bg-gray-50 border rounded px-3 py-2">{msg}</p>}
+      {msg && (
+        <div className="text-sm text-gray-700 bg-gray-50 border rounded px-3 py-2 space-y-1.5">
+          <p>{msg}</p>
+          {manual && tipo !== 'INFONAVIT' && (
+            <button onClick={() => (tipo === 'IMSS' ? setAsistenteImss(true) : setAsistenteSat(true))}
+              className="inline-flex items-center gap-1.5 text-primary hover:underline text-xs font-medium">
+              <ExternalLink size={13} /> Bajarla a mano con el asistente guiado
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="w-full">
