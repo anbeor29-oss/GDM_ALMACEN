@@ -14,12 +14,12 @@
 import { useMemo, useState } from 'react';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Tag, Truck, HeartPulse, ArrowLeftRight, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Tag, Truck, Users, Building2, HeartPulse, ArrowLeftRight, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
 import { useMascara } from '@/utils/cuenta';
 import { SelectorCuentaId } from '@/components/SelectorCuenta';
-import { TabIngresos } from './PolizasVenta';
-import { TabCargos } from './PolizasCompra';
+import { TabIngresos, TabClientes } from './PolizasVenta';
+import { TabCargos, TabProveedores } from './PolizasCompra';
 import { ConceptosCuentasNomina } from '../nomina/NominaReportes';
 import { aniosContables } from '@/utils/anios';
 import { usePeriodoTrabajo } from '@/utils/periodoActivo';
@@ -27,10 +27,12 @@ import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-type Pest = 'ventas' | 'compras' | 'nomina' | 'pagos';
+type Pest = 'ventas' | 'clientes' | 'compras' | 'proveedores' | 'nomina' | 'pagos';
 const PESTANAS: Array<{ id: Pest; nombre: string; icono: any }> = [
   { id: 'ventas', nombre: 'Ventas (401)', icono: Tag },
+  { id: 'clientes', nombre: 'Clientes', icono: Users },
   { id: 'compras', nombre: 'Compras (115/601)', icono: Truck },
+  { id: 'proveedores', nombre: 'Proveedores', icono: Building2 },
   { id: 'nomina', nombre: 'Nómina', icono: HeartPulse },
   { id: 'pagos', nombre: 'Cobros y pagos', icono: ArrowLeftRight },
 ];
@@ -89,7 +91,9 @@ export function AsignacionCuentasPage() {
       </datalist>
 
       {pest === 'ventas' && <TabIngresos anio={anio} mes={mes} cuentas={cuentas} />}
+      {pest === 'clientes' && <TabClientes />}
       {pest === 'compras' && <TabCargos anio={anio} mes={mes} cuentas={cuentas} />}
+      {pest === 'proveedores' && <TabProveedores />}
       {pest === 'nomina' && <ConceptosCuentasNomina />}
       {pest === 'pagos' && <PagosInfo cuentas={cuentas} />}
     </div>

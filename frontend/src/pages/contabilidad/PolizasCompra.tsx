@@ -10,8 +10,7 @@
  */
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Tag, Truck, FileText, PlayCircle, RefreshCw, Check, Pencil, AlertTriangle } from 'lucide-react';
-import { claseOpcion } from '@/utils/coloresOpciones';
+import { BookOpen, Truck, PlayCircle, RefreshCw, Check, Pencil, AlertTriangle } from 'lucide-react';
 import api from '@/services/api';
 import { CuentaPicker } from '@/components/CuentaPicker';
 import { ModalCrearSubcuenta } from '@/components/ModalCrearSubcuenta';
@@ -34,12 +33,8 @@ const AvisoXml = () => (
 );
 
 export function PolizasCompraPage() {
-  const [tab, setTab] = useState<'polizas' | 'proveedores' | 'cargos'>('polizas');
   const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const anios = aniosContables();
-
-  const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
-  const cuentas: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);
 
   return (
     <div className="p-6 space-y-4 max-w-6xl">
@@ -48,43 +43,24 @@ export function PolizasCompraPage() {
           <BookOpen size={22} className="text-emerald-700" /> Pólizas de compra
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Contabiliza las facturas recibidas: cargos a inventario/gasto por producto, proveedores
-          y una póliza por factura.
+          Una póliza por factura recibida (cargo a inventario/gasto por producto y al IVA acreditable,
+          abono al proveedor). Las cuentas (115/601) y las subcuentas de proveedores se definen en{' '}
+          <b>Contabilidad → Asignación de cuentas</b>.
         </p>
       </div>
 
-      {tab !== 'proveedores' && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">Mes calendario:</span>
-          <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 text-sm">
-            <option value={0}>Todo el año</option>
-            {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-          </select>
-          <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
-            {anios.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </div>
-      )}
-
-      <div className="flex gap-1.5 flex-wrap">
-        {([['polizas', 'Pólizas'], ['proveedores', 'Proveedores'], ['cargos', 'Cargos (115/601 por producto)']] as const)
-          .map(([k, label], i) => (
-            <button key={k} onClick={() => setTab(k)}
-              className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === k)}`}>
-              {k === 'cargos' ? <Tag size={14} /> : k === 'proveedores' ? <Truck size={14} /> : <FileText size={14} />}
-              {label}
-            </button>
-          ))}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-500">Mes calendario:</span>
+        <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 text-sm">
+          <option value={0}>Todo el año</option>
+          {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+        </select>
+        <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
+          {anios.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
       </div>
 
-      <datalist id="ctas-compras">
-        {cuentas.filter((c) => ['ACTIVO', 'GASTO', 'COSTO'].includes(c.tipo))
-          .map((c) => <option key={c.id} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
-      </datalist>
-
-      {tab === 'cargos' && <TabCargos anio={anio} mes={mes} cuentas={cuentas} />}
-      {tab === 'proveedores' && <TabProveedores />}
-      {tab === 'polizas' && <TabPolizasCompra anio={anio} mes={mes} />}
+      <TabPolizasCompra anio={anio} mes={mes} />
     </div>
   );
 }
@@ -240,7 +216,7 @@ function RenglonProducto({ p, nombreCta, onGuardar, onCrear, sugerencia }: {
 }
 
 /* ── Tab 2: Proveedores (subcuentas desde 201) ────────────────────────────── */
-function TabProveedores() {
+export function TabProveedores() {
   const qc = useQueryClient();
   const mascara = useMascara();
   const [msg, setMsg] = useState('');

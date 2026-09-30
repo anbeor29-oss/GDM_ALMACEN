@@ -38,7 +38,17 @@ SW Sapien.
   (arrastrando las cuentas sin movimiento); el **folio de póliza reinicia por mes y
   tipo** (Anexo 24); **previsualización/PDF de la póliza** con el UUID en azul; y el
   **respaldo exige e.firma** (la descarga de sus XML). Todos los motores y los códigos del SAT
-  en **RESPALDO.md**. Ver también **BITACORA.md**.
+  en **RESPALDO.md**. **Asignación de cuentas** es el único lugar donde se dice a qué cuenta va
+  cada cosa (Ventas 401, Clientes, Compras 115/601, Proveedores, Nómina, Cobros y pagos); las
+  pantallas de **Pólizas de venta/compra** quedan solo con la **generación** (se quitó la
+  duplicación que tenían con Asignación). Ver también **BITACORA.md**.
+- 🟡 **Cumplimiento (Opinión 32-D / CIF·CSF / IMSS / INFONAVIT)**: tracker con evidencia (PDF +
+  SHA-256) y **motor** (`modules/compliance`): adaptadores por organismo, programación (SAT/CSF
+  día 1, IMSS día 17), bitácora y credenciales cifradas en bóveda. Al **subir el PDF**, NEXO lo
+  **lee** (pdf-parse) y autollena sentido/fecha/folio; un asistente abre el sitio oficial en el
+  navegador del usuario. La **auto-descarga del SAT** choca con su portal blindado (SPA
+  anti-automatización + OAuth); en curso la **API interna por ingeniería inversa**, con proveedor
+  fiscal (SatGo/Satws) como fallback. Ver **BITACORA.md**.
 - 🟢 **Tesorería**: cuentas por pagar, pagos programados, bancos y
   **conciliación bancaria** (con export a Excel).
 - 🟢 **Permisos por grupo de trabajo**: siete grupos, cada uno con sus módulos,

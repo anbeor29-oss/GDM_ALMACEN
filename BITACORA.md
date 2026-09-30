@@ -6496,3 +6496,49 @@ DEFAULT FALSE no afecta a los que pagan); al pagar se reactiva. Migración `2026
 (`facturacion_config` editable — sube por INPC —, `facturacion_mensual` idempotente por empresa+periodo). TSC
 back=0, front build OK. **Pendiente (cron):** generar la lista sola el día 30, emitir CFDI el día 1,
 auto-suspender el día 5.
+
+---
+
+## 2026-09-29 (cumplimiento) — Motor de Compliance (Fases 1-2), herramienta SAT y la lección del portal blindado
+
+**Motor de cumplimiento (módulo `backend/src/modules/compliance/`).** Se construyó el núcleo del "Compliance
+API" (opción 2, comercializable) sobre el tracker existente (`opinion_cumplimiento` + `cumplimiento_config`):
+`IComplianceProvider` + factory (mock/pendiente/SAT), `EphemeralCredentialContext` (descifra de la bóveda solo
+en memoria), `compliance.service` (ejecutar/ejecutarTodos/bitácora), `programacion` (SAT/CSF día 1, IMSS día 17),
+`jobs/compliance-cron` gated `ENABLE_COMPLIANCE_CRON`, migración `2026-09-29d_compliance_motor` (bitácora
+`compliance_execution` + programación en `cumplimiento_config` + sha256/execution_id/origen en la evidencia).
+**Decisión del usuario que invierte el doc base:** las credenciales **SÍ se guardan** cifradas (el doc decía
+que no), porque facturación y descarga de XML corren a diario. Adaptador SAT (`sat.provider` + `sat-parse` con
+12 pruebas): consulta por RFC contra un origen HTTP configurado; nunca traduce error técnico a sentido fiscal ni
+evade CAPTCHA. Plan en `docs/NEXO_COMPLIANCE_API_PLAN.md`.
+
+**Errores que asumo (documentados a propósito).** Me equivoqué de enfoque con el SAT y le hice perder tiempo al
+usuario:
+1. Insistí en **automatizar la descarga de la Opinión 32-D con Playwright**. La app del SAT
+   (`ptsc32d.clouda.sat.gob.mx`, Angular SPA) **detecta el navegador automatizado y no renderiza** (sale en
+   blanco), aun ocultando `navigator.webdriver` y con args anti-detección. La automatización local del portal
+   **no es viable**.
+2. Probé varios `startUrl` equivocados: los deep-links `www.sat.gob.mx/consultas/NNNNN/...` dan **«Acceso
+   prohibido» (Access Gateway)** si se entran directo, y la URL de login con `code_challenge/state/nonce` es de
+   **un solo uso** (PKCE) — no se puede hardcodear.
+3. El "asistente" que hice al principio **no era automatización**, solo un flujo manual más elegante — el
+   usuario lo señaló con razón.
+
+**Lo que SÍ quedó (camino correcto).** (a) La herramienta local `tools/sat-opinion` (Playwright + e.firma, sin
+CIEC) queda como CLI/alternativa. (b) En NEXO (Contabilidad → Opinión de Cumplimiento): al **subir el PDF** en
+«Registrar», NEXO lo **lee con pdf-parse** y autollena sentido/fecha/folio (`leerPdf` + `mapearSentido`; ruta
+`POST /accounting/opinion-cumplimiento/leer-pdf`); botón «Asistente SAT» abre el sitio oficial **en el navegador
+del usuario** (donde sí carga). (c) **CSF renombrada a «CIF/CSF»** en lo visible (valor de BD sigue `CSF`).
+**Siguiente (elegido por el usuario):** intentar la **API interna del SAT por ingeniería inversa** (login e.firma
+→ token → llamar el endpoint que usa la SPA), con 1 captura de red del usuario; si resulta frágil, un proveedor
+fiscal (SatGo/Satws) es el fallback para algo que se va a comercializar.
+
+**Refactor de Pólizas (quitar duplicación).** Las pantallas «Pólizas de venta» y «Pólizas de compra» tenían 3
+pestañas cada una (generación + terceros + concepto→cuenta), y las pestañas de concepto→cuenta (Ingresos 401 /
+Cargos 115-601) **ya vivían también en «Asignación de cuentas»** (misma `TabIngresos`/`TabCargos`) → información
+duplicada. Se centralizó **toda la asignación en «Asignación de cuentas»**, que ahora tiene: Ventas(401),
+**Clientes**, Compras(115/601), **Proveedores**, Nómina, Cobros y pagos (Clientes/Proveedores movidos desde las
+pantallas de pólizas; Ingresos/Cargos ya estaban). «Pólizas de venta» y «Pólizas de compra» quedan **solo con la
+generación** (una póliza por factura), como pidió el usuario. UI-only: no se tocó el motor de pólizas ni datos.
+TSC front=0. **Pendiente de confirmar:** si además se quitan del submenú Pólizas «Todas las pólizas» (libro
+diario, que repite venta+compra) y/o «Pendientes».
