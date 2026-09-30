@@ -84,7 +84,7 @@ export function AdminSatgoPage() {
 
       {msg && <p className="text-sm bg-gray-50 border rounded px-3 py-2 text-gray-700">{msg}</p>}
       <p className="text-xs text-gray-500 flex items-start gap-1.5"><AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-500" />
-        Por RFC, la consulta usa la <b>clave CIEC</b> de cada empresa (Contabilidad → Opinión de Cumplimiento → Configurar → credencial). El acceso FIEL vía SatGo queda pendiente.</p>
+        Por RFC, la consulta usa la <b>clave CIEC</b> de cada empresa (Contabilidad → Servicios SAT → Configurar). El IMSS va sólo por RFC (sin CIEC). El acceso FIEL vía SatGo queda pendiente.</p>
     </div>
   );
 }

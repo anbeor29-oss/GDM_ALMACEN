@@ -1233,6 +1233,27 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/accounting/opinion-cumplimiento/${tipo}/descargar`, {});
     return r.data;
   }
+
+  /* ── SatGo — consultas por empresa (Servicios SAT) ── */
+  async satgoInfoFiscal() {
+    const r = await this.client.get<APIResponse<any>>('/satgo/consultas/info-fiscal');
+    return r.data;
+  }
+  async satgoValidarCfdi(params: { re: string; rr: string; tt: string; id: string; fe?: string }) {
+    const r = await this.client.get<APIResponse<any>>('/satgo/consultas/validar-cfdi', { params });
+    return r.data;
+  }
+  async satgoDeclaraciones(ejercicio: number, mes = 0) {
+    // Descarga el ZIP de declaraciones (CIEC). Usa el cliente axios (token en su interceptor).
+    const r = await this.client.get('/satgo/consultas/declaraciones', { params: { ejercicio, mes }, responseType: 'blob' });
+    const cd = String((r.headers as any)?.['content-disposition'] || '');
+    const m = cd.match(/filename="?([^"]+)"?/);
+    const nombre = m ? m[1] : `Declaraciones_${ejercicio}.zip`;
+    const url = URL.createObjectURL(r.data as Blob);
+    const a = document.createElement('a'); a.href = url; a.download = nombre; a.click();
+    URL.revokeObjectURL(url);
+  }
+
   /** Pólizas del respaldo que no se pudieron importar (pendientes). */
   async getPolizasPendientes() {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas-pendientes');

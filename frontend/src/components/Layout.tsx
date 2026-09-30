@@ -410,7 +410,10 @@ export function Layout() {
                           { to: '/contabilidad/estados-financieros', icon: emoji3D('📋'), label: 'Estados financieros' },
                           { to: '/contabilidad/reportes-fiscales', icon: emoji3D('📤'), label: 'SAT' },
                           { to: '/contabilidad/cedulas',           icon: emoji3D('📑'), label: 'Cédulas fiscales (ISR/IVA)' },
-                          { to: '/contabilidad/opinion-cumplimiento', icon: emoji3D('🛡️'), label: 'Opinión 32-D (SAT/IMSS/INFONAVIT)' },
+                          /* Cumplimiento por organismo: SAT (hub) → IMSS → INFONAVIT. */
+                          { to: '/contabilidad/servicios-sat',         icon: emoji3D('🏛️'), label: 'Servicios SAT (32-D/CIF/Declaraciones)' },
+                          { to: '/contabilidad/cumplimiento-imss',     icon: emoji3D('🛡️'), label: 'Cumplimiento IMSS' },
+                          { to: '/contabilidad/cumplimiento-infonavit', icon: emoji3D('🏠'), label: 'Cumplimiento INFONAVIT' },
                         ],
                       },
                     ]}

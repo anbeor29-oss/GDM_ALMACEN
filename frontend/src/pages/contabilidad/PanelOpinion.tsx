@@ -1,25 +1,25 @@
 /**
- * Opinión de Cumplimiento — SAT (32-D), IMSS e INFONAVIT.
- *
- * Registra y da seguimiento a las tres opiniones (sentido, fecha, folio y PDF). La
- * más reciente por tipo es la vigente; se guarda el histórico. La descarga en vivo
- * (Buzón/e.firma) es una fase posterior: por ahora se captura lo que se obtiene del
- * portal de cada dependencia.
+ * PanelOpinion — panel de UNA opinión de cumplimiento (SAT 32-D, CIF/CSF, IMSS o
+ * INFONAVIT): descarga de un clic (motor SatGo → asistente si no puede), histórico
+ * (la más reciente es la vigente; no se acumula), Configurar (CIEC + refresco
+ * dominical) y Registrar manual. Se reutiliza en el hub «Servicios SAT» y en las
+ * áreas de IMSS e INFONAVIT.
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Plus, Trash2, FileText, X, Save, AlertTriangle, Settings, DownloadCloud, ExternalLink, Download } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha, aTextoMx } from '@/components/CampoFecha';
-import { claseOpcion } from '@/utils/coloresOpciones';
 
-const TIPOS: Array<[string, string, string]> = [
-  ['SAT', 'SAT (32-D)', 'Opinión del cumplimiento de obligaciones fiscales (Art. 32-D CFF).'],
-  ['CSF', 'CIF/CSF', 'Constancia de Situación Fiscal (CIF) — la identidad fiscal de la empresa (RFC, régimen, domicilio).'],
-  ['IMSS', 'IMSS', 'Opinión de cumplimiento de obligaciones en materia de seguridad social.'],
-  ['INFONAVIT', 'INFONAVIT', 'Cumplimiento en materia de aportaciones de vivienda (INFONAVIT) — captura manual.'],
-];
-const SENTIDOS: Array<[string, string]> = [
+/** Descripción por tipo (se muestra arriba del panel). */
+export const DESC_TIPO: Record<string, { nombre: string; desc: string }> = {
+  SAT: { nombre: 'Opinión 32-D', desc: 'Opinión del cumplimiento de obligaciones fiscales (Art. 32-D CFF).' },
+  CSF: { nombre: 'CIF/CSF', desc: 'Constancia de Situación Fiscal (CIF) — la identidad fiscal de la empresa (RFC, régimen, domicilio).' },
+  IMSS: { nombre: 'IMSS', desc: 'Opinión de cumplimiento de obligaciones en materia de seguridad social.' },
+  INFONAVIT: { nombre: 'INFONAVIT', desc: 'Cumplimiento en materia de aportaciones de vivienda (INFONAVIT) — captura manual.' },
+};
+
+export const SENTIDOS: Array<[string, string]> = [
   ['POSITIVA', 'Positiva (al corriente)'],
   ['SIN_ADEUDOS', 'Sin adeudos'],
   ['VIGENTE', 'Vigente'],
@@ -33,41 +33,38 @@ const badgeSentido = (s: string) =>
     : s === 'SUSPENDIDA' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600';
 const etiquetaSentido = (s: string) => (SENTIDOS.find(([k]) => k === s)?.[1] || s);
 
-export function OpinionCumplimientoPage() {
+export function PanelOpinion({ tipo }: { tipo: string }) {
   const qc = useQueryClient();
-  const [tab, setTab] = useState('SAT');
-  const [form, setForm] = useState<boolean>(false);
+  const [form, setForm] = useState(false);
   const [msg, setMsg] = useState('');
-
-  const histQ = useQuery({ queryKey: ['opinion-hist', tab], queryFn: () => api.getOpinionHistorial(tab) });
-  const historial: any[] = histQ.data?.data || [];
   const [cfgModal, setCfgModal] = useState(false);
   const [asistenteImss, setAsistenteImss] = useState(false);
   const [asistenteSat, setAsistenteSat] = useState(false);
+
+  const histQ = useQuery({ queryKey: ['opinion-hist', tipo], queryFn: () => api.getOpinionHistorial(tipo) });
+  const historial: any[] = histQ.data?.data || [];
   const configQ = useQuery({ queryKey: ['cumpl-config'], queryFn: () => api.getConfigCumplimiento() });
-  const cfgActual: any = configQ.data?.data?.configs?.[tab];
+  const cfgActual: any = configQ.data?.data?.configs?.[tipo];
+  const info = DESC_TIPO[tipo] || { nombre: tipo, desc: '' };
 
   const descargar = async () => {
     setMsg('');
-    if (tab === 'INFONAVIT') {
-      // Manual: se abre el portal del INFONAVIT; el usuario baja la constancia y la sube con «Registrar».
+    if (tipo === 'INFONAVIT') {
       window.open('https://portalmx.infonavit.org.mx/wps/portal/infonavitmx/mx2/patrones/tramites_adicionales/constancia_situacion_fiscal/', '_blank', 'noopener,noreferrer');
       setMsg('Se abrió el portal del INFONAVIT. Descarga tu constancia/opinión y súbela con «Registrar» (NEXO la lee sola).');
       return;
     }
-    // SAT (32-D), CIF/CSF e IMSS → un clic: el MOTOR lo baja por SatGo y lo registra solo
-    // (IMSS por RFC; SAT/CSF con la clave CIEC de «Configurar», o la opinión pública si no hay).
-    // Si el motor no puede (no configurado / requiere acción), se abre el ASISTENTE guiado que
-    // abre el sitio oficial EN TU NAVEGADOR y deja subir el PDF.
-    const abrirAsistente = () => (tab === 'IMSS' ? setAsistenteImss(true) : setAsistenteSat(true));
+    // SAT / CIF-CSF / IMSS → un clic: el MOTOR lo baja por SatGo y lo registra solo; si no
+    // puede (no configurado / requiere acción), abre el ASISTENTE guiado.
+    const abrirAsistente = () => (tipo === 'IMSS' ? setAsistenteImss(true) : setAsistenteSat(true));
     try {
-      const r: any = await api.descargarCumplimiento(tab);
+      const r: any = await api.descargarCumplimiento(tipo);
       const d = r?.data;
       if (d?.estado === 'SUCCESS') {
         setMsg(String(d?.mensaje || '').includes('pública')
           ? 'Descargado y registrado (SatGo · opinión pública).'
           : 'Descargado y registrado (SatGo).');
-        qc.invalidateQueries({ queryKey: ['opinion-hist', tab] });
+        qc.invalidateQueries({ queryKey: ['opinion-hist', tipo] });
         qc.invalidateQueries({ queryKey: ['opinion-resumen'] });
       } else {
         if (d?.mensaje) setMsg(d.mensaje);
@@ -81,43 +78,23 @@ export function OpinionCumplimientoPage() {
 
   const borrar = async (id: string) => {
     if (!window.confirm('¿Borrar este registro de opinión?')) return;
-    try { await api.borrarOpinion(id); qc.invalidateQueries({ queryKey: ['opinion-hist', tab] }); qc.invalidateQueries({ queryKey: ['opinion-resumen'] }); }
+    try { await api.borrarOpinion(id); qc.invalidateQueries({ queryKey: ['opinion-hist', tipo] }); qc.invalidateQueries({ queryKey: ['opinion-resumen'] }); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo borrar.'); }
   };
 
-  const tipoActual = TIPOS.find(([k]) => k === tab)!;
-
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <ShieldCheck size={22} className="text-primary" /> Opinión de Cumplimiento
-        </h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          SAT (32-D), IMSS e INFONAVIT — el estado de cumplimiento de la empresa. Registra la opinión que
-          obtienes de cada portal; la más reciente es la vigente.
-        </p>
-      </div>
-
-      {/* Pestañas por tipo */}
-      <div className="flex gap-1.5 flex-wrap">
-        {TIPOS.map(([k, nombre], i) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === k)}`}>{nombre}</button>
-        ))}
-      </div>
-
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-gray-600 flex-1 min-w-[14rem]">{tipoActual[2]}</p>
+        <p className="text-sm text-gray-600 flex-1 min-w-[14rem]">{info.desc}</p>
         <div className="flex items-center gap-1.5">
           <button onClick={descargar}
-            title={tab === 'INFONAVIT'
+            title={tipo === 'INFONAVIT'
               ? 'Abre el portal del INFONAVIT; descarga tu constancia/opinión y súbela con Registrar (captura manual)'
               : 'Un clic: la baja por SatGo y la registra sola. Si no puede, abre el sitio oficial en tu navegador para descargarla'}
             className="flex items-center gap-1.5 border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 text-sm">
-            <DownloadCloud size={15} /> {tab === 'INFONAVIT' ? 'Portal INFONAVIT' : 'Descargar'}
+            <DownloadCloud size={15} /> {tipo === 'INFONAVIT' ? 'Portal INFONAVIT' : 'Descargar'}
           </button>
-          {tab !== 'INFONAVIT' && (
+          {tipo !== 'INFONAVIT' && (
             <button onClick={() => setCfgModal(true)}
               title="Refresco automático los domingos y, para SAT/CIF, la clave CIEC (se guarda cifrada)"
               className="flex items-center gap-1.5 border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600">
@@ -146,7 +123,7 @@ export function OpinionCumplimientoPage() {
           </thead>
           <tbody className="divide-y">
             {!histQ.isLoading && historial.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500 italic">Sin registros de {tipoActual[1]}. Registra la primera opinión.</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500 italic">Sin registros de {info.nombre}. Descárgala o regístrala.</td></tr>
             )}
             {historial.map((h) => (
               <tr key={h.id} className="hover:bg-gray-50">
@@ -168,12 +145,12 @@ export function OpinionCumplimientoPage() {
       </div>
 
       {form && (
-        <ModalRegistrar tipo={tab} tipoNombre={tipoActual[1]}
+        <ModalRegistrar tipo={tipo} tipoNombre={info.nombre}
           onCerrar={() => setForm(false)}
-          onHecho={() => { setForm(false); qc.invalidateQueries({ queryKey: ['opinion-hist', tab] }); qc.invalidateQueries({ queryKey: ['opinion-resumen'] }); }} />
+          onHecho={() => { setForm(false); qc.invalidateQueries({ queryKey: ['opinion-hist', tipo] }); qc.invalidateQueries({ queryKey: ['opinion-resumen'] }); }} />
       )}
       {cfgModal && (
-        <ModalConfig tipo={tab} tipoNombre={tipoActual[1]} actual={cfgActual}
+        <ModalConfig tipo={tipo} tipoNombre={info.nombre} actual={cfgActual}
           onCerrar={() => setCfgModal(false)}
           onHecho={() => { setCfgModal(false); qc.invalidateQueries({ queryKey: ['cumpl-config'] }); }} />
       )}
@@ -183,7 +160,7 @@ export function OpinionCumplimientoPage() {
           onRegistrar={() => { setAsistenteImss(false); setForm(true); }} />
       )}
       {asistenteSat && (
-        <ModalAsistenteSat tipo={tab}
+        <ModalAsistenteSat tipo={tipo}
           onCerrar={() => setAsistenteSat(false)}
           onRegistrar={() => { setAsistenteSat(false); setForm(true); }} />
       )}
@@ -191,15 +168,9 @@ export function OpinionCumplimientoPage() {
   );
 }
 
-/**
- * Asistente guiado del Buzón IMSS (proceso interno-externo). No automatiza el login
- * con e.firma (es un portal de gobierno: la autenticación la hace el usuario en el
- * sitio oficial), pero abre el portal y desglosa los pasos exactos para bajar la
- * 32-D, y deja registrar el PDF descargado de un clic.
- */
+/* ─────────────────── Asistente IMSS ─────────────────── */
 const PORTAL_IMSS_LOGIN = 'https://buzon.imss.gob.mx/buzonimss/login';
 const PORTAL_IMSS_32D = 'https://buzon.imss.gob.mx/buzonimss/opinionCumplimiento/consultaMiOpinion';
-
 const PASOS_IMSS: Array<{ t: string; d?: string }> = [
   { t: 'Entra con tu e.firma', d: 'En el botón «Abrir Buzón IMSS» captura tu RFC, sube tu .cer y tu .key, la contraseña de la e.firma y «Validar». (Es el sitio oficial del IMSS.)' },
   { t: 'Abre «32D Consultar Mi Opinión»', d: 'En la barra superior, el ÚLTIMO ícono (hoja con ✓) → 3.ª opción. O usa el enlace directo de abajo (ya con sesión iniciada).' },
@@ -253,12 +224,7 @@ function ModalAsistenteImss({ onCerrar, onRegistrar }: { onCerrar: () => void; o
   );
 }
 
-/**
- * Asistente guiado del SAT (32-D y CSF). Como la app del 32-D bloquea el navegador
- * automatizado (sale en blanco), NO se automatiza: se abre el sitio oficial EN TU
- * NAVEGADOR (ahí sí renderiza), bajas el PDF y lo subes aquí — NEXO lo lee y llena
- * sentido/fecha/folio solo. La e.firma se captura en el sitio del SAT, no aquí.
- */
+/* ─────────────────── Asistente SAT (32-D / CSF) ─────────────────── */
 const APP_SAT_32D = 'https://ptsc32d.clouda.sat.gob.mx/';
 const PORTAL_SAT_HOME = 'https://www.sat.gob.mx/home';
 
@@ -313,13 +279,7 @@ function ModalAsistenteSat({ tipo, onCerrar, onRegistrar }: { tipo: string; onCe
   );
 }
 
-/**
- * Configurar — versión mínima. Ya no se capturan endpoint/usuario/token por empresa
- * (SatGo vive en Súper Admin y el RFC se toma de la empresa). Sólo queda:
- *   · SAT / CIF-CSF: la clave CIEC (SatGo la usa para bajar la 32-D `oc` y la CSF).
- *   · IMSS: nada — se baja por RFC, sin CIEC.
- *   · Refresco automático los domingos (marca la config como «Activa» para el barrido).
- */
+/* ─────────────────── Configurar (mínimo) ─────────────────── */
 function ModalConfig({ tipo, tipoNombre, actual, onCerrar, onHecho }: any) {
   const [credencial, setCredencial] = useState('');   // vacío = conservar el guardado
   const [activo, setActivo] = useState(!!actual?.activo);
@@ -375,6 +335,7 @@ function ModalConfig({ tipo, tipoNombre, actual, onCerrar, onHecho }: any) {
   );
 }
 
+/* ─────────────────── Registrar (captura manual + lectura de PDF) ─────────────────── */
 function ModalRegistrar({ tipo, tipoNombre, onCerrar, onHecho }: any) {
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [sentido, setSentido] = useState('POSITIVA');
@@ -394,7 +355,6 @@ function ModalRegistrar({ tipo, tipoNombre, onCerrar, onHecho }: any) {
     rd.onload = async () => {
       const dataUrl = String(rd.result || '');
       setPdf(dataUrl); setPdfNombre(f.name); setError('');
-      // NEXO lee el PDF y autollena sentido/fecha/folio (se pueden corregir).
       setDetectando(true); setDetectado('');
       try {
         const r: any = await api.leerOpinionPdf(dataUrl);
@@ -464,4 +424,4 @@ function ModalRegistrar({ tipo, tipoNombre, onCerrar, onHecho }: any) {
   );
 }
 
-export default OpinionCumplimientoPage;
+export default PanelOpinion;

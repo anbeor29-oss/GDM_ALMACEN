@@ -159,3 +159,27 @@ export async function declaracionesCiec(rfc: string, secretCiec: string, ejercic
   if (r.status < 200 || r.status >= 300) throw new ValidationError(`SatGo declaraciones respondió ${r.status}.`);
   return Buffer.isBuffer(r.data) ? r.data : Buffer.from(r.data || []);
 }
+
+/**
+ * Validación de un CFDI ante el SAT (SatWebService/consulta-cfdi). NO usa CIEC:
+ * sólo Bearer + header `RFC` (el del consultante) + los datos del comprobante:
+ *   re = RFC emisor, rr = RFC receptor, tt = total, id = UUID, fe = 8 últimos del sello.
+ * Devuelve el estado del comprobante (Vigente / Cancelado / No encontrado).
+ */
+export async function consultaCfdi(
+  rfcConsultante: string,
+  d: { re: string; rr: string; tt: string | number; id: string; fe?: string },
+): Promise<any> {
+  const jwt = await accessToken();
+  const base = await baseUrl();
+  const r = await axios.get(`${base}/api/v2/SatWebService/consulta-cfdi`, {
+    params: { re: d.re, rr: d.rr, tt: d.tt, id: d.id, fe: d.fe || undefined },
+    headers: { Authorization: `Bearer ${jwt}`, RFC: rfcConsultante },
+    timeout: T, validateStatus: () => true,
+  });
+  if (r.status < 200 || r.status >= 300) {
+    const msg = typeof r.data === 'string' ? r.data.slice(0, 300) : (r.data?.message || '');
+    throw new ValidationError(`SatGo consulta-cfdi respondió ${r.status}. ${msg}`);
+  }
+  return r.data;
+}
