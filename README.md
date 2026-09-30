@@ -39,9 +39,10 @@ SW Sapien.
   tipo** (Anexo 24); **previsualización/PDF de la póliza** con el UUID en azul; y el
   **respaldo exige e.firma** (la descarga de sus XML). Todos los motores y los códigos del SAT
   en **RESPALDO.md**. **Asignación de cuentas** es el único lugar donde se dice a qué cuenta va
-  cada cosa (Ventas 401, Clientes, Compras 115/601, Proveedores, Nómina, Cobros y pagos); las
-  pantallas de **Pólizas de venta/compra** quedan solo con la **generación** (se quitó la
-  duplicación que tenían con Asignación). Ver también **BITACORA.md**.
+  cada cosa (Ventas 401, Clientes, Compras 115/601, Proveedores, Nómina, Cobros y pagos). El submenú
+  **Pólizas** quedó en **Póliza manual** + **Todas las pólizas** (el consolidado que genera y muestra
+  ventas, compras, cobros/pagos, nómina y manuales); se quitaron las pantallas separadas de venta/compra
+  (redundantes con el consolidado + Asignación). Ver también **BITACORA.md**.
 - 🟡 **Cumplimiento (Opinión 32-D / CIF·CSF / IMSS / INFONAVIT)**: tracker con evidencia (PDF +
   SHA-256) y **motor** (`modules/compliance`): adaptadores por organismo, programación (SAT/CSF
   día 1, IMSS día 17), bitácora y credenciales cifradas en bóveda. Al **subir el PDF**, NEXO lo

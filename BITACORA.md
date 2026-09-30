@@ -6548,6 +6548,16 @@ Pólizas de venta · Pólizas de compra**. Se removieron rutas + imports en `Erp
 bundle → más liviano); los componentes `PolizasLista.tsx`/`PolizasPendientes.tsx` se conservan en el repo por
 si se re-necesitan (el diario también se ve por Balanza/Reportes). TSC front=0.
 
+**CORRECCIÓN (mismo día) — lo hice al revés.** El usuario aclaró con capturas: NO quería quitar «Todas las
+pólizas»; ese es el **menú consolidado original** (`PolizasLista`) donde **se integra TODO** (Ventas, Compras,
+Cobros/Pagos, Nómina, Manuales, PPD/PUE + botones de generación + «Auto-asignar todo»). Lo que sí quería quitar
+eran las pantallas **separadas** «Pólizas de venta» y «Pólizas de compra» (redundantes: su generación ya está en
+el consolidado y su asignación en «Asignación de cuentas»). Corregido: submenú Pólizas final = **Póliza manual ·
+Todas las pólizas**; se quitaron del menú+rutas «Pólizas de venta» y «Pólizas de compra» (los archivos quedan por
+sus pestañas `TabIngresos/TabClientes/TabCargos/TabProveedores` que consume «Asignación de cuentas»). «Pendientes»
+se deja fuera (no lo pidió de vuelta). TSC front=0. **Lección:** cuando dijo «quita los submenú de las pólizas de
+compras y ventas» era literal (quitar venta/compra), no «Todas las pólizas»; debí confirmar con la captura antes.
+
 **Veredicto honesto sobre la auto-descarga del SAT (el usuario pidió que sea derecho).** El usuario quiere el
 32-D/CIF-CSF **oculto (headless), a un botón, que baje solo y se refresque cada domingo por la noche**. Mi
 evaluación técnica sin adornos:

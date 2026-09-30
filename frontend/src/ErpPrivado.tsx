@@ -74,8 +74,7 @@ import { ValidacionContablePage } from '@/pages/contabilidad/ValidacionContable'
 import { ReportesEspecialesPage } from '@/pages/contabilidad/ReportesEspeciales';
 import { ReportesFiscalesPage } from '@/pages/contabilidad/ReportesFiscales';
 import { PolizaManualPage } from '@/pages/contabilidad/PolizaManual';
-import { PolizasVentaPage } from '@/pages/contabilidad/PolizasVenta';
-import { PolizasCompraPage } from '@/pages/contabilidad/PolizasCompra';
+import { PolizasListaPage } from '@/pages/contabilidad/PolizasLista';
 import { ActivoFijoPage } from '@/pages/contabilidad/ActivoFijo';
 import { ImportarContpaqiPage } from '@/pages/contabilidad/ImportarContpaqi';
 import { CfdiContabilidadPage } from '@/pages/contabilidad/CfdiContabilidad';
@@ -113,8 +112,7 @@ export default function ErpPrivado() {
       >
         <Route path="dashboard"    element={<ModuleRoute module="dashboard"><DashboardPage /></ModuleRoute>} />
         <Route path="invoices"     element={<ModuleRoute module="invoices"><InvoicesPage /></ModuleRoute>} />
-        <Route path="invoices/polizas-venta" element={<ModuleRoute module="contabilidad"><PolizasVentaPage /></ModuleRoute>} />
-        <Route path="compras/polizas"        element={<ModuleRoute module="contabilidad"><PolizasCompraPage /></ModuleRoute>} />
+        <Route path="contabilidad/polizas"   element={<ModuleRoute module="contabilidad"><PolizasListaPage /></ModuleRoute>} />
         <Route path="invoices/new"       element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
         <Route path="invoices/:id/edit"  element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
         <Route path="credit-notes" element={<ModuleRoute module="credit_notes"><CreditNotesPage /></ModuleRoute>} />
