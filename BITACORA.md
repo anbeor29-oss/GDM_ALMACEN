@@ -6540,5 +6540,38 @@ duplicada. Se centralizó **toda la asignación en «Asignación de cuentas»**,
 **Clientes**, Compras(115/601), **Proveedores**, Nómina, Cobros y pagos (Clientes/Proveedores movidos desde las
 pantallas de pólizas; Ingresos/Cargos ya estaban). «Pólizas de venta» y «Pólizas de compra» quedan **solo con la
 generación** (una póliza por factura), como pidió el usuario. UI-only: no se tocó el motor de pólizas ni datos.
-TSC front=0. **Pendiente de confirmar:** si además se quitan del submenú Pólizas «Todas las pólizas» (libro
-diario, que repite venta+compra) y/o «Pendientes».
+TSC front=0.
+
+**Submenú Pólizas aligerado (commit siguiente).** El usuario confirmó: se quitan del submenú Pólizas
+«Todas las pólizas» (libro diario que repetía venta+compra) y «Pendientes». Submenú final: **Póliza manual ·
+Pólizas de venta · Pólizas de compra**. Se removieron rutas + imports en `ErpPrivado`/`Layout` (salen del
+bundle → más liviano); los componentes `PolizasLista.tsx`/`PolizasPendientes.tsx` se conservan en el repo por
+si se re-necesitan (el diario también se ve por Balanza/Reportes). TSC front=0.
+
+**Veredicto honesto sobre la auto-descarga del SAT (el usuario pidió que sea derecho).** El usuario quiere el
+32-D/CIF-CSF **oculto (headless), a un botón, que baje solo y se refresque cada domingo por la noche**. Mi
+evaluación técnica sin adornos:
+- La parte de **NEXO** (un botón, registrar como información general, cron dominical, guardar la evidencia) la
+  **puedo construir bien y de forma confiable** — el motor ya existe.
+- La parte de **arrancarle el documento al SAT de forma oculta y desatendida** es la difícil: exige **reproducir
+  su login OAuth con e.firma (NIDP, firma de reto con la llave privada) del lado del servidor**, o correr un
+  navegador headless que el SAT **bloquea a propósito** (la SPA sale en blanco bajo automatización). Es
+  ingeniería inversa de un flujo **no documentado y adversarial**, que el SAT puede romper cuando quiera →
+  **mantenimiento constante**. No puedo prometer honestamente que eso quede **oculto, desatendido y estable**.
+- **Recomendación:** para ese requisito exacto (oculto + semanal + confiable, sobre todo si se va a *vender*),
+  lo correcto es un **proveedor fiscal** (SatGo/Satws): ellos mantienen la conexión con el SAT y yo integro su
+  API en el motor (botón + cron dominical + guardar en NEXO). No es falta de capacidad mía: es la arquitectura
+  correcta para una dependencia externa que se defiende del scraping. Si aun así quiere, hago el **mejor
+  esfuerzo gratis** (ingeniería inversa con 1 captura), pero sin garantía de que llegue a "oculto/desatendido".
+- **Puntos 5 y 6** (crons de facturación; Anexo 20 / extractores banca / .bak CPQ) → diferidos hasta tener
+  clientes reales (decisión del usuario).
+
+**Autoevaluación de NEXO (a petición del usuario).** NEXO es un ERP **grande y real**, cerca de listo para
+comercializar: CFDI 4.0, nómina completa (IMSS/IDSE, finiquitos), contabilidad con motor de pólizas cuadrado
+en BD (balanza, estados financieros, NIF, cierre, DIOT, Anexo 24, cédulas), tesorería + conciliación,
+inventarios, compras, POS, descarga masiva del SAT, activo fijo, checador biométrico, migración CONTPAQi/NomiPaq,
+reportes Excel+PDF, multi-empresa y cifrado en bóveda. **Fortalezas:** cobertura amplia y un núcleo contable
+sólido (cuadre garantizado por trigger). **Riesgos/pendientes reales:** (1) PAC aún en **sandbox** — el timbrado
+real es un flip que decide el usuario; (2) **auto-descarga de cumplimiento** bloqueada por el SAT (proveedor
+recomendado); (3) faltan los crons de cobro y algunos extractores. Veredicto: producto fuerte; la opinión del
+SAT es **un borde de la industria**, no un reflejo de la calidad de NEXO.

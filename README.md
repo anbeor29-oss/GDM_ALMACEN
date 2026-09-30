@@ -46,9 +46,9 @@ SW Sapien.
   SHA-256) y **motor** (`modules/compliance`): adaptadores por organismo, programación (SAT/CSF
   día 1, IMSS día 17), bitácora y credenciales cifradas en bóveda. Al **subir el PDF**, NEXO lo
   **lee** (pdf-parse) y autollena sentido/fecha/folio; un asistente abre el sitio oficial en el
-  navegador del usuario. La **auto-descarga del SAT** choca con su portal blindado (SPA
-  anti-automatización + OAuth); en curso la **API interna por ingeniería inversa**, con proveedor
-  fiscal (SatGo/Satws) como fallback. Ver **BITACORA.md**.
+  navegador del usuario. La **auto-descarga DESATENDIDA del SAT** choca con su portal blindado (SPA
+  anti-automatización + OAuth): para un flujo oculto/semanal y confiable se recomienda un **proveedor
+  fiscal** (SatGo/Satws) integrado al motor; hoy funciona el flujo asistido + lectura del PDF. Ver **BITACORA.md**.
 - 🟢 **Tesorería**: cuentas por pagar, pagos programados, bancos y
   **conciliación bancaria** (con export a Excel).
 - 🟢 **Permisos por grupo de trabajo**: siete grupos, cada uno con sus módulos,

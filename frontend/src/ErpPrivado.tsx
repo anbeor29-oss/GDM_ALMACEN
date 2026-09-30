@@ -74,8 +74,6 @@ import { ValidacionContablePage } from '@/pages/contabilidad/ValidacionContable'
 import { ReportesEspecialesPage } from '@/pages/contabilidad/ReportesEspeciales';
 import { ReportesFiscalesPage } from '@/pages/contabilidad/ReportesFiscales';
 import { PolizaManualPage } from '@/pages/contabilidad/PolizaManual';
-import { PolizasListaPage } from '@/pages/contabilidad/PolizasLista';
-import { PolizasPendientesPage } from '@/pages/contabilidad/PolizasPendientes';
 import { PolizasVentaPage } from '@/pages/contabilidad/PolizasVenta';
 import { PolizasCompraPage } from '@/pages/contabilidad/PolizasCompra';
 import { ActivoFijoPage } from '@/pages/contabilidad/ActivoFijo';
@@ -170,8 +168,6 @@ export default function ErpPrivado() {
         <Route path="contabilidad/cuentas"            element={<ModuleRoute module="contabilidad"><CatalogoCuentasPage /></ModuleRoute>} />
         <Route path="contabilidad/asignacion"         element={<ModuleRoute module="contabilidad"><AsignacionCuentasPage /></ModuleRoute>} />
         <Route path="contabilidad/poliza-manual"      element={<ModuleRoute module="contabilidad"><PolizaManualPage /></ModuleRoute>} />
-        <Route path="contabilidad/polizas"            element={<ModuleRoute module="contabilidad"><PolizasListaPage /></ModuleRoute>} />
-        <Route path="contabilidad/polizas-pendientes" element={<ModuleRoute module="contabilidad"><PolizasPendientesPage /></ModuleRoute>} />
         <Route path="contabilidad/activo-fijo"        element={<ModuleRoute module="contabilidad"><ActivoFijoPage /></ModuleRoute>} />
         <Route path="contabilidad/importar-contpaqi"  element={<ModuleRoute module="contabilidad"><ImportarContpaqiPage /></ModuleRoute>} />
         <Route path="contabilidad/cfdi"               element={<ModuleRoute module="contabilidad"><CfdiContabilidadPage /></ModuleRoute>} />

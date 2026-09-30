@@ -396,10 +396,8 @@ export function Layout() {
                         icon: emoji3D('📔'), label: 'Pólizas',
                         children: [
                           { to: '/contabilidad/poliza-manual', icon: emoji3D('✍️'), label: 'Póliza manual' },
-                          { to: '/contabilidad/polizas',   icon: emoji3D('📔'), label: 'Todas las pólizas' },
                           { to: '/invoices/polizas-venta', icon: emoji3D('📗'), label: 'Pólizas de venta' },
                           { to: '/compras/polizas',        icon: emoji3D('📕'), label: 'Pólizas de compra' },
-                          { to: '/contabilidad/polizas-pendientes', icon: emoji3D('⚠️'), label: 'Pendientes' },
                         ],
                       },
                       {
