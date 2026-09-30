@@ -9,7 +9,7 @@
  * activa por RÉGIMEN FISCAL: la de ISR solo si la empresa es 612; la de IVA para
  * todas. PRIMERA VERSIÓN: coteja los números contra tu papel de trabajo.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FileSpreadsheet, Info } from 'lucide-react';
 import api from '@/services/api';
@@ -208,17 +208,24 @@ export function CedulasFiscalesPage() {
     pmQ.refetch();
   };
 
-  // Antes cada cédula de ISR aparecía solo si la empresa era de ese régimen.
-  // Ahora se despliegan TODAS para dar el panorama de lo que se procesa; la que
-  // corresponde al régimen de la empresa va marcada con un punto verde. El
-  // default sigue siendo IVA (aplica a todos los regímenes).
-  const tabs: Array<{ k: 'isr' | 'resico' | 'pm' | 'plat' | 'iva'; label: string; propio: boolean }> = [
+  // La cédula de IVA es UNIVERSAL (todos los regímenes). Cada cédula de ISR se
+  // HABILITA solo si es la del régimen de la empresa; las demás se deshabilitan.
+  // Si el régimen no está capturado, se dejan todas (no se puede filtrar aún).
+  const tabs: Array<{ k: 'isr' | 'resico' | 'pm' | 'plat' | 'iva'; label: string; propio: boolean; universal?: boolean }> = [
     { k: 'isr',    label: 'ISR (PF Act. Emp. 612)',   propio: esPF612 },
     { k: 'resico', label: 'ISR RESICO (626)',         propio: esRESICO },
     { k: 'pm',     label: 'ISR PM (601, coeficiente)', propio: esPM601 },
     { k: 'plat',   label: 'Plataformas (625)',         propio: esPlataformas },
-    { k: 'iva',    label: 'Cédula de IVA',             propio: false },
+    { k: 'iva',    label: 'Cédula de IVA',             propio: false, universal: true },
   ];
+  const regimenConocido = !!regimen;
+  const habilitado = (t: { propio: boolean; universal?: boolean }) => !!t.universal || !regimenConocido || t.propio;
+  // Si el régimen carga y el tab activo quedó deshabilitado, cae a IVA (universal).
+  useEffect(() => {
+    const act = tabs.find((t) => t.k === tab);
+    if (act && !habilitado(act)) setTab('iva');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regimen]);
 
   return (
     <div className="p-6 space-y-4 max-w-full">
@@ -237,18 +244,24 @@ export function CedulasFiscalesPage() {
           {anios.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
         <div className="flex gap-1.5 flex-wrap">
-          {tabs.map((t, i) => (
-            <button key={t.k} onClick={() => setTab(t.k)} className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === t.k)}`}>
-              {t.label}
-              {t.propio && <span title="Régimen de tu empresa" className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0" />}
-            </button>
-          ))}
+          {tabs.map((t, i) => {
+            const on = habilitado(t);
+            return (
+              <button key={t.k} onClick={() => on && setTab(t.k)} disabled={!on}
+                title={on ? undefined : `No aplica al régimen ${regimen} de tu empresa`}
+                className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === t.k)} ${on ? '' : 'opacity-40 cursor-not-allowed'}`}>
+                {t.label}
+                {t.propio && <span title="Régimen de tu empresa" className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0" />}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-start gap-1.5">
-        <Info size={14} className="mt-0.5 shrink-0" /> Se muestran <b>todas</b> las cédulas de ISR para dar el panorama;
-        la que aplica oficialmente a esta empresa es la de su régimen (<span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 align-middle" /> punto verde).
+        <Info size={14} className="mt-0.5 shrink-0" /> Se habilitan solo la <b>Cédula de IVA</b> (universal, todos los regímenes)
+        y la cédula de ISR del <b>régimen de tu empresa</b> ({regimen || 'sin capturar — ponlo en la ficha fiscal para filtrar'});
+        las demás quedan <b>deshabilitadas</b>.
         Base de <b>flujo de efectivo</b> (lo cobrado/pagado: PUE al emitir, PPD por su complemento de pago). Primera versión —
         coteja los números contra tu papel de trabajo; las deducciones personales, la pérdida fiscal y el desglose por tasa
         del complemento quedan como afinación posterior.
