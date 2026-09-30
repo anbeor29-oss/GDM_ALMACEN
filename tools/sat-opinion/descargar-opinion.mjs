@@ -141,8 +141,23 @@ async function main() {
     return destino;
   }
 
-  const browser = await chromium.launch({ headless: MODO_INSPECCION ? false : (cfg.headless ?? false) });
-  const context = await browser.newContext({ acceptDownloads: true });
+  // Algunas apps del SAT (SPA como la del 32-D) NO pintan su contenido si detectan
+  // un navegador automatizado (bandera navigator.webdriver / AutomationControlled).
+  // Se presenta como un Chrome normal para que el contenido cargue. Esto NO evade
+  // CAPTCHA ni login: el usuario inicia sesión a mano con su e.firma; solo evita
+  // que la página salga en blanco.
+  const browser = await chromium.launch({
+    headless: MODO_INSPECCION ? false : (cfg.headless ?? false),
+    args: ['--disable-blink-features=AutomationControlled', '--start-maximized'],
+  });
+  const context = await browser.newContext({
+    acceptDownloads: true,
+    viewport: null,
+    userAgent: cfg.userAgent || undefined,
+  });
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  });
   const page = await context.newPage();
   page.setDefaultTimeout(T);
 
