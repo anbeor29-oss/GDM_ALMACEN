@@ -16,7 +16,7 @@
   "tramites": {
     "SAT": {
       "loginUrl": "https://loginda.siat.sat.gob.mx/nidp/app/login?id=ciec&sid=2&option=credential",
-      "startUrl": "https://www.sat.gob.mx/home",
+      "startUrl": "https://ptsc32d.clouda.sat.gob.mx/",
       "botonEfirma": "#buttonFiel",
       "docUrl": "",
       "pasos": [],
