@@ -49,33 +49,33 @@ export function OpinionCumplimientoPage() {
 
   const descargar = async () => {
     setMsg('');
-    // Proceso interno-externo: en vez de automatizar el login (portales de gobierno
-    // que bloquean el navegador automatizado), se abre un ASISTENTE que abre el sitio
-    // oficial EN TU NAVEGADOR (ahí sí renderiza), bajas el PDF y lo registras aquí
-    // —NEXO lo lee y llena los campos solo.
-    if (tab === 'IMSS') { setAsistenteImss(true); return; }
-    if (tab === 'SAT' || tab === 'CSF') {
-      // Intenta el motor (usa SatGo si está configurado); si pide acción del usuario, abre el asistente.
-      try {
-        const r: any = await api.descargarCumplimiento(tab);
-        const d = r?.data;
-        if (d?.estado === 'SUCCESS') {
-          setMsg('Descargado y registrado (SatGo).');
-          qc.invalidateQueries({ queryKey: ['opinion-hist', tab] });
-          qc.invalidateQueries({ queryKey: ['opinion-resumen'] });
-        } else if (d?.estado === 'REQUIRES_USER_ACTION') {
-          setAsistenteSat(true);
-        } else {
-          setMsg(d?.mensaje || 'No se pudo descargar.');
-        }
-      } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo.'); setAsistenteSat(true); }
-      return;
-    }
     if (tab === 'INFONAVIT') {
       // Manual: se abre el portal del INFONAVIT; el usuario baja la constancia y la sube con «Registrar».
       window.open('https://portalmx.infonavit.org.mx/wps/portal/infonavitmx/mx2/patrones/tramites_adicionales/constancia_situacion_fiscal/', '_blank', 'noopener,noreferrer');
       setMsg('Se abrió el portal del INFONAVIT. Descarga tu constancia/opinión y súbela con «Registrar» (NEXO la lee sola).');
       return;
+    }
+    // SAT (32-D), CIF/CSF e IMSS → un clic: el MOTOR lo baja por SatGo y lo registra solo
+    // (IMSS por RFC; SAT/CSF con la clave CIEC de «Configurar», o la opinión pública si no hay).
+    // Si el motor no puede (no configurado / requiere acción), se abre el ASISTENTE guiado que
+    // abre el sitio oficial EN TU NAVEGADOR y deja subir el PDF.
+    const abrirAsistente = () => (tab === 'IMSS' ? setAsistenteImss(true) : setAsistenteSat(true));
+    try {
+      const r: any = await api.descargarCumplimiento(tab);
+      const d = r?.data;
+      if (d?.estado === 'SUCCESS') {
+        setMsg(String(d?.mensaje || '').includes('pública')
+          ? 'Descargado y registrado (SatGo · opinión pública).'
+          : 'Descargado y registrado (SatGo).');
+        qc.invalidateQueries({ queryKey: ['opinion-hist', tab] });
+        qc.invalidateQueries({ queryKey: ['opinion-resumen'] });
+      } else {
+        if (d?.mensaje) setMsg(d.mensaje);
+        abrirAsistente();
+      }
+    } catch (e: any) {
+      setMsg(e?.response?.data?.message || 'No se pudo por SatGo; usa el asistente.');
+      abrirAsistente();
     }
   };
 
@@ -111,20 +111,20 @@ export function OpinionCumplimientoPage() {
         <p className="text-sm text-gray-600 flex-1 min-w-[14rem]">{tipoActual[2]}</p>
         <div className="flex items-center gap-1.5">
           <button onClick={descargar}
-            title={tab === 'IMSS'
-              ? 'Asistente guiado del Buzón IMSS: entra con tu e.firma, baja la 32-D y regístrala aquí'
-              : (tab === 'SAT' || tab === 'CSF')
-                ? 'Intenta bajarla por SatGo; si no, abre el sitio oficial en tu navegador para descargarla y registrarla'
-                : 'Abre el portal del INFONAVIT; descarga tu constancia/opinión y súbela con Registrar (captura manual)'}
+            title={tab === 'INFONAVIT'
+              ? 'Abre el portal del INFONAVIT; descarga tu constancia/opinión y súbela con Registrar (captura manual)'
+              : 'Un clic: la baja por SatGo y la registra sola. Si no puede, abre el sitio oficial en tu navegador para descargarla'}
             className="flex items-center gap-1.5 border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 text-sm">
-            <DownloadCloud size={15} /> {tab === 'IMSS' ? 'Asistente IMSS' : (tab === 'SAT' || tab === 'CSF') ? 'Descargar / Asistente' : 'Portal INFONAVIT'}
+            <DownloadCloud size={15} /> {tab === 'INFONAVIT' ? 'Portal INFONAVIT' : 'Descargar'}
           </button>
-          <button onClick={() => setCfgModal(true)}
-            title="Configurar la descarga: endpoint, usuario y contraseña/token (se guardan cifrados)"
-            className="flex items-center gap-1.5 border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600">
-            <Settings size={15} /> Configurar
-            {cfgActual?.activo && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="configurada y activa" />}
-          </button>
+          {tab !== 'INFONAVIT' && (
+            <button onClick={() => setCfgModal(true)}
+              title="Refresco automático los domingos y, para SAT/CIF, la clave CIEC (se guarda cifrada)"
+              className="flex items-center gap-1.5 border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600">
+              <Settings size={15} /> Configurar
+              {cfgActual?.activo && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="refresco automático activo" />}
+            </button>
+          )}
           <button onClick={() => setForm(true)}
             className="flex items-center gap-1.5 bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 text-sm">
             <Plus size={15} /> Registrar
@@ -313,22 +313,25 @@ function ModalAsistenteSat({ tipo, onCerrar, onRegistrar }: { tipo: string; onCe
   );
 }
 
+/**
+ * Configurar — versión mínima. Ya no se capturan endpoint/usuario/token por empresa
+ * (SatGo vive en Súper Admin y el RFC se toma de la empresa). Sólo queda:
+ *   · SAT / CIF-CSF: la clave CIEC (SatGo la usa para bajar la 32-D `oc` y la CSF).
+ *   · IMSS: nada — se baja por RFC, sin CIEC.
+ *   · Refresco automático los domingos (marca la config como «Activa» para el barrido).
+ */
 function ModalConfig({ tipo, tipoNombre, actual, onCerrar, onHecho }: any) {
-  const [metodo, setMetodo] = useState(actual?.metodo || 'API');
-  const [baseUrl, setBaseUrl] = useState(actual?.base_url || '');
-  const [usuario, setUsuario] = useState(actual?.usuario || '');
   const [credencial, setCredencial] = useState('');   // vacío = conservar el guardado
-  const [token, setToken] = useState('');
   const [activo, setActivo] = useState(!!actual?.activo);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const usaCiec = tipo === 'SAT' || tipo === 'CSF';
 
   const guardar = async () => {
     setBusy(true); setError('');
     try {
-      const payload: any = { metodo, base_url: baseUrl.trim(), usuario: usuario.trim(), activo };
-      if (credencial !== '') payload.credencial = credencial;   // sólo se manda si se teclea
-      if (token !== '') payload.token = token;
+      const payload: any = { metodo: 'API', modo: activo ? 'AUTOMATICO' : 'MANUAL', activo };
+      if (usaCiec && credencial !== '') payload.credencial = credencial;   // sólo si se teclea
       await api.setConfigCumplimiento(tipo, payload);
       onHecho();
     } catch (e: any) { setError(e?.response?.data?.message || 'No se pudo guardar.'); }
@@ -337,37 +340,28 @@ function ModalConfig({ tipo, tipoNombre, actual, onCerrar, onHecho }: any) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3 border-b">
-          <h3 className="font-semibold text-gray-900">Configurar descarga · {tipoNombre}</h3>
+          <h3 className="font-semibold text-gray-900">Configurar · {tipoNombre}</h3>
           <button onClick={onCerrar} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-3">
-          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-start gap-1.5">
-            <AlertTriangle size={13} className="mt-0.5 shrink-0" /> Las contraseñas/tokens se guardan
-            <b> cifrados</b> en el servidor y no se vuelven a mostrar. Deja el campo vacío para conservar el actual.
+          <p className="text-xs text-gray-600 bg-gray-50 border rounded px-3 py-2">
+            {usaCiec
+              ? <>SatGo baja la {tipo === 'CSF' ? 'Constancia de Situación Fiscal' : 'Opinión 32-D'} con la <b>clave CIEC</b> de la empresa (el RFC se toma solo). Sin CIEC, el 32-D intenta la <b>opinión pública</b> por RFC (si la activaste en el SAT).</>
+              : <>La opinión del <b>IMSS</b> se baja por <b>RFC</b> con SatGo — no necesita CIEC. Sólo decide si quieres el refresco automático.</>}
           </p>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block"><span className="text-xs text-gray-600">Método</span>
-              <select value={metodo} onChange={(e) => setMetodo(e.target.value)} className="input w-full">
-                <option value="API">API (proveedor externo)</option>
-                <option value="EFIRMA">e.firma (flujo oficial SAT)</option>
-                <option value="PORTAL">Portal (navegación)</option>
-              </select></label>
-            <label className="flex items-center gap-2 mt-5 text-sm text-gray-600">
-              <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} /> Refrescar auto (domingos)
+          {usaCiec && (
+            <label className="block"><span className="text-xs text-gray-600">Clave CIEC {actual?.tiene_credencial && <span className="text-emerald-600">· guardada</span>}</span>
+              <input type="password" value={credencial} onChange={(e) => setCredencial(e.target.value)}
+                placeholder={actual?.tiene_credencial ? '•••• (sin cambio)' : 'clave CIEC del SAT'} className="input w-full" />
+              <span className="text-[11px] text-gray-400">Se guarda <b>cifrada</b>; déjala vacía para conservar la actual.</span>
             </label>
-          </div>
-          <label className="block"><span className="text-xs text-gray-600">Endpoint / URL</span>
-            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://…" className="input w-full font-mono text-xs" /></label>
-          <label className="block"><span className="text-xs text-gray-600">Usuario / RFC</span>
-            <input value={usuario} onChange={(e) => setUsuario(e.target.value)} className="input w-full font-mono" /></label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block"><span className="text-xs text-gray-600">Contraseña / CIEC {actual?.tiene_credencial && <span className="text-emerald-600">· guardada</span>}</span>
-              <input type="password" value={credencial} onChange={(e) => setCredencial(e.target.value)} placeholder={actual?.tiene_credencial ? '•••• (sin cambio)' : ''} className="input w-full" /></label>
-            <label className="block"><span className="text-xs text-gray-600">Token / API key {actual?.tiene_token && <span className="text-emerald-600">· guardado</span>}</span>
-              <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={actual?.tiene_token ? '•••• (sin cambio)' : ''} className="input w-full" /></label>
-          </div>
+          )}
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} />
+            Refrescar automáticamente los <b>domingos</b> por la noche (sustituye la vigente)
+          </label>
           {error && <p className="text-sm text-rose-700">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onCerrar} className="px-3 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>

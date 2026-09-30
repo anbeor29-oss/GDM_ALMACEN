@@ -92,9 +92,11 @@ export async function accessToken(): Promise<string> {
   const apiKey = await getApiKey();
   if (!apiKey) throw new ValidationError('SatGo no está configurado (falta la API key). Haz el bootstrap con el token del portal.');
   const base = await baseUrl();
-  const r = await axios.post(`${base}/api/Auth/token`, { apiKey }, { timeout: T, validateStatus: () => true });
+  // Contrato SatGo: POST /api/Auth/token?key=<API Key> → { token }
+  // (alterno: /api/Auth/token-json con body {key} → tokens.access.value)
+  const r = await axios.post(`${base}/api/Auth/token?key=${encodeURIComponent(apiKey)}`, {}, { timeout: T, validateStatus: () => true });
   if (r.status < 200 || r.status >= 300) throw new ValidationError(`SatGo Auth/token respondió ${r.status}.`);
-  const jwt = pick(r.data, 'token', 'access_token', 'accessToken', 'jwt');
+  const jwt = pick(r.data, 'token', 'access_token', 'accessToken', 'jwt') || r.data?.tokens?.access?.value || null;
   if (!jwt) throw new ValidationError('SatGo no devolvió un token de acceso reconocible.');
   // Vigencia: si el JWT trae exp lo usamos; si no, 4 min por defecto.
   let exp = now + 4 * 60_000;
@@ -103,13 +105,22 @@ export async function accessToken(): Promise<string> {
   return jwt;
 }
 
-/** Consulta CIEC que devuelve un PDF (CSF / Opinión 32-D). rfc + clave CIEC (header Secret). */
-export async function consultarPdfCiec(recurso: 'csf' | 'oc', rfc: string, secretCiec: string): Promise<Buffer> {
+export type RecursoPdf = 'csf' | 'oc' | 'ocpublico' | 'imssoc';
+
+/**
+ * Consulta que devuelve un PDF. Contrato SatGo (GET /api/v2/Consultar/<recurso>):
+ *   - `csf`, `oc`            → header `RFC` + header `Secret` (clave CIEC).
+ *   - `ocpublico`, `imssoc`  → SOLO header `RFC` (sin CIEC): pública / IMSS por RFC.
+ * `Authorization: Bearer <JWT>` siempre.
+ */
+export async function consultarPdf(recurso: RecursoPdf, rfc: string, secretCiec?: string): Promise<Buffer> {
   const jwt = await accessToken();
   const base = await baseUrl();
+  const headers: Record<string, string> = { Authorization: `Bearer ${jwt}`, RFC: rfc };
+  if (secretCiec) headers.Secret = secretCiec;   // sólo csf/oc lo requieren
   const r = await axios.get(`${base}/api/v2/Consultar/${recurso}`, {
     params: { rfc },
-    headers: { Authorization: `Bearer ${jwt}`, Secret: secretCiec, Rfc: rfc },
+    headers,
     responseType: 'arraybuffer', timeout: T, validateStatus: () => true,
   });
   if (r.status < 200 || r.status >= 300) {
@@ -119,13 +130,17 @@ export async function consultarPdfCiec(recurso: 'csf' | 'oc', rfc: string, secre
   return Buffer.isBuffer(r.data) ? r.data : Buffer.from(r.data || []);
 }
 
+/** @deprecated usa consultarPdf. */
+export const consultarPdfCiec = (recurso: 'csf' | 'oc', rfc: string, secretCiec: string) =>
+  consultarPdf(recurso, rfc, secretCiec);
+
 /** Información fiscal (JSON) por RFC (CIEC). */
 export async function infoFiscalCiec(rfc: string, secretCiec: string, requestId?: string): Promise<any> {
   const jwt = await accessToken();
   const base = await baseUrl();
   const r = await axios.get(`${base}/api/v2/Consultar/informacionfiscal`, {
     params: { rfc, requestId: requestId || undefined },
-    headers: { Authorization: `Bearer ${jwt}`, Secret: secretCiec, Rfc: rfc },
+    headers: { Authorization: `Bearer ${jwt}`, Secret: secretCiec, RFC: rfc },
     timeout: T, validateStatus: () => true,
   });
   if (r.status < 200 || r.status >= 300) throw new ValidationError(`SatGo info fiscal respondió ${r.status}.`);
@@ -138,7 +153,7 @@ export async function declaracionesCiec(rfc: string, secretCiec: string, ejercic
   const base = await baseUrl();
   const r = await axios.get(`${base}/api/v2/Consultar/dec`, {
     params: { rfc, ejercicio, mes },
-    headers: { Authorization: `Bearer ${jwt}`, Secret: secretCiec, Rfc: rfc },
+    headers: { Authorization: `Bearer ${jwt}`, Secret: secretCiec, RFC: rfc },
     responseType: 'arraybuffer', timeout: T, validateStatus: () => true,
   });
   if (r.status < 200 || r.status >= 300) throw new ValidationError(`SatGo declaraciones respondió ${r.status}.`);

@@ -16,18 +16,25 @@ const NOTAS: Record<OrganismoTipo, string> = {
 /**
  * getProvider — devuelve el adaptador del organismo.
  *  - COMPLIANCE_MOCK=true → MockProvider (probar el flujo, sin portales).
- *  - SAT / CSF → SatProvider (Fase 2: consulta por RFC contra el origen configurado).
- *  - IMSS / INFONAVIT → PendienteProvider (no inventa: pide acción del usuario).
+ *  - SAT / CSF / IMSS → SatGoProvider si SatGo está configurado (API key).
+ *      · SAT/CSF de respaldo → SatProvider HTTP genérico si no hay SatGo.
+ *      · IMSS por SatGo va por RFC (recurso imssoc, sin CIEC).
+ *  - INFONAVIT → PendienteProvider (manual: abre su portal + Registrar).
  */
 export async function getProvider(tipo: OrganismoTipo): Promise<IComplianceProvider> {
   if (process.env.COMPLIANCE_MOCK === 'true') return new MockProvider(tipo);
-  if (tipo === 'SAT' || tipo === 'CSF') {
-    // Si SatGo está configurado (hay API key), se usa; si no, el SatProvider HTTP genérico.
-    try {
-      const { getConfig } = await import('../../satgo/satgo.service');
-      if ((await getConfig()).tieneKey) return new SatGoProvider(tipo);
-    } catch { /* sin SatGo → SatProvider */ }
-    return new SatProvider(tipo);
+
+  // ¿Hay SatGo configurado? (una sola verificación reutilizable)
+  let satgoListo = false;
+  try {
+    const { getConfig } = await import('../../satgo/satgo.service');
+    satgoListo = (await getConfig()).tieneKey === true;
+  } catch { /* sin SatGo */ }
+
+  if (tipo === 'SAT' || tipo === 'CSF' || tipo === 'IMSS') {
+    if (satgoListo) return new SatGoProvider(tipo);
+    if (tipo === 'SAT' || tipo === 'CSF') return new SatProvider(tipo);
+    // IMSS sin SatGo → pendiente (asistente manual en la UI).
   }
   return new PendienteProvider(tipo, NOTAS[tipo]);
 }
