@@ -15,9 +15,9 @@ import { claseOpcion } from '@/utils/coloresOpciones';
 
 const TIPOS: Array<[string, string, string]> = [
   ['SAT', 'SAT (32-D)', 'Opinión del cumplimiento de obligaciones fiscales (Art. 32-D CFF).'],
-  ['IMSS', 'IMSS', 'Opinión de cumplimiento de obligaciones en materia de seguridad social.'],
-  ['INFONAVIT', 'INFONAVIT', 'Cumplimiento en materia de aportaciones de vivienda (INFONAVIT).'],
   ['CSF', 'CIF/CSF', 'Constancia de Situación Fiscal (CIF) — la identidad fiscal de la empresa (RFC, régimen, domicilio).'],
+  ['IMSS', 'IMSS', 'Opinión de cumplimiento de obligaciones en materia de seguridad social.'],
+  ['INFONAVIT', 'INFONAVIT', 'Cumplimiento en materia de aportaciones de vivienda (INFONAVIT) — captura manual.'],
 ];
 const SENTIDOS: Array<[string, string]> = [
   ['POSITIVA', 'Positiva (al corriente)'],
@@ -39,8 +39,6 @@ export function OpinionCumplimientoPage() {
   const [form, setForm] = useState<boolean>(false);
   const [msg, setMsg] = useState('');
 
-  const resumenQ = useQuery({ queryKey: ['opinion-resumen'], queryFn: () => api.getOpinionCumplimiento() });
-  const vigentes: any = resumenQ.data?.data?.vigentes || {};
   const histQ = useQuery({ queryKey: ['opinion-hist', tab], queryFn: () => api.getOpinionHistorial(tab) });
   const historial: any[] = histQ.data?.data || [];
   const [cfgModal, setCfgModal] = useState(false);
@@ -73,8 +71,12 @@ export function OpinionCumplimientoPage() {
       } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo.'); setAsistenteSat(true); }
       return;
     }
-    try { const r: any = await api.descargarCumplimiento(tab); setMsg(r?.message || 'Descarga iniciada.'); qc.invalidateQueries({ queryKey: ['opinion-hist', tab] }); }
-    catch (e: any) { setMsg(e?.response?.data?.message || 'La descarga automática aún no está activa.'); }
+    if (tab === 'INFONAVIT') {
+      // Manual: se abre el portal del INFONAVIT; el usuario baja la constancia y la sube con «Registrar».
+      window.open('https://portalmx.infonavit.org.mx/wps/portal/infonavitmx/mx2/patrones/tramites_adicionales/constancia_situacion_fiscal/', '_blank', 'noopener,noreferrer');
+      setMsg('Se abrió el portal del INFONAVIT. Descarga tu constancia/opinión y súbela con «Registrar» (NEXO la lee sola).');
+      return;
+    }
   };
 
   const borrar = async (id: string) => {
@@ -97,27 +99,6 @@ export function OpinionCumplimientoPage() {
         </p>
       </div>
 
-      {/* Tarjetas resumen */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {TIPOS.map(([k, nombre]) => {
-          const v = vigentes[k];
-          return (
-            <button key={k} onClick={() => setTab(k)}
-              className={`text-left rounded-lg border p-3 hover:shadow-sm ${tab === k ? 'ring-2 ring-primary/40 border-primary/30' : ''}`}>
-              <p className="text-sm font-semibold text-gray-800">{nombre}</p>
-              {v ? (
-                <>
-                  <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded ${badgeSentido(v.sentido)}`}>{etiquetaSentido(v.sentido)}</span>
-                  <p className="text-xs text-gray-500 mt-1">al {aTextoMx(v.fecha_opinion)}</p>
-                </>
-              ) : (
-                <p className="text-xs text-gray-400 mt-1 italic">sin registro</p>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
       {/* Pestañas por tipo */}
       <div className="flex gap-1.5 flex-wrap">
         {TIPOS.map(([k, nombre], i) => (
@@ -133,10 +114,10 @@ export function OpinionCumplimientoPage() {
             title={tab === 'IMSS'
               ? 'Asistente guiado del Buzón IMSS: entra con tu e.firma, baja la 32-D y regístrala aquí'
               : (tab === 'SAT' || tab === 'CSF')
-                ? 'Asistente SAT: abre el sitio oficial en tu navegador, bajas el PDF y NEXO lo lee y registra'
-                : 'Descarga automática (requiere configurar el proveedor/portal; hoy explica el siguiente paso)'}
+                ? 'Intenta bajarla por SatGo; si no, abre el sitio oficial en tu navegador para descargarla y registrarla'
+                : 'Abre el portal del INFONAVIT; descarga tu constancia/opinión y súbela con Registrar (captura manual)'}
             className="flex items-center gap-1.5 border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 text-sm">
-            <DownloadCloud size={15} /> {tab === 'IMSS' ? 'Asistente IMSS' : (tab === 'SAT' || tab === 'CSF') ? 'Asistente SAT' : 'Descargar automático'}
+            <DownloadCloud size={15} /> {tab === 'IMSS' ? 'Asistente IMSS' : (tab === 'SAT' || tab === 'CSF') ? 'Descargar / Asistente' : 'Portal INFONAVIT'}
           </button>
           <button onClick={() => setCfgModal(true)}
             title="Configurar la descarga: endpoint, usuario y contraseña/token (se guardan cifrados)"
