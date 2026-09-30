@@ -116,15 +116,48 @@ async function main() {
   const downloadDir = cfg.downloadDir || path.join(AQUI, 'descargas');
   fs.mkdirSync(downloadDir, { recursive: true });
 
+  // Guarda el PDF descargado, infiere el sentido y (opcional) lo registra en NEXO.
+  async function guardarYSubir(download) {
+    const nombre = `${TIPO}_${cfg.rfc}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    const destino = path.join(downloadDir, nombre);
+    await download.saveAs(destino);
+    log('✔ Documento guardado en:', destino);
+    if (cfg.nexo?.enabled) {
+      const sentido = await inferirSentido(destino);
+      log('Sentido detectado:', sentido);
+      await empujarANexo(cfg, destino, sentido).catch((e) => log('⚠ No se pudo registrar en NEXO:', e.message));
+    }
+    return destino;
+  }
+
   const browser = await chromium.launch({ headless: MODO_INSPECCION ? false : (cfg.headless ?? false) });
   const context = await browser.newContext({ acceptDownloads: true });
   const page = await context.newPage();
   page.setDefaultTimeout(T);
 
   try {
-    log(`Abriendo el acceso del SAT (${TIPO})…`, tramite.loginUrl);
-    await page.goto(tramite.loginUrl, { waitUntil: 'domcontentloaded' });
+    const inicioUrl = (MODO_ASISTIDO && tramite.startUrl) ? tramite.startUrl : tramite.loginUrl;
+    log(`Abriendo el acceso del SAT (${TIPO})…`, inicioUrl);
+    await page.goto(inicioUrl, { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: T }).catch(() => {});
+
+    /* ── MODO ASISTIDO (captura pura) ──
+     * El script NO toca el login ni la navegación (así no choca contigo ni se
+     * queda en el callejón del NIDP). TÚ inicias sesión con e.firma y navegas
+     * hasta el documento; en cuanto le des Descargar/Imprimir, atrapa el PDF. */
+    if (MODO_ASISTIDO) {
+      const espera = cfg.asistidoTimeoutMs || 600000;
+      log('— MODO ASISTIDO (captura) — yo NO toco el login; haz esto en la ventana:');
+      log('  1) Inicia sesión con tu e.firma (botón e.firma / X.509).');
+      log('  2) Navega hasta tu Opinión del Cumplimiento (o CSF) con el botón Descargar/Imprimir.');
+      log('  3) Dale descargar: atrapo el PDF y (si activaste nexo) lo subo a NEXO.');
+      log(`  Te espero hasta ${Math.round(espera / 1000)}s. NO cierres la ventana.`);
+      const download = await page.waitForEvent('download', { timeout: espera });
+      await guardarYSubir(download);
+      log('✔ Listo.');
+      await browser.close();
+      return;
+    }
 
     // Cambiar de CIEC a e.firma (evita el CAPTCHA del CIEC).
     if (tramite.botonEfirma) {
@@ -237,25 +270,15 @@ async function main() {
       }
     }
 
-    // MODO ASISTIDO: TÚ navegas y descargas; el script captura el archivo solo.
+    // Respaldo: si la navegación automática no bajó nada, espero por si lo descargas tú.
     if (!download) {
-      const espera = cfg.asistidoTimeoutMs || 300000;
-      log('— MODO ASISTIDO — En la ventana abierta, navega al documento (Opinión 32-D o CSF) y dale DESCARGAR.');
-      log(`  Te espero hasta ${Math.round(espera / 1000)}s y capturo el PDF automáticamente…`);
-      download = await page.waitForEvent('download', { timeout: espera });
+      const espera = cfg.asistidoTimeoutMs || 600000;
+      log(`No bajé el documento solo. Navega y dale Descargar en la ventana; te espero hasta ${Math.round(espera / 1000)}s…`);
+      download = await page.waitForEvent('download', { timeout: espera }).catch(() => null);
     }
 
-    const nombre = `${TIPO}_${cfg.rfc}_${new Date().toISOString().slice(0, 10)}.pdf`;
-    const destino = path.join(downloadDir, nombre);
-    await download.saveAs(destino);
-    log('✔ Documento guardado en:', destino);
-
-    /* ── (opcional) Registrar en NEXO ── */
-    if (cfg.nexo?.enabled) {
-      const sentido = await inferirSentido(destino);
-      log('Sentido detectado:', sentido);
-      await empujarANexo(cfg, destino, sentido).catch((e) => log('⚠ No se pudo registrar en NEXO:', e.message));
-    }
+    if (!download) throw new Error('No se obtuvo ningún documento. Prueba el modo asistido: --asistido');
+    await guardarYSubir(download);
 
     if (tramite.logoutUrl) await page.goto(tramite.logoutUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
     log('✔ Listo.');
