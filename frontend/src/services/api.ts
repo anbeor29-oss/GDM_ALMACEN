@@ -1205,6 +1205,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/opinion-cumplimiento', data);
     return r.data;
   }
+  async leerOpinionPdf(pdf: string) {
+    // NEXO lee el PDF (pdf-parse) y detecta sentido/fecha/folio para autollenar el registro.
+    const r = await this.client.post<APIResponse<any>>('/accounting/opinion-cumplimiento/leer-pdf', { pdf });
+    return r.data;
+  }
   async borrarOpinion(id: string) {
     const r = await this.client.delete<APIResponse<any>>(`/accounting/opinion-cumplimiento/${id}`);
     return r.data;

@@ -832,6 +832,10 @@ router.put('/opinion-cumplimiento/config/:tipo', requireCapability('contabilidad
   asyncHandler(async (req: Request, res: Response) => {
     res.json({ success: true, data: await opinionCumpl.setConfig(companyId(req), String(req.params.tipo).toUpperCase(), req.body) });
   }));
+router.post('/opinion-cumplimiento/leer-pdf', requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await opinionCumpl.leerPdf(req.body?.pdf) });
+  }));
 router.get('/opinion-cumplimiento/bitacora', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await opinionCumpl.bitacora(companyId(req), Number(req.query.limite) || 50) });
 }));

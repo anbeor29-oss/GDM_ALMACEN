@@ -45,14 +45,18 @@ export function OpinionCumplimientoPage() {
   const historial: any[] = histQ.data?.data || [];
   const [cfgModal, setCfgModal] = useState(false);
   const [asistenteImss, setAsistenteImss] = useState(false);
+  const [asistenteSat, setAsistenteSat] = useState(false);
   const configQ = useQuery({ queryKey: ['cumpl-config'], queryFn: () => api.getConfigCumplimiento() });
   const cfgActual: any = configQ.data?.data?.configs?.[tab];
 
   const descargar = async () => {
     setMsg('');
-    // IMSS: proceso interno-externo. En vez del motor (gated), abre el ASISTENTE
-    // guiado del Buzón IMSS (login con e.firma → 32-D → descargar → registrar aquí).
+    // Proceso interno-externo: en vez de automatizar el login (portales de gobierno
+    // que bloquean el navegador automatizado), se abre un ASISTENTE que abre el sitio
+    // oficial EN TU NAVEGADOR (ahí sí renderiza), bajas el PDF y lo registras aquí
+    // —NEXO lo lee y llena los campos solo.
     if (tab === 'IMSS') { setAsistenteImss(true); return; }
+    if (tab === 'SAT' || tab === 'CSF') { setAsistenteSat(true); return; }
     try { const r: any = await api.descargarCumplimiento(tab); setMsg(r?.message || 'Descarga iniciada.'); qc.invalidateQueries({ queryKey: ['opinion-hist', tab] }); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'La descarga automática aún no está activa.'); }
   };
@@ -112,9 +116,11 @@ export function OpinionCumplimientoPage() {
           <button onClick={descargar}
             title={tab === 'IMSS'
               ? 'Asistente guiado del Buzón IMSS: entra con tu e.firma, baja la 32-D y regístrala aquí'
-              : 'Descarga automática (requiere configurar el proveedor/portal; hoy explica el siguiente paso)'}
+              : (tab === 'SAT' || tab === 'CSF')
+                ? 'Asistente SAT: abre el sitio oficial en tu navegador, bajas el PDF y NEXO lo lee y registra'
+                : 'Descarga automática (requiere configurar el proveedor/portal; hoy explica el siguiente paso)'}
             className="flex items-center gap-1.5 border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 text-sm">
-            <DownloadCloud size={15} /> {tab === 'IMSS' ? 'Asistente IMSS' : 'Descargar automático'}
+            <DownloadCloud size={15} /> {tab === 'IMSS' ? 'Asistente IMSS' : (tab === 'SAT' || tab === 'CSF') ? 'Asistente SAT' : 'Descargar automático'}
           </button>
           <button onClick={() => setCfgModal(true)}
             title="Configurar la descarga: endpoint, usuario y contraseña/token (se guardan cifrados)"
@@ -179,6 +185,11 @@ export function OpinionCumplimientoPage() {
           onCerrar={() => setAsistenteImss(false)}
           onRegistrar={() => { setAsistenteImss(false); setForm(true); }} />
       )}
+      {asistenteSat && (
+        <ModalAsistenteSat tipo={tab}
+          onCerrar={() => setAsistenteSat(false)}
+          onRegistrar={() => { setAsistenteSat(false); setForm(true); }} />
+      )}
     </div>
   );
 }
@@ -232,6 +243,66 @@ function ModalAsistenteImss({ onCerrar, onRegistrar }: { onCerrar: () => void; o
           </ol>
           <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-start gap-1.5">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" /> Por seguridad, la e.firma se captura <b>en el sitio del IMSS</b>, no aquí. Además, una página web no puede tomar sola el archivo de tu carpeta de Descargas: por eso el PDF se adjunta con un clic (la toma automática la haría una app nativa).
+          </p>
+          <div className="flex justify-end gap-2 pt-3 border-t">
+            <button onClick={onCerrar} className="px-3 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">Cerrar</button>
+            <button onClick={onRegistrar} className="flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-1.5 rounded-lg hover:opacity-90 text-sm">
+              <Download size={15} /> Ya lo descargué — Registrar el PDF
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Asistente guiado del SAT (32-D y CSF). Como la app del 32-D bloquea el navegador
+ * automatizado (sale en blanco), NO se automatiza: se abre el sitio oficial EN TU
+ * NAVEGADOR (ahí sí renderiza), bajas el PDF y lo subes aquí — NEXO lo lee y llena
+ * sentido/fecha/folio solo. La e.firma se captura en el sitio del SAT, no aquí.
+ */
+const APP_SAT_32D = 'https://ptsc32d.clouda.sat.gob.mx/';
+const PORTAL_SAT_HOME = 'https://www.sat.gob.mx/home';
+
+function ModalAsistenteSat({ tipo, onCerrar, onRegistrar }: { tipo: string; onCerrar: () => void; onRegistrar: () => void }) {
+  const es32d = tipo === 'SAT';
+  const url = es32d ? APP_SAT_32D : PORTAL_SAT_HOME;
+  const titulo = es32d ? 'Opinión de Cumplimiento (32-D)' : 'Constancia de Situación Fiscal (CSF)';
+  const pasos: Array<{ t: string; d?: string }> = es32d ? [
+    { t: 'Abre la app de la Opinión 32-D', d: 'Con el botón de abajo (se abre en tu navegador). Elige e.firma —no CIEC, el CIEC pide CAPTCHA—, sube tu .cer y .key y tu contraseña.' },
+    { t: 'Revisa tu opinión', d: 'La app muestra el sentido (Positiva/Negativa). Descarga el PDF con el botón de descargar/imprimir.' },
+    { t: 'Regístrala aquí', d: 'Regresa y súbela con «Ya lo descargué — Registrar»; NEXO lee el PDF y llena sentido, fecha y folio solo (los puedes corregir).' },
+  ] : [
+    { t: 'Abre el portal del SAT', d: 'Con el botón de abajo. Ve a «Otros trámites y servicios» → «Genera tu Constancia de Situación Fiscal» → entra con tu e.firma.' },
+    { t: 'Descarga tu CSF', d: 'Genera y descarga el PDF de la Constancia de Situación Fiscal.' },
+    { t: 'Regístrala aquí', d: 'Regresa y súbela con «Ya lo descargué — Registrar»; NEXO la lee sola.' },
+  ];
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2"><ShieldCheck size={18} className="text-primary" /> Asistente · {titulo}</h3>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <a href={url} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 bg-primary text-white px-3 py-2.5 rounded-lg hover:opacity-90 text-sm font-medium w-full">
+            <ExternalLink size={16} /> {es32d ? 'Abrir la app de la Opinión 32-D' : 'Abrir el portal del SAT'}
+          </a>
+          <ol className="space-y-2.5">
+            {pasos.map((p, i) => (
+              <li key={i} className="flex gap-3">
+                <span className="shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">{i + 1}</span>
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{p.t}</p>
+                  {p.d && <p className="text-xs text-gray-500 leading-relaxed">{p.d}</p>}
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-start gap-1.5">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" /> Por seguridad, la e.firma se captura <b>en el sitio del SAT</b>, no aquí. El sitio del SAT no funciona dentro de un navegador automatizado, por eso se abre en el tuyo y el PDF se sube con un clic.
           </p>
           <div className="flex justify-end gap-2 pt-3 border-t">
             <button onClick={onCerrar} className="px-3 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">Cerrar</button>
@@ -322,12 +393,33 @@ function ModalRegistrar({ tipo, tipoNombre, onCerrar, onHecho }: any) {
   const [pdfNombre, setPdfNombre] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [detectando, setDetectando] = useState(false);
+  const [detectado, setDetectado] = useState('');
 
   const leerPdf = (f: File | undefined) => {
     if (!f) return;
     if (f.size > 1_600_000) { setError('El PDF es muy grande (máximo ~1.5 MB).'); return; }
     const rd = new FileReader();
-    rd.onload = () => { setPdf(String(rd.result || '')); setPdfNombre(f.name); setError(''); };
+    rd.onload = async () => {
+      const dataUrl = String(rd.result || '');
+      setPdf(dataUrl); setPdfNombre(f.name); setError('');
+      // NEXO lee el PDF y autollena sentido/fecha/folio (se pueden corregir).
+      setDetectando(true); setDetectado('');
+      try {
+        const r: any = await api.leerOpinionPdf(dataUrl);
+        const d = r?.data || {};
+        const partes: string[] = [];
+        if (d.sentido) { setSentido(d.sentido); partes.push('sentido'); }
+        if (d.fecha_opinion) { setFecha(d.fecha_opinion); partes.push('fecha'); }
+        if (d.folio) { setFolio(d.folio); partes.push('folio'); }
+        setDetectado(
+          partes.length ? `NEXO detectó: ${partes.join(', ')}. Verifica y registra.`
+            : d.texto_ok ? 'No pude detectar los datos; captúralos a mano.'
+            : 'El PDF parece escaneado (sin texto); captura los datos a mano.',
+        );
+      } catch { setDetectado('No se pudo leer el PDF automáticamente; captura los datos a mano.'); }
+      finally { setDetectando(false); }
+    };
     rd.readAsDataURL(f);
   };
 
@@ -362,9 +454,11 @@ function ModalRegistrar({ tipo, tipoNombre, onCerrar, onHecho }: any) {
             <textarea value={observaciones} onChange={(e) => setObs(e.target.value)} className="input w-full" rows={2} /></label>
           <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
             <input type="file" accept="application/pdf" className="hidden" onChange={(e) => leerPdf(e.target.files?.[0])} />
-            <span className="inline-flex items-center gap-1.5 border rounded-lg px-3 py-1.5 hover:bg-gray-50"><FileText size={14} /> Adjuntar PDF (opcional)</span>
+            <span className="inline-flex items-center gap-1.5 border rounded-lg px-3 py-1.5 hover:bg-gray-50"><FileText size={14} /> Subir PDF (NEXO lo lee)</span>
             <span className="text-xs text-gray-400 truncate">{pdfNombre || '.pdf ≤ 1.5 MB'}</span>
           </label>
+          {detectando && <p className="text-xs text-gray-500">Leyendo el PDF…</p>}
+          {detectado && <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">{detectado}</p>}
           {error && <p className="text-sm text-rose-700 flex items-center gap-1.5"><AlertTriangle size={14} /> {error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onCerrar} className="px-3 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>

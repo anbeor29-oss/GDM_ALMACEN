@@ -10,6 +10,7 @@ import { NotFoundError, ValidationError } from '../../middleware/errorHandler';
 import { cifrar, bovedaLista } from '../sat-descarga/boveda';
 import * as motor from '../compliance/compliance.service';
 import { proximaFecha } from '../compliance/programacion';
+import { mapearSentido } from '../compliance/sat-parse';
 import type { OrganismoTipo } from '../compliance/types';
 
 export const TIPOS = ['SAT', 'IMSS', 'INFONAVIT', 'CSF'] as const;
@@ -76,6 +77,45 @@ export async function pdfDe(companyId: string, id: string): Promise<string> {
   const r = await query<any>(`SELECT pdf FROM opinion_cumplimiento WHERE id=$1 AND company_id=$2`, [id, companyId]);
   if (!r.rows.length || !r.rows[0].pdf) throw new NotFoundError('Sin PDF para este registro');
   return r.rows[0].pdf;
+}
+
+/* ─────────────────── LECTURA del PDF (autollenado) ─────────────────── */
+
+const MESES: Record<string, string> = {
+  enero: '01', febrero: '02', marzo: '03', abril: '04', mayo: '05', junio: '06',
+  julio: '07', agosto: '08', septiembre: '09', setiembre: '09', octubre: '10', noviembre: '11', diciembre: '12',
+};
+function extraerFechaDePdf(texto: string): string | null {
+  let m = texto.match(/(\d{2})\/(\d{2})\/(\d{4})/);            // dd/mm/aaaa
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  m = texto.match(/(\d{1,2})\s+de\s+([a-zA-ZáéíóúÁÉÍÓÚ]+)\s+de\s+(\d{4})/i);  // "DD de MES de AAAA"
+  if (m) { const mes = MESES[m[2].toLowerCase()]; if (mes) return `${m[3]}-${mes}-${String(m[1]).padStart(2, '0')}`; }
+  return null;
+}
+
+/**
+ * Lee un PDF (data-URL) de opinión/constancia del SAT y DETECTA sentido, fecha y
+ * folio con pdf-parse — SIN guardar nada. Sirve para autollenar el formulario de
+ * registro tras subir el PDF que el usuario bajó del portal. Si el PDF es una
+ * imagen escaneada (sin texto), devuelve todo en null para capturar a mano.
+ */
+export async function leerPdf(pdfDataUrl: string) {
+  if (!pdfDataUrl || !RX_PDF.test(pdfDataUrl)) throw new ValidationError('El archivo debe ser un PDF.');
+  const buf = Buffer.from(pdfDataUrl.replace(/^data:application\/pdf;base64,/, ''), 'base64');
+  let texto = '';
+  try {
+    const pdfParse = (await import('pdf-parse')).default as any;
+    texto = (await pdfParse(buf))?.text || '';
+  } catch { /* PDF ilegible / escaneado: se devuelve vacío */ }
+  if (!texto) return { sentido: null, fecha_opinion: null, folio: null, texto_ok: false };
+  const folioM = texto.match(/folio[:\s]+([A-Z0-9][A-Z0-9\-/]{3,})/i)
+    || texto.match(/n[uú]mero de operaci[oó]n[:\s]+([A-Z0-9][A-Z0-9\-/]{3,})/i);
+  return {
+    sentido: mapearSentido(texto) || null,
+    fecha_opinion: extraerFechaDePdf(texto),
+    folio: folioM ? folioM[1].trim() : null,
+    texto_ok: true,
+  };
 }
 
 /* ─────────────────── CONFIGURACIÓN de la descarga automática ─────────────────── */
