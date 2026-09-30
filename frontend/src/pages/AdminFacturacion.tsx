@@ -83,7 +83,7 @@ export function AdminFacturacionPage() {
           {busy === 'generar' ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />} Generar lista del día 30
         </button>
         {cfg && <span className="text-xs text-gray-400">
-          ${cfg.precioUsuario}/usuario · {cfg.timbresIncluidos} timbres incluidos · extra ${cfg.timbreExtra}
+          ${cfg.precioUsuario}/usuario · {cfg.timbresIncluidos}+{cfg.timbresPorUsuario}/usr timbres · extra ${cfg.timbreExtra}+${cfg.timbreExtraPorUsuario}/usr
         </span>}
         {msg && <span className="text-sm text-gray-700">{msg}</span>}
       </div>
@@ -188,32 +188,50 @@ function PanelConfig({ cfg, onGuardado }: { cfg: any; onGuardado: () => void }) 
   const [precio, setPrecio] = useState(String(cfg.precioUsuario));
   const [incl, setIncl] = useState(String(cfg.timbresIncluidos));
   const [extra, setExtra] = useState(String(cfg.timbreExtra));
+  const [inclPU, setInclPU] = useState(String(cfg.timbresPorUsuario ?? 500));
+  const [extraPU, setExtraPU] = useState(String(cfg.timbreExtraPorUsuario ?? 0.2));
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState('');
 
   const guardar = async () => {
     setBusy(true); setOk('');
     try {
-      await api.setFacturacionConfig({ precioUsuario: Number(precio), timbresIncluidos: Number(incl), timbreExtra: Number(extra) });
+      await api.setFacturacionConfig({
+        precioUsuario: Number(precio), timbresIncluidos: Number(incl), timbreExtra: Number(extra),
+        timbresPorUsuario: Number(inclPU), timbreExtraPorUsuario: Number(extraPU),
+      });
       setOk('Guardado.'); onGuardado();
     } catch (e: any) { setOk(e?.response?.data?.message || 'No se pudo guardar.'); }
     finally { setBusy(false); }
   };
 
+  const inc10 = Number(incl) + Number(inclPU) * 9;
+  const ext10 = (Number(extra) + Number(extraPU) * 9).toFixed(2);
+
   return (
-    <div className="bg-white border rounded-lg p-4 flex flex-wrap items-end gap-4">
-      <label className="block"><span className="text-xs text-gray-600 block mb-1">Precio por usuario (MXN)</span>
-        <input value={precio} onChange={(e) => setPrecio(e.target.value)} className="input py-1.5 text-sm w-32" /></label>
-      <label className="block"><span className="text-xs text-gray-600 block mb-1">Timbres incluidos/mes</span>
-        <input value={incl} onChange={(e) => setIncl(e.target.value)} className="input py-1.5 text-sm w-32" /></label>
-      <label className="block"><span className="text-xs text-gray-600 block mb-1">Timbre extra (MXN)</span>
-        <input value={extra} onChange={(e) => setExtra(e.target.value)} className="input py-1.5 text-sm w-32" /></label>
-      <button onClick={guardar} disabled={busy}
-        className="bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
-        {busy ? 'Guardando…' : 'Guardar'}
-      </button>
-      {ok && <span className="text-sm text-emerald-700">{ok}</span>}
-      <span className="text-[11px] text-gray-400 w-full">Sube el precio por inflación (INPC) cambiando aquí; aplica a las siguientes listas que generes.</span>
+    <div className="bg-white border rounded-lg p-4 space-y-3">
+      <div className="flex flex-wrap items-end gap-4">
+        <label className="block"><span className="text-xs text-gray-600 block mb-1">Precio por usuario (MXN)</span>
+          <input value={precio} onChange={(e) => setPrecio(e.target.value)} className="input py-1.5 text-sm w-32" /></label>
+        <label className="block"><span className="text-xs text-gray-600 block mb-1">Timbres incluidos base (1 usr)</span>
+          <input value={incl} onChange={(e) => setIncl(e.target.value)} className="input py-1.5 text-sm w-32" /></label>
+        <label className="block"><span className="text-xs text-gray-600 block mb-1">+ Timbres por usuario</span>
+          <input value={inclPU} onChange={(e) => setInclPU(e.target.value)} className="input py-1.5 text-sm w-32" /></label>
+        <label className="block"><span className="text-xs text-gray-600 block mb-1">Timbre extra base (MXN)</span>
+          <input value={extra} onChange={(e) => setExtra(e.target.value)} className="input py-1.5 text-sm w-32" /></label>
+        <label className="block"><span className="text-xs text-gray-600 block mb-1">+ Timbre extra por usuario (MXN)</span>
+          <input value={extraPU} onChange={(e) => setExtraPU(e.target.value)} className="input py-1.5 text-sm w-32" /></label>
+        <button onClick={guardar} disabled={busy}
+          className="bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
+          {busy ? 'Guardando…' : 'Guardar'}
+        </button>
+        {ok && <span className="text-sm text-emerald-700">{ok}</span>}
+      </div>
+      <p className="text-[11px] text-gray-400">
+        Escalonado: incluidos = base + (por usuario) × (usuarios − 1); timbre extra = base + (por usuario) × (usuarios − 1).
+        Con estos valores: <b>1 usuario</b> = {incl} timbres / ${extra} · <b>10 usuarios</b> = {inc10} timbres / ${ext10}.
+        Sube por INPC editando aquí (aplica a las siguientes listas). Cobro mensual, sin plazo forzoso.
+      </p>
     </div>
   );
 }

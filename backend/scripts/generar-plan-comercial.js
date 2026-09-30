@@ -51,14 +51,15 @@ table([{ label: 'Concepto', w: 300 }, { label: 'Valor', w: W - 300 }], [
   ['Checador (kioscos + celulares)', '$0 — gratis, ilimitados'],
   ['Timbres incluidos', '1,000 / mes base · +500 por cada usuario adicional'],
   ['Timbre extra (excedente, +IVA)', 'desde $1.30 (1 usuario) · +$0.20 por usuario'],
+  ['Contrato', 'MENSUAL · sin plazo forzoso (cancela cuando quieras)'],
 ]);
 box('Fórmula de la renta mensual', 'Renta = $750 × (usuarios facturables) + (timbres por encima de los incluidos × el precio del timbre de tu nivel). Timbres incluidos = 1,000 + 500 × (usuarios − 1). Los checadores no suman.', NAVY, '#eff6ff');
 
-h2('Rango por usuario');
-table([{ label: 'Usuarios', w: 130, align: 'right' }, { label: 'Renta/mes', w: 150, align: 'right' }, { label: 'Anual (−16%)', w: W - 280, align: 'right' }], [
-  ['1', '$750', '$630'], ['2', '$1,500', '$1,260'], ['3', '$2,250', '$1,890'], ['4', '$3,000', '$2,520'],
-  ['5', '$3,750', '$3,150'], ['6', '$4,500', '$3,780'], ['8', '$6,000', '$5,040'], ['10', '$7,500', '$6,300'],
-  ['N', '$750 × N', '$630 × N'],
+h2('Rango por usuario (mensual, sin plazo forzoso)');
+table([{ label: 'Usuarios', w: 180, align: 'right' }, { label: 'Renta/mes', w: W - 180, align: 'right' }], [
+  ['1', '$750'], ['2', '$1,500'], ['3', '$2,250'], ['4', '$3,000'],
+  ['5', '$3,750'], ['6', '$4,500'], ['8', '$6,000'], ['10', '$7,500'],
+  ['N', '$750 × N'],
 ]);
 
 h2('Timbres incluidos y excedente por nivel');
@@ -91,7 +92,7 @@ h2('Fase 2 · Canal de contadores (mes 3–9)');
 bullets(['El contador maneja muchas PyMEs: es el multiplicador (así crecieron Alegra y Contalink).', 'Cuenta multi-empresa con descuento + comisión por cada cliente que traiga.']);
 h2('Fase 3 · Nichos y escala (mes 9+)');
 bullets(['Transportistas → Carta Porte 3.1 multimodal.', 'Comercios → POS + checador facial gratis.', 'Programa de referidos cliente-trae-cliente.']);
-box('Diferenciadores de venta', '1) Todo en uno, un solo precio por usuario. 2) Checador facial GRATIS (nadie más). 3) Timbres incluidos que crecen con tus usuarios (1,000 → 5,500). 4) Migración sin costo desde tu sistema actual.', NAVY, '#eff6ff');
+box('Diferenciadores de venta', '1) Todo en uno, un solo precio por usuario. 2) Checador facial GRATIS (nadie más). 3) Timbres incluidos que crecen con tus usuarios (1,000 → 5,500). 4) Migración sin costo desde tu sistema actual. 5) Mensual, SIN plazo forzoso — cancela cuando quieras.', NAVY, '#eff6ff');
 
 /* ── 4. Inflación + facturación ── */
 h1('4 · Aumentos por inflación (INPC)');
@@ -100,7 +101,7 @@ table([{ label: 'Año', w: 90 }, { label: 'Usuario/mes', w: 120, align: 'right' 
   ['2026 (lanz.)', '$750', '$1.30', '1,000'], ['2027', '~$785', '~$1.36', '1,000'], ['2028', '~$820', '~$1.42', '1,000'],
   ['2029', '~$855', '~$1.48', '1,000'], ['2030', '~$895', '~$1.55', '1,000'],
 ]);
-p('(Estimando INPC ~4.5 %/año; se ajusta al dato real de INEGI cada año. La tabla es el nivel base de 1 usuario: los timbres incluidos crecen +500 por usuario y el timbre extra sube +$0.20 por usuario. Cliente de lanzamiento: su 1.er año no sube. Cliente anual: tarifa fija hasta su renovación.)', { size: 9 });
+p('(Estimando INPC ~4.5 %/año; se ajusta al dato real de INEGI cada año. La tabla es el nivel base de 1 usuario: los timbres incluidos crecen +500 por usuario y el timbre extra sube +$0.20 por usuario. Cliente de lanzamiento: su 1.er año no sube. El cobro es mensual y sin plazo forzoso.)', { size: 9 });
 
 h1('5 · Reglas de facturación (super admin)');
 bullets([

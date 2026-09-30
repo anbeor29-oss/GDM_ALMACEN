@@ -3001,7 +3001,7 @@ class APIClient {
   async getFacturacionConfig() {
     return (await this.client.get('/admin/facturacion/config')).data;
   }
-  async setFacturacionConfig(d: { precioUsuario?: number; timbresIncluidos?: number; timbreExtra?: number }) {
+  async setFacturacionConfig(d: { precioUsuario?: number; timbresIncluidos?: number; timbreExtra?: number; timbresPorUsuario?: number; timbreExtraPorUsuario?: number }) {
     return (await this.client.put('/admin/facturacion/config', d)).data;
   }
   async generarFacturacion(periodo?: string) {

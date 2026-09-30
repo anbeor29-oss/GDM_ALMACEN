@@ -12,7 +12,13 @@ import { query } from '../../config/database';
 import { NotFoundError, ConflictError, ValidationError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 
-export interface FacturacionConfig { precioUsuario: number; timbresIncluidos: number; timbreExtra: number; }
+export interface FacturacionConfig {
+  precioUsuario: number;
+  timbresIncluidos: number;        // base (1 usuario)
+  timbreExtra: number;             // base (1 usuario)
+  timbresPorUsuario: number;       // +incluidos por cada usuario adicional
+  timbreExtraPorUsuario: number;   // +$ del timbre extra por cada usuario adicional
+}
 
 const iso = (d: Date) => { const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -20,9 +26,15 @@ const primerDia = (input?: string) => { const b = input ? new Date(input + 'T00:
 
 /* ── Config ── */
 export async function getConfig(): Promise<FacturacionConfig> {
-  const r = await query<any>(`SELECT precio_usuario_mxn, timbres_incluidos, timbre_extra_mxn FROM facturacion_config WHERE id = 1`);
-  const row = r.rows[0] || { precio_usuario_mxn: 500, timbres_incluidos: 2000, timbre_extra_mxn: 2 };
-  return { precioUsuario: Number(row.precio_usuario_mxn), timbresIncluidos: Number(row.timbres_incluidos), timbreExtra: Number(row.timbre_extra_mxn) };
+  const r = await query<any>(`SELECT precio_usuario_mxn, timbres_incluidos, timbre_extra_mxn, timbres_por_usuario, timbre_extra_por_usuario FROM facturacion_config WHERE id = 1`);
+  const row = r.rows[0] || {};
+  return {
+    precioUsuario: Number(row.precio_usuario_mxn ?? 750),
+    timbresIncluidos: Number(row.timbres_incluidos ?? 1000),
+    timbreExtra: Number(row.timbre_extra_mxn ?? 1.30),
+    timbresPorUsuario: Number(row.timbres_por_usuario ?? 500),
+    timbreExtraPorUsuario: Number(row.timbre_extra_por_usuario ?? 0.20),
+  };
 }
 
 export async function setConfig(d: Partial<FacturacionConfig>): Promise<FacturacionConfig> {
@@ -30,13 +42,15 @@ export async function setConfig(d: Partial<FacturacionConfig>): Promise<Facturac
   const precio = d.precioUsuario ?? cur.precioUsuario;
   const incl = d.timbresIncluidos ?? cur.timbresIncluidos;
   const extra = d.timbreExtra ?? cur.timbreExtra;
-  if (precio < 0 || incl < 0 || extra < 0) throw new ValidationError('Los valores no pueden ser negativos.');
+  const inclPU = d.timbresPorUsuario ?? cur.timbresPorUsuario;
+  const extraPU = d.timbreExtraPorUsuario ?? cur.timbreExtraPorUsuario;
+  if ([precio, incl, extra, inclPU, extraPU].some((v) => v < 0)) throw new ValidationError('Los valores no pueden ser negativos.');
   await query(
-    `INSERT INTO facturacion_config (id, precio_usuario_mxn, timbres_incluidos, timbre_extra_mxn, updated_at)
-     VALUES (1, $1, $2, $3, NOW())
-     ON CONFLICT (id) DO UPDATE SET precio_usuario_mxn = $1, timbres_incluidos = $2, timbre_extra_mxn = $3, updated_at = NOW()`,
-    [precio, incl, extra]);
-  return { precioUsuario: precio, timbresIncluidos: incl, timbreExtra: extra };
+    `INSERT INTO facturacion_config (id, precio_usuario_mxn, timbres_incluidos, timbre_extra_mxn, timbres_por_usuario, timbre_extra_por_usuario, updated_at)
+     VALUES (1, $1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (id) DO UPDATE SET precio_usuario_mxn = $1, timbres_incluidos = $2, timbre_extra_mxn = $3, timbres_por_usuario = $4, timbre_extra_por_usuario = $5, updated_at = NOW()`,
+    [precio, incl, extra, inclPU, extraPU]);
+  return { precioUsuario: precio, timbresIncluidos: incl, timbreExtra: extra, timbresPorUsuario: inclPU, timbreExtraPorUsuario: extraPU };
 }
 
 /** Usuarios facturables de una empresa: activos, NO checador, NO super admin. */
@@ -85,8 +99,12 @@ export async function generarLista(periodoInput?: string, userId?: string) {
     // Timbres del periodo (los de SW: stamp_usage tiene billing_period = 1.º de mes).
     const tR = await query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM stamp_usage WHERE company_id = $1 AND billing_period = $2`, [e.id, periodo]);
     const timbresUsados = Number(tR.rows[0]?.n) || 0;
-    const timbresExtra = Math.max(0, timbresUsados - cfg.timbresIncluidos);
-    const extra = r2(timbresExtra * cfg.timbreExtra);
+    // Escalonado: los incluidos y el precio del timbre extra crecen con los usuarios.
+    const nivel = Math.max(0, usuarios - 1);
+    const incluidos = cfg.timbresIncluidos + cfg.timbresPorUsuario * nivel;
+    const precioExtra = r2(cfg.timbreExtra + cfg.timbreExtraPorUsuario * nivel);
+    const timbresExtra = Math.max(0, timbresUsados - incluidos);
+    const extra = r2(timbresExtra * precioExtra);
     const total = r2(renta + extra);
 
     await query(
@@ -103,7 +121,7 @@ export async function generarLista(periodoInput?: string, userId?: string) {
          extra_mxn=EXCLUDED.extra_mxn, total_mxn=EXCLUDED.total_mxn
        WHERE facturacion_mensual.status = 'PENDIENTE'`,
       [e.id, periodo, usuarios, diasCobrados, diasMes, prorrateado, cfg.precioUsuario, renta,
-       timbresUsados, cfg.timbresIncluidos, timbresExtra, cfg.timbreExtra, extra, total]);
+       timbresUsados, incluidos, timbresExtra, precioExtra, extra, total]);
     creadas++;
   }
   logger.info(`[facturacion] lista ${periodo}: ${creadas} empresas por ${userId || 'sistema'}`);

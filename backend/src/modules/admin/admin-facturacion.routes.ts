@@ -36,6 +36,8 @@ router.put('/config', asyncHandler(async (req: Request, res: Response) => {
     precioUsuario: req.body?.precioUsuario != null ? Number(req.body.precioUsuario) : undefined,
     timbresIncluidos: req.body?.timbresIncluidos != null ? Number(req.body.timbresIncluidos) : undefined,
     timbreExtra: req.body?.timbreExtra != null ? Number(req.body.timbreExtra) : undefined,
+    timbresPorUsuario: req.body?.timbresPorUsuario != null ? Number(req.body.timbresPorUsuario) : undefined,
+    timbreExtraPorUsuario: req.body?.timbreExtraPorUsuario != null ? Number(req.body.timbreExtraPorUsuario) : undefined,
   });
   await audit(req, { action: 'FACTURACION_CONFIG', targetKind: 'facturacion_config', payload: data });
   res.json({ success: true, data });
