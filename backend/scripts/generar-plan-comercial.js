@@ -47,18 +47,18 @@ doc.y = 224;
 /* ── 1. Precio ── */
 h1('1 · Precio: por usuario, plano', 'La misma tarifa para una empresa de 1 usuario o de 100 (sin descuentos por tamaño).');
 table([{ label: 'Concepto', w: 300 }, { label: 'Valor', w: W - 300 }], [
-  ['Usuario facturable (cualquier rol)', '$500 / mes'],
+  ['Usuario facturable (cualquier rol)', '$750 / mes'],
   ['Checador (kioscos + celulares)', '$0 — gratis, ilimitados'],
   ['Timbres incluidos', '2,000 / mes · corte el día 30 · no se acumulan'],
   ['Timbre extra (del 2,001)', '$2.00 + IVA'],
 ]);
-box('Fórmula de la renta mensual', 'Renta = $500 × (usuarios facturables) + (timbres por arriba de 2,000 × $2.00). Los checadores no suman.', NAVY, '#eff6ff');
+box('Fórmula de la renta mensual', 'Renta = $750 × (usuarios facturables) + (timbres por arriba de 2,000 × $2.00). Los checadores no suman.', NAVY, '#eff6ff');
 
 h2('Rango por usuario');
 table([{ label: 'Usuarios', w: 130, align: 'right' }, { label: 'Renta/mes', w: 150, align: 'right' }, { label: 'Anual (−16%)', w: W - 280, align: 'right' }], [
-  ['1', '$500', '$420'], ['2', '$1,000', '$840'], ['3', '$1,500', '$1,260'], ['4', '$2,000', '$1,680'],
-  ['5', '$2,500', '$2,100'], ['6', '$3,000', '$2,520'], ['8', '$4,000', '$3,360'], ['10', '$5,000', '$4,200'],
-  ['N', '$500 × N', '$420 × N'],
+  ['1', '$750', '$630'], ['2', '$1,500', '$1,260'], ['3', '$2,250', '$1,890'], ['4', '$3,000', '$2,520'],
+  ['5', '$3,750', '$3,150'], ['6', '$4,500', '$3,780'], ['8', '$6,000', '$5,040'], ['10', '$7,500', '$6,300'],
+  ['N', '$750 × N', '$630 × N'],
 ]);
 
 /* ── 2. Mercado ── */
@@ -69,8 +69,9 @@ table([{ label: 'Producto', w: 150 }, { label: 'Modelo', w: 110 }, { label: 'Pre
   ['Alegra Factura', 'Por plan', '$138 – $599', 'Solo facturación'],
   ['CONTPAQi nube', 'Por sistema', '$390 – $590 c/u', 'Se suman: Contabiliza, Vende, Personia'],
 ]);
-p('Un ERP en la nube en México cuesta ~$500 a $2,000/mes por empresa; el equivalente por usuario ronda $300–$450 cuando incluye contabilidad. Los timbres al mayoreo cuestan ~$0.25–$0.45; al público van de $0.50 a $2–$3.65.', { size: 9.5 });
-box('Posicionamiento', 'A $500 plano quedas en el extremo premium por usuario, pero das lo más por usuario: ERP completo (factura + almacén + compras + tesorería + nómina + contabilidad + carta porte) + checador GRATIS + 2,000 timbres. Una empresa que hoy arma CONTPAQi Contabiliza + Vende + Personia ya va en ~$1,470 por 3 sistemas sueltos; contigo, 3 usuarios = $1,500 con TODO junto.', GOLD, '#fffbeb');
+p('No es manzana con manzana: Bind y Alegra cobran POR PLAN (2–5 usuarios incluidos) y CONTPAQi POR SISTEMA (se apilan). NEXO cobra por usuario. La medida justa no es el precio por asiento, sino qué obtiene UNA persona por su dinero.', { size: 9.5 });
+box('Un usuario = todo el ERP', 'Con NEXO, un solo usuario ($750) tiene factura + almacén + compras + tesorería + nómina + contabilidad + carta porte + POS + checador facial GRATIS + 2,000 timbres. Igualarlo con CONTPAQi (Contabiliza + Vende + Personia) cuesta ~$1,470 en 3 sistemas sueltos, y aun así SIN checador ni carta porte. Ese "todo en un asiento" no lo tiene ningún competidor.', GOLD, '#fffbeb');
+box('¿Se puede competir a $750? Sí — y dónde (honesto)', 'GANAS en micro-PyME y en consolidación: quien hoy paga 2–3 suscripciones sueltas (facturador + contable + nómina) reemplaza todo por un asiento de $750, con MENOR costo total. El pitch es «un usuario = todo el ERP, reemplaza 3 suscripciones», no «asiento barato». Donde el por-usuario pesa es en equipos grandes con gente que usa UN solo módulo; ahí se compite por valor (consolidación + checador gratis + profundidad fiscal MX), y queda como palanca a futuro un asiento «operativo» más barato junto al «full» de $750 (no ahora).', NAVY, '#eff6ff');
 
 /* ── 3. Estrategia ── */
 h1('3 · Estrategia de introducción al mercado');
@@ -88,15 +89,15 @@ box('Diferenciadores de venta', '1) Todo en uno, un solo precio por usuario. 2) 
 h1('4 · Aumentos por inflación (INPC)');
 box('Regla', 'Cada 1.º de enero el precio sube el % del INPC (INEGI) del año anterior, avisado con 30–60 días. Es un índice público, no un capricho — y NEXO ya lo trae automático de la API de INEGI.', GREEN);
 table([{ label: 'Año', w: 90 }, { label: 'Usuario/mes', w: 130, align: 'right' }, { label: 'Timbre extra', w: 130, align: 'right' }, { label: 'Timbres incl.', w: W - 350, align: 'right' }], [
-  ['2026 (lanz.)', '$500', '$2.00', '2,000'], ['2027', '~$525', '$2.10', '2,000'], ['2028', '~$550', '$2.20', '2,000'],
-  ['2029', '~$575', '$2.30', '2,000'], ['2030', '~$600', '$2.40', '2,000'],
+  ['2026 (lanz.)', '$750', '$2.00', '2,000'], ['2027', '~$785', '$2.10', '2,000'], ['2028', '~$820', '$2.20', '2,000'],
+  ['2029', '~$855', '$2.30', '2,000'], ['2030', '~$895', '$2.40', '2,000'],
 ]);
 p('(Estimando INPC ~4.5 %/año; se ajusta al dato real de INEGI cada año. Cliente de lanzamiento: su 1.er año no sube. Cliente anual: tarifa fija hasta su renovación.)', { size: 9 });
 
 h1('5 · Reglas de facturación (super admin)');
 bullets([
   'El **super administrador solo da de alta empresas**; cada empresa genera sus usuarios.',
-  '**Lista de cobro el día 30:** por empresa, $500 × usuarios facturables (sin checador) + excedente de timbres.',
+  '**Lista de cobro el día 30:** por empresa, $750 × usuarios facturables (sin checador) + excedente de timbres.',
   '**Prorrateo:** a quien entra después del día 1 se le cobra proporcional a los días del mes.',
   '**Prepago:** se cobra por adelantado. Las facturas salen el día 1.',
   '**Corte del servicio el día 5** si no paga (suspende el acceso de la empresa; al pagar se reactiva sola).',
