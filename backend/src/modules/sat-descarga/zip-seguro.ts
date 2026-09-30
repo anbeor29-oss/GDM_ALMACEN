@@ -139,3 +139,89 @@ export function extraerXml(zip: Buffer): ArchivoDelZip[] {
   }
   return archivos;
 }
+
+export interface ArchivoBinario {
+  nombre: string;
+  contenido: Buffer;
+}
+
+/**
+ * Extrae los archivos de un ZIP a memoria como Buffers (binario), con las MISMAS
+ * defensas anti-bomba que extraerXml (topes por archivo/paquete/entradas, nombre
+ * seguro). Para paquetes que NO son XML —p.ej. los PDF de declaraciones de SatGo—.
+ * `extensiones` (sin punto, minúsculas) filtra por tipo; vacío = cualquiera con
+ * nombre seguro.
+ */
+export function extraerBinarios(zip: Buffer, extensiones: string[] = []): ArchivoBinario[] {
+  if (zip.length < 22) throw new ZipSospechoso('El paquete está vacío o truncado.');
+
+  let eocd = -1;
+  for (let i = zip.length - 22; i >= 0 && i > zip.length - 65_557; i--) {
+    if (zip.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new ZipSospechoso('No es un archivo ZIP válido (falta el índice).');
+
+  const entradas = zip.readUInt16LE(eocd + 10);
+  const inicioIndice = zip.readUInt32LE(eocd + 16);
+  if (entradas > MAX_ENTRADAS) {
+    throw new ZipSospechoso(`El paquete declara ${entradas} archivos; el tope es ${MAX_ENTRADAS}.`);
+  }
+
+  const archivos: ArchivoBinario[] = [];
+  let p = inicioIndice;
+  let acumulado = 0;
+
+  for (let n = 0; n < entradas; n++) {
+    if (p + 46 > zip.length || zip.readUInt32LE(p) !== 0x02014b50) break;
+
+    const metodo = zip.readUInt16LE(p + 10);
+    const comprimido = zip.readUInt32LE(p + 20);
+    const original = zip.readUInt32LE(p + 24);
+    const largoNombre = zip.readUInt16LE(p + 28);
+    const largoExtra = zip.readUInt16LE(p + 30);
+    const largoComentario = zip.readUInt16LE(p + 32);
+    const offsetLocal = zip.readUInt32LE(p + 42);
+    const nombre = zip.slice(p + 46, p + 46 + largoNombre).toString('utf8');
+    p += 46 + largoNombre + largoExtra + largoComentario;
+
+    if (nombre.endsWith('/')) continue;
+    if (!nombreSeguro(nombre)) {
+      throw new ZipSospechoso(`El paquete trae un nombre de archivo inaceptable: ${nombre.slice(0, 60)}`);
+    }
+    if (extensiones.length) {
+      const ext = (nombre.split('.').pop() || '').toLowerCase();
+      if (!extensiones.includes(ext)) continue;
+    }
+
+    if (original > MAX_ARCHIVO) {
+      throw new ZipSospechoso(
+        `Un archivo del paquete declara ${(original / 1048576).toFixed(1)} MB descomprimidos; ` +
+        `el tope por archivo es ${MAX_ARCHIVO / 1048576} MB.`
+      );
+    }
+    acumulado += original;
+    if (acumulado > MAX_PAQUETE) {
+      throw new ZipSospechoso(`El paquete pasa de ${MAX_PAQUETE / 1048576} MB descomprimidos. Se detiene por seguridad.`);
+    }
+
+    if (offsetLocal + 30 > zip.length || zip.readUInt32LE(offsetLocal) !== 0x04034b50) {
+      throw new ZipSospechoso(`El índice del ZIP apunta a un lugar inválido (${nombre.slice(0, 40)}).`);
+    }
+    const inicioDatos = offsetLocal + 30 +
+      zip.readUInt16LE(offsetLocal + 26) + zip.readUInt16LE(offsetLocal + 28);
+    const datos = zip.subarray(inicioDatos, inicioDatos + comprimido);
+
+    let contenido: Buffer;
+    if (metodo === 0) {
+      contenido = Buffer.from(datos);
+    } else if (metodo === 8) {
+      contenido = zlib.inflateRawSync(datos, { maxOutputLength: MAX_ARCHIVO });
+    } else {
+      throw new ZipSospechoso(`Método de compresión no soportado (${metodo}) en ${nombre.slice(0, 40)}.`);
+    }
+
+    archivos.push({ nombre, contenido });
+  }
+
+  return archivos;
+}

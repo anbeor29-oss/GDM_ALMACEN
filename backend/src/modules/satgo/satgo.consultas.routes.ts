@@ -31,6 +31,12 @@ router.get('/declaraciones', asyncHandler(async (req: Request, res: Response) =>
   res.send(buffer);
 }));
 
+router.get('/declaraciones/contenido', asyncHandler(async (req: Request, res: Response) => {
+  const ejercicio = parseInt(String(req.query.ejercicio || ''), 10);
+  const mes = parseInt(String(req.query.mes || '0'), 10) || 0;
+  res.json({ success: true, data: await consultas.declaracionesContenido(companyId(req), ejercicio, mes) });
+}));
+
 router.get('/validar-cfdi', asyncHandler(async (req: Request, res: Response) => {
   const data = await consultas.validarCfdi(companyId(req), {
     re: req.query.re as string, rr: req.query.rr as string,

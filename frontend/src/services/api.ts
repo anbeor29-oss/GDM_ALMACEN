@@ -1253,6 +1253,11 @@ class APIClient {
     const a = document.createElement('a'); a.href = url; a.download = nombre; a.click();
     URL.revokeObjectURL(url);
   }
+  /** Declaraciones descomprimidas de un (ejercicio, mes): PDFs/acuses como data-URL base64. */
+  async satgoDeclaracionesContenido(ejercicio: number, mes = 0) {
+    const r = await this.client.get<APIResponse<any>>('/satgo/consultas/declaraciones/contenido', { params: { ejercicio, mes } });
+    return r.data;
+  }
 
   /** Pólizas del respaldo que no se pudieron importar (pendientes). */
   async getPolizasPendientes() {

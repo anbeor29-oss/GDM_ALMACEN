@@ -11,6 +11,7 @@
 import { query } from '../../config/database';
 import { ValidationError } from '../../middleware/errorHandler';
 import { EphemeralCredentialContext } from '../compliance/credential-context';
+import { extraerBinarios, ZipSospechoso } from '../sat-descarga/zip-seguro';
 import * as satgo from './satgo.service';
 
 async function rfcDe(companyId: string): Promise<string> {
@@ -49,6 +50,47 @@ export async function declaraciones(companyId: string, ejercicio: number, mes = 
     const nombre = `Declaraciones_${rfc}_${ejercicio}${m ? '-' + String(m).padStart(2, '0') : ''}.zip`;
     return { buffer, nombre };
   } finally { dispose(); }
+}
+
+/**
+ * Declaraciones DESCOMPRIMIDAS de un ejercicio/mes: baja el ZIP de SatGo, lo abre en
+ * memoria (extractor seguro, anti-bomba) y devuelve cada documento como data-URL
+ * base64 (PDF o acuse). Si SatGo devolvió un PDF suelto (no ZIP), lo regresa igual.
+ * Pensado para una cuadrícula año×mes que aloja el PDF; una consulta por celda
+ * (cuida la cuota de SatGo).
+ */
+export async function declaracionesContenido(companyId: string, ejercicio: number, mes = 0) {
+  if (!Number.isInteger(ejercicio) || ejercicio < 2000 || ejercicio > 2100) throw new ValidationError('Ejercicio inválido.');
+  const m = Number.isInteger(mes) ? Math.max(0, Math.min(12, mes)) : 0;
+  const rfc = await rfcDe(companyId);
+  const { ciec, dispose } = await ciecDe(companyId);
+  let buf: Buffer;
+  try { buf = await satgo.declaracionesCiec(rfc, ciec, ejercicio, m); }
+  finally { dispose(); }
+
+  let archivos: Array<{ nombre: string; contenido: Buffer }> = [];
+  try {
+    archivos = extraerBinarios(buf, ['pdf', 'txt']);
+  } catch (e) {
+    // ¿SatGo devolvió un PDF suelto en vez de un ZIP?
+    if (e instanceof ZipSospechoso && buf.slice(0, 5).toString('latin1') === '%PDF-') {
+      archivos = [{ nombre: `Declaracion_${rfc}_${ejercicio}${m ? '-' + String(m).padStart(2, '0') : ''}.pdf`, contenido: buf }];
+    } else if (e instanceof ZipSospechoso) {
+      throw new ValidationError('SatGo no devolvió declaraciones para ese periodo (o no es un ZIP/PDF válido).');
+    } else { throw e; }
+  }
+
+  // Tope de respuesta (evita payloads gigantes); PDFs primero.
+  const MAX_TOTAL = 12 * 1024 * 1024;
+  let total = 0;
+  const out: Array<{ nombre: string; esPdf: boolean; base64: string }> = [];
+  for (const a of archivos.sort((x, y) => Number(/\.pdf$/i.test(y.nombre)) - Number(/\.pdf$/i.test(x.nombre)))) {
+    total += a.contenido.length;
+    if (total > MAX_TOTAL) break;
+    const esPdf = /\.pdf$/i.test(a.nombre);
+    out.push({ nombre: a.nombre, esPdf, base64: `data:${esPdf ? 'application/pdf' : 'text/plain'};base64,${a.contenido.toString('base64')}` });
+  }
+  return { ejercicio, mes: m, total: archivos.length, archivos: out };
 }
 
 /** Valida un CFDI ante el SAT (sin CIEC; sólo el RFC de la empresa como consultante). */
