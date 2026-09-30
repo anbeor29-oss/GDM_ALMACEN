@@ -35,6 +35,7 @@ const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const flag = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : null; };
 const MODO_INSPECCION = args.includes('--inspect');
+const MODO_ASISTIDO = args.includes('--asistido');
 const TIPO = String(flag('--tipo') || 'SAT').toUpperCase();   // SAT (32-D) | CSF
 
 /* ── Config ── */
@@ -155,26 +156,34 @@ async function main() {
       return;
     }
 
-    /* ── Login con e.firma ── */
-    log('Capturando la e.firma…');
-    const files = scope.locator("input[type='file']");
-    if (await files.count() < 2) throw new Error(`Esperaba 2 campos de archivo (.cer y .key) y hallé ${await files.count()}. Calibra con --inspect.`);
-    await (sel.cer ? scope.locator(sel.cer) : files.nth(cfg.cerIndex ?? 0)).setInputFiles(cfg.cerPath);
-    await (sel.key ? scope.locator(sel.key) : files.nth(cfg.keyIndex ?? 1)).setInputFiles(cfg.keyPath);
+    /* ── Login con e.firma ──
+     * En MODO ASISTIDO, si algo del autollenado falla (selectores sin calibrar),
+     * NO se aborta: se avisa y tú inicias sesión a mano en la misma ventana. */
+    try {
+      log('Capturando la e.firma…');
+      const files = scope.locator("input[type='file']");
+      if (await files.count() < 2) throw new Error(`Esperaba 2 campos de archivo (.cer y .key) y hallé ${await files.count()}. Calibra con --inspect.`);
+      await (sel.cer ? scope.locator(sel.cer) : files.nth(cfg.cerIndex ?? 0)).setInputFiles(cfg.cerPath);
+      await (sel.key ? scope.locator(sel.key) : files.nth(cfg.keyIndex ?? 1)).setInputFiles(cfg.keyPath);
 
-    const rfc = await primero(scope, [sel.rfc, () => scope.getByPlaceholder(/RFC/i), () => scope.getByRole('textbox', { name: /RFC/i })]);
-    if (rfc) await rfc.fill(cfg.rfc).catch(() => {});   // el SAT suele autollenarlo del certificado
+      const rfc = await primero(scope, [sel.rfc, () => scope.getByPlaceholder(/RFC/i), () => scope.getByRole('textbox', { name: /RFC/i })]);
+      if (rfc) await rfc.fill(cfg.rfc).catch(() => {});   // el SAT suele autollenarlo del certificado
 
-    const pass = await primero(scope, [sel.password, () => scope.getByPlaceholder(/contrase/i), "input[type='password']"]);
-    if (!pass) throw new Error('No encontré el campo de contraseña de la e.firma. Calibra con --inspect.');
-    await pass.fill(password);
+      const pass = await primero(scope, [sel.password, () => scope.getByPlaceholder(/contrase/i), "input[type='password']"]);
+      if (!pass) throw new Error('No encontré el campo de contraseña de la e.firma. Calibra con --inspect.');
+      await pass.fill(password);
 
-    const enviar = await primero(scope, [sel.validar, () => scope.getByRole('button', { name: /enviar|validar|firmar|aceptar/i }), "button[type='submit']", "input[type='submit']"]);
-    if (!enviar) throw new Error('No encontré el botón para enviar la e.firma. Calibra con --inspect.');
-    log('Enviando la e.firma…');
-    await Promise.all([page.waitForLoadState('networkidle', { timeout: T }).catch(() => {}), enviar.click()]);
+      const enviar = await primero(scope, [sel.validar, () => scope.getByRole('button', { name: /enviar|validar|firmar|aceptar/i }), "button[type='submit']", "input[type='submit']"]);
+      if (!enviar) throw new Error('No encontré el botón para enviar la e.firma. Calibra con --inspect.');
+      log('Enviando la e.firma…');
+      await Promise.all([page.waitForLoadState('networkidle', { timeout: T }).catch(() => {}), enviar.click()]);
 
-    if (await detectarCaptcha(page)) throw new Error('Apareció un CAPTCHA tras enviar la e.firma. No se evade.');
+      if (await detectarCaptcha(page)) throw new Error('Apareció un CAPTCHA tras enviar la e.firma. No se evade.');
+    } catch (e) {
+      if (!MODO_ASISTIDO) throw e;
+      log('⚠ No pude autollenar la e.firma:', e.message);
+      log('  Modo asistido: inicia sesión TÚ en la ventana con tu e.firma y sigue al documento.');
+    }
 
     /* ── Abrir el trámite y descargar el documento ──
      * Tres modos, de más automático a más asistido:
@@ -185,15 +194,14 @@ async function main() {
      *     y lo captura solo. Es lo que desbloquea el «caigo en una página x».
      */
     let download = null;
-    const forzarAsistido = args.includes('--asistido');
 
-    if (!forzarAsistido && tramite.docUrl) {
+    if (!MODO_ASISTIDO && tramite.docUrl) {
       log('Abriendo el trámite…', tramite.docUrl);
       await page.goto(tramite.docUrl, { waitUntil: 'domcontentloaded' });
       await page.waitForLoadState('networkidle', { timeout: T }).catch(() => {});
     }
 
-    if (!forzarAsistido && Array.isArray(tramite.pasos) && tramite.pasos.length) {
+    if (!MODO_ASISTIDO && Array.isArray(tramite.pasos) && tramite.pasos.length) {
       log('Navegando al documento por los pasos configurados…');
       for (const paso of tramite.pasos) {
         if (paso.wait) { await page.waitForTimeout(paso.wait); continue; }
@@ -216,7 +224,7 @@ async function main() {
     }
 
     // Si aún no hay descarga, intenta un botón de descarga genérico en la página.
-    if (!download && !forzarAsistido) {
+    if (!download && !MODO_ASISTIDO) {
       const descargar = await primero(page, [
         sel.descargar,
         () => page.getByRole('button', { name: /descargar|generar|imprimir|acuse/i }),
