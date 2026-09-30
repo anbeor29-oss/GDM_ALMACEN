@@ -17,7 +17,7 @@ const TIPOS: Array<[string, string, string]> = [
   ['SAT', 'SAT (32-D)', 'Opinión del cumplimiento de obligaciones fiscales (Art. 32-D CFF).'],
   ['IMSS', 'IMSS', 'Opinión de cumplimiento de obligaciones en materia de seguridad social.'],
   ['INFONAVIT', 'INFONAVIT', 'Cumplimiento en materia de aportaciones de vivienda (INFONAVIT).'],
-  ['CSF', 'CSF', 'Constancia de Situación Fiscal — la identidad fiscal de la empresa (RFC, régimen, domicilio).'],
+  ['CSF', 'CIF/CSF', 'Constancia de Situación Fiscal (CIF) — la identidad fiscal de la empresa (RFC, régimen, domicilio).'],
 ];
 const SENTIDOS: Array<[string, string]> = [
   ['POSITIVA', 'Positiva (al corriente)'],
@@ -268,7 +268,7 @@ const PORTAL_SAT_HOME = 'https://www.sat.gob.mx/home';
 function ModalAsistenteSat({ tipo, onCerrar, onRegistrar }: { tipo: string; onCerrar: () => void; onRegistrar: () => void }) {
   const es32d = tipo === 'SAT';
   const url = es32d ? APP_SAT_32D : PORTAL_SAT_HOME;
-  const titulo = es32d ? 'Opinión de Cumplimiento (32-D)' : 'Constancia de Situación Fiscal (CSF)';
+  const titulo = es32d ? 'Opinión de Cumplimiento (32-D)' : 'Constancia de Situación Fiscal (CIF/CSF)';
   const pasos: Array<{ t: string; d?: string }> = es32d ? [
     { t: 'Abre la app de la Opinión 32-D', d: 'Con el botón de abajo (se abre en tu navegador). Elige e.firma —no CIEC, el CIEC pide CAPTCHA—, sube tu .cer y .key y tu contraseña.' },
     { t: 'Revisa tu opinión', d: 'La app muestra el sentido (Positiva/Negativa). Descarga el PDF con el botón de descargar/imprimir.' },
