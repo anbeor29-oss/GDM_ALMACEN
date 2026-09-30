@@ -410,10 +410,9 @@ export function Layout() {
                           { to: '/contabilidad/estados-financieros', icon: emoji3D('📋'), label: 'Estados financieros' },
                           { to: '/contabilidad/reportes-fiscales', icon: emoji3D('📤'), label: 'SAT' },
                           { to: '/contabilidad/cedulas',           icon: emoji3D('📑'), label: 'Cédulas fiscales (ISR/IVA)' },
-                          /* Cumplimiento por organismo: SAT (hub) → IMSS → INFONAVIT. */
-                          { to: '/contabilidad/servicios-sat',         icon: emoji3D('🏛️'), label: 'Servicios SAT (32-D/CIF/Declaraciones)' },
-                          { to: '/contabilidad/cumplimiento-imss',     icon: emoji3D('🛡️'), label: 'Cumplimiento IMSS' },
-                          { to: '/contabilidad/cumplimiento-infonavit', icon: emoji3D('🏠'), label: 'Cumplimiento INFONAVIT' },
+                          /* Cumplimiento por organismo: SAT (hub) → IMSS/INFONAVIT. */
+                          { to: '/contabilidad/servicios-sat',           icon: emoji3D('🏛️'), label: 'Cumplimiento fiscal' },
+                          { to: '/contabilidad/cumplimiento-organismos', icon: emoji3D('🛡️'), label: 'Cumplimiento IMSS / INFONAVIT' },
                         ],
                       },
                     ]}
@@ -509,7 +508,7 @@ export function Layout() {
               </div>
               <NavItem to="/admin/companies" icon={navIcon('🏢')} accent="sky"     label="Empresas"              open={sidebarOpen} />
               <NavItem to="/admin/facturacion" icon={navIcon('💰')} accent="emerald" label="Facturación mensual"  open={sidebarOpen} />
-              <NavItem to="/admin/satgo" icon={navIcon('☁️')} accent="sky" label="SatGo (fiscal)"  open={sidebarOpen} />
+              <NavItem to="/admin/satgo" icon={navIcon('☁️')} accent="sky" label="Conector fiscal"  open={sidebarOpen} />
               <NavItem to="/admin/users"     icon={navIcon('🛡️')} accent="emerald" label="Usuarios"              open={sidebarOpen} />
               <NavItem to="/admin/accesos"  icon={navIcon('🔗')} accent="sky"     label="Accesos por empresa"   open={sidebarOpen} />
               <NavItem to="/admin/packages"  icon={navIcon('📦')} accent="violet"  label="Paquetes de uso"       open={sidebarOpen} />

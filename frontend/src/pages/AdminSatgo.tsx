@@ -42,8 +42,8 @@ export function AdminSatgoPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3"><Cloud size={28} className="text-sky-600" /> SatGo (proveedor fiscal)</h1>
-        <p className="text-gray-600 mt-1">Conecta la cuenta de SatGo para CIF/CSF, Opinión 32-D, OC IMSS, Declaraciones e Info Fiscal por RFC.</p>
+        <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3"><Cloud size={28} className="text-sky-600" /> Conector fiscal</h1>
+        <p className="text-gray-600 mt-1">Conecta el servicio fiscal para CIF/CSF, Opinión 32-D, IMSS, Declaraciones e Información Fiscal por RFC.</p>
       </div>
 
       <div className="bg-white border rounded-lg p-4 flex flex-wrap items-center gap-4">
@@ -58,7 +58,7 @@ export function AdminSatgoPage() {
       <div className="bg-white border rounded-lg p-4 space-y-3">
         <h2 className="font-semibold text-gray-800">1 · URL base de la API</h2>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="block flex-1 min-w-[16rem]"><span className="text-xs text-gray-600 block mb-1">URL base (de «API &amp; Consultas» de SatGo)</span>
+          <label className="block flex-1 min-w-[16rem]"><span className="text-xs text-gray-600 block mb-1">URL base del servicio (de «API &amp; Consultas»)</span>
             <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={cfg?.baseUrl || 'https://api.sat-go.com'} className="input py-1.5 text-sm w-full font-mono" /></label>
           <label className="block"><span className="text-xs text-gray-600 block mb-1">Ambiente</span>
             <select value={ambiente} onChange={(e) => setAmbiente(e.target.value)} className="input py-1.5 text-sm">
@@ -72,7 +72,7 @@ export function AdminSatgoPage() {
 
       <div className="bg-white border rounded-lg p-4 space-y-3">
         <h2 className="font-semibold text-gray-800">2 · Obtener la API Key permanente</h2>
-        <p className="text-xs text-gray-500">Pega el <b>token del portal</b> de SatGo (de «API &amp; Consultas» → Access Token). NEXO lo canjea por una <b>API Key permanente</b> (CreateKey) y la guarda <b>cifrada</b>; el token del portal no se conserva. Hazlo una vez.</p>
+        <p className="text-xs text-gray-500">Pega el <b>token del portal</b> del proveedor (de «API &amp; Consultas» → Access Token). NEXO lo canjea por una <b>API Key permanente</b> y la guarda <b>cifrada</b>; el token del portal no se conserva. Hazlo una vez.</p>
         <div className="flex flex-wrap items-end gap-3">
           <label className="block flex-1 min-w-[20rem]"><span className="text-xs text-gray-600 block mb-1">Token del portal (Access Token)</span>
             <input value={portalToken} onChange={(e) => setPortalToken(e.target.value)} placeholder="eyJhbGciOiJ…" className="input py-1.5 text-xs w-full font-mono" type="password" /></label>
@@ -84,7 +84,7 @@ export function AdminSatgoPage() {
 
       {msg && <p className="text-sm bg-gray-50 border rounded px-3 py-2 text-gray-700">{msg}</p>}
       <p className="text-xs text-gray-500 flex items-start gap-1.5"><AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-500" />
-        Por RFC, la consulta usa la <b>clave CIEC</b> de cada empresa (Contabilidad → Servicios SAT → Configurar). El IMSS va sólo por RFC (sin CIEC). El acceso FIEL vía SatGo queda pendiente.</p>
+        Por RFC, la consulta usa la <b>clave CIEC</b> de cada empresa (Contabilidad → Cumplimiento fiscal → Configurar). El IMSS va sólo por RFC (sin CIEC). El acceso FIEL queda pendiente.</p>
     </div>
   );
 }

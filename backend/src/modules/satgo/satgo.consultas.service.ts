@@ -14,6 +14,28 @@ import { EphemeralCredentialContext } from '../compliance/credential-context';
 import { extraerBinarios, ZipSospechoso } from '../sat-descarga/zip-seguro';
 import * as satgo from './satgo.service';
 
+/** Mes (1-12) por nombre en español; 0 = no identificado / anual. */
+const MES_NUM: Record<string, number> = {
+  enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7,
+  agosto: 8, septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+};
+
+/**
+ * Clasifica un PDF de declaración por su NOMBRE: los paquetes del SAT vienen como
+ * `Normal_2026_Abril.pdf`, `Complementaria_2026_Abril.pdf`. Devuelve el tipo
+ * (Normal/Complementaria/…) y el mes (1-12, o 0 si es anual / no identificable),
+ * para encasillarlo en la cuadrícula año×mes.
+ */
+function clasificarDeclaracion(nombre: string): { tipo: string; mes: number } {
+  const base = nombre.replace(/\.[^.]+$/, '');
+  const lower = base.toLowerCase();
+  let mes = 0;
+  for (const [n, v] of Object.entries(MES_NUM)) if (lower.includes(n)) { mes = v; break; }
+  const primer = base.split(/[_\-\s]/)[0] || '';
+  const tipo = primer ? primer.charAt(0).toUpperCase() + primer.slice(1).toLowerCase() : 'Declaración';
+  return { tipo, mes };
+}
+
 async function rfcDe(companyId: string): Promise<string> {
   const r = await query<any>(`SELECT rfc FROM companies WHERE id=$1`, [companyId]);
   const rfc = String(r.rows[0]?.rfc || '').toUpperCase().trim();
@@ -83,12 +105,16 @@ export async function declaracionesContenido(companyId: string, ejercicio: numbe
   // Tope de respuesta (evita payloads gigantes); PDFs primero.
   const MAX_TOTAL = 12 * 1024 * 1024;
   let total = 0;
-  const out: Array<{ nombre: string; esPdf: boolean; base64: string }> = [];
+  const out: Array<{ nombre: string; esPdf: boolean; tipo: string; mes: number; base64: string }> = [];
   for (const a of archivos.sort((x, y) => Number(/\.pdf$/i.test(y.nombre)) - Number(/\.pdf$/i.test(x.nombre)))) {
     total += a.contenido.length;
     if (total > MAX_TOTAL) break;
     const esPdf = /\.pdf$/i.test(a.nombre);
-    out.push({ nombre: a.nombre, esPdf, base64: `data:${esPdf ? 'application/pdf' : 'text/plain'};base64,${a.contenido.toString('base64')}` });
+    const { tipo, mes: mesArchivo } = clasificarDeclaracion(a.nombre);
+    out.push({
+      nombre: a.nombre, esPdf, tipo, mes: mesArchivo || m,
+      base64: `data:${esPdf ? 'application/pdf' : 'text/plain'};base64,${a.contenido.toString('base64')}`,
+    });
   }
   return { ejercicio, mes: m, total: archivos.length, archivos: out };
 }

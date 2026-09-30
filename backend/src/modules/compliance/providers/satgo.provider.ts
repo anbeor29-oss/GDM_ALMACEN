@@ -55,13 +55,13 @@ export class SatGoProvider implements IComplianceProvider {
       } catch { /* se queda OTRO */ }
     }
 
-    const fuente = recurso === 'ocpublico' ? 'SatGo (opinión pública)' : 'SatGo';
+    const fuente = recurso === 'ocpublico' ? 'en línea (opinión pública)' : 'en línea';
     return {
       estado: 'SUCCESS',
       sentido,
       fechaOpinion: new Date().toISOString().slice(0, 10),
       pdfBase64: `data:application/pdf;base64,${buf.toString('base64')}`,
-      mensaje: `Obtenido de ${fuente}.`,
+      mensaje: `Obtenido ${fuente}.`,
     };
   }
 }

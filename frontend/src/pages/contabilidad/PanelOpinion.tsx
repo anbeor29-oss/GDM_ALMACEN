@@ -64,16 +64,16 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
       const d = r?.data;
       if (d?.estado === 'SUCCESS') {
         setMsg(String(d?.mensaje || '').includes('pública')
-          ? 'Descargado y registrado (SatGo · opinión pública).'
-          : 'Descargado y registrado (SatGo).');
+          ? 'Descargado y registrado (opinión pública).'
+          : 'Descargado y registrado.');
         qc.invalidateQueries({ queryKey: ['opinion-hist', tipo] });
         qc.invalidateQueries({ queryKey: ['opinion-resumen'] });
       } else {
-        setMsg(d?.mensaje || 'SatGo no pudo obtenerla. Revisa la clave CIEC (Configurar) o bájala a mano.');
+        setMsg(d?.mensaje || 'No se pudo obtener en línea. Revisa la clave CIEC (Configurar) o bájala a mano.');
         setManual(true);
       }
     } catch (e: any) {
-      setMsg(e?.response?.data?.message || 'No se pudo conectar con SatGo.');
+      setMsg(e?.response?.data?.message || 'No se pudo conectar con el servicio.');
       setManual(true);
     }
   };
@@ -92,7 +92,7 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
           <button onClick={descargar}
             title={tipo === 'INFONAVIT'
               ? 'Abre el portal del INFONAVIT; descarga tu constancia/opinión y súbela con Registrar (captura manual)'
-              : 'Un clic: la baja por SatGo y la registra sola. Si no puede, abre el sitio oficial en tu navegador para descargarla'}
+              : 'Un clic: NEXO la baja y la registra sola. Si no puede, abre el sitio oficial en tu navegador para descargarla'}
             className="flex items-center gap-1.5 border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 text-sm">
             <DownloadCloud size={15} /> {tipo === 'INFONAVIT' ? 'Portal INFONAVIT' : 'Descargar'}
           </button>
@@ -320,8 +320,8 @@ function ModalConfig({ tipo, tipoNombre, actual, onCerrar, onHecho }: any) {
         <div className="p-5 space-y-3">
           <p className="text-xs text-gray-600 bg-gray-50 border rounded px-3 py-2">
             {usaCiec
-              ? <>SatGo baja la {tipo === 'CSF' ? 'Constancia de Situación Fiscal' : 'Opinión 32-D'} con la <b>clave CIEC</b> de la empresa (el RFC se toma solo). Sin CIEC, el 32-D intenta la <b>opinión pública</b> por RFC (si la activaste en el SAT).</>
-              : <>La opinión del <b>IMSS</b> se baja por <b>RFC</b> con SatGo — no necesita CIEC. Sólo decide si quieres el refresco automático.</>}
+              ? <>NEXO baja la {tipo === 'CSF' ? 'Constancia de Situación Fiscal' : 'Opinión 32-D'} con la <b>clave CIEC</b> de la empresa (el RFC se toma solo). Sin CIEC, el 32-D intenta la <b>opinión pública</b> por RFC (si la activaste en el SAT).</>
+              : <>La opinión del <b>IMSS</b> se baja por <b>RFC</b> — no necesita CIEC. Sólo decide si quieres el refresco automático.</>}
           </p>
           {usaCiec && (
             <label className="block"><span className="text-xs text-gray-600">Clave CIEC {actual?.tiene_credencial && <span className="text-emerald-600">· guardada</span>}</span>

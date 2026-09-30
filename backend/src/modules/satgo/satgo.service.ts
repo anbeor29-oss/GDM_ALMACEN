@@ -61,20 +61,20 @@ export async function setConfig(d: { baseUrl?: string; apiKey?: string; ambiente
  * "featureCode":"imssoc","monthlyLimit":3,"monthlyUsage":6}; detectamos el tope de
  * cuota (plan de pruebas) y lo explicamos, en vez de mostrar el JSON crudo.
  */
-function mensajeErrorSatgo(status: number, body: string, recurso: string): string {
+function mensajeErrorSatgo(status: number, body: string): string {
   let j: any = null;
   try { j = JSON.parse(body); } catch { /* texto plano */ }
   if (j && typeof j === 'object') {
-    const base = String(j.message || j.error || j.title || `respondió ${status}`);
+    const base = String(j.message || j.error || j.title || `código ${status}`);
     if (j.monthlyLimit != null || j.dailyLimit != null) {
       const lim = j.monthlyLimit != null
-        ? `${j.monthlyUsage ?? '?'}/${j.monthlyLimit} al mes`
-        : `${j.dailyUsage ?? '?'}/${j.dailyLimit} al día`;
-      return `SatGo (${recurso}): ${base} — cuota del plan de pruebas (${lim}). Al formalizar el contrato sube el límite; mientras, bájala con el asistente.`;
+        ? `${j.monthlyUsage ?? '?'} de ${j.monthlyLimit} al mes`
+        : `${j.dailyUsage ?? '?'} de ${j.dailyLimit} al día`;
+      return `Límite del plan excedido (${lim}). Amplía el plan para subir el tope; mientras, usa el asistente.`;
     }
-    return `SatGo (${recurso}): ${base}`;
+    return `No se pudo obtener en línea: ${base}`;
   }
-  return `SatGo ${recurso} respondió ${status}. ${body}`.trim();
+  return `No se pudo obtener en línea (código ${status}).`;
 }
 
 /** Extrae el primer valor de una lista de posibles nombres de campo. */
@@ -147,7 +147,7 @@ export async function consultarPdf(recurso: RecursoPdf, rfc: string, secretCiec?
   });
   if (r.status < 200 || r.status >= 300) {
     const msg = Buffer.isBuffer(r.data) ? r.data.toString('utf8').slice(0, 400) : '';
-    throw new ValidationError(mensajeErrorSatgo(r.status, msg, recurso));
+    throw new ValidationError(mensajeErrorSatgo(r.status, msg));
   }
   return Buffer.isBuffer(r.data) ? r.data : Buffer.from(r.data || []);
 }

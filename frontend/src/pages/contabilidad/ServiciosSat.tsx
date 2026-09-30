@@ -1,14 +1,14 @@
 /**
- * Servicios SAT — hub de trámites/consultas del SAT vía SatGo, en pestañas:
- *   Opinión 32-D · CIF/CSF · Declaraciones · Información Fiscal · Validar CFDI.
+ * Cumplimiento fiscal — hub de trámites/consultas del SAT en pestañas:
+ *   Opinión 32-D · CIF/CSF · Notificaciones · Declaraciones · Información Fiscal · Validar CFDI.
  * Las dos primeras reutilizan PanelOpinion (descarga + histórico + Configurar);
- * las tres siguientes son consultas directas a SatGo (CIEC de la empresa, salvo
- * la validación de CFDI que sólo usa el RFC). El IMSS y el INFONAVIT viven en su
- * propia área del menú (orden SAT → IMSS → INFONAVIT).
+ * las demás son consultas en línea (CIEC de la empresa, salvo la validación de
+ * CFDI que sólo usa el RFC). El IMSS y el INFONAVIT viven en su propia área del
+ * menú (orden SAT → IMSS/INFONAVIT).
  */
 import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Landmark, FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText } from 'lucide-react';
+import { ShieldCheck, FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen } from 'lucide-react';
 import api from '@/services/api';
 import { PanelOpinion } from './PanelOpinion';
 import { claseOpcion } from '@/utils/coloresOpciones';
@@ -16,12 +16,15 @@ import { claseOpcion } from '@/utils/coloresOpciones';
 const TABS: Array<[string, string]> = [
   ['SAT', 'Opinión 32-D'],
   ['CSF', 'CIF/CSF'],
+  ['NOTIF', 'Notificaciones'],
   ['DEC', 'Declaraciones'],
   ['INFO', 'Información Fiscal'],
   ['CFDI', 'Validar CFDI'],
 ];
 
-/** Abre un documento (data-URL base64) en pestaña nueva vía blob (mejor que data: directo). */
+const Q_INFO = ['cumpl-info-fiscal'];
+
+/** Abre un documento (data-URL base64) en pestaña nueva vía blob. */
 function abrirDoc(dataUrl: string) {
   try {
     const [meta, b64] = dataUrl.split(',');
@@ -37,31 +40,31 @@ function abrirDoc(dataUrl: string) {
 
 export function ServiciosSatPage() {
   const [tab, setTab] = useState('SAT');
-  // Estado de las opiniones (para el círculo de actualización en 32-D y CIF).
   const configQ = useQuery({ queryKey: ['cumpl-config'], queryFn: () => api.getConfigCumplimiento() });
   const cfgs: any = configQ.data?.data?.configs || {};
+  // Info fiscal: caché compartida (misma key que el panel) para el punto verde.
+  const infoQ = useQuery({ queryKey: Q_INFO, queryFn: () => api.satgoInfoFiscal(), enabled: false, staleTime: Infinity, gcTime: Infinity });
+  const hayInfo = !!((infoQ.data as any)?.data ?? infoQ.data);
 
-  const dot = (k: string) => {
+  const dot = (k: string): ReactNode => {
+    if (k === 'INFO') return hayInfo ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Consultada (en memoria)" /> : null;
     if (k !== 'SAT' && k !== 'CSF') return null;
     const c = cfgs[k] || {};
     const ok = c.ultimo_estado === 'SUCCESS';
-    const activo = !!c.activo;
-    if (!ok && !activo) return null;
-    const titulo = ok
-      ? `Última descarga correcta${c.ultima_ejecucion ? ' · ' + c.ultima_ejecucion : ''}`
-      : 'Actualización automática activa (domingos)';
-    return <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-emerald-500/40'}`} title={titulo} />;
+    if (!ok && !c.activo) return null;
+    return <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-emerald-500/40'}`}
+      title={ok ? `Última descarga correcta${c.ultima_ejecucion ? ' · ' + c.ultima_ejecucion : ''}` : 'Actualización automática activa (domingos)'} />;
   };
 
   return (
     <div className="p-6 space-y-4 max-w-5xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Landmark size={22} className="text-primary" /> Servicios SAT
+          <ShieldCheck size={22} className="text-primary" /> Cumplimiento fiscal
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Opinión 32-D, Constancia de Situación Fiscal, declaraciones, información fiscal y validación de
-          comprobantes — obtenidos por SatGo con el RFC y la clave CIEC de la empresa.
+          Opinión 32-D, Constancia de Situación Fiscal, notificaciones, declaraciones, información fiscal y
+          validación de comprobantes — con el RFC y la clave CIEC de la empresa.
         </p>
       </div>
 
@@ -76,6 +79,7 @@ export function ServiciosSatPage() {
 
       {tab === 'SAT' && <PanelOpinion tipo="SAT" />}
       {tab === 'CSF' && <PanelOpinion tipo="CSF" />}
+      {tab === 'NOTIF' && <PanelNotificaciones />}
       {tab === 'DEC' && <PanelDeclaraciones />}
       {tab === 'INFO' && <PanelInfoFiscal />}
       {tab === 'CFDI' && <PanelValidarCfdi />}
@@ -83,44 +87,102 @@ export function ServiciosSatPage() {
   );
 }
 
+/* ═══════════════ Notificaciones y comunicados ═══════════════ */
+interface Notif { id?: string; asunto?: string; titulo?: string; fecha?: string; leido?: boolean; texto?: string }
+
+function ItemNotif({ n }: { n: Notif }) {
+  const leido = !!n.leido;
+  return (
+    <li className="flex items-start gap-2.5 py-2">
+      {leido ? <MailOpen size={18} className="text-emerald-500 mt-0.5 shrink-0" />
+        : <Mail size={18} className="text-rose-500 mt-0.5 shrink-0" />}
+      <div className="min-w-0">
+        <p className={`text-sm truncate ${leido ? 'text-gray-600' : 'text-gray-900 font-medium'}`}>{n.asunto || n.titulo || 'Sin asunto'}</p>
+        {n.fecha && <p className="text-[11px] text-gray-400">{n.fecha}</p>}
+        {n.texto && <p className="text-xs text-gray-500 line-clamp-2">{n.texto}</p>}
+      </div>
+    </li>
+  );
+}
+
+function ColumnaNotif({ titulo, items }: { titulo: string; items: Notif[] }) {
+  // Descendente: primero la más reciente (por fecha si existe).
+  const orden = [...items].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
+  return (
+    <div className="bg-white rounded-lg shadow p-4">
+      <h4 className="text-sm font-semibold text-gray-800 mb-1">{titulo}</h4>
+      {orden.length === 0
+        ? <p className="text-sm text-gray-400 italic py-8 text-center">Sin {titulo.toLowerCase()} por ahora.</p>
+        : <ul className="divide-y">{orden.map((n, i) => <ItemNotif key={n.id || i} n={n} />)}</ul>}
+    </div>
+  );
+}
+
+function PanelNotificaciones() {
+  // La página se divide en dos: Comunicados y Avisos, en orden descendente (el más
+  // reciente arriba). Sobre rojo (cerrado) = sin leer; sobre verde (abierto) = leído.
+  // Se llenará cuando se conecte el servicio de notificaciones del buzón.
+  const comunicados: Notif[] = [];
+  const avisos: Notif[] = [];
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] text-gray-500 bg-gray-50 border rounded px-3 py-1.5 flex items-center gap-2">
+        <Mail size={13} className="text-rose-500" /> Sin leer &nbsp;·&nbsp; <MailOpen size={13} className="text-emerald-500" /> Leído
+        &nbsp;— el más reciente arriba. Se activará al conectar el buzón de notificaciones.
+      </p>
+      <div className="grid md:grid-cols-2 gap-4">
+        <ColumnaNotif titulo="Comunicados" items={comunicados} />
+        <ColumnaNotif titulo="Avisos" items={avisos} />
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════ Declaraciones — cuadrícula año × mes ═══════════════ */
 const MESES_ABBR = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-type CeldaEstado = { estado: 'cargando' | 'listo' | 'error'; archivos?: any[]; error?: string };
+type AnioEstado = { estado: 'cargando' | 'listo' | 'error'; porMes?: Record<number, any[]>; error?: string };
 
 function PanelDeclaraciones() {
   const anioActual = new Date().getFullYear();
   const anios: number[] = [];
   for (let a = anioActual; a >= 2018; a--) anios.push(a);
-  const [celdas, setCeldas] = useState<Record<string, CeldaEstado>>({});
+  const [datos, setDatos] = useState<Record<number, AnioEstado>>({});
   const [sel, setSel] = useState<string | null>(null);
 
-  const cargar = async (anio: number, mes: number) => {
-    const key = `${anio}-${mes}`;
-    setSel(key);
-    if (celdas[key]?.estado === 'listo' || celdas[key]?.estado === 'cargando') return;
-    setCeldas((p) => ({ ...p, [key]: { estado: 'cargando' } }));
+  const cargarAnio = async (anio: number) => {
+    if (datos[anio]?.estado === 'listo' || datos[anio]?.estado === 'cargando') return;
+    setDatos((p) => ({ ...p, [anio]: { estado: 'cargando' } }));
     try {
-      const r: any = await api.satgoDeclaracionesContenido(anio, mes);
+      const r: any = await api.satgoDeclaracionesContenido(anio, 0);
       const archivos = r?.data?.archivos || [];
-      setCeldas((p) => ({ ...p, [key]: { estado: 'listo', archivos } }));
+      const porMes: Record<number, any[]> = {};
+      for (const f of archivos) (porMes[f.mes] ??= []).push(f);
+      setDatos((p) => ({ ...p, [anio]: { estado: 'listo', porMes } }));
     } catch (e: any) {
-      setCeldas((p) => ({ ...p, [key]: { estado: 'error', error: e?.response?.data?.message || 'No se pudo.' } }));
+      setDatos((p) => ({ ...p, [anio]: { estado: 'error', error: e?.response?.data?.message || 'No se pudo.' } }));
     }
   };
 
+  const clickCelda = (anio: number, mes: number) => {
+    const st = datos[anio]?.estado;
+    if (st !== 'listo' && st !== 'cargando') cargarAnio(anio);
+    setSel(`${anio}-${mes}`);
+  };
+
   const celda = (anio: number, mes: number) => {
+    const a = datos[anio];
     const key = `${anio}-${mes}`;
-    const c = celdas[key];
     const activa = sel === key;
+    const docs = a?.porMes?.[mes] || [];
     let contenido: ReactNode = <span className="text-gray-300">·</span>;
-    if (c?.estado === 'cargando') contenido = <Loader2 size={13} className="animate-spin text-primary mx-auto" />;
-    else if (c?.estado === 'error') contenido = <span className="text-rose-500" title={c.error}>!</span>;
-    else if (c?.estado === 'listo') contenido = c.archivos?.length
-      ? <span className="inline-flex items-center gap-0.5 text-emerald-700"><FileText size={11} />{c.archivos.length}</span>
-      : <span className="text-gray-300" title="Sin declaraciones en el periodo">—</span>;
+    if (a?.estado === 'cargando') contenido = <Loader2 size={12} className="animate-spin text-primary mx-auto" />;
+    else if (a?.estado === 'error') contenido = <span className="text-rose-400" title={a.error}>!</span>;
+    else if (a?.estado === 'listo') contenido = docs.length
+      ? <span className="inline-flex items-center gap-0.5 text-emerald-700"><FileText size={11} />{docs.length}</span>
+      : <span className="text-gray-200">—</span>;
     return (
       <td key={mes} className="p-0.5">
-        <button onClick={() => cargar(anio, mes)}
+        <button onClick={() => clickCelda(anio, mes)}
           className={`w-full h-8 rounded text-xs flex items-center justify-center border transition
             ${activa ? 'border-primary ring-1 ring-primary/40' : 'border-gray-100 hover:border-primary/40 hover:bg-primary/5'}`}>
           {contenido}
@@ -129,18 +191,19 @@ function PanelDeclaraciones() {
     );
   };
 
-  const detalle = sel ? celdas[sel] : undefined;
   const [selAnio, selMes] = sel ? sel.split('-').map(Number) : [0, 0];
+  const docsSel: any[] = sel ? (datos[selAnio]?.porMes?.[selMes] || []) : [];
+  const estadoSel = sel ? datos[selAnio]?.estado : undefined;
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-gray-600">
-        Cuadrícula de declaraciones presentadas: <b>años en vertical, meses en horizontal</b>. Da clic en una celda
-        para traer y <b>descomprimir</b> su declaración (SatGo con CIEC). El número indica cuántos documentos trae.
+        Cuadrícula de declaraciones: <b>años en vertical, meses en horizontal</b>. Da clic en un año (o en una
+        celda) para traer y <b>descomprimir</b> sus declaraciones; cada PDF se <b>encasilla en el mes</b> en que se
+        presentó. El número indica cuántos documentos hay (Normal, Complementaria…).
       </p>
       <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 flex items-start gap-1.5">
-        <AlertTriangle size={12} className="mt-0.5 shrink-0" /> Cada celda consulta a SatGo (consume cuota del plan). La columna
-        <b> Anual</b> trae todo el ejercicio en una sola consulta.
+        <AlertTriangle size={12} className="mt-0.5 shrink-0" /> Se baja el <b>año completo en una sola consulta</b> (cuida la cuota del plan).
       </p>
 
       <div className="bg-white rounded-lg shadow overflow-x-auto">
@@ -149,13 +212,18 @@ function PanelDeclaraciones() {
             <tr className="bg-gray-50 border-b">
               <th className="px-3 py-2 text-xs font-semibold text-gray-600 text-left sticky left-0 bg-gray-50">Año</th>
               {MESES_ABBR.map((m) => <th key={m} className="px-1 py-2 text-[11px] font-semibold text-gray-500 w-12">{m}</th>)}
-              <th className="px-1 py-2 text-[11px] font-semibold text-gray-500 w-12">Anual</th>
+              <th className="px-1 py-2 text-[11px] font-semibold text-gray-500 w-12">Otros</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {anios.map((a) => (
               <tr key={a} className="hover:bg-gray-50/50">
-                <td className="px-3 py-1 text-sm font-medium text-gray-700 text-left sticky left-0 bg-white">{a}</td>
+                <td className="px-2 py-1 text-left sticky left-0 bg-white">
+                  <button onClick={() => cargarAnio(a)}
+                    className="text-sm font-medium text-gray-700 hover:text-primary flex items-center gap-1">
+                    {datos[a]?.estado === 'cargando' && <Loader2 size={12} className="animate-spin" />}{a}
+                  </button>
+                </td>
                 {MESES_ABBR.map((_, i) => celda(a, i + 1))}
                 {celda(a, 0)}
               </tr>
@@ -167,27 +235,31 @@ function PanelDeclaraciones() {
       {sel && (
         <div className="bg-white rounded-lg shadow p-4 space-y-2">
           <h4 className="text-sm font-semibold text-gray-800">
-            {selMes === 0 ? `Declaraciones ${selAnio} (todo el ejercicio)` : `${MESES_ABBR[selMes - 1]} ${selAnio}`}
+            {selMes === 0 ? `Otros documentos ${selAnio}` : `${MESES_ABBR[selMes - 1]} ${selAnio}`}
           </h4>
-          {detalle?.estado === 'cargando' && <p className="text-sm text-gray-500 flex items-center gap-1.5"><Loader2 size={14} className="animate-spin" /> Descargando y descomprimiendo…</p>}
-          {detalle?.estado === 'error' && <p className="text-sm text-rose-700 flex items-center gap-1.5"><AlertTriangle size={14} /> {detalle.error}</p>}
-          {detalle?.estado === 'listo' && (detalle.archivos?.length
+          {estadoSel === 'cargando' && <p className="text-sm text-gray-500 flex items-center gap-1.5"><Loader2 size={14} className="animate-spin" /> Descargando y descomprimiendo el año…</p>}
+          {estadoSel === 'error' && <p className="text-sm text-rose-700 flex items-center gap-1.5"><AlertTriangle size={14} /> {datos[selAnio]?.error}</p>}
+          {estadoSel === 'listo' && (docsSel.length
             ? <ul className="divide-y">
-                {detalle.archivos.map((f: any, i: number) => (
+                {docsSel.map((f: any, i: number) => (
                   <li key={i} className="flex items-center justify-between py-1.5">
-                    <span className="text-sm text-gray-700 flex items-center gap-1.5 truncate"><FileText size={14} className={f.esPdf ? 'text-rose-500' : 'text-gray-400'} /> {f.nombre}</span>
+                    <span className="text-sm text-gray-700 flex items-center gap-1.5 truncate">
+                      <FileText size={14} className={f.esPdf ? 'text-rose-500' : 'text-gray-400'} />
+                      {f.tipo && <span className={`text-[10px] px-1.5 py-0.5 rounded ${/complementaria/i.test(f.tipo) ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{f.tipo}</span>}
+                      {f.nombre}
+                    </span>
                     <button onClick={() => abrirDoc(f.base64)} className="text-xs text-primary hover:underline shrink-0 ml-3">Abrir</button>
                   </li>
                 ))}
               </ul>
-            : <p className="text-sm text-gray-500 italic">Sin declaraciones presentadas en este periodo.</p>)}
+            : <p className="text-sm text-gray-500 italic">Sin declaraciones en este periodo.</p>)}
         </div>
       )}
     </div>
   );
 }
 
-/* ═══════════════ Información fiscal — vista legible ═══════════════ */
+/* ═══════════════ Información fiscal — vista legible, en memoria ═══════════════ */
 const LBL: Record<string, string> = {
   rfc: 'RFC', nombre: 'Nombre / Razón social', curp: 'CURP', situacion: 'Situación',
   detalleSituacion: 'Detalle de situación', fechaSituacion: 'Fecha de situación', fechaNacimiento: 'Fecha de nacimiento',
@@ -254,7 +326,6 @@ function VistaInfoFiscal({ data }: { data: any }) {
   const objetos = entries.filter(([, v]) => v && typeof v === 'object' && !Array.isArray(v));
   const arreglos = entries.filter(([, v]) => Array.isArray(v));
   const hayEscalarRaiz = entries.some(([, v]) => esEscalar(v));
-  // Encabezado: busca rfc/nombre/situación en raíz y en objetos de primer nivel.
   const todos: any = { ...data };
   for (const [, v] of objetos) Object.assign(todos, v);
   const situacion = todos.situacion || todos.detalleSituacion;
@@ -271,14 +342,12 @@ function VistaInfoFiscal({ data }: { data: any }) {
           {situacion && <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${activo ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{fmt(situacion)}</span>}
         </div>
       )}
-
       {hayEscalarRaiz && (
         <div className="bg-white rounded-lg shadow p-4">
           <h4 className="text-sm font-semibold text-gray-800 mb-2">Datos generales</h4>
           <Campos obj={Object.fromEntries(entries.filter(([, v]) => esEscalar(v)))} />
         </div>
       )}
-
       {objetos.map(([k, v]) => (
         <div key={k} className="bg-white rounded-lg shadow p-4 space-y-2">
           <h4 className="text-sm font-semibold text-gray-800">{etiqueta(k)}</h4>
@@ -288,7 +357,6 @@ function VistaInfoFiscal({ data }: { data: any }) {
           <Campos obj={v} />
         </div>
       ))}
-
       {arreglos.map(([k, v]) => (
         <div key={k} className="bg-white rounded-lg shadow p-4 space-y-2">
           <h4 className="text-sm font-semibold text-gray-800">{etiqueta(k)}</h4>
@@ -300,27 +368,21 @@ function VistaInfoFiscal({ data }: { data: any }) {
 }
 
 function PanelInfoFiscal() {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [data, setData] = useState<any>(null);
   const [verJson, setVerJson] = useState(false);
-
-  const consultar = async () => {
-    setBusy(true); setError(''); setData(null);
-    try { const r: any = await api.satgoInfoFiscal(); setData(r?.data ?? r); }
-    catch (e: any) { setError(e?.response?.data?.message || 'No se pudo consultar. Revisa la clave CIEC en la pestaña Opinión 32-D → Configurar.'); }
-    finally { setBusy(false); }
-  };
+  // En memoria: react-query cachea el resultado; sólo se refresca al pedir «Consultar».
+  const q = useQuery({ queryKey: Q_INFO, queryFn: () => api.satgoInfoFiscal(), enabled: false, staleTime: Infinity, gcTime: Infinity, retry: false });
+  const data = (q.data as any)?.data ?? q.data ?? null;
+  const error = q.isError ? ((q.error as any)?.response?.data?.message || 'No se pudo consultar. Revisa la clave CIEC en Opinión 32-D → Configurar.') : '';
 
   return (
     <div className="space-y-3">
       <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between gap-2">
-        <p className="text-sm text-gray-600">Información fiscal de la empresa en el SAT (identidad, domicilio, régimen y obligaciones). Requiere la clave CIEC.</p>
+        <p className="text-sm text-gray-600">Información fiscal de la empresa en el SAT (identidad, domicilio, régimen y obligaciones). Queda <b>en memoria</b>; se actualiza sólo cuando lo pides. Requiere la clave CIEC.</p>
         <div className="flex items-center gap-2 shrink-0">
           {data && <button onClick={() => setVerJson((v) => !v)} className="text-xs text-gray-500 hover:underline">{verJson ? 'Ver formato' : 'Ver JSON'}</button>}
-          <button onClick={consultar} disabled={busy}
+          <button onClick={() => q.refetch()} disabled={q.isFetching}
             className="flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
-            {busy ? <Loader2 size={15} className="animate-spin" /> : <FileSearch size={15} />} Consultar
+            {q.isFetching ? <Loader2 size={15} className="animate-spin" /> : <FileSearch size={15} />} {data ? 'Actualizar' : 'Consultar'}
           </button>
         </div>
       </div>
