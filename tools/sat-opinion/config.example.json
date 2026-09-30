@@ -9,19 +9,23 @@
   "downloadDir": "C:\\Users\\EQ-7\\Downloads\\Opiniones_SAT",
   "headless": false,
   "timeoutMs": 60000,
+  "asistidoTimeoutMs": 300000,
 
-  "_tramites": "Un bloque por documento. loginUrl = página de acceso (se entra con e.firma, NO con CIEC, para evitar el CAPTCHA). botonEfirma = enlace/botón para cambiar de CIEC a e.firma. docUrl = página del documento (se llena tras calibrar con --inspect). logoutUrl = cerrar sesión (opcional).",
+  "_tramites": "Un bloque por documento. loginUrl = acceso (se entra con e.firma, NO CIEC). botonEfirma = botón para cambiar a e.firma. Tras el login, para llegar al documento hay 3 modos: (a) docUrl = URL directa del documento; (b) pasos = navegación por clics; (c) si dejas ambos vacíos, corre en MODO ASISTIDO (tú navegas y descargas, el script captura el PDF). logoutUrl opcional.",
+  "_pasos": "Ejemplo de pasos: [{\"click\":\"text=Otros trámites y servicios\"},{\"click\":\"text=Opinión del cumplimiento\"},{\"wait\":1500},{\"download\":\"text=Generar\"}]. Tipos de paso: click, goto, fill {sel,val}, wait (ms), download (selector o true).",
   "tramites": {
     "SAT": {
       "loginUrl": "https://loginda.siat.sat.gob.mx/nidp/app/login?id=ciec&sid=2&option=credential",
       "botonEfirma": "#buttonFiel",
       "docUrl": "",
+      "pasos": [],
       "logoutUrl": ""
     },
     "CSF": {
       "loginUrl": "https://login.siat.sat.gob.mx/nidp/idff/sso?id=ciec&sid=0&option=credential",
       "botonEfirma": "#buttonFiel",
       "docUrl": "",
+      "pasos": [],
       "logoutUrl": ""
     }
   },

@@ -49,8 +49,19 @@ npm run sat      # Opinión de Cumplimiento 32-D
 npm run csf      # Constancia de Situación Fiscal
 ```
 
-El PDF queda en tu `downloadDir`. Ábrelo o cárgalo a NEXO
-(Contabilidad → Opinión de Cumplimiento → registrar).
+Tras el login, para llegar al documento hay **tres modos** (config → `tramites`):
+1. **`docUrl`** — si el documento tiene una URL directa (la copias de la barra de direcciones estando dentro).
+2. **`pasos`** — navegación por clics: `[{"click":"text=Otros trámites y servicios"},{"click":"text=Opinión del cumplimiento"},{"download":"text=Generar"}]`.
+3. **ASISTIDO** — si dejas `docUrl` y `pasos` vacíos (o corres con `--asistido`): el script **te loguea y TÚ navegas** al documento y le das descargar; **él captura el PDF solo** y lo sube a NEXO. Esto resuelve el «entro pero caigo en una página x».
+
+```bash
+node descargar-opinion.mjs --tipo SAT --asistido
+```
+
+El PDF queda en tu `downloadDir` y, si activaste `nexo`, se registra en NEXO
+(Contabilidad → Opinión de Cumplimiento). **Para dejarlo 100% automático:** dime a qué
+menús le das clic para llegar a cada documento (o pásame una captura de la página donde
+caes) y te lleno los `pasos` de cada trámite.
 
 ## 5. (Opcional) Registrar en NEXO automáticamente
 

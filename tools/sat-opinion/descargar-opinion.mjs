@@ -18,6 +18,8 @@
  * Uso:
  *   node descargar-opinion.mjs --tipo SAT            → Opinión 32-D
  *   node descargar-opinion.mjs --tipo CSF            → Constancia de Situación Fiscal
+ *   node descargar-opinion.mjs --tipo SAT --asistido → login automático; TÚ navegas al documento y le das
+ *                                                      descargar, y el script CAPTURA el PDF y lo sube a NEXO
  *   node descargar-opinion.mjs --tipo SAT --inspect  → solo vuelca el formulario de login (SIN credenciales)
  *
  * La contraseña NUNCA va en el código ni en el config: se lee de la variable de
@@ -174,23 +176,67 @@ async function main() {
 
     if (await detectarCaptcha(page)) throw new Error('Apareció un CAPTCHA tras enviar la e.firma. No se evade.');
 
-    /* ── Abrir el trámite y descargar ── */
-    if (tramite.docUrl) {
+    /* ── Abrir el trámite y descargar el documento ──
+     * Tres modos, de más automático a más asistido:
+     *  1) docUrl : el documento tiene URL directa tras el login → se abre.
+     *  2) pasos  : navegación por clics (menú→submenú→generar) definida en config.
+     *  3) ASISTIDO: si no hay ruta configurada (o con --asistido), TÚ navegas al
+     *     documento en la ventana y le das descargar; el script espera el archivo
+     *     y lo captura solo. Es lo que desbloquea el «caigo en una página x».
+     */
+    let download = null;
+    const forzarAsistido = args.includes('--asistido');
+
+    if (!forzarAsistido && tramite.docUrl) {
       log('Abriendo el trámite…', tramite.docUrl);
       await page.goto(tramite.docUrl, { waitUntil: 'domcontentloaded' });
       await page.waitForLoadState('networkidle', { timeout: T }).catch(() => {});
     }
 
-    const descargar = await primero(page, [
-      sel.descargar,
-      () => page.getByRole('button', { name: /descargar|generar|imprimir|acuse/i }),
-      () => page.getByRole('link', { name: /descargar|generar|imprimir|acuse/i }),
-      "a[href*='pdf']", "[title*='escargar']",
-    ]);
-    if (!descargar) throw new Error('No encontré el botón de descarga. Calibra selectors.descargar (usa --inspect en la página del trámite).');
+    if (!forzarAsistido && Array.isArray(tramite.pasos) && tramite.pasos.length) {
+      log('Navegando al documento por los pasos configurados…');
+      for (const paso of tramite.pasos) {
+        if (paso.wait) { await page.waitForTimeout(paso.wait); continue; }
+        if (paso.goto) { await page.goto(paso.goto, { waitUntil: 'domcontentloaded' }); await page.waitForLoadState('networkidle', { timeout: T }).catch(() => {}); continue; }
+        if (paso.fill) { const f = await primero(page, [paso.fill.sel]); if (f) await f.fill(String(paso.fill.val ?? '')); continue; }
+        if (paso.download) {
+          const btn = await primero(page, [paso.download === true ? null : paso.download,
+            () => page.getByRole('button', { name: /descargar|generar|imprimir|acuse/i }),
+            () => page.getByRole('link', { name: /descargar|generar|imprimir|acuse/i })]);
+          if (!btn) throw new Error('No encontré el control de descarga del paso. Revisa config → pasos.');
+          [download] = await Promise.all([page.waitForEvent('download', { timeout: T }), btn.click()]);
+          continue;
+        }
+        if (paso.click) {
+          const el = await primero(page, [paso.click]);
+          if (!el) throw new Error(`No encontré el paso a pulsar: ${paso.click}. Revisa config → pasos.`);
+          await Promise.all([page.waitForLoadState('networkidle', { timeout: T }).catch(() => {}), el.click()]);
+        }
+      }
+    }
 
-    log('Descargando el documento…');
-    const [download] = await Promise.all([page.waitForEvent('download', { timeout: T }), descargar.click()]);
+    // Si aún no hay descarga, intenta un botón de descarga genérico en la página.
+    if (!download && !forzarAsistido) {
+      const descargar = await primero(page, [
+        sel.descargar,
+        () => page.getByRole('button', { name: /descargar|generar|imprimir|acuse/i }),
+        () => page.getByRole('link', { name: /descargar|generar|imprimir|acuse/i }),
+        "a[href*='pdf']", "[title*='escargar']",
+      ]);
+      if (descargar) {
+        log('Descargando el documento…');
+        [download] = await Promise.all([page.waitForEvent('download', { timeout: T }), descargar.click()]);
+      }
+    }
+
+    // MODO ASISTIDO: TÚ navegas y descargas; el script captura el archivo solo.
+    if (!download) {
+      const espera = cfg.asistidoTimeoutMs || 300000;
+      log('— MODO ASISTIDO — En la ventana abierta, navega al documento (Opinión 32-D o CSF) y dale DESCARGAR.');
+      log(`  Te espero hasta ${Math.round(espera / 1000)}s y capturo el PDF automáticamente…`);
+      download = await page.waitForEvent('download', { timeout: espera });
+    }
+
     const nombre = `${TIPO}_${cfg.rfc}_${new Date().toISOString().slice(0, 10)}.pdf`;
     const destino = path.join(downloadDir, nombre);
     await download.saveAs(destino);
