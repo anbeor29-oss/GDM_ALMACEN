@@ -43,15 +43,10 @@ export async function estadoOnboarding(companyId: string): Promise<EstadoOnboard
   // Exentos: RFC oculto o sin reloj de prueba → acceso completo.
   if (RFCS_SIN_BLOQUEO.includes(rfc) || !row.prueba_inicio) return libre(row.prueba_inicio);
 
-  // ¿Ya firmó el contrato con e.firma?
+  // ¿Ya firmó el contrato con e.firma? Sólo la FIRMA libera una empresa de prueba
+  // (su "operación" durante la prueba es exploración, no la exenta).
   const firmado = (await query(`SELECT 1 FROM service_contracts WHERE company_id = $1 LIMIT 1`, [companyId])).rows.length > 0;
   if (firmado) return libre(row.prueba_inicio, true);
-
-  // ¿Ya opera? (facturas emitidas o catálogo contable) → no se trata como prueba.
-  const op = await query<{ op: boolean }>(
-    `SELECT (EXISTS(SELECT 1 FROM invoices WHERE company_id=$1 AND deleted_at IS NULL)
-          OR EXISTS(SELECT 1 FROM accounting_accounts WHERE company_id=$1)) AS op`, [companyId]);
-  if (op.rows[0]?.op) return libre(row.prueba_inicio);
 
   const finMs = new Date(row.prueba_inicio).getTime() + HORAS_PRUEBA * 3600_000;
   const restanteMs = finMs - Date.now();
@@ -65,6 +60,13 @@ export async function estadoOnboarding(companyId: string): Promise<EstadoOnboard
 export async function estaEnPrueba(companyId: string): Promise<boolean> {
   const e = await estadoOnboarding(companyId);
   return e.estado !== 'ACTIVA';
+}
+
+/** Lanza si la empresa está en prueba: durante la prueba NO se timbra real. */
+export async function assertPuedeTimbrar(companyId: string): Promise<void> {
+  if (await estaEnPrueba(companyId)) {
+    throw new ValidationError('En modo prueba no se puede timbrar. Firma el contrato con tu e.firma para activar el timbrado real.');
+  }
 }
 
 /**

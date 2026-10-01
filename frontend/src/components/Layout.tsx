@@ -14,7 +14,7 @@ import {
   Building2, Tags, Shuffle, Landmark, PenLine, CalendarClock, Calendar, Droplets,
   Search, Microscope, FolderOpen, Satellite, Mail, ScrollText, ArrowUpFromLine,
   ArrowDownToLine, ArrowRightLeft, CircleDot, ShoppingCart,
-  Link2, CreditCard, DollarSign, Gift, Lock,
+  Link2, CreditCard, DollarSign, Gift, Lock, Clock, X,
   type LucideIcon,
 } from 'lucide-react';
 import { canAccess, type ModuleKey } from '@/utils/permissions';
@@ -35,18 +35,19 @@ const IDLE_MINUTES = 20;
 
 /** Cubre el contenido mientras una empresa nueva/sin operación no ha firmado el
  *  contrato. No es un error: es el SIGUIENTE PASO para continuar. */
-function ContratoGate({ esAdmin, onFirmar }: { esAdmin: boolean; onFirmar: () => void }) {
+function ContratoGate({ esAdmin, onFirmar, vencida = false }: { esAdmin: boolean; onFirmar: () => void; vencida?: boolean }) {
   return (
     <div className="max-w-xl mx-auto mt-10 bg-white rounded-xl shadow-lg border border-slate-200 p-8 text-center">
       <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-sky-50 grid place-items-center">
         <ScrollText className="text-sky-600" size={28} />
       </div>
-      <h2 className="text-2xl font-bold text-slate-900">Activa tu empresa</h2>
+      <h2 className="text-2xl font-bold text-slate-900">{vencida ? 'Tu prueba terminó' : 'Activa tu empresa'}</h2>
       {esAdmin ? (
         <>
           <p className="text-slate-600 mt-3">
-            El <b>primer paso</b> es firmar el contrato de servicio y el manifiesto
-            con la e.firma de la empresa. Hasta entonces los módulos permanecen bloqueados.
+            {vencida
+              ? <>Terminaron tus <b>72 horas de prueba</b>. Para seguir usando el sistema, firma el contrato de servicio con la <b>e.firma</b> de la empresa.</>
+              : <>El <b>primer paso</b> es firmar el contrato de servicio y el manifiesto con la e.firma de la empresa. Hasta entonces los módulos permanecen bloqueados.</>}
           </p>
           <button
             onClick={onFirmar}
@@ -60,10 +61,65 @@ function ContratoGate({ esAdmin, onFirmar }: { esAdmin: boolean; onFirmar: () =>
         </>
       ) : (
         <p className="text-slate-600 mt-3">
-          El <b>administrador</b> de la empresa debe firmar el contrato de servicio para
+          {vencida ? 'Terminó la prueba de 72 horas. ' : ''}El <b>administrador</b> de la empresa debe firmar el contrato de servicio para
           habilitar el sistema. En cuanto lo firme, podrás operar con tu grupo de trabajo.
         </p>
       )}
+    </div>
+  );
+}
+
+/** Modal para pedir una "demostración en línea" durante la prueba. */
+function ModalDemo({ correoInicial, onCerrar }: { correoInicial?: string; onCerrar: () => void }) {
+  const [contacto, setContacto] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [correo, setCorreo] = useState(correoInicial || '');
+  const [mensaje, setMensaje] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [ok, setOk] = useState(false);
+  const [error, setError] = useState('');
+
+  const enviar = async () => {
+    setBusy(true); setError('');
+    try { await api.solicitarDemo({ contacto, telefono, correo, mensaje }); setOk(true); }
+    catch (e: any) { setError(e?.response?.data?.message || 'No se pudo enviar.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <h3 className="font-semibold text-gray-900">Solicitar demostración en línea</h3>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+        {ok ? (
+          <div className="p-6 text-center">
+            <p className="text-emerald-700 font-medium">¡Listo! Recibimos tu solicitud.</p>
+            <p className="text-sm text-gray-500 mt-1">Te contactaremos para agendar la demostración.</p>
+            <button onClick={onCerrar} className="mt-4 bg-primary text-white px-4 py-2 rounded-lg text-sm">Cerrar</button>
+          </div>
+        ) : (
+          <div className="p-5 space-y-3">
+            <p className="text-sm text-gray-600">Déjanos tus datos y te mostramos el sistema en una sesión en línea.</p>
+            <label className="block"><span className="text-xs text-gray-600">Nombre de contacto</span>
+              <input value={contacto} onChange={(e) => setContacto(e.target.value)} className="input w-full" /></label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block"><span className="text-xs text-gray-600">Teléfono</span>
+                <input value={telefono} onChange={(e) => setTelefono(e.target.value)} className="input w-full" /></label>
+              <label className="block"><span className="text-xs text-gray-600">Correo</span>
+                <input value={correo} onChange={(e) => setCorreo(e.target.value)} className="input w-full" /></label>
+            </div>
+            <label className="block"><span className="text-xs text-gray-600">Mensaje (opcional)</span>
+              <textarea value={mensaje} onChange={(e) => setMensaje(e.target.value)} rows={2} className="input w-full" /></label>
+            {error && <p className="text-sm text-rose-700">{error}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={onCerrar} className="px-3 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
+              <button onClick={enviar} disabled={busy} className="bg-primary text-white px-4 py-1.5 rounded-lg text-sm disabled:opacity-50">{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -126,6 +182,24 @@ export function Layout() {
   const debeeFirmarContrato =
     user?.role !== 'SUPER_ADMIN' && cEstado != null &&
     cEstado.signed === false && cEstado.has_operation === false;
+
+  /* Onboarding de PRUEBA (72 h). PRUEBA_ACTIVA = explora con banner (NO se bloquea);
+     PRUEBA_VENCIDA = se cubre el contenido para que firme. Los RFC exentos y las
+     empresas que ya operan/firmaron salen como ACTIVA (sin banner ni bloqueo). */
+  const onboardingQ = useQuery({
+    queryKey: ['onboarding-estado', user?.companyId],
+    queryFn: () => api.getOnboardingEstado(),
+    enabled: !!user?.companyId && user?.role !== 'SUPER_ADMIN',
+    staleTime: 60 * 1000,
+  });
+  const ob = onboardingQ.data?.data as { estado?: string; horasRestantes?: number } | undefined;
+  const enPruebaActiva = ob?.estado === 'PRUEBA_ACTIVA';
+  const pruebaVencida = ob?.estado === 'PRUEBA_VENCIDA';
+  const horasRestantes = ob?.horasRestantes ?? null;
+  // Se cubre el contenido/menú si venció la prueba o (empresa no-prueba sin firmar),
+  // pero NUNCA durante la prueba activa (ahí se explora).
+  const bloquearContenido = pruebaVencida || (debeeFirmarContrato && !enPruebaActiva);
+  const [showDemo, setShowDemo] = useState(false);
 
   const doLogout = useCallback(async (reason?: 'idle') => {
     try {
@@ -193,9 +267,9 @@ export function Layout() {
             // Cada entrada se muestra solo si el grupo de trabajo la permite.
             // El dashboard es común a todos.
             const emoji3D = navIcon;
-            // Empresa nueva/sin operación: hasta firmar el contrato, el menú
-            // muestra SOLO «Contrato» (al ADMIN) o nada (a los demás grupos).
-            if (debeeFirmarContrato) {
+            // Prueba vencida o empresa sin firmar: el menú muestra SOLO «Contrato»
+            // (al ADMIN) o nada. Durante la prueba ACTIVA el menú queda completo.
+            if (bloquearContenido) {
               return esAdmin
                 ? <NavItem to="/contract" icon={emoji3D('📜')} accent="sky" label="Contrato" open={sidebarOpen} />
                 : null;
@@ -569,6 +643,17 @@ export function Layout() {
 
       {/* Contenido principal */}
       <main className="flex-1 flex flex-col overflow-hidden">
+        {enPruebaActiva && (
+          <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+            <span className="font-medium text-amber-900 flex items-center gap-1.5">
+              <Clock size={15} /> Modo prueba{typeof horasRestantes === 'number' ? ` — te quedan ~${horasRestantes} h` : ''}
+            </span>
+            <span className="text-amber-700 hidden sm:inline">Explora todo; el timbrado real se activa al firmar.</span>
+            <span className="flex-1" />
+            <button onClick={() => setShowDemo(true)} className="text-amber-800 hover:underline font-medium">Solicitar demostración</button>
+            <button onClick={() => navigate('/contract')} className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded-lg font-medium">Firmar contrato</button>
+          </div>
+        )}
         <header className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between">
           <div className="leading-tight">
             <h2 className="text-xl font-semibold text-gray-800">
@@ -588,8 +673,8 @@ export function Layout() {
             {/* Empresa nueva/sin operación: hasta firmar el contrato el contenido
                 se cubre con el siguiente paso. Se deja pasar la propia pantalla
                 del contrato para que el ADMIN pueda firmarlo. */}
-            {debeeFirmarContrato && location.pathname !== '/contract'
-              ? <ContratoGate esAdmin={user?.role === 'ADMIN'} onFirmar={() => navigate('/contract')} />
+            {bloquearContenido && location.pathname !== '/contract'
+              ? <ContratoGate esAdmin={user?.role === 'ADMIN'} vencida={pruebaVencida} onFirmar={() => navigate('/contract')} />
               : <Outlet />}
           </div>
         </div>
@@ -598,6 +683,7 @@ export function Layout() {
       {showIssuer && user?.companyId && (
         <IssuerModal companyId={user.companyId} onClose={() => setShowIssuer(false)} />
       )}
+      {showDemo && <ModalDemo correoInicial={user?.email} onCerrar={() => setShowDemo(false)} />}
 
       {/* Modal NO descartable que aparece tras login si la contraseña sigue siendo temporal */}
       {user?.passwordChangeRequired && <ForcePasswordChange />}

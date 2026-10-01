@@ -25,6 +25,7 @@ import { MockPACProvider } from './providers/mock.provider';
 import { SWSapienProvider } from './providers/sw-sapien.provider';
 import * as invoicesService from '../invoices/invoices.service';
 import * as cfdiService from '../cfdi/cfdi.service';
+import { assertPuedeTimbrar } from '../onboarding/onboarding.service';
 import { buildCFDIJson } from '../cfdi/build-cfdi-json.service';
 import * as billingService from '../billing/billing.service';
 import {
@@ -109,6 +110,7 @@ async function getCredentials(companyId: string): Promise<PACCredentials> {
  * guardado como timbrado.
  */
 export async function timbrarXml(companyId: string, xml: string): Promise<StampResult> {
+  await assertPuedeTimbrar(companyId);   // en modo prueba no se timbra real
   const provider = getProvider();
   return provider.stamp(xml, await getCredentials(companyId));
 }
@@ -136,6 +138,7 @@ export async function timbrarJson(
   payload: any,
   xmlFallback: string,
 ): Promise<StampResult> {
+  await assertPuedeTimbrar(companyId);   // en modo prueba no se timbra real
   const provider = getProvider();
   const credentials = await getCredentials(companyId);
 
