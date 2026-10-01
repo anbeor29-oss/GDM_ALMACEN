@@ -227,6 +227,9 @@ export function App() {
         <Routes>
           {/* Rutas públicas */}
           <Route path="/login" element={<LoginPage />} />
+          {/* Acceso OCULTO del dueño/operación (no enlazado en ningún lado). Mismo
+              login; su valor es la URL discreta, aparte del /login público. */}
+          <Route path="/login/dos" element={<LoginPage />} />
           <Route path="/registro" element={<RegistroPage />} />
           <Route path="/terminos"   element={<TerminosPage />} />
           <Route path="/privacidad" element={<PrivacidadPage />} />
