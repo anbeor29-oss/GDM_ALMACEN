@@ -201,6 +201,16 @@ export function Layout() {
   const bloquearContenido = pruebaVencida || (debeeFirmarContrato && !enPruebaActiva);
   const [showDemo, setShowDemo] = useState(false);
 
+  /* Habilita la opción del checador en ESTE equipo sólo si la empresa ya está
+     activa (firmada/de pago); en prueba o sin firmar se oculta (la lee Login). */
+  useEffect(() => {
+    if (!ob?.estado) return;   // super admin / sin dato → no tocar
+    try {
+      if (ob.estado === 'ACTIVA' && !debeeFirmarContrato) localStorage.setItem('nexo_checador_ok', '1');
+      else localStorage.removeItem('nexo_checador_ok');
+    } catch { /* noop */ }
+  }, [ob?.estado, debeeFirmarContrato]);
+
   const doLogout = useCallback(async (reason?: 'idle') => {
     try {
       await api.logout();

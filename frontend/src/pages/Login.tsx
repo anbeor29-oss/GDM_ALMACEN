@@ -25,6 +25,12 @@ export function LoginPage() {
   const [modo, setModo] = useState<ModoChecador>(modoKiosco());
   const { login } = useAuthStore();
   const navigate = useNavigate();
+  /* La opción del checador se oculta hasta que la empresa FIRME: solo aparece si
+   * este equipo ya tuvo un login de empresa activa (marca local que pone el Layout)
+   * o si ya es un kiosco configurado. Una empresa en prueba nunca la ve. */
+  const mostrarChecador = (() => {
+    try { return hayKiosco() || localStorage.getItem('nexo_checador_ok') === '1'; } catch { return hayKiosco(); }
+  })();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,7 +108,9 @@ export function LoginPage() {
             />
           </div>
 
-          {/* Auto-entrada del checador en este equipo. El check va a la DERECHA. */}
+          {/* Auto-entrada del checador en este equipo. Se muestra SÓLO si la empresa
+              ya firmó (equipo habilitado) o ya es kiosco. En prueba no aparece. */}
+          {mostrarChecador && (
           <div className="space-y-2">
             <label className="flex items-start justify-between gap-3 text-sm text-gray-600 select-none cursor-pointer">
               <span>
@@ -126,6 +134,7 @@ export function LoginPage() {
               </div>
             )}
           </div>
+          )}
 
           {/* Acceso + regreso al sitio corporativo, lado a lado */}
           <div className="grid grid-cols-2 gap-3">
