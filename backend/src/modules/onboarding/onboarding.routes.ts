@@ -53,4 +53,12 @@ router.post('/demos/:id/atender', authenticateToken, requireSuperAdmin, asyncHan
   res.json({ success: true, data: await onboarding.atenderDemo(req.params.id) });
 }));
 
+/* Bandeja de empresas que FIRMARON (facturar + pasar a producción) — súper admin. */
+router.get('/firmas', authenticateToken, requireSuperAdmin, asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await onboarding.listarFirmas(req.query.pendientes === 'true') });
+}));
+router.post('/firmas/:id/atender', authenticateToken, requireSuperAdmin, asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await onboarding.atenderFirma(req.params.id) });
+}));
+
 export default router;

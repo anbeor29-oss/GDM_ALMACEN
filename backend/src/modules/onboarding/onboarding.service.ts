@@ -154,3 +154,21 @@ export async function atenderDemo(id: string) {
   await query(`UPDATE demo_requests SET estado = 'ATENDIDA' WHERE id = $1`, [id]);
   return { ok: true };
 }
+
+/** Bandeja de empresas que FIRMARON (pendientes de facturar + pasar a producción). */
+export async function listarFirmas(soloPendientes = false) {
+  const r = await query<any>(
+    `SELECT f.id, f.rfc, f.business_name, f.estado,
+            TO_CHAR(f.signed_at,'YYYY-MM-DD HH24:MI') AS firmado,
+            c.email, c.timbrado_ambiente
+       FROM onboarding_firmas f LEFT JOIN companies c ON c.id = f.company_id
+      ${soloPendientes ? `WHERE f.estado = 'PENDIENTE'` : ''}
+      ORDER BY f.created_at DESC LIMIT 200`);
+  return r.rows;
+}
+
+/** Marca una firma como atendida (ya se facturó y pasó a producción). */
+export async function atenderFirma(id: string) {
+  await query(`UPDATE onboarding_firmas SET estado = 'ATENDIDA' WHERE id = $1`, [id]);
+  return { ok: true };
+}

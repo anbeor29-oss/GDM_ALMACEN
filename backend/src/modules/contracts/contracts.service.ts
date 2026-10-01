@@ -192,6 +192,15 @@ export async function signContract(opts: {
     ]
   );
 
+  // Aviso al dueño: la empresa firmó → hay que elaborar su factura y pasarla a
+  // PRODUCCIÓN. Best-effort: si falla el aviso, la firma NO se revierte.
+  try {
+    await query(
+      `INSERT INTO onboarding_firmas (company_id, rfc, business_name, signed_at)
+       VALUES ($1,$2,$3,$4)`,
+      [opts.companyId, cert.rfc, company.business_name, signedAt]);
+  } catch { /* la bandeja es secundaria; nunca tumba la firma */ }
+
   return {
     contractId: ins.rows[0].id,
     version: CONTRACT_VERSION,

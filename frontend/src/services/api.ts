@@ -117,6 +117,14 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/onboarding/demos/${id}/atender`, {});
     return r.data;
   }
+  async getFirmas(pendientes = false) {
+    const r = await this.client.get<APIResponse<any>>('/onboarding/firmas', { params: pendientes ? { pendientes: 'true' } : {} });
+    return r.data;
+  }
+  async atenderFirma(id: string) {
+    const r = await this.client.post<APIResponse<any>>(`/onboarding/firmas/${id}/atender`, {});
+    return r.data;
+  }
 
   /** Empresas a las que este usuario tiene acceso (multi-empresa). */
   async misEmpresas() {
