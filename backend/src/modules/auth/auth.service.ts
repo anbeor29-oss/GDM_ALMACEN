@@ -257,6 +257,18 @@ export async function changePassword(userId: string, oldPassword: string, newPas
     [newPasswordHash, userId]
   );
 
+  // Onboarding: si venía de una contraseña TEMPORAL (primer reset), el reloj de la
+  // prueba de 72 h arranca AHORA (es cuando realmente entra). Sólo empresas de
+  // prueba sin firmar; no afecta a las demás.
+  if ((user as any).password_change_required && user.company_id) {
+    await query(
+      `UPDATE companies SET prueba_inicio = NOW()
+        WHERE id = $1 AND prueba_inicio IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM service_contracts sc WHERE sc.company_id = $1)`,
+      [user.company_id]
+    );
+  }
+
   // Logout all sessions (delete refresh tokens)
   await redis.del(`refresh_token:${userId}`);
 

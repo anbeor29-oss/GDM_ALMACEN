@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { GdmLogo } from '@/components/GdmLogo';
@@ -14,7 +14,10 @@ import api from '@/services/api';
 const CORPORATE_SITE_URL = 'https://hcgm.com.mx';
 
 export function LoginPage() {
-  const [email, setEmail] = useState('');
+  const location = useLocation();
+  // Tras el alta de prueba se llega aquí con el correo precargado.
+  const correoPrecargado = (location.state as { email?: string } | null)?.email || '';
+  const [email, setEmail] = useState(correoPrecargado);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

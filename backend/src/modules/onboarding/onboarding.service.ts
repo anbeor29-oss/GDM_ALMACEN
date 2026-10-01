@@ -9,9 +9,18 @@
  * NUNCA se bloquean los RFC "ocultos" del dueño (pruebas + operación), ni las
  * empresas que ya operan o ya firmaron: su estado es siempre ACTIVA.
  */
+import * as crypto from 'crypto';
 import { query, transaction } from '../../config/database';
 import { ValidationError, ConflictError } from '../../middleware/errorHandler';
 import { hashPassword, validateRFC } from '../auth/auth.service';
+
+/** Contraseña temporal legible (sin caracteres ambiguos). Se resetea al entrar. */
+function contrasenaTemporal(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < 8; i++) s += chars[crypto.randomInt(0, chars.length)];
+  return `Nx-${s}`;
+}
 
 /** RFC con acceso "oculto" (nunca se bloquean): operación y pruebas del dueño. */
 export const RFCS_SIN_BLOQUEO = ['GHC1707275Y0', 'AABA020418BW2'];
@@ -70,23 +79,24 @@ export async function assertPuedeTimbrar(companyId: string): Promise<void> {
 }
 
 /**
- * Alta pública de PRUEBA: crea la empresa (modo prueba) + su ADMIN. Devuelve el
- * correo para el auto-login posterior. Un RFC por alta; si ya existe, se rechaza.
+ * Alta pública de PRUEBA: crea la empresa (modo prueba) + su ADMIN con una
+ * CONTRASEÑA TEMPORAL que DEBE resetear al entrar (password_change_required). NO
+ * auto-entra: devuelve el correo + la contraseña temporal para que inicie sesión.
+ * Un RFC por alta; si ya existe, se rechaza. El reloj de 72 h arranca cuando
+ * resetea la contraseña y entra (ver reiniciarRelojPruebaSiAplica).
  */
 export async function registrarPrueba(d: {
   rfc?: string; razonSocial?: string; cp?: string; regimen?: string;
-  correo?: string; password?: string; nombre?: string; telefono?: string;
-}): Promise<{ companyId: string; correo: string }> {
+  correo?: string; nombre?: string; telefono?: string;
+}): Promise<{ companyId: string; correo: string; passwordTemporal: string }> {
   const rfc = String(d.rfc || '').toUpperCase().trim();
   const razon = String(d.razonSocial || '').trim();
   const cp = String(d.cp || '').trim();
   const correo = String(d.correo || '').toLowerCase().trim();
-  const password = String(d.password || '');
   if (!validateRFC(rfc)) throw new ValidationError('El RFC no tiene un formato válido.');
   if (razon.length < 3) throw new ValidationError('Captura la razón social / nombre.');
   if (!/^\d{5}$/.test(cp)) throw new ValidationError('El código postal debe tener 5 dígitos.');
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)) throw new ValidationError('El correo no es válido.');
-  if (password.length < 8) throw new ValidationError('La contraseña debe tener al menos 8 caracteres.');
 
   if ((await query(`SELECT 1 FROM companies WHERE UPPER(rfc) = $1`, [rfc])).rows.length) {
     throw new ConflictError('Ya existe una empresa con ese RFC. Si ya tienes cuenta, inicia sesión.');
@@ -95,6 +105,7 @@ export async function registrarPrueba(d: {
     throw new ConflictError('Ese correo ya tiene una cuenta. Inicia sesión o usa otro correo.');
   }
 
+  const passwordTemporal = contrasenaTemporal();
   const [firstName, ...resto] = String(d.nombre || 'Administrador').trim().split(/\s+/);
   const companyId = await transaction(async (client) => {
     const comp = await client.query(
@@ -105,16 +116,16 @@ export async function registrarPrueba(d: {
        RETURNING id`,
       [rfc, razon, d.regimen || '601', cp, correo, d.telefono || null]);
     const id = comp.rows[0].id;
-    const hash = await hashPassword(password);
+    const hash = await hashPassword(passwordTemporal);
     await client.query(
       `INSERT INTO users
-         (email, password_hash, first_name, last_name, phone, role, company_id, is_active, failed_login_attempts)
-       VALUES ($1,$2,$3,$4,$5,'ADMIN',$6, true, 0)`,
+         (email, password_hash, first_name, last_name, phone, role, company_id, is_active, failed_login_attempts, password_change_required)
+       VALUES ($1,$2,$3,$4,$5,'ADMIN',$6, true, 0, TRUE)`,
       [correo, hash, firstName, resto.join(' ') || null, d.telefono || null, id]);
     return id as string;
   });
 
-  return { companyId, correo };
+  return { companyId, correo, passwordTemporal };
 }
 
 /** Registra una solicitud de "demostración en línea" (la ve el súper admin). */

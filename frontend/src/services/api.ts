@@ -96,9 +96,9 @@ class APIClient {
   }
 
   /* ── Alta pública de prueba (self-service, 72 h) ── */
-  async registrarPrueba(payload: { rfc: string; razonSocial: string; cp: string; regimen: string; correo: string; password: string; nombre?: string; telefono?: string }) {
+  async registrarPrueba(payload: { rfc: string; razonSocial: string; cp: string; regimen: string; correo: string; nombre?: string; telefono?: string }) {
     const r = await this.client.post<APIResponse<any>>('/onboarding/registro', payload);
-    return r.data; // { success, message, data: { user, token, refreshToken } }
+    return r.data; // { success, message, data: { correo, passwordTemporal } }
   }
   async getOnboardingEstado() {
     const r = await this.client.get<APIResponse<any>>('/onboarding/estado');

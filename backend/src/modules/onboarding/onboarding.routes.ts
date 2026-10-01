@@ -11,20 +11,22 @@ import { asyncHandler } from '../../middleware/errorHandler';
 import { authenticateToken } from '../../middleware/authentication';
 import { requireSuperAdmin } from '../admin/admin.middleware';
 import * as onboarding from './onboarding.service';
-import * as authService from '../auth/auth.service';
 
 const router = Router();
 
-/* Alta pública de prueba — sin autenticación. */
+/* Alta pública de prueba — sin autenticación. NO auto-entra: devuelve el correo y
+ * una contraseña TEMPORAL que el usuario cambia al iniciar sesión. */
 router.post('/registro', asyncHandler(async (req: Request, res: Response) => {
-  const { correo } = await onboarding.registrarPrueba({
+  const { correo, passwordTemporal } = await onboarding.registrarPrueba({
     rfc: req.body?.rfc, razonSocial: req.body?.razonSocial, cp: req.body?.cp,
-    regimen: req.body?.regimen, correo: req.body?.correo, password: req.body?.password,
+    regimen: req.body?.regimen, correo: req.body?.correo,
     nombre: req.body?.nombre, telefono: req.body?.telefono,
   });
-  // Auto-login: entra de inmediato (ya en modo prueba). Mismo envoltorio que /auth/login.
-  const auth = await authService.login(correo, String(req.body?.password || ''));
-  res.status(201).json({ success: true, message: 'Empresa de prueba creada. Tienes 72 horas para explorar.', data: auth });
+  res.status(201).json({
+    success: true,
+    message: 'Cuenta creada. Inicia sesión con tu contraseña temporal y cámbiala para entrar.',
+    data: { correo, passwordTemporal },
+  });
 }));
 
 /* Estado del onboarding de la empresa en sesión. */
