@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { GdmLogo } from '@/components/GdmLogo';
@@ -156,6 +156,12 @@ export function LoginPage() {
             </button>
           </div>
         </form>
+
+        {/* Prospecto nuevo: lleva al alta de prueba (Datos Fiscales). */}
+        <div className="mt-4 text-center text-sm">
+          <span className="text-gray-500">¿Primera vez? </span>
+          <Link to="/registro" className="text-emerald-600 font-semibold hover:underline">Prueba gratis 72 h — Crear cuenta</Link>
+        </div>
 
         {/* Footer — el aviso de copyright nombra a la RAZÓN SOCIAL dueña de los
             desarrollos, no al nombre comercial ni al del producto. Debe decir lo

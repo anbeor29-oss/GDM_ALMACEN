@@ -20,7 +20,7 @@ import {
   ChevronDown, BookOpen, Truck,
   Receipt, Boxes, ShoppingBag, Banknote,
   Calculator, BadgeDollarSign, FileCheck2,
-  Store, Archive,
+  Store, Archive, Rocket,
 } from 'lucide-react';
 import { useState } from 'react';
 import { GdmLogo } from '@/components/GdmLogo';
@@ -235,6 +235,12 @@ export function PublicHomePage() {
               <a href="#contacto" className="hover:text-indigo-600 transition-colors">Contacto</a>
             </nav>
             <Link
+              to="/registro"
+              className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-sky-500 to-emerald-500 hover:opacity-95 text-white px-5 py-2.5 rounded-lg shadow font-medium transition-colors"
+            >
+              <Rocket size={16} /> Prueba gratis
+            </Link>
+            <Link
               to="/login"
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg shadow font-medium transition-colors"
             >
@@ -255,7 +261,13 @@ export function PublicHomePage() {
           tu proveedor y programa tus pagos. Todo conectado: lo que se factura sale del
           almacén, y lo que se compra entra con su cuenta por pagar.
         </p>
-        <div className="mt-8 flex items-center justify-center gap-3">
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <Link
+            to="/registro"
+            className="inline-flex items-center gap-2 bg-gradient-to-r from-sky-500 to-emerald-500 hover:opacity-95 text-white px-8 py-3.5 rounded-lg shadow-lg font-semibold text-base transition-transform hover:scale-105"
+          >
+            <Rocket size={18} /> Prueba gratis 72 h
+          </Link>
           <Link
             to="/login"
             className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3.5 rounded-lg shadow-lg font-semibold text-base transition-transform hover:scale-105"
