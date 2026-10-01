@@ -125,6 +125,18 @@ async function bootstrap() {
       logger.warn(`No se pudo registrar compliance-cron: ${e.message}`);
     }
 
+    // Conector fiscal (SatGo): si SATGO_PORTAL_TOKEN está puesto y aún no hay API
+    // key, se canjea el token del portal por la key permanente al arrancar (así
+    // producción se configura solo, sin pegar nada en la UI).
+    try {
+      const { bootstrapDesdeEnv } = await import('./modules/satgo/satgo.service');
+      const r = await bootstrapDesdeEnv();
+      if (r === 'ok') logger.info('Conector fiscal: API key obtenida desde SATGO_PORTAL_TOKEN.');
+      else if (r === 'error') logger.warn('Conector fiscal: no se pudo canjear SATGO_PORTAL_TOKEN (revisa el token/URL).');
+    } catch (e: any) {
+      logger.warn(`No se pudo auto-configurar el conector fiscal: ${e.message}`);
+    }
+
     // Graceful shutdown
     const shutdown = async (signal: string) => {
       logger.info(`Received ${signal}, shutting down gracefully...`);

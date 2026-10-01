@@ -105,6 +105,23 @@ export async function bootstrapApiKey(portalToken: string) {
   return { ok: true };
 }
 
+/**
+ * Bootstrap por VARIABLE DE ENTORNO: si `SATGO_PORTAL_TOKEN` está puesto y aún no
+ * hay API key guardada, canjea el token del portal por la API Key PERMANENTE al
+ * arrancar. Pensado para PRODUCCIÓN: se pone el token en Render (una vez) y NEXO se
+ * configura solo, sin pegar nada en la UI. No tumba el server si falla.
+ */
+export async function bootstrapDesdeEnv(): Promise<'sin-token' | 'sin-boveda' | 'ya-configurado' | 'ok' | 'error'> {
+  const token = (process.env.SATGO_PORTAL_TOKEN || '').trim();
+  if (!token) return 'sin-token';
+  if (!bovedaLista()) return 'sin-boveda';
+  try {
+    if ((await getConfig()).tieneKey) return 'ya-configurado';
+    await bootstrapApiKey(token);
+    return 'ok';
+  } catch { return 'error'; }
+}
+
 /* ── JWT corto (caché en memoria) ── */
 let tokenCache: { jwt: string; exp: number } | null = null;
 
