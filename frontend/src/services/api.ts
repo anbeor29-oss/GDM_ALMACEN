@@ -95,6 +95,20 @@ class APIClient {
     return response.data;
   }
 
+  /* ── Alta pública de prueba (self-service, 72 h) ── */
+  async registrarPrueba(payload: { rfc: string; razonSocial: string; cp: string; regimen: string; correo: string; password: string; nombre?: string; telefono?: string }) {
+    const r = await this.client.post<APIResponse<any>>('/onboarding/registro', payload);
+    return r.data; // { success, message, data: { user, token, refreshToken } }
+  }
+  async getOnboardingEstado() {
+    const r = await this.client.get<APIResponse<any>>('/onboarding/estado');
+    return r.data; // { success, data: { estado, firmado, horasRestantes, ... } }
+  }
+  async solicitarDemo(payload: { contacto?: string; correo?: string; telefono?: string; mensaje?: string }) {
+    const r = await this.client.post<APIResponse<any>>('/onboarding/demo', payload);
+    return r.data;
+  }
+
   /** Empresas a las que este usuario tiene acceso (multi-empresa). */
   async misEmpresas() {
     const r = await this.client.get<APIResponse<Array<{

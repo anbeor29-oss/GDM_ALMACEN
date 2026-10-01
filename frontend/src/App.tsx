@@ -26,6 +26,7 @@ const ErpPrivado = lazy(() => import('./ErpPrivado'));
  * celulares modestos) entra directo a su pantalla y NO necesita descargarlas, así
  * su carga inicial es lo más liviana posible. */
 const LoginPage = lazy(() => import('@/pages/Login').then((m) => ({ default: m.LoginPage })));
+const RegistroPage = lazy(() => import('@/pages/Registro').then((m) => ({ default: m.RegistroPage })));
 const PublicHomePage = lazy(() => import('@/pages/PublicHome').then((m) => ({ default: m.PublicHomePage })));
 const TerminosPage = lazy(() => import('@/pages/LegalDoc').then((m) => ({ default: m.TerminosPage })));
 const PrivacidadPage = lazy(() => import('@/pages/LegalDoc').then((m) => ({ default: m.PrivacidadPage })));
@@ -226,6 +227,7 @@ export function App() {
         <Routes>
           {/* Rutas públicas */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/registro" element={<RegistroPage />} />
           <Route path="/terminos"   element={<TerminosPage />} />
           <Route path="/privacidad" element={<PrivacidadPage />} />
 
