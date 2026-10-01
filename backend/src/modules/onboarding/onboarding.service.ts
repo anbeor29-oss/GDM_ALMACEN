@@ -126,3 +126,20 @@ export async function solicitarDemo(companyId: string, d: { contacto?: string; c
     [companyId, c.rows[0]?.rfc || null, d.contacto || null, d.correo || null, d.telefono || null, d.mensaje || null]);
   return { ok: true };
 }
+
+/** Bandeja de solicitudes de demo (súper admin). */
+export async function listarDemos(soloPendientes = false) {
+  const r = await query<any>(
+    `SELECT d.id, d.rfc, c.business_name, d.contacto, d.correo, d.telefono, d.mensaje, d.estado,
+            TO_CHAR(d.created_at,'YYYY-MM-DD HH24:MI') AS creado
+       FROM demo_requests d LEFT JOIN companies c ON c.id = d.company_id
+      ${soloPendientes ? `WHERE d.estado = 'PENDIENTE'` : ''}
+      ORDER BY d.created_at DESC LIMIT 200`);
+  return r.rows;
+}
+
+/** Marca una solicitud como atendida. */
+export async function atenderDemo(id: string) {
+  await query(`UPDATE demo_requests SET estado = 'ATENDIDA' WHERE id = $1`, [id]);
+  return { ok: true };
+}

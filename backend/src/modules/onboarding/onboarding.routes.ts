@@ -9,6 +9,7 @@
 import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../../middleware/errorHandler';
 import { authenticateToken } from '../../middleware/authentication';
+import { requireSuperAdmin } from '../admin/admin.middleware';
 import * as onboarding from './onboarding.service';
 import * as authService from '../auth/auth.service';
 
@@ -40,6 +41,14 @@ router.post('/demo', authenticateToken, asyncHandler(async (req: Request, res: R
   res.json({ success: true, data: await onboarding.solicitarDemo(companyId, {
     contacto: req.body?.contacto, correo: req.body?.correo, telefono: req.body?.telefono, mensaje: req.body?.mensaje,
   }) });
+}));
+
+/* Bandeja de solicitudes de demo — SÓLO súper admin. */
+router.get('/demos', authenticateToken, requireSuperAdmin, asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await onboarding.listarDemos(req.query.pendientes === 'true') });
+}));
+router.post('/demos/:id/atender', authenticateToken, requireSuperAdmin, asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await onboarding.atenderDemo(req.params.id) });
 }));
 
 export default router;
