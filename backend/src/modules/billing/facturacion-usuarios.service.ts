@@ -75,10 +75,15 @@ export async function generarLista(periodoInput?: string, userId?: string) {
   const cfg = await getConfig();
 
   const empresas = await query<any>(
-    `SELECT id, rfc, business_name, created_at FROM companies
-      WHERE deleted_at IS NULL AND is_active = TRUE
-        AND COALESCE(billing_exempt, FALSE) = FALSE
-        AND COALESCE(stamp_package_code, '') <> 'PKG_TRIAL'`);
+    `SELECT c.id, c.rfc, c.business_name, c.created_at, c.prueba_inicio,
+            (SELECT MIN(sc.signed_at) FROM service_contracts sc WHERE sc.company_id = c.id) AS signed_at
+       FROM companies c
+      WHERE c.deleted_at IS NULL AND c.is_active = TRUE
+        AND COALESCE(c.billing_exempt, FALSE) = FALSE
+        AND COALESCE(c.stamp_package_code, '') <> 'PKG_TRIAL'
+        -- Las altas de PRUEBA (72 h) NO se cobran hasta que FIRMAN el contrato.
+        AND NOT (c.prueba_inicio IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM service_contracts sc WHERE sc.company_id = c.id))`);
 
   let creadas = 0;
   for (const e of empresas.rows) {
@@ -87,11 +92,13 @@ export async function generarLista(periodoInput?: string, userId?: string) {
 
     const usuarios = await usuariosFacturables(e.id);
 
-    // Prorrateo: solo si la empresa se creó DENTRO de este mes y después del día 1.
-    const cre = new Date(e.created_at);
+    // Prorrateo: desde que la empresa es FACTURABLE dentro de este mes. Para un
+    // alta de prueba se cobra DESDE LA FIRMA (no los días gratis); para las demás,
+    // desde su fecha de alta. Sólo prorratea si ese inicio cae después del día 1.
+    const inicioCobro = (e.prueba_inicio && e.signed_at) ? new Date(e.signed_at) : new Date(e.created_at);
     let diasCobrados = diasMes, prorrateado = false;
-    if (cre.getFullYear() === anio && cre.getMonth() === mes && cre.getDate() > 1) {
-      diasCobrados = diasMes - cre.getDate() + 1;   // el día de alta se cobra
+    if (inicioCobro.getFullYear() === anio && inicioCobro.getMonth() === mes && inicioCobro.getDate() > 1) {
+      diasCobrados = diasMes - inicioCobro.getDate() + 1;   // el día que se vuelve facturable se cobra
       prorrateado = true;
     }
     const renta = r2(cfg.precioUsuario * usuarios * (diasCobrados / diasMes));

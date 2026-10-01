@@ -345,6 +345,9 @@ export async function stampInvoice(companyId: string, invoiceId: string): Promis
     );
   }
 
+  // En modo PRUEBA (72 h) no se timbra real — mensaje claro antes del monedero.
+  await assertPuedeTimbrar(companyId);
+
   // Guardrail de facturación: para plan PKG_FLEX bloquea si el prepago está
   // en 0 (Decisión #9 — bloqueo total). Otros planes no bloquean; los
   // extras se cobran al cierre del mes.
