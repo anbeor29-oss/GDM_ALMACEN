@@ -119,6 +119,41 @@ export async function declaracionesContenido(companyId: string, ejercicio: numbe
   return { ejercicio, mes: m, total: archivos.length, archivos: out };
 }
 
+/**
+ * VERIFICA por SatGo el estatus de los CFDI almacenados y marca los CANCELADOS en la
+ * bóveda (cfdi_recibidos.estado_sat='Cancelado'). Capta cancelaciones POSTERIORES a la
+ * descarga (el Metadata del SAT sólo marca el estatus al momento de bajarlo). Revisa
+ * los que hoy NO están cancelados, del más reciente al más viejo. Consume cuota de
+ * SatGo (1 por CFDI): va con límite.
+ */
+export async function verificarCancelados(companyId: string, limite = 50) {
+  const lim = Math.min(Math.max(Number(limite) || 50, 1), 300);
+  const rfc = await rfcDe(companyId);   // la empresa es la consultante
+  const r = await query<any>(
+    `SELECT id, uuid, rfc_emisor, rfc_receptor, total
+       FROM cfdi_recibidos
+      WHERE company_id = $1 AND uuid IS NOT NULL
+        AND COALESCE(estado_sat, 'Vigente') <> 'Cancelado'
+      ORDER BY fecha_emision DESC NULLS LAST
+      LIMIT $2`, [companyId, lim]);
+
+  let revisados = 0, cancelados = 0, errores = 0;
+  for (const c of r.rows) {
+    revisados++;
+    try {
+      const data: any = await satgo.consultaCfdi(rfc, { re: c.rfc_emisor, rr: c.rfc_receptor, tt: c.total, id: c.uuid });
+      const texto = JSON.stringify(data || {}).toLowerCase();
+      const estado = String(data?.estado || data?.Estado || data?.estatus || data?.estadoComprobante || data?.estatusCancelacion || '').toLowerCase();
+      const estaCancelado = /cancel/.test(estado) || (/cancel/.test(texto) && !/vigente/.test(estado));
+      if (estaCancelado) {
+        await query(`UPDATE cfdi_recibidos SET estado_sat = 'Cancelado' WHERE id = $1`, [c.id]);
+        cancelados++;
+      }
+    } catch { errores++; }
+  }
+  return { revisados, cancelados, errores, restantes: Math.max(0, r.rows.length === lim ? lim : 0) };
+}
+
 /** Valida un CFDI ante el SAT (sin CIEC; sólo el RFC de la empresa como consultante). */
 export async function validarCfdi(companyId: string, d: { re?: string; rr?: string; tt?: string | number; id?: string; fe?: string }) {
   const re = String(d?.re || '').toUpperCase().trim();

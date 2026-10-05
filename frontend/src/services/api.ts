@@ -1848,6 +1848,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/reiniciar');
     return r.data;
   }
+  /** Re-verifica por el servicio fiscal el estatus de los CFDI guardados y marca cancelados. */
+  async verificarCanceladosSat(limite = 50) {
+    const r = await this.client.post<APIResponse<any>>('/sat-descarga/verificar-cancelados', { limite });
+    return r.data;
+  }
   /** Quita de la lista los trabajos terminados/cancelados (los XML se conservan). */
   async limpiarTrabajosTerminados() {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/limpiar-terminados');

@@ -57,6 +57,14 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
   const [buscar, setBuscar] = useState('');
   const [detalle, setDetalle] = useState<{ id: string; modo: Modo } | null>(null);
   const [asiento, setAsiento] = useState<string | null>(null);   // UUID para ver su póliza
+  const [verifBusy, setVerifBusy] = useState(false);
+  const [verifMsg, setVerifMsg] = useState('');
+  const verificarCancelados = async () => {
+    setVerifBusy(true); setVerifMsg('');
+    try { const r: any = await api.verificarCanceladosSat(100); setVerifMsg(r?.message || 'Listo.'); q.refetch(); }
+    catch (e: any) { setVerifMsg(e?.response?.data?.message || 'No se pudo verificar.'); }
+    finally { setVerifBusy(false); }
+  };
 
   const q = useQuery({
     queryKey: ['sat-vista', direccion, anio, mes],
@@ -109,7 +117,13 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
           <button onClick={() => q.refetch()} className="text-gray-500 hover:text-gray-700" title="Actualizar">
             <RefreshCw size={16} className={q.isFetching ? 'animate-spin' : ''} />
           </button>
+          <button onClick={verificarCancelados} disabled={verifBusy}
+            title="Re-verifica en el SAT y marca los CFDI que fueron cancelados (consume cuota del servicio)"
+            className="inline-flex items-center gap-1 text-xs border rounded-lg px-2.5 py-1.5 hover:bg-gray-50 disabled:opacity-50">
+            <Ban size={14} className="text-rose-500" /> {verifBusy ? 'Verificando…' : 'Verificar cancelados'}
+          </button>
         </div>
+        {verifMsg && <p className="text-xs text-gray-600 mt-1">{verifMsg}</p>}
       </div>
 
       {/* Tabs por tipo (Anexo 20). Facturas siempre; los demás si tienen algo. */}

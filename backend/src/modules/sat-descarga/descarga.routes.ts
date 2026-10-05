@@ -19,6 +19,7 @@ import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import * as service from './descarga.service';
 import * as programacion from './programacion.service';
+import * as satgoConsultas from '../satgo/satgo.consultas.service';
 import { bovedaLista } from './boveda';
 import { EfirmaInvalida } from './efirma';
 // archiver es CJS — require para evitar el namespace import (igual que /archive).
@@ -58,6 +59,18 @@ router.post(
     });
   })
 );
+
+/** POST /sat-descarga/verificar-cancelados — re-verifica por el proveedor fiscal el
+ *  estatus de los CFDI guardados y marca los cancelados (captura cancelaciones
+ *  posteriores a la descarga). Consume cuota: va con límite. */
+router.post('/verificar-cancelados', asyncHandler(async (req: Request, res: Response) => {
+  const r = await satgoConsultas.verificarCancelados(companyId(req), Number(req.body?.limite) || 50);
+  res.json({
+    success: true,
+    message: `Revisados ${r.revisados}: ${r.cancelados} cancelado(s) marcado(s)${r.errores ? `, ${r.errores} sin respuesta` : ''}.`,
+    data: r,
+  });
+}));
 
 /** POST /sat-descarga/limpiar-terminados — quita de la lista los trabajos ya
  *  terminados/cancelados Y los que quedaron con error (los XML que sí bajaron se
