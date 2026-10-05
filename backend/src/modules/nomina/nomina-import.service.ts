@@ -118,6 +118,13 @@ export async function importarNomina(
     marcadoresRfc.add(c);
     return c;
   };
+  // NEXO lleva SU consecutivo también al importar de otro sistema: se ignora el
+  // número del respaldo. Se arranca del último usado en la empresa.
+  const maxNumR = await query<{ m: string }>(
+    `SELECT COALESCE(MAX(NULLIF(regexp_replace(num_empleado,'\\D','','g'),'')::bigint),0) AS m
+       FROM nomina_empleados WHERE company_id=$1 AND deleted_at IS NULL`, [companyId]);
+  let siguienteNum = Number(maxNumR.rows[0]?.m || 0);
+
   for (const e of paquete.empleados || []) {
     const num = String(e.codigo || e.id).trim();
     let rfc = String(e.rfc || '').toUpperCase().slice(0, 13);
@@ -149,12 +156,16 @@ export async function importarNomina(
       (e.clabe || '').replace(/\D/g, '').slice(0, 18) || null, activo,
     ];
     try {
+      // Idempotente por RFC (cada empleado tiene RFC único: real o marcador), no por
+      // el número del respaldo —que se ignora para llevar el consecutivo de NEXO.
       const ya = await query<any>(
-        `SELECT id FROM nomina_empleados WHERE company_id=$1 AND UPPER(TRIM(num_empleado))=UPPER(TRIM($2)) LIMIT 1`,
-        [companyId, num]);
+        `SELECT id, num_empleado FROM nomina_empleados WHERE company_id=$1 AND UPPER(TRIM(rfc))=UPPER(TRIM($2)) AND deleted_at IS NULL LIMIT 1`,
+        [companyId, rfc]);
       let empleadoId: string;
+      let numFinal: string;
       if (ya.rows[0]) {
         empleadoId = ya.rows[0].id;
+        numFinal = String(ya.rows[0].num_empleado || num);   // conserva su número NEXO
         await query(
           `UPDATE nomina_empleados SET nombre=$3, apellido_pat=$4, apellido_mat=$5, rfc=$6, curp=$7, nss=$8,
              fecha_nacimiento=$9, email=$10, codigo_postal=$11, puesto=$12, departamento=$13, fecha_ingreso=$14,
@@ -165,6 +176,9 @@ export async function importarNomina(
           [companyId, empleadoId, ...vals.slice(2)]);
         rep.empleados.actualizados++;
       } else {
+        siguienteNum++;
+        numFinal = String(siguienteNum).padStart(3, '0');   // consecutivo de NEXO
+        vals[1] = numFinal;
         const r = await query<any>(
           `INSERT INTO nomina_empleados
              (company_id, num_empleado, nombre, apellido_pat, apellido_mat, rfc, curp, nss,
@@ -177,7 +191,7 @@ export async function importarNomina(
         empleadoId = r.rows[0].id;
         rep.empleados.creados++;
       }
-      empId.set(e.id, { id: empleadoId, num: num.slice(0, 15), nombre: nombreCompleto, rfc, curp, nss: String(e.nss || '').replace(/\D/g, '').slice(0, 11) });
+      empId.set(e.id, { id: empleadoId, num: numFinal.slice(0, 15), nombre: nombreCompleto, rfc, curp, nss: String(e.nss || '').replace(/\D/g, '').slice(0, 11) });
     } catch (err: any) {
       rep.empleados.omitidos++;
       rep.avisos.push(`Empleado ${num} (RFC ${String(e.rfc || '?')}): ${(err?.message || 'no se pudo').toString().slice(0, 140)}`);

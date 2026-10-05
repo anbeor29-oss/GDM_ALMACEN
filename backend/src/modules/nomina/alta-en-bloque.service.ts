@@ -138,11 +138,11 @@ export async function revisar(
 }
 
 /**
- * Reparte números de empleado sin repetir.
+ * Reparte el CONSECUTIVO de NEXO a cada empleado.
  *
- * Los que ya traen NumEmpleado del XML se respetan y además se apartan, para
- * que un consecutivo no caiga encima de ellos. Los demás se numeran desde el
- * último libre de la empresa.
+ * Decisión del usuario: NEXO lleva SU propio número consecutivo; el que traiga el
+ * XML (u otro origen) se IGNORA — así el número es siempre el de NEXO, sin huecos ni
+ * duplicados. Se parte del último número usado en la empresa.
  */
 async function asignarNumerosLibres(companyId: string, filas: Revisado[]) {
   const r = await query<{ num: string }>(
@@ -152,29 +152,22 @@ async function asignarNumerosLibres(companyId: string, filas: Revisado[]) {
   );
   const ocupados = new Set(r.rows.map((x) => String(x.num).trim().toUpperCase()));
 
-  /* Los del XML, primero: son los que mandan. */
-  for (const f of filas) {
-    const n = String(f.propuesta?.datos?.num_empleado || '').trim().toUpperCase();
-    if (n && f.propuesta?.origen?.num_empleado === 'xml') ocupados.add(n);
-  }
-
   let siguiente = 0;
   for (const n of ocupados) {
     const soloDigitos = n.replace(/\D/g, '');
     if (soloDigitos) siguiente = Math.max(siguiente, Number(soloDigitos));
   }
 
+  // Consecutivo de NEXO para TODOS (se ignora el número externo).
   for (const f of filas) {
     const p = f.propuesta!;
-    const traeDelXml = p.origen?.num_empleado === 'xml' && String(p.datos.num_empleado || '').trim();
-    if (traeDelXml) continue;
     do {
       siguiente++;
     } while (ocupados.has(String(siguiente).padStart(3, '0')));
     const asignado = String(siguiente).padStart(3, '0');
     ocupados.add(asignado);
     p.datos.num_empleado = asignado;
-    p.origen.num_empleado = 'deducido';
+    p.origen.num_empleado = 'deducido';   // consecutivo de NEXO
   }
 }
 

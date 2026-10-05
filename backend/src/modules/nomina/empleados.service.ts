@@ -738,6 +738,9 @@ export async function siguienteNumero(companyId: string): Promise<string> {
 
 export async function crear(companyId: string, datos: DatosEmpleado) {
   const d = normalizar(datos, false);
+  // NEXO lleva SU consecutivo: se IGNORA cualquier número que traiga el alta y se
+  // asigna el siguiente libre de la empresa (igual que en el alta en bloque/import).
+  d.num_empleado = await siguienteNumero(companyId);
 
   return transaction(async (client: PoolClient) => {
     await verificarNoDuplicado(client, companyId, d.num_empleado, d.rfc, null);
