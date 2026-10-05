@@ -3067,6 +3067,9 @@ class APIClient {
   async getFacturacionLista(periodo?: string) {
     return (await this.client.get('/admin/facturacion/lista', { params: { periodo } })).data;
   }
+  async getFacturacionConsolidado(periodo?: string) {
+    return (await this.client.get('/admin/facturacion/consolidado', { params: { periodo } })).data;
+  }
   async pagarFacturacion(id: string) {
     return (await this.client.post(`/admin/facturacion/${id}/pagar`)).data;
   }

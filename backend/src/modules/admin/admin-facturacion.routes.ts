@@ -54,6 +54,11 @@ router.get('/lista', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await fact.getLista(normPeriodo(String(req.query.periodo || ''))) });
 }));
 
+/* Consolidado: todas las empresas agrupadas (prueba sin cobro / reales) + consumo. */
+router.get('/consolidado', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await fact.resumenConsolidado(normPeriodo(String(req.query.periodo || ''))) });
+}));
+
 router.post('/:id/pagar', asyncHandler(async (req: Request, res: Response) => {
   const data = await fact.marcarPagado(req.params.id, req.body?.facturaId);
   await audit(req, { action: 'FACTURACION_PAGAR', targetKind: 'facturacion_mensual', targetId: req.params.id });

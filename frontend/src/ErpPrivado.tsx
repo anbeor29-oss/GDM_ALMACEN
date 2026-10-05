@@ -27,8 +27,6 @@ import PaymentsPage from '@/pages/Payments';
 import { AdminPackagesPage } from '@/pages/AdminPackages';
 import { AdminUsersPage }    from '@/pages/AdminUsers';
 import { AdminCompaniesPage } from '@/pages/AdminCompanies';
-import { AdminBillingPage }   from '@/pages/AdminBilling';
-import { AdminPrepaidPage }   from '@/pages/AdminPrepaid';
 import { AdminFacturacionPage } from '@/pages/AdminFacturacion';
 import { AdminSatgoPage } from '@/pages/AdminSatgo';
 import { AdminDemosPage } from '@/pages/AdminDemos';
@@ -204,11 +202,12 @@ export default function ErpPrivado() {
 
         {/* Plataforma — SOLO SUPER_ADMIN */}
         <Route path="admin/packages"  element={<SuperAdminRoute><AdminPackagesPage /></SuperAdminRoute>} />
-        <Route path="admin/billing"   element={<SuperAdminRoute><AdminBillingPage /></SuperAdminRoute>} />
         <Route path="admin/facturacion" element={<SuperAdminRoute><AdminFacturacionPage /></SuperAdminRoute>} />
         <Route path="admin/satgo" element={<SuperAdminRoute><AdminSatgoPage /></SuperAdminRoute>} />
         <Route path="admin/demos" element={<SuperAdminRoute><AdminDemosPage /></SuperAdminRoute>} />
-        <Route path="admin/prepaid"   element={<SuperAdminRoute><AdminPrepaidPage /></SuperAdminRoute>} />
+        {/* Prepago/paquetes y «facturación y consumo» se unieron a Facturación. */}
+        <Route path="admin/billing"   element={<Navigate to="/admin/facturacion" replace />} />
+        <Route path="admin/prepaid"   element={<Navigate to="/admin/facturacion" replace />} />
         <Route path="admin/promocion" element={<SuperAdminRoute><AdminPromocionPage /></SuperAdminRoute>} />
         <Route path="admin/accesos"   element={<SuperAdminRoute><AdminAccesosPage /></SuperAdminRoute>} />
         <Route path="admin/users"     element={<SuperAdminRoute><AdminUsersPage /></SuperAdminRoute>} />

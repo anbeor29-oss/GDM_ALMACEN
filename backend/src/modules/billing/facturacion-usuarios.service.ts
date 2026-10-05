@@ -20,6 +20,13 @@ export interface FacturacionConfig {
   timbreExtraPorUsuario: number;   // +$ del timbre extra por cada usuario adicional
 }
 
+/**
+ * RFC de AMBIENTES DE PRUEBA / dueño / demo: NO se cobran (se muestran aparte con
+ * $0). Son temporales hasta que se eliminen. (Distinto del par de «no bloqueo» de
+ * login; aquí es sólo facturación.)
+ */
+export const RFCS_SIN_COBRO = ['GHC1707275Y0', 'AABA020418BW2', 'FAMC800303RN4', 'EKU9003173C9'];
+
 const iso = (d: Date) => { const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const primerDia = (input?: string) => { const b = input ? new Date(input + 'T00:00:00') : new Date(); return { anio: b.getFullYear(), mes: b.getMonth() }; };
@@ -81,9 +88,12 @@ export async function generarLista(periodoInput?: string, userId?: string) {
       WHERE c.deleted_at IS NULL AND c.is_active = TRUE
         AND COALESCE(c.billing_exempt, FALSE) = FALSE
         AND COALESCE(c.stamp_package_code, '') <> 'PKG_TRIAL'
+        -- Ambientes de prueba / dueño / demo: no se cobran.
+        AND UPPER(c.rfc) <> ALL($1::text[])
         -- Las altas de PRUEBA (72 h) NO se cobran hasta que FIRMAN el contrato.
         AND NOT (c.prueba_inicio IS NOT NULL
-                 AND NOT EXISTS (SELECT 1 FROM service_contracts sc WHERE sc.company_id = c.id))`);
+                 AND NOT EXISTS (SELECT 1 FROM service_contracts sc WHERE sc.company_id = c.id))`,
+    [RFCS_SIN_COBRO]);
 
   let creadas = 0;
   for (const e of empresas.rows) {
@@ -160,6 +170,72 @@ export async function getLista(periodoInput?: string) {
       extra: r2(suma('extra_mxn')),
       total: r2(suma('total_mxn')),
       porCobrar: r2(filas.filter((x: any) => x.status === 'PENDIENTE').reduce((a: number, x: any) => a + Number(x.total_mxn || 0), 0)),
+    },
+  };
+}
+
+/**
+ * Resumen CONSOLIDADO del periodo para el super admin: TODAS las empresas activas,
+ * agrupadas en «prueba» (sin cobro) y «reales» (cobro por usuario), con su consumo
+ * de timbres. Es de sólo lectura (no genera cargos); trae el cargo del periodo si
+ * ya se generó (para pagar/suspender). Modelo puro $precio/usuario — sin paquetes.
+ */
+export async function resumenConsolidado(periodoInput?: string) {
+  const { anio, mes } = primerDia(periodoInput);
+  const periodo = iso(new Date(anio, mes, 1));
+  const cfg = await getConfig();
+
+  const empresas = await query<any>(
+    `SELECT c.id, c.rfc, c.business_name, c.billing_exempt, c.prueba_inicio, c.servicio_suspendido,
+            (SELECT COUNT(*) FROM service_contracts sc WHERE sc.company_id = c.id) > 0 AS firmado,
+            fm.id AS cargo_id, fm.status AS cargo_status
+       FROM companies c
+       LEFT JOIN facturacion_mensual fm ON fm.company_id = c.id AND fm.periodo = $1
+      WHERE c.deleted_at IS NULL AND c.is_active = TRUE
+      ORDER BY c.business_name`, [periodo]);
+
+  const prueba: any[] = [], reales: any[] = [];
+  for (const e of empresas.rows) {
+    const usuarios = await usuariosFacturables(e.id);
+    const tR = await query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM stamp_usage WHERE company_id = $1 AND billing_period = $2`, [e.id, periodo]);
+    const timbresUsados = Number(tR.rows[0]?.n) || 0;
+    const nivel = Math.max(0, usuarios - 1);
+    const incluidos = cfg.timbresIncluidos + cfg.timbresPorUsuario * nivel;
+    const precioExtra = r2(cfg.timbreExtra + cfg.timbreExtraPorUsuario * nivel);
+    const timbresExtra = Math.max(0, timbresUsados - incluidos);
+    const rfc = String(e.rfc || '').toUpperCase();
+
+    let motivo = '';
+    if (RFCS_SIN_COBRO.includes(rfc)) motivo = 'Ambiente de prueba';
+    else if (e.billing_exempt === true) motivo = 'Exenta';
+    else if (e.prueba_inicio && !e.firmado) motivo = 'Prueba 72 h';
+    const esPrueba = motivo !== '';
+
+    const renta = esPrueba ? 0 : r2(cfg.precioUsuario * usuarios);
+    const extra = esPrueba ? 0 : r2(timbresExtra * precioExtra);
+    const fila = {
+      company_id: e.id, rfc: e.rfc, business_name: e.business_name,
+      usuarios, timbres_usados: timbresUsados, timbres_incluidos: incluidos, timbres_extra: timbresExtra,
+      renta_mxn: renta, extra_mxn: extra, total_mxn: r2(renta + extra),
+      esPrueba, motivo,
+      cargo_id: e.cargo_id || null,
+      status: e.cargo_status || (esPrueba ? 'SIN_COBRO' : 'SIN_GENERAR'),
+      servicio_suspendido: e.servicio_suspendido === true,
+    };
+    (esPrueba ? prueba : reales).push(fila);
+  }
+
+  const suma = (arr: any[], k: string) => r2(arr.reduce((a, x) => a + Number(x[k] || 0), 0));
+  const timbresTotal = [...reales, ...prueba].reduce((a, x) => a + x.timbres_usados, 0);
+  return {
+    periodo, prueba, reales,
+    totales: {
+      empresasReales: reales.length,
+      usuariosReales: reales.reduce((a, x) => a + x.usuarios, 0),
+      renta: suma(reales, 'renta_mxn'),
+      extra: suma(reales, 'extra_mxn'),
+      total: suma(reales, 'total_mxn'),
+      timbresUsados: timbresTotal,
     },
   };
 }
