@@ -17,7 +17,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Download, Building2, Calendar, Package } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
-import { CampoFecha } from '@/components/CampoFecha';
+import { aniosContables } from '@/utils/anios';
+
+const MESES = ['Todo el año', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 /* ─────────────── Página ─────────────── */
 
@@ -60,8 +62,9 @@ export function AdminPackagesPage() {
 
 function SectionDownloadZip() {
   const [companyId, setCompanyId] = useState('');
-  const [from, setFrom] = useState(() => firstOfMonth());
-  const [to, setTo] = useState(() => todayISO());
+  const hoy = new Date();
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  const [mes, setMes] = useState(0);   // 0 = todo el año
   const [format, setFormat] = useState<'xml' | 'both'>('xml');
   const [limit, setLimit] = useState(100);
   const [error, setError] = useState('');
@@ -83,6 +86,10 @@ function SectionDownloadZip() {
     if (!companyId) { setError('Selecciona o pega un companyId'); return; }
     setDownloading(true);
     try {
+      // Año + mes → rango. Mes 0 = todo el ejercicio.
+      const d2 = (x: number) => String(x).padStart(2, '0');
+      const from = mes ? `${anio}-${d2(mes)}-01` : `${anio}-01-01`;
+      const to = mes ? `${anio}-${d2(mes)}-${d2(new Date(anio, mes, 0).getDate())}` : `${anio}-12-31`;
       const blob = await api.adminDownloadPackage({ companyId, from, to, format, limit });
       const fname = `paquete-${companyId.slice(0, 8)}-${new Date().toISOString().slice(0, 10)}.zip`;
       await api.downloadFile(blob, fname);
@@ -134,15 +141,19 @@ function SectionDownloadZip() {
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <span className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-1">
-              <Calendar size={16} /> Desde
+              <Calendar size={16} /> Año
             </span>
-            <CampoFecha value={from} onChange={(v) => setFrom(v)} className="input" />
+            <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input">
+              {aniosContables().map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
           </label>
           <label className="block">
             <span className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-1">
-              <Calendar size={16} /> Hasta
+              <Calendar size={16} /> Mes
             </span>
-            <CampoFecha value={to} onChange={(v) => setTo(v)} className="input" />
+            <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input">
+              {MESES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+            </select>
           </label>
         </div>
 
@@ -183,12 +194,3 @@ function SectionDownloadZip() {
   );
 }
 
-/* ─────────────── helpers ─────────────── */
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-function firstOfMonth(): string {
-  const d = new Date(); d.setDate(1);
-  return d.toISOString().slice(0, 10);
-}
