@@ -135,6 +135,10 @@ export function ConciliacionContablePage() {
   const movsVis = ocultarConcil ? movs.filter((m) => !conciliado(m)) : movs;
   const libroVis = ocultarConcil ? libro.filter((l) => !l.empatado_con) : libro;
   const pendientes = movs.filter((m) => !conciliado(m) && m.concil_estado !== 'omitido').length;
+  // Contador de avance: Banco = movimientos del estado conciliados/total; Cuenta =
+  // partidas del libro (contabilidad) empatadas/total.
+  const bancoConcil = movs.filter(conciliado).length;
+  const cuentaConcil = libro.filter((l) => l.empatado_con).length;
 
   const sel = movs.find((m) => m.id === selMov) || null;
   const refetch = () => {
@@ -279,6 +283,20 @@ export function ConciliacionContablePage() {
           {estados.length === 0 && <option value="">— sin estados —</option>}
           {estados.map((e) => <option key={e.id} value={e.id}>{MESES[e.mes]} {e.anio}</option>)}
         </select>
+
+        {/* Contador de avance: Banco (estado de cuenta) y Cuenta (contabilidad) */}
+        {eid && (
+          <div className="flex items-center gap-2 text-xs text-gray-600 border rounded-lg px-2.5 py-1 bg-gray-50">
+            <span className="inline-flex items-center gap-1" title="Movimientos del estado de cuenta conciliados / total">
+              <Landmark size={13} className="text-sky-600" /> Banco <b className="tabular-nums">{bancoConcil}/{movs.length}</b>
+            </span>
+            <span className="text-gray-300">·</span>
+            <span className="inline-flex items-center gap-1" title="Partidas del libro (contabilidad) empatadas / total">
+              <BookOpen size={13} className="text-violet-600" /> Cuenta <b className="tabular-nums">{cuentaConcil}/{libro.length}</b>
+            </span>
+          </div>
+        )}
+
         <button onClick={() => setModalSubir(true)} disabled={!cid}
           className="flex items-center gap-1 text-sm border rounded px-2 py-1.5 hover:bg-gray-50 disabled:opacity-50"
           title={cid ? 'Subir un estado de cuenta' : 'Primero crea una cuenta de banco en Tesorería → Bancos'}>
