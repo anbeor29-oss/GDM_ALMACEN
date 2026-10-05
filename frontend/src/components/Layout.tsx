@@ -124,6 +124,76 @@ function ModalDemo({ correoInicial, onCerrar }: { correoInicial?: string; onCerr
   );
 }
 
+/** Bloqueo por vencimiento de CSD/e.firma (≤5 días o vencido): no se trabaja hasta
+ *  cargar los nuevos certificados. El CSD va por el modal del Emisor; la e.firma, en
+ *  XML del SAT (ruta permitida mientras hay bloqueo). */
+function VigenciaGate({ sellos, minDias, esAdmin, onCSD, onEfirma }: { sellos: any[]; minDias: number | null; esAdmin: boolean; onCSD: () => void; onEfirma: () => void }) {
+  const vencido = (minDias ?? 0) < 0;
+  return (
+    <div className="max-w-xl mx-auto mt-10 bg-white rounded-xl shadow-lg border border-rose-200 p-8 text-center">
+      <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-rose-50 grid place-items-center"><Shield className="text-rose-600" size={28} /></div>
+      <h2 className="text-2xl font-bold text-slate-900">{vencido ? 'Tus certificados vencieron' : 'Tus certificados están por vencer'}</h2>
+      <p className="text-slate-600 mt-3">
+        {vencido
+          ? <>El sello (CSD) o la e.firma de tu empresa <b>ya vencieron</b>. Para seguir trabajando, carga los nuevos certificados.</>
+          : <>Faltan <b>{minDias} día(s)</b> para que venza tu sello (CSD) o tu e.firma. Carga los nuevos para no detener tu operación.</>}
+      </p>
+      <ul className="text-sm text-left mt-4 bg-slate-50 border rounded-lg p-3 space-y-1 inline-block">
+        {sellos.map((s: any, i: number) => (
+          <li key={i} className="flex items-center gap-2">
+            <span className={`w-1.5 h-1.5 rounded-full ${s.dias == null ? 'bg-gray-300' : s.dias <= 5 ? 'bg-rose-500' : s.dias <= 15 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+            <span className="text-slate-700">{s.etiqueta}: {s.cargado ? (s.dias < 0 ? `venció el ${s.vigenciaHasta}` : `vence el ${s.vigenciaHasta} (${s.dias} d)`) : 'no cargado'}</span>
+          </li>
+        ))}
+      </ul>
+      {esAdmin ? (
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <button onClick={onCSD} className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-lg font-semibold"><Shield size={16} /> Cargar CSD</button>
+          <button onClick={onEfirma} className="inline-flex items-center gap-2 border-2 border-rose-300 text-rose-700 px-5 py-2.5 rounded-lg font-semibold">Cargar e.firma</button>
+        </div>
+      ) : (
+        <p className="text-slate-600 mt-5">El <b>administrador</b> debe cargar los nuevos certificados para reactivar el sistema.</p>
+      )}
+    </div>
+  );
+}
+
+/** Aviso de vencimiento próximo: AVISO (≤30, 1 vez por sesión) o DIARIO (≤15, 1 vez al día). */
+function AvisoVigencias({ nivel, sellos, minDias, onIrCertificados }: { nivel: string; sellos: any[]; minDias: number | null; onIrCertificados: () => void }) {
+  const clave = nivel === 'DIARIO' ? `nexo_vig_diario_${new Date().toISOString().slice(0, 10)}` : 'nexo_vig_aviso_sesion';
+  const [visible, setVisible] = useState(() => {
+    try { return nivel === 'DIARIO' ? localStorage.getItem(clave) !== '1' : sessionStorage.getItem(clave) !== '1'; } catch { return true; }
+  });
+  if (!visible) return null;
+  const cerrar = () => {
+    try { (nivel === 'DIARIO' ? localStorage : sessionStorage).setItem(clave, '1'); } catch { /* noop */ }
+    setVisible(false);
+  };
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center gap-2 px-5 py-3 border-b"><Clock size={18} className="text-amber-600" /><h3 className="font-semibold text-gray-900">Renovación de certificados</h3></div>
+        <div className="p-5 space-y-3">
+          <p className="text-sm text-gray-700">
+            {minDias != null && minDias >= 0
+              ? <>Faltan <b>{minDias} día(s)</b> para que venza tu sello (CSD) o tu e.firma. Renuévalos a tiempo para no detener tu facturación.</>
+              : <>Tu sello (CSD) o e.firma están por vencer.</>}
+          </p>
+          <ul className="text-xs bg-gray-50 border rounded p-2 space-y-1">
+            {sellos.filter((s: any) => s.cargado).map((s: any, i: number) => (
+              <li key={i} className="text-gray-600">{s.etiqueta}: vence el <b>{s.vigenciaHasta}</b> ({s.dias} d)</li>
+            ))}
+          </ul>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={cerrar} className="px-3 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">Entendido</button>
+            <button onClick={() => { onIrCertificados(); cerrar(); }} className="bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm">Cargar certificados</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showIssuer, setShowIssuer] = useState(false);
@@ -210,6 +280,19 @@ export function Layout() {
       else localStorage.removeItem('nexo_checador_ok');
     } catch { /* noop */ }
   }, [ob?.estado, debeeFirmarContrato]);
+
+  /* Vencimiento de SELLOS (CSD) y e.firma: AVISO ≤30, DIARIO ≤15, BLOQUEO ≤5. */
+  const vigQ = useQuery({
+    queryKey: ['vigencias-sellos', user?.companyId],
+    queryFn: () => api.getVigencias(),
+    enabled: !!user?.companyId && user?.role !== 'SUPER_ADMIN',
+    staleTime: 10 * 60 * 1000,
+  });
+  const vig = vigQ.data?.data as { sellos?: any[]; minDias?: number | null; nivel?: string } | undefined;
+  const nivelVig = vig?.nivel || 'OK';
+  // Bloqueo por vencimiento: cubre el contenido salvo donde se cargan los certificados
+  // (XML del SAT para la e.firma; el CSD se carga en el modal del Emisor, que va encima).
+  const bloquearVigencia = nivelVig === 'BLOQUEO' && !location.pathname.startsWith('/xml-sat');
 
   const doLogout = useCallback(async (reason?: 'idle') => {
     try {
@@ -684,7 +767,10 @@ export function Layout() {
                 del contrato para que el ADMIN pueda firmarlo. */}
             {bloquearContenido && location.pathname !== '/contract'
               ? <ContratoGate esAdmin={user?.role === 'ADMIN'} vencida={pruebaVencida} onFirmar={() => navigate('/contract')} />
-              : <Outlet />}
+              : bloquearVigencia
+                ? <VigenciaGate sellos={vig?.sellos || []} minDias={vig?.minDias ?? null} esAdmin={user?.role === 'ADMIN'}
+                    onCSD={() => setShowIssuer(true)} onEfirma={() => navigate('/xml-sat')} />
+                : <Outlet />}
           </div>
         </div>
       </main>
@@ -693,6 +779,10 @@ export function Layout() {
         <IssuerModal companyId={user.companyId} onClose={() => setShowIssuer(false)} />
       )}
       {showDemo && <ModalDemo correoInicial={user?.email} onCerrar={() => setShowDemo(false)} />}
+      {(nivelVig === 'AVISO' || nivelVig === 'DIARIO') && (
+        <AvisoVigencias nivel={nivelVig} sellos={vig?.sellos || []} minDias={vig?.minDias ?? null}
+          onIrCertificados={() => { setShowIssuer(true); }} />
+      )}
 
       {/* Modal NO descartable que aparece tras login si la contraseña sigue siendo temporal */}
       {user?.passwordChangeRequired && <ForcePasswordChange />}

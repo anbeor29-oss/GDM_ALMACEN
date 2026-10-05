@@ -43,6 +43,7 @@ import adminFacturacionRoutes from './modules/admin/admin-facturacion.routes';
 import satgoRoutes from './modules/satgo/satgo.routes';
 import satgoConsultasRoutes from './modules/satgo/satgo.consultas.routes';
 import onboardingRoutes from './modules/onboarding/onboarding.routes';
+import vigenciasRoutes from './modules/vigencias/vigencias.routes';
 import adminPrepaidRoutes   from './modules/admin/admin-prepaid.routes';
 import adminPromocionRoutes from './modules/admin/admin-promocion.routes';
 import manifestRoutes       from './modules/manifest/manifest.routes';
@@ -178,6 +179,7 @@ export function createApp(): Express {
 
   app.use(`/api/${config.apiVersion}/auth`, authRoutes);
   app.use(`/api/${config.apiVersion}/onboarding`, onboardingRoutes);
+  app.use(`/api/${config.apiVersion}/vigencias`, vigenciasRoutes);
   // Uploads de CSD + logo (montar ANTES de companiesRoutes para que /:id/csd
   // y /:id/logo se matcheen antes de /:id genérico).
   app.use(`/api/${config.apiVersion}/companies`, companiesUploadsRoutes);

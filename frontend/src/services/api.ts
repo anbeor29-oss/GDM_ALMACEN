@@ -104,6 +104,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/onboarding/estado');
     return r.data; // { success, data: { estado, firmado, horasRestantes, ... } }
   }
+  /** Vencimiento del sello (CSD) y la e.firma: { sellos, minDias, nivel }. */
+  async getVigencias() {
+    const r = await this.client.get<APIResponse<any>>('/vigencias');
+    return r.data;
+  }
   async solicitarDemo(payload: { contacto?: string; correo?: string; telefono?: string; mensaje?: string }) {
     const r = await this.client.post<APIResponse<any>>('/onboarding/demo', payload);
     return r.data;
