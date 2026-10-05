@@ -6632,3 +6632,34 @@ queda como fuente de verdad; NO se reemplaza.** Comparación con base en el cód
 
 Commits (dev, rama gdmalmacen main): `f3438a2` (contrato+IMSS+Configurar), `f7c205d` (hub Servicios SAT),
 `f739e6f` (mensaje de cuota + asistente plan B), `0940ee0` (cuadrícula declaraciones + Info Fiscal + círculo).
+
+---
+
+## 2026-10-05 (varios) — Depreciación (PDF), facturación por usuario, onboarding, y lote de 6 mejoras
+
+**Onboarding de prueba (72 h) + facturación por usuario** (commits `783b60c`→`255f30c`): alta pública `/registro`
+(contraseña temporal + reset; reloj arranca al entrar), **candado de timbrado** en prueba, pantalla de prueba
+vencida, **bandeja de firmas/demos** en súper admin, **acceso oculto** `/login/dos`, y **Facturación** unificada
+(una pantalla por usuario $750, sin paquetes; ambientes de prueba sin cobro: `RFCS_SIN_COBRO` = GHC/AABA/FAMC/EKU;
+se eliminaron «Facturación y consumo» y «Compras prepago»). Ver [[onboarding-prueba-72h]], [[cobro-por-usuario-algoritmo]].
+
+**Lote de 6 mejoras (2026-10-05):**
+- **#1** PDF `docs/CODIGOS_DEPRECIACION_SAT.pdf` (generador `backend/scripts/generar-codigos-depreciacion.js`):
+  códigos SAT (agrupadores 151-182), concepto, tasa anual y fundamento LISR 33-35 del módulo de activos fijos.
+- **#7** (`ad1ab64`) Conciliación bancaria: contador **Banco x/X** (movimientos del estado conciliados/total) y
+  **Cuenta x/X** (partidas del libro empatadas/total) a la derecha del selector.
+- **#6a** (`a8e3ce8`) Respaldos: «Respaldo SAT (ZIP)» del súper admin pasa de fechas libres a **Año/Mes** (la
+  «Respaldo de XML» del usuario ya las tenía; la descarga del SAT se deja con rango libre a propósito).
+- **#6b** (`43a6e12`) Nómina: NEXO lleva **su consecutivo** de empleado en TODA alta/importación (manual, masiva XML,
+  migración CONTPAQi); se ignora el número externo. La migración casa por **RFC** (único por empleado) en vez de por
+  número; los recibos ligan por UUID, no se rompen.
+- **#3** (`b29b635`) XML del SAT: el ícono de cancelado ya existía (estado_sat del Metadata); se agregó **re-verificar
+  por el servicio fiscal** (consulta-cfdi) las cancelaciones posteriores y marcarlas — botón «Verificar cancelados»
+  (consume cuota).
+- **#4** (`098b978`) Vigencias de **CSD y e.firma**: `modules/vigencias` calcula días al vencimiento (parsea el .cer
+  del CSD + `sat_credenciales`); el Layout avisa a **≤30** (modal por sesión), **≤15** (modal diario) y **BLOQUEA** a
+  **≤5** o vencido (cubre el contenido; deja pasar XML del SAT y el modal del Emisor para cargar los nuevos).
+
+**Pendiente del lote:** #2 (cambiar el motor de descarga de `E:\Obsidian\IVA.HTML` —proyecto APARTE— a SatGo:
+día 1→fin de mes, limpiar XML el día 1, verificar cancelados) y #5 (investigación PLD/LFPIORPI + plan de integración).
+Orden acordado: **NEXO (hecho) → IVA → PLD**.
