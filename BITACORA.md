@@ -6663,3 +6663,51 @@ se eliminaron «Facturación y consumo» y «Compras prepago»). Ver [[onboardin
 **Pendiente del lote:** #2 (cambiar el motor de descarga de `E:\Obsidian\IVA.HTML` —proyecto APARTE— a SatGo:
 día 1→fin de mes, limpiar XML el día 1, verificar cancelados) y #5 (investigación PLD/LFPIORPI + plan de integración).
 Orden acordado: **NEXO (hecho) → IVA → PLD**.
+
+---
+
+## 2026-10-05 (súper admin + cumplimiento) — Borrado de empresa, conectores, comunicados diarios y respaldo de declaraciones
+
+Segundo lote del día, sobre el súper admin y el hub de Cumplimiento fiscal.
+
+**Borrado total de empresa — FK que faltaba.** «Eliminar empresa completa» reventaba con
+`facturacion_mensual_company_id_fkey`: esa tabla es la ÚNICA que referencia `companies(id)` **sin ON DELETE
+CASCADE** (a propósito: la factura de cobro no debe irse sola al limpiar datos). En el borrado TOTAL ahora se limpia
+a mano antes del `DELETE FROM companies` (`admin-companies.routes.ts`, full-delete). Se verificó que es la única FK sin
+cascada hacia companies. Así ya se pueden eliminar EKU9003173C9 y BEOA730829LJ0 desde la UI.
+
+**Se quitó «Contratar un paquete» (prepago)** de Promoción y cobros (`AdminPromocion.tsx`): el cobro es por usuario y
+vive en Facturación. La pantalla queda con Prueba de cortesía + Por cobrar.
+
+**Renombres (sólo texto visible, rutas iguales):** «Paquetes de uso» → **«Respaldos»** (sidebar + `AdminPackages`,
+ruta sigue `/admin/packages`). Se **quitó del sidebar** «Accesos por empresa» (`/admin/accesos`): cada cliente da de
+alta a sus propios usuarios (la ruta queda sin enlace).
+
+**Conector fiscal — tablero de conectores.** En `/admin/satgo` se agregó un panel con **SAT (SatGo)**, **Banco de
+México** (tipo de cambio FIX/DOF, `BANXICO_TOKEN`) e **INEGI** (INPC, `INEGI_TOKEN`), cada uno con su estado y último
+dato, "para tener en cuenta cualquier cambio". Nuevo `GET /admin/satgo/conectores` que agrega el estado leyendo
+`exchange-rate.service` e `indicadores.service` (nunca rompe: cae a "sin dato").
+
+**Comunicados/cumplimiento — a diario, no sólo domingos.** El `compliance-cron` corría SÓLO los lunes 04:00 UTC
+(`0 4 * * 1`); por eso un domingo podía no refrescar. Pasó a **DIARIO 06:00 CDMX** (`0 6 * * *` con `timezone`
+explícito). Sigue atado a `ENABLE_COMPLIANCE_CRON=true` (si ayer no corrió solo, lo más probable es que falte esa var
+en Render). Textos "domingos" → "a diario" en los paneles.
+- Botón **«Actualizar»** en Notificaciones del hub (`ServiciosSat`): nuevo `GET /satgo/consultas/buzon` como punto de
+  integración del buzón (hoy regresa vacío + `conectado:false`; el canal por SatGo es Fase B).
+- **Puntos de avance estilo Claude** al bajar la **CSF/32-D**: `PanelOpinion` ahora muestra 4 puntitos que rebotan
+  mientras descarga (antes no había ni spinner).
+
+**Declaraciones — se guardan y no se vuelven a bajar.** Nueva tabla `satgo_declaraciones_zip` (ZIP del año por
+empresa, comprimido; migración `2026-10-05_...`). La cuadrícula se pinta al entrar desde el respaldo
+(`GET /satgo/consultas/declaraciones/resumen`, SIN tocar SatGo); abrir una celda sirve del ZIP guardado. **Sólo** el
+botón ↻ de un **año** vuelve a bajar de SatGo y **sustituye** el respaldo (`?forzar=1`). Antes cada vista regastaba
+cuota y se perdía al recargar.
+
+**Altas en ámbito de pruebas:** JESSICA LOPEZ GONZALEZ (`LOGJ9010071V0`) y DAVID ISLAS GUERRERO (`IAGD860819MP3`) se
+agregaron a `RFCS_SIN_COBRO` y `RFCS_SIN_BLOQUEO`; EKU salió de `RFCS_SIN_COBRO` (se elimina). El alta de la empresa la
+hace el usuario por `/registro` (no se crean cuentas en el Render en vivo desde aquí). Ver [[onboarding-prueba-72h]],
+[[cobro-por-usuario-algoritmo]].
+
+**Pendiente:** #2 IVA.HTML→SatGo (falta el **endpoint de descarga masiva de SatGo** —CIEC— que el motor actual no usa;
+lo pasa el usuario del Swagger) y **#5 PLD/LFPIORPI** (el usuario pasará leyes/reglamentos/acuerdos). Verificación: `tsc
+--noEmit` limpio en backend y frontend; el borrado en vivo y el timbrado real son decisión del usuario.

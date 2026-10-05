@@ -6,9 +6,9 @@
  * CFDI que sólo usa el RFC). El IMSS y el INFONAVIT viven en su propia área del
  * menú (orden SAT → IMSS/INFONAVIT).
  */
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ShieldCheck, FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen } from 'lucide-react';
+import { ShieldCheck, FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen, RefreshCw } from 'lucide-react';
 import api from '@/services/api';
 import { PanelOpinion } from './PanelOpinion';
 import { claseOpcion } from '@/utils/coloresOpciones';
@@ -53,7 +53,7 @@ export function ServiciosSatPage() {
     const ok = c.ultimo_estado === 'SUCCESS';
     if (!ok && !c.activo) return null;
     return <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-emerald-500/40'}`}
-      title={ok ? `Última descarga correcta${c.ultima_ejecucion ? ' · ' + c.ultima_ejecucion : ''}` : 'Actualización automática activa (domingos)'} />;
+      title={ok ? `Última descarga correcta${c.ultima_ejecucion ? ' · ' + c.ultima_ejecucion : ''}` : 'Actualización automática activa (a diario)'} />;
   };
 
   return (
@@ -119,17 +119,29 @@ function ColumnaNotif({ titulo, items }: { titulo: string; items: Notif[] }) {
 }
 
 function PanelNotificaciones() {
-  // La página se divide en dos: Comunicados y Avisos, en orden descendente (el más
-  // reciente arriba). Sobre rojo (cerrado) = sin leer; sobre verde (abierto) = leído.
-  // Se llenará cuando se conecte el servicio de notificaciones del buzón.
-  const comunicados: Notif[] = [];
-  const avisos: Notif[] = [];
+  // Comunicados y Avisos del buzón, en orden descendente (el más reciente arriba).
+  // Sobre rojo (cerrado) = sin leer; sobre verde (abierto) = leído. El canal del
+  // buzón por el proveedor fiscal aún no está conectado: por ahora llega vacío, pero
+  // el botón «Actualizar» y la vista ya están listos (además se refresca a diario en
+  // el barrido automático de cumplimiento).
+  const q = useQuery({ queryKey: ['buzon-notif'], queryFn: () => api.getBuzonNotificaciones() });
+  const d: any = (q.data as any)?.data || {};
+  const comunicados: Notif[] = d.comunicados || [];
+  const avisos: Notif[] = d.avisos || [];
+  const conectado = !!d.conectado;
   return (
     <div className="space-y-3">
-      <p className="text-[11px] text-gray-500 bg-gray-50 border rounded px-3 py-1.5 flex items-center gap-2">
-        <Mail size={13} className="text-rose-500" /> Sin leer &nbsp;·&nbsp; <MailOpen size={13} className="text-emerald-500" /> Leído
-        &nbsp;— el más reciente arriba. Se activará al conectar el buzón de notificaciones.
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] text-gray-500 bg-gray-50 border rounded px-3 py-1.5 flex items-center gap-2 flex-1 min-w-[16rem]">
+          <Mail size={13} className="text-rose-500" /> Sin leer &nbsp;·&nbsp; <MailOpen size={13} className="text-emerald-500" /> Leído
+          &nbsp;— el más reciente arriba.{!conectado && ' El buzón se conectará con el servicio fiscal; por ahora se actualiza vacío.'}
+        </p>
+        <button onClick={() => q.refetch()} disabled={q.isFetching}
+          title="Trae los comunicados y avisos más recientes del buzón"
+          className="flex items-center gap-1.5 border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600 disabled:opacity-50 shrink-0">
+          {q.isFetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Actualizar
+        </button>
+      </div>
       <div className="grid md:grid-cols-2 gap-4">
         <ColumnaNotif titulo="Comunicados" items={comunicados} />
         <ColumnaNotif titulo="Avisos" items={avisos} />
@@ -140,7 +152,14 @@ function PanelNotificaciones() {
 
 /* ═══════════════ Declaraciones — cuadrícula año × mes ═══════════════ */
 const MESES_ABBR = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-type AnioEstado = { estado: 'cargando' | 'listo' | 'error'; porMes?: Record<number, any[]>; error?: string };
+type AnioEstado = {
+  estado: 'cargando' | 'listo' | 'error' | 'guardado';
+  conteos?: Record<number, number>;   // del resumen (sólo cuántos, sin el PDF)
+  porMes?: Record<number, any[]>;       // contenido completo (con base64) tras abrir el año
+  contenidoCargado?: boolean;
+  descargadoAt?: string;
+  error?: string;
+};
 
 function PanelDeclaraciones() {
   const anioActual = new Date().getFullYear();
@@ -149,36 +168,69 @@ function PanelDeclaraciones() {
   const [datos, setDatos] = useState<Record<number, AnioEstado>>({});
   const [sel, setSel] = useState<string | null>(null);
 
-  const cargarAnio = async (anio: number) => {
-    if (datos[anio]?.estado === 'listo' || datos[anio]?.estado === 'cargando') return;
-    setDatos((p) => ({ ...p, [anio]: { estado: 'cargando' } }));
+  // Al entrar: pinta la cuadrícula con los años YA respaldados (conteo por mes),
+  // SIN tocar SatGo. Así "lo que ya bajaste queda en el calendario".
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const r: any = await api.satgoDeclaracionesResumen();
+        const lista = r?.data?.anios || [];
+        if (!vivo || !lista.length) return;
+        setDatos((p) => {
+          const n = { ...p };
+          for (const a of lista) n[a.ejercicio] = { estado: 'guardado', conteos: a.porMes || {}, descargadoAt: a.descargadoAt };
+          return n;
+        });
+      } catch { /* sin respaldo todavía: arranca vacía */ }
+    })();
+    return () => { vivo = false; };
+  }, []);
+
+  // Trae el contenido (con PDF) de un año. forzar=true vuelve a bajarlo de SatGo y
+  // SUSTITUYE el respaldo (es lo que hace el clic en el año).
+  const cargarAnio = async (anio: number, forzar = false) => {
+    const st = datos[anio];
+    if (!forzar && st?.contenidoCargado) return;   // ya está completo en memoria
+    if (st?.estado === 'cargando') return;
+    setDatos((p) => ({ ...p, [anio]: { ...(p[anio] || { estado: 'cargando' }), estado: 'cargando' } }));
     try {
-      const r: any = await api.satgoDeclaracionesContenido(anio, 0);
+      const r: any = await api.satgoDeclaracionesContenido(anio, 0, forzar);
       const archivos = r?.data?.archivos || [];
       const porMes: Record<number, any[]> = {};
       for (const f of archivos) (porMes[f.mes] ??= []).push(f);
-      setDatos((p) => ({ ...p, [anio]: { estado: 'listo', porMes } }));
+      setDatos((p) => ({ ...p, [anio]: { estado: 'listo', porMes, contenidoCargado: true, descargadoAt: r?.data?.descargadoAt } }));
     } catch (e: any) {
-      setDatos((p) => ({ ...p, [anio]: { estado: 'error', error: e?.response?.data?.message || 'No se pudo.' } }));
+      setDatos((p) => ({ ...p, [anio]: { ...(p[anio] || { estado: 'error' }), estado: 'error', error: e?.response?.data?.message || 'No se pudo.' } }));
     }
   };
 
   const clickCelda = (anio: number, mes: number) => {
-    const st = datos[anio]?.estado;
-    if (st !== 'listo' && st !== 'cargando') cargarAnio(anio);
+    const st = datos[anio];
+    // Abrir una celda NO regasta cuota: si el año ya está respaldado, su contenido
+    // se trae del respaldo (forzar=false). Sólo se baja la primera vez.
+    if (!st?.contenidoCargado && st?.estado !== 'cargando') cargarAnio(anio, false);
     setSel(`${anio}-${mes}`);
+  };
+
+  /** Cuántos documentos hay en un mes: del contenido cargado o del conteo guardado. */
+  const cuentaMes = (a: AnioEstado | undefined, mes: number): number | null => {
+    if (!a) return null;
+    if (a.porMes) return (a.porMes[mes] || []).length;
+    if (a.conteos) return a.conteos[mes] || 0;
+    return null;
   };
 
   const celda = (anio: number, mes: number) => {
     const a = datos[anio];
     const key = `${anio}-${mes}`;
     const activa = sel === key;
-    const docs = a?.porMes?.[mes] || [];
+    const n = cuentaMes(a, mes);
     let contenido: ReactNode = <span className="text-gray-300">·</span>;
     if (a?.estado === 'cargando') contenido = <Loader2 size={12} className="animate-spin text-primary mx-auto" />;
     else if (a?.estado === 'error') contenido = <span className="text-rose-400" title={a.error}>!</span>;
-    else if (a?.estado === 'listo') contenido = docs.length
-      ? <span className="inline-flex items-center gap-0.5 text-emerald-700"><FileText size={11} />{docs.length}</span>
+    else if (n != null) contenido = n > 0
+      ? <span className="inline-flex items-center gap-0.5 text-emerald-700"><FileText size={11} />{n}</span>
       : <span className="text-gray-200">—</span>;
     return (
       <td key={mes} className="p-0.5">
@@ -198,12 +250,13 @@ function PanelDeclaraciones() {
   return (
     <div className="space-y-3">
       <p className="text-sm text-gray-600">
-        Cuadrícula de declaraciones: <b>años en vertical, meses en horizontal</b>. Da clic en un año (o en una
-        celda) para traer y <b>descomprimir</b> sus declaraciones; cada PDF se <b>encasilla en el mes</b> en que se
-        presentó. El número indica cuántos documentos hay (Normal, Complementaria…).
+        Cuadrícula de declaraciones: <b>años en vertical, meses en horizontal</b>. Lo que ya bajaste <b>queda
+        guardado</b> y se muestra al entrar sin volver a consultar. Abre una celda para ver sus PDF; cada uno se
+        <b> encasilla en el mes</b> en que se presentó. El número indica cuántos documentos hay (Normal, Complementaria…).
       </p>
       <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 flex items-start gap-1.5">
-        <AlertTriangle size={12} className="mt-0.5 shrink-0" /> Se baja el <b>año completo en una sola consulta</b> (cuida la cuota del plan).
+        <AlertTriangle size={12} className="mt-0.5 shrink-0" /> El año se baja <b>una sola vez</b> y se conserva comprimido. Da clic en el
+        botón <RefreshCw size={11} className="inline mx-0.5" /> de un <b>año</b> sólo cuando quieras <b>volver a bajarlo</b> y sustituir lo guardado (consume cuota).
       </p>
 
       <div className="bg-white rounded-lg shadow overflow-x-auto">
@@ -219,10 +272,17 @@ function PanelDeclaraciones() {
             {anios.map((a) => (
               <tr key={a} className="hover:bg-gray-50/50">
                 <td className="px-2 py-1 text-left sticky left-0 bg-white">
-                  <button onClick={() => cargarAnio(a)}
-                    className="text-sm font-medium text-gray-700 hover:text-primary flex items-center gap-1">
-                    {datos[a]?.estado === 'cargando' && <Loader2 size={12} className="animate-spin" />}{a}
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => { setSel(`${a}-1`); if (!datos[a]?.contenidoCargado) cargarAnio(a, false); }}
+                      className="text-sm font-medium text-gray-700 hover:text-primary flex items-center gap-1">
+                      {datos[a]?.estado === 'cargando' && <Loader2 size={12} className="animate-spin" />}{a}
+                    </button>
+                    <button onClick={() => cargarAnio(a, true)} disabled={datos[a]?.estado === 'cargando'}
+                      title={`Volver a bajar ${a} de SatGo y sustituir lo guardado${datos[a]?.descargadoAt ? ' (respaldo del ' + datos[a]?.descargadoAt + ')' : ''}`}
+                      className="text-gray-300 hover:text-primary disabled:opacity-40">
+                      <RefreshCw size={12} className={datos[a]?.estado === 'cargando' ? 'animate-spin' : ''} />
+                    </button>
+                  </div>
                 </td>
                 {MESES_ABBR.map((_, i) => celda(a, i + 1))}
                 {celda(a, 0)}
@@ -234,12 +294,13 @@ function PanelDeclaraciones() {
 
       {sel && (
         <div className="bg-white rounded-lg shadow p-4 space-y-2">
-          <h4 className="text-sm font-semibold text-gray-800">
-            {selMes === 0 ? `Otros documentos ${selAnio}` : `${MESES_ABBR[selMes - 1]} ${selAnio}`}
+          <h4 className="text-sm font-semibold text-gray-800 flex items-center justify-between gap-2">
+            <span>{selMes === 0 ? `Otros documentos ${selAnio}` : `${MESES_ABBR[selMes - 1]} ${selAnio}`}</span>
+            {datos[selAnio]?.descargadoAt && <span className="text-[11px] font-normal text-gray-400">respaldo del {datos[selAnio]?.descargadoAt}</span>}
           </h4>
-          {estadoSel === 'cargando' && <p className="text-sm text-gray-500 flex items-center gap-1.5"><Loader2 size={14} className="animate-spin" /> Descargando y descomprimiendo el año…</p>}
+          {estadoSel === 'cargando' && <p className="text-sm text-gray-500 flex items-center gap-1.5"><Loader2 size={14} className="animate-spin" /> Trayendo las declaraciones del año…</p>}
           {estadoSel === 'error' && <p className="text-sm text-rose-700 flex items-center gap-1.5"><AlertTriangle size={14} /> {datos[selAnio]?.error}</p>}
-          {estadoSel === 'listo' && (docsSel.length
+          {(estadoSel === 'listo' || estadoSel === 'guardado') && (docsSel.length
             ? <ul className="divide-y">
                 {docsSel.map((f: any, i: number) => (
                   <li key={i} className="flex items-center justify-between py-1.5">

@@ -1,5 +1,6 @@
 /**
- * Super-Admin → Paquetes de uso.
+ * Super-Admin → Respaldos (antes "Paquetes de uso"; solo cambió el nombre
+ * visible, la ruta sigue siendo /admin/packages).
  *
  *  Antes esta pantalla vendía "paquetes fiscales" (los 4 planes de timbrado con
  *  precio). En NEXO el sistema se despliega completo y los módulos se controlan
@@ -41,7 +42,7 @@ export function AdminPackagesPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-          <Package size={20} /> Paquetes de uso
+          <Package size={20} /> Respaldos
         </h1>
         <p className="text-gray-600 mt-2">
           Descarga de respaldos SAT por empresa.

@@ -1289,9 +1289,20 @@ class APIClient {
     const a = document.createElement('a'); a.href = url; a.download = nombre; a.click();
     URL.revokeObjectURL(url);
   }
-  /** Declaraciones descomprimidas de un (ejercicio, mes): PDFs/acuses como data-URL base64. */
-  async satgoDeclaracionesContenido(ejercicio: number, mes = 0) {
-    const r = await this.client.get<APIResponse<any>>('/satgo/consultas/declaraciones/contenido', { params: { ejercicio, mes } });
+  /** Declaraciones descomprimidas de un (ejercicio, mes): PDFs/acuses como data-URL base64.
+   *  forzar=true vuelve a bajar de SatGo y sustituye el respaldo (clic en el año). */
+  async satgoDeclaracionesContenido(ejercicio: number, mes = 0, forzar = false) {
+    const r = await this.client.get<APIResponse<any>>('/satgo/consultas/declaraciones/contenido', { params: { ejercicio, mes, forzar: forzar ? 1 : 0 } });
+    return r.data;
+  }
+  /** Resumen de años ya respaldados (conteo por mes), SIN tocar SatGo — para pintar la cuadrícula al entrar. */
+  async satgoDeclaracionesResumen() {
+    const r = await this.client.get<APIResponse<any>>('/satgo/consultas/declaraciones/resumen');
+    return r.data;
+  }
+  /** Buzón del SAT: comunicados y avisos (integración de SatGo pendiente; hoy regresa vacío). */
+  async getBuzonNotificaciones() {
+    const r = await this.client.get<APIResponse<any>>('/satgo/consultas/buzon');
     return r.data;
   }
 
@@ -3098,6 +3109,10 @@ class APIClient {
   }
   async bootstrapSatgo(portalToken: string) {
     return (await this.client.post('/admin/satgo/bootstrap', { portalToken })).data;
+  }
+  /** Tablero de conectores externos: SAT (SatGo), Banco de México e INEGI. */
+  async getConectoresEstado() {
+    return (await this.client.get('/admin/satgo/conectores')).data;
   }
   async adminCreateCompany(data: { rfc: string; businessName: string; fiscalRegime: string;
                                    postalCode?: string; billingPlan?: string; capTimbres?: number;

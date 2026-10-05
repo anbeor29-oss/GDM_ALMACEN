@@ -759,6 +759,11 @@ router.delete('/:id/full-delete', asyncHandler(async (req: Request, res: Respons
   // 2) Tablas específicas de SUPER_ADMIN / plataforma que apuntan a la empresa
   await query(`DELETE FROM company_stamp_usage WHERE company_id = $1`, [id]).catch(() => {});
   await query(`DELETE FROM stamp_transactions  WHERE company_id = $1`, [id]).catch(() => {});
+  // facturacion_mensual.company_id es FK NOT NULL sin ON DELETE CASCADE (es la
+  // factura de cobro por usuario; no debe irse sola al borrar datos). En el
+  // borrado TOTAL sí se limpia a mano o revienta con
+  // facturacion_mensual_company_id_fkey (era el error de "Eliminar empresa completa").
+  await query(`DELETE FROM facturacion_mensual WHERE company_id = $1`, [id]).catch(() => {});
   await query(`DELETE FROM audit_log WHERE target_type = 'company' AND target_id = $1`, [id]).catch(() => {});
 
   // 3) Tokens de sesión de sus usuarios (refresh_tokens no cuelga de companies,

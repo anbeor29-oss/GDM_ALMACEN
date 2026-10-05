@@ -74,49 +74,132 @@ export async function declaraciones(companyId: string, ejercicio: number, mes = 
   } finally { dispose(); }
 }
 
-/**
- * Declaraciones DESCOMPRIMIDAS de un ejercicio/mes: baja el ZIP de SatGo, lo abre en
- * memoria (extractor seguro, anti-bomba) y devuelve cada documento como data-URL
- * base64 (PDF o acuse). Si SatGo devolvió un PDF suelto (no ZIP), lo regresa igual.
- * Pensado para una cuadrícula año×mes que aloja el PDF; una consulta por celda
- * (cuida la cuota de SatGo).
- */
-export async function declaracionesContenido(companyId: string, ejercicio: number, mes = 0) {
-  if (!Number.isInteger(ejercicio) || ejercicio < 2000 || ejercicio > 2100) throw new ValidationError('Ejercicio inválido.');
-  const m = Number.isInteger(mes) ? Math.max(0, Math.min(12, mes)) : 0;
-  const rfc = await rfcDe(companyId);
-  const { ciec, dispose } = await ciecDe(companyId);
-  let buf: Buffer;
-  try { buf = await satgo.declaracionesCiec(rfc, ciec, ejercicio, m); }
-  finally { dispose(); }
+/* ── Respaldo del ZIP del año (cuota: se baja una vez y se relee de la BD) ──
+ * El paquete de declaraciones se guarda COMPRIMIDO por (empresa, ejercicio). La
+ * cuadrícula se arma leyendo de aquí, sin volver a llamar a SatGo; sólo se vuelve
+ * a bajar —y se SUSTITUYE— cuando se fuerza (clic en un año concreto). */
 
+async function zipGuardado(companyId: string, ejercicio: number): Promise<{ buf: Buffer; descargadoAt: string } | null> {
+  const r = await query<any>(
+    `SELECT zip, TO_CHAR(descargado_at,'YYYY-MM-DD HH24:MI') AS descargado_at
+       FROM satgo_declaraciones_zip WHERE company_id = $1 AND ejercicio = $2`,
+    [companyId, ejercicio]);
+  if (!r.rows[0]?.zip) return null;
+  return { buf: Buffer.from(r.rows[0].zip), descargadoAt: r.rows[0].descargado_at };
+}
+
+async function guardarZip(companyId: string, ejercicio: number, rfc: string, buf: Buffer): Promise<void> {
+  await query(
+    `INSERT INTO satgo_declaraciones_zip (company_id, ejercicio, rfc, zip, bytes, descargado_at)
+     VALUES ($1,$2,$3,$4,$5,NOW())
+     ON CONFLICT (company_id, ejercicio)
+       DO UPDATE SET zip = EXCLUDED.zip, bytes = EXCLUDED.bytes, rfc = EXCLUDED.rfc, descargado_at = NOW()`,
+    [companyId, ejercicio, rfc, buf, buf.length]);
+}
+
+/** Abre el ZIP del año (o PDF suelto) y clasifica cada documento por mes. */
+function abrirYClasificar(buf: Buffer, rfc: string, ejercicio: number):
+  Array<{ nombre: string; esPdf: boolean; tipo: string; mes: number; contenido: Buffer }> {
   let archivos: Array<{ nombre: string; contenido: Buffer }> = [];
   try {
     archivos = extraerBinarios(buf, ['pdf', 'txt']);
   } catch (e) {
     // ¿SatGo devolvió un PDF suelto en vez de un ZIP?
     if (e instanceof ZipSospechoso && buf.slice(0, 5).toString('latin1') === '%PDF-') {
-      archivos = [{ nombre: `Declaracion_${rfc}_${ejercicio}${m ? '-' + String(m).padStart(2, '0') : ''}.pdf`, contenido: buf }];
+      archivos = [{ nombre: `Declaracion_${rfc}_${ejercicio}.pdf`, contenido: buf }];
     } else if (e instanceof ZipSospechoso) {
       throw new ValidationError('SatGo no devolvió declaraciones para ese periodo (o no es un ZIP/PDF válido).');
     } else { throw e; }
   }
+  return archivos.map((a) => {
+    const esPdf = /\.pdf$/i.test(a.nombre);
+    const { tipo, mes } = clasificarDeclaracion(a.nombre);
+    return { nombre: a.nombre, esPdf, tipo, mes, contenido: a.contenido };
+  });
+}
+
+/**
+ * Trae el ZIP del año: del respaldo si ya existe (SIN consumir cuota), o de SatGo
+ * si se fuerza (clic en el año) o si aún no hay nada guardado — y en ese caso lo
+ * GUARDA/sustituye. Siempre se baja el AÑO COMPLETO (mes=0) para cubrir toda la
+ * cuadrícula con una sola consulta.
+ */
+async function zipDelAnio(companyId: string, rfc: string, ejercicio: number, forzar: boolean):
+  Promise<{ buf: Buffer; desdeCache: boolean; descargadoAt?: string }> {
+  if (!forzar) {
+    const g = await zipGuardado(companyId, ejercicio);
+    if (g) return { buf: g.buf, desdeCache: true, descargadoAt: g.descargadoAt };
+  }
+  const { ciec, dispose } = await ciecDe(companyId);
+  let buf: Buffer;
+  try { buf = await satgo.declaracionesCiec(rfc, ciec, ejercicio, 0); }
+  finally { dispose(); }
+  await guardarZip(companyId, ejercicio, rfc, buf).catch(() => { /* la vista no debe depender del guardado */ });
+  return { buf, desdeCache: false };
+}
+
+/**
+ * Declaraciones DESCOMPRIMIDAS de un ejercicio: abre el ZIP del año (del respaldo o
+ * recién bajado) y devuelve cada documento como data-URL base64 (PDF o acuse),
+ * clasificado por mes. `forzar=true` vuelve a bajarlo de SatGo y sustituye el
+ * respaldo (clic en el año); si no, se sirve de lo guardado y NO gasta cuota.
+ */
+export async function declaracionesContenido(companyId: string, ejercicio: number, mes = 0, forzar = false) {
+  if (!Number.isInteger(ejercicio) || ejercicio < 2000 || ejercicio > 2100) throw new ValidationError('Ejercicio inválido.');
+  const m = Number.isInteger(mes) ? Math.max(0, Math.min(12, mes)) : 0;
+  const rfc = await rfcDe(companyId);
+  const { buf, desdeCache, descargadoAt } = await zipDelAnio(companyId, rfc, ejercicio, !!forzar);
+
+  const todos = abrirYClasificar(buf, rfc, ejercicio);
+  const sel = m ? todos.filter((a) => (a.mes || 0) === m) : todos;
 
   // Tope de respuesta (evita payloads gigantes); PDFs primero.
   const MAX_TOTAL = 12 * 1024 * 1024;
   let total = 0;
   const out: Array<{ nombre: string; esPdf: boolean; tipo: string; mes: number; base64: string }> = [];
-  for (const a of archivos.sort((x, y) => Number(/\.pdf$/i.test(y.nombre)) - Number(/\.pdf$/i.test(x.nombre)))) {
+  for (const a of [...sel].sort((x, y) => Number(y.esPdf) - Number(x.esPdf))) {
     total += a.contenido.length;
     if (total > MAX_TOTAL) break;
-    const esPdf = /\.pdf$/i.test(a.nombre);
-    const { tipo, mes: mesArchivo } = clasificarDeclaracion(a.nombre);
     out.push({
-      nombre: a.nombre, esPdf, tipo, mes: mesArchivo || m,
-      base64: `data:${esPdf ? 'application/pdf' : 'text/plain'};base64,${a.contenido.toString('base64')}`,
+      nombre: a.nombre, esPdf: a.esPdf, tipo: a.tipo, mes: a.mes || m,
+      base64: `data:${a.esPdf ? 'application/pdf' : 'text/plain'};base64,${a.contenido.toString('base64')}`,
     });
   }
-  return { ejercicio, mes: m, total: archivos.length, archivos: out };
+  return { ejercicio, mes: m, total: sel.length, desdeCache, descargadoAt, archivos: out };
+}
+
+/**
+ * Resumen de los años YA GUARDADOS (sin tocar SatGo): por cada ejercicio, cuántos
+ * documentos hay en cada mes. Pinta la cuadrícula al entrar con lo ya bajado, sin
+ * gastar cuota.
+ */
+export async function declaracionesResumen(companyId: string) {
+  const rfc = await rfcDe(companyId).catch(() => '');
+  const r = await query<any>(
+    `SELECT ejercicio, bytes, TO_CHAR(descargado_at,'YYYY-MM-DD HH24:MI') AS descargado_at, zip
+       FROM satgo_declaraciones_zip WHERE company_id = $1 ORDER BY ejercicio DESC`,
+    [companyId]);
+  const anios = r.rows.map((row: any) => {
+    const porMes: Record<number, number> = {};
+    try {
+      for (const a of abrirYClasificar(Buffer.from(row.zip), rfc, Number(row.ejercicio))) {
+        const k = a.mes || 0;
+        porMes[k] = (porMes[k] || 0) + 1;
+      }
+    } catch { /* un ZIP corrupto no debe tumbar el resumen */ }
+    return { ejercicio: Number(row.ejercicio), bytes: Number(row.bytes), descargadoAt: row.descargado_at, porMes };
+  });
+  return { anios };
+}
+
+/**
+ * Buzón tributario: comunicados y avisos (mensajes) del SAT. El canal del buzón
+ * por SatGo todavía NO está integrado (Fase B), así que por ahora regresa vacío con
+ * `conectado:false`. Es el ÚNICO punto donde se enchufará la descarga real; el
+ * frontend ya trae el botón «Actualizar» y la vista, listos para cuando se conecte.
+ */
+export async function buzonNotificaciones(_companyId: string) {
+  return { conectado: false, comunicados: [] as any[], avisos: [] as any[] };
 }
 
 /**

@@ -33,6 +33,22 @@ const badgeSentido = (s: string) =>
     : s === 'SUSPENDIDA' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600';
 const etiquetaSentido = (s: string) => (SENTIDOS.find(([k]) => k === s)?.[1] || s);
 
+/**
+ * Puntos de avance (los "3 o 4 puntitos" estilo Claude) que se muestran mientras
+ * se descarga la CSF / 32-D. Heredan el color del texto (`bg-current`) y rebotan
+ * con un retardo escalonado para dar sensación de progreso.
+ */
+function PuntosCargando({ className = '' }: { className?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 ${className}`} role="status" aria-label="Descargando">
+      {[0, 1, 2, 3].map((i) => (
+        <span key={i} className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
+          style={{ animationDelay: `${i * 0.15}s`, animationDuration: '0.9s' }} />
+      ))}
+    </span>
+  );
+}
+
 export function PanelOpinion({ tipo }: { tipo: string }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(false);
@@ -41,6 +57,7 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
   const [asistenteImss, setAsistenteImss] = useState(false);
   const [asistenteSat, setAsistenteSat] = useState(false);
   const [manual, setManual] = useState(false);   // ofrecer el asistente SOLO si SatGo falló
+  const [bajando, setBajando] = useState(false);  // descarga SatGo en curso → puntos de avance
 
   const histQ = useQuery({ queryKey: ['opinion-hist', tipo], queryFn: () => api.getOpinionHistorial(tipo) });
   const historial: any[] = histQ.data?.data || [];
@@ -59,6 +76,7 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
     // Si no puede (sin CIEC, cuota agotada, etc.) NO se abre nada solo: se muestra el
     // motivo y queda a la mano el asistente guiado (plan B) para bajarla manualmente.
     setManual(false);
+    setBajando(true);
     try {
       const r: any = await api.descargarCumplimiento(tipo);
       const d = r?.data;
@@ -75,6 +93,8 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
     } catch (e: any) {
       setMsg(e?.response?.data?.message || 'No se pudo conectar con el servicio.');
       setManual(true);
+    } finally {
+      setBajando(false);
     }
   };
 
@@ -89,16 +109,18 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-gray-600 flex-1 min-w-[14rem]">{info.desc}</p>
         <div className="flex items-center gap-1.5">
-          <button onClick={descargar}
+          <button onClick={descargar} disabled={bajando}
             title={tipo === 'INFONAVIT'
               ? 'Abre el portal del INFONAVIT; descarga tu constancia/opinión y súbela con Registrar (captura manual)'
               : 'Un clic: NEXO la baja y la registra sola. Si no puede, abre el sitio oficial en tu navegador para descargarla'}
-            className="flex items-center gap-1.5 border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 text-sm">
-            <DownloadCloud size={15} /> {tipo === 'INFONAVIT' ? 'Portal INFONAVIT' : 'Descargar'}
+            className="flex items-center gap-1.5 border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 text-sm disabled:opacity-60">
+            {bajando
+              ? <><PuntosCargando /> Descargando</>
+              : <><DownloadCloud size={15} /> {tipo === 'INFONAVIT' ? 'Portal INFONAVIT' : 'Descargar'}</>}
           </button>
           {tipo !== 'INFONAVIT' && (
             <button onClick={() => setCfgModal(true)}
-              title="Refresco automático los domingos y, para SAT/CIF, la clave CIEC (se guarda cifrada)"
+              title="Refresco automático a diario y, para SAT/CIF, la clave CIEC (se guarda cifrada)"
               className="flex items-center gap-1.5 border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600">
               <Settings size={15} /> Configurar
               {cfgActual?.activo && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="refresco automático activo" />}
@@ -110,6 +132,12 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
           </button>
         </div>
       </div>
+      {bajando && (
+        <div className="text-sm text-primary bg-primary/5 border border-primary/20 rounded px-3 py-2 flex items-center gap-2">
+          <PuntosCargando />
+          <span>Consultando el SAT y descargando la {info.nombre}… (puede tardar unos segundos)</span>
+        </div>
+      )}
       {msg && (
         <div className="text-sm text-gray-700 bg-gray-50 border rounded px-3 py-2 space-y-1.5">
           <p>{msg}</p>
@@ -332,7 +360,7 @@ function ModalConfig({ tipo, tipoNombre, actual, onCerrar, onHecho }: any) {
           )}
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} />
-            Refrescar automáticamente los <b>domingos</b> por la noche (sustituye la vigente)
+            Refrescar automáticamente <b>a diario</b> (sustituye la vigente)
           </label>
           {error && <p className="text-sm text-rose-700">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">

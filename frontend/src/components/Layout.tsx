@@ -678,8 +678,10 @@ export function Layout() {
               <NavItem to="/admin/demos" icon={navIcon('🖥️')} accent="sky" label="Onboarding (firmas y demos)"  open={sidebarOpen} />
               <NavItem to="/admin/satgo" icon={navIcon('☁️')} accent="sky" label="Conector fiscal"  open={sidebarOpen} />
               <NavItem to="/admin/users"     icon={navIcon('🛡️')} accent="emerald" label="Usuarios"              open={sidebarOpen} />
-              <NavItem to="/admin/accesos"  icon={navIcon('🔗')} accent="sky"     label="Accesos por empresa"   open={sidebarOpen} />
-              <NavItem to="/admin/packages"  icon={navIcon('📦')} accent="violet"  label="Paquetes de uso"       open={sidebarOpen} />
+              {/* "Accesos por empresa" se retiró del sidebar: cada cliente da
+                  de alta a sus propios usuarios desde su administración. La ruta
+                  /admin/accesos queda sin enlace. */}
+              <NavItem to="/admin/packages"  icon={navIcon('📦')} accent="violet"  label="Respaldos"             open={sidebarOpen} />
               <NavItem to="/admin/promocion" icon={navIcon('🎁')} accent="amber"   label="Promoción y cobros"    open={sidebarOpen} />
               <NavItem to="/import-xml"      icon={navIcon('📥')} accent="amber"   label="Importar XML"          open={sidebarOpen} />
               {/* Proveedores ya vive en el grupo Compras, que sí ve el ADMIN

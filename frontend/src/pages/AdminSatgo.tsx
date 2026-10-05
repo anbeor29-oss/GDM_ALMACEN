@@ -5,16 +5,39 @@
  * portal por una API Key PERMANENTE (CreateKey), que se guarda cifrada. De ahí
  * NEXO genera tokens cortos solo. Por RFC usa la clave CIEC de cada empresa.
  */
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Cloud, Save, KeyRound, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { Cloud, Save, KeyRound, CheckCircle2, AlertTriangle, Loader2, Landmark, BarChart3 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+
+/** Tarjeta de un conector externo (SAT, Banco de México, INEGI). */
+function Conector({ icon, nombre, ok, detalle, nota }: {
+  icon: ReactNode; nombre: string; ok: boolean; detalle?: string; nota?: string;
+}) {
+  return (
+    <div className="border rounded-lg p-4 bg-white flex items-start gap-3">
+      <div className="shrink-0 mt-0.5">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-gray-800">{nombre}</span>
+          {ok
+            ? <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><CheckCircle2 size={12} /> Conectado</span>
+            : <span className="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5"><AlertTriangle size={12} /> Falta configurar</span>}
+        </div>
+        {detalle && <p className="text-xs text-gray-600 mt-1">{detalle}</p>}
+        {nota && <p className="text-[11px] text-gray-400 mt-0.5">{nota}</p>}
+      </div>
+    </div>
+  );
+}
 
 export function AdminSatgoPage() {
   const { user } = useAuthStore();
   const cfgQ = useQuery({ queryKey: ['satgo-config'], queryFn: () => api.getSatgoConfig() });
   const cfg = cfgQ.data?.data;
+  const conQ = useQuery({ queryKey: ['conectores-estado'], queryFn: () => api.getConectoresEstado() });
+  const con = conQ.data?.data as any;
   const [baseUrl, setBaseUrl] = useState('');
   const [ambiente, setAmbiente] = useState('PRUEBAS');
   const [portalToken, setPortalToken] = useState('');
@@ -44,6 +67,45 @@ export function AdminSatgoPage() {
       <div>
         <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3"><Cloud size={28} className="text-sky-600" /> Conector fiscal</h1>
         <p className="text-gray-600 mt-1">Conecta el servicio fiscal para CIF/CSF, Opinión 32-D, IMSS, Declaraciones e Información Fiscal por RFC.</p>
+      </div>
+
+      {/* ── Tablero de conectores externos ──
+          Todos los servicios de los que depende NEXO en un solo lugar, para
+          notar al vuelo si alguno cambia o deja de responder. */}
+      <div className="space-y-2">
+        <h2 className="font-semibold text-gray-800">Conectores de datos</h2>
+        <p className="text-xs text-gray-500 -mt-1">Servicios externos que alimentan a NEXO. Vigila aquí si alguno cambia o deja de responder.</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Conector
+            icon={<Cloud size={20} className="text-sky-600" />}
+            nombre="SAT (SatGo)"
+            ok={!!con?.satgo?.token}
+            detalle={con?.satgo ? `${con.satgo.baseUrl || 'sin URL'} · ${con.satgo.ambiente || '—'}` : (conQ.isLoading ? 'Cargando…' : '—')}
+            nota="CIF/CSF, Opinión 32-D, IMSS, Declaraciones."
+          />
+          <Conector
+            icon={<Landmark size={20} className="text-emerald-600" />}
+            nombre="Banco de México"
+            ok={!!con?.banxico?.token}
+            detalle={
+              con?.banxico?.usd
+                ? `USD $${Number(con.banxico.usd.valor).toFixed(4)} (${con.banxico.usd.fecha})${con.banxico.usd.vigente ? '' : ' · arrastrado'}`
+                : (con?.banxico?.ultimoError ? `Último error: ${con.banxico.ultimoError.detalle}` : 'Tipo de cambio FIX/DOF')
+            }
+            nota={con?.banxico?.token ? 'Tipo de cambio (Art. 20 CFF).' : 'Pon BANXICO_TOKEN en el servidor.'}
+          />
+          <Conector
+            icon={<BarChart3 size={20} className="text-indigo-600" />}
+            nombre="INEGI"
+            ok={!!con?.inegi?.token}
+            detalle={
+              con?.inegi?.inpc
+                ? `INPC ${String(con.inegi.inpc.mes).padStart(2, '0')}/${con.inegi.inpc.anio}: ${Number(con.inegi.inpc.valor).toFixed(3)}`
+                : 'Índice Nacional de Precios (INPC)'
+            }
+            nota={con?.inegi?.token ? 'INPC: recargos, pérdidas, ajuste anual.' : 'Pon INEGI_TOKEN en el servidor.'}
+          />
+        </div>
       </div>
 
       <div className="bg-white border rounded-lg p-4 flex flex-wrap items-center gap-4">

@@ -34,7 +34,19 @@ router.get('/declaraciones', asyncHandler(async (req: Request, res: Response) =>
 router.get('/declaraciones/contenido', asyncHandler(async (req: Request, res: Response) => {
   const ejercicio = parseInt(String(req.query.ejercicio || ''), 10);
   const mes = parseInt(String(req.query.mes || '0'), 10) || 0;
-  res.json({ success: true, data: await consultas.declaracionesContenido(companyId(req), ejercicio, mes) });
+  // forzar=1 → vuelve a bajar de SatGo y sustituye el respaldo (clic en el año).
+  const forzar = req.query.forzar === '1' || req.query.forzar === 'true';
+  res.json({ success: true, data: await consultas.declaracionesContenido(companyId(req), ejercicio, mes, forzar) });
+}));
+
+// Resumen de los años ya respaldados (cuántos documentos por mes), SIN tocar SatGo.
+router.get('/declaraciones/resumen', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await consultas.declaracionesResumen(companyId(req)) });
+}));
+
+// Buzón: comunicados y avisos (mensajes) del SAT. Integración pendiente (Fase B).
+router.get('/buzon', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await consultas.buzonNotificaciones(companyId(req)) });
 }));
 
 router.get('/validar-cfdi', asyncHandler(async (req: Request, res: Response) => {

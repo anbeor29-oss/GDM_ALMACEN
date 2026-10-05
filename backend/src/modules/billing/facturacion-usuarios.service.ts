@@ -25,7 +25,11 @@ export interface FacturacionConfig {
  * $0). Son temporales hasta que se eliminen. (Distinto del par de «no bloqueo» de
  * login; aquí es sólo facturación.)
  */
-export const RFCS_SIN_COBRO = ['GHC1707275Y0', 'AABA020418BW2', 'FAMC800303RN4', 'EKU9003173C9'];
+export const RFCS_SIN_COBRO = [
+  'GHC1707275Y0', 'AABA020418BW2', 'FAMC800303RN4',
+  'LOGJ9010071V0',  // JESSICA LOPEZ GONZALEZ — alta en pruebas
+  'IAGD860819MP3',  // DAVID ISLAS GUERRERO   — alta en pruebas
+];
 
 const iso = (d: Date) => { const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
 const r2 = (n: number) => Math.round(n * 100) / 100;

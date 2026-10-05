@@ -23,7 +23,11 @@ function contrasenaTemporal(): string {
 }
 
 /** RFC con acceso "oculto" (nunca se bloquean): operación y pruebas del dueño. */
-export const RFCS_SIN_BLOQUEO = ['GHC1707275Y0', 'AABA020418BW2'];
+export const RFCS_SIN_BLOQUEO = [
+  'GHC1707275Y0', 'AABA020418BW2',
+  'LOGJ9010071V0',  // JESSICA LOPEZ GONZALEZ — alta en pruebas
+  'IAGD860819MP3',  // DAVID ISLAS GUERRERO   — alta en pruebas
+];
 /** Duración de la prueba. */
 export const HORAS_PRUEBA = 72;
 
