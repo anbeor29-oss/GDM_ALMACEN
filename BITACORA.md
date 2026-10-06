@@ -6742,3 +6742,24 @@ avance** (`components/PuntosCargando`, extraído de PanelOpinion) se aplicaron t
 Declaraciones e Información Fiscal** del hub de Cumplimiento fiscal. Se quitó **«Prueba de cortesía»** (prueba gratis)
 de «Promoción y cobros» (queda sólo «Por cobrar»): las pruebas van por el onboarding de 72 h. Las empresas de prueba
 (BEOA730829LJ0 y la otra) se eliminan desde Súper Admin → Empresas (el full-delete ya funciona).
+
+---
+
+## 2026-10-05 (branding + UI) — Logo NEXO, textos del login y rediseño de Pólizas
+
+- **Logo NEXO en todos lados** (commit `1c5ed7e`): se recortó el emblema plateado del arte de NEXO (de 770×1017 a
+  256×256) y reemplazó `frontend/public/gdm-logo.png`. Como login, landing, registro, sidebar y el **favicon** leen ese
+  mismo archivo vía `GdmLogo`, el cambio se propaga con un solo archivo. Se actualizó el alt a «GDM NEXO».
+- **Login (imagen 3):** se quitó «GDM HIGH CONSULTING MÉXICO» del subtítulo (queda «Inicia sesión para continuar») y el
+  pie pasó a «© AÑO GRUPO HCGM, S.A. DE C.V. · **GDM NEXO ERP®**».
+- **Rediseño de Pólizas** (`PolizasLista.tsx`, commit `c1c2f10`): encabezado con ícono en badge + periodo a la derecha,
+  **tarjetas de resumen** (pólizas, cargos del periodo, cuadre), **filtros tipo pastilla con punto de color y conteo**
+  por tipo (venta=emerald, compra=sky, cobro/pago=violet, nómina=amber, manual=slate), barra de Generar/Asignar/Importar
+  en tarjeta limpia de dos filas, y **renglones con acento de color a la izquierda** + badge de tipo + importe
+  prominente + acciones que aparecen al pasar el mouse. Misma lógica (generar, auto-asignar, importar CPQ, diagnóstico,
+  editar/previsualizar/borrar, doble clic para desplegar).
+
+**Pendiente del batch de 7:** #1 notificaciones 6 meses (SatGo `comunicadosfiel`/`notificacionesfiel`), #2 foto frontal
+del checador al expediente, #3 panel fiscal con cuadrícula (32-D/CIF/INFONAVIT), #5 **cambiar el motor de descarga de
+NEXO a SatGo** (reversa de la Fase C; usa `SatWebService` solicita/verifica/descarga como el IVA) + unir las pestañas
+recibidos/emitidos/calendario.
