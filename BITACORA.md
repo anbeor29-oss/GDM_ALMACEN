@@ -6733,3 +6733,12 @@ por avisar / por identificar / clientes por acumulado / expedientes pendientes) 
 página `pages/contabilidad/PLD.tsx` (Contabilidad→«PLD (antilavado)»): activar actividad+fracción+representante y
 tablero de alertas. Migración `2026-10-05b_pld.sql` (`pld_config`+`pld_expediente`). Falta: captura del expediente
 (Anexos 2/3) y **generar el XML** del Aviso. Ver [[pld-lfpiorpi]]. `tsc --noEmit` limpio en backend y frontend.
+
+**Ajustes PLD + UI (mismo día):** el menú **PLD** se movió del submenú de Contabilidad al **sidebar, entre XML y
+Mensajes** (`show('contabilidad')`). La página se rehízo en **3 pasos**: «Actividades vulnerables» (combo del Art. 17;
+al elegir una se **desbloquean** los demás) → «Expediente» (expediente único por cliente: RFC/nombre/tipo, campos
+Anexo 2/3 en `datos` JSONB, beneficiario controlador, marcar completo) → «Alertas» (el tablero). Los **4 puntitos de
+avance** (`components/PuntosCargando`, extraído de PanelOpinion) se aplicaron también en **Notificaciones,
+Declaraciones e Información Fiscal** del hub de Cumplimiento fiscal. Se quitó **«Prueba de cortesía»** (prueba gratis)
+de «Promoción y cobros» (queda sólo «Por cobrar»): las pruebas van por el onboarding de 72 h. Las empresas de prueba
+(BEOA730829LJ0 y la otra) se eliminan desde Súper Admin → Empresas (el full-delete ya funciona).

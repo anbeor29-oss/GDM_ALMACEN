@@ -10,6 +10,7 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ShieldCheck, FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen, RefreshCw } from 'lucide-react';
 import api from '@/services/api';
+import { PuntosCargando } from '@/components/PuntosCargando';
 import { PanelOpinion } from './PanelOpinion';
 import { claseOpcion } from '@/utils/coloresOpciones';
 
@@ -139,7 +140,7 @@ function PanelNotificaciones() {
         <button onClick={() => q.refetch()} disabled={q.isFetching}
           title="Trae los comunicados y avisos más recientes del buzón"
           className="flex items-center gap-1.5 border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600 disabled:opacity-50 shrink-0">
-          {q.isFetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Actualizar
+          {q.isFetching ? <PuntosCargando /> : <RefreshCw size={14} />} Actualizar
         </button>
       </div>
       <div className="grid md:grid-cols-2 gap-4">
@@ -298,7 +299,7 @@ function PanelDeclaraciones() {
             <span>{selMes === 0 ? `Otros documentos ${selAnio}` : `${MESES_ABBR[selMes - 1]} ${selAnio}`}</span>
             {datos[selAnio]?.descargadoAt && <span className="text-[11px] font-normal text-gray-400">respaldo del {datos[selAnio]?.descargadoAt}</span>}
           </h4>
-          {estadoSel === 'cargando' && <p className="text-sm text-gray-500 flex items-center gap-1.5"><Loader2 size={14} className="animate-spin" /> Trayendo las declaraciones del año…</p>}
+          {estadoSel === 'cargando' && <p className="text-sm text-primary flex items-center gap-2"><PuntosCargando /> Trayendo las declaraciones del año…</p>}
           {estadoSel === 'error' && <p className="text-sm text-rose-700 flex items-center gap-1.5"><AlertTriangle size={14} /> {datos[selAnio]?.error}</p>}
           {(estadoSel === 'listo' || estadoSel === 'guardado') && (docsSel.length
             ? <ul className="divide-y">
@@ -443,7 +444,7 @@ function PanelInfoFiscal() {
           {data && <button onClick={() => setVerJson((v) => !v)} className="text-xs text-gray-500 hover:underline">{verJson ? 'Ver formato' : 'Ver JSON'}</button>}
           <button onClick={() => q.refetch()} disabled={q.isFetching}
             className="flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
-            {q.isFetching ? <Loader2 size={15} className="animate-spin" /> : <FileSearch size={15} />} {data ? 'Actualizar' : 'Consultar'}
+            {q.isFetching ? <PuntosCargando /> : <FileSearch size={15} />} {data ? 'Actualizar' : 'Consultar'}
           </button>
         </div>
       </div>

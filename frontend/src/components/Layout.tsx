@@ -580,7 +580,6 @@ export function Layout() {
                           /* Cumplimiento por organismo: SAT (hub) → IMSS/INFONAVIT. */
                           { to: '/contabilidad/servicios-sat',           icon: emoji3D('🏛️'), label: 'Cumplimiento fiscal' },
                           { to: '/contabilidad/cumplimiento-organismos', icon: emoji3D('🛡️'), label: 'Cumplimiento IMSS / INFONAVIT' },
-                          { to: '/contabilidad/pld',                     icon: emoji3D('🚨'), label: 'PLD (antilavado)' },
                         ],
                       },
                     ]}
@@ -607,6 +606,12 @@ export function Layout() {
                     (/xml-sat), no como un menú que se despliega hacia abajo. */}
                 {show('auditoria') && (
                   <NavItem to="/xml-sat" icon={emoji3D('🗂️')} accent="emerald" label="XML" open={sidebarOpen} />
+                )}
+                {/* PLD (antilavado) entre XML y Mensajes. Siempre visible para
+                    contabilidad; dentro, el expediente y las alertas se desbloquean
+                    sólo cuando el usuario declara su Actividad Vulnerable. */}
+                {show('contabilidad') && (
+                  <NavItem to="/contabilidad/pld" icon={emoji3D('🚨')} accent="rose" label="PLD" open={sidebarOpen} />
                 )}
                 {/* Mensajería: el ADMIN de la empresa siempre la ve (recados internos
                     para dar mantenimiento a su gente); además, cualquier grupo que

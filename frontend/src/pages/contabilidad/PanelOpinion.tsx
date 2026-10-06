@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Plus, Trash2, FileText, X, Save, AlertTriangle, Settings, DownloadCloud, ExternalLink, Download } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha, aTextoMx } from '@/components/CampoFecha';
+import { PuntosCargando } from '@/components/PuntosCargando';
 
 /** Descripción por tipo (se muestra arriba del panel). */
 export const DESC_TIPO: Record<string, { nombre: string; desc: string }> = {
@@ -32,22 +33,6 @@ const badgeSentido = (s: string) =>
     : s === 'NEGATIVA' ? 'bg-rose-100 text-rose-700'
     : s === 'SUSPENDIDA' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600';
 const etiquetaSentido = (s: string) => (SENTIDOS.find(([k]) => k === s)?.[1] || s);
-
-/**
- * Puntos de avance (los "3 o 4 puntitos" estilo Claude) que se muestran mientras
- * se descarga la CSF / 32-D. Heredan el color del texto (`bg-current`) y rebotan
- * con un retardo escalonado para dar sensación de progreso.
- */
-function PuntosCargando({ className = '' }: { className?: string }) {
-  return (
-    <span className={`inline-flex items-center gap-1 ${className}`} role="status" aria-label="Descargando">
-      {[0, 1, 2, 3].map((i) => (
-        <span key={i} className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
-          style={{ animationDelay: `${i * 0.15}s`, animationDuration: '0.9s' }} />
-      ))}
-    </span>
-  );
-}
 
 export function PanelOpinion({ tipo }: { tipo: string }) {
   const qc = useQueryClient();
