@@ -6779,5 +6779,15 @@ El usuario autorizó usar SatGo para la descarga de NEXO (acepta la cuota; de to
   (5003→parte a la mitad), reanudable, dedupe, bóveda (`indexarCfdi`→`cfdi_recibidos`), calendario, 72 h, metadatos.
 - **Para activarlo:** poner `SAT_DESCARGA_VIA=satgo` en Render (NEXO ya tiene el API Key de SatGo del bootstrap). Sin la
   variable, sigue el WS oficial del SAT. **Reversible** sin redesplegar. `tsc` limpio.
-- **PENDIENTE de #5 (UI):** unir las pestañas **recibidos/emitidos/calendario** del `/xml-sat` en una sola vista y
-  mejorar la estética de la lista de procesos (imagen 2). No lo puedo probar en vivo (requiere e.firma + SatGo).
+- **#5 (UI) HECHO:** `XmlDelSat` unió **Emitidos/Recibidos/Calendario** en una pestaña **«Comprobantes»** con control
+  interno (rutas conservadas); la lista de procesos (`XmlRecibidos`) trae un **resumen de chips** por estado. Quedan
+  Descarga · Comprobantes · Respaldo.
+
+**#1 Buzón real (notificaciones, 6 meses, nuevos/vistos).** `buzonNotificaciones` (satgo.consultas) ahora usa la
+**e.firma** (`credencialUsable`, exportada de sat-descarga) para llamar a SatGo **`comunicadosfiel`** (títulos +
+`esLeido`) y **`notificacionesfiel`** con `tipoNotificacion=pendientes` (nuevas) y `notificadas` (historial) — justo el
+"distinguir nuevos de viejos / vistos de no vistos". Filtra ~6 meses, 3 llamadas en paralelo, timeout largo en el front.
+La pestaña Notificaciones del hub ya pinta el `leido` (sobre rojo = sin leer, verde = leído). Untesteable aquí (e.firma
++ SatGo). Ver [[satgo-integracion]].
+
+**Pendiente del batch:** #2 (foto frontal del checador al expediente) y #3 (panel fiscal con cuadrícula 32-D/CIF/INFONAVIT).
