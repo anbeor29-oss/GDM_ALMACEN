@@ -25,27 +25,37 @@ import api from '@/services/api';
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-type Tab = 'descarga' | 'emitidos' | 'recibidos' | 'calendario' | 'respaldo';
+type Tab = 'descarga' | 'comprobantes' | 'respaldo';
+type Sub = 'emitidos' | 'recibidos' | 'calendario';
 
-/* [clave, etiqueta, ruta] — la ruta mantiene la pestaña enlazable. */
+/* [clave, etiqueta, ruta] — la ruta mantiene la pestaña enlazable.
+ * Emitidos + Recibidos + Calendario se unieron en «Comprobantes» (una sola vista,
+ * con un control interno), para no tener la información regada en 3 pestañas. */
 const TABS: Array<[Tab, string, string]> = [
-  ['descarga',   'Descarga',   '/xml-sat'],
-  ['emitidos',   'Emitidos',   '/xml-sat/emitidos'],
+  ['descarga',     'Descarga',     '/xml-sat'],
+  ['comprobantes', 'Comprobantes', '/xml-sat/recibidos'],
+  ['respaldo',     'Respaldo',     '/xml-sat/respaldo'],
+];
+/* Sub-vistas dentro de «Comprobantes»; cada una conserva su ruta propia. */
+const SUBS: Array<[Sub, string, string]> = [
   ['recibidos',  'Recibidos',  '/xml-sat/recibidos'],
+  ['emitidos',   'Emitidos',   '/xml-sat/emitidos'],
   ['calendario', 'Calendario', '/xml-sat/calendario'],
-  ['respaldo',   'Respaldo',   '/xml-sat/respaldo'],
 ];
 
 export function XmlDelSatPage() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
+  const esComprobante = pathname.endsWith('/emitidos') || pathname.endsWith('/recibidos') || pathname.endsWith('/calendario');
   const tab: Tab =
-    pathname.endsWith('/emitidos')   ? 'emitidos'   :
-    pathname.endsWith('/recibidos')  ? 'recibidos'  :
-    pathname.endsWith('/calendario') ? 'calendario' :
-    pathname.endsWith('/respaldo')   ? 'respaldo'   :
+    pathname.endsWith('/respaldo') ? 'respaldo' :
+    esComprobante ? 'comprobantes' :
     'descarga';
+  const sub: Sub =
+    pathname.endsWith('/emitidos')   ? 'emitidos'   :
+    pathname.endsWith('/calendario') ? 'calendario' :
+    'recibidos';
 
   return (
     <div className="space-y-4">
@@ -54,12 +64,12 @@ export function XmlDelSatPage() {
           <Download size={24} className="text-emerald-600" /> XML del SAT
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          Todo el XML del SAT en una sola pantalla: se pide la descarga, se consultan
-          los emitidos y recibidos, y se revisa el calendario de cobertura.
+          Todo el XML del SAT en una pantalla: pide la descarga, consulta los comprobantes
+          (emitidos, recibidos y su calendario de cobertura) y baja el respaldo.
         </p>
       </div>
 
-      {/* Pestañas arriba, en la misma pantalla (mismo patrón que Tesorería). */}
+      {/* Pestañas arriba (mismo patrón que Tesorería). */}
       <div className="flex gap-1.5 flex-wrap">
         {TABS.map(([k, label, to], i) => (
           <button key={k} onClick={() => navigate(to)} className={claseOpcion(i, tab === k)}>
@@ -74,10 +84,24 @@ export function XmlDelSatPage() {
         {/* La maquinaria de descarga (credencial, pedir el periodo, trabajos). */}
         <XmlRecibidos direccionInicial="recibidos" />
       </>)}
-      {tab === 'emitidos'   && <TablaComprobantesSat direccion="emitidos" />}
-      {tab === 'recibidos'  && <TablaComprobantesSat direccion="recibidos" />}
-      {tab === 'calendario' && <CalendarioSatPage />}
-      {tab === 'respaldo'   && <RespaldoXml />}
+
+      {tab === 'comprobantes' && (<>
+        {/* Control interno: emitidos / recibidos / calendario, en una sola vista. */}
+        <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
+          {SUBS.map(([k, label, to]) => (
+            <button key={k} onClick={() => navigate(to)}
+              className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                sub === k ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {sub === 'emitidos'   && <TablaComprobantesSat direccion="emitidos" />}
+        {sub === 'recibidos'  && <TablaComprobantesSat direccion="recibidos" />}
+        {sub === 'calendario' && <CalendarioSatPage />}
+      </>)}
+
+      {tab === 'respaldo' && <RespaldoXml />}
     </div>
   );
 }

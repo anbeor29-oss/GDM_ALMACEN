@@ -344,18 +344,30 @@ export function XmlRecibidos({ direccionInicial }: {
 
       {/* ── Trabajos ───────────────────────────────────────────────────── */}
       {trabajos.length > 0 && (
-        <div className="bg-white rounded-lg shadow overflow-x-auto">
-          <div className="px-4 pt-3 flex items-center justify-between gap-2">
-            <p className="text-xs text-gray-500">
-              Toca un renglón para ver, solicitud por solicitud, qué contestó el SAT.
-            </p>
-            {limpiables > 0 && (
-              <button onClick={limpiarTerminados}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-rose-600 border rounded px-2 py-1 hover:bg-rose-50 whitespace-nowrap">
-                <Trash2 size={13} /> Limpiar terminados y con error ({limpiables})
-              </button>
-            )}
+        <div className="bg-white rounded-xl shadow border border-gray-200 overflow-x-auto">
+          {/* Resumen de un vistazo — evita la sensación de "lista regada". */}
+          <div className="px-4 pt-3 pb-2 flex flex-wrap items-center gap-2 border-b border-gray-100">
+            {(() => {
+              const n = (e: string) => trabajos.filter((t) => t.estado === e).length;
+              const xml = trabajos.reduce((a, t) => a + (Number(t.xml_total) || 0), 0);
+              const chip = (label: string, val: number, cls: string) => (val > 0
+                ? <span key={label} className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full ${cls}`}>{val} {label}</span>
+                : null);
+              return [
+                chip('en proceso', n('EN_PROCESO') + n('CREADO'), 'bg-sky-100 text-sky-700'),
+                chip('terminados', n('TERMINADO'), 'bg-emerald-100 text-emerald-700'),
+                chip('con errores', n('CON_ERRORES') + n('CANCELADO'), 'bg-amber-100 text-amber-700'),
+                <span key="xml" className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">{xml} XML en total</span>,
+                limpiables > 0
+                  ? <button key="limpiar" onClick={limpiarTerminados}
+                      className="ml-auto flex items-center gap-1 text-xs text-gray-500 hover:text-rose-600 border rounded-lg px-2 py-1 hover:bg-rose-50 whitespace-nowrap">
+                      <Trash2 size={13} /> Limpiar terminados y con error ({limpiables})
+                    </button>
+                  : null,
+              ];
+            })()}
           </div>
+          <p className="px-4 pt-2 text-[11px] text-gray-400">Toca un renglón para ver, solicitud por solicitud, qué contestó el SAT.</p>
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
