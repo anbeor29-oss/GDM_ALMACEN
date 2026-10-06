@@ -17,6 +17,21 @@ import api from '@/services/api';
 type Empleado = { id: string; nombre: string; num_empleado?: string; plantillas: number; consentimiento: boolean };
 const TOMAS = 3;
 
+/** Toma una foto del video (cuadrado central, 320 px, JPEG) para el expediente.
+ *  Así la foto de FRENTE del enrolamiento sirve también de foto del trabajador y
+ *  no se toma otra aparte. Mismo formato que FotoDelTrabajador. */
+function fotoDelVideo(video: HTMLVideoElement): string | null {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+  const lado = Math.min(vw, vh);
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 320;
+  const ctx = c.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(video, (vw - lado) / 2, (vh - lado) / 2, lado, lado, 0, 0, 320, 320);
+  return c.toDataURL('image/jpeg', 0.82);
+}
+
 export function CheckadorEnrolarPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
@@ -24,6 +39,7 @@ export function CheckadorEnrolarPage() {
   const [fase, setFase] = useState<'iniciando' | 'listo' | 'error'>('iniciando');
   const [error, setError] = useState('');
   const [tomas, setTomas] = useState<number[][]>([]);
+  const [fotoFrente, setFotoFrente] = useState<string | null>(null);  // JPEG de la 1ª toma → expediente
   const [capturando, setCapturando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [msg, setMsg] = useState('');
@@ -93,7 +109,11 @@ export function CheckadorEnrolarPage() {
     try {
       const d = await descriptorDeVideo(videoRef.current);
       if (!d) { setMsg('No detecté un rostro claro. Acércate, con buena luz y de frente.'); }
-      else setTomas((t) => [...t, d.descriptor]);
+      else {
+        // La PRIMERA toma es la de frente: se guarda además como foto del expediente.
+        if (tomas.length === 0) setFotoFrente(fotoDelVideo(videoRef.current));
+        setTomas((t) => [...t, d.descriptor]);
+      }
     } catch { setMsg('Error al capturar. Intenta de nuevo.'); }
     finally { setCapturando(false); }
   };
@@ -103,8 +123,14 @@ export function CheckadorEnrolarPage() {
     setGuardando(true); setMsg('');
     try {
       await api.checadorEnrolar(empId, tomas);
-      setMsg(`✓ ${emp?.nombre} quedó enrolado con ${tomas.length} tomas.`);
-      setTomas([]);
+      // La foto de FRENTE va al expediente del trabajador (update parcial: sólo la foto).
+      let conFoto = '';
+      if (fotoFrente) {
+        try { await api.actualizarEmpleado(empId, { foto: fotoFrente }); conFoto = ' y su foto quedó en el expediente'; }
+        catch { /* el enrolamiento ya se guardó; la foto se puede poner luego en el expediente */ }
+      }
+      setMsg(`✓ ${emp?.nombre} quedó enrolado con ${tomas.length} tomas${conFoto}.`);
+      setTomas([]); setFotoFrente(null);
       await cargarEmpleados();
     } catch (e: any) {
       setMsg(e?.response?.data?.message || e?.message || 'No se pudo guardar el enrolamiento.');
@@ -122,6 +148,7 @@ export function CheckadorEnrolarPage() {
       </div>
       <p className="text-sm text-gray-500">
         Elige al empleado, captura {TOMAS} tomas de su rostro y guarda. Después el kiosco lo reconocerá al checar.
+        La <b>primera toma (de frente)</b> se guarda además como su <b>foto del expediente</b>, para no tomar otra aparte.
       </p>
 
       <div className="grid md:grid-cols-2 gap-4">
@@ -145,6 +172,11 @@ export function CheckadorEnrolarPage() {
               </span>
             ))}
             <span className="text-sm text-gray-500 ml-1">{tomas.length}/{TOMAS} tomas</span>
+            {fotoFrente && (
+              <span className="ml-auto flex items-center gap-1.5 text-[11px] text-gray-500" title="La toma de frente se guardará en el expediente">
+                <img src={fotoFrente} alt="Foto de frente" className="w-9 h-9 rounded object-cover border" /> al expediente
+              </span>
+            )}
           </div>
 
           <div className="flex gap-2">
@@ -153,7 +185,7 @@ export function CheckadorEnrolarPage() {
               {capturando ? <Loader2 className="animate-spin" size={16} /> : <Camera size={16} />} Capturar toma
             </button>
             {tomas.length > 0 && (
-              <button onClick={() => setTomas([])} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm text-gray-600">
+              <button onClick={() => { setTomas([]); setFotoFrente(null); }} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm text-gray-600">
                 <RefreshCw size={14} /> Reiniciar
               </button>
             )}
@@ -163,7 +195,7 @@ export function CheckadorEnrolarPage() {
         {/* Selección de empleado + guardar */}
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700">Empleado</label>
-          <select value={empId} onChange={(e) => { setEmpId(e.target.value); setTomas([]); setMsg(''); }}
+          <select value={empId} onChange={(e) => { setEmpId(e.target.value); setTomas([]); setFotoFrente(null); setMsg(''); }}
             className="w-full rounded-lg border px-3 py-2 text-sm">
             <option value="">— Selecciona —</option>
             {empleados.map((e) => (

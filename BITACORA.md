@@ -6790,4 +6790,11 @@ El usuario autorizó usar SatGo para la descarga de NEXO (acepta la cuota; de to
 La pestaña Notificaciones del hub ya pinta el `leido` (sobre rojo = sin leer, verde = leído). Untesteable aquí (e.firma
 + SatGo). Ver [[satgo-integracion]].
 
-**Pendiente del batch:** #2 (foto frontal del checador al expediente) y #3 (panel fiscal con cuadrícula 32-D/CIF/INFONAVIT).
+**#2 Foto frontal del checador → expediente (HECHO, solo frontend).** En `CheckadorEnrolar`, la **primera toma (de
+frente)** del enrolamiento captura además un **JPEG** (cuadrado 320 px, como `FotoDelTrabajador`) y, al guardar, se
+manda con `actualizarEmpleado(id, { foto })` (update parcial) al expediente — así no se toma otra foto aparte. El
+enrolamiento sigue mandando sólo los descriptores; la foto es una imagen de expediente normal (consentida). Miniatura
+«al expediente» en la UI. `nomina_empleados.foto` ya existía.
+
+**Pendiente del batch:** #3 (panel fiscal con cuadrícula estilo declaraciones para 32-D/CIF/INFONAVIT; doble clic
+configura; INFONAVIT sigue pendiente).
