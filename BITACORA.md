@@ -6763,3 +6763,21 @@ de «Promoción y cobros» (queda sólo «Por cobrar»): las pruebas van por el 
 del checador al expediente, #3 panel fiscal con cuadrícula (32-D/CIF/INFONAVIT), #5 **cambiar el motor de descarga de
 NEXO a SatGo** (reversa de la Fase C; usa `SatWebService` solicita/verifica/descarga como el IVA) + unir las pestañas
 recibidos/emitidos/calendario.
+
+---
+
+## 2026-10-05 (#5 motor) — Transporte de descarga masiva conmutable a SatGo
+
+El usuario autorizó usar SatGo para la descarga de NEXO (acepta la cuota; de todas formas hay que contratarlo). Se hizo
+**sin reescribir el motor**: sólo se cambió la capa de TRANSPORTE (las 4 llamadas al SAT).
+- **`modules/sat-descarga/satgo-transport.ts`** (NUEVO): `autenticar/solicitar/verificar/descargar` con las MISMAS firmas
+  que `soap.ts`, pero por **SatGo `SatWebService`** (`solicita`→`verifica`→`descarga`), con la **e.firma de la empresa en
+  multipart** (Certificado/llavePrivada/Contrasena) + header RFC + JWT de `satgo.service.accessToken`. Mapea
+  `CodEstatus` (5000/5003/5004/5005/5002) y `EstadoSolicitud` (1-6) → el motor no nota la diferencia.
+- **`transporte.ts`** (NUEVO): elige SOAP (default, gratis) o SatGo según **`SAT_DESCARGA_VIA=satgo`**.
+- **`descarga.service.ts`**: ahora importa de `./transporte` (antes `./soap`). **Todo lo demás igual**: partición
+  (5003→parte a la mitad), reanudable, dedupe, bóveda (`indexarCfdi`→`cfdi_recibidos`), calendario, 72 h, metadatos.
+- **Para activarlo:** poner `SAT_DESCARGA_VIA=satgo` en Render (NEXO ya tiene el API Key de SatGo del bootstrap). Sin la
+  variable, sigue el WS oficial del SAT. **Reversible** sin redesplegar. `tsc` limpio.
+- **PENDIENTE de #5 (UI):** unir las pestañas **recibidos/emitidos/calendario** del `/xml-sat` en una sola vista y
+  mejorar la estética de la lista de procesos (imagen 2). No lo puedo probar en vivo (requiere e.firma + SatGo).
