@@ -44,6 +44,7 @@ import satgoRoutes from './modules/satgo/satgo.routes';
 import satgoConsultasRoutes from './modules/satgo/satgo.consultas.routes';
 import onboardingRoutes from './modules/onboarding/onboarding.routes';
 import vigenciasRoutes from './modules/vigencias/vigencias.routes';
+import pldRoutes from './modules/pld/pld.routes';
 import adminPrepaidRoutes   from './modules/admin/admin-prepaid.routes';
 import adminPromocionRoutes from './modules/admin/admin-promocion.routes';
 import manifestRoutes       from './modules/manifest/manifest.routes';
@@ -247,6 +248,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/checador`,        ...gated('checador'), checadorRoutes);
   app.use(`/api/${config.apiVersion}/accounting`,      ...gated('contabilidad'), accountingRoutes);
   app.use(`/api/${config.apiVersion}/satgo/consultas`, ...gated('contabilidad'), satgoConsultasRoutes);
+  app.use(`/api/${config.apiVersion}/pld`,             ...gated('contabilidad'), pldRoutes);
   app.use(`/api/${config.apiVersion}/autofactura`,     ...gated('invoices'), autofacturaRoutes);
   // app.use(`/api/${config.apiVersion}/payments`, paymentRoutes);
   // app.use(`/api/${config.apiVersion}/reports`, reportRoutes);

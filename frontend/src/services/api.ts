@@ -1305,6 +1305,25 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/satgo/consultas/buzon');
     return r.data;
   }
+  // ── PLD / antilavado (LFPIORPI) ──
+  async getPldActividades() {
+    return (await this.client.get<APIResponse<any>>('/pld/actividades')).data;
+  }
+  async getPldConfig() {
+    return (await this.client.get<APIResponse<any>>('/pld/config')).data;
+  }
+  async setPldConfig(d: any) {
+    return (await this.client.put<APIResponse<any>>('/pld/config', d)).data;
+  }
+  async getPldTablero() {
+    return (await this.client.get<APIResponse<any>>('/pld/tablero')).data;
+  }
+  async getPldExpedientes() {
+    return (await this.client.get<APIResponse<any>>('/pld/expedientes')).data;
+  }
+  async savePldExpediente(d: any) {
+    return (await this.client.put<APIResponse<any>>('/pld/expediente', d)).data;
+  }
 
   /** Pólizas del respaldo que no se pudieron importar (pendientes). */
   async getPolizasPendientes() {

@@ -6711,3 +6711,25 @@ hace el usuario por `/registro` (no se crean cuentas en el Render en vivo desde 
 **Pendiente:** #2 IVA.HTML→SatGo (falta el **endpoint de descarga masiva de SatGo** —CIEC— que el motor actual no usa;
 lo pasa el usuario del Swagger) y **#5 PLD/LFPIORPI** (el usuario pasará leyes/reglamentos/acuerdos). Verificación: `tsc
 --noEmit` limpio en backend y frontend; el borrado en vivo y el timbrado real son decisión del usuario.
+
+---
+
+## 2026-10-05 (IVA + PLD) — Motor de IVA a SatGo (e.firma) y arranque del módulo PLD
+
+**#2 IVA.HTML → SatGo (hecho; proyecto APARTE, no git, deploy hosting MX).** Se leyó el **Swagger público** de SatGo
+(`api.sat-go.com/swagger/v2`): tiene descarga masiva. El usuario eligió **Camino A (e.firma)**. Reescrito el motor de
+`E:\Obsidian\IVA.HTML`: nuevo `src/sat/satgo.js` (solicita→verifica→descarga, multipart con la e.firma, JWT por
+`SATGO_API_KEY`), `download.js` (periodo **día 1 → fin de mes**, sólo vigentes), limpieza el **día 1** (`scheduler/tasks`),
+`parser.js` al mes en curso. Doc `CAMBIO_SATGO.md`. El usuario despliega y prueba. Ver [[iva-html-satgo]].
+*(De paso: recuperación del admin de IVA —se perdió la clave— vía reset del `admin` en su SQLite de Render
+`/var/data/iva.db`; default `admin/Admin1234!` + cambio forzado. Se agregó reset por `ADMIN_RESET_PASSWORD`.)*
+
+**#5 PLD / antilavado (LFPIORPI) — análisis + módulo v1.** Se leyeron los 3 PDF del usuario (Ley reforma 16-07-2025,
+Reglas 2026, Reglamento). Análisis en `docs/PLD_LFPIORPI_ANALISIS.md`. Hallazgos: obligado = cada **cliente** con
+Actividad Vulnerable (Art. 17), umbrales en **UMA** (identificación/aviso), **resguardo 10 años** (la reforma 2025 lo
+subió de 5), **Aviso día 17** del mes siguiente por el **Portal SPPLD con e.firma** (no hay API).
+**Módulo v1 (dev):** `modules/pld` (service `tablero()` cruza facturas timbradas 6 meses vs. umbral UMA → operaciones
+por avisar / por identificar / clientes por acumulado / expedientes pendientes) + ruta `/pld` gated contabilidad +
+página `pages/contabilidad/PLD.tsx` (Contabilidad→«PLD (antilavado)»): activar actividad+fracción+representante y
+tablero de alertas. Migración `2026-10-05b_pld.sql` (`pld_config`+`pld_expediente`). Falta: captura del expediente
+(Anexos 2/3) y **generar el XML** del Aviso. Ver [[pld-lfpiorpi]]. `tsc --noEmit` limpio en backend y frontend.

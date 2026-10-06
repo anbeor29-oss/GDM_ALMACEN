@@ -580,6 +580,7 @@ export function Layout() {
                           /* Cumplimiento por organismo: SAT (hub) → IMSS/INFONAVIT. */
                           { to: '/contabilidad/servicios-sat',           icon: emoji3D('🏛️'), label: 'Cumplimiento fiscal' },
                           { to: '/contabilidad/cumplimiento-organismos', icon: emoji3D('🛡️'), label: 'Cumplimiento IMSS / INFONAVIT' },
+                          { to: '/contabilidad/pld',                     icon: emoji3D('🚨'), label: 'PLD (antilavado)' },
                         ],
                       },
                     ]}
