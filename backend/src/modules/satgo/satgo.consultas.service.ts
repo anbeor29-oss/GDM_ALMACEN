@@ -8,10 +8,12 @@
  * (tipo SAT y, en su defecto, CSF) y se descifra SÓLO en memoria vía el contexto
  * efímero — se suelta (dispose) al terminar. Nunca se registra ni se serializa.
  */
+import axios from 'axios';
 import { query } from '../../config/database';
 import { ValidationError } from '../../middleware/errorHandler';
 import { EphemeralCredentialContext } from '../compliance/credential-context';
 import { extraerBinarios, ZipSospechoso } from '../sat-descarga/zip-seguro';
+import { credencialUsable } from '../sat-descarga/descarga.service';
 import * as satgo from './satgo.service';
 
 /** Mes (1-12) por nombre en español; 0 = no identificado / anual. */
@@ -192,14 +194,67 @@ export async function declaracionesResumen(companyId: string) {
   return { anios };
 }
 
+/* ── Buzón tributario (comunicados + notificaciones) por SatGo con e.firma ── */
+const SATGO_BASE = (process.env.SATGO_BASE_URL || 'https://api.sat-go.com').replace(/\/+$/, '');
+
+/** multipart con la e.firma para los endpoints *fiel de SatGo. */
+function efirmaFormBuzon(cred: { cer: Buffer; key: Buffer; password: string }): FormData {
+  const form = new FormData();
+  form.append('Certificado', new Blob([cred.cer]), 'efirma.cer');
+  form.append('llavePrivada', new Blob([cred.key]), 'efirma.key');
+  form.append('Contrasena', String(cred.password || ''));
+  return form;
+}
+
+async function postFiel(pathUrl: string, rfc: string, cred: any, params: Record<string, any>): Promise<any> {
+  const jwt = await satgo.accessToken();
+  const r = await axios.post(`${SATGO_BASE}${pathUrl}`, efirmaFormBuzon(cred), {
+    params,
+    headers: { Authorization: `Bearer ${jwt}`, RFC: rfc },
+    timeout: 90_000, validateStatus: () => true, maxBodyLength: Infinity, maxContentLength: Infinity,
+  });
+  return (r.status >= 200 && r.status < 300) ? (r.data || {}) : { success: false, errorMessage: `HTTP ${r.status}` };
+}
+
+/** ¿la fecha cae en los últimos 6 meses? (si no se puede parsear, se conserva). */
+function dentro6Meses(f?: string): boolean {
+  if (!f) return true;
+  const d = new Date(f); if (isNaN(d.getTime())) return true;
+  const corte = new Date(); corte.setMonth(corte.getMonth() - 6);
+  return d >= corte;
+}
+
 /**
- * Buzón tributario: comunicados y avisos (mensajes) del SAT. El canal del buzón
- * por SatGo todavía NO está integrado (Fase B), así que por ahora regresa vacío con
- * `conectado:false`. Es el ÚNICO punto donde se enchufará la descarga real; el
- * frontend ya trae el botón «Actualizar» y la vista, listos para cuando se conecte.
+ * Buzón tributario: **comunicados** y **notificaciones (avisos)** del SAT, por SatGo
+ * con la **e.firma** de la empresa (`comunicadosfiel`/`notificacionesfiel`). Trae ~6
+ * meses: comunicados (con su `esLeido`) y notificaciones separadas en **pendientes**
+ * (no leídas = nuevas) y **notificadas** (ya leídas = historial), para distinguir lo
+ * nuevo de lo viejo. Sólo metadata (sin bajar los PDF). Sin e.firma → `conectado:false`.
  */
-export async function buzonNotificaciones(_companyId: string) {
-  return { conectado: false, comunicados: [] as any[], avisos: [] as any[] };
+export async function buzonNotificaciones(companyId: string) {
+  let cred: any;
+  try { cred = await credencialUsable(companyId); }
+  catch (e: any) { return { conectado: false, comunicados: [], avisos: [], motivo: e?.message || 'Sin e.firma vigente' }; }
+
+  // Las 3 consultas al portal en PARALELO (cada una lleva su propia e.firma; no
+  // comparten sesión en la primera página), para no sumar sus tiempos.
+  const [comRes, pendRes, notifRes] = await Promise.all([
+    postFiel('/api/v2/Consultar/comunicadosfiel', cred.rfc, cred, { descargar: false }).catch(() => ({} as any)),
+    postFiel('/api/v2/Consultar/notificacionesfiel', cred.rfc, cred, { tipoNotificacion: 'pendientes', descargarNotificaciones: false }).catch(() => ({} as any)),
+    postFiel('/api/v2/Consultar/notificacionesfiel', cred.rfc, cred, { tipoNotificacion: 'notificadas', descargarNotificaciones: false }).catch(() => ({} as any)),
+  ]);
+
+  const comunicados = (comRes.comunicados || [])
+    .filter((c: any) => dentro6Meses(c.fechaComunicado))
+    .map((c: any) => ({ id: c.id, asunto: c.titulo, fecha: String(c.fechaComunicado || '').slice(0, 10), leido: !!c.esLeido }));
+
+  const mapNotif = (arr: any[] | undefined, leido: boolean) => (arr || [])
+    .filter((r: any) => dentro6Meses(r.fecha))
+    .map((r: any) => ({ id: r.rowKey || r.folio, asunto: r.acto || 'Notificación', fecha: String(r.fecha || '').slice(0, 10), texto: r.autoridad, folio: r.folio, leido }));
+
+  const avisos = [...mapNotif(pendRes.notificaciones, false), ...mapNotif(notifRes.notificaciones, true)];
+
+  return { conectado: true, comunicados, avisos };
 }
 
 /**

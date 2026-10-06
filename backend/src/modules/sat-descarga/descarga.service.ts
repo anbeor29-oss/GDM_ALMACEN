@@ -234,7 +234,7 @@ export async function reintentarAtoradas(companyId: string): Promise<{ particion
   return { particiones };
 }
 
-async function credencialUsable(companyId: string): Promise<soap.Credencial> {
+export async function credencialUsable(companyId: string): Promise<soap.Credencial> {
   const r = await query<any>(
     `SELECT rfc, cer_cifrado, key_cifrado, password_cifrado, vigencia_hasta
        FROM sat_credenciales

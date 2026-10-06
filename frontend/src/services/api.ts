@@ -1300,9 +1300,10 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/satgo/consultas/declaraciones/resumen');
     return r.data;
   }
-  /** Buzón del SAT: comunicados y avisos (integración de SatGo pendiente; hoy regresa vacío). */
+  /** Buzón del SAT: comunicados y notificaciones (por SatGo con e.firma; el portal
+   *  puede tardar, por eso el timeout largo). */
   async getBuzonNotificaciones() {
-    const r = await this.client.get<APIResponse<any>>('/satgo/consultas/buzon');
+    const r = await this.client.get<APIResponse<any>>('/satgo/consultas/buzon', { timeout: 180000 });
     return r.data;
   }
   // ── PLD / antilavado (LFPIORPI) ──
