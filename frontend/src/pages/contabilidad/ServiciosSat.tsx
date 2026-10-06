@@ -1,10 +1,11 @@
 /**
- * Cumplimiento fiscal — hub de trámites/consultas del SAT en pestañas:
- *   Opinión 32-D · CIF/CSF · Notificaciones · Declaraciones · Información Fiscal · Validar CFDI.
- * Las dos primeras reutilizan PanelOpinion (descarga + histórico + Configurar);
- * las demás son consultas en línea (CIEC de la empresa, salvo la validación de
- * CFDI que sólo usa el RFC). El IMSS y el INFONAVIT viven en su propia área del
- * menú (orden SAT → IMSS/INFONAVIT).
+ * Cumplimiento fiscal — hub de TODO el cumplimiento en pestañas:
+ *   Opinión 32-D · CIF/CSF · IMSS · INFONAVIT · Notificaciones · Declaraciones ·
+ *   Información Fiscal · Validar CFDI (al final).
+ * Opinión/CIF/IMSS/INFONAVIT reutilizan PanelOpinion (descarga + histórico +
+ * Configurar); las demás son consultas en línea (CIEC de la empresa, salvo la
+ * validación de CFDI que sólo usa el RFC). Cada pestaña con información muestra un
+ * punto verde, para que el usuario vea de un vistazo qué tiene (su "mapa mental").
  */
 import { useState, useEffect, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -17,6 +18,8 @@ import { claseOpcion } from '@/utils/coloresOpciones';
 const TABS: Array<[string, string]> = [
   ['SAT', 'Opinión 32-D'],
   ['CSF', 'CIF/CSF'],
+  ['IMSS', 'IMSS'],
+  ['INFONAVIT', 'INFONAVIT'],
   ['NOTIF', 'Notificaciones'],
   ['DEC', 'Declaraciones'],
   ['INFO', 'Información Fiscal'],
@@ -46,15 +49,25 @@ export function ServiciosSatPage() {
   // Info fiscal: caché compartida (misma key que el panel) para el punto verde.
   const infoQ = useQuery({ queryKey: Q_INFO, queryFn: () => api.satgoInfoFiscal(), enabled: false, staleTime: Infinity, gcTime: Infinity });
   const hayInfo = !!((infoQ.data as any)?.data ?? infoQ.data);
+  // Declaraciones guardadas (sin tocar SatGo) para el punto verde de esa pestaña.
+  const decQ = useQuery({ queryKey: ['cumpl-dec-resumen'], queryFn: () => api.satgoDeclaracionesResumen() });
+  const hayDec = (((decQ.data as any)?.data?.anios) || []).length > 0;
+
+  /** Punto verde = esa pestaña YA tiene información (mapa mental de un vistazo). */
+  const PuntoVerde = ({ fuerte = true, title }: { fuerte?: boolean; title?: string }) =>
+    <span className={`w-1.5 h-1.5 rounded-full ${fuerte ? 'bg-emerald-500' : 'bg-emerald-500/40'}`} title={title} />;
 
   const dot = (k: string): ReactNode => {
-    if (k === 'INFO') return hayInfo ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Consultada (en memoria)" /> : null;
-    if (k !== 'SAT' && k !== 'CSF') return null;
-    const c = cfgs[k] || {};
-    const ok = c.ultimo_estado === 'SUCCESS';
-    if (!ok && !c.activo) return null;
-    return <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-emerald-500/40'}`}
-      title={ok ? `Última descarga correcta${c.ultima_ejecucion ? ' · ' + c.ultima_ejecucion : ''}` : 'Actualización automática activa (a diario)'} />;
+    if (k === 'INFO') return hayInfo ? <PuntoVerde title="Consultada (en memoria)" /> : null;
+    if (k === 'DEC') return hayDec ? <PuntoVerde title="Hay declaraciones guardadas" /> : null;
+    if (['SAT', 'CSF', 'IMSS', 'INFONAVIT'].includes(k)) {
+      const c = cfgs[k] || {};
+      const ok = c.ultimo_estado === 'SUCCESS';
+      if (!ok && !c.activo) return null;
+      return <PuntoVerde fuerte={ok}
+        title={ok ? `Última descarga correcta${c.ultima_ejecucion ? ' · ' + c.ultima_ejecucion : ''}` : 'Actualización automática activa'} />;
+    }
+    return null;
   };
 
   return (
@@ -64,8 +77,8 @@ export function ServiciosSatPage() {
           <ShieldCheck size={22} className="text-primary" /> Cumplimiento fiscal
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Opinión 32-D, Constancia de Situación Fiscal, notificaciones, declaraciones, información fiscal y
-          validación de comprobantes — con el RFC y la clave CIEC de la empresa.
+          32-D, CIF/CSF, IMSS, INFONAVIT, notificaciones, declaraciones, información fiscal y validación de CFDI,
+          en un solo lugar. El <b>punto verde</b> marca lo que ya tienes.
         </p>
       </div>
 
@@ -80,6 +93,8 @@ export function ServiciosSatPage() {
 
       {tab === 'SAT' && <PanelOpinion tipo="SAT" />}
       {tab === 'CSF' && <PanelOpinion tipo="CSF" />}
+      {tab === 'IMSS' && <PanelOpinion tipo="IMSS" />}
+      {tab === 'INFONAVIT' && <PanelOpinion tipo="INFONAVIT" />}
       {tab === 'NOTIF' && <PanelNotificaciones />}
       {tab === 'DEC' && <PanelDeclaraciones />}
       {tab === 'INFO' && <PanelInfoFiscal />}

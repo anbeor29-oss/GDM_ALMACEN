@@ -80,7 +80,6 @@ import { ImportarContpaqiPage } from '@/pages/contabilidad/ImportarContpaqi';
 import { CfdiContabilidadPage } from '@/pages/contabilidad/CfdiContabilidad';
 import { AutofacturacionPage } from '@/pages/contabilidad/Autofacturacion';
 import { ServiciosSatPage } from '@/pages/contabilidad/ServiciosSat';
-import { CumplimientoOrganismosPage } from '@/pages/contabilidad/CumplimientoOrganismos';
 import { PldPage } from '@/pages/contabilidad/PLD';
 import { CedulasFiscalesPage } from '@/pages/contabilidad/CedulasFiscales';
 import { CambioCuentaPage } from '@/pages/contabilidad/CambioCuenta';
@@ -173,12 +172,12 @@ export default function ErpPrivado() {
         <Route path="contabilidad/cfdi"               element={<ModuleRoute module="contabilidad"><CfdiContabilidadPage /></ModuleRoute>} />
         <Route path="invoices/autofactura"            element={<ModuleRoute module="invoices"><AutofacturacionPage /></ModuleRoute>} />
         <Route path="contabilidad/servicios-sat"      element={<ModuleRoute module="contabilidad"><ServiciosSatPage /></ModuleRoute>} />
-        <Route path="contabilidad/cumplimiento-organismos" element={<ModuleRoute module="contabilidad"><CumplimientoOrganismosPage /></ModuleRoute>} />
         <Route path="contabilidad/pld"                 element={<ModuleRoute module="contabilidad"><PldPage /></ModuleRoute>} />
-        {/* Compatibilidad con rutas anteriores. */}
+        {/* IMSS/INFONAVIT se incorporaron al hub Cumplimiento fiscal; las rutas viejas redirigen. */}
+        <Route path="contabilidad/cumplimiento-organismos" element={<Navigate to="/contabilidad/servicios-sat" replace />} />
         <Route path="contabilidad/opinion-cumplimiento" element={<Navigate to="/contabilidad/servicios-sat" replace />} />
-        <Route path="contabilidad/cumplimiento-imss" element={<Navigate to="/contabilidad/cumplimiento-organismos" replace />} />
-        <Route path="contabilidad/cumplimiento-infonavit" element={<Navigate to="/contabilidad/cumplimiento-organismos" replace />} />
+        <Route path="contabilidad/cumplimiento-imss" element={<Navigate to="/contabilidad/servicios-sat" replace />} />
+        <Route path="contabilidad/cumplimiento-infonavit" element={<Navigate to="/contabilidad/servicios-sat" replace />} />
         <Route path="contabilidad/cedulas"            element={<ModuleRoute module="contabilidad"><CedulasFiscalesPage /></ModuleRoute>} />
         <Route path="contabilidad/cambio-cuenta"      element={<ModuleRoute module="contabilidad"><CambioCuentaPage /></ModuleRoute>} />
         <Route path="contabilidad/conciliacion"       element={<ModuleRoute module="contabilidad"><ConciliacionContablePage /></ModuleRoute>} />

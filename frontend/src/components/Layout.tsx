@@ -579,7 +579,6 @@ export function Layout() {
                           { to: '/contabilidad/cedulas',           icon: emoji3D('📑'), label: 'Cédulas fiscales (ISR/IVA)' },
                           /* Cumplimiento por organismo: SAT (hub) → IMSS/INFONAVIT. */
                           { to: '/contabilidad/servicios-sat',           icon: emoji3D('🏛️'), label: 'Cumplimiento fiscal' },
-                          { to: '/contabilidad/cumplimiento-organismos', icon: emoji3D('🛡️'), label: 'Cumplimiento IMSS / INFONAVIT' },
                         ],
                       },
                     ]}
