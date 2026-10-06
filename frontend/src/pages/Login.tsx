@@ -72,7 +72,7 @@ export function LoginPage() {
         <div className="text-center mb-8">
           <GdmLogo size={64} className="inline-block mb-3 drop-shadow-lg" />
           <h1 className="text-3xl font-bold text-gray-900 mb-1">GDM NEXO</h1>
-          <p className="text-gray-500 text-sm">GDM HIGH CONSULTING MÉXICO · Inicia sesión para continuar</p>
+          <p className="text-gray-500 text-sm">Inicia sesión para continuar</p>
         </div>
 
         {/* Form */}
@@ -168,7 +168,7 @@ export function LoginPage() {
             mismo que las páginas legales; dos titulares distintos en dos
             pantallas públicas se leen como dos empresas distintas. */}
         <div className="mt-6 pt-6 border-t border-gray-200 text-center text-sm text-gray-600">
-          <p>© {new Date().getFullYear()} GRUPO HCGM, S.A. DE C.V. · ERP CFDI 4.0</p>
+          <p>© {new Date().getFullYear()} GRUPO HCGM, S.A. DE C.V. · GDM NEXO ERP®</p>
         </div>
       </div>
     </div>

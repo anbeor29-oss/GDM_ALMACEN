@@ -1,10 +1,9 @@
 /**
- * GdmLogo — logo corporativo oficial de GDM High Consulting México.
- *
- * Usa la imagen real del monograma (extraída del sitio corporativo
- * hcgm.com.mx y recortada al círculo, 256×256 px) en vez de una
- * recreación dibujada. Se muestra con rounded-full para que el fondo
- * azul quede como medallón circular.
+ * GdmLogo — logo del producto GDM NEXO (emblema plateado sobre azul, 256×256 px,
+ * recortado del arte oficial de NEXO). Se muestra con rounded-full para que quede
+ * como medallón circular. Es el logo visible en login, landing, registro, sidebar
+ * y el favicon (todos leen `gdm-logo.png`, así que el archivo es el único punto de
+ * cambio).
  *
  * La URL respeta el base del build (/ en Render, /erp/ en hosting).
  */
@@ -20,7 +19,7 @@ export function GdmLogo({ size = 40, className = '' }: { size?: number; classNam
       // El alt va en minúsculas A PROPÓSITO, aunque la marca visible vaya en
       // mayúsculas: el alt no se ve, se escucha. Varios lectores de pantalla
       // toman una palabra toda en mayúsculas por sigla y la deletrean.
-      alt="GDM High Consulting México"
+      alt="GDM NEXO"
       className={`rounded-full object-cover select-none ${className}`}
       draggable={false}
     />
