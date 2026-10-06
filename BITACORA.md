@@ -6796,5 +6796,13 @@ manda con `actualizarEmpleado(id, { foto })` (update parcial) al expediente — 
 enrolamiento sigue mandando sólo los descriptores; la foto es una imagen de expediente normal (consentida). Miniatura
 «al expediente» en la UI. `nomina_empleados.foto` ya existía.
 
-**Pendiente del batch:** #3 (panel fiscal con cuadrícula estilo declaraciones para 32-D/CIF/INFONAVIT; doble clic
-configura; INFONAVIT sigue pendiente).
+**#3 Hub de Cumplimiento fiscal unificado (HECHO; la cuadrícula se difiere).** El usuario pidió manejarlo sin
+cuadrícula por ahora: en `ServiciosSat` se **incorporaron IMSS e INFONAVIT** como pestañas (reusan `PanelOpinion`
+tipo IMSS/INFONAVIT), se **movió «Validar CFDI» al final**, y cada pestaña con información muestra **punto verde**
+(opiniones por `cumplimiento_config.ultimo_estado`/activo; Declaraciones por el resumen guardado; Info Fiscal por la
+caché) — el "mapa mental" de qué tiene la empresa. Se **retiró** del sidebar «Cumplimiento IMSS / INFONAVIT» y la
+ruta `/contabilidad/cumplimiento-organismos` (+ compat imss/infonavit) **redirige** a `/contabilidad/servicios-sat`.
+`CumplimientoOrganismos.tsx` queda sin uso. La **cuadrícula tipo declaraciones** para 32-D/etc. queda **pendiente**.
+
+**→ Batch de 7 COMPLETO** (2026-10-05): #1 notificaciones 6 meses · #2 foto checador→expediente · #3 hub unificado ·
+#4 rediseño Pólizas · #5 motor descarga→SatGo + Comprobantes unidos · #6 login · #7 logo NEXO. Todo en dev.
