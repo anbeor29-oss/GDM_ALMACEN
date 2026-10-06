@@ -41,6 +41,15 @@ function categoria(p: any): 'venta' | 'compra' | 'cobropago' | 'nomina' | 'manua
 const ETIQUETA: Record<string, string> = {
   venta: 'Venta', compra: 'Compra', cobropago: 'Cobro/Pago', nomina: 'Nómina', manual: 'Manual', otro: 'Otro',
 };
+/** Color por tipo de póliza: pastilla del badge, acento del renglón y punto del filtro. */
+const COLOR_CAT: Record<string, { badge: string; accent: string; dot: string }> = {
+  venta:     { badge: 'bg-emerald-100 text-emerald-700', accent: 'border-l-emerald-400', dot: 'bg-emerald-500' },
+  compra:    { badge: 'bg-sky-100 text-sky-700',         accent: 'border-l-sky-400',     dot: 'bg-sky-500' },
+  cobropago: { badge: 'bg-violet-100 text-violet-700',   accent: 'border-l-violet-400',  dot: 'bg-violet-500' },
+  nomina:    { badge: 'bg-amber-100 text-amber-700',     accent: 'border-l-amber-400',   dot: 'bg-amber-500' },
+  manual:    { badge: 'bg-slate-100 text-slate-600',     accent: 'border-l-slate-300',   dot: 'bg-slate-400' },
+  otro:      { badge: 'bg-gray-100 text-gray-600',       accent: 'border-l-gray-300',    dot: 'bg-gray-400' },
+};
 const FILTROS = [
   ['', 'Todas'], ['venta', 'Ventas'], ['compra', 'Compras'],
   ['cobropago', 'Cobros/Pagos'], ['nomina', 'Nómina'], ['manual', 'Manuales'],
@@ -158,6 +167,18 @@ export function PolizasListaPage() {
   const polizas = useMemo(
     () => todas.filter((p) => !filtro || categoria(p) === filtro),
     [todas, filtro]);
+  /* Resumen del periodo para las tarjetas: cuántas pólizas, cargos totales y
+   * cuántas quedaron descuadradas. */
+  const stats = useMemo(() => {
+    let cargos = 0, descuadradas = 0;
+    for (const p of todas) {
+      const c = (p.lineas || []).reduce((a: number, l: any) => a + Number(l.cargo || 0), 0);
+      const a = (p.lineas || []).reduce((s: number, l: any) => s + Number(l.abono || 0), 0);
+      cargos += c;
+      if (Math.abs(c - a) > 0.02) descuadradas++;
+    }
+    return { total: todas.length, cargos, descuadradas };
+  }, [todas]);
 
   const borrar = async (p: any) => {
     if (!window.confirm(`¿Borrar la póliza #${p.folio} (${p.concepto || 'sin concepto'})? Esto no se puede deshacer.`)) return;
@@ -172,20 +193,18 @@ export function PolizasListaPage() {
   const cuenta = (c: string) => todas.filter((p) => categoria(p) === c).length;
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <BookOpen size={22} className="text-primary" /> Pólizas
-        </h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          El libro diario del mes: todas las pólizas según se generan. Se pueden eliminar.
-        </p>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {/* En PPD/PUE manda la tabla de recibidos, que trae su propio mes/año. */}
+    <div className="p-6 space-y-5 max-w-5xl">
+      {/* Encabezado con el periodo a la derecha */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="w-11 h-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <BookOpen size={22} />
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-gray-900 leading-tight">Pólizas</h1>
+          <p className="text-sm text-gray-500">Libro diario del mes — todas las pólizas conforme se generan.</p>
+        </div>
         {filtro !== 'ppdpue' && (
-          <>
+          <div className="ml-auto flex items-center gap-2">
             <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 text-sm">
               <option value={0}>Todo el año</option>
               {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
@@ -193,56 +212,91 @@ export function PolizasListaPage() {
             <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
               {anios.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
-          </>
+          </div>
         )}
-        <div className="flex flex-wrap gap-1 ml-2">
-          {FILTROS.map(([k, label]) => (
-            <button key={k} onClick={() => setFiltro(k)}
-              className={`px-2.5 py-1 rounded-lg text-xs border ${
-                filtro === k ? 'bg-primary text-white border-primary' : 'text-gray-600 hover:bg-gray-50'}`}>
-              {label}{k && cuenta(k) > 0 ? ` (${cuenta(k)})` : ''}
-            </button>
-          ))}
+      </div>
+
+      {/* Tarjetas de resumen */}
+      {filtro !== 'ppdpue' && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
+            <p className="text-[11px] uppercase tracking-wide text-gray-400">Pólizas</p>
+            <p className="text-2xl font-bold text-gray-900 tabular-nums">{stats.total}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
+            <p className="text-[11px] uppercase tracking-wide text-gray-400">Cargos del periodo</p>
+            <p className="text-2xl font-bold text-gray-900 tabular-nums">{money(stats.cargos)}</p>
+          </div>
+          <div className={`rounded-xl border shadow-sm p-3 ${stats.descuadradas > 0 ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}>
+            <p className="text-[11px] uppercase tracking-wide text-gray-400">Cuadre</p>
+            <p className={`text-lg font-bold flex items-center gap-1.5 mt-1 ${stats.descuadradas > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+              {stats.descuadradas > 0
+                ? <><AlertTriangle size={16} /> {stats.descuadradas} descuadrada(s)</>
+                : <><CheckCircle2 size={16} /> Todo cuadra</>}
+            </p>
+          </div>
         </div>
+      )}
+
+      {/* Filtros por tipo, con color y conteo */}
+      <div className="flex flex-wrap gap-1.5">
+        {FILTROS.map(([k, label]) => {
+          const n = k ? cuenta(k) : todas.length;
+          const activo = filtro === k;
+          const col = k && k !== 'ppdpue' ? COLOR_CAT[k] : null;
+          return (
+            <button key={k} onClick={() => setFiltro(k)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                activo ? 'bg-primary text-white border-primary shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+              {col && <span className={`w-1.5 h-1.5 rounded-full ${activo ? 'bg-white/80' : col.dot}`} />}
+              {label}
+              {k !== 'ppdpue' && <span className={`tabular-nums ${activo ? 'text-white/80' : 'text-gray-400'}`}>{n}</span>}
+            </button>
+          );
+        })}
       </div>
 
       {filtro !== 'ppdpue' && (
-      <div className="flex flex-wrap items-center gap-2 bg-gray-50 border rounded-lg px-3 py-2">
-        <span className="text-xs text-gray-500">{todoAnio ? `Generar todo ${anio}:` : 'Generar del mes:'}</span>
-        <label className="flex items-center gap-1 text-xs text-gray-600" title="Genera Ventas/Compras/Cobros de todos los meses del año (la depreciación sigue siendo mensual)">
-          <input type="checkbox" checked={todoAnio} onChange={(e) => setTodoAnio(e.target.checked)} /> todo el año
-        </label>
-        {GENERADORES.map(([k, label, fn]) => (
-          <button key={k} onClick={() => generar(k, fn)} disabled={!!generando}
-            className="flex items-center gap-1 border bg-white px-2.5 py-1 rounded-lg text-xs text-gray-700 hover:bg-primary hover:text-white disabled:opacity-40">
-            <PlayCircle size={13} /> {generando === k ? 'Generando…' : label}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 space-y-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">{todoAnio ? `Generar ${anio}` : 'Generar mes'}</span>
+          <label className="flex items-center gap-1 text-xs text-gray-500 mr-1" title="Genera Ventas/Compras/Cobros de todos los meses del año (la depreciación sigue siendo mensual)">
+            <input type="checkbox" checked={todoAnio} onChange={(e) => setTodoAnio(e.target.checked)} /> todo el año
+          </label>
+          {GENERADORES.map(([k, label, fn]) => (
+            <button key={k} onClick={() => generar(k, fn)} disabled={!!generando}
+              className="inline-flex items-center gap-1 border border-gray-200 bg-white px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 hover:border-primary hover:text-primary disabled:opacity-40 transition-colors">
+              <PlayCircle size={14} /> {generando === k ? 'Generando…' : label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-gray-100">
+          <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">Asignar cuentas</span>
+          <button onClick={autoAsignar} disabled={!!generando}
+            title="Asigna de un tirón las cuentas de producto con match claro (misma familia SAT) de ventas y compras, y genera las subcuentas de clientes/proveedores. Sólo deja los dudosos por revisar a mano."
+            className="inline-flex items-center gap-1 border border-emerald-300 bg-emerald-50 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-40">
+            <Wand2 size={14} /> {generando === 'auto' ? 'Asignando…' : 'Auto-asignar todo'}
           </button>
-        ))}
-        <span className="mx-1 h-4 w-px bg-gray-300" />
-        <span className="text-xs text-gray-500">Asignar cuentas:</span>
-        <button onClick={autoAsignar} disabled={!!generando}
-          title="Asigna de un tirón las cuentas de producto con match claro (misma familia SAT) de ventas y compras, y genera las subcuentas de clientes/proveedores. Sólo deja los dudosos por revisar a mano."
-          className="flex items-center gap-1 border border-emerald-300 bg-white px-2.5 py-1 rounded-lg text-xs text-emerald-700 hover:bg-emerald-50 disabled:opacity-40">
-          <Wand2 size={13} /> {generando === 'auto' ? 'Asignando…' : 'Auto-asignar todo'}
-        </button>
-        <button onClick={() => navigate('/invoices/polizas-venta')}
-          className="border bg-white px-2.5 py-1 rounded-lg text-xs text-gray-700 hover:bg-gray-100">Ventas</button>
-        <button onClick={() => navigate('/compras/polizas')}
-          className="border bg-white px-2.5 py-1 rounded-lg text-xs text-gray-700 hover:bg-gray-100">Compras</button>
-        <span className="mx-1 h-4 w-px bg-gray-300" />
-        <label
-          title="Importa las pólizas históricas desde el TXT de CPQ. Casa cada renglón por código de cuenta, así que importa el catálogo primero. No duplica: se salta las que ya tengan el mismo UUID."
-          className={`btn-import text-xs px-2.5 py-1 ${generando ? 'opacity-40 pointer-events-none' : ''}`}>
-          <BookOpen size={13} /> {generando === 'txt' ? 'Importando…' : 'Importar CPQ (.txt)'}
-          <input type="file" accept=".txt" className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />
-        </label>
+          <button onClick={() => navigate('/invoices/polizas-venta')}
+            className="border border-gray-200 bg-white px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:bg-gray-50">Ventas</button>
+          <button onClick={() => navigate('/compras/polizas')}
+            className="border border-gray-200 bg-white px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:bg-gray-50">Compras</button>
+          <label
+            title="Importa las pólizas históricas desde el TXT de CPQ. Casa cada renglón por código de cuenta, así que importa el catálogo primero. No duplica: se salta las que ya tengan el mismo UUID."
+            className={`ml-auto inline-flex items-center gap-1 border border-violet-300 bg-violet-50 text-violet-700 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer hover:bg-violet-100 ${generando ? 'opacity-40 pointer-events-none' : ''}`}>
+            <BookOpen size={14} /> {generando === 'txt' ? 'Importando…' : 'Importar CPQ (.txt)'}
+            <input type="file" accept=".txt" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />
+          </label>
+        </div>
       </div>
       )}
 
       {filtro !== 'ppdpue' && <DiagnosticoCuadre anio={anio} mes={mes} />}
 
-      {msg && filtro !== 'ppdpue' && <p className="text-sm text-emerald-700">{msg}</p>}
+      {msg && filtro !== 'ppdpue' && (
+        <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{msg}</p>
+      )}
 
       {/* PPD/PUE: la misma pantalla de EML → Recibidos. Doble clic en un recibido
           abre su asiento y genera el pago del CFDI recibido con método PUE. */}
@@ -252,7 +306,7 @@ export function PolizasListaPage() {
       <div className="space-y-2">
         {q.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
         {!q.isLoading && polizas.length === 0 && (
-          <p className="text-sm text-gray-500 italic bg-white border rounded-lg p-4 text-center">
+          <p className="text-sm text-gray-500 italic bg-white border rounded-xl p-6 text-center">
             Sin pólizas {filtro ? `de ${ETIQUETA[filtro].toLowerCase()} ` : ''}en {(MESES[mes] || 'todo el año')} {anio}.
           </p>
         )}
@@ -261,47 +315,50 @@ export function PolizasListaPage() {
           const abonos = (p.lineas || []).reduce((a: number, l: any) => a + Number(l.abono || 0), 0);
           const cuadra = Math.abs(cargos - abonos) <= 0.02;
           const abierta = abiertas.has(p.id);
+          const cat = categoria(p);
+          const col = COLOR_CAT[cat] || COLOR_CAT.otro;
           return (
-            <div key={p.id} className="bg-white border rounded-lg overflow-hidden">
-              {/* Renglón compacto: doble clic en él (o el chevron) despliega/contrae. */}
+            <div key={p.id} className={`bg-white border border-gray-200 border-l-4 ${col.accent} rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden`}>
+              {/* Renglón: doble clic en él (o el chevron) despliega/contrae. */}
               <div onDoubleClick={() => alternar(p.id)} title="Doble clic para desplegar o contraer"
-                className="flex flex-wrap items-center gap-2 px-3 py-2 bg-gray-50 border-b text-sm cursor-pointer select-none hover:bg-gray-100">
+                className="group flex items-center gap-2.5 px-3 py-2.5 text-sm cursor-pointer select-none">
                 <button onClick={() => alternar(p.id)} onDoubleClick={(e) => e.stopPropagation()}
-                  className="text-gray-400 hover:text-gray-600 shrink-0" title={abierta ? 'Contraer' : 'Desplegar'}>
-                  {abierta ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                  className="text-gray-300 hover:text-gray-600 shrink-0" title={abierta ? 'Contraer' : 'Desplegar'}>
+                  {abierta ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 </button>
                 <button onClick={() => setEditar(p)} onDoubleClick={(e) => e.stopPropagation()} title="Editar esta póliza (cambios manuales)"
-                  className="font-bold text-blue-600 hover:underline">#{p.folio}</button>
-                <span className="text-gray-500">{fecha(p.fecha)}</span>
-                <span className="text-gray-700 truncate">{p.concepto}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">{ETIQUETA[categoria(p)]}</span>
+                  className="font-bold text-blue-600 hover:underline tabular-nums shrink-0">#{p.folio}</button>
+                <span className="text-gray-400 text-xs shrink-0 w-20 tabular-nums">{fecha(p.fecha)}</span>
+                <span className="text-gray-700 truncate flex-1 min-w-0">{p.concepto}</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${col.badge}`}>{ETIQUETA[cat]}</span>
                 {!cuadra && (
-                  <span className="text-[10px] text-rose-600 flex items-center gap-0.5"><AlertTriangle size={11} /> descuadrada</span>
+                  <span className="text-[10px] text-rose-600 flex items-center gap-0.5 shrink-0"><AlertTriangle size={11} /> descuadrada</span>
                 )}
-                {/* Compacta: el importe se ve sin desplegar. */}
-                {!abierta && <span className="ml-auto text-xs text-gray-400 font-mono tabular-nums">{money(cargos)}</span>}
-                <button onClick={() => setPrevia(p)} onDoubleClick={(e) => e.stopPropagation()} title="Previsualizar / PDF"
-                  className={`${abierta ? 'ml-auto' : ''} text-gray-300 hover:text-sky-600`}><Eye size={15} /></button>
-                <button onClick={() => setEditar(p)} onDoubleClick={(e) => e.stopPropagation()} title="Editar póliza"
-                  className="text-gray-300 hover:text-primary"><Pencil size={14} /></button>
-                <button onClick={() => borrar(p)} onDoubleClick={(e) => e.stopPropagation()} title="Eliminar póliza"
-                  className="text-gray-300 hover:text-rose-500"><Trash2 size={15} /></button>
+                <span className="text-sm font-semibold text-gray-800 font-mono tabular-nums shrink-0 w-28 text-right">{money(cargos)}</span>
+                <div className="flex items-center gap-0.5 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => setPrevia(p)} onDoubleClick={(e) => e.stopPropagation()} title="Previsualizar / PDF"
+                    className="text-gray-300 hover:text-sky-600 p-1"><Eye size={15} /></button>
+                  <button onClick={() => setEditar(p)} onDoubleClick={(e) => e.stopPropagation()} title="Editar póliza"
+                    className="text-gray-300 hover:text-primary p-1"><Pencil size={14} /></button>
+                  <button onClick={() => borrar(p)} onDoubleClick={(e) => e.stopPropagation()} title="Eliminar póliza"
+                    className="text-gray-300 hover:text-rose-500 p-1"><Trash2 size={15} /></button>
+                </div>
               </div>
               {abierta && (
-                <table className="w-full text-xs">
+                <table className="w-full text-xs border-t border-gray-100">
                   <tbody>
                     {(p.lineas || []).map((l: any, i: number) => (
-                      <tr key={i} className="border-b last:border-0">
-                        <td className="px-3 py-1 font-mono text-gray-500 w-24">{formatCuenta(l.codigo, mascara)}</td>
-                        <td className="px-2 py-1">{l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}</td>
-                        <td className="px-3 py-1 text-right w-28">{Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
-                        <td className="px-3 py-1 text-right w-28">{Number(l.abono) > 0 ? money(l.abono) : ''}</td>
+                      <tr key={i} className="border-b border-gray-50 last:border-0">
+                        <td className="px-3 py-1.5 font-mono text-gray-500 w-28">{formatCuenta(l.codigo, mascara)}</td>
+                        <td className="px-2 py-1.5 text-gray-700">{l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}</td>
+                        <td className="px-3 py-1.5 text-right w-28 tabular-nums">{Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
+                        <td className="px-3 py-1.5 text-right w-28 tabular-nums">{Number(l.abono) > 0 ? money(l.abono) : ''}</td>
                       </tr>
                     ))}
-                    <tr className="font-semibold bg-gray-50">
-                      <td colSpan={2} className="px-3 py-1 text-right">Sumas</td>
-                      <td className="px-3 py-1 text-right">{money(cargos)}</td>
-                      <td className="px-3 py-1 text-right">{money(abonos)}</td>
+                    <tr className="font-semibold bg-gray-50/70">
+                      <td colSpan={2} className="px-3 py-1.5 text-right text-gray-600">Sumas</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{money(cargos)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{money(abonos)}</td>
                     </tr>
                   </tbody>
                 </table>
