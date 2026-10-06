@@ -6806,3 +6806,20 @@ ruta `/contabilidad/cumplimiento-organismos` (+ compat imss/infonavit) **redirig
 
 **→ Batch de 7 COMPLETO** (2026-10-05): #1 notificaciones 6 meses · #2 foto checador→expediente · #3 hub unificado ·
 #4 rediseño Pólizas · #5 motor descarga→SatGo + Comprobantes unidos · #6 login · #7 logo NEXO. Todo en dev.
+
+---
+
+## 2026-10-05 (SatGo plan + varios) — Candado de plan, rename de catálogo y lista de pendientes
+
+- **SatGo descarga — CANDADO DE PLAN.** Con `SAT_DESCARGA_VIA=satgo` el SAT (vía SatGo) devolvió **HTTP 403 "Este plan
+  no tiene acceso a esta funcionalidad", featureCode `wssolicita`** (plan de pruebas, 5/mes). **La descarga masiva NO
+  está en el plan contratado** — no es bug. Se agregó `satgo-transport.mensajeSatgo()` para mostrar un **texto claro**
+  ("tu plan no incluye «wssolicita»…") en la lista de procesos en vez del JSON crudo. **Acción del usuario:**
+  contratar/actualizar el plan de SatGo con descarga masiva, o quitar la bandera (WS oficial, gratis). Ver
+  [[satgo-integracion]].
+- **Rename:** «**catálogo semilla**» → «**catálogo definido por el SAT**» (sólo texto visible en `CatalogoCuentas`: la
+  descripción y el botón «Arrancar con catálogo definido por el SAT»; el estado interno `busy='semilla'` y los
+  comentarios quedan igual, patrón [[cpq-nombre-visible]]).
+- **Pendientes documentados en `docs/PENDIENTES.md`** (lista viva), con lo nuevo que pidió el usuario:
+  **tabla de impuestos SEMANAL (12 meses) y ANUAL** de nómina (hoy sólo MENSUAL) y **mejoramiento del Punto de Venta**;
+  además: plan de SatGo, cuadrícula fiscal, PLD (expediente+XML), IVA deploy, producción.
