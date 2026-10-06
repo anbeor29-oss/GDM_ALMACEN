@@ -1397,9 +1397,9 @@ function SinCatalogo({ onListo }: any) {
       <h1 className="text-2xl font-bold text-gray-900 mb-2">Contabilidad</h1>
       <p className="text-sm text-gray-600 mb-4">
         Esta empresa todavía no tiene catálogo de cuentas. Al arrancar se crea el
-        ejercicio con sus doce periodos y el catálogo semilla con la numeración
-        del Anexo 24 — que después se puede re-numerar sin perder la equivalencia
-        con el SAT.
+        ejercicio con sus doce periodos y el catálogo definido por el SAT con la
+        numeración del Anexo 24 — que después se puede re-numerar sin perder la
+        equivalencia con el SAT.
       </p>
 
       {/* Control de calendario al inicio del catálogo: define el MES y AÑO de
@@ -1443,7 +1443,7 @@ function SinCatalogo({ onListo }: any) {
         </div>
         <p className="text-xs text-violet-700 mt-1">
           Recomendado si vienes de CPQ. Arranca la contabilidad del ejercicio {anio} con
-          TU catálogo (no el semilla) y su agrupador del SAT.
+          TU catálogo (no el predefinido del SAT) y su agrupador del SAT.
         </p>
         <input type="file" accept=".txt" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />
@@ -1451,7 +1451,7 @@ function SinCatalogo({ onListo }: any) {
 
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={arrancar} disabled={!!busy} className="btn-primary disabled:opacity-50">
-          {busy === 'semilla' ? 'Preparando…' : 'Arrancar con catálogo semilla'}
+          {busy === 'semilla' ? 'Preparando…' : 'Arrancar con catálogo definido por el SAT'}
         </button>
         <button onClick={() => api.descargarPlantillaCatalogo().catch(() => {})}
           title="Descarga una plantilla en blanco para armar tu catálogo desde cero en Excel"

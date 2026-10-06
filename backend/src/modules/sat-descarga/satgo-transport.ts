@@ -38,6 +38,23 @@ function errTxt(r: any): string {
   catch { return ''; }
 }
 
+/** Traduce un error de SatGo (incl. el candado de PLAN) a algo legible, en vez del JSON crudo. */
+function mensajeSatgo(r: any): string {
+  let j: any = r?.data;
+  if (typeof j === 'string') { try { j = JSON.parse(j); } catch { j = null; } }
+  if (j && typeof j === 'object') {
+    if (j.featureCode || /no tiene acceso/i.test(String(j.message || ''))) {
+      return `SatGo: tu plan no incluye «${j.featureCode || 'esta función'}» (${j.message || 'sin acceso'}). ` +
+             'Contrata/actualiza el plan de SatGo con descarga masiva.';
+    }
+    if (j.monthlyLimit != null || j.dailyLimit != null) {
+      return `SatGo: límite del plan (${j.dailyUsage ?? '?'}/${j.dailyLimit ?? '?'} al día · ${j.monthlyUsage ?? '?'}/${j.monthlyLimit ?? '?'} al mes).`;
+    }
+    if (j.message || j.error) return `SatGo: ${j.message || j.error}`;
+  }
+  return `HTTP ${r.status}: ${errTxt(r)}`.slice(0, 300);
+}
+
 async function post(pathUrl: string, cred: Credencial, params: Record<string, any>): Promise<any> {
   const jwt = await accessToken();
   return axios.post(`${BASE}${pathUrl}`, efirmaForm(cred), {
@@ -70,8 +87,9 @@ export async function solicitar(
     estadoComprobante,
   });
   if (r.status < 200 || r.status >= 300) {
-    logger.warn(`[satgo-descarga] solicita ${d.direccion} HTTP ${r.status}: ${errTxt(r)}`);
-    return { codigo: '', mensaje: `HTTP ${r.status}: ${errTxt(r)}`.slice(0, 300) };
+    const m = mensajeSatgo(r);
+    logger.warn(`[satgo-descarga] solicita ${d.direccion}: ${m}`);
+    return { codigo: '', mensaje: m };
   }
   const data = r.data || {};
   const id = data.idSolicitud || data.IdSolicitud || undefined;
@@ -87,8 +105,9 @@ export async function verificar(
 ): Promise<Verificacion> {
   const r = await post('/api/v2/SatWebService/verifica', cred, { IdSolicitud: idSolicitud });
   if (r.status < 200 || r.status >= 300) {
-    logger.warn(`[satgo-descarga] verifica HTTP ${r.status}: ${errTxt(r)}`);
-    return { codigo: '', mensaje: `HTTP ${r.status}`, estadoSolicitud: 'EN_PROCESO', codigoSolicitud: '', numeroCfdis: 0, paquetes: [] };
+    const m = mensajeSatgo(r);
+    logger.warn(`[satgo-descarga] verifica: ${m}`);
+    return { codigo: '', mensaje: m, estadoSolicitud: 'EN_PROCESO', codigoSolicitud: '', numeroCfdis: 0, paquetes: [] };
   }
   const d = r.data || {};
   const estNum = String(d.estadoSolicitud ?? d.EstadoSolicitud ?? '');
@@ -109,7 +128,7 @@ export async function descargar(
 ): Promise<RespuestaSat & { zip?: Buffer }> {
   const r = await post('/api/v2/SatWebService/descarga', cred, { IdPaquete: idPaquete });
   if (r.status < 200 || r.status >= 300) {
-    return { codigo: '', mensaje: `HTTP ${r.status}: ${errTxt(r)}`.slice(0, 300) };
+    return { codigo: '', mensaje: mensajeSatgo(r) };
   }
   const d = r.data || {};
   const b64 = d.paqueteBase64 || d.PaqueteBase64 || '';
