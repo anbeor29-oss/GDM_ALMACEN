@@ -32,7 +32,9 @@ import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import * as programacion from './programacion.service';
 import * as boveda from './boveda';
-import * as soap from './soap';
+// Transporte conmutable: SOAP oficial del SAT, o SatGo (SAT_DESCARGA_VIA=satgo).
+// Mismas firmas; el motor (partición/reanudable/dedupe/bóveda/calendario) no cambia.
+import * as soap from './transporte';
 import { extraerXml, ZipSospechoso } from './zip-seguro';
 import { validarEfirma } from './efirma';
 
