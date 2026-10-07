@@ -55,12 +55,32 @@ async function ciecDe(companyId: string): Promise<{ ciec: string; dispose: () =>
   throw new ValidationError('Falta la clave CIEC de la empresa. Captúrala en Servicios SAT → Configurar (pestaña Opinión 32-D o CIF/CSF).');
 }
 
-/** Información fiscal (JSON) de la empresa. */
+/** Información fiscal (JSON) de la empresa — consulta EN VIVO al SAT (CIEC). */
 export async function infoFiscal(companyId: string) {
   const rfc = await rfcDe(companyId);
   const { ciec, dispose } = await ciecDe(companyId);
   try { return await satgo.infoFiscalCiec(rfc, ciec); }
   finally { dispose(); }
+}
+
+/** Información fiscal GUARDADA (sin tocar SatGo). null si nunca se consultó. */
+export async function infoFiscalGuardada(companyId: string): Promise<{ info: any; actualizado_at: string } | null> {
+  const r = await query<any>('SELECT data, actualizado_at FROM sat_info_fiscal WHERE company_id=$1', [companyId]);
+  if (!r.rows[0]) return null;
+  return { info: r.rows[0].data, actualizado_at: r.rows[0].actualizado_at };
+}
+
+/** Vuelve a consultar la información fiscal en el SAT (CIEC), la GUARDA y la devuelve. */
+export async function infoFiscalRefrescar(companyId: string): Promise<{ info: any; actualizado_at: string }> {
+  const info = await infoFiscal(companyId);
+  const r = await query<any>(
+    `INSERT INTO sat_info_fiscal (company_id, data, actualizado_at)
+       VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (company_id) DO UPDATE SET data = EXCLUDED.data, actualizado_at = NOW()
+     RETURNING actualizado_at`,
+    [companyId, JSON.stringify(info ?? {})],
+  );
+  return { info, actualizado_at: r.rows[0].actualizado_at };
 }
 
 /** Declaraciones (ZIP) de un ejercicio/mes. mes=0 = todo el ejercicio. */

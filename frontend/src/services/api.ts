@@ -1277,7 +1277,13 @@ class APIClient {
 
   /* ── SatGo — consultas por empresa (Servicios SAT) ── */
   async satgoInfoFiscal() {
+    // Devuelve lo GUARDADO ({ info, actualizado_at } | null). No toca SatGo.
     const r = await this.client.get<APIResponse<any>>('/satgo/consultas/info-fiscal');
+    return r.data;
+  }
+  async satgoInfoFiscalRefrescar() {
+    // Re-consulta en el SAT (CIEC), guarda y devuelve { info, actualizado_at }.
+    const r = await this.client.post<APIResponse<any>>('/satgo/consultas/info-fiscal/refrescar', {});
     return r.data;
   }
   async satgoValidarCfdi(params: { re: string; rr: string; tt: string; id: string; fe?: string }) {

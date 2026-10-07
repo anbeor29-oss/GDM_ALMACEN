@@ -1,7 +1,8 @@
 /**
  * /satgo/consultas — consultas SatGo por EMPRESA (gated: módulo contabilidad).
  *
- *  GET  /satgo/consultas/info-fiscal                      Información fiscal (JSON, CIEC)
+ *  GET  /satgo/consultas/info-fiscal                      Información fiscal GUARDADA (sin tocar SatGo)
+ *  POST /satgo/consultas/info-fiscal/refrescar            Re-consulta (CIEC), guarda y devuelve
  *  GET  /satgo/consultas/declaraciones?ejercicio=&mes=    Declaraciones (ZIP, CIEC)
  *  GET  /satgo/consultas/validar-cfdi?re=&rr=&tt=&id=&fe= Estado de un CFDI (sin CIEC)
  *
@@ -18,8 +19,14 @@ function companyId(req: Request): string {
   return req.user.companyId;
 }
 
+// Lo GUARDADO (presentación): no toca SatGo; null si nunca se consultó.
 router.get('/info-fiscal', asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, data: await consultas.infoFiscal(companyId(req)) });
+  res.json({ success: true, data: await consultas.infoFiscalGuardada(companyId(req)) });
+}));
+
+// Re-consulta en el SAT (CIEC), guarda y devuelve lo nuevo.
+router.post('/info-fiscal/refrescar', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await consultas.infoFiscalRefrescar(companyId(req)) });
 }));
 
 router.get('/declaraciones', asyncHandler(async (req: Request, res: Response) => {

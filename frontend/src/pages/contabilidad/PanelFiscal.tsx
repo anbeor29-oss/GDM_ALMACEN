@@ -21,7 +21,7 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   ShieldCheck, Landmark, HardHat, Home, ArrowRight,
-  Receipt, Bell, FileSearch, X, LogOut, BadgeCheck,
+  Receipt, Bell, FileSearch, X, BadgeCheck,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -116,12 +116,15 @@ export function PanelFiscalPage() {
     return { total, descargadoAt: a.descargadoAt as string | undefined };
   };
 
-  /* Notificaciones e Información fiscal: se LEEN de caché (no se disparan aquí; son
-   * consultas en vivo con e.firma/CIEC que viven en su pestaña del hub). */
+  /* Notificaciones: consulta en vivo (buzón) que vive en su ventana; aquí sólo se LEE
+   * de caché si ya se consultó en esta sesión (no se dispara). */
   const notifQ = useQuery({ queryKey: ['buzon-notif'], queryFn: () => api.getBuzonNotificaciones(), enabled: false, staleTime: Infinity, gcTime: Infinity });
   const notif: any = (notifQ.data as any)?.data;
-  const infoQ = useQuery({ queryKey: ['cumpl-info-fiscal'], queryFn: () => api.satgoInfoFiscal(), enabled: false, staleTime: Infinity, gcTime: Infinity });
-  const infoData: any = (infoQ.data as any)?.data ?? infoQ.data;
+  /* Información fiscal GUARDADA: lectura barata de la BD (sin SatGo); se enciende para
+   * que la fila muestre si ya está y cuándo se actualizó. */
+  const infoQ = useQuery({ queryKey: ['cumpl-info-fiscal'], queryFn: () => api.satgoInfoFiscal(), staleTime: Infinity, gcTime: Infinity });
+  const infoSaved: any = (infoQ.data as any)?.data;
+  const infoData: any = infoSaved?.info ?? null;
 
   /* Años para el histórico. */
   const nowY = new Date().getFullYear();
@@ -156,29 +159,22 @@ export function PanelFiscalPage() {
     {
       tipo: 'Información fiscal', tab: 'INFO', icon: FileSearch,
       docs: infoCount,
-      estado: infoCount == null ? 'Consultar' : 'Consultada',
+      estado: infoCount == null ? 'Consultar' : 'Guardada',
       tone: infoCount == null ? 'muted' : 'ok',
-      ultima: '—',
+      ultima: infoSaved?.actualizado_at ? (aTextoMx(infoSaved.actualizado_at) || '—') : '—',
     },
   ];
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">
       {/* ── Encabezado claro (imagen 1): Panel fiscal + tarjeta de empresa ── */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ShieldCheck size={22} className="text-primary" /> Panel fiscal
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Expediente de cumplimiento de la empresa: documentos permanentes e histórico, en un vistazo.
-          </p>
-        </div>
-        <button onClick={salir}
-          title="Volver al inicio"
-          className="inline-flex items-center gap-1.5 border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600 shrink-0">
-          <LogOut size={15} /> Salir
-        </button>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <ShieldCheck size={22} className="text-primary" /> Panel fiscal
+        </h1>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Expediente de cumplimiento de la empresa: documentos permanentes e histórico, en un vistazo.
+        </p>
       </div>
 
       {empresa && (
@@ -200,7 +196,12 @@ export function PanelFiscalPage() {
       )}
 
       {/* ── Tablero oscuro (imagen 2) ── */}
-      <div className={`${C.bg} ${C.txt} rounded-2xl p-5 sm:p-7 shadow-xl ring-1 ring-black/20 space-y-7`}>
+      <div className={`relative ${C.bg} ${C.txt} rounded-2xl p-5 sm:p-7 shadow-xl ring-1 ring-black/20 space-y-7`}>
+        {/* X para salir del Panel y volver al inicio (Dashboard). */}
+        <button onClick={salir} title="Salir y volver al inicio" aria-label="Salir"
+          className="absolute top-3 right-3 z-10 inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#8FA1BA] hover:text-white hover:bg-white/10 transition">
+          <X size={20} />
+        </button>
         {/* Documentos permanentes */}
         <section className="space-y-3">
           <h2 className="text-lg font-bold tracking-wide">DOCUMENTOS PERMANENTES</h2>

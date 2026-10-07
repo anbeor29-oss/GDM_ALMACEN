@@ -5,10 +5,11 @@
  * Consultas en línea con la CIEC de la empresa (salvo Validar CFDI, que sólo usa el RFC).
  */
 import { useState, useEffect, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen, RefreshCw } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen, RefreshCw, Upload } from 'lucide-react';
 import api from '@/services/api';
 import { PuntosCargando } from '@/components/PuntosCargando';
+import { aTextoMx } from '@/components/CampoFecha';
 
 const Q_INFO = ['cumpl-info-fiscal'];
 
@@ -368,39 +369,91 @@ function VistaInfoFiscal({ data }: { data: any }) {
 }
 
 export function PanelInfoFiscal() {
+  const qc = useQueryClient();
   const [verJson, setVerJson] = useState(false);
-  // En memoria: react-query cachea el resultado; sólo se refresca al pedir «Consultar».
-  const q = useQuery({ queryKey: Q_INFO, queryFn: () => api.satgoInfoFiscal(), enabled: false, staleTime: Infinity, gcTime: Infinity, retry: false });
-  const data = (q.data as any)?.data ?? q.data ?? null;
-  const error = q.isError ? ((q.error as any)?.response?.data?.message || 'No se pudo consultar. Revisa la clave CIEC en el Panel fiscal (32-D → Configurar).') : '';
+  const [refrescando, setRefrescando] = useState(false);
+  const [error, setError] = useState('');
+
+  // GUARDADO: se presenta lo que ya se consultó (lectura barata de la BD, sin SatGo).
+  const q = useQuery({ queryKey: Q_INFO, queryFn: () => api.satgoInfoFiscal() });
+  const saved = (q.data as any)?.data as { info: any; actualizado_at?: string } | null | undefined;
+  const info = saved?.info ?? null;
+
+  // ACTUALIZAR: re-consulta en el SAT (CIEC), la guarda y refresca la vista.
+  const actualizar = async () => {
+    setRefrescando(true); setError('');
+    try { await api.satgoInfoFiscalRefrescar(); await qc.invalidateQueries({ queryKey: Q_INFO }); }
+    catch (e: any) { setError(e?.response?.data?.message || 'No se pudo consultar. Revisa la clave CIEC (Panel fiscal → 32-D → Configurar).'); }
+    finally { setRefrescando(false); }
+  };
 
   return (
     <div className="space-y-3">
       <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between gap-2">
-        <p className="text-sm text-gray-600">Información fiscal de la empresa en el SAT (identidad, domicilio, régimen y obligaciones). Queda <b>en memoria</b>; se actualiza sólo cuando lo pides. Requiere la clave CIEC.</p>
+        <p className="text-sm text-gray-600">
+          Información fiscal de la empresa en el SAT (identidad, domicilio, régimen y obligaciones). Se <b>guarda</b> y se
+          presenta aquí; <b>actualízala</b> cuando quieras (requiere la clave CIEC).
+          {saved?.actualizado_at && <> · <span className="text-gray-500">Actualizada: {aTextoMx(saved.actualizado_at)}</span></>}
+        </p>
         <div className="flex items-center gap-2 shrink-0">
-          {data && <button onClick={() => setVerJson((v) => !v)} className="text-xs text-gray-500 hover:underline">{verJson ? 'Ver formato' : 'Ver JSON'}</button>}
-          <button onClick={() => q.refetch()} disabled={q.isFetching}
+          {info && <button onClick={() => setVerJson((v) => !v)} className="text-xs text-gray-500 hover:underline">{verJson ? 'Ver formato' : 'Ver JSON'}</button>}
+          <button onClick={actualizar} disabled={refrescando}
             className="flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
-            {q.isFetching ? <PuntosCargando /> : <FileSearch size={15} />} {data ? 'Actualizar' : 'Consultar'}
+            {refrescando ? <PuntosCargando /> : <FileSearch size={15} />} {info ? 'Actualizar' : 'Consultar'}
           </button>
         </div>
       </div>
       {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2 flex items-center gap-1.5"><AlertTriangle size={14} /> {error}</p>}
-      {data && (verJson
-        ? <pre className="text-xs bg-gray-50 border rounded p-3 overflow-x-auto max-h-[30rem] whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre>
-        : <VistaInfoFiscal data={data} />)}
+      {!info && !refrescando && !error && <p className="text-sm text-gray-400 italic">Aún no se ha consultado. Da clic en «Consultar» para traerla del SAT y guardarla.</p>}
+      {info && (verJson
+        ? <pre className="text-xs bg-gray-50 border rounded p-3 overflow-x-auto max-h-[30rem] whitespace-pre-wrap">{JSON.stringify(info, null, 2)}</pre>
+        : <VistaInfoFiscal data={info} />)}
     </div>
   );
 }
 
 /* ═══════════════ Validación de CFDI ═══════════════ */
+/** Extrae del XML del CFDI los 5 datos que pide la consulta del SAT:
+ *  re (RFC emisor), rr (RFC receptor), tt (Total), id (UUID) y fe (últimos 8 del sello).
+ *  Tolera cualquier prefijo de namespace (cfdi:/tfd: o sin prefijo). */
+function datosDeCfdi(xml: string) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('El archivo no es un XML válido.');
+  const first = (local: string): Element | undefined => doc.getElementsByTagNameNS('*', local)[0];
+  const comp = first('Comprobante');
+  if (!comp) throw new Error('No parece un CFDI (no se encontró el nodo Comprobante).');
+  const tfd = first('TimbreFiscalDigital');
+  const sello = comp.getAttribute('Sello') || tfd?.getAttribute('SelloCFD') || '';
+  return {
+    re: (first('Emisor')?.getAttribute('Rfc') || '').toUpperCase(),
+    rr: (first('Receptor')?.getAttribute('Rfc') || '').toUpperCase(),
+    tt: comp.getAttribute('Total') || '',
+    id: (tfd?.getAttribute('UUID') || '').toUpperCase(),
+    fe: sello ? sello.slice(-8) : '',
+  };
+}
+
 export function PanelValidarCfdi() {
   const [f, setF] = useState({ re: '', rr: '', tt: '', id: '', fe: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState<any>(null);
+  const [cargaMsg, setCargaMsg] = useState('');
   const set = (k: string) => (e: any) => setF((p) => ({ ...p, [k]: e.target.value }));
+
+  // Carga el XML del CFDI y rellena los 5 campos; el usuario sólo da clic en Validar.
+  const cargarXml = (file?: File) => {
+    if (!file) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      try {
+        setF(datosDeCfdi(String(rd.result || '')));
+        setError(''); setData(null);
+        setCargaMsg(`Datos cargados de ${file.name}. Revisa y da clic en Validar.`);
+      } catch (e: any) { setCargaMsg(''); setError(e?.message || 'No se pudo leer el XML.'); }
+    };
+    rd.readAsText(file);
+  };
 
   const validar = async () => {
     setBusy(true); setError(''); setData(null);
@@ -418,6 +471,14 @@ export function PanelValidarCfdi() {
   return (
     <div className="bg-white rounded-lg shadow p-5 space-y-4 max-w-2xl">
       <p className="text-sm text-gray-600">Consulta el estatus de un CFDI ante el SAT (vigente / cancelado). Sólo usa el RFC de la empresa; no requiere CIEC.</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="inline-flex items-center gap-1.5 border border-primary/40 text-primary rounded-lg px-3 py-2 hover:bg-primary/5 cursor-pointer text-sm font-medium">
+          <input type="file" accept=".xml,text/xml,application/xml" className="hidden" onChange={(e) => cargarXml(e.target.files?.[0])} />
+          <Upload size={15} /> Cargar XML del CFDI
+        </label>
+        <span className="text-xs text-gray-500">Rellena los campos solo; luego da clic en Validar.</span>
+      </div>
+      {cargaMsg && <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">{cargaMsg}</p>}
       <div className="grid grid-cols-2 gap-3">
         <label className="block"><span className="text-xs text-gray-600">RFC emisor (re)</span>
           <input value={f.re} onChange={set('re')} className="input w-full font-mono uppercase" placeholder="AAA010101AAA" /></label>

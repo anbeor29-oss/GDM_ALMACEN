@@ -7078,3 +7078,20 @@ botón Salir); (c) **«el hecho es eliminar por completo el menú de Cumplimient
 
 **Resultado:** TODO el cumplimiento vive en el **Panel fiscal** (opiniones + Notificaciones/Declaraciones/Info fiscal/
 Validar CFDI en modales). El menú «Cumplimiento fiscal» ya no existe. `tsc` + `vite build` en verde. Ver [[panel-fiscal]].
+
+---
+
+## 2026-10-07 (Panel fiscal) — 3 ajustes: XML en Validar CFDI, info fiscal guardada, X de salir
+
+- **Validar CFDI (modal):** botón **«Cargar XML del CFDI»** que lee el XML y **rellena los 5 campos** (re/rr/tt/id/fe);
+  el usuario sólo da clic en Validar. Parser tolerante a prefijos (`getElementsByTagNameNS('*', …)`): RFC emisor/receptor,
+  Total, UUID (del TimbreFiscalDigital) y últimos 8 del Sello. `datosDeCfdi` en `CumplimientoPaneles.tsx`.
+- **Información fiscal (modal):** ahora se **GUARDA** (antes vivía sólo en memoria). Migración
+  `2026-10-07_sat_info_fiscal.sql` (tabla `sat_info_fiscal`: company_id / data JSONB / actualizado_at). Backend
+  (`satgo.consultas`): `GET /satgo/consultas/info-fiscal` devuelve **lo guardado** (sin tocar SatGo) y
+  `POST /info-fiscal/refrescar` re-consulta (CIEC), guarda y devuelve. `PanelInfoFiscal` presenta lo guardado + «Actualizada:
+  fecha»; **«Actualizar»** re-consulta a clic. La fila del histórico muestra «Guardada» + fecha. `api.satgoInfoFiscalRefrescar`.
+- **Panel fiscal:** **X de salir** (→ `/dashboard`) en la **esquina superior derecha del tablero oscuro**; se quitó el
+  botón «Salir» claro de arriba (lo reemplaza la X). Los modales ya traían su «Salir».
+- Verificación: `tsc` (front+back) + `vite build` verdes. **OJO:** el push aplica la migración `sat_info_fiscal` en el
+  backend. Ver [[panel-fiscal]].
