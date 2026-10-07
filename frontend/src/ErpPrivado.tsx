@@ -79,7 +79,6 @@ import { ActivoFijoPage } from '@/pages/contabilidad/ActivoFijo';
 import { ImportarContpaqiPage } from '@/pages/contabilidad/ImportarContpaqi';
 import { CfdiContabilidadPage } from '@/pages/contabilidad/CfdiContabilidad';
 import { AutofacturacionPage } from '@/pages/contabilidad/Autofacturacion';
-import { ServiciosSatPage } from '@/pages/contabilidad/ServiciosSat';
 import { PanelFiscalPage } from '@/pages/contabilidad/PanelFiscal';
 import { PldPage } from '@/pages/contabilidad/PLD';
 import { CedulasFiscalesPage } from '@/pages/contabilidad/CedulasFiscales';
@@ -172,14 +171,14 @@ export default function ErpPrivado() {
         <Route path="contabilidad/importar-contpaqi"  element={<ModuleRoute module="contabilidad"><ImportarContpaqiPage /></ModuleRoute>} />
         <Route path="contabilidad/cfdi"               element={<ModuleRoute module="contabilidad"><CfdiContabilidadPage /></ModuleRoute>} />
         <Route path="invoices/autofactura"            element={<ModuleRoute module="invoices"><AutofacturacionPage /></ModuleRoute>} />
-        <Route path="contabilidad/servicios-sat"      element={<ModuleRoute module="contabilidad"><ServiciosSatPage /></ModuleRoute>} />
         <Route path="contabilidad/panel-fiscal"       element={<ModuleRoute module="contabilidad"><PanelFiscalPage /></ModuleRoute>} />
         <Route path="contabilidad/pld"                 element={<ModuleRoute module="contabilidad"><PldPage /></ModuleRoute>} />
-        {/* IMSS/INFONAVIT se incorporaron al hub Cumplimiento fiscal; las rutas viejas redirigen. */}
-        <Route path="contabilidad/cumplimiento-organismos" element={<Navigate to="/contabilidad/servicios-sat" replace />} />
-        <Route path="contabilidad/opinion-cumplimiento" element={<Navigate to="/contabilidad/servicios-sat" replace />} />
-        <Route path="contabilidad/cumplimiento-imss" element={<Navigate to="/contabilidad/servicios-sat" replace />} />
-        <Route path="contabilidad/cumplimiento-infonavit" element={<Navigate to="/contabilidad/servicios-sat" replace />} />
+        {/* El hub «Cumplimiento fiscal» se RETIRÓ: todo vive en el Panel fiscal. Las rutas viejas redirigen ahí. */}
+        <Route path="contabilidad/servicios-sat"            element={<Navigate to="/contabilidad/panel-fiscal" replace />} />
+        <Route path="contabilidad/cumplimiento-organismos"  element={<Navigate to="/contabilidad/panel-fiscal" replace />} />
+        <Route path="contabilidad/opinion-cumplimiento"     element={<Navigate to="/contabilidad/panel-fiscal" replace />} />
+        <Route path="contabilidad/cumplimiento-imss"        element={<Navigate to="/contabilidad/panel-fiscal" replace />} />
+        <Route path="contabilidad/cumplimiento-infonavit"   element={<Navigate to="/contabilidad/panel-fiscal" replace />} />
         <Route path="contabilidad/cedulas"            element={<ModuleRoute module="contabilidad"><CedulasFiscalesPage /></ModuleRoute>} />
         <Route path="contabilidad/cambio-cuenta"      element={<ModuleRoute module="contabilidad"><CambioCuentaPage /></ModuleRoute>} />
         <Route path="contabilidad/conciliacion"       element={<ModuleRoute module="contabilidad"><ConciliacionContablePage /></ModuleRoute>} />

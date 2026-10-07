@@ -49,17 +49,6 @@
   control manual de créditos (pasarela Stripe/MercadoPago/CoDi después). El **CFDI del servicio lo emite NEXO** (liga
   natural). Plan detallado en `IVA.HTML/COMERCIALIZACION_IVA.md`. Ver [[iva-html-satgo]].
 
-- **Consolidar Cumplimiento fiscal en el Panel fiscal (ventanas emergentes).** El **Panel fiscal** es la cara única; se
-  migran las funciones de `Contabilidad → Reportes → Cumplimiento fiscal` (hub `ServiciosSat`) a **modales** (abrir →
-  actualizar → cargar info → cerrar) reusando los componentes existentes, y **se retira** cada pestaña del hub conforme
-  migra. **Decisión del usuario (2026-10-07): el hub se ELIMINA del todo al final (documentado).**
-  - ✅ **Fase 1 HECHA (2026-10-07):** opiniones 32-D/CIF/IMSS/INFONAVIT en modal desde las tarjetas del Panel (reusa
-    `PanelOpinion`); refresco automático a **lunes 01:50** (cron + textos); se quitaron esas 4 pestañas del hub.
-  - ⬜ **Fase 2:** Declaraciones (cuadrícula) en modal → quitar su pestaña.
-  - ⬜ **Fase 3:** Notificaciones + Información fiscal en modal → quitar sus pestañas.
-  - ⬜ **Fase 4:** Validar CFDI en modal + **quitar la ruta y el menú del hub** por completo.
-  Ver [[panel-fiscal]].
-
 ## 🔵 Por probar en vivo (requieren e.firma + plan de SatGo)
 
 - **Descarga por SatGo** (bloqueada por el plan, ver arriba).
@@ -68,6 +57,13 @@
 - **IVA.HTML por SatGo** (al desplegar).
 
 ## ✅ Terminado recientemente (resumen; detalle en BITACORA)
+
+**2026-10-07 — Cumplimiento fiscal consolidado en el Panel fiscal; hub ELIMINADO.** Todo el cumplimiento vive ahora en
+el **Panel fiscal**: opiniones (32-D/CIF/IMSS/INFONAVIT) y las consultas (**Notificaciones**, **Declaraciones**,
+**Información fiscal**, **Validar CFDI**) abren en **ventanas emergentes** (modal con botón «Salir»); el Panel tiene su
+botón «Salir» (→ Dashboard). Los paneles se extrajeron a `CumplimientoPaneles.tsx`; se **borró** `ServiciosSat.tsx`, se
+quitó la entrada del **menú** y las rutas viejas redirigen al Panel. Refresco automático de opiniones a **lunes 01:50**.
+Ver [[panel-fiscal]].
 
 **2026-10-07 — Panel fiscal (expediente de cumplimiento de un vistazo).** Nueva pantalla
 `contabilidad/panel-fiscal` (`PanelFiscal.tsx`): encabezado **claro** con «Panel fiscal» + tarjeta de empresa, y

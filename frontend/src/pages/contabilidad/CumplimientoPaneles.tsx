@@ -1,29 +1,14 @@
 /**
- * Cumplimiento fiscal — hub de TODO el cumplimiento en pestañas:
- *   Opinión 32-D · CIF/CSF · IMSS · INFONAVIT · Notificaciones · Declaraciones ·
- *   Información Fiscal · Validar CFDI (al final).
- * Opinión/CIF/IMSS/INFONAVIT reutilizan PanelOpinion (descarga + histórico +
- * Configurar); las demás son consultas en línea (CIEC de la empresa, salvo la
- * validación de CFDI que sólo usa el RFC). Cada pestaña con información muestra un
- * punto verde, para que el usuario vea de un vistazo qué tiene (su "mapa mental").
+ * Cumplimiento — paneles reutilizables (Notificaciones · Declaraciones · Información
+ * fiscal · Validar CFDI). Antes vivían en el hub «Cumplimiento fiscal» (ServiciosSat,
+ * ya retirado); ahora se consultan en VENTANAS EMERGENTES desde el Panel fiscal.
+ * Consultas en línea con la CIEC de la empresa (salvo Validar CFDI, que sólo usa el RFC).
  */
 import { useState, useEffect, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ShieldCheck, FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen, RefreshCw } from 'lucide-react';
+import { FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen, RefreshCw } from 'lucide-react';
 import api from '@/services/api';
 import { PuntosCargando } from '@/components/PuntosCargando';
-import { claseOpcion } from '@/utils/coloresOpciones';
-
-/* Las opiniones (32-D/CIF/IMSS/INFONAVIT) MIGRARON al Panel fiscal (se gestionan en
- * su modal). Este hub conserva, por ahora, Notificaciones / Declaraciones / Información
- * fiscal / Validar CFDI; irán migrando también y el hub se retirará (ver docs). */
-const TABS: Array<[string, string]> = [
-  ['NOTIF', 'Notificaciones'],
-  ['DEC', 'Declaraciones'],
-  ['INFO', 'Información Fiscal'],
-  ['CFDI', 'Validar CFDI'],
-];
 
 const Q_INFO = ['cumpl-info-fiscal'];
 
@@ -39,59 +24,6 @@ function abrirDoc(dataUrl: string) {
     window.open(url, '_blank');
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   } catch { /* noop */ }
-}
-
-export function ServiciosSatPage() {
-  /* Pestaña inicial por URL (?tab=): así el Panel fiscal puede abrir directo la
-   * opinión o la sección que el usuario tocó. Se valida contra el catálogo de TABS. */
-  const [sp] = useSearchParams();
-  const tabParam = (sp.get('tab') || '').toUpperCase();
-  const tabIni = TABS.some(([k]) => k === tabParam) ? tabParam : 'NOTIF';
-  const [tab, setTab] = useState(tabIni);
-  // Info fiscal: caché compartida (misma key que el panel) para el punto verde.
-  const infoQ = useQuery({ queryKey: Q_INFO, queryFn: () => api.satgoInfoFiscal(), enabled: false, staleTime: Infinity, gcTime: Infinity });
-  const hayInfo = !!((infoQ.data as any)?.data ?? infoQ.data);
-  // Declaraciones guardadas (sin tocar SatGo) para el punto verde de esa pestaña.
-  const decQ = useQuery({ queryKey: ['cumpl-dec-resumen'], queryFn: () => api.satgoDeclaracionesResumen() });
-  const hayDec = (((decQ.data as any)?.data?.anios) || []).length > 0;
-
-  /** Punto verde = esa pestaña YA tiene información (mapa mental de un vistazo). */
-  const PuntoVerde = ({ fuerte = true, title }: { fuerte?: boolean; title?: string }) =>
-    <span className={`w-1.5 h-1.5 rounded-full ${fuerte ? 'bg-emerald-500' : 'bg-emerald-500/40'}`} title={title} />;
-
-  const dot = (k: string): ReactNode => {
-    if (k === 'INFO') return hayInfo ? <PuntoVerde title="Consultada (en memoria)" /> : null;
-    if (k === 'DEC') return hayDec ? <PuntoVerde title="Hay declaraciones guardadas" /> : null;
-    return null;
-  };
-
-  return (
-    <div className="p-6 space-y-4 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <ShieldCheck size={22} className="text-primary" /> Cumplimiento fiscal
-        </h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Notificaciones, declaraciones, información fiscal y validación de CFDI. Las <b>opiniones</b> (32-D, CIF,
-          IMSS, INFONAVIT) ahora se gestionan en el <b>Panel fiscal</b>. El <b>punto verde</b> marca lo que ya tienes.
-        </p>
-      </div>
-
-      <div className="flex gap-1.5 flex-wrap">
-        {TABS.map(([k, nombre], i) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`inline-flex items-center gap-1.5 ${claseOpcion(i, tab === k)}`}>
-            {nombre}{dot(k)}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'NOTIF' && <PanelNotificaciones />}
-      {tab === 'DEC' && <PanelDeclaraciones />}
-      {tab === 'INFO' && <PanelInfoFiscal />}
-      {tab === 'CFDI' && <PanelValidarCfdi />}
-    </div>
-  );
 }
 
 /* ═══════════════ Notificaciones y comunicados ═══════════════ */
@@ -125,12 +57,12 @@ function ColumnaNotif({ titulo, items }: { titulo: string; items: Notif[] }) {
   );
 }
 
-function PanelNotificaciones() {
+export function PanelNotificaciones() {
   // Comunicados y Avisos del buzón, en orden descendente (el más reciente arriba).
   // Sobre rojo (cerrado) = sin leer; sobre verde (abierto) = leído. El canal del
   // buzón por el proveedor fiscal aún no está conectado: por ahora llega vacío, pero
-  // el botón «Actualizar» y la vista ya están listos (además se refresca a diario en
-  // el barrido automático de cumplimiento).
+  // el botón «Actualizar» y la vista ya están listos (además se refresca en el barrido
+  // semanal de cumplimiento).
   const q = useQuery({ queryKey: ['buzon-notif'], queryFn: () => api.getBuzonNotificaciones() });
   const d: any = (q.data as any)?.data || {};
   const comunicados: Notif[] = d.comunicados || [];
@@ -168,7 +100,7 @@ type AnioEstado = {
   error?: string;
 };
 
-function PanelDeclaraciones() {
+export function PanelDeclaraciones() {
   const anioActual = new Date().getFullYear();
   const anios: number[] = [];
   for (let a = anioActual; a >= 2018; a--) anios.push(a);
@@ -435,12 +367,12 @@ function VistaInfoFiscal({ data }: { data: any }) {
   );
 }
 
-function PanelInfoFiscal() {
+export function PanelInfoFiscal() {
   const [verJson, setVerJson] = useState(false);
   // En memoria: react-query cachea el resultado; sólo se refresca al pedir «Consultar».
   const q = useQuery({ queryKey: Q_INFO, queryFn: () => api.satgoInfoFiscal(), enabled: false, staleTime: Infinity, gcTime: Infinity, retry: false });
   const data = (q.data as any)?.data ?? q.data ?? null;
-  const error = q.isError ? ((q.error as any)?.response?.data?.message || 'No se pudo consultar. Revisa la clave CIEC en Opinión 32-D → Configurar.') : '';
+  const error = q.isError ? ((q.error as any)?.response?.data?.message || 'No se pudo consultar. Revisa la clave CIEC en el Panel fiscal (32-D → Configurar).') : '';
 
   return (
     <div className="space-y-3">
@@ -463,7 +395,7 @@ function PanelInfoFiscal() {
 }
 
 /* ═══════════════ Validación de CFDI ═══════════════ */
-function PanelValidarCfdi() {
+export function PanelValidarCfdi() {
   const [f, setF] = useState({ re: '', rr: '', tt: '', id: '', fe: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -517,5 +449,3 @@ function PanelValidarCfdi() {
     </div>
   );
 }
-
-export default ServiciosSatPage;

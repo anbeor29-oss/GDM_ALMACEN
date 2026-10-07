@@ -7055,3 +7055,26 @@ lunes 01:50** para estar frescas a primera hora. Decidió: arrancar Fase 1, y **
   (fases 2–4): (2) Declaraciones, (3) Notificaciones + Info fiscal, (4) Validar CFDI + quitar ruta/menú.
 
 **Verificación:** `tsc` (front+back) y `vite build` en verde. No probado autenticado (producción). Ver [[panel-fiscal]].
+
+---
+
+## 2026-10-07 (Cumplimiento) — Hub Cumplimiento fiscal ELIMINADO: todo en el Panel fiscal (modales + Salir)
+
+**Contexto.** El usuario pidió: (a) un botón **Salir** en el Panel fiscal; (b) convertir **Declaraciones**,
+**Notificaciones** e **Información fiscal** en **ventanas emergentes** (clic en la fila → misma pantalla en modal, con
+botón Salir); (c) **«el hecho es eliminar por completo el menú de Cumplimiento fiscal»**.
+
+**Hecho (dev) — fases 2/3/4 de la consolidación, de un jalón.**
+- **Paneles extraídos** a `frontend/src/pages/contabilidad/CumplimientoPaneles.tsx` (NUEVO): `PanelNotificaciones`,
+  `PanelDeclaraciones`, `PanelInfoFiscal`, `PanelValidarCfdi` (+ helpers) salieron del hub y se **exportan** para reusarse
+  en modales. Sin cambios de lógica (mismos endpoints/caché).
+- **Hub eliminado:** se **borró** `ServiciosSat.tsx`; se quitó del **menú** (`Layout.tsx`) la entrada «Cumplimiento
+  fiscal»; en `ErpPrivado.tsx` la ruta `contabilidad/servicios-sat` y las viejas `cumplimiento-*`/`opinion-cumplimiento`
+  **redirigen** a `contabilidad/panel-fiscal` (no rompen marcadores).
+- **Panel fiscal** (`PanelFiscal.tsx`): las **filas** del histórico (Declaraciones/Notificaciones/Información fiscal)
+  abren su **modal** (reusa los paneles); se agregó un botón **«Validar un CFDI»** (modal de Validar CFDI). Botón
+  **«Salir»** arriba (→ `/dashboard`) y **«Salir»** en cada modal (opiniones y consultas). Al cerrar, las filas ya
+  reflejan lo consultado (comparten caché).
+
+**Resultado:** TODO el cumplimiento vive en el **Panel fiscal** (opiniones + Notificaciones/Declaraciones/Info fiscal/
+Validar CFDI en modales). El menú «Cumplimiento fiscal» ya no existe. `tsc` + `vite build` en verde. Ver [[panel-fiscal]].

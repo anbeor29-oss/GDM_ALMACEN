@@ -8,24 +8,26 @@
  *   · DOCUMENTOS ANUALES / HISTÓRICO: ejercicio seleccionable con Declaraciones,
  *     Notificaciones e Información fiscal (conteo + estado + última actualización).
  *
- * No duplica motores: reusa los MISMOS endpoints y claves de caché del hub
- * (`['opinion-hist', tipo]`, `['cumpl-config']`, `['cumpl-dec-resumen']`, …), así que
- * al abrir el detalle los datos ya están tibios. Cada tarjeta/fila lleva al hub en la
- * pestaña que corresponde. Encabezado claro (tarjeta de empresa) + tablero oscuro con
- * la paleta NEXO (fondo #0B1220, paneles #111D30, acento #244A78, estados en verde/
- * ámbar/rojo). INFONAVIT conserva su «Configurar» (su obtención automática se explora).
+ * No duplica motores: reusa los MISMOS endpoints y claves de caché (`['opinion-hist',
+ * tipo]`, `['cumpl-config']`, `['cumpl-dec-resumen']`, …). Cada tarjeta/fila abre su
+ * sección en una VENTANA EMERGENTE (modal) aquí mismo —el hub «Cumplimiento fiscal» se
+ * RETIRÓ—: opiniones con `PanelOpinion`, y Notificaciones/Declaraciones/Info fiscal/
+ * Validar CFDI con los paneles de `CumplimientoPaneles`. Encabezado claro (tarjeta de
+ * empresa) + tablero oscuro con la paleta NEXO (#0B1220/#111D30/#244A78, estados verde/
+ * ámbar/rojo). Botón «Salir» vuelve al Dashboard.
  */
 import { useState } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   ShieldCheck, Landmark, HardHat, Home, ArrowRight,
-  Receipt, Bell, FileSearch, ExternalLink, X,
+  Receipt, Bell, FileSearch, X, LogOut, BadgeCheck,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { aTextoMx } from '@/components/CampoFecha';
 import { PanelOpinion, DESC_TIPO } from './PanelOpinion';
+import { PanelNotificaciones, PanelDeclaraciones, PanelInfoFiscal, PanelValidarCfdi } from './CumplimientoPaneles';
 
 /* Horario del refresco automático de las opiniones (compliance-cron): lunes 01:50
  * CDMX, para que las tarjetas estén frescas a primera hora del lunes. Se refleja en
@@ -51,6 +53,11 @@ const SENT_LABEL: Record<string, string> = {
   NEGATIVA: 'Negativa', SUSPENDIDA: 'Suspendida', OTRO: 'Otro',
 };
 
+/* Título de cada modal de consulta (reusa los paneles de CumplimientoPaneles). */
+const PANEL_TITULO: Record<string, string> = {
+  NOTIF: 'Notificaciones', DEC: 'Declaraciones', INFO: 'Información fiscal', CFDI: 'Validar CFDI',
+};
+
 type Permanente = { key: string; titulo: string; sub: string; icon: any };
 const PERMANENTES: Permanente[] = [
   { key: 'SAT',       titulo: '32-D / Opinión SAT', sub: 'Opinión de cumplimiento (Art. 32-D CFF)', icon: ShieldCheck },
@@ -72,11 +79,13 @@ function estadoDoc(latest: any): { label: string; tone: keyof typeof TONE } {
 export function PanelFiscalPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const abrirHub = (tab: string) => navigate(`/contabilidad/servicios-sat?tab=${tab}`);
-  /* Fase 1 de la consolidación: las opiniones (32-D/CIF/IMSS/INFONAVIT) se gestionan en
-   * un MODAL aquí mismo (reusa PanelOpinion). Al descargar/configurar/registrar, el panel
-   * se refresca solo (comparten las claves de react-query ['opinion-hist',tipo]/['cumpl-config']). */
+  const salir = () => navigate('/dashboard');   // «Salir» del panel → vuelve al inicio
+  /* Consolidación del cumplimiento DENTRO del Panel: las opiniones (32-D/CIF/IMSS/INFONAVIT)
+   * abren un MODAL (reusa PanelOpinion); las consultas (Notificaciones/Declaraciones/Info
+   * fiscal/Validar CFDI) también abren en modal (reusan los paneles de CumplimientoPaneles).
+   * Al actuar, el panel se refresca solo (comparten las claves de react-query). */
   const [modalTipo, setModalTipo] = useState<string | null>(null);
+  const [modalPanel, setModalPanel] = useState<string | null>(null);
 
   /* Empresa activa — misma caché que el Dashboard. */
   const misEmpresas = useQuery({ queryKey: ['auth', 'companies'], queryFn: () => api.misEmpresas() });
@@ -165,9 +174,10 @@ export function PanelFiscalPage() {
             Expediente de cumplimiento de la empresa: documentos permanentes e histórico, en un vistazo.
           </p>
         </div>
-        <button onClick={() => abrirHub('SAT')}
+        <button onClick={salir}
+          title="Volver al inicio"
           className="inline-flex items-center gap-1.5 border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600 shrink-0">
-          <ExternalLink size={15} /> Abrir cumplimiento completo
+          <LogOut size={15} /> Salir
         </button>
       </div>
 
@@ -280,7 +290,7 @@ export function PanelFiscalPage() {
                   const tone = TONE[f.tone];
                   const Icon = f.icon;
                   return (
-                    <tr key={f.tipo} onClick={() => abrirHub(f.tab)}
+                    <tr key={f.tipo} onClick={() => setModalPanel(f.tab)}
                       className={`border-t ${C.borde} hover:bg-white/5 cursor-pointer`}>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-2">
@@ -302,10 +312,16 @@ export function PanelFiscalPage() {
               </tbody>
             </table>
           </div>
-          <p className={`text-[11px] ${C.txt2}`}>
-            Notificaciones e Información fiscal se consultan en vivo (e.firma / CIEC) desde su pestaña;
-            aquí se muestran si ya las consultaste en esta sesión. Las declaraciones respaldadas se cuentan por año.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className={`text-[11px] ${C.txt2} flex-1 min-w-[16rem]`}>
+              Notificaciones e Información fiscal se consultan en vivo (e.firma / CIEC) en su ventana; aquí se
+              muestran si ya las consultaste en esta sesión. Las declaraciones respaldadas se cuentan por año.
+            </p>
+            <button onClick={() => setModalPanel('CFDI')}
+              className={`inline-flex items-center gap-1.5 ${C.panel2} border ${C.borde} ${C.bordeHover} ${C.txt} rounded-lg px-3 py-2 text-sm shrink-0`}>
+              <BadgeCheck size={15} /> Validar un CFDI
+            </button>
+          </div>
         </section>
       </div>
 
@@ -320,10 +336,39 @@ export function PanelFiscalPage() {
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                 <ShieldCheck size={18} className="text-primary" /> {DESC_TIPO[modalTipo]?.nombre || modalTipo}
               </h3>
-              <button onClick={() => setModalTipo(null)} className="text-gray-400 hover:text-gray-700" aria-label="Cerrar"><X size={18} /></button>
+              <button onClick={() => setModalTipo(null)}
+                className="inline-flex items-center gap-1.5 text-sm text-gray-600 border px-3 py-1.5 rounded-lg hover:bg-gray-50">
+                <X size={16} /> Salir
+              </button>
             </div>
             <div className="p-5">
               <PanelOpinion tipo={modalTipo} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de consulta (Notificaciones/Declaraciones/Info fiscal/Validar CFDI):
+          reusa los paneles de CumplimientoPaneles. Botón «Salir» para cerrar; al cerrar,
+          las filas del histórico ya reflejan lo consultado (comparten caché). */}
+      {modalPanel && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 overflow-y-auto"
+          onClick={() => setModalPanel(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl my-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl z-10">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <ShieldCheck size={18} className="text-primary" /> {PANEL_TITULO[modalPanel] || modalPanel}
+              </h3>
+              <button onClick={() => setModalPanel(null)}
+                className="inline-flex items-center gap-1.5 text-sm text-gray-600 border px-3 py-1.5 rounded-lg hover:bg-gray-50">
+                <X size={16} /> Salir
+              </button>
+            </div>
+            <div className="p-5">
+              {modalPanel === 'NOTIF' && <PanelNotificaciones />}
+              {modalPanel === 'DEC' && <PanelDeclaraciones />}
+              {modalPanel === 'INFO' && <PanelInfoFiscal />}
+              {modalPanel === 'CFDI' && <PanelValidarCfdi />}
             </div>
           </div>
         </div>
