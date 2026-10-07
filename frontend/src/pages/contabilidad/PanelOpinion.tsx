@@ -106,7 +106,7 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
           {/* Configurar disponible para todas (INFONAVIT incluido): por ahora deja
               lista la configuración mientras se explora su obtención automática. */}
           <button onClick={() => setCfgModal(true)}
-            title="Refresco automático a diario y, para SAT/CIF, la clave CIEC (se guarda cifrada)"
+            title="Refresco automático (lunes 01:50) y, para SAT/CIF, la clave CIEC (se guarda cifrada)"
             className="flex items-center gap-1.5 border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600">
             <Settings size={15} /> Configurar
             {cfgActual?.activo && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="refresco automático activo" />}
@@ -347,7 +347,7 @@ function ModalConfig({ tipo, tipoNombre, actual, onCerrar, onHecho }: any) {
           )}
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} />
-            Refrescar automáticamente <b>a diario</b> (sustituye la vigente)
+            Refrescar automáticamente <b>los lunes 01:50</b> (sustituye la vigente)
           </label>
           {error && <p className="text-sm text-rose-700">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">

@@ -13,14 +13,12 @@ import { useQuery } from '@tanstack/react-query';
 import { ShieldCheck, FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen, RefreshCw } from 'lucide-react';
 import api from '@/services/api';
 import { PuntosCargando } from '@/components/PuntosCargando';
-import { PanelOpinion } from './PanelOpinion';
 import { claseOpcion } from '@/utils/coloresOpciones';
 
+/* Las opiniones (32-D/CIF/IMSS/INFONAVIT) MIGRARON al Panel fiscal (se gestionan en
+ * su modal). Este hub conserva, por ahora, Notificaciones / Declaraciones / Información
+ * fiscal / Validar CFDI; irán migrando también y el hub se retirará (ver docs). */
 const TABS: Array<[string, string]> = [
-  ['SAT', 'Opinión 32-D'],
-  ['CSF', 'CIF/CSF'],
-  ['IMSS', 'IMSS'],
-  ['INFONAVIT', 'INFONAVIT'],
   ['NOTIF', 'Notificaciones'],
   ['DEC', 'Declaraciones'],
   ['INFO', 'Información Fiscal'],
@@ -48,10 +46,8 @@ export function ServiciosSatPage() {
    * opinión o la sección que el usuario tocó. Se valida contra el catálogo de TABS. */
   const [sp] = useSearchParams();
   const tabParam = (sp.get('tab') || '').toUpperCase();
-  const tabIni = TABS.some(([k]) => k === tabParam) ? tabParam : 'SAT';
+  const tabIni = TABS.some(([k]) => k === tabParam) ? tabParam : 'NOTIF';
   const [tab, setTab] = useState(tabIni);
-  const configQ = useQuery({ queryKey: ['cumpl-config'], queryFn: () => api.getConfigCumplimiento() });
-  const cfgs: any = configQ.data?.data?.configs || {};
   // Info fiscal: caché compartida (misma key que el panel) para el punto verde.
   const infoQ = useQuery({ queryKey: Q_INFO, queryFn: () => api.satgoInfoFiscal(), enabled: false, staleTime: Infinity, gcTime: Infinity });
   const hayInfo = !!((infoQ.data as any)?.data ?? infoQ.data);
@@ -66,13 +62,6 @@ export function ServiciosSatPage() {
   const dot = (k: string): ReactNode => {
     if (k === 'INFO') return hayInfo ? <PuntoVerde title="Consultada (en memoria)" /> : null;
     if (k === 'DEC') return hayDec ? <PuntoVerde title="Hay declaraciones guardadas" /> : null;
-    if (['SAT', 'CSF', 'IMSS', 'INFONAVIT'].includes(k)) {
-      const c = cfgs[k] || {};
-      const ok = c.ultimo_estado === 'SUCCESS';
-      if (!ok && !c.activo) return null;
-      return <PuntoVerde fuerte={ok}
-        title={ok ? `Última descarga correcta${c.ultima_ejecucion ? ' · ' + c.ultima_ejecucion : ''}` : 'Actualización automática activa'} />;
-    }
     return null;
   };
 
@@ -83,8 +72,8 @@ export function ServiciosSatPage() {
           <ShieldCheck size={22} className="text-primary" /> Cumplimiento fiscal
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          32-D, CIF/CSF, IMSS, INFONAVIT, notificaciones, declaraciones, información fiscal y validación de CFDI,
-          en un solo lugar. El <b>punto verde</b> marca lo que ya tienes.
+          Notificaciones, declaraciones, información fiscal y validación de CFDI. Las <b>opiniones</b> (32-D, CIF,
+          IMSS, INFONAVIT) ahora se gestionan en el <b>Panel fiscal</b>. El <b>punto verde</b> marca lo que ya tienes.
         </p>
       </div>
 
@@ -97,10 +86,6 @@ export function ServiciosSatPage() {
         ))}
       </div>
 
-      {tab === 'SAT' && <PanelOpinion tipo="SAT" />}
-      {tab === 'CSF' && <PanelOpinion tipo="CSF" />}
-      {tab === 'IMSS' && <PanelOpinion tipo="IMSS" />}
-      {tab === 'INFONAVIT' && <PanelOpinion tipo="INFONAVIT" />}
       {tab === 'NOTIF' && <PanelNotificaciones />}
       {tab === 'DEC' && <PanelDeclaraciones />}
       {tab === 'INFO' && <PanelInfoFiscal />}

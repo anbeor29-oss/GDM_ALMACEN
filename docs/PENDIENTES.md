@@ -49,14 +49,16 @@
   control manual de créditos (pasarela Stripe/MercadoPago/CoDi después). El **CFDI del servicio lo emite NEXO** (liga
   natural). Plan detallado en `IVA.HTML/COMERCIALIZACION_IVA.md`. Ver [[iva-html-satgo]].
 
-- **Consolidar Cumplimiento fiscal en el Panel fiscal (ventanas emergentes).** Dirección del usuario (2026-10-07):
-  el **Panel fiscal** será la cara única; hay que **ir migrando** las funciones de `Contabilidad → Reportes →
-  Cumplimiento fiscal` (hub `ServiciosSat`) a **modales** lanzados desde el Panel/Dashboard (abrir → actualizar →
-  cargar info en el panel → cerrar) y **retirar** cada pestaña del hub conforme migra. Enfoque: **reusar** los
-  componentes existentes (`PanelOpinion`, paneles de Notif/Declaraciones/Info fiscal) dentro del modal — comparten las
-  mismas claves de react-query, así el panel se refresca solo al cerrar. Fases: (1) documentos permanentes → quitar
-  tabs SAT/CSF/IMSS/INFONAVIT; (2) Declaraciones; (3) Notificaciones + Info fiscal; (4) Validar CFDI + quitar ruta/menú
-  del hub. **Falta confirmar:** arranque/orden y si el hub se elimina del todo o queda de respaldo. Ver [[panel-fiscal]].
+- **Consolidar Cumplimiento fiscal en el Panel fiscal (ventanas emergentes).** El **Panel fiscal** es la cara única; se
+  migran las funciones de `Contabilidad → Reportes → Cumplimiento fiscal` (hub `ServiciosSat`) a **modales** (abrir →
+  actualizar → cargar info → cerrar) reusando los componentes existentes, y **se retira** cada pestaña del hub conforme
+  migra. **Decisión del usuario (2026-10-07): el hub se ELIMINA del todo al final (documentado).**
+  - ✅ **Fase 1 HECHA (2026-10-07):** opiniones 32-D/CIF/IMSS/INFONAVIT en modal desde las tarjetas del Panel (reusa
+    `PanelOpinion`); refresco automático a **lunes 01:50** (cron + textos); se quitaron esas 4 pestañas del hub.
+  - ⬜ **Fase 2:** Declaraciones (cuadrícula) en modal → quitar su pestaña.
+  - ⬜ **Fase 3:** Notificaciones + Información fiscal en modal → quitar sus pestañas.
+  - ⬜ **Fase 4:** Validar CFDI en modal + **quitar la ruta y el menú del hub** por completo.
+  Ver [[panel-fiscal]].
 
 ## 🔵 Por probar en vivo (requieren e.firma + plan de SatGo)
 

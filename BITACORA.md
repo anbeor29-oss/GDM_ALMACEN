@@ -7026,3 +7026,32 @@ el doc `GDM_NEXO_Dashboard_Multiempresa.md` con la paleta y la información téc
 el backend de producción); se mandó al usuario una **vista estática fiel** para confirmar que respeta las dos imágenes.
 Para verlo en vivo: desplegar (push a `main` actualiza el backend/gdm-almacen-frontend; para hcgm.com.mx/erp, `build:hosting`
 + re-subir). Ver [[panel-fiscal]].
+
+---
+
+## 2026-10-07 (Cumplimiento) — Panel fiscal Fase 1: acceso por empresa, modales y consolidación del hub
+
+**Contexto.** El usuario, con multiempresa en mente, pidió: (a) que el acceso al Panel fiscal **NO** sea un botón suelto,
+sino que vaya **por tarjeta de empresa** (para no dejar accesos regados si agrega RFCs); (b) empezar a **consolidar**
+`Contabilidad → Reportes → Cumplimiento fiscal` dentro del Panel fiscal con **ventanas emergentes** (abrir → actualizar →
+cargar info → cerrar) e ir **quitando** las pestañas del hub; (c) recordó que las tarjetas de opinión se **actualizan los
+lunes 01:50** para estar frescas a primera hora. Decidió: arrancar Fase 1, y **eliminar el hub al final** (documentado).
+
+**Hecho (dev).**
+- **Acceso por empresa** (`Dashboard.tsx`): el acceso «Panel fiscal →» baja al **pie de cada tarjeta** de empresa (debajo
+  de «Activa»), con el estado a la izquierda; se quitó el botón de la cabecera. `cambiarEmpresa(id, destino?)`: en una
+  empresa no activa, cambia a ella y abre su panel.
+- **Fase 1 — opiniones en modal** (`PanelFiscal.tsx`): las tarjetas 32-D/CIF/IMSS/INFONAVIT abren un **modal** que reusa
+  `PanelOpinion` (Descargar/Configurar/Registrar/histórico/asistentes). Al actuar, el panel se **refresca solo** (comparten
+  las claves `['opinion-hist',tipo]` y `['cumpl-config']`). La condición de actualización muestra **«Automática · lunes
+  01:50»**.
+- **Horario del refresco** (`compliance-cron.ts`): el barrido pasó de **diario 06:00** a **semanal lunes 01:50 CDMX**
+  (`50 1 * * 1`), para que las tarjetas estén frescas el lunes temprano. Textos de «Configurar» (`PanelOpinion.tsx`)
+  alineados a «los lunes 01:50». Trade-off anotado en el job (si el server reinicia a esa hora, se pierde ese barrido; el
+  botón «Actualizar» del modal lo resuelve a mano).
+- **Hub recortado** (`ServiciosSat.tsx`): se **quitaron** las pestañas de opiniones (SAT/CSF/IMSS/INFONAVIT) —ya viven en
+  el Panel fiscal—; el hub conserva por ahora Notificaciones / Declaraciones / Información fiscal / Validar CFDI, y su
+  subtítulo apunta al Panel fiscal para las opiniones. **Plan: el hub se eliminará por completo** cuando migren esas 4
+  (fases 2–4): (2) Declaraciones, (3) Notificaciones + Info fiscal, (4) Validar CFDI + quitar ruta/menú.
+
+**Verificación:** `tsc` (front+back) y `vite build` en verde. No probado autenticado (producción). Ver [[panel-fiscal]].

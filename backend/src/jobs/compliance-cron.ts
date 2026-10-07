@@ -1,15 +1,17 @@
 /**
- * compliance-cron — BARRIDO DIARIO: cada madrugada refresca todas las opiniones de
- * las empresas con configuración ACTIVA en automático, vía SatGo, y SUSTITUYE la
+ * compliance-cron — BARRIDO SEMANAL (lunes 01:50 CDMX): refresca todas las opiniones
+ * de las empresas con configuración ACTIVA en automático, vía SatGo, y SUSTITUYE la
  * vigente (no se acumula: solo se conserva la más reciente por tipo, para no ocupar
  * espacio — ver compliance.service).
  *
- * Antes corría SÓLO los domingos (`0 4 * * 1`). Se pasó a DIARIO porque:
- *   · el domingo podía no ejecutarse (reinicio del servicio, release, etc.) y la
- *     opinión quedaba una semana vieja sin que nadie se enterara;
- *   · el usuario pidió que se actualice todos los días.
- * Además se fija la zona horaria de CDMX explícita (Render corre en UTC) para que
- * "las 6 de la mañana" sean las de México y no se corra el día.
+ * Horario: **lunes 01:50 CDMX** (`50 1 * * 1`), para que las tarjetas del Panel fiscal
+ * estén frescas a primera hora del lunes (decisión del usuario, 2026-10-07). Antes fue
+ * domingos 04:00 y luego diario 06:00; se volvió a semanal a este horario.
+ * Zona horaria fija a CDMX (Render corre en UTC) para que "la 1:50" sea la de México.
+ *
+ * Trade-off a tener presente: si el servicio está reiniciando justo el lunes 01:50, ese
+ * barrido se pierde y la opinión queda una semana vieja. El botón «Actualizar» (ahora en
+ * el modal del Panel fiscal) permite refrescar a mano sin esperar al lunes.
  *
  * Activación: sólo si ENABLE_COMPLIANCE_CRON=true (usa credenciales guardadas, así
  * que se enciende a conciencia; en dev/réplicas queda apagado). Si ayer no se
@@ -25,7 +27,7 @@ import { ejecutar } from '../modules/compliance/compliance.service';
 export async function correrBarrido(): Promise<void> {
   const items = await todasActivas();
   if (!items.length) return;
-  logger.info(`[compliance-cron] barrido diario: ${items.length} opinión(es)…`);
+  logger.info(`[compliance-cron] barrido semanal: ${items.length} opinión(es)…`);
   for (const it of items) {
     try {
       const r = await ejecutar(it.company_id, it.tipo, 'SCHEDULER');
@@ -41,10 +43,10 @@ export function registerComplianceCron(): void {
     logger.info('[compliance-cron] Deshabilitado (ENABLE_COMPLIANCE_CRON != true)');
     return;
   }
-  // Todos los días a las 06:00 CDMX. La zona horaria se fija explícita para no
-  // depender de que el servidor esté en UTC o cambie de región.
-  cron.schedule('0 6 * * *', () => {
+  // Lunes 01:50 CDMX. La zona horaria se fija explícita para no depender de que el
+  // servidor esté en UTC o cambie de región.
+  cron.schedule('50 1 * * 1', () => {
     correrBarrido().catch((e) => logger.error(`[compliance-cron] error: ${e.message}`));
   }, { timezone: 'America/Mexico_City' });
-  logger.info('[compliance-cron] Registrado: barrido DIARIO (06:00 CDMX).');
+  logger.info('[compliance-cron] Registrado: barrido SEMANAL (lunes 01:50 CDMX).');
 }

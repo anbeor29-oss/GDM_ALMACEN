@@ -20,11 +20,17 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   ShieldCheck, Landmark, HardHat, Home, ArrowRight,
-  Receipt, Bell, FileSearch, ExternalLink,
+  Receipt, Bell, FileSearch, ExternalLink, X,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { aTextoMx } from '@/components/CampoFecha';
+import { PanelOpinion, DESC_TIPO } from './PanelOpinion';
+
+/* Horario del refresco automático de las opiniones (compliance-cron): lunes 01:50
+ * CDMX, para que las tarjetas estén frescas a primera hora del lunes. Se refleja en
+ * la condición de actualización de cada documento permanente. */
+const HORARIO_REFRESCO = 'lunes 01:50';
 
 /* Paleta NEXO (del documento de diseño). Se escriben como literales completos para
  * que Tailwind (JIT) los compile. */
@@ -67,6 +73,10 @@ export function PanelFiscalPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const abrirHub = (tab: string) => navigate(`/contabilidad/servicios-sat?tab=${tab}`);
+  /* Fase 1 de la consolidación: las opiniones (32-D/CIF/IMSS/INFONAVIT) se gestionan en
+   * un MODAL aquí mismo (reusa PanelOpinion). Al descargar/configurar/registrar, el panel
+   * se refresca solo (comparten las claves de react-query ['opinion-hist',tipo]/['cumpl-config']). */
+  const [modalTipo, setModalTipo] = useState<string | null>(null);
 
   /* Empresa activa — misma caché que el Dashboard. */
   const misEmpresas = useQuery({ queryKey: ['auth', 'companies'], queryFn: () => api.misEmpresas() });
@@ -193,10 +203,10 @@ export function PanelFiscalPage() {
               const esInfonavit = t.key === 'INFONAVIT';
               const cond = esInfonavit
                 ? 'Manual (captura)'
-                : cfg.activo ? 'Automática · diaria' : 'Manual';
+                : cfg.activo ? `Automática · ${HORARIO_REFRESCO}` : 'Manual';
               const Icon = t.icon;
               return (
-                <button key={t.key} onClick={() => abrirHub(t.key)}
+                <button key={t.key} onClick={() => setModalTipo(t.key)}
                   className={`text-left ${C.panel} border ${C.borde} ${C.bordeHover} rounded-xl p-4 transition group`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -219,7 +229,7 @@ export function PanelFiscalPage() {
                       {!esInfonavit && cfg.ultima_ejecucion ? ` · ${aTextoMx(cfg.ultima_ejecucion) || cfg.ultima_ejecucion}` : ''}
                     </span>
                     <span className={`text-[11px] ${C.link} inline-flex items-center gap-1 opacity-80 group-hover:opacity-100`}>
-                      {esInfonavit ? 'Configurar' : 'Ver'} <ArrowRight size={11} />
+                      Gestionar <ArrowRight size={11} />
                     </span>
                   </div>
                 </button>
@@ -298,6 +308,26 @@ export function PanelFiscalPage() {
           </p>
         </section>
       </div>
+
+      {/* Modal de la opinión (Fase 1 de la consolidación): reusa PanelOpinion con todo
+          (Descargar/Configurar/Registrar/histórico). Al cerrar, el panel ya está
+          refrescado porque las acciones invalidan las mismas claves de react-query. */}
+      {modalTipo && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 overflow-y-auto"
+          onClick={() => setModalTipo(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl my-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <ShieldCheck size={18} className="text-primary" /> {DESC_TIPO[modalTipo]?.nombre || modalTipo}
+              </h3>
+              <button onClick={() => setModalTipo(null)} className="text-gray-400 hover:text-gray-700" aria-label="Cerrar"><X size={18} /></button>
+            </div>
+            <div className="p-5">
+              <PanelOpinion tipo={modalTipo} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
