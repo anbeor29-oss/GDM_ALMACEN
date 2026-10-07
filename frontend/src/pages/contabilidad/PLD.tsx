@@ -9,7 +9,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShieldAlert, Save, AlertTriangle, Users, FileWarning, CalendarClock, Loader2, Lock, FolderOpen } from 'lucide-react';
+import { ShieldAlert, Save, AlertTriangle, Users, FileWarning, CalendarClock, Loader2, Lock, FolderOpen, X } from 'lucide-react';
 import api from '@/services/api';
 import { claseOpcion } from '@/utils/coloresOpciones';
 
@@ -33,6 +33,7 @@ export function PldPage() {
     ['ACT', 'Actividades vulnerables', true],
     ['EXP', 'Expediente', desbloqueado],
     ['ALE', 'Alertas', desbloqueado],
+    ['AVI', 'Aviso (borrador)', desbloqueado],
   ];
 
   return (
@@ -58,6 +59,7 @@ export function PldPage() {
       {tab === 'ACT' && <PanelActividad acts={acts} cfg={cfg} onSaved={(unlocked) => { qc.invalidateQueries({ queryKey: ['pld-cfg'] }); if (unlocked) setTab('EXP'); }} />}
       {tab === 'EXP' && desbloqueado && <PanelExpediente prefill={prefill} onPrefillUsed={() => setPrefill(null)} />}
       {tab === 'ALE' && desbloqueado && <PanelAlertas onAbrirExpediente={abrirExpediente} />}
+      {tab === 'AVI' && desbloqueado && <PanelAviso />}
     </div>
   );
 }
@@ -130,45 +132,77 @@ function PanelActividad({ acts, cfg, onSaved }: { acts: any[]; cfg: any; onSaved
   );
 }
 
-/* ═══════════════ 2 · Expediente único ═══════════════ */
-const CAMPOS_COMUN = [
-  ['actividad', 'Actividad u ocupación'], ['nacionalidad', 'Nacionalidad'], ['telefono', 'Teléfono'], ['correo', 'Correo'],
-  ['calle', 'Calle y número'], ['colonia', 'Colonia'], ['cp', 'Código postal'], ['municipio', 'Municipio / Alcaldía'], ['estado', 'Entidad federativa'],
-];
-const CAMPOS_FISICA = [['curp', 'CURP'], ['fechaNacimiento', 'Fecha de nacimiento'], ['idTipo', 'Identificación (tipo)'], ['idFolio', 'Folio de la identificación']];
-const CAMPOS_MORAL = [['fechaConstitucion', 'Fecha de constitución'], ['representanteNombre', 'Representante legal'], ['representanteRfc', 'RFC del representante']];
-
+/* ═══════════════ 2 · Expediente único (Anexo 3 PF / Anexo 2 PM) ═══════════════ */
 function PanelExpediente({ prefill, onPrefillUsed }: { prefill: { rfc: string; nombre: string } | null; onPrefillUsed: () => void }) {
   const qc = useQueryClient();
   const listQ = useQuery({ queryKey: ['pld-exp'], queryFn: () => api.getPldExpedientes() });
+  const catQ = useQuery({ queryKey: ['pld-campos'], queryFn: () => api.getPldCamposExpediente() });
   const lista: any[] = (listQ.data as any)?.data || [];
+  const cat: any = (catQ.data as any)?.data || { fisica: [], moral: [], beneficiario: [] };
 
-  const vacio = { rfc: '', nombre: '', tipo_persona: 'FISICA', completo: false, beneficiario_controlador: '', datos: {} as any };
+  const nuevoDatos = () => ({ beneficiarios: [] as any[], docs_en_resguardo: false } as any);
+  const vacio = () => ({ rfc: '', nombre: '', tipo_persona: 'FISICA', datos: nuevoDatos() });
   const [f, setF] = useState<any>(vacio);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
 
-  useEffect(() => { if (prefill) { setF({ ...vacio, rfc: prefill.rfc, nombre: prefill.nombre }); onPrefillUsed(); } }, [prefill]);
+  useEffect(() => { if (prefill) { setF({ ...vacio(), rfc: prefill.rfc, nombre: prefill.nombre }); onPrefillUsed(); } }, [prefill]);
 
-  const setDato = (k: string, v: string) => setF((p: any) => ({ ...p, datos: { ...p.datos, [k]: v } }));
+  const esMoral = f.tipo_persona === 'MORAL';
+  const campos: any[] = (esMoral ? cat.moral : cat.fisica) || [];
+  const benCampos: any[] = cat.beneficiario || [];
+  const setDato = (k: string, v: any) => setF((p: any) => ({ ...p, datos: { ...p.datos, [k]: v } }));
 
   const editar = (e: any) => setF({
     rfc: e.rfc, nombre: e.nombre || '', tipo_persona: e.tipo_persona || 'FISICA',
-    completo: !!e.completo, beneficiario_controlador: e.beneficiario_controlador || '', datos: e.datos || {},
+    datos: { ...nuevoDatos(), ...(e.datos || {}) },
   });
+
+  // Beneficiario(s) controlador(es)
+  const beneficiarios: any[] = Array.isArray(f.datos.beneficiarios) ? f.datos.beneficiarios : [];
+  const setBen = (i: number, k: string, v: any) => setF((p: any) => {
+    const arr = [...(p.datos.beneficiarios || [])]; arr[i] = { ...arr[i], [k]: v };
+    return { ...p, datos: { ...p.datos, beneficiarios: arr } };
+  });
+  const addBen = () => setF((p: any) => ({ ...p, datos: { ...p.datos, beneficiarios: [...(p.datos.beneficiarios || []), {}] } }));
+  const delBen = (i: number) => setF((p: any) => ({ ...p, datos: { ...p.datos, beneficiarios: (p.datos.beneficiarios || []).filter((_: any, j: number) => j !== i) } }));
+
+  // Completitud (espejo del backend)
+  const reqCampos = campos.filter((c) => c.req);
+  const faltan = reqCampos.filter((c) => !String(f.datos[c.k] ?? '').trim()).map((c) => c.label);
+  if (esMoral && !beneficiarios.some((b) => String(b?.nombre || '').trim())) faltan.push('Beneficiario controlador');
+  const totalReq = reqCampos.length + (esMoral ? 1 : 0);
+  const llenos = totalReq - faltan.length;
+  const completo = faltan.length === 0 && f.datos.docs_en_resguardo === true;
 
   const guardar = async () => {
     setBusy(true); setMsg('');
     try {
-      await api.savePldExpediente(f);
+      await api.savePldExpediente({ rfc: f.rfc, nombre: f.nombre, tipo_persona: f.tipo_persona, datos: f.datos });
       await qc.invalidateQueries({ queryKey: ['pld-exp'] });
       await qc.invalidateQueries({ queryKey: ['pld-tab'] });
-      setMsg('Expediente guardado.'); setF(vacio);
+      setMsg('Expediente guardado.'); setF(vacio());
     } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo guardar.'); }
     finally { setBusy(false); }
   };
 
-  const extra = f.tipo_persona === 'MORAL' ? CAMPOS_MORAL : CAMPOS_FISICA;
+  // Agrupa los campos por `grupo` conservando el orden de aparición.
+  const grupos: Array<{ grupo: string; items: any[] }> = [];
+  for (const c of campos) {
+    let g = grupos.find((x) => x.grupo === c.grupo);
+    if (!g) { g = { grupo: c.grupo, items: [] }; grupos.push(g); }
+    g.items.push(c);
+  }
+
+  const campoInput = (c: any, val: any, onCh: (v: string) => void, small = false) => (
+    c.tipo === 'select' ? (
+      <select value={val || ''} onChange={(e) => onCh(e.target.value)} className={`input w-full ${small ? 'text-sm py-1' : ''}`}>
+        <option value="">—</option>{(c.opciones || []).map((o: string) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    ) : (
+      <input type={c.tipo === 'date' ? 'date' : 'text'} value={val || ''} onChange={(e) => onCh(e.target.value)} className={`input w-full ${small ? 'text-sm py-1' : ''}`} />
+    )
+  );
 
   return (
     <div className="grid md:grid-cols-5 gap-4">
@@ -194,9 +228,16 @@ function PanelExpediente({ prefill, onPrefillUsed }: { prefill: { rfc: string; n
 
       {/* Formulario */}
       <div className="md:col-span-3 bg-white rounded-lg shadow p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5"><FolderOpen size={15} /> {f.rfc ? 'Editar expediente' : 'Nuevo expediente'}</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5"><FolderOpen size={15} /> {f.rfc ? 'Editar expediente' : 'Nuevo expediente'}</h3>
+          <span className={`text-[11px] px-2 py-0.5 rounded-full border ${completo ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-amber-700 bg-amber-50 border-amber-200'}`}>
+            {completo ? 'Completo' : `Faltan ${faltan.length}`}
+          </span>
+        </div>
+
+        {/* Identificación básica */}
         <div className="grid grid-cols-2 gap-3">
-          <label className="block"><span className="text-xs text-gray-600">RFC</span>
+          <label className="block"><span className="text-xs text-gray-600">RFC <span className="text-rose-500">*</span></span>
             <input value={f.rfc} onChange={(e) => setF({ ...f, rfc: e.target.value.toUpperCase() })} className="input w-full font-mono uppercase" /></label>
           <label className="block"><span className="text-xs text-gray-600">Nombre / Razón social</span>
             <input value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} className="input w-full" /></label>
@@ -204,27 +245,66 @@ function PanelExpediente({ prefill, onPrefillUsed }: { prefill: { rfc: string; n
             <select value={f.tipo_persona} onChange={(e) => setF({ ...f, tipo_persona: e.target.value })} className="input w-full">
               <option value="FISICA">Física</option><option value="MORAL">Moral</option>
             </select></label>
-          {f.tipo_persona === 'MORAL' && (
-            <label className="block"><span className="text-xs text-gray-600">Beneficiario Controlador</span>
-              <input value={f.beneficiario_controlador} onChange={(e) => setF({ ...f, beneficiario_controlador: e.target.value })} className="input w-full" placeholder="Quién controla la persona moral" /></label>
-          )}
-          {[...extra, ...CAMPOS_COMUN].map(([k, label]) => (
-            <label key={k} className="block"><span className="text-xs text-gray-600">{label}</span>
-              <input value={f.datos?.[k] || ''} onChange={(e) => setDato(k, e.target.value)} className="input w-full" /></label>
+        </div>
+
+        {/* Campos del Anexo, agrupados */}
+        {grupos.map((g) => (
+          <div key={g.grupo}>
+            <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold mb-1">{g.grupo}</p>
+            <div className="grid grid-cols-2 gap-3">
+              {g.items.map((c) => (
+                <label key={c.k} className="block">
+                  <span className="text-xs text-gray-600">{c.label}{c.req && <span className="text-rose-500"> *</span>}</span>
+                  {campoInput(c, f.datos[c.k], (v) => setDato(c.k, v))}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* Beneficiario(s) Controlador(es) */}
+        <div className="border-t pt-3">
+          <div className="flex items-center justify-between mb-0.5">
+            <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Beneficiario(s) controlador(es){esMoral && <span className="text-rose-500"> *</span>}</p>
+            <button onClick={addBen} className="text-xs text-primary hover:underline">+ Agregar</button>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-2">Persona(s) física(s) que en última instancia controlan o se benefician (Art. 18 fr. III / 33 Bis). Obligatorio en personas morales.</p>
+          {beneficiarios.length === 0 && <p className="text-xs text-gray-400 italic">Sin beneficiarios capturados.</p>}
+          {beneficiarios.map((b: any, i: number) => (
+            <div key={i} className="border rounded-lg p-2 mb-2 relative">
+              <button onClick={() => delBen(i)} className="absolute top-1 right-1 text-gray-400 hover:text-rose-600" title="Quitar"><X size={13} /></button>
+              <div className="grid grid-cols-2 gap-2">
+                {benCampos.map((c: any) => (
+                  <label key={c.k} className="block">
+                    <span className="text-[11px] text-gray-500">{c.label}{c.req && <span className="text-rose-500"> *</span>}</span>
+                    {campoInput(c, b[c.k], (v) => setBen(i, c.k, v), true)}
+                  </label>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input type="checkbox" checked={f.completo} onChange={(e) => setF({ ...f, completo: e.target.checked })} />
-          Expediente <b>completo</b> (con copia de documentos del Anexo {f.tipo_persona === 'MORAL' ? '2' : '3'})
+
+        {/* Documentos en resguardo */}
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={!!f.datos.docs_en_resguardo} onChange={(e) => setDato('docs_en_resguardo', e.target.checked)} className="mt-0.5" />
+          <span>Tengo en <b>resguardo</b> las copias de los documentos del Anexo {esMoral ? '2' : '3'} (identificación, comprobante de domicilio, acta/poder…). Se conservan <b>10 años</b>.</span>
         </label>
+
+        {faltan.length > 0 && (
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            Para quedar <b>completo</b> faltan: {faltan.join(' · ')}{!f.datos.docs_en_resguardo ? ' · confirmar documentos en resguardo' : ''}
+          </p>
+        )}
+
         <div className="flex items-center gap-3">
           <button onClick={guardar} disabled={busy || !f.rfc} className="inline-flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
             {busy ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Guardar
           </button>
-          {f.rfc && <button onClick={() => setF(vacio)} className="text-sm text-gray-500 hover:underline">Limpiar</button>}
+          <span className="text-xs text-gray-500">{llenos}/{totalReq} requeridos</span>
+          {f.rfc && <button onClick={() => setF(vacio())} className="text-sm text-gray-500 hover:underline">Limpiar</button>}
           {msg && <span className="text-sm text-gray-600">{msg}</span>}
         </div>
-        <p className="text-[11px] text-gray-400">Resguarda la identificación y los documentos por <b>10 años</b> (reforma 2025). Los campos detallados se guardan en el expediente.</p>
       </div>
     </div>
   );
@@ -323,6 +403,57 @@ function TablaOps({ rows }: { rows: any[] }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+/* ═══════════════ 4 · Aviso (borrador XML) ═══════════════ */
+function PanelAviso() {
+  const now = new Date();
+  // El Aviso del mes se presenta a más tardar el día 17 del mes siguiente;
+  // por defecto proponemos el MES ANTERIOR como periodo a reportar.
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const [anio, setAnio] = useState(prev.getFullYear());
+  const [mes, setMes] = useState(prev.getMonth() + 1);
+  const [bajando, setBajando] = useState(false);
+  const resQ = useQuery({ queryKey: ['pld-aviso-res', anio, mes], queryFn: () => api.getPldAvisoResumen(anio, mes) });
+  const res: any = (resQ.data as any)?.data || {};
+  const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+  const descargar = async () => { setBajando(true); try { await api.descargarPldAviso(anio, mes); } finally { setBajando(false); } };
+
+  return (
+    <div className="bg-white rounded-lg shadow p-5 space-y-3 max-w-2xl">
+      <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5"><FileWarning size={15} /> Borrador del Aviso del periodo</h3>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-500">Periodo a reportar:</span>
+        <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 text-sm">
+          {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+        </select>
+        <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
+          {[now.getFullYear(), now.getFullYear() - 1].map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
+
+      <div className="text-sm text-gray-700 flex flex-wrap gap-x-6 gap-y-1">
+        <span>Operaciones por avisar: <b>{resQ.isLoading ? '…' : (res.operaciones ?? 0)}</b></span>
+        {res.sinExpediente > 0 && (
+          <span className="text-amber-700">Sin expediente: <b>{res.sinExpediente}</b> — complétalos para un aviso válido</span>
+        )}
+      </div>
+
+      <button onClick={descargar} disabled={bajando || !(res.operaciones > 0)}
+        className="inline-flex items-center gap-1.5 bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 disabled:opacity-50 text-sm">
+        {bajando ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Descargar borrador XML
+      </button>
+
+      <div className="text-[11px] text-gray-600 bg-amber-50 border border-amber-200 rounded p-2 leading-relaxed">
+        <b>Es un borrador.</b> Trae el contenido que marca el <b>Art. 24</b> de la Ley (sujeto obligado · cliente y
+        beneficiario controlador · operación: fecha, monto, moneda) con la estructura general del SPPLD. El
+        <b> formato/XSD oficial</b> y las <b>claves</b> (actividad, instrumento monetario) los publica la UIF en el DOF
+        por actividad, y la <b>clave del sujeto obligado</b> la da el padrón. <b>Valida y ajústalo en el Portal del SAT
+        (SPPLD)</b> con tu e.firma antes de presentarlo (a más tardar el <b>día 17</b> del mes siguiente).
+      </div>
+    </div>
   );
 }
 

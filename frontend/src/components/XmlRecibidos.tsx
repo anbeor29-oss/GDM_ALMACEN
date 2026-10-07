@@ -16,7 +16,7 @@ import { Fragment, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   KeyRound, Download, Trash2, PlayCircle, AlertTriangle,
-  ChevronRight, ChevronDown,
+  ChevronRight, ChevronDown, ArrowRight, HelpCircle,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -57,6 +57,35 @@ const ESTADO_TRABAJO: Record<string, { label: string; cls: string }> = {
   CON_ERRORES: { label: 'Con errores', cls: 'bg-amber-100 text-amber-700' },
   CANCELADO:   { label: 'Cancelado',   cls: 'bg-rose-100 text-rose-700' },
 };
+
+/** Dirección como pastilla de color, para la columna «Qué». */
+const DIRECCION_INFO: Record<string, { label: string; cls: string }> = {
+  recibidos: { label: 'Recibidos', cls: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+  emitidos:  { label: 'Emitidos',  cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+};
+
+/** CFDI es el XML; Metadata es la ficha (todos, incl. cancelados). */
+function tipoInfo(tipo: string): { label: string; cls: string } {
+  return String(tipo || '').toUpperCase().includes('META')
+    ? { label: 'Metadatos', cls: 'bg-slate-100 text-slate-600 border-slate-200' }
+    : { label: 'XML',       cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+}
+
+/** Franja de color a la izquierda del renglón, según el estado del trabajo. */
+const ACENTO_TRABAJO: Record<string, string> = {
+  CREADO:      'border-l-gray-300',
+  EN_PROCESO:  'border-l-sky-400',
+  TERMINADO:   'border-l-emerald-400',
+  CON_ERRORES: 'border-l-amber-400',
+  CANCELADO:   'border-l-rose-400',
+};
+
+/** Las tres direcciones, como control segmentado. */
+const OPC_QUE: Array<{ k: 'recibidos' | 'emitidos' | 'ambos'; label: string }> = [
+  { k: 'recibidos', label: 'Recibidos' },
+  { k: 'emitidos', label: 'Emitidos' },
+  { k: 'ambos', label: 'Ambos' },
+];
 
 export function XmlRecibidos({ direccionInicial }: {
   /**
@@ -249,104 +278,126 @@ export function XmlRecibidos({ direccionInicial }: {
         )}
       </div>
 
-      {/* ── Pedir y avanzar ────────────────────────────────────────────── */}
+      {/* ── Pedir comprobantes ─────────────────────────────────────────── */}
       {credencial && !credencial.vencida && esAdmin && (
-        <div className="bg-white rounded-lg shadow border p-5 space-y-3">
-          <h2 className="font-semibold flex items-center gap-2">
-            <Download className="text-emerald-600" size={20} /> Traer comprobantes del SAT
-          </h2>
-          {/* Atajos: los cortes con los que de verdad se trabaja. */}
-          <div className="flex flex-wrap gap-2">
-            {atajos(hoy).map((a) => {
-              const activo = a.desde === desde && a.hasta === hasta;
-              return (
-                <button key={a.nombre}
-                  onClick={() => { setDesde(a.desde); setHasta(a.hasta); }}
-                  className={`px-3 py-1 rounded-full text-xs border ${
-                    activo
-                      ? 'bg-emerald-100 border-emerald-300 text-emerald-800 font-medium'
-                      : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-                  {a.nombre}
-                </button>
-              );
-            })}
-            {/* Año completo — sólo los últimos 6, que es lo que el SAT entrega. */}
-            <select value="" title="Elegir un año completo"
-              onChange={(e) => {
-                const y = Number(e.target.value); if (!y) return;
-                setDesde(iso(new Date(y, 0, 1)));
-                setHasta(y === hoy.getFullYear() ? iso(hoy) : iso(new Date(y, 11, 31)));
-              }}
-              className="input text-xs py-1 h-auto rounded-full w-36">
-              <option value="">Año completo…</option>
-              {Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i).map((y) => (
-                <option key={y} value={y}>Año {y}</option>
-              ))}
-            </select>
-            {/* «Todos»: los 6 años que el SAT conserva, de una. */}
-            <button onClick={() => {
-                const d0 = new Date(); d0.setFullYear(d0.getFullYear() - 6); d0.setDate(d0.getDate() + 7);
-                setDesde(iso(d0)); setHasta(iso(hoy));
-              }}
-              title="Pide todo lo que el SAT conserva (últimos 6 años)"
-              className="px-3 py-1 rounded-full text-xs border border-gray-300 text-gray-600 hover:bg-gray-50">
-              Todos (6 años)
-            </button>
+        <div className="bg-white rounded-xl shadow-sm border p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold flex items-center gap-2 text-gray-800">
+                <Download className="text-emerald-600" size={20} /> Traer comprobantes del SAT
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Descarga masiva con tu e.firma, por el periodo que elijas.
+              </p>
+            </div>
+            <span className="shrink-0 inline-flex items-center text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
+              {dias} día{dias === 1 ? '' : 's'}
+            </span>
           </div>
 
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="block">
-              <span className="block text-xs text-gray-600 mb-1">Desde</span>
-              <CampoFecha value={desde} onChange={(v) => setDesde(v)} className="input w-44" />
-            </label>
-            <label className="block">
-              <span className="block text-xs text-gray-600 mb-1">Hasta</span>
-              <CampoFecha value={hasta} onChange={(v) => setHasta(v)} className="input w-44" />
-            </label>
-            <label className="block">
-              <span className="block text-xs text-gray-600 mb-1">Qué traer</span>
-              <select value={que} onChange={(e) => setQue(e.target.value as any)} className="input w-56">
-                <option value="recibidos">Recibidos (XML)</option>
-                <option value="emitidos">Emitidos (XML)</option>
-                <option value="ambos">Recibidos y emitidos</option>
-              </select>
-            </label>
+          {/* Periodo: atajos + año + todo, todos a la misma altura. */}
+          <div>
+            <span className="block text-xs font-medium text-gray-500 mb-1.5">Periodo</span>
+            <div className="flex flex-wrap gap-1.5">
+              {atajos(hoy).map((a) => {
+                const activo = a.desde === desde && a.hasta === hasta;
+                return (
+                  <button key={a.nombre}
+                    onClick={() => { setDesde(a.desde); setHasta(a.hasta); }}
+                    className={`h-8 px-3 rounded-full text-xs font-medium border transition-colors ${
+                      activo
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                    {a.nombre}
+                  </button>
+                );
+              })}
+              {/* Año completo — sólo los últimos 6, que es lo que el SAT entrega. */}
+              <div className="relative">
+                <select value="" title="Elegir un año completo"
+                  onChange={(e) => {
+                    const y = Number(e.target.value); if (!y) return;
+                    setDesde(iso(new Date(y, 0, 1)));
+                    setHasta(y === hoy.getFullYear() ? iso(hoy) : iso(new Date(y, 11, 31)));
+                  }}
+                  className="h-8 pl-3 pr-8 rounded-full text-xs font-medium border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 appearance-none cursor-pointer">
+                  <option value="">Año completo…</option>
+                  {Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i).map((y) => (
+                    <option key={y} value={y}>Año {y}</option>
+                  ))}
+                </select>
+                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+              {/* «Todo»: los 6 años que el SAT conserva, de una. */}
+              <button onClick={() => {
+                  const d0 = new Date(); d0.setFullYear(d0.getFullYear() - 6); d0.setDate(d0.getDate() + 7);
+                  setDesde(iso(d0)); setHasta(iso(hoy));
+                }}
+                title="Pide todo lo que el SAT conserva (últimos 6 años)"
+                className="h-8 px-3 rounded-full text-xs font-medium border border-gray-200 text-gray-600 bg-white hover:bg-gray-50">
+                Todo (6 años)
+              </button>
+            </div>
+          </div>
+
+          {/* Rango exacto + qué traer + acción. */}
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+            <div>
+              <span className="block text-xs font-medium text-gray-500 mb-1.5">Rango exacto</span>
+              <div className="flex items-center gap-2">
+                <CampoFecha value={desde} onChange={(v) => setDesde(v)} className="input w-40" />
+                <ArrowRight size={15} className="text-gray-400 shrink-0" />
+                <CampoFecha value={hasta} onChange={(v) => setHasta(v)} className="input w-40" />
+              </div>
+            </div>
+            <div>
+              <span className="block text-xs font-medium text-gray-500 mb-1.5">Qué traer</span>
+              <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+                {OPC_QUE.map((o, i) => (
+                  <button key={o.k} onClick={() => setQue(o.k)}
+                    className={`px-3.5 py-2 text-xs font-medium transition-colors ${i > 0 ? 'border-l border-gray-200' : ''} ${
+                      que === o.k ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <button onClick={pedirPeriodo} disabled={cargando}
-              className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm">
+              className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm font-medium shadow-sm">
               <Download size={16} /> {cargando ? 'Pidiendo…' : 'Pedir al SAT'}
             </button>
-            <button onClick={avanzar} disabled={cargando}
-              title="El proceso avanza solo cada 15 minutos; esto lo empuja ahora"
-              className="ml-auto flex items-center gap-2 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50 text-sm">
-              <PlayCircle size={16} className={cargando ? 'animate-spin' : ''} /> Avanzar ahora
-            </button>
           </div>
 
-          <p className="text-xs text-gray-500">
-            {dias} día(s) seleccionados. Cada dirección se pide en dos trabajos —el XML (vigentes) y
-            el metadato (todos)—{que === 'ambos' && ', y emitidos y recibidos van por separado (el SAT los pide así)'}.
-            El SAT entrega por lotes: acepta la solicitud, la procesa de minutos a horas y deja
-            un paquete que caduca a las 72 horas. El motor pide, espera y recoge solo; si un
-            rango trae demasiados comprobantes, lo parte a la mitad y reintenta.
-            {dias > 180 && ' En periodos largos se empieza con bloques de 30 días para no gastar el límite diario de solicitudes del SAT.'}
-          </p>
-          {(que === 'recibidos' || que === 'ambos') && (
-            <p className="text-xs text-gray-600 bg-gray-50 border rounded px-3 py-2">
-              De cada dirección se piden <b>dos trabajos</b>: el <b>XML (CFDI)</b> de los
-              comprobantes <b>vigentes</b> —los únicos que el SAT entrega como XML— y el
-              <b> metadato (Todos)</b> con el estatus de todos, incluidos los cancelados. Así los
-              recibidos vigentes traen su XML para contabilizar, y de un cancelado queda su ficha
-              (el SAT nunca entrega el XML de un comprobante cancelado, eso sí es regla suya).
-            </p>
-          )}
+          {/* El detalle, antes dos párrafos grises, ahora a un clic. */}
+          <details className="group border-t pt-3">
+            <summary className="flex items-center gap-1.5 text-xs font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none list-none [&::-webkit-details-marker]:hidden">
+              <HelpCircle size={13} /> ¿Cómo funciona la descarga?
+              <ChevronDown size={13} className="transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="mt-2 space-y-2 text-xs text-gray-500 leading-relaxed">
+              <p>
+                El SAT entrega por lotes: acepta la solicitud, la procesa de minutos a horas y
+                deja un paquete que caduca a las 72 horas. El motor pide, espera y recoge solo; si
+                un rango trae demasiados comprobantes, lo parte a la mitad y reintenta.
+                {dias > 180 && ' En periodos largos empieza con bloques de 30 días para no gastar el límite diario de solicitudes del SAT.'}
+              </p>
+              <p className="bg-gray-50 border rounded-lg px-3 py-2">
+                De cada dirección se piden <b>dos trabajos</b>: el <b>XML (CFDI)</b> de los
+                comprobantes <b>vigentes</b> —los únicos que el SAT entrega como XML— y el
+                <b> metadato (Todos)</b> con el estatus de todos, incluidos los cancelados. Así un
+                vigente trae su XML para contabilizar y de un cancelado queda su ficha.
+                {que === 'ambos' && ' Emitidos y recibidos van por separado: cuatro trabajos.'}
+              </p>
+            </div>
+          </details>
         </div>
       )}
 
-      {/* ── Trabajos ───────────────────────────────────────────────────── */}
+      {/* ── Solicitudes al SAT ─────────────────────────────────────────── */}
       {trabajos.length > 0 && (
-        <div className="bg-white rounded-xl shadow border border-gray-200 overflow-x-auto">
-          {/* Resumen de un vistazo — evita la sensación de "lista regada". */}
-          <div className="px-4 pt-3 pb-2 flex flex-wrap items-center gap-2 border-b border-gray-100">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          {/* Resumen + acciones, de un vistazo — evita la sensación de "lista regada". */}
+          <div className="px-4 pt-3 pb-3 flex flex-wrap items-center gap-2 border-b border-gray-100">
             {(() => {
               const n = (e: string) => trabajos.filter((t) => t.estado === e).length;
               const xml = trabajos.reduce((a, t) => a + (Number(t.xml_total) || 0), 0);
@@ -358,69 +409,100 @@ export function XmlRecibidos({ direccionInicial }: {
                 chip('terminados', n('TERMINADO'), 'bg-emerald-100 text-emerald-700'),
                 chip('con errores', n('CON_ERRORES') + n('CANCELADO'), 'bg-amber-100 text-amber-700'),
                 <span key="xml" className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">{xml} XML en total</span>,
-                limpiables > 0
-                  ? <button key="limpiar" onClick={limpiarTerminados}
-                      className="ml-auto flex items-center gap-1 text-xs text-gray-500 hover:text-rose-600 border rounded-lg px-2 py-1 hover:bg-rose-50 whitespace-nowrap">
-                      <Trash2 size={13} /> Limpiar terminados y con error ({limpiables})
-                    </button>
-                  : null,
               ];
             })()}
+            <div className="ml-auto flex items-center gap-1.5">
+              {esAdmin && credencial && !credencial.vencida && (
+                <button onClick={avanzar} disabled={cargando}
+                  title="El proceso avanza solo cada 15 minutos; esto lo empuja ahora"
+                  className="flex items-center gap-1.5 text-xs font-medium text-sky-700 border border-sky-200 rounded-lg px-2.5 py-1.5 hover:bg-sky-50 disabled:opacity-50 whitespace-nowrap">
+                  <PlayCircle size={14} className={cargando ? 'animate-spin' : ''} /> Avanzar ahora
+                </button>
+              )}
+              {limpiables > 0 && (
+                <button onClick={limpiarTerminados}
+                  title="Quita de la lista los terminados y con error; los comprobantes bajados no se tocan"
+                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-rose-600 border rounded-lg px-2.5 py-1.5 hover:bg-rose-50 whitespace-nowrap">
+                  <Trash2 size={13} /> Limpiar ({limpiables})
+                </button>
+              )}
+            </div>
           </div>
-          <p className="px-4 pt-2 text-[11px] text-gray-400">Toca un renglón para ver, solicitud por solicitud, qué contestó el SAT.</p>
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="w-8"></th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Periodo</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Qué</th>
-                <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Solicitudes</th>
-                <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Paquetes</th>
-                <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">XML</th>
-                <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Estado</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {trabajos.map((t) => {
-                const e = ESTADO_TRABAJO[t.estado] || { label: t.estado, cls: 'bg-gray-100 text-gray-600' };
-                const abierto = expandido === t.id;
-                return (
-                  <Fragment key={t.id}>
-                    <tr className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => setExpandido(abierto ? null : t.id)}>
-                      <td className="pl-3 text-gray-400">
-                        {abierto ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
-                        {fecha(t.fecha_desde)} → {fecha(t.fecha_hasta)}
-                        {t.ultimo_mensaje && (
-                          <p className="text-[11px] text-rose-600 mt-0.5 line-clamp-2 max-w-md">
-                            {t.ultimo_mensaje}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-sm">{t.direccion} · {t.tipo}</td>
-                      <td className="px-4 py-2 text-center text-sm">
-                        {t.particiones_listas}/{t.particiones_total}
-                      </td>
-                      <td className="px-4 py-2 text-center text-sm">{t.paquetes}</td>
-                      <td className="px-4 py-2 text-center text-sm font-semibold">{t.xml_total}</td>
-                      <td className="px-4 py-2 text-center">
-                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${e.cls}`}>{e.label}</span>
-                      </td>
-                    </tr>
-                    {abierto && (
-                      <tr>
-                        <td colSpan={7} className="p-0">
-                          <TrabajoDetalle trabajoId={t.id} />
+          <p className="px-4 pt-2.5 text-[11px] text-gray-400">
+            Toca un renglón para ver, solicitud por solicitud, qué contestó el SAT.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="w-8"></th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Periodo</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Qué</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Solicitudes</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500">Paquetes</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500">XML</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500">Estado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {trabajos.map((t) => {
+                  const e = ESTADO_TRABAJO[t.estado] || { label: t.estado, cls: 'bg-gray-100 text-gray-600' };
+                  const dir = DIRECCION_INFO[t.direccion] || { label: t.direccion, cls: 'bg-gray-50 text-gray-600 border-gray-200' };
+                  const tip = tipoInfo(t.tipo);
+                  const abierto = expandido === t.id;
+                  const pct = t.particiones_total ? Math.round((100 * t.particiones_listas) / t.particiones_total) : 0;
+                  const esError = ['CON_ERRORES', 'CANCELADO'].includes(t.estado);
+                  return (
+                    <Fragment key={t.id}>
+                      <tr className={`hover:bg-gray-50/70 cursor-pointer border-l-4 ${ACENTO_TRABAJO[t.estado] || 'border-l-gray-200'}`}
+                        onClick={() => setExpandido(abierto ? null : t.id)}>
+                        <td className="pl-2 text-gray-400">
+                          {abierto ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </td>
+                        <td className="px-3 py-2.5 text-sm">
+                          <div className="font-medium text-gray-800">{fecha(t.fecha_desde)} → {fecha(t.fecha_hasta)}</div>
+                          {t.ultimo_mensaje && (
+                            <p className={`text-[11px] mt-0.5 line-clamp-2 max-w-md ${esError ? 'text-rose-600' : 'text-gray-400'}`}>
+                              {t.ultimo_mensaje}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-[11px] font-medium px-2 py-0.5 rounded border ${dir.cls}`}>{dir.label}</span>
+                            <span className={`text-[11px] font-medium px-2 py-0.5 rounded border ${tip.cls}`}>{tip.label}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm tabular-nums text-gray-700">{t.particiones_listas}/{t.particiones_total}</span>
+                            <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div className={`h-full ${esError ? 'bg-amber-400' : 'bg-emerald-400'}`} style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-sm tabular-nums text-gray-600">{t.paquetes}</td>
+                        <td className="px-3 py-2.5 text-center text-sm tabular-nums font-semibold text-gray-800">{t.xml_total}</td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${e.cls}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full bg-current ${t.estado === 'EN_PROCESO' ? 'animate-pulse' : ''}`} />
+                            {e.label}
+                          </span>
                         </td>
                       </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+                      {abierto && (
+                        <tr>
+                          <td colSpan={7} className="p-0">
+                            <TrabajoDetalle trabajoId={t.id} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

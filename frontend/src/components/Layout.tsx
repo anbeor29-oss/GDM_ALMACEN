@@ -577,7 +577,8 @@ export function Layout() {
                           { to: '/contabilidad/estados-financieros', icon: emoji3D('📋'), label: 'Estados financieros' },
                           { to: '/contabilidad/reportes-fiscales', icon: emoji3D('📤'), label: 'SAT' },
                           { to: '/contabilidad/cedulas',           icon: emoji3D('📑'), label: 'Cédulas fiscales (ISR/IVA)' },
-                          /* Cumplimiento por organismo: SAT (hub) → IMSS/INFONAVIT. */
+                          /* Cumplimiento por organismo: Panel fiscal (vistazo) → hub al detalle. */
+                          { to: '/contabilidad/panel-fiscal',            icon: emoji3D('🧭'), label: 'Panel fiscal' },
                           { to: '/contabilidad/servicios-sat',           icon: emoji3D('🏛️'), label: 'Cumplimiento fiscal' },
                         ],
                       },

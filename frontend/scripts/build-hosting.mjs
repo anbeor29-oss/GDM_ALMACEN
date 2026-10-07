@@ -7,7 +7,9 @@
  *
  * Variables opcionales (defaults pensados para producción):
  *   HOSTING_BASE_PATH   default '/erp/'
- *   HOSTING_API_BASE    default 'https://gdmfac-backend.onrender.com'
+ *   HOSTING_API_BASE    default 'https://gdm-almacen-backend.onrender.com' (backend NEXO)
+ *                       OJO: si producción es un servicio de Render aparte (rama
+ *                       `produccion`), pon ESA URL aquí; gdm-almacen-backend es el de dev.
  *
  * Salida:
  *   dist-hosting/gdmfac-erp-hosting.zip
@@ -17,7 +19,7 @@
  *         └── assets/…
  *
  * Después de subir, recuerda agregar el origen al CORS del backend en Render:
- *   CORS_ORIGIN=https://hcgm.com.mx,https://gdmfac-frontend.onrender.com
+ *   CORS_ORIGIN=https://hcgm.com.mx,https://gdm-almacen-frontend.onrender.com
  */
 
 import { execSync } from 'node:child_process';
@@ -29,7 +31,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
 const BASE_PATH = process.env.HOSTING_BASE_PATH || '/erp/';
-const API_BASE = process.env.HOSTING_API_BASE || 'https://gdmfac-backend.onrender.com';
+const API_BASE = process.env.HOSTING_API_BASE || 'https://gdm-almacen-backend.onrender.com';
 
 console.log('── build:hosting ──────────────────────────────');
 console.log(`   base path : ${BASE_PATH}`);
@@ -49,7 +51,7 @@ execSync('npx vite build', {
 
 // 2) .htaccess para SPA en subcarpeta (Apache / LiteSpeed de Hosting México)
 console.log('[2/4] escribiendo .htaccess…');
-const htaccess = `# GDM_FAC ERP — SPA React servida desde ${BASE_PATH}
+const htaccess = `# GDM NEXO ERP — SPA React servida desde ${BASE_PATH}
 # Fallback: cualquier ruta que no sea archivo/carpeta real → index.html
 <IfModule mod_rewrite.c>
   RewriteEngine On
@@ -83,14 +85,14 @@ cpSync(join(root, 'dist'), stage, { recursive: true });
 
 // 4) ZIP (PowerShell en Windows, zip en unix)
 console.log('[4/4] comprimiendo…');
-const zipPath = join(outDir, 'gdmfac-erp-hosting.zip');
+const zipPath = join(outDir, 'nexo-erp-hosting.zip');
 if (process.platform === 'win32') {
   execSync(
     `powershell -NoProfile -Command "Compress-Archive -Path '${stage}' -DestinationPath '${zipPath}' -Force"`,
     { stdio: 'inherit' }
   );
 } else {
-  execSync(`cd '${outDir}' && zip -rq gdmfac-erp-hosting.zip '${folderName}'`, {
+  execSync(`cd '${outDir}' && zip -rq nexo-erp-hosting.zip '${folderName}'`, {
     stdio: 'inherit', shell: '/bin/bash',
   });
 }

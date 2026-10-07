@@ -6823,3 +6823,206 @@ ruta `/contabilidad/cumplimiento-organismos` (+ compat imss/infonavit) **redirig
 - **Pendientes documentados en `docs/PENDIENTES.md`** (lista viva), con lo nuevo que pidió el usuario:
   **tabla de impuestos SEMANAL (12 meses) y ANUAL** de nómina (hoy sólo MENSUAL) y **mejoramiento del Punto de Venta**;
   además: plan de SatGo, cuadrícula fiscal, PLD (expediente+XML), IVA deploy, producción.
+
+---
+
+## 2026-10-06 (Nómina) — Tablas del ISR por mes y por periodo, en pantalla
+
+- **Contexto.** En **Nómina → Parámetros** sólo se veía la **tarifa MENSUAL** del Art. 96 (la que usa el motor,
+  cotejada DOF en `2026-08-17h_tarifas_2026_dof.sql`). El usuario pidió «anexar las **tablas por mes**» (imagen de la
+  tarifa mensual), tomándolas de `elcontribuyente.mx/tablas-isr/2026`, y dejar **registro en RAW y estructura para los
+  siguientes años**. También cerraba el pendiente de **semanal/anual**.
+- **Hallazgo.** Las 12 «tablas por mes» son las **acumuladas** de los pagos provisionales (no son `mensual × N`: traen
+  el redondeo propio del SAT). Tres igualdades que el SAT respeta: **enero = mensual**, **febrero = bimestral**,
+  **diciembre = anual**. La MENSUAL de la fuente coincide con la cotejada DOF del motor (su fila «enero»).
+- **Decisión.** Las tablas son **referencia de consulta**, no cálculo (el motor sigue reteniendo con
+  `nomina_tarifa_isr`). Por eso NO se tocó la BD ni el motor: se guardan **versionadas por año** en
+  `backend/src/modules/nomina/tablas-isr.data.ts` (RAW estructurado; enero/febrero/diciembre se definen por
+  referencia a mensual/bimestral/anual para no duplicar números) y se sirven en **`GET /nomina/tablas-isr/:anio`**
+  (sólo lectura, lo ve quien tenga nómina). El **subsidio no se duplica** aquí: desde 2024 es un % de la UMA y vive en
+  `nomina_subsidio`, visible arriba en la misma pantalla.
+- **UI.** Tarjeta nueva en `NominaParametros.tsx` (`TablasPorPeriodo`): pastillas de colores
+  (Por mes · Anual · Diaria · Semanal · Decenal · Quincenal · Bimestral) y, en «Por mes», segunda fila Ene–Dic.
+  Misma tabla (límite inferior/superior, cuota fija, % excedente) que la tarjeta de la mensual. Cita la fuente.
+- **Validación.** Script temporal cotejó las **19 tablas 2026** (12 meses + anual + 6 periódicas) contra: escalera
+  (cada renglón empieza un centavo arriba del techo anterior), continuidad de la cuota (`cuota_sig ≈ cuota + base·%`,
+  tolerancia por redondeo del SAT), % creciente, y las tres igualdades. **Todas pasan.** `tsc --noEmit` limpio en
+  backend y frontend. Ver [[indicadores-fiscales]]. Todo en **dev**.
+- **Cómo agregar un año.** Capturar `MESES_<año>` (12 acumuladas) + las sub-mensuales, agregar la entrada a
+  `TABLAS_ISR` apuntando anual→mes 12, mensual→mes 1, bimestral→mes 2, y cotejar contra el DOF.
+- **Uso de cada tabla (aclaración del usuario).** Las **periódicas** (diaria/semanal/…/mensual) son la **retención
+  del ISR de sueldos y salarios (nómina)** —la mensual es la que usa el motor—. Las **12 por mes** (acumuladas) y la
+  **anual** son para **pagos provisionales**: PF con actividad empresarial/profesional (**régimen 612**) y cualquier
+  otro (**Art. 106 LISR**) + cálculo anual (**Art. 152**); NO son de nómina. Los textos de la pantalla ya lo dicen.
+  (Posible siguiente paso, si se pide: alimentar con estas tablas el ISR PF 612 de **Cédulas fiscales**, hoy derivado.)
+
+---
+
+## 2026-10-06 (POS + Activo fijo) — Código de barras (Fase 0) y cédulas de depreciación/amortización
+
+**1 · POS — Fase 0 del lector de código de barras.** El usuario eligió **USB para ambos** (lector e impresora). La
+columna `products.barcode` ya existía (migración `2026-07-10_inventory_core.sql`) pero no se usaba: el alta/edición de
+producto no la capturaba y la búsqueda no la incluía. Hecho (todo en dev):
+- `Products.tsx`: campo **«Código de barras (Punto de Venta)»** en el modal; acepta el escaneo del lector (es un
+  teclado) o la captura manual. Se envía en crear y editar.
+- `products.service.ts` + `products.controller.ts`: persiste `barcode` en INSERT/UPDATE y lo **suma a la búsqueda**
+  del catálogo (`name/sku/clave_sat/barcode`), con lo que el placeholder de `Inventory.tsx` queda real y el POS podrá
+  buscar por él en la Fase 1. Sin cambio de esquema. `tsc` limpio.
+- Falta **Fase 1** (escaneo en el POS) y **Fase 2** (impresora USB). Plan en `docs/POS_PLAN.md`.
+
+**2 · Activo fijo — ClaveProdServ en la cédula + exports.** A partir del PDF `CODIGOS_DEPRECIACION_SAT.pdf` (que
+resultó ser la MISMA tabla por agrupador que NEXO ya tiene), el usuario pidió ligar la **ClaveProdServ (código +
+descripción del SAT)** de cada activo con el algoritmo y exportar las cédulas. Hecho:
+- `products/clave-prodserv-index.ts`: nuevo **`descripcionDeClave(key)`** — lookup exacto por Map sobre el índice de
+  52k claves del SAT.
+- `activos-fijos.service.ts` → `listarActivos` ahora expone por activo: `clave_prod_serv`, `clave_prod_serv_desc`,
+  `categoria_etiqueta`, `fundamento` (LISR), `tasa_pct`, `avance_pct`. **Dónde cae en el algoritmo** = la regla del
+  agrupador (la clave NO rige la tasa; es información/monitoreo).
+- `ActivoFijo.tsx` (Cédula): columna **«Clave SAT»** (código + descripción del SAT) y el **rubro + fundamento** bajo
+  el concepto; botones **Excel** y **PDF**.
+- `accounting/activos-export.service.ts` (NUEVO): `cedulaExcel` (2 hojas: Depreciación / Amortización) y `cedulaPdf`
+  (dos secciones con subtotales), reusando `nomina/estilo-excel` y `utils/reporte-pdf`, con el encabezado de la casa.
+  Rutas `GET /accounting/activos/cedula.xlsx` y `/cedula.pdf` (ANTES de `/activos/:id/cedula`). El export trae
+  **siempre las dos cédulas** sin importar la pestaña. `api.descargarCedulaActivos('excel'|'pdf')`.
+- Verificado: `tsc` limpio en back y front; smoke test de los builders (PDF `%PDF-`, XLSX `PK`). Todo en **dev**.
+
+**3 · Continuación (mismo día): monitoreo, PDF de referencia y POS Fase 1.**
+- **Monitoreo en la cédula.** Columna **«% avance»** (barra, de `avance_pct`) y **panel** arriba: en curso · por
+  agotarse (≥90%) · totalmente depreciados/amortizados · pendiente por depreciar/amortizar (`ActivoFijo.tsx`).
+- **PDF de referencia actualizado.** Se regeneró `CODIGOS_DEPRECIACION_SAT.pdf` **desde `depreciacion.data.ts`** (30
+  reglas) + Chrome headless, con una **sección nueva de ClaveProdServ** (código + descripción SAT + cómo enruta a la
+  cuenta → agrupador → regla; la clave NO fija la tasa) y nota de exports/avance. Entregado al usuario para integrar.
+- **POS — Fase 1 (escaneo) HECHA.** Backend `GET /pos/scan?code=` (pos.routes) = match EXACTO por `barcode` o
+  `UPPER(sku)`. Front `PointOfSale.tsx`: listener global de teclado por **ráfaga + Enter** (si pasan >80 ms entre
+  teclas se reinicia → escribir a mano NO dispara; el lector teclea <20 ms), `onScan` → `addToCart` + **bip**
+  (WebAudio) + **destello verde** de la línea; si no existe, avisa «dar de alta». Aviso «Escáner activo» junto al
+  buscador. `api.scanPos`. **Falta Fase 2** (impresora USB). `tsc` limpio back+front. Todo en **dev**.
+
+---
+
+## 2026-10-06 (Despliegue) — NEXO en vivo en hcgm.com.mx/erp
+
+**Qué se hizo.** Se publicó **GDM NEXO** en `https://hcgm.com.mx/erp/`, reemplazando la vieja app de **GDM
+Facturación** que estaba ahí. Flujo: `npm run build:hosting` (frontend estático, base `/erp/`, API →
+`gdm-almacen-backend`) → ZIP a `public_html/erp` (cPanel). El código ya era NEXO (landing acordeón "Todo lo que hace
+NEXO" sin planes de timbrado, login "GDM NEXO / GDM NEXO ERP®") — **no hubo cambios de código de UI**, sólo compilar y
+subir. Se corrigió el default del backend en `build-hosting.mjs` (`gdmfac-backend` → `gdm-almacen-backend`) y el nombre
+del ZIP (`nexo-erp-hosting.zip`).
+
+**Rename del sitio.** En el `index.html` de hcgm.com.mx, el menú Herramientas: «🧾 Facturación electrónica» → «🧾 NEXO»
+(el enlace ya apuntaba a `/erp/`).
+
+**Dos tropiezos y su arreglo:**
+1. **Login «Login error».** No era contraseña: era **CORS**. El backend `gdm-almacen-backend` tenía
+   `CORS_ORIGIN=https://gdm-almacen-frontend.onrender.com` sin `hcgm.com.mx`. Preflight confirmó: desde hcgm.com.mx NO
+   devolvía `access-control-allow-origin`. **Fix:** `CORS_ORIGIN` += `https://hcgm.com.mx,https://www.hcgm.com.mx` en
+   Render (Environment) y también en `render.yaml` (permanente). Tras redeploy, login OK.
+2. **No entraba al super admin.** El admin no existía/clave distinta en esa base. Se corrió en el **Web Shell de
+   Render** `node scripts/admin-total.js admin@gdmalmacen.mx 'Nexo2026Admin'` → quedó **SUPER_ADMIN + ADMIN_ALL**,
+   desbloqueado, con acceso a las **5 empresas** reales (GHC, EKU «GDM NEXO DEMO», AABA, BEOA, FAMC). La base NO está
+   vacía. Hay que **entrar con sesión nueva** (incógnito) porque el rol viaja en el token.
+
+**Estado.** NEXO vivo y operando en `/erp/`. El usuario trata gdm-almacen `main` como **producción**; el ambiente de
+timbrado PRUEBAS/REAL es **por empresa** (Súper Admin, `timbrado_ambiente`). Guía y **flujo de cambios** (push →
+Render; `build:hosting` + re-subir → /erp) en `docs/DESPLIEGUE_HCGM_ERP.md`.
+
+---
+
+## 2026-10-06 (PLD) — Expediente Único completo (Anexo 2/3 + Beneficiario Controlador)
+
+**Contexto.** El módulo PLD v1 ya tenía config por empresa + tablero de alertas, pero el expediente de cliente era
+básico (pocos campos, beneficiario como un solo texto, `completo` manual). El usuario pidió el **expediente completo**.
+
+**Hecho (todo en dev):**
+- **Backend `pld.service.ts`:** catálogo `CATALOGO_EXPEDIENTE` (fuente única) con los campos del **Anexo 3 (PF)** y
+  **Anexo 2 (PM)** agrupados (Identificación, Domicilio, Documento de identidad, Representante legal), marcando los
+  **requeridos**; `CAMPOS_BENEFICIARIO` para cada **Beneficiario Controlador** (nombre, RFC, CURP, fecha nac.,
+  nacionalidad, tipo de control, %). Helper `completitud(tipo, datos)` → requeridos/llenos/faltan. `guardarExpediente`
+  ahora **deriva `completo`** = todos los requeridos llenos **y** `docs_en_resguardo` (confirmación de copias en
+  resguardo 10 años), y guarda el resumen del BC en `beneficiario_controlador`. `listarExpedientes` ya devuelve `datos`
+  (para editar). Ruta nueva `GET /pld/campos-expediente`.
+- **Frontend `PLD.tsx` (PanelExpediente):** formulario que se **renderiza del catálogo** por tipo de persona, agrupado;
+  sub-formularios de **Beneficiario(s) Controlador(es)** (agregar/quitar varios); **barra de completitud** (`llenos/
+  requeridos`), lista de **faltantes**, y casilla «documentos en resguardo». Insignia Completo/Faltan N en vivo.
+- **Sin migración** (se reusa `pld_expediente.datos JSONB` + `beneficiario_controlador`). `tsc` limpio back+front;
+  lógica de completitud verificada por inspección (el runtime pide env completo).
+
+**Aviso (borrador XML) HECHO (mismo día).** El usuario pidió resolverlo con la documentación que subió. Extrayendo los
+3 PDFs (`E:\Banco\`) se confirmó: la Ley **Art. 24** y las **Reglas** marcan el CONTENIDO del Aviso (sujeto obligado ·
+cliente/usuario + beneficiario controlador + actividad · descripción de la operación: fecha, monto, moneda, instrumento
+monetario), pero el **XSD/formato OFICIAL** es el que "expide la UIF en el DOF POR ACTIVIDAD" (Anexos tipo 5-B/10/12-A
+de la «Resolución de formatos oficiales») — NO está en esos PDFs — y la **clave de sujeto obligado** la da el padrón.
+Con eso se construyó `pld-aviso.service.ts` (`generarAvisoXml`): **borrador XML** con el contenido del Art. 24 +
+**esquema general del SPPLD** (archivo→informe→sujeto_obligado→aviso→persona_aviso→detalle_operaciones), desde config +
+facturas del mes que rebasan el umbral + expediente. Rutas `GET /pld/aviso/resumen` y `/aviso.xml`; pestaña **«Aviso»**
+(periodo = mes anterior, resumen, descargar, disclaimer). `tsc` limpio. **Es BORRADOR**: `CLAVE_ACTIVIDAD` e instrumento
+monetario son referenciales → validar/ajustar contra el formato oficial del DOF de la actividad y la clave de padrón,
+en el Portal; la presentación la hace el usuario con e.firma (día 17). Todo en **dev**.
+
+**IVA.HTML → desplegar:** el código ya está listo (motor SatGo, lee `SATGO_API_KEY`, ver `CAMBIO_SATGO.md`). Falta la
+acción del usuario en SU hosting: poner `SATGO_API_KEY` + reiniciar (Claude no tiene acceso a ese hosting).
+
+---
+
+## 2026-10-06 (IVA — llave SatGo + plan comercial) — Dónde vive la API Key y arranque de la comercialización de IVA.HTML
+
+**Contexto.** Al ir a poner la `SATGO_API_KEY` en el hosting de IVA (estaba mal, con el literal `"satgo"`), el usuario
+preguntó **cuál de las variables de entorno de NEXO (`gdm-almacen-backend`) es la API Key** para copiarla.
+
+**Hallazgo (verificado en el código).** **NEXO no guarda la API Key en una variable de entorno.** `satgo.service.ts`
+la guarda **cifrada en la base de datos** (bóveda protegida por `SAT_VAULT_KEY`); se creó una sola vez desde la
+pantalla de SatGo de NEXO (paso `CreateKey`) o por bootstrap de `SATGO_PORTAL_TOKEN`. En el env sólo están
+`SATGO_BASE_URL` (la URL `https://api.sat-go.com`, **no** la llave) y `SAT_VAULT_KEY` (la llave que **cifra** la API Key,
+tampoco es la de SatGo). Por orden alfabético se confirmó que **ni `SATGO_API_KEY` ni `SATGO_PORTAL_TOKEN` están** en ese
+backend. **Conclusión:** no hay nada que copiar desde el env de NEXO. Para IVA, la **fuente de verdad** es el **portal de
+SatGo** (`web.sat-go.com` → API Key de la cuenta) o poner en IVA el **`SATGO_PORTAL_TOKEN`** y dejar que IVA haga
+`CreateKey` solo (`src/sat/satgo.js` ya lo soporta). Esto quedó documentado en `IVA.HTML/CAMBIO_SATGO.md` y en la
+memoria [[iva-html-satgo]].
+
+**Decisión nueva — comercializar IVA.HTML.** En vez de dejar IVA como herramienta interna, se buscará venderla:
+**pantalla emergente** (modal) que obliga al usuario a **grabar sus datos** (nombre, RFC, correo, teléfono, empresa) al
+primer uso, y monetización por **consultas** (cada descarga/cálculo de IVA del mes = 1 consulta, prepago/paquetes) y por
+**exportación a Excel** (el detalle CFDI + IVA cobrado/pagado por tipo I-PUE/I-PPD/P/E se cobra o requiere paquete). El
+registro de datos sirve también como CRM ligero. El CFDI del servicio lo emite NEXO. Plan detallado en
+`IVA.HTML/COMERCIALIZACION_IVA.md` y en `PENDIENTES.md`. **Es sólo plan; nada codificado aún.**
+
+**Baseline de modificaciones acumuladas (2026-10-06):** desde la publicación en hcgm.com.mx/erp se van acumulando los
+cambios; la tarea `actualizar-hcgm-erp` recuerda (~cada 4 días/100 h) re-publicar el frontend a `/erp` con
+`build:hosting`. Hoy **no se tocó código** (sólo diagnóstico + documentación), así que no hay nada que re-publicar por
+esta sesión.
+
+---
+
+## 2026-10-07 (Cumplimiento) — Panel fiscal: expediente de cumplimiento de un vistazo
+
+**Contexto.** El usuario pidió, sobre la tarjeta «Tu empresa» del Dashboard (imagen 1), colocar «Panel fiscal» y que de
+ahí se **despliegue** una pantalla (imagen 2) con **todas las características que ya tenemos en Cumplimiento fiscal y las
+condiciones de actualización**; para **INFONAVIT** dejar la **opción de configuración** (su obtención se explorará). Pasó
+el doc `GDM_NEXO_Dashboard_Multiempresa.md` con la paleta y la información técnica, pidiendo **respetar las dos imágenes**.
+
+**Hecho (dev, todo front; sin migración, sin tocar backend).**
+- **`pages/contabilidad/PanelFiscal.tsx` (NUEVO)** + ruta `contabilidad/panel-fiscal`: **encabezado claro** (título
+  «Panel fiscal» + tarjeta de empresa, como la imagen 1) y **tablero oscuro** con la **paleta NEXO** del doc
+  (`#0B1220` fondo, `#111D30` paneles, `#15243A` secundario, `#244A78` acento, estados verde `#62D6A4`/ámbar `#F4C56B`/
+  rojo `#E56B6F`, texto `#F3F6FB`/`#8FA1BA`).
+  - **DOCUMENTOS PERMANENTES:** 32-D/Opinión SAT, CIF, Opinión IMSS, Opinión INFONAVIT — estado **vigente** (del
+    histórico más reciente), fecha, y **condición de actualización** (automática diaria / manual, de `cumpl-config`).
+  - **DOCUMENTOS ANUALES / HISTÓRICO:** pestañas de ejercicio (2026→, con «+ años anteriores» hasta 2018) y tabla con
+    **Declaraciones** (conteo por año del respaldo), **Notificaciones** e **Información fiscal** (se leen de caché; son
+    consultas en vivo con e.firma/CIEC desde su pestaña).
+  - **No duplica motores:** reusa los MISMOS endpoints y claves de caché del hub (`['opinion-hist',tipo]`,
+    `['cumpl-config']`, `['cumpl-dec-resumen']`, `['buzon-notif']`, `['cumpl-info-fiscal']`). Cada tarjeta/fila entra al
+    hub en su pestaña.
+- **Deep-link por `?tab=` en el hub** (`ServiciosSat.tsx`): la pestaña inicial se toma de la URL (validada contra TABS),
+  para que el Panel fiscal abra directo 32-D/CIF/IMSS/INFONAVIT/Notificaciones/Declaraciones/Info fiscal.
+- **Entrada desde «Tu empresa» en el Dashboard** (`Dashboard.tsx`): botón **«Panel fiscal»** (gated por acceso a
+  contabilidad) que navega a la pantalla; también entrada en el **menú** de Contabilidad (junto a Cumplimiento fiscal).
+- **INFONAVIT con «Configurar»** (`PanelOpinion.tsx`): antes estaba oculto para INFONAVIT; ahora se muestra para todas, y
+  el texto del modal aclara que INFONAVIT es **captura manual por ahora** y la config queda lista para cuando se
+  automatice. (Decisión del usuario: «deja la opción de configuración… en estos días exploramos cómo obtenerla».)
+- **Fechas** en **DD/MM/AAAA** (`aTextoMx`, convención del proyecto) en vez del «06 Oct 2026» del mockup.
+
+**Verificación:** `tsc --noEmit` limpio y `vite build` OK (2427 módulos). No se probó autenticado (vive tras login contra
+el backend de producción); se mandó al usuario una **vista estática fiel** para confirmar que respeta las dos imágenes.
+Para verlo en vivo: desplegar (push a `main` actualiza el backend/gdm-almacen-frontend; para hcgm.com.mx/erp, `build:hosting`
++ re-subir). Ver [[panel-fiscal]].

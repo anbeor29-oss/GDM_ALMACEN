@@ -8,8 +8,10 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
-import { FileText, Wallet, TrendingDown, AlertCircle, Stamp, Boxes } from 'lucide-react';
+import { canAccess } from '@/utils/permissions';
+import { FileText, Wallet, TrendingDown, AlertCircle, Stamp, Boxes, ShieldCheck } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
@@ -48,7 +50,13 @@ export function DashboardPage() {
   });
 
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { user, setToken, setUser } = useAuthStore();
+  /* El Panel fiscal vive en Contabilidad: el acceso sólo aparece para quien tiene
+   * ese módulo (por grupo de trabajo o como módulo extra), para no mandar a una
+   * pantalla bloqueada. */
+  const puedeContab = canAccess(user?.workGroup, 'contabilidad' as any)
+    || ((user?.extraModules as string[] | undefined) || []).includes('contabilidad');
 
   const s = summary?.data || {};
   const u = usage?.data;
@@ -248,14 +256,29 @@ export function DashboardPage() {
           esta cuenta y en cuál se está trabajando. */}
       {empresas.length > 0 && (
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-1">
-            {empresas.length > 1 ? 'Empresas que administras' : 'Tu empresa'}
-          </h2>
-          <p className="text-sm text-gray-500 mb-4">
-            {empresas.length > 1
-              ? 'Haz clic en una para trabajar en ella.'
-              : 'Datos fiscales del emisor con el que timbras.'}
-          </p>
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 mb-1">
+                {empresas.length > 1 ? 'Empresas que administras' : 'Tu empresa'}
+              </h2>
+              <p className="text-sm text-gray-500">
+                {empresas.length > 1
+                  ? 'Haz clic en una para trabajar en ella.'
+                  : 'Datos fiscales del emisor con el que timbras.'}
+              </p>
+            </div>
+            {/* Entrada al Panel fiscal: el expediente de cumplimiento de la empresa
+                (32-D/CIF/IMSS/INFONAVIT + histórico), a un clic desde aquí. */}
+            {puedeContab && (
+              <button
+                onClick={() => navigate('/contabilidad/panel-fiscal')}
+                title="Expediente de cumplimiento: 32-D, CIF, IMSS, INFONAVIT e histórico"
+                className="inline-flex items-center gap-1.5 bg-slate-900 text-white px-3 py-2 rounded-lg hover:bg-slate-800 text-sm font-medium shrink-0"
+              >
+                <ShieldCheck size={15} /> Panel fiscal
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {empresas.map((e) => {
               const activa = e.id === user?.companyId;

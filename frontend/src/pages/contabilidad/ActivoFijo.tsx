@@ -11,7 +11,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Sparkles, PlayCircle, FileText, RefreshCw, Check, Pencil, Trash2, X, CalendarClock, Split } from 'lucide-react';
+import { Building2, Sparkles, PlayCircle, FileText, RefreshCw, Check, Pencil, Trash2, X, CalendarClock, Split, Download } from 'lucide-react';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
@@ -99,9 +99,24 @@ function TabCedula({ soloIntangibles }: { soloIntangibles: boolean }) {
   const todos: any[] = q.data?.data?.activos || [];
   const activos = todos.filter((a) => !!a.intangible === soloIntangibles);
   const [cedula, setCedula] = useState<string | null>(null);
+  const [bajando, setBajando] = useState<'excel' | 'pdf' | null>(null);
+  /* El export trae SIEMPRE las dos cédulas (depreciación y amortización) en un
+   * solo archivo, sin importar la pestaña: es la constancia completa del rubro. */
+  const exportar = async (f: 'excel' | 'pdf') => {
+    setBajando(f);
+    try { await api.descargarCedulaActivos(f); } finally { setBajando(null); }
+  };
 
   const totalMoi = activos.reduce((a, x) => a + Number(x.moi || 0), 0);
   const totalLibros = activos.reduce((a, x) => a + Number(x.valor_en_libros || 0), 0);
+
+  /* Monitoreo: de los vivos y depreciables, cuántos van en curso, cuántos están
+   * por agotarse (≥90% de su base) y cuántos ya se depreciaron por completo. */
+  const vivos = activos.filter((a) => a.estado !== 'BAJA');
+  const enCurso = vivos.filter((a) => !a.totalmente_depreciado && Number(a.tasa_anual) > 0).length;
+  const porAgotarse = vivos.filter((a) => !a.totalmente_depreciado && Number(a.tasa_anual) > 0 && Number(a.avance_pct) >= 90).length;
+  const totalmenteDep = vivos.filter((a) => a.totalmente_depreciado).length;
+  const totalPendiente = vivos.reduce((s, x) => s + Number(x.pendiente || 0), 0);
 
   return (
     <div className="space-y-3">
@@ -111,16 +126,50 @@ function TabCedula({ soloIntangibles }: { soloIntangibles: boolean }) {
         <span className="text-gray-600">MOI total <b>{money(totalMoi)}</b></span>
         <span className="text-gray-400">·</span>
         <span className="text-gray-600">Valor en libros <b>{money(totalLibros)}</b></span>
-        <button onClick={() => q.refetch()} className="ml-auto text-gray-500 hover:text-gray-700" title="Actualizar">
-          <RefreshCw size={16} className={q.isFetching ? 'animate-spin' : ''} />
-        </button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button onClick={() => exportar('excel')} disabled={!!bajando}
+            title="Descarga AMBAS cédulas (depreciación y amortización) en Excel"
+            className="inline-flex items-center gap-1 text-xs border rounded-lg px-2.5 py-1.5 text-emerald-700 border-emerald-200 hover:bg-emerald-50 disabled:opacity-50">
+            <Download size={14} /> {bajando === 'excel' ? '…' : 'Excel'}
+          </button>
+          <button onClick={() => exportar('pdf')} disabled={!!bajando}
+            title="Descarga AMBAS cédulas (depreciación y amortización) en PDF"
+            className="inline-flex items-center gap-1 text-xs border rounded-lg px-2.5 py-1.5 text-rose-700 border-rose-200 hover:bg-rose-50 disabled:opacity-50">
+            <FileText size={14} /> {bajando === 'pdf' ? '…' : 'PDF'}
+          </button>
+          <button onClick={() => q.refetch()} className="text-gray-500 hover:text-gray-700" title="Actualizar">
+            <RefreshCw size={16} className={q.isFetching ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
+
+      {/* Monitoreo de un vistazo: lo que corre, lo que está por agotarse y lo ya agotado. */}
+      {vivos.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-gray-400 mr-0.5">Monitoreo:</span>
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-100 text-sky-700 font-medium">{enCurso} en curso</span>
+          {porAgotarse > 0 && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-medium">
+              {porAgotarse} por agotarse (≥90%)
+            </span>
+          )}
+          {totalmenteDep > 0 && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-medium">
+              {totalmenteDep} totalmente {soloIntangibles ? 'amortizados' : 'depreciados'}
+            </span>
+          )}
+          <span className="text-gray-500 ml-1">
+            Pendiente por {soloIntangibles ? 'amortizar' : 'depreciar'}: <b>{money(totalPendiente)}</b>
+          </span>
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Concepto</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Clave SAT</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Cuenta</th>
               <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Adquirido</th>
               <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">MOI</th>
@@ -129,13 +178,14 @@ function TabCedula({ soloIntangibles }: { soloIntangibles: boolean }) {
               <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Mensual</th>
               <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Acumulada</th>
               <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">En libros</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">% avance</th>
               <th className="px-3 py-2 w-20"></th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {q.isLoading && <tr><td colSpan={10} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>}
+            {q.isLoading && <tr><td colSpan={12} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>}
             {!q.isLoading && activos.length === 0 && (
-              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-500 italic">
+              <tr><td colSpan={12} className="px-4 py-8 text-center text-gray-500 italic">
                 Aún no hay {soloIntangibles ? 'intangibles ni diferidos' : 'activos fijos'} en esta vista.
                 Ve a «Detectar desde compras» para levantarlos del XML.
               </td></tr>
@@ -187,7 +237,18 @@ function RenglonActivo({ a, onCedula, onCambio }: { a: any; onCedula: () => void
             {a.proveedor_nombre || a.origen_folio || ''}{a.totalmente_depreciado ? ' · totalmente depreciado' : ''}
             {dado ? ' · BAJA' : ''}
           </p>
+          {(a.categoria_etiqueta || a.fundamento) && (
+            <p className="text-[10px] text-emerald-700/70 truncate max-w-xs" title={a.fundamento || ''}>
+              {a.categoria_etiqueta}{a.fundamento ? ` · ${a.fundamento}` : ''}
+            </p>
+          )}
         </button>
+      </td>
+      <td className="px-3 py-2">
+        <p className="font-mono text-xs text-gray-700" title={a.clave_prod_serv_desc || ''}>{a.clave_prod_serv || '—'}</p>
+        {a.clave_prod_serv_desc && (
+          <p className="text-[10px] text-gray-400 truncate max-w-[12rem]">{a.clave_prod_serv_desc}</p>
+        )}
       </td>
       <td className="px-3 py-2 font-mono text-xs text-gray-600">{a.cuenta_activo}</td>
       <td className="px-3 py-2 text-center text-xs text-gray-500">{fecha(a.fecha_adquisicion)}</td>
@@ -211,6 +272,16 @@ function RenglonActivo({ a, onCedula, onCambio }: { a: any; onCedula: () => void
       <td className="px-3 py-2 text-right tabular-nums text-gray-600">{money(a.dep_mensual)}</td>
       <td className="px-3 py-2 text-right tabular-nums text-gray-600">{money(a.acumulada)}</td>
       <td className="px-3 py-2 text-right tabular-nums font-medium">{money(a.valor_en_libros)}</td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-2 justify-end">
+          <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full ${a.totalmente_depreciado ? 'bg-emerald-500' : Number(a.avance_pct) >= 90 ? 'bg-amber-400' : 'bg-sky-400'}`}
+              style={{ width: `${Math.min(100, Math.max(0, Number(a.avance_pct) || 0))}%` }} />
+          </div>
+          <span className="text-xs tabular-nums text-gray-500 w-9 text-right">{Math.round(Number(a.avance_pct) || 0)}%</span>
+        </div>
+      </td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-1.5 justify-end">
           {!dado && <button onClick={baja} className="text-gray-400 hover:text-amber-600" title="Dar de baja"><CalendarClock size={15} /></button>}

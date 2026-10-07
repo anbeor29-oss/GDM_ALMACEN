@@ -21,6 +21,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Building2, ShieldCheck, AlertTriangle, Save, Info, ExternalLink } from 'lucide-react';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
+import { claseOpcion } from '@/utils/coloresOpciones';
 
 export function NominaParametrosPage() {
   const qc = useQueryClient();
@@ -363,6 +364,9 @@ function PanelFiscal() {
               {verTarifa ? 'ocultar' : 'ver los renglones'}
             </span>
           </button>
+          <p className="text-xs text-gray-500 mt-1">
+            Con esta el motor calcula el ISR mensual de <strong>sueldos y salarios</strong> (retención de nómina).
+          </p>
 
           {verTarifa && (
             <div className="overflow-x-auto mt-3">
@@ -430,6 +434,10 @@ function PanelFiscal() {
         </div>
       )}
 
+      {/* Las tablas que NO son la mensual: las doce acumuladas por mes para los
+          pagos provisionales, la anual y las de cada periodicidad. */}
+      <TablasPorPeriodo anio={anio} />
+
       <div className="bg-slate-50 border rounded-lg p-5">
         <h2 className="font-semibold text-slate-700 mb-1">Dónde se actualizan</h2>
         <p className="text-xs text-gray-500 mb-3">
@@ -453,6 +461,137 @@ function PanelFiscal() {
           Copiar la tabla del año pasado retendría de más o de menos a toda la plantilla.
         </p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * TablasPorPeriodo — las tablas del ISR que NO son la mensual: las doce
+ * acumuladas por mes (pagos provisionales), la anual y las de cada periodicidad
+ * de retención. Son de consulta —el motor retiene con la mensual de arriba— y se
+ * piden al año que esté elegido en el panel. Enero = mensual, diciembre = anual.
+ */
+function TablasPorPeriodo({ anio }: { anio: number }) {
+  const mesActual = new Date().getMonth() + 1;
+  const [vista, setVista] = useState<string>('MES');
+  const [mes, setMes] = useState<number>(mesActual);
+
+  const q = useQuery({
+    queryKey: ['tablas-isr', anio],
+    queryFn: () => api.getTablasIsr(anio),
+    retry: false,
+  });
+  const d: any = q.data?.data;
+
+  const mxn = (v: any) =>
+    v === null || v === undefined
+      ? '—'
+      : Number(v).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+
+  const OPCIONES = [
+    { k: 'MES', label: 'Por mes' },
+    { k: 'ANUAL', label: 'Anual' },
+    { k: 'DIARIA', label: 'Diaria' },
+    { k: 'SEMANAL', label: 'Semanal' },
+    { k: 'DECENAL', label: 'Decenal' },
+    { k: 'QUINCENAL', label: 'Quincenal' },
+    { k: 'BIMESTRAL', label: 'Bimestral' },
+  ];
+  const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+  const renglones: any[] =
+    !d?.disponible ? []
+      : vista === 'MES' ? (d.meses?.[mes] || [])
+        : vista === 'ANUAL' ? (d.anual || [])
+          : (d.periodicas?.[vista] || []);
+
+  const subtitulo =
+    vista === 'MES'
+      ? `Acumulada a ${MESES[mes - 1]} — pago provisional de PF con actividad empresarial (régimen 612) y demás (Art. 106 LISR)`
+      : vista === 'ANUAL'
+        ? 'Cálculo anual del ISR del ejercicio (Art. 152 LISR)'
+        : `Retención del ISR de sueldos y salarios — pago ${(OPCIONES.find((o) => o.k === vista)?.label || '').toLowerCase()}`;
+
+  return (
+    <div className="bg-white rounded-lg shadow border p-5">
+      <h2 className="font-semibold text-slate-700">Tablas del ISR por periodo y por mes</h2>
+      <p className="text-xs text-gray-500 mt-0.5">
+        Las de <strong>periodicidad</strong> (diaria … mensual) son la retención del ISR de
+        <strong> sueldos y salarios</strong> (nómina). Las <strong>doce por mes</strong> son las
+        acumuladas para los <strong>pagos provisionales</strong> de PF con actividad empresarial
+        (régimen 612) y cualquier otro (Art. 106 LISR). La <strong>anual</strong> es el cálculo
+        del ejercicio (Art. 152). Son de consulta: el motor de nómina retiene con la mensual de arriba.
+      </p>
+
+      {q.isLoading && <p className="text-sm text-gray-500 mt-3">Cargando…</p>}
+
+      {d && !d.disponible && (
+        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 mt-3">
+          Todavía no se capturan las tablas del {anio}. Cargadas: {(d.anios || []).join(', ') || '—'}.
+        </p>
+      )}
+
+      {d?.disponible && (
+        <>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {OPCIONES.map((o, i) => (
+              <button key={o.k} onClick={() => setVista(o.k)} className={claseOpcion(i, vista === o.k)}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+
+          {vista === 'MES' && (
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {MESES.map((m, i) => (
+                <button
+                  key={m}
+                  onClick={() => setMes(i + 1)}
+                  className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${
+                    mes === i + 1
+                      ? 'bg-slate-800 text-white border-slate-800'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {m.slice(0, 3)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <p className="text-xs text-gray-500 mt-3">{subtitulo}</p>
+
+          <div className="overflow-x-auto mt-2">
+            <table className="w-full text-xs tabular-nums">
+              <thead className="bg-gray-50 border-b text-gray-600">
+                <tr>
+                  <th className="px-2 py-1.5 text-right">Límite inferior</th>
+                  <th className="px-2 py-1.5 text-right">Límite superior</th>
+                  <th className="px-2 py-1.5 text-right">Cuota fija</th>
+                  <th className="px-2 py-1.5 text-right">% excedente</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {renglones.map((r, i) => (
+                  <tr key={i} className="hover:bg-gray-50">
+                    <td className="px-2 py-1 text-right">{mxn(r.limite_inferior)}</td>
+                    <td className="px-2 py-1 text-right">
+                      {r.limite_superior === null
+                        ? <span className="text-gray-400">en adelante</span>
+                        : mxn(r.limite_superior)}
+                    </td>
+                    <td className="px-2 py-1 text-right">{mxn(r.cuota_fija)}</td>
+                    <td className="px-2 py-1 text-right">{Number(r.porcentaje).toFixed(2)} %</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {d.fuente && <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">{d.fuente}</p>}
+        </>
+      )}
     </div>
   );
 }

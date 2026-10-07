@@ -123,7 +123,7 @@ services:
       - key: SW_SAPIEN_TOKEN
         sync: false
       - key: CORS_ORIGIN
-        value: "https://gdm-almacen-frontend.onrender.com"
+        value: "https://gdm-almacen-frontend.onrender.com,https://hcgm.com.mx,https://www.hcgm.com.mx"
       - key: CORS_CREDENTIALS
         value: "true"
       - key: RATE_LIMIT_WINDOW_MS

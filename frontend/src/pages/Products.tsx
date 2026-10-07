@@ -394,6 +394,7 @@ interface ProductForm {
   taxRate: number;
   taxPresetId: string;     // ← guarda CUÁL preset escogió el usuario
   currency: string;        // c_Moneda (ISO 4217)
+  barcode: string;         // código de barras EAN/UPC para el Punto de Venta
 }
 
 const emptyForm: ProductForm = {
@@ -411,6 +412,7 @@ const emptyForm: ProductForm = {
   taxRate: 0.16,
   taxPresetId: 'iva16',
   currency: 'MXN',
+  barcode: '',
 };
 
 function ProductModal({
@@ -472,6 +474,7 @@ function ProductModal({
             : Number(p.tax_rate) === 0 ? 'iva0'
             : 'iva16'),
         currency: p.currency || 'MXN',
+        barcode: p.barcode || '',
       });
     } else if (mode === 'create' && nextSkuData?.data?.nextSku) {
       setForm((f) => ({ ...f, sku: nextSkuData.data.nextSku }));
@@ -539,6 +542,7 @@ function ProductModal({
       // Banderas derivadas del preset para que el backend persista coherente
       isExempt: form.taxPresetId === 'ivaex',
       appliesIEPS: form.taxPresetId === 'ieps_tasa' || form.taxPresetId === 'ieps_cuota',
+      barcode: form.barcode?.trim() || null,
     });
   };
 
@@ -661,6 +665,20 @@ function ProductModal({
               className="input uppercase"
               required
             />
+          </Field>
+
+          <Field label="Código de barras (Punto de Venta)">
+            <input
+              type="text"
+              value={form.barcode}
+              onChange={(e) => setForm({ ...form, barcode: e.target.value.trim() })}
+              placeholder="Escanéalo con el lector o escríbelo (EAN/UPC) — opcional"
+              className="input font-mono"
+              inputMode="numeric"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Es el código impreso en el producto. Con él se vende en el Punto de Venta usando el lector USB.
+            </p>
           </Field>
 
           <SATPicker

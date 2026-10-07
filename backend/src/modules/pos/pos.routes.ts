@@ -71,6 +71,32 @@ router.get(
   })
 );
 
+/**
+ * GET /pos/scan?code=XXXX — UN producto por código de barras (o SKU) EXACTO.
+ *
+ * Es lo que usa el lector del mostrador: a diferencia de la búsqueda por texto
+ * (nombre/SKU/clave con ILIKE), aquí el match es exacto y devuelve un solo
+ * producto para agregarlo al carrito al instante. Prioriza el código de barras;
+ * cae al SKU si no hay barcode. Leer es de cualquier cajero (como ver ventas).
+ */
+router.get(
+  '/scan',
+  asyncHandler(async (req: Request, res: Response) => {
+    const code = String(req.query.code || '').trim();
+    if (!code) throw new ValidationError('Falta el código a buscar');
+    const r = await query<any>(
+      `SELECT id, sku, name, base_price, wholesale_price, barcode, stock_quantity
+         FROM products
+        WHERE company_id = $1 AND deleted_at IS NULL AND is_active = true
+          AND (barcode = $2 OR UPPER(sku) = UPPER($2))
+        ORDER BY CASE WHEN barcode = $2 THEN 0 ELSE 1 END
+        LIMIT 1`,
+      [companyId(req), code]
+    );
+    res.json({ success: true, data: { product: r.rows[0] || null, code } });
+  })
+);
+
 /** POST /pos/sales/:id/cancel — cancelar (devuelve el stock descontado) */
 router.post(
   '/sales/:id/cancel',

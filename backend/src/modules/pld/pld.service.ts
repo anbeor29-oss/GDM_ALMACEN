@@ -208,10 +208,100 @@ export async function tablero(companyId: string) {
   };
 }
 
-/* ── Expediente de cliente ── */
+/* ── Expediente Único de Identificación (Reglas Art. 12, Anexo 3 PF / Anexo 2 PM) ──
+ *
+ * La captura vive en `datos` (JSONB); aquí está el CATÁLOGO de campos (fuente única
+ * para la pantalla) y el cálculo de COMPLETITUD. Las copias de los documentos se
+ * resguardan 10 años por fuera (reforma 2025); `datos.docs_en_resguardo` es la
+ * confirmación de que se tienen. El Beneficiario Controlador (Art. 18 fr. III / 33
+ * Bis) se captura estructurado en `datos.beneficiarios[]`. */
+export interface CampoExp {
+  k: string; label: string; grupo: string;
+  req?: boolean; tipo?: 'text' | 'date' | 'select'; opciones?: string[];
+}
+
+const EXP_DOMICILIO: CampoExp[] = [
+  { k: 'calle', label: 'Calle y número', grupo: 'Domicilio', req: true },
+  { k: 'colonia', label: 'Colonia', grupo: 'Domicilio', req: true },
+  { k: 'cp', label: 'Código postal', grupo: 'Domicilio', req: true },
+  { k: 'municipio', label: 'Municipio / Alcaldía', grupo: 'Domicilio', req: true },
+  { k: 'estado', label: 'Entidad federativa', grupo: 'Domicilio', req: true },
+  { k: 'pais', label: 'País', grupo: 'Domicilio', req: true },
+];
+const EXP_CONTACTO: CampoExp[] = [
+  { k: 'telefono', label: 'Teléfono', grupo: 'Contacto' },
+  { k: 'correo', label: 'Correo electrónico', grupo: 'Contacto' },
+];
+const EXP_FISICA: CampoExp[] = [
+  { k: 'fechaNacimiento', label: 'Fecha de nacimiento', grupo: 'Identificación', req: true, tipo: 'date' },
+  { k: 'nacionalidad', label: 'Nacionalidad', grupo: 'Identificación', req: true },
+  { k: 'lugarNacimiento', label: 'Lugar de nacimiento (entidad/país)', grupo: 'Identificación' },
+  { k: 'curp', label: 'CURP', grupo: 'Identificación', req: true },
+  { k: 'ocupacion', label: 'Ocupación o actividad', grupo: 'Identificación', req: true },
+  { k: 'idTipo', label: 'Documento de identificación', grupo: 'Documento de identidad', req: true, tipo: 'select',
+    opciones: ['INE/IFE', 'Pasaporte', 'Cédula profesional', 'Cartilla SMN', 'Documento migratorio (FM)', 'Otro'] },
+  { k: 'idFolio', label: 'Folio / número del documento', grupo: 'Documento de identidad', req: true },
+  { k: 'idAutoridad', label: 'Autoridad que lo emitió', grupo: 'Documento de identidad' },
+];
+const EXP_MORAL: CampoExp[] = [
+  { k: 'fechaConstitucion', label: 'Fecha de constitución', grupo: 'Identificación', req: true, tipo: 'date' },
+  { k: 'nacionalidad', label: 'Nacionalidad', grupo: 'Identificación', req: true },
+  { k: 'giro', label: 'Giro / objeto social', grupo: 'Identificación', req: true },
+  { k: 'folioMercantil', label: 'Folio mercantil / instrumento (RPPyC)', grupo: 'Identificación' },
+  { k: 'repNombre', label: 'Representante o apoderado', grupo: 'Representante legal', req: true },
+  { k: 'repRfc', label: 'RFC del representante', grupo: 'Representante legal' },
+  { k: 'repCurp', label: 'CURP del representante', grupo: 'Representante legal' },
+  { k: 'repIdTipo', label: 'Identificación del representante', grupo: 'Representante legal', tipo: 'select',
+    opciones: ['INE/IFE', 'Pasaporte', 'Cédula profesional', 'Documento migratorio (FM)', 'Otro'] },
+  { k: 'repIdFolio', label: 'Folio de su identificación', grupo: 'Representante legal' },
+  { k: 'repFechaPoder', label: 'Fecha del poder / instrumento', grupo: 'Representante legal', tipo: 'date' },
+];
+/** Campos de cada Beneficiario Controlador (persona física que controla). */
+export const CAMPOS_BENEFICIARIO: CampoExp[] = [
+  { k: 'nombre', label: 'Nombre completo', grupo: 'Beneficiario', req: true },
+  { k: 'rfc', label: 'RFC', grupo: 'Beneficiario' },
+  { k: 'curp', label: 'CURP', grupo: 'Beneficiario' },
+  { k: 'fechaNacimiento', label: 'Fecha de nacimiento', grupo: 'Beneficiario', tipo: 'date' },
+  { k: 'nacionalidad', label: 'Nacionalidad', grupo: 'Beneficiario' },
+  { k: 'tipoControl', label: 'Tipo de control', grupo: 'Beneficiario', tipo: 'select',
+    opciones: ['Participación accionaria', 'Derechos de voto', 'Nombramiento/remoción de administradores', 'Otros medios'] },
+  { k: 'porcentaje', label: '% de participación', grupo: 'Beneficiario' },
+];
+
+/** Los campos del expediente según el tipo de persona (sin contar el beneficiario). */
+export function camposExpediente(tipo?: string): CampoExp[] {
+  const esMoral = String(tipo || '').toUpperCase() === 'MORAL';
+  return [...(esMoral ? EXP_MORAL : EXP_FISICA), ...EXP_DOMICILIO, ...EXP_CONTACTO];
+}
+
+/** Catálogo completo para la pantalla (fuente única de los campos). */
+export const CATALOGO_EXPEDIENTE = {
+  fisica: [...EXP_FISICA, ...EXP_DOMICILIO, ...EXP_CONTACTO],
+  moral: [...EXP_MORAL, ...EXP_DOMICILIO, ...EXP_CONTACTO],
+  beneficiario: CAMPOS_BENEFICIARIO,
+};
+
+/** Cuántos campos requeridos están llenos y cuáles faltan (incl. Beneficiario en PM). */
+export function completitud(tipo: string, datos: any): { requeridos: number; llenos: number; faltan: string[]; completoDatos: boolean } {
+  const d = datos || {};
+  const req = camposExpediente(tipo).filter((c) => c.req);
+  const faltan: string[] = [];
+  for (const c of req) {
+    const v = d[c.k];
+    if (v == null || String(v).trim() === '') faltan.push(c.label);
+  }
+  let total = req.length;
+  if (String(tipo || '').toUpperCase() === 'MORAL') {
+    total += 1;   // al menos un Beneficiario Controlador con nombre
+    const bs: any[] = Array.isArray(d.beneficiarios) ? d.beneficiarios : [];
+    if (!bs.some((b) => b && String(b.nombre || '').trim() !== '')) faltan.push('Beneficiario controlador');
+  }
+  return { requeridos: total, llenos: total - faltan.length, faltan, completoDatos: faltan.length === 0 };
+}
+
 export async function listarExpedientes(companyId: string) {
   const r = await query<any>(
-    `SELECT e.id, e.rfc, e.nombre, e.tipo_persona, e.completo, e.beneficiario_controlador,
+    `SELECT e.id, e.rfc, e.nombre, e.tipo_persona, e.completo, e.beneficiario_controlador, e.datos,
             TO_CHAR(e.actualizado_at,'YYYY-MM-DD HH24:MI') AS actualizado
        FROM pld_expediente e WHERE e.company_id = $1 ORDER BY e.nombre`, [companyId]);
   return r.rows;
@@ -220,9 +310,17 @@ export async function listarExpedientes(companyId: string) {
 export async function guardarExpediente(companyId: string, d: any) {
   const rfc = String(d.rfc || '').toUpperCase().trim();
   if (!rfc) throw new Error('Falta el RFC del cliente.');
+  const datos = d.datos && typeof d.datos === 'object' ? d.datos : {};
+  // «completo» = todos los campos requeridos llenos Y el usuario confirma que tiene
+  // las copias de los documentos en resguardo (lo que NEXO no puede verificar solo).
+  const comp = completitud(d.tipo_persona, datos);
+  const completo = comp.completoDatos && datos.docs_en_resguardo === true;
+  // Resumen del Beneficiario Controlador para la lista (primer beneficiario con nombre).
+  const bs: any[] = Array.isArray(datos.beneficiarios) ? datos.beneficiarios : [];
+  const bc = bs.find((b) => b && String(b.nombre || '').trim() !== '')?.nombre || d.beneficiario_controlador || null;
   await query(
     `INSERT INTO pld_expediente (company_id, customer_id, rfc, nombre, tipo_persona, completo, beneficiario_controlador, datos, actualizado_at)
-     VALUES ($1,$2,$3,$4,$5,COALESCE($6,FALSE),$7,$8,NOW())
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
      ON CONFLICT (company_id, rfc) DO UPDATE SET
        customer_id = COALESCE(EXCLUDED.customer_id, pld_expediente.customer_id),
        nombre = EXCLUDED.nombre,
@@ -232,6 +330,6 @@ export async function guardarExpediente(companyId: string, d: any) {
        datos = EXCLUDED.datos,
        actualizado_at = NOW()`,
     [companyId, d.customer_id || null, rfc, d.nombre || null, d.tipo_persona || null,
-     d.completo === true, d.beneficiario_controlador || null, d.datos ? JSON.stringify(d.datos) : null]);
+     completo, bc, JSON.stringify(datos)]);
   return listarExpedientes(companyId);
 }

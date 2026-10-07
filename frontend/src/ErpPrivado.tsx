@@ -80,6 +80,7 @@ import { ImportarContpaqiPage } from '@/pages/contabilidad/ImportarContpaqi';
 import { CfdiContabilidadPage } from '@/pages/contabilidad/CfdiContabilidad';
 import { AutofacturacionPage } from '@/pages/contabilidad/Autofacturacion';
 import { ServiciosSatPage } from '@/pages/contabilidad/ServiciosSat';
+import { PanelFiscalPage } from '@/pages/contabilidad/PanelFiscal';
 import { PldPage } from '@/pages/contabilidad/PLD';
 import { CedulasFiscalesPage } from '@/pages/contabilidad/CedulasFiscales';
 import { CambioCuentaPage } from '@/pages/contabilidad/CambioCuenta';
@@ -172,6 +173,7 @@ export default function ErpPrivado() {
         <Route path="contabilidad/cfdi"               element={<ModuleRoute module="contabilidad"><CfdiContabilidadPage /></ModuleRoute>} />
         <Route path="invoices/autofactura"            element={<ModuleRoute module="invoices"><AutofacturacionPage /></ModuleRoute>} />
         <Route path="contabilidad/servicios-sat"      element={<ModuleRoute module="contabilidad"><ServiciosSatPage /></ModuleRoute>} />
+        <Route path="contabilidad/panel-fiscal"       element={<ModuleRoute module="contabilidad"><PanelFiscalPage /></ModuleRoute>} />
         <Route path="contabilidad/pld"                 element={<ModuleRoute module="contabilidad"><PldPage /></ModuleRoute>} />
         {/* IMSS/INFONAVIT se incorporaron al hub Cumplimiento fiscal; las rutas viejas redirigen. */}
         <Route path="contabilidad/cumplimiento-organismos" element={<Navigate to="/contabilidad/servicios-sat" replace />} />

@@ -25,6 +25,7 @@ import * as terceros from './catalogo-terceros.service';
 import * as ventas from './ventas-cuentas.service';
 import * as compras from './compras-cuentas.service';
 import * as activos from './activos-fijos.service';
+import * as activosExport from './activos-export.service';
 import * as reportesExport from './reportes-export.service';
 import * as contpaqi from './contpaqi-import.service';
 import * as cambioCuenta from './cambio-cuenta.service';
@@ -1830,6 +1831,28 @@ router.get(
       companyId(req), Number(req.query.anio), Number(req.query.mes),
       { desde: req.query.desde as string | undefined, hasta: req.query.hasta as string | undefined });
     res.json({ success: true, data: { detectados: data } });
+  })
+);
+
+/** GET /accounting/activos/cedula.xlsx — Excel de las cédulas de depreciación y amortización */
+router.get(
+  '/activos/cedula.xlsx',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await activosExport.cedulaExcel(companyId(req));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
+/** GET /accounting/activos/cedula.pdf — PDF de las cédulas de depreciación y amortización */
+router.get(
+  '/activos/cedula.pdf',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await activosExport.cedulaPdf(companyId(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
   })
 );
 

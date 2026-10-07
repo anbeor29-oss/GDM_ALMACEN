@@ -26,6 +26,7 @@ import * as imssIdse from './imss-idse.service';
 import { TipoIdse, validarArchivoIdse } from './imss-idse';
 import * as parametros from './parametros.service';
 import * as ejercicios from './ejercicios.service';
+import { tablasIsr, aniosConTablasIsr } from './tablas-isr.data';
 import * as periodos from './periodos.service';
 import * as creditos from './creditos.service';
 import * as expediente from './expediente.service';
@@ -743,6 +744,25 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const d = await ejercicios.confirmar(Number(req.params.anio), req.user!.userId);
     res.json({ success: true, data: d });
+  })
+);
+
+/**
+ * Tablas del ISR para CONSULTA: las doce acumuladas por mes, la anual y las de
+ * cada periodicidad. Es referencia de sólo lectura (el motor retiene con
+ * `nomina_tarifa_isr`), así que la lee cualquiera que tenga nómina.
+ */
+router.get(
+  '/tablas-isr/:anio',
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = Number(req.params.anio);
+    const t = tablasIsr(anio);
+    res.json({
+      success: true,
+      data: t
+        ? { anio, disponible: true, anios: aniosConTablasIsr(), ...t }
+        : { anio, disponible: false, anios: aniosConTablasIsr() },
+    });
   })
 );
 

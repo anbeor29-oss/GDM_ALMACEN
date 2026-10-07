@@ -103,14 +103,14 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
               ? <><PuntosCargando /> Descargando</>
               : <><DownloadCloud size={15} /> {tipo === 'INFONAVIT' ? 'Portal INFONAVIT' : 'Descargar'}</>}
           </button>
-          {tipo !== 'INFONAVIT' && (
-            <button onClick={() => setCfgModal(true)}
-              title="Refresco automático a diario y, para SAT/CIF, la clave CIEC (se guarda cifrada)"
-              className="flex items-center gap-1.5 border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600">
-              <Settings size={15} /> Configurar
-              {cfgActual?.activo && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="refresco automático activo" />}
-            </button>
-          )}
+          {/* Configurar disponible para todas (INFONAVIT incluido): por ahora deja
+              lista la configuración mientras se explora su obtención automática. */}
+          <button onClick={() => setCfgModal(true)}
+            title="Refresco automático a diario y, para SAT/CIF, la clave CIEC (se guarda cifrada)"
+            className="flex items-center gap-1.5 border px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-gray-600">
+            <Settings size={15} /> Configurar
+            {cfgActual?.activo && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="refresco automático activo" />}
+          </button>
           <button onClick={() => setForm(true)}
             className="flex items-center gap-1.5 bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 text-sm">
             <Plus size={15} /> Registrar
@@ -334,7 +334,9 @@ function ModalConfig({ tipo, tipoNombre, actual, onCerrar, onHecho }: any) {
           <p className="text-xs text-gray-600 bg-gray-50 border rounded px-3 py-2">
             {usaCiec
               ? <>NEXO baja la {tipo === 'CSF' ? 'Constancia de Situación Fiscal' : 'Opinión 32-D'} con la <b>clave CIEC</b> de la empresa (el RFC se toma solo). Sin CIEC, el 32-D intenta la <b>opinión pública</b> por RFC (si la activaste en el SAT).</>
-              : <>La opinión del <b>IMSS</b> se baja por <b>RFC</b> — no necesita CIEC. Sólo decide si quieres el refresco automático.</>}
+              : tipo === 'IMSS'
+                ? <>La opinión del <b>IMSS</b> se baja por <b>RFC</b> — no necesita CIEC. Sólo decide si quieres el refresco automático.</>
+                : <>La opinión del <b>INFONAVIT</b> es por ahora de <b>captura manual</b> (Portal INFONAVIT → «Registrar»). Dejamos aquí la configuración lista; su obtención automática está en exploración.</>}
           </p>
           {usaCiec && (
             <label className="block"><span className="text-xs text-gray-600">Clave CIEC {actual?.tiene_credencial && <span className="text-emerald-600">· guardada</span>}</span>

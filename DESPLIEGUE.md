@@ -5,6 +5,10 @@ GDM NEXO se despliega desde **un solo código** en **dos ramas** del remoto `gdm
 Todo el ERP se despliega en ambas; **qué módulos ve cada empresa se controla desde el
 Súper Administrador** (grupo de trabajo + módulos adicionales por usuario), no por rama.
 
+> **¿Publicarlo en `hcgm.com.mx/erp/`?** El frontend se puede subir como estático a una
+> subcarpeta del hosting de hcgm.com.mx (el backend se queda en Render). Guía completa:
+> **`docs/DESPLIEGUE_HCGM_ERP.md`** (`npm run build:hosting` → subir a `public_html/erp` → CORS).
+
 ## Ramas
 
 | Rama (remoto `gdmalmacen`) | Para qué | Servicio de Render |

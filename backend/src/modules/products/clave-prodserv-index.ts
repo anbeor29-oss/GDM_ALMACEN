@@ -106,6 +106,27 @@ export function searchClaveProdServ(q: string, limit = 30): Entry[] {
     }));
 }
 
+let byKey: Map<string, string> | null = null;
+
+/**
+ * Descripción OFICIAL del SAT de una clave c_ClaveProdServ exacta, o '' si no
+ * está. Útil para enriquecer lo que ya se capturó con su código (p. ej. la
+ * cédula de activos fijos: muestra la clave Y su descripción del SAT).
+ */
+export function descripcionDeClave(key: string): string {
+  const k = String(key || '').trim();
+  if (!k) return '';
+  try {
+    if (!byKey) {
+      byKey = new Map();
+      for (const e of load()) byKey.set(e.catalog_key, e.description);
+    }
+    return byKey.get(k) || '';
+  } catch {
+    return '';
+  }
+}
+
 /** Devuelve total de claves cargadas (útil para diagnóstico/health). */
 export function getClaveProdServCount(): number {
   try {

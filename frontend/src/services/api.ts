@@ -585,6 +585,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/pos/sales', { params: { date } });
     return r.data;
   }
+  /** Lector del POS: un producto por código de barras (o SKU) EXACTO. */
+  async scanPos(code: string) {
+    const r = await this.client.get<APIResponse<any>>('/pos/scan', { params: { code } });
+    return r.data;
+  }
 
   /** El cliente pidió su factura de una venta de mostrador. */
   async facturarVentaPos(saleId: string, customerId: string, cfdiUse?: string) {
@@ -1319,11 +1324,22 @@ class APIClient {
   async getPldTablero() {
     return (await this.client.get<APIResponse<any>>('/pld/tablero')).data;
   }
+  async getPldCamposExpediente() {
+    return (await this.client.get<APIResponse<any>>('/pld/campos-expediente')).data;
+  }
   async getPldExpedientes() {
     return (await this.client.get<APIResponse<any>>('/pld/expedientes')).data;
   }
   async savePldExpediente(d: any) {
     return (await this.client.put<APIResponse<any>>('/pld/expediente', d)).data;
+  }
+  async getPldAvisoResumen(anio: number, mes: number) {
+    return (await this.client.get<APIResponse<any>>('/pld/aviso/resumen', { params: { anio, mes } })).data;
+  }
+  /** Descarga el BORRADOR del Aviso (XML) del periodo — validar en el Portal SPPLD. */
+  async descargarPldAviso(anio: number, mes: number) {
+    const r = await this.client.get('/pld/aviso.xml', { params: { anio, mes }, responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Aviso_PLD_${anio}${String(mes).padStart(2, '0')}.xml`);
   }
 
   /** Pólizas del respaldo que no se pudieron importar (pendientes). */
@@ -1564,6 +1580,12 @@ class APIClient {
   async getCedulaActivo(id: string) {
     const r = await this.client.get<APIResponse<any>>(`/accounting/activos/${id}/cedula`);
     return r.data;
+  }
+  /** Descarga las cédulas de depreciación Y amortización (ambas) en Excel o PDF. */
+  async descargarCedulaActivos(formato: 'excel' | 'pdf') {
+    const ext = formato === 'pdf' ? 'pdf' : 'xlsx';
+    const r = await this.client.get(`/accounting/activos/cedula.${ext}`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Cedulas_depreciacion_amortizacion.${ext}`);
   }
   async registrarActivo(datos: any) {
     const r = await this.client.post<APIResponse<any>>('/accounting/activos', datos);
@@ -2477,6 +2499,12 @@ class APIClient {
   /** El ejercicio fiscal con sus tablas: tarifa del Art. 96, subsidio, UMA, UMI. */
   async getEjercicioNomina(anio: number) {
     const r = await this.client.get<APIResponse<any>>(`/nomina/ejercicios/${anio}`);
+    return r.data;
+  }
+
+  /** Tablas del ISR para consulta: las 12 acumuladas por mes, la anual y las de cada periodicidad. */
+  async getTablasIsr(anio: number) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/tablas-isr/${anio}`);
     return r.data;
   }
 

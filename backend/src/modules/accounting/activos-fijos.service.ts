@@ -15,6 +15,7 @@ import { query, transaction } from '../../config/database';
 import { conceptosDeXml } from './ventas-cuentas.service';
 import { mapaProductoCuentaCompra } from './compras-cuentas.service';
 import { reglaDeCuentaActivo, agrupadorDeCodigo, ReglaDepreciacion } from './depreciacion.data';
+import { descripcionDeClave } from '../products/clave-prodserv-index';
 
 const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 const finDeMes = (anio: number, mes: number) => new Date(anio, mes, 0).toISOString().slice(0, 10);
@@ -286,6 +287,15 @@ export async function listarActivos(companyId: string) {
       totalmente_depreciado: calc.base > 0 && acumulada >= calc.base - 0.01,
       // Para separar la vista: intangibles/diferidos se AMORTIZAN (702/183); el resto se DEPRECIA.
       intangible: !!regla?.intangible,
+      // Trazabilidad completa: la ClaveProdServ del CFDI (código + descripción del
+      // SAT) y DÓNDE cae en el algoritmo —el rubro y su fundamento LISR—, que se
+      // derivan del agrupador de la cuenta de activo.
+      clave_prod_serv: a.clave_prod_serv || '',
+      clave_prod_serv_desc: descripcionDeClave(a.clave_prod_serv),
+      categoria_etiqueta: regla?.etiqueta || a.categoria || '',
+      fundamento: regla?.fundamento || '',
+      tasa_pct: Math.round(Number(a.tasa_anual) * 10000) / 100,
+      avance_pct: calc.base > 0 ? Math.round((acumulada / calc.base) * 1000) / 10 : 0,
     };
   });
 }

@@ -174,6 +174,7 @@ export async function createProduct(companyId: string, data: {
   currency?: string;          // ISO 4217: 'MXN', 'USD', 'EUR', etc. (c_Moneda)
   taxPresetId?: string;       // preset del catálogo de impuestos (iva16/hon_pf_pm/resico_pf_pm/…)
   wholesalePrice?: number;    // precio de mayoreo para el POS
+  barcode?: string;           // código de barras EAN/UPC del producto físico (para el POS)
 }): Promise<Product> {
   // Validate SAT Clave Producto/Servicio
   logger.info(`Validando clave SAT de producto: ${data.claveSat}`);
@@ -238,8 +239,8 @@ export async function createProduct(companyId: string, data: {
      (company_id, sku, name, description, clave_sat, unit_code, unit_name,
       base_price, tax_type, tax_rate, is_deductible, is_exempt, applies_ieps,
       stock_quantity, stock_minimum, stock_maximum, last_cost, no_identificacion, currency,
-      tax_preset_id, wholesale_price, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, true)
+      tax_preset_id, wholesale_price, barcode, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, true)
      RETURNING *`,
     [
       companyId,
@@ -263,6 +264,7 @@ export async function createProduct(companyId: string, data: {
       data.currency || 'MXN',
       data.taxPresetId || null,
       data.wholesalePrice != null ? data.wholesalePrice : null,
+      data.barcode ? String(data.barcode).trim() : null,
     ]
   );
 
@@ -340,7 +342,7 @@ export async function listProducts(
   }
 
   if (search) {
-    whereClause += ` AND (name ILIKE $${paramCount} OR sku ILIKE $${paramCount} OR clave_sat ILIKE $${paramCount})`;
+    whereClause += ` AND (name ILIKE $${paramCount} OR sku ILIKE $${paramCount} OR clave_sat ILIKE $${paramCount} OR barcode ILIKE $${paramCount})`;
     params.push(`%${search}%`);
     paramCount++;
   }
@@ -464,6 +466,11 @@ export async function updateProduct(
   if (data.description !== undefined) {
     fields.push(`description = $${paramCount++}`);
     values.push(data.description);
+  }
+  if ((data as any).barcode !== undefined) {
+    const b = String((data as any).barcode || '').trim();
+    fields.push(`barcode = $${paramCount++}`);
+    values.push(b || null);
   }
   if (data.clave_sat) {
     fields.push(`clave_sat = $${paramCount++}`);

@@ -5,10 +5,10 @@
  *  · Lo no facturado individualmente entra a la factura global del día
  *    (público en general, RFC XAXX010101000) — cierre manual o cron 23:55.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Store, Search, Trash2, Plus, Minus, Banknote, Receipt, XCircle, Lock,
+  Store, Search, Trash2, Plus, Minus, Banknote, Receipt, XCircle, Lock, Barcode,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -54,6 +54,8 @@ export function PointOfSalePage() {
   const [customerId, setCustomerId] = useState('');
   /** Última venta cobrada: de ahí sale el ticket que se imprime. */
   const [ticket, setTicket] = useState<any>(null);
+  /** Producto recién escaneado: su línea destella un momento en el carrito. */
+  const [flash, setFlash] = useState<string | null>(null);
 
   const productsQ = useQuery({
     queryKey: ['pos-products', search],
@@ -108,6 +110,61 @@ export function PointOfSalePage() {
   };
 
   const total = cart.reduce((a, l) => a + l.unitPrice * l.quantity, 0);
+
+  /* ── Lector de código de barras (USB, keyboard-wedge) ──
+   * El lector "teclea" el código y da Enter, muy rápido (<20 ms/tecla). Un
+   * listener global junta esa ráfaga y, al Enter, busca el producto EXACTO y lo
+   * agrega al carrito —aunque el foco no esté en el buscador—. Una persona teclea
+   * mucho más lento (>80 ms), así que escribir a mano NO dispara el escaneo. */
+  const bip = () => {
+    try {
+      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'square'; o.frequency.value = 900; g.gain.value = 0.04;
+      o.start(); o.stop(ctx.currentTime + 0.07);
+    } catch { /* sin audio no pasa nada */ }
+  };
+
+  const onScan = async (code: string) => {
+    setError('');
+    try {
+      const r: any = await api.scanPos(code);
+      const p = r?.data?.product;
+      if (!p) {
+        setError(`Código "${code}" no encontrado. Da de alta el producto y su código de barras en Productos.`);
+        return;
+      }
+      addToCart(p);
+      bip();
+      setFlash(p.id);
+      setTimeout(() => setFlash((f) => (f === p.id ? null : f)), 700);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo leer el código');
+    }
+  };
+
+  useEffect(() => {
+    let buf = ''; let last = 0;
+    const onKey = (e: KeyboardEvent) => {
+      const now = Date.now();
+      if (e.key === 'Enter') {
+        if (buf.length >= 3) { const code = buf; buf = ''; e.preventDefault(); void onScan(code); }
+        else buf = '';
+        return;
+      }
+      if (e.key.length === 1) {
+        if (now - last > 80) buf = '';     // nueva ráfaga = nuevo escaneo
+        buf += e.key; last = now;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // onScan sólo usa setters de estado y `api` (estables); el buffer vive en el efecto.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCharge = async () => {
     if (cart.length === 0) return;
@@ -266,7 +323,7 @@ export function PointOfSalePage() {
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={search} onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar producto por nombre o SKU (mín. 2 letras)…"
+                placeholder="Escanea el código de barras, o busca por nombre / SKU (mín. 2 letras)…"
                 className="input pl-9 w-full" autoFocus />
               {search.trim().length >= 2 && found.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-64 overflow-y-auto">
@@ -283,6 +340,9 @@ export function PointOfSalePage() {
                 </div>
               )}
             </div>
+            <p className="mt-1.5 text-[11px] text-gray-400 flex items-center gap-1">
+              <Barcode size={12} /> Escáner activo — pasa el lector por el código de barras y se agrega solo
+            </p>
           </div>
 
           <div className="p-4 space-y-2 min-h-40">
@@ -292,7 +352,9 @@ export function PointOfSalePage() {
               </p>
             )}
             {cart.map((l) => (
-              <div key={l.productId} className="flex items-center gap-2 border border-gray-200 rounded-lg p-2">
+              <div key={l.productId}
+                className={`flex items-center gap-2 border rounded-lg p-2 transition-colors ${
+                  flash === l.productId ? 'border-emerald-400 ring-2 ring-emerald-300 bg-emerald-50/50' : 'border-gray-200'}`}>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{l.name}</p>
                   <p className="text-xs text-gray-500 font-mono">{l.sku}</p>

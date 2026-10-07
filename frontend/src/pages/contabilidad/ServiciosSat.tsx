@@ -8,6 +8,7 @@
  * punto verde, para que el usuario vea de un vistazo qué tiene (su "mapa mental").
  */
 import { useState, useEffect, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ShieldCheck, FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen, RefreshCw } from 'lucide-react';
 import api from '@/services/api';
@@ -43,7 +44,12 @@ function abrirDoc(dataUrl: string) {
 }
 
 export function ServiciosSatPage() {
-  const [tab, setTab] = useState('SAT');
+  /* Pestaña inicial por URL (?tab=): así el Panel fiscal puede abrir directo la
+   * opinión o la sección que el usuario tocó. Se valida contra el catálogo de TABS. */
+  const [sp] = useSearchParams();
+  const tabParam = (sp.get('tab') || '').toUpperCase();
+  const tabIni = TABS.some(([k]) => k === tabParam) ? tabParam : 'SAT';
+  const [tab, setTab] = useState(tabIni);
   const configQ = useQuery({ queryKey: ['cumpl-config'], queryFn: () => api.getConfigCumplimiento() });
   const cfgs: any = configQ.data?.data?.configs || {};
   // Info fiscal: caché compartida (misma key que el panel) para el punto verde.

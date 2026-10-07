@@ -1,0 +1,19 @@
+{
+  "name": "gdm-nexo-qa",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Suite de QA (E2E funcional + RBAC + performance smoke) para GDM NEXO. NO forma parte del build de la app.",
+  "scripts": {
+    "test": "playwright test",
+    "test:smoke": "playwright test tests/smoke.spec.ts",
+    "test:auth": "playwright test tests/auth-rbac.spec.ts",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report",
+    "install:browsers": "playwright install --with-deps chromium",
+    "perf:smoke": "k6 run k6/smoke.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0",
+    "dotenv": "^16.4.5"
+  }
+}
