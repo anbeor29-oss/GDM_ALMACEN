@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { canAccess } from '@/utils/permissions';
-import { FileText, Wallet, TrendingDown, AlertCircle, Stamp, Boxes, ShieldCheck } from 'lucide-react';
+import { FileText, Wallet, TrendingDown, AlertCircle, Stamp, Boxes, ShieldCheck, ArrowRight } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
@@ -76,8 +76,10 @@ export function DashboardPage() {
 
   const [cambiando, setCambiando] = useState('');
 
-  const cambiarEmpresa = async (companyId: string) => {
-    if (companyId === user?.companyId) return;
+  const cambiarEmpresa = async (companyId: string, destino?: string) => {
+    /* Si ya es la empresa activa, no hay que recargar: si venía con destino
+     * (p.ej. «Panel fiscal» de SU tarjeta), se navega directo. */
+    if (companyId === user?.companyId) { if (destino) navigate(destino); return; }
     setCambiando(companyId);
     try {
       const r: any = await api.cambiarEmpresa(companyId);
@@ -106,7 +108,10 @@ export function DashboardPage() {
        * mostraría facturas de la empresa anterior mientras el token ya apunta a
        * otra. */
       qc.clear();
-      window.location.reload();
+      /* Con destino: navegación completa a esa ruta (recarga con el token nuevo);
+       * sin destino: simple recarga de la misma pantalla. */
+      if (destino) window.location.href = destino;
+      else window.location.reload();
     } catch (e: any) {
       alert(`No se pudo cambiar de empresa.\n\n${e.response?.data?.message || e.message}`);
       setCambiando('');
@@ -256,29 +261,14 @@ export function DashboardPage() {
           esta cuenta y en cuál se está trabajando. */}
       {empresas.length > 0 && (
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 mb-1">
-                {empresas.length > 1 ? 'Empresas que administras' : 'Tu empresa'}
-              </h2>
-              <p className="text-sm text-gray-500">
-                {empresas.length > 1
-                  ? 'Haz clic en una para trabajar en ella.'
-                  : 'Datos fiscales del emisor con el que timbras.'}
-              </p>
-            </div>
-            {/* Entrada al Panel fiscal: el expediente de cumplimiento de la empresa
-                (32-D/CIF/IMSS/INFONAVIT + histórico), a un clic desde aquí. */}
-            {puedeContab && (
-              <button
-                onClick={() => navigate('/contabilidad/panel-fiscal')}
-                title="Expediente de cumplimiento: 32-D, CIF, IMSS, INFONAVIT e histórico"
-                className="inline-flex items-center gap-1.5 bg-slate-900 text-white px-3 py-2 rounded-lg hover:bg-slate-800 text-sm font-medium shrink-0"
-              >
-                <ShieldCheck size={15} /> Panel fiscal
-              </button>
-            )}
-          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-1">
+            {empresas.length > 1 ? 'Empresas que administras' : 'Tu empresa'}
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            {empresas.length > 1
+              ? 'Haz clic en una para trabajar en ella.'
+              : 'Datos fiscales del emisor con el que timbras.'}
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {empresas.map((e) => {
               const activa = e.id === user?.companyId;
@@ -322,11 +312,28 @@ export function DashboardPage() {
                       </span>
                     )}
                   </div>
-                  {cambiando === e.id
-                    ? <p className="text-xs text-indigo-600 mt-2">Cambiando…</p>
-                    : !activa && (
-                      <p className="text-[11px] text-slate-400 mt-2">Doble clic para entrar</p>
+                  {/* Pie de la tarjeta: estado a la izquierda y el acceso al
+                      Panel fiscal DE ESTA empresa a la derecha. Va por tarjeta
+                      (no un botón suelto en la cabecera) para que con varias
+                      empresas no queden accesos regados: cada RFC lleva el suyo.
+                      En una empresa no activa, primero cambia a ella y luego abre
+                      su panel. */}
+                  <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-slate-400 min-w-0 truncate">
+                      {cambiando === e.id
+                        ? <span className="text-indigo-600">Cambiando…</span>
+                        : activa ? 'Empresa en uso' : 'Doble clic para entrar'}
+                    </span>
+                    {puedeContab && (
+                      <button
+                        onClick={(ev) => { ev.stopPropagation(); if (!cambiando) cambiarEmpresa(e.id, '/contabilidad/panel-fiscal'); }}
+                        title={`Panel fiscal de ${e.business_name}: 32-D, CIF, IMSS, INFONAVIT e histórico`}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 hover:text-indigo-900 shrink-0"
+                      >
+                        <ShieldCheck size={12} /> Panel fiscal <ArrowRight size={11} />
+                      </button>
                     )}
+                  </div>
                 </div>
               );
             })}
