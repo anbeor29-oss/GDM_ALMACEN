@@ -1030,6 +1030,11 @@ class APIClient {
     const r = await this.client.get(`/treasury/bancos/estados/${estadoId}/conciliacion/pdf`, { responseType: 'blob' });
     await this.downloadFile(r.data as Blob, this.nombreDeHeader(r, `Conciliacion_${estadoId.slice(0, 8)}.pdf`));
   }
+  /** PDF con la lista de bancos cuyo estado de cuenta se puede leer. */
+  async descargarBancosSoportados() {
+    const r = await this.client.get('/treasury/bancos/soportados/pdf', { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, 'Bancos_soportados.pdf');
+  }
   async marcarMovimiento(id: string, data: any) {
     const r = await this.client.put<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/marcar`, data);
     return r.data;

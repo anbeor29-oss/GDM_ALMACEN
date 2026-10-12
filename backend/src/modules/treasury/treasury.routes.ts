@@ -448,6 +448,17 @@ router.get(
   })
 );
 
+/** GET /treasury/bancos/soportados/pdf — lista en PDF de los bancos cuyo estado de cuenta se puede leer. */
+router.get(
+  '/bancos/soportados/pdf',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await bancos.bancosSoportadosPdf(companyId(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  })
+);
+
 /** Contabiliza de golpe todo lo confirmado del estado. */
 router.post(
   '/bancos/estados/:id/contabilizar',

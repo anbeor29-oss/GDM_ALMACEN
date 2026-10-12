@@ -25,9 +25,48 @@ import { ValidationError, NotFoundError, ConflictError } from '../../middleware/
 import logger from '../../middleware/logger';
 import { extraerMovimientos, ResultadoExtraccion } from './extractor-movimientos.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
+import { reporteTablaPdf, ColumnaPdf } from '../../utils/reporte-pdf';
 import ExcelJS from 'exceljs';
 
 const pesos = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
+
+/* ── Bancos con lectura de estado de cuenta (PDF informativo) ─────────────────
+   Lista los bancos cuyo PDF de estado de cuenta lee el extractor
+   (ver `detectarBanco` en extractor-movimientos.service). Formato del reporte,
+   igual que los de activos fijos. */
+const BANCOS_LECTURA: Array<{ banco: string; tipo: string }> = [
+  { banco: 'BBVA México',           tipo: 'Estado en PDF (tabular)' },
+  { banco: 'Banorte',               tipo: 'Estado en PDF (tabular)' },
+  { banco: 'Banamex (Citibanamex)', tipo: 'Estado en PDF (tabular)' },
+  { banco: 'Santander',             tipo: 'Estado en PDF (tabular)' },
+  { banco: 'Scotiabank',            tipo: 'Estado en PDF (tabular)' },
+  { banco: 'HSBC',                  tipo: 'Estado en PDF (tabular)' },
+  { banco: 'BanRegio',              tipo: 'Estado en PDF (tabular)' },
+  { banco: 'Banco del Bajío',       tipo: 'Estado en PDF (tabular)' },
+  { banco: 'Ve por Más',            tipo: 'Estado en PDF (tabular)' },
+  { banco: 'Afirme',                tipo: 'Estado en PDF (tabular)' },
+  { banco: 'Bancrea',               tipo: 'Estado en PDF (tabular)' },
+  { banco: 'Nu México',             tipo: 'Estado en PDF (narrativo)' },
+  { banco: 'Mercado Pago',          tipo: 'Estado de saldos y movimientos' },
+];
+
+export async function bancosSoportadosPdf(companyId: string): Promise<{ buffer: Buffer; nombre: string }> {
+  const e = (await query<any>('SELECT business_name, rfc FROM companies WHERE id=$1', [companyId])).rows[0] || {};
+  const columnas: ColumnaPdf[] = [
+    { titulo: '#',     clave: 'n',     ancho: 1, align: 'center' },
+    { titulo: 'Banco', clave: 'banco', ancho: 5 },
+    { titulo: 'Formato de estado de cuenta', clave: 'tipo', ancho: 5 },
+  ];
+  const filas = BANCOS_LECTURA.map((b, i) => ({ n: i + 1, banco: b.banco, tipo: b.tipo }));
+  const buffer = await reporteTablaPdf({
+    titulo: 'Bancos con lectura de estado de cuenta',
+    empresa: e.business_name || '', rfc: e.rfc || '',
+    subtitulos: ['Estados de cuenta en PDF que el sistema lee automáticamente para la conciliación bancaria.'],
+    columnas, filas,
+    nota: 'Si tu banco no aparece, igual puedes subir su estado: el sistema lo intenta en modo genérico. Si no cuadra, avísanos para agregarlo.',
+  });
+  return { buffer, nombre: 'Bancos_soportados.pdf' };
+}
 
 /* ═══════════════════ CUENTAS ═══════════════════ */
 

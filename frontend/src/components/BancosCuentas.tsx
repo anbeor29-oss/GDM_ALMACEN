@@ -74,12 +74,19 @@ export function BancosCuentas() {
             El saldo es <b>al corte</b> del último estado de cuenta cargado, no el de hoy.
           </p>
         </div>
-        {puedeEditar && (
-          <button onClick={() => setAlta(true)}
-            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm">
-            <Plus size={16} /> Nueva cuenta
+        <div className="flex items-center gap-2">
+          <button onClick={() => api.descargarBancosSoportados().catch(() => {})}
+            title="PDF con los bancos cuyo estado de cuenta se puede leer"
+            className="flex items-center gap-2 border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm">
+            <FileText size={15} /> Bancos soportados
           </button>
-        )}
+          {puedeEditar && (
+            <button onClick={() => setAlta(true)}
+              className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm">
+              <Plus size={16} /> Nueva cuenta
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
