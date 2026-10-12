@@ -127,8 +127,8 @@ export function AdminSatgoPage() {
       <div className="bg-white border rounded-lg p-4 space-y-3">
         <h2 className="font-semibold text-gray-800">1 · URL base de la API</h2>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="block flex-1 min-w-[16rem]"><span className="text-xs text-gray-600 block mb-1">URL base del servicio (de «API &amp; Consultas»)</span>
-            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={cfg?.baseUrl || 'https://api.sat-go.com'} className="input py-1.5 text-sm w-full font-mono" /></label>
+          <label className="block flex-1 min-w-[16rem]"><span className="text-xs text-gray-600 block mb-1">URL base de la <b>API REST</b>: <b>https://api.sat-go.com</b> (NO el portal <code>web.sat-go.com</code>)</span>
+            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.sat-go.com" className="input py-1.5 text-sm w-full font-mono" /></label>
           <label className="block"><span className="text-xs text-gray-600 block mb-1">Ambiente</span>
             <select value={ambiente} onChange={(e) => setAmbiente(e.target.value)} className="input py-1.5 text-sm">
               <option value="PRUEBAS">Pruebas</option><option value="PRODUCCION">Producción</option>

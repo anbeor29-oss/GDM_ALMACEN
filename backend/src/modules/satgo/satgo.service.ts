@@ -31,7 +31,11 @@ export async function getConfig() {
 
 async function baseUrl(): Promise<string> {
   const r = await query<any>(`SELECT base_url FROM satgo_config WHERE id = 1`);
-  return String(r.rows[0]?.base_url || DEFAULT_BASE).replace(/\/+$/, '');
+  let b = String(r.rows[0]?.base_url || DEFAULT_BASE).replace(/\/+$/, '');
+  // El PORTAL (web.sat-go.com) no sirve CFDI/consultas; la API REST vive en
+  // api.sat-go.com. Si quedó guardada la URL del portal, la corregimos sola.
+  b = b.replace(/^https?:\/\/web\.sat-go\.com/i, 'https://api.sat-go.com');
+  return b;
 }
 
 async function getApiKey(): Promise<string | null> {
