@@ -72,27 +72,42 @@ const FILAS_PM: Def[] = [
   ['(=) ISR POR PAGAR', 'isrPorPagar', 'money', true],
 ];
 
-function TablaCedula({ filas, defs }: { filas: any[]; defs: Def[] }) {
+function TablaCedula({ filas, defs, mesActual = 0, claveDestacada }: {
+  filas: any[]; defs: Def[]; mesActual?: number; claveDestacada?: string;
+}) {
   return (
     <div className="bg-white rounded-lg shadow overflow-x-auto">
       <table className="w-full text-xs">
         <thead className="bg-gray-50 border-b sticky top-0">
           <tr>
             <th className="px-3 py-2 text-left font-semibold text-gray-700 sticky left-0 bg-gray-50 min-w-[200px]">Concepto</th>
-            {filas.map((f) => <th key={f.n} className="px-3 py-2 text-right font-semibold text-gray-600 min-w-[92px]">{f.mes}</th>)}
+            {filas.map((f) => (
+              <th key={f.n}
+                className={`px-3 py-2 text-right font-semibold min-w-[92px] ${f.n === mesActual ? 'bg-yellow-200 text-gray-800' : 'text-gray-600'}`}
+                title={f.n === mesActual ? 'Mes vigente' : undefined}>{f.mes}</th>
+            ))}
           </tr>
         </thead>
         <tbody className="divide-y">
-          {defs.map(([label, key, tipo, hi]) => (
-            <tr key={key} className={hi ? 'bg-indigo-50/60 font-semibold' : 'hover:bg-gray-50'}>
-              <td className={`px-3 py-1.5 text-gray-700 sticky left-0 ${hi ? 'bg-indigo-50/60 font-semibold' : 'bg-white'}`}>{label}</td>
-              {filas.map((f) => (
-                <td key={f.n} className="px-3 py-1.5 text-right tabular-nums text-gray-800">
-                  {tipo === 'pct' ? pct(f[key]) : tipo === 'coef' ? (Number(f[key]) || 0).toFixed(4) : money(f[key])}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {defs.map(([label, key, tipo, hi]) => {
+            const filaDest = !!claveDestacada && key === claveDestacada;
+            const bgFila = filaDest ? 'bg-yellow-100 font-semibold' : hi ? 'bg-indigo-50/60 font-semibold' : 'hover:bg-gray-50';
+            const bgLabel = filaDest ? 'bg-yellow-100 font-semibold' : hi ? 'bg-indigo-50/60 font-semibold' : 'bg-white';
+            return (
+              <tr key={key} className={bgFila}>
+                <td className={`px-3 py-1.5 text-gray-700 sticky left-0 ${bgLabel}`}>{label}</td>
+                {filas.map((f) => {
+                  const colDest = f.n === mesActual;
+                  const bgCell = filaDest && colDest ? 'bg-yellow-200' : (filaDest || colDest) ? 'bg-yellow-100' : '';
+                  return (
+                    <td key={f.n} className={`px-3 py-1.5 text-right tabular-nums text-gray-800 ${bgCell}`}>
+                      {tipo === 'pct' ? pct(f[key]) : tipo === 'coef' ? (Number(f[key]) || 0).toFixed(4) : money(f[key])}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -227,6 +242,12 @@ export function CedulasFiscalesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [regimen]);
 
+  // Mes vigente (hora de México) sólo si se ve el AÑO en curso; para resaltar su columna.
+  const mesVigente = (() => {
+    const mx = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Mexico_City' }));
+    return anio === mx.getFullYear() ? mx.getMonth() + 1 : 0;
+  })();
+
   return (
     <div className="p-6 space-y-4 max-w-full">
       <div>
@@ -307,7 +328,7 @@ export function CedulasFiscalesPage() {
           </div>
           {ivaQ.isLoading ? <p className="text-sm text-gray-500">Calculando…</p>
           : ivaQ.error ? <p className="text-sm text-rose-700">{(ivaQ.error as any)?.response?.data?.message || 'No se pudo calcular.'}</p>
-          : ivaQ.data?.data ? <TablaCedula filas={ivaQ.data.data.filas} defs={FILAS_IVA} /> : null}
+          : ivaQ.data?.data ? <TablaCedula filas={ivaQ.data.data.filas} defs={FILAS_IVA} mesActual={mesVigente} claveDestacada="aCargo" /> : null}
         </div>
       )}
     </div>
