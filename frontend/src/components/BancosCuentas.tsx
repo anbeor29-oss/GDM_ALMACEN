@@ -76,9 +76,9 @@ export function BancosCuentas() {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => api.descargarBancosSoportados().catch(() => {})}
-            title="PDF con los bancos cuyo estado de cuenta se puede leer"
+            title="PDF con los bancos que ya procesamos y los pendientes"
             className="flex items-center gap-2 border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm">
-            <FileText size={15} /> Bancos soportados
+            <FileText size={15} /> Cobertura de bancos
           </button>
           {puedeEditar && (
             <button onClick={() => setAlta(true)}

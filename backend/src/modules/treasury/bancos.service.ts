@@ -30,42 +30,70 @@ import ExcelJS from 'exceljs';
 
 const pesos = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 
-/* ── Bancos con lectura de estado de cuenta (PDF informativo) ─────────────────
-   Lista los bancos cuyo PDF de estado de cuenta lee el extractor
-   (ver `detectarBanco` en extractor-movimientos.service). Formato del reporte,
-   igual que los de activos fijos. */
-const BANCOS_LECTURA: Array<{ banco: string; tipo: string }> = [
-  { banco: 'BBVA México',           tipo: 'Estado en PDF (tabular)' },
-  { banco: 'Banorte',               tipo: 'Estado en PDF (tabular)' },
-  { banco: 'Banamex (Citibanamex)', tipo: 'Estado en PDF (tabular)' },
-  { banco: 'Santander',             tipo: 'Estado en PDF (tabular)' },
-  { banco: 'Scotiabank',            tipo: 'Estado en PDF (tabular)' },
-  { banco: 'HSBC',                  tipo: 'Estado en PDF (tabular)' },
-  { banco: 'BanRegio',              tipo: 'Estado en PDF (tabular)' },
-  { banco: 'Banco del Bajío',       tipo: 'Estado en PDF (tabular)' },
-  { banco: 'Ve por Más',            tipo: 'Estado en PDF (tabular)' },
-  { banco: 'Afirme',                tipo: 'Estado en PDF (tabular)' },
-  { banco: 'Bancrea',               tipo: 'Estado en PDF (tabular)' },
-  { banco: 'Nu México',             tipo: 'Estado en PDF (narrativo)' },
-  { banco: 'Mercado Pago',          tipo: 'Estado de saldos y movimientos' },
+/* ── Bancos: cobertura de lectura de estado de cuenta (PDF informativo) ───────
+   PROCESADOS = los que el extractor lee hoy (ver `detectarBanco` en
+   extractor-movimientos.service). PENDIENTES = los principales bancos comerciales
+   y fintechs del catálogo de México que aún no tienen lector dedicado. Formato del
+   reporte, igual que los de activos fijos. */
+const BANCOS_COBERTURA: Array<{ banco: string; clave: string; estado: 'Procesado' | 'Pendiente'; formato: string }> = [
+  // ── Procesados (13) ──
+  { banco: 'BBVA México',           clave: '012', estado: 'Procesado', formato: 'Tabular' },
+  { banco: 'Banorte',               clave: '072', estado: 'Procesado', formato: 'Tabular' },
+  { banco: 'Banamex (Citibanamex)', clave: '002', estado: 'Procesado', formato: 'Tabular' },
+  { banco: 'Santander',             clave: '014', estado: 'Procesado', formato: 'Tabular' },
+  { banco: 'Scotiabank',            clave: '044', estado: 'Procesado', formato: 'Tabular' },
+  { banco: 'HSBC',                  clave: '021', estado: 'Procesado', formato: 'Tabular' },
+  { banco: 'BanRegio',              clave: '058', estado: 'Procesado', formato: 'Tabular' },
+  { banco: 'Banco del Bajío',       clave: '030', estado: 'Procesado', formato: 'Tabular' },
+  { banco: 'Ve por Más',            clave: '113', estado: 'Procesado', formato: 'Tabular' },
+  { banco: 'Afirme',                clave: '062', estado: 'Procesado', formato: 'Tabular' },
+  { banco: 'Bancrea',               clave: '152', estado: 'Procesado', formato: 'Tabular' },
+  { banco: 'Nu México',             clave: '—',   estado: 'Procesado', formato: 'Narrativo' },
+  { banco: 'Mercado Pago',          clave: '722', estado: 'Procesado', formato: 'Saldos y movimientos' },
+  // ── Pendientes (por agregar lector) ──
+  { banco: 'Inbursa',               clave: '036', estado: 'Pendiente', formato: '—' },
+  { banco: 'Banco Azteca',          clave: '127', estado: 'Pendiente', formato: '—' },
+  { banco: 'BanCoppel',             clave: '137', estado: 'Pendiente', formato: '—' },
+  { banco: 'Mifel',                 clave: '042', estado: 'Pendiente', formato: '—' },
+  { banco: 'Multiva',               clave: '132', estado: 'Pendiente', formato: '—' },
+  { banco: 'Intercam Banco',        clave: '136', estado: 'Pendiente', formato: '—' },
+  { banco: 'Banco Base',            clave: '145', estado: 'Pendiente', formato: '—' },
+  { banco: 'CIBanco',               clave: '143', estado: 'Pendiente', formato: '—' },
+  { banco: 'Actinver',              clave: '133', estado: 'Pendiente', formato: '—' },
+  { banco: 'Invex',                 clave: '059', estado: 'Pendiente', formato: '—' },
+  { banco: 'Bansi',                 clave: '060', estado: 'Pendiente', formato: '—' },
+  { banco: 'Consubanco',            clave: '140', estado: 'Pendiente', formato: '—' },
+  { banco: 'Banjército',            clave: '019', estado: 'Pendiente', formato: '—' },
+  { banco: 'Banco del Bienestar',   clave: '166', estado: 'Pendiente', formato: '—' },
+  { banco: 'Compartamos',           clave: '130', estado: 'Pendiente', formato: '—' },
+  { banco: 'STP',                   clave: '646', estado: 'Pendiente', formato: '—' },
+  { banco: 'Spin by OXXO',          clave: '728', estado: 'Pendiente', formato: '—' },
+  { banco: 'Nvio',                  clave: '710', estado: 'Pendiente', formato: '—' },
+  { banco: 'Cuenca',                clave: '723', estado: 'Pendiente', formato: '—' },
 ];
 
 export async function bancosSoportadosPdf(companyId: string): Promise<{ buffer: Buffer; nombre: string }> {
   const e = (await query<any>('SELECT business_name, rfc FROM companies WHERE id=$1', [companyId])).rows[0] || {};
+  const procesados = BANCOS_COBERTURA.filter((b) => b.estado === 'Procesado').length;
   const columnas: ColumnaPdf[] = [
-    { titulo: '#',     clave: 'n',     ancho: 1, align: 'center' },
-    { titulo: 'Banco', clave: 'banco', ancho: 5 },
-    { titulo: 'Formato de estado de cuenta', clave: 'tipo', ancho: 5 },
+    { titulo: '#',      clave: 'n',       ancho: 1, align: 'center' },
+    { titulo: 'Banco',  clave: 'banco',   ancho: 5 },
+    { titulo: 'Clave',  clave: 'clave',   ancho: 1, align: 'center' },
+    { titulo: 'Estado', clave: 'estado',  ancho: 2, align: 'center' },
+    { titulo: 'Formato', clave: 'formato', ancho: 3 },
   ];
-  const filas = BANCOS_LECTURA.map((b, i) => ({ n: i + 1, banco: b.banco, tipo: b.tipo }));
+  const filas = BANCOS_COBERTURA.map((b, i) => ({ n: i + 1, banco: b.banco, clave: b.clave, estado: b.estado, formato: b.formato }));
   const buffer = await reporteTablaPdf({
-    titulo: 'Bancos con lectura de estado de cuenta',
+    titulo: 'Cobertura de lectura de estados de cuenta',
     empresa: e.business_name || '', rfc: e.rfc || '',
-    subtitulos: ['Estados de cuenta en PDF que el sistema lee automáticamente para la conciliación bancaria.'],
+    subtitulos: [
+      `Procesados: ${procesados} · Pendientes: ${BANCOS_COBERTURA.length - procesados}`,
+      'Procesado = el sistema lee su estado de cuenta en PDF para la conciliación. Pendiente = por agregar lector.',
+    ],
     columnas, filas,
-    nota: 'Si tu banco no aparece, igual puedes subir su estado: el sistema lo intenta en modo genérico. Si no cuadra, avísanos para agregarlo.',
+    nota: 'Si tu banco está «Pendiente», puedes subir su estado y el sistema lo intenta en modo genérico; si no cuadra, lo agregamos al lector.',
   });
-  return { buffer, nombre: 'Bancos_soportados.pdf' };
+  return { buffer, nombre: 'Cobertura_bancos.pdf' };
 }
 
 /* ═══════════════════ CUENTAS ═══════════════════ */
