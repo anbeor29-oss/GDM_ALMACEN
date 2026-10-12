@@ -78,6 +78,27 @@ export function ProductsPage() {
           >
             <Download size={18} /> Exportar plantilla
           </button>
+          <label
+            title="Cargar productos desde la plantilla Excel (crea/actualiza por SKU)"
+            className="flex items-center gap-2 border border-gray-300 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+          >
+            <FileUp size={18} /> Cargar plantilla
+            <input type="file" accept=".xlsx" className="hidden" onChange={async (e) => {
+              const f = e.target.files?.[0]; e.target.value = '';
+              if (!f) return;
+              try {
+                const r = await api.importarPlantillaProductos(f);
+                const d = (r?.data || {}) as { creados?: number; actualizados?: number; errores?: Array<{ fila: number; motivo: string }> };
+                alert(
+                  `Carga lista: ${d.creados || 0} creados, ${d.actualizados || 0} actualizados.` +
+                  (d.errores?.length ? `\n\n${d.errores.length} con error:\n` + d.errores.slice(0, 12).map((x) => `Fila ${x.fila}: ${x.motivo}`).join('\n') : '')
+                );
+                refresh();
+              } catch (err: any) {
+                alert('No se pudo cargar: ' + (err?.response?.data?.message || err?.message || 'error'));
+              }
+            }} />
+          </label>
           <ImportXMLButton onDone={refresh} />
           <button
             onClick={() => setShowCreate(true)}

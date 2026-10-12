@@ -841,6 +841,13 @@ class APIClient {
     const r = await this.client.get('/products/plantilla.xlsx', { responseType: 'blob' });
     await this.downloadFile(r.data as Blob, 'Plantilla_productos.xlsx');
   }
+  /** Carga productos en lote desde la plantilla Excel. Devuelve { creados, actualizados, errores }. */
+  async importarPlantillaProductos(file: File) {
+    const fd = new FormData();
+    fd.append('file', file);
+    const r = await this.client.post('/products/importar-plantilla', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
 
   /** Memoria cliente↔productos (qué productos compra cada cliente) */
   async getCustomerProducts(customerId: string) {

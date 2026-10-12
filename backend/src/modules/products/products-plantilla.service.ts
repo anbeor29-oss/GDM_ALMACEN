@@ -10,6 +10,8 @@
  * para que exportar e importar siempre coincidan.
  */
 import { query } from '../../config/database';
+import { ValidationError } from '../../middleware/errorHandler';
+import * as productsService from './products.service';
 import {
   ExcelJS, C, titulo, dato, encabezado, celda, anchos, aBuffer,
 } from '../nomina/estilo-excel';
@@ -88,4 +90,95 @@ export async function plantillaProductosExcel(companyId: string): Promise<{ buff
   anchos(ws, [12, 30, 30, 18, 14, 16, 12, 12, 16, 16, 9, 9, 9, 10, 11, 11, 10, 10, 12]);
 
   return { buffer: await aBuffer(wb), nombre: `Plantilla_productos_${(emp.rfc || '').toUpperCase()}.xlsx` };
+}
+
+/* ── CARGAR PLANTILLA (importar Excel) ─────────────────────────────────────────
+   Lee la MISMA hoja que exporta el sistema, mapea por encabezado (tolera mover/
+   quitar columnas), y por cada renglón crea el producto o lo actualiza si el SKU ya
+   existe. Reutiliza createProduct/updateProduct (validan clave SAT, unidad y
+   anti-duplicados). Los errores se reportan por fila sin abortar el resto. */
+export interface ResultadoImportProductos {
+  creados: number;
+  actualizados: number;
+  errores: Array<{ fila: number; motivo: string }>;
+}
+
+function textoCelda(v: any): string {
+  if (v == null) return '';
+  if (typeof v === 'object') {
+    if ('text' in v) return String((v as any).text ?? '');
+    if ('result' in v) return String((v as any).result ?? '');
+    if (Array.isArray((v as any).richText)) return (v as any).richText.map((t: any) => t.text).join('');
+    return '';
+  }
+  return String(v);
+}
+const aNum = (v: any) => { const s = textoCelda(v).replace(/[,\s$]/g, ''); const n = Number(s); return s !== '' && Number.isFinite(n) ? n : undefined; };
+const aBool = (v: any) => { const s = textoCelda(v).trim().toLowerCase(); if (!s) return undefined; return ['sí', 'si', 'true', '1', 'x', 'verdadero'].includes(s); };
+const norm = (s: string) => s.toLowerCase().replace(/\s*\*\s*$/, '').replace(/\s+/g, ' ').trim();
+
+export async function importarProductosExcel(companyId: string, buffer: Buffer): Promise<ResultadoImportProductos> {
+  const wb = new ExcelJS.Workbook();
+  try { await wb.xlsx.load(buffer as any); } catch { throw new ValidationError('No se pudo leer el archivo. ¿Es un Excel .xlsx?'); }
+  const ws = wb.worksheets[0];
+  if (!ws) throw new ValidationError('El archivo no tiene hojas.');
+
+  // Localizar la fila de encabezados y mapear columna Excel -> llave de campo.
+  let headerRow = -1;
+  const mapCol: Record<number, string> = {};
+  for (let ri = 1; ri <= Math.min(ws.rowCount || 0, 20); ri++) {
+    const encontrados: Record<number, string> = {};
+    ws.getRow(ri).eachCell({ includeEmpty: false }, (cell, ci) => {
+      const col = COLUMNAS_PLANTILLA.find((c) => norm(c.h) === norm(textoCelda(cell.value)));
+      if (col) encontrados[ci] = col.k;
+    });
+    const llaves = Object.values(encontrados);
+    if (llaves.includes('name') && llaves.includes('claveSat') && llaves.includes('unitCode')) {
+      headerRow = ri; Object.assign(mapCol, encontrados); break;
+    }
+  }
+  if (headerRow < 0) throw new ValidationError('No encontré los encabezados de la plantilla (Nombre, Clave SAT, Clave Unidad). Usa la plantilla que exporta el sistema.');
+
+  const res: ResultadoImportProductos = { creados: 0, actualizados: 0, errores: [] };
+  for (let ri = headerRow + 1; ri <= (ws.rowCount || 0); ri++) {
+    const row = ws.getRow(ri);
+    const raw: Record<string, any> = {};
+    for (const [ciStr, k] of Object.entries(mapCol)) raw[k] = row.getCell(Number(ciStr)).value;
+    if (!Object.values(raw).some((v) => textoCelda(v).trim() !== '')) continue;   // fila vacía
+    const name = textoCelda(raw.name).trim();
+    if (!name) continue;
+
+    const data: any = {
+      sku: textoCelda(raw.sku).trim() || undefined,
+      name,
+      description: textoCelda(raw.description).trim() || undefined,
+      claveSat: textoCelda(raw.claveSat).trim(),
+      unitCode: textoCelda(raw.unitCode).trim(),
+      unitName: textoCelda(raw.unitName).trim() || undefined,
+      basePrice: aNum(raw.basePrice),
+      wholesalePrice: aNum(raw.wholesalePrice),
+      barcode: textoCelda(raw.barcode).trim() || undefined,
+      noIdentificacion: textoCelda(raw.noIdentificacion).trim() || undefined,
+      currency: textoCelda(raw.currency).trim().toUpperCase() || undefined,
+      taxRate: aNum(raw.taxRate),
+      isExempt: aBool(raw.isExempt),
+      isDeductible: aBool(raw.isDeductible),
+      appliesIEPS: aBool(raw.appliesIEPS),
+      stockQuantity: aNum(raw.stockQuantity),
+      stockMinimum: aNum(raw.stockMinimum),
+      stockMaximum: aNum(raw.stockMaximum),
+      lastCost: aNum(raw.lastCost),
+    };
+    Object.keys(data).forEach((k) => data[k] === undefined && delete data[k]);
+
+    try {
+      let existe: any = null;
+      if (data.sku) { try { existe = await productsService.getProductBySKU(companyId, data.sku); } catch { existe = null; } }
+      if (existe) { await productsService.updateProduct(companyId, existe.id, data); res.actualizados++; }
+      else { await productsService.createProduct(companyId, data); res.creados++; }
+    } catch (e: any) {
+      res.errores.push({ fila: ri, motivo: e?.message || 'Error al guardar' });
+    }
+  }
+  return res;
 }

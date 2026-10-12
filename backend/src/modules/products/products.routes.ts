@@ -3,12 +3,14 @@
  */
 
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
 import * as productsController from './products.controller';
 import * as plantilla from './products-plantilla.service';
 import { authenticateToken } from '../../middleware/authentication';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 
 const router = Router();
+const uploadXlsx = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // All routes require authentication
 router.use(authenticateToken);
@@ -42,6 +44,19 @@ router.get('/plantilla.xlsx', asyncHandler(async (req: Request, res: Response) =
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
   res.send(buffer);
+}));
+
+/**
+ * POST /api/v1/products/importar-plantilla  (multipart: file = .xlsx)
+ * Carga productos en lote desde la plantilla Excel (crea/actualiza por SKU).
+ */
+router.post('/importar-plantilla', uploadXlsx.single('file'), asyncHandler(async (req: Request, res: Response) => {
+  const companyId = (req as any).user?.companyId;
+  if (!companyId) throw new ValidationError('Company ID is required');
+  const file = (req as any).file;
+  if (!file?.buffer) throw new ValidationError('Sube el archivo Excel (.xlsx) de la plantilla.');
+  const data = await plantilla.importarProductosExcel(companyId, file.buffer);
+  res.json({ success: true, data });
 }));
 
 /**
