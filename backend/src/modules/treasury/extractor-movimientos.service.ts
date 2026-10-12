@@ -1398,13 +1398,18 @@ export function extraerMovimientos(
      * RECIBIDO" o "CUENTA DE TERCERO", que es lo que decide. BBVA trae dos
      * columnas de saldo: el reparto lo sabe (dosSaldos) para no leer un saldo
      * como depósito. */
-    const concepto = conceptoDe(b.principal);
+    // El concepto lleva el DETALLE completo del movimiento (todas las líneas del
+    // estado: contraparte, referencia SPEI, etc.), no solo la etiqueta genérica. El
+    // LADO (retiro/depósito) y la desambiguación se siguen leyendo de b.principal,
+    // así que la conciliación no se afecta.
+    const detalle = completo.replace(/\s+/g, ' ').trim();
+    const concepto = detalle || conceptoDe(b.principal);
     const r = repartirImportes(importes, b.principal, orden, banco === 'BBVA');
     if (r.retiro === 0 && r.deposito === 0) continue;
 
     movimientos.push({
       fecha,
-      concepto,
+      concepto: concepto.slice(0, 1000),
       referencia: completo.slice(0, 500),
       retiro: pesos(r.retiro),
       deposito: pesos(r.deposito),
