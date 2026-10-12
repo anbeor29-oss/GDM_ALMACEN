@@ -19,14 +19,21 @@ const attr = (s: string, n: string) => {
 
 export interface ImpuestosCfdi {
   base16: number; iva16: number; base8: number; iva8: number;
-  base0: number; exento: number; ivaRet: number;
+  base0: number; exento: number; ivaRet: number; noObjeto: number;
 }
 
 /** Impuestos a nivel comprobante de un CFDI recibido (compra). */
 export function impuestosDeXml(xml: string): ImpuestosCfdi {
-  const out: ImpuestosCfdi = { base16: 0, iva16: 0, base8: 0, iva8: 0, base0: 0, exento: 0, ivaRet: 0 };
+  const out: ImpuestosCfdi = { base16: 0, iva16: 0, base8: 0, iva8: 0, base0: 0, exento: 0, ivaRet: 0, noObjeto: 0 };
   const iConc = xml.search(/<\/(?:\w+:)?Conceptos>/);
   const cuerpo = iConc >= 0 ? xml.slice(iConc) : xml;   // sólo el resumen del comprobante
+
+  // Actos NO OBJETO del IVA (CFDI 4.0): conceptos con ObjetoImp="01". Su importe va al
+  // campo "no objeto" de la DIOT (p. ej. cuotas IMSS, que no causan IVA).
+  const seccionConceptos = iConc >= 0 ? xml.slice(0, iConc) : xml;
+  for (const c of seccionConceptos.match(/<(?:\w+:)?Concepto\b[^>]*>/g) || []) {
+    if (attr(c, 'ObjetoImp') === '01') out.noObjeto += Number(attr(c, 'Importe')) || 0;
+  }
 
   for (const t of cuerpo.match(/<(?:\w+:)?Traslado\b[^>]*?\/?>/g) || []) {
     if (attr(t, 'Impuesto') !== '002') continue;         // 002 = IVA
@@ -70,12 +77,13 @@ export async function diot(companyId: string, anio: number, mes: number) {
     const tipoTercero = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(rfc) ? '04' : '05';
     const e = porProv.get(rfc) || {
       rfc, nombre: row.nombre_emisor || '', comprobantes: 0, tipoTercero,
-      base16: 0, iva16: 0, base8: 0, iva8: 0, base0: 0, exento: 0, ivaRet: 0,
+      base16: 0, iva16: 0, base8: 0, iva8: 0, base0: 0, exento: 0, ivaRet: 0, noObjeto: 0,
     };
     e.comprobantes++;
     e.base16 += imp.base16; e.iva16 += imp.iva16;
     e.base8 += imp.base8; e.iva8 += imp.iva8;
     e.base0 += imp.base0; e.exento += imp.exento; e.ivaRet += imp.ivaRet;
+    e.noObjeto += imp.noObjeto;
     if (!e.nombre && row.nombre_emisor) e.nombre = row.nombre_emisor;
     porProv.set(rfc, e);
   }
@@ -84,7 +92,7 @@ export async function diot(companyId: string, anio: number, mes: number) {
     .map((e) => ({
       ...e,
       base16: r2(e.base16), iva16: r2(e.iva16), base8: r2(e.base8), iva8: r2(e.iva8),
-      base0: r2(e.base0), exento: r2(e.exento), ivaRet: r2(e.ivaRet),
+      base0: r2(e.base0), exento: r2(e.exento), ivaRet: r2(e.ivaRet), noObjeto: r2(e.noObjeto),
     }))
     .sort((a, b) => (b.iva16 + b.iva8) - (a.iva16 + a.iva8));
 
@@ -92,7 +100,8 @@ export async function diot(companyId: string, anio: number, mes: number) {
     base16: t.base16 + e.base16, iva16: t.iva16 + e.iva16,
     base8: t.base8 + e.base8, iva8: t.iva8 + e.iva8,
     base0: t.base0 + e.base0, exento: t.exento + e.exento, ivaRet: t.ivaRet + e.ivaRet,
-  }), { base16: 0, iva16: 0, base8: 0, iva8: 0, base0: 0, exento: 0, ivaRet: 0 });
+    noObjeto: t.noObjeto + e.noObjeto,
+  }), { base16: 0, iva16: 0, base8: 0, iva8: 0, base0: 0, exento: 0, ivaRet: 0, noObjeto: 0 });
 
   return {
     anio, mes,
@@ -196,6 +205,7 @@ export async function diotBatchTxt(
     f[47] = ent(p.ivaRet);   // 48 IVA retenido
     f[49] = ent(p.exento);   // 50 actos exentos
     f[50] = ent(p.base0);    // 51 demás actos a tasa 0%
+    f[esExt ? 52 : 51] = ent(p.noObjeto);   // 52/53 actos no objeto del IVA (nacional / sin establec.)
     f[53] = '01';            // 54 manifiesto de efectos fiscales = Sí
     return f.join('|');
   });
