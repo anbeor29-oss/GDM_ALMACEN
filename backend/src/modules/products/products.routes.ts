@@ -2,10 +2,11 @@
  * Products Routes with SAT Catalog Integration
  */
 
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import * as productsController from './products.controller';
+import * as plantilla from './products-plantilla.service';
 import { authenticateToken } from '../../middleware/authentication';
-import { asyncHandler } from '../../middleware/errorHandler';
+import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 
 const router = Router();
 
@@ -29,6 +30,19 @@ router.get(
   '/sat-search',
   asyncHandler(productsController.searchSAT)
 );
+
+/**
+ * GET /api/v1/products/plantilla.xlsx
+ * Exporta los productos actuales en una plantilla Excel (editable y re-cargable).
+ */
+router.get('/plantilla.xlsx', asyncHandler(async (req: Request, res: Response) => {
+  const companyId = (req as any).user?.companyId;
+  if (!companyId) throw new ValidationError('Company ID is required');
+  const { buffer, nombre } = await plantilla.plantillaProductosExcel(companyId);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+  res.send(buffer);
+}));
 
 /**
  * POST /api/v1/products

@@ -836,6 +836,12 @@ class APIClient {
     return r.data;
   }
 
+  /** Descarga los productos actuales en una plantilla Excel (editable y re-cargable). */
+  async descargarPlantillaProductos() {
+    const r = await this.client.get('/products/plantilla.xlsx', { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, 'Plantilla_productos.xlsx');
+  }
+
   /** Memoria cliente↔productos (qué productos compra cada cliente) */
   async getCustomerProducts(customerId: string) {
     const r = await this.client.get(`/customers/${customerId}/products`);

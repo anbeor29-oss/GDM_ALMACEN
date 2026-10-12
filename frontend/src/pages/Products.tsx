@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Plus, Trash2, Edit2, FileUp, Loader2, X, CheckCircle, Search, AlertCircle, Boxes,
+  Plus, Trash2, Edit2, FileUp, Loader2, X, CheckCircle, Search, AlertCircle, Boxes, Download,
 } from 'lucide-react';
 import api from '@/services/api';
 
@@ -71,6 +71,13 @@ export function ProductsPage() {
           <p className="text-gray-600 mt-2">Catálogo de productos y servicios</p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => api.descargarPlantillaProductos().catch(() => {})}
+            title="Exportar los productos a una plantilla Excel (edítala y vuelve a cargarla)"
+            className="flex items-center gap-2 border border-gray-300 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <Download size={18} /> Exportar plantilla
+          </button>
           <ImportXMLButton onDone={refresh} />
           <button
             onClick={() => setShowCreate(true)}
