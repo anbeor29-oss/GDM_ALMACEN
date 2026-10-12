@@ -125,6 +125,10 @@ export async function bootstrapDesdeEnv(): Promise<'sin-token' | 'sin-boveda' | 
 /* ── JWT corto (caché en memoria) ── */
 let tokenCache: { jwt: string; exp: number } | null = null;
 
+/** Borra el JWT cacheado. Se llama al cambiar la API Key para que la nueva tome
+ *  efecto de inmediato (si no, se seguiría usando el token de la llave anterior). */
+export function resetTokenCache() { tokenCache = null; }
+
 export async function accessToken(): Promise<string> {
   const now = Date.now();
   if (tokenCache && tokenCache.exp > now + 60_000) return tokenCache.jwt;

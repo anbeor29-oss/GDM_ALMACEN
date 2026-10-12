@@ -7,7 +7,7 @@
  */
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../../middleware/authentication';
-import { asyncHandler } from '../../middleware/errorHandler';
+import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { requireSuperAdmin, audit } from '../admin/admin.middleware';
 import * as satgo from './satgo.service';
 import * as fx from '../exchange-rates/exchange-rate.service';
@@ -77,6 +77,21 @@ router.put('/config', asyncHandler(async (req: Request, res: Response) => {
 router.post('/bootstrap', asyncHandler(async (req: Request, res: Response) => {
   const data = await satgo.bootstrapApiKey(String(req.body?.portalToken || ''));
   await audit(req, { action: 'SATGO_BOOTSTRAP', targetKind: 'satgo_config' });
+  res.json({ success: true, data });
+}));
+
+/**
+ * POST /admin/satgo/apikey  { apiKey }
+ * Pega DIRECTO la API Key permanente de SatGo (p. ej. la misma que ya funciona en
+ * otra app de la misma cuenta). Se guarda cifrada y se reinicia el JWT cacheado para
+ * que tome efecto al instante. Alternativa al bootstrap cuando ya se tiene la llave.
+ */
+router.post('/apikey', asyncHandler(async (req: Request, res: Response) => {
+  const apiKey = String(req.body?.apiKey || '').trim();
+  if (!apiKey) throw new ValidationError('Pega la API Key de SatGo.');
+  const data = await satgo.setConfig({ apiKey });
+  satgo.resetTokenCache();
+  await audit(req, { action: 'SATGO_APIKEY', targetKind: 'satgo_config' });
   res.json({ success: true, data });
 }));
 

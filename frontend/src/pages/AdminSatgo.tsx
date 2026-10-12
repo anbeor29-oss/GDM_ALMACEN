@@ -41,6 +41,7 @@ export function AdminSatgoPage() {
   const [baseUrl, setBaseUrl] = useState('');
   const [ambiente, setAmbiente] = useState('PRUEBAS');
   const [portalToken, setPortalToken] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
 
@@ -59,6 +60,12 @@ export function AdminSatgoPage() {
     setBusy('boot'); setMsg('');
     try { await api.bootstrapSatgo(portalToken.trim()); await cfgQ.refetch(); setPortalToken(''); setMsg('API Key permanente obtenida y guardada (cifrada).'); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo obtener la API Key.'); }
+    finally { setBusy(''); }
+  };
+  const pegarApiKey = async () => {
+    setBusy('key'); setMsg('');
+    try { await api.setSatgoApiKey(apiKey.trim()); await cfgQ.refetch(); await conQ.refetch(); setApiKey(''); setMsg('API Key guardada (cifrada). Conexión actualizada.'); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo guardar la API Key.'); }
     finally { setBusy(''); }
   };
 
@@ -140,6 +147,18 @@ export function AdminSatgoPage() {
             <input value={portalToken} onChange={(e) => setPortalToken(e.target.value)} placeholder="eyJhbGciOiJ…" className="input py-1.5 text-xs w-full font-mono" type="password" /></label>
           <button onClick={bootstrap} disabled={busy === 'boot' || !portalToken.trim()} className="bg-sky-600 text-white px-4 py-2 rounded-lg hover:bg-sky-700 disabled:opacity-50 text-sm inline-flex items-center gap-1.5">
             {busy === 'boot' ? <Loader2 className="animate-spin" size={15} /> : <KeyRound size={15} />} Obtener API Key
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white border rounded-lg p-4 space-y-3">
+        <h2 className="font-semibold text-gray-800">3 · O pega la API Key directamente</h2>
+        <p className="text-xs text-gray-500">¿Ya tienes la <b>API Key permanente</b> (la misma que usa otra app de tu cuenta SatGo, p. ej. el portal de IVA)? Pégala aquí y se guarda <b>cifrada</b> — no necesitas el token del portal. Al guardar se reinicia el token para que tome efecto al instante.</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block flex-1 min-w-[20rem]"><span className="text-xs text-gray-600 block mb-1">API Key permanente</span>
+            <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="eyJhbGciOiJ…" className="input py-1.5 text-xs w-full font-mono" type="password" /></label>
+          <button onClick={pegarApiKey} disabled={busy === 'key' || !apiKey.trim()} className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm inline-flex items-center gap-1.5">
+            {busy === 'key' ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Guardar API Key
           </button>
         </div>
       </div>
