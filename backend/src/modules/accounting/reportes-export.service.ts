@@ -20,6 +20,7 @@ import {
 import { reporteTablaPdf, ColumnaPdf } from '../../utils/reporte-pdf';
 import { fechaMx, fechaHoraMx } from '../../utils/fecha-mx';
 import { listarCuentas } from './catalogo.service';
+import { cedulaIva } from './cedulas-fiscales.service';
 
 interface Empresa { business_name: string; rfc: string; }
 
@@ -676,4 +677,60 @@ export async function razonesPdf(companyId: string, anio: number, mes: number): 
     subtitulos: [`Del período de ${nombreMes(mes)} ${anio}`], orientacion: 'landscape', columnas, filas,
   });
   return { buffer, nombre: `Razones_${anio}-${mm(mes)}.pdf` };
+}
+
+/* ── Cédula de IVA (papel de trabajo anual, 12 meses) ─────────────────────────
+   Conceptos en filas, meses en columnas (mismas filas que la pantalla). Resalta en
+   AMARILLO la fila "(=) IVA A CARGO" y la columna del MES VIGENTE (hora de México),
+   para ver de un vistazo el IVA a pagar. Para cifras de control. */
+const FILAS_IVA_XLS: Array<{ label: string; key: string; negrita?: boolean; aCargo?: boolean }> = [
+  { label: 'Ingresos gravados 16%',    key: 'base16Ing' },
+  { label: 'Ingresos gravados 8%',     key: 'base8Ing' },
+  { label: 'Ingresos 0%',              key: 'base0Ing' },
+  { label: 'Exentos',                  key: 'exentoIng' },
+  { label: 'IVA trasladado 16%',       key: 'trasladado16' },
+  { label: 'IVA trasladado 8%',        key: 'trasladado8' },
+  { label: '(−) IVA retenido',         key: 'ivaRetenido' },
+  { label: '(=) Total IVA trasladado', key: 'trasladado', negrita: true },
+  { label: 'Base acreditable',         key: 'baseAcred' },
+  { label: '(=) IVA acreditable',      key: 'acreditable', negrita: true },
+  { label: 'IVA a cargo del periodo',  key: 'aCargoPeriodo' },
+  { label: 'IVA a favor del periodo',  key: 'aFavorPeriodo' },
+  { label: 'Saldo a favor (arrastre)', key: 'saldoFavorArrastre' },
+  { label: '(=) IVA A CARGO',          key: 'aCargo', negrita: true, aCargo: true },
+];
+
+export async function cedulaIvaExcel(companyId: string, anio: number): Promise<{ buffer: Buffer; nombre: string }> {
+  const [emp, ced] = await Promise.all([empresaDe(companyId), cedulaIva(companyId, anio)]);
+  // Mes "vigente" (hora de México); sólo se resalta la columna si se ve el AÑO en curso.
+  const mx = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Mexico_City' }));
+  const mesActual = (anio === mx.getFullYear()) ? (mx.getMonth() + 1) : 0;
+  const AMARILLO = 'FFFFF176';       // resaltado de celdas
+  const AMARILLO_HDR = 'FFF9A825';   // encabezado de la columna vigente (texto blanco)
+
+  const cols = ['CONCEPTO', ...MES3];
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'GDM NEXO';
+  const ws = wb.addWorksheet('Cédula IVA', { views: [{ state: 'frozen', xSplit: 1, ySplit: 6 }] });
+
+  titulo(ws, 'Cédula de IVA (papel de trabajo)', cols.length);
+  dato(ws, 3, 1, `Empresa:   ${emp.business_name}`, true);
+  dato(ws, 3, 8, `RFC:   ${emp.rfc}`);
+  dato(ws, 4, 1, `Ejercicio:   ${anio}`);
+  dato(ws, 4, 8, `Generado:   ${fechaGen()}`);
+  encabezado(ws, 6, cols.map((t, i) => ({ texto: t, color: (mesActual && i === mesActual) ? AMARILLO_HDR : C.identidad })));
+
+  let fila = 7;
+  for (const r of FILAS_IVA_XLS) {
+    const filaACargo = !!r.aCargo;
+    celda(ws, fila, 1, r.label, { negrita: filaACargo || !!r.negrita, centrado: false, fondo: filaACargo ? AMARILLO : undefined });
+    for (let m = 0; m < 12; m++) {
+      const val = Number((ced.filas[m] as any)?.[r.key] ?? 0);
+      const resaltar = filaACargo || (!!mesActual && (m + 1) === mesActual);
+      celda(ws, fila, m + 2, val, { negrita: filaACargo, fondo: resaltar ? AMARILLO : undefined });
+    }
+    fila++;
+  }
+  anchos(ws, [26, ...new Array(12).fill(12)]);
+  return { buffer: await aBuffer(wb), nombre: `Cedula_IVA_${anio}.xlsx` };
 }

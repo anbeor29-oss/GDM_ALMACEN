@@ -1212,6 +1212,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/cedulas/iva/${anio}`);
     return r.data;
   }
+  /** Cédula de IVA a Excel (resalta IVA a cargo y la columna del mes vigente). */
+  async getCedulaIvaExcel(anio: number) {
+    const r = await this.client.get(`/accounting/cedulas/iva/${anio}/excel`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Cedula_IVA_${anio}.xlsx`);
+  }
   async getCedulaResico(anio: number) {
     const r = await this.client.get<APIResponse<any>>(`/accounting/cedulas/resico/${anio}`);
     return r.data;

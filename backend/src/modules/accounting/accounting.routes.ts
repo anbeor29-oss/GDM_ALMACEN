@@ -782,6 +782,16 @@ router.get('/cedulas/iva/:anio', asyncHandler(async (req: Request, res: Response
   if (!anio) throw new ValidationError('Año inválido.');
   res.json({ success: true, data: await cedulas.cedulaIva(companyId(req), anio) });
 }));
+/** GET /accounting/cedulas/iva/:anio/excel — cédula de IVA a Excel (resalta la fila
+ *  IVA A CARGO y la columna del mes vigente). Para cifras de control. */
+router.get('/cedulas/iva/:anio/excel', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.params.anio);
+  if (!anio) throw new ValidationError('Año inválido.');
+  const { buffer, nombre } = await reportesExport.cedulaIvaExcel(companyId(req), anio);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+  res.send(buffer);
+}));
 router.get('/cedulas/resico/:anio', asyncHandler(async (req: Request, res: Response) => {
   const anio = Number(req.params.anio);
   if (!anio) throw new ValidationError('Año inválido.');

@@ -11,7 +11,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileSpreadsheet, Info } from 'lucide-react';
+import { FileSpreadsheet, Info, Download } from 'lucide-react';
 import api from '@/services/api';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import { aniosContables } from '@/utils/anios';
@@ -297,9 +297,18 @@ export function CedulasFiscalesPage() {
       )}
       {tab === 'plat' && <PanelPlataformas anio={anio} />}
       {tab === 'iva' && (
-        ivaQ.isLoading ? <p className="text-sm text-gray-500">Calculando…</p>
-        : ivaQ.error ? <p className="text-sm text-rose-700">{(ivaQ.error as any)?.response?.data?.message || 'No se pudo calcular.'}</p>
-        : ivaQ.data?.data ? <TablaCedula filas={ivaQ.data.data.filas} defs={FILAS_IVA} /> : null
+        <div className="space-y-2">
+          <div className="flex justify-end">
+            <button onClick={() => api.getCedulaIvaExcel(anio).catch(() => {})} disabled={!ivaQ.data?.data}
+              title="Exportar a Excel (resalta la fila IVA A CARGO y la columna del mes vigente)"
+              className="inline-flex items-center gap-1.5 border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-50 text-sm disabled:opacity-50">
+              <Download size={15} /> Excel
+            </button>
+          </div>
+          {ivaQ.isLoading ? <p className="text-sm text-gray-500">Calculando…</p>
+          : ivaQ.error ? <p className="text-sm text-rose-700">{(ivaQ.error as any)?.response?.data?.message || 'No se pudo calcular.'}</p>
+          : ivaQ.data?.data ? <TablaCedula filas={ivaQ.data.data.filas} defs={FILAS_IVA} /> : null}
+        </div>
       )}
     </div>
   );
