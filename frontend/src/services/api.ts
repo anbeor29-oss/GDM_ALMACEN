@@ -3173,6 +3173,10 @@ class APIClient {
   async setSatgoApiKey(apiKey: string) {
     return (await this.client.post('/admin/satgo/apikey', { apiKey })).data;
   }
+  /** Prueba la conexión con SatGo (Auth/token). Avisa si la API Key caducó. */
+  async probarSatgo() {
+    return (await this.client.get('/admin/satgo/probar')).data;
+  }
   /** Tablero de conectores externos: SAT (SatGo), Banco de México e INEGI. */
   async getConectoresEstado() {
     return (await this.client.get('/admin/satgo/conectores')).data;

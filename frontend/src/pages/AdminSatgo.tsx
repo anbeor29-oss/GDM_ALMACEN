@@ -44,6 +44,7 @@ export function AdminSatgoPage() {
   const [apiKey, setApiKey] = useState('');
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
+  const [prueba, setPrueba] = useState<{ ok: boolean; mensaje: string } | null>(null);
 
   if (user?.role !== 'SUPER_ADMIN') {
     return <div className="bg-amber-50 border border-amber-200 text-amber-900 p-6 rounded-lg">
@@ -66,6 +67,12 @@ export function AdminSatgoPage() {
     setBusy('key'); setMsg('');
     try { await api.setSatgoApiKey(apiKey.trim()); await cfgQ.refetch(); await conQ.refetch(); setApiKey(''); setMsg('API Key guardada (cifrada). Conexión actualizada.'); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo guardar la API Key.'); }
+    finally { setBusy(''); }
+  };
+  const probar = async () => {
+    setBusy('probar'); setPrueba(null);
+    try { const r = await api.probarSatgo(); setPrueba(r.data); }
+    catch (e: any) { setPrueba({ ok: false, mensaje: e?.response?.data?.message || 'No se pudo probar la conexión.' }); }
     finally { setBusy(''); }
   };
 
@@ -122,6 +129,15 @@ export function AdminSatgoPage() {
         </div>
         <span className="text-xs text-gray-500">URL base: <span className="font-mono">{cfg?.baseUrl || '—'}</span> · Ambiente: <b>{cfg?.ambiente}</b></span>
         {cfg && !cfg.bovedaLista && <span className="text-xs text-rose-600 flex items-center gap-1"><AlertTriangle size={13} /> Falta SAT_VAULT_KEY en el servidor.</span>}
+        <button onClick={probar} disabled={busy === 'probar' || !cfg?.tieneKey}
+          className="ml-auto border border-sky-300 text-sky-700 px-3 py-1 rounded-lg hover:bg-sky-50 text-sm disabled:opacity-50 inline-flex items-center gap-1.5">
+          {busy === 'probar' ? <Loader2 className="animate-spin" size={14} /> : <Cloud size={14} />} Probar conexión
+        </button>
+        {prueba && (
+          <span className={`text-xs inline-flex items-center gap-1 w-full ${prueba.ok ? 'text-emerald-700' : 'text-rose-700'}`}>
+            {prueba.ok ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />} {prueba.mensaje}
+          </span>
+        )}
       </div>
 
       <div className="bg-white border rounded-lg p-4 space-y-3">

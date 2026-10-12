@@ -142,7 +142,12 @@ export async function accessToken(): Promise<string> {
   // Contrato SatGo: POST /api/Auth/token?key=<API Key> → { token }
   // (alterno: /api/Auth/token-json con body {key} → tokens.access.value)
   const r = await axios.post(`${base}/api/Auth/token?key=${encodeURIComponent(apiKey)}`, {}, { timeout: T, validateStatus: () => true });
-  if (r.status < 200 || r.status >= 300) throw new ValidationError(`SatGo Auth/token respondió ${r.status}.`);
+  if (r.status < 200 || r.status >= 300) {
+    const pista = r.status === 401
+      ? ' La API Key no es válida o CADUCÓ (las de prueba vencen). Renuévala en Súper admin → Conector fiscal: genera una nueva, pruébala con «Probar conexión» y pégala en la sección 3.'
+      : '';
+    throw new ValidationError(`SatGo Auth/token respondió ${r.status}.${pista}`);
+  }
   const jwt = pick(r.data, 'token', 'access_token', 'accessToken', 'jwt') || r.data?.tokens?.access?.value || null;
   if (!jwt) throw new ValidationError('SatGo no devolvió un token de acceso reconocible.');
   // Vigencia: si el JWT trae exp lo usamos; si no, 4 min por defecto.
@@ -150,6 +155,18 @@ export async function accessToken(): Promise<string> {
   try { const p = JSON.parse(Buffer.from(jwt.split('.')[1], 'base64').toString('utf8')); if (p?.exp) exp = p.exp * 1000; } catch { /* default */ }
   tokenCache = { jwt, exp };
   return jwt;
+}
+
+/** Prueba la conexión pidiendo un JWT real (ignora el caché). Para el botón «Probar
+ *  conexión» del Conector fiscal: avisa de inmediato si la API Key caducó. */
+export async function probarConexion(): Promise<{ ok: boolean; mensaje: string }> {
+  try {
+    resetTokenCache();
+    await accessToken();
+    return { ok: true, mensaje: 'Conexión correcta: la API Key es válida.' };
+  } catch (e: any) {
+    return { ok: false, mensaje: e?.message || 'No se pudo conectar con SatGo.' };
+  }
 }
 
 export type RecursoPdf = 'csf' | 'oc' | 'ocpublico' | 'imssoc';

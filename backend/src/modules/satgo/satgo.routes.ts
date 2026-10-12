@@ -95,4 +95,10 @@ router.post('/apikey', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data });
 }));
 
+/** GET /admin/satgo/probar — prueba la conexión (Auth/token con la API Key).
+ *  Devuelve { ok, mensaje } para avisar de inmediato si la llave caducó. */
+router.get('/probar', asyncHandler(async (_req: Request, res: Response) => {
+  res.json({ success: true, data: await satgo.probarConexion() });
+}));
+
 export default router;
