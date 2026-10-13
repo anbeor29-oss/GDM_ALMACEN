@@ -3171,6 +3171,11 @@ class APIClient {
     const r = await this.client.get('/admin/companies', { params });
     return r.data;
   }
+  /** Empresas que pueden EMITIR el cobro del servicio (selector "empresa que factura"). */
+  async adminListEmisores() {
+    const r = await this.client.get('/admin/companies/emisores');
+    return r.data;
+  }
 
   /* ── Facturación por usuario (SUPER_ADMIN) ── */
   async getFacturacionConfig() {
@@ -3224,7 +3229,8 @@ class APIClient {
                                    monthlyFee?: number; extraStampFee?: number;
                                    stampPackageCode?: string;
                                    street?: string; extNumber?: string; neighborhood?: string;
-                                   city?: string; municipality?: string; state?: string }) {
+                                   city?: string; municipality?: string; state?: string;
+                                   empresaCobroId?: string }) {
     const r = await this.client.post('/admin/companies', data);
     return r.data;
   }

@@ -264,9 +264,14 @@ function EditCompanyModal({
     phone:        company.phone || '',
     website:      company.website || '',
     timbradoAmbiente: company.timbrado_ambiente || 'PRUEBAS',
+    esEmisorCobro: company.es_emisor_cobro === true,
+    empresaCobroId: company.empresa_cobro_id || '',
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Emisores del cobro (para "esta empresa es emisor" / "quién le factura").
+  const { data: emisoresData } = useQuery({ queryKey: ['admin-emisores'], queryFn: () => api.adminListEmisores() });
+  const emisores: any[] = ((emisoresData as any)?.data?.emisores || []).filter((e: any) => e.id !== company.id);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [k]: e.target.value });
@@ -372,6 +377,24 @@ function EditCompanyModal({
             >
               <FileKey size={14}/> {company.has_csd ? 'Actualizar CSD' : 'Cargar CSD'}
             </button>
+          </div>
+
+          {/* Cobro del servicio: emisor y a quién factura */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+            <p className="text-xs font-semibold text-amber-900">Cobro del servicio (facturación a clientes)</p>
+            <label className="flex items-center gap-2 text-xs text-amber-900">
+              <input type="checkbox" checked={form.esEmisorCobro}
+                onChange={(e) => setForm({ ...form, esEmisorCobro: e.target.checked })} />
+              Esta empresa <b>emite</b> las facturas del cobro (requiere su CSD cargado).
+            </label>
+            <label className="block">
+              <span className="text-xs text-amber-900 block mb-0.5">Empresa que factura el cobro a este cliente</span>
+              <select value={form.empresaCobroId} onChange={(e) => setForm({ ...form, empresaCobroId: e.target.value })}
+                className="w-full border border-amber-300 rounded px-3 py-2 text-sm bg-white">
+                <option value="">— ninguna —</option>
+                {emisores.map((em) => <option key={em.id} value={em.id}>{em.rfc} · {em.business_name}{em.has_csd ? '' : ' (sin CSD)'}</option>)}
+              </select>
+            </label>
           </div>
 
           {/* Ambiente de timbrado — PRODUCCIÓN emite CFDI reales ante el SAT. */}
@@ -733,6 +756,7 @@ function CreateCompanyModal({ onClose, onDone }: any) {
   const [form, setForm] = useState({
     rfc:'', businessName:'', fiscalRegime:'', postalCode:'',
     street:'', extNumber:'', neighborhood:'', city:'', municipality:'', state:'',
+    empresaCobroId:'',
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -740,6 +764,9 @@ function CreateCompanyModal({ onClose, onDone }: any) {
 
   // Catálogo SAT de régimen fiscal para el combo (mismo que usan Clientes/Emisor).
   const { data: regimenes } = useQuery({ queryKey: ['catalog', 'regimenFiscal'], queryFn: () => api.getCatalog('regimenFiscal') });
+  // Empresas emisoras del cobro (para asignar quién factura a este cliente nuevo).
+  const { data: emisoresData } = useQuery({ queryKey: ['admin-emisores'], queryFn: () => api.adminListEmisores() });
+  const emisores: any[] = (emisoresData as any)?.data?.emisores || [];
 
   /* Autollenado por código postal: reusa el resolvedor del catálogo SAT ya cargado
    * (el mismo de Carta Porte). Rellena estado, y ofrece colonias y municipios del CP
@@ -807,6 +834,7 @@ function CreateCompanyModal({ onClose, onDone }: any) {
         city: form.city || undefined,
         municipality: form.municipality || undefined,
         state: form.state || undefined,
+        empresaCobroId: form.empresaCobroId || undefined,
       });
       const aviso = (r?.data ?? r)?.aviso;
       if (aviso) { setError(aviso); setCreada(true); return; }
@@ -897,6 +925,20 @@ function CreateCompanyModal({ onClose, onDone }: any) {
                   onChange={(e)=>setForm({...form,extNumber:e.target.value})}/></label>
             </div>
           </div>
+
+          {/* ─── Empresa que factura el cobro (emisor del servicio) ─── */}
+          {emisores.length > 0 && (
+            <div className="border-t pt-3">
+              <label className="block">
+                <span className="text-sm font-medium block mb-1">Empresa que factura el cobro <span className="font-normal text-gray-400">(quién le factura el servicio a este cliente)</span></span>
+                <select className="input w-full" value={form.empresaCobroId}
+                  onChange={(e)=>setForm({...form,empresaCobroId:e.target.value})}>
+                  <option value="">— elegir emisor —</option>
+                  {emisores.map((em) => <option key={em.id} value={em.id}>{em.rfc} · {em.business_name}{em.has_csd ? '' : ' (sin CSD)'}</option>)}
+                </select>
+              </label>
+            </div>
+          )}
         </div>
         <div className="flex gap-3 p-5 border-t">
           <button type="button" onClick={creada ? onDone : onClose} className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">

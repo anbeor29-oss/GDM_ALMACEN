@@ -69,7 +69,9 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
             c.stamp_package_code,
             c.trial_stamps_left,
             c.billing_exempt,
-            COALESCE(c.producto,'NEXO') AS producto
+            COALESCE(c.producto,'NEXO') AS producto,
+            c.es_emisor_cobro, c.empresa_cobro_id,
+            (SELECT ec.business_name FROM companies ec WHERE ec.id = c.empresa_cobro_id) AS empresa_cobro_nombre
        FROM companies c
       WHERE ${filters.join(' AND ')}
       ORDER BY c.business_name ASC`,
@@ -78,12 +80,24 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: { companies: r.rows, total: r.rows.length } });
 }));
 
+/* Empresas que EMITEN el cobro del servicio (para el selector "empresa que factura").
+   Debe ir ANTES de GET /:id para que no lo capture como un id. */
+router.get('/emisores', asyncHandler(async (_req: Request, res: Response) => {
+  const r = await query<any>(
+    `SELECT id, rfc, business_name, (csd_key_encrypted IS NOT NULL) AS has_csd
+       FROM companies
+      WHERE es_emisor_cobro = TRUE AND is_active = TRUE
+      ORDER BY business_name`);
+  res.json({ success: true, data: { emisores: r.rows } });
+}));
+
 /* ────────────────────────  CREATE  ──────────────────────── */
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const { rfc, businessName, fiscalRegime, postalCode, billingPlan, capTimbres,
-          monthlyFee, extraStampFee, planCode,
+          monthlyFee, extraStampFee, planCode, empresaCobroId,
           street, extNumber, neighborhood, city, municipality, state } = req.body as any;
   if (!rfc || !RFC_REGEX.test(rfc)) throw new ValidationError('RFC inválido (formato SAT)');
+  if (empresaCobroId && !/^[0-9a-f-]{36}$/i.test(empresaCobroId)) throw new ValidationError('empresaCobroId UUID inválido');
   if (!businessName) throw new ValidationError('businessName requerido');
   if (!fiscalRegime) throw new ValidationError('fiscalRegime requerido');
   if (billingPlan && !VALID_PLANS.includes(billingPlan)) {
@@ -117,13 +131,13 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
     `INSERT INTO companies (rfc, business_name, fiscal_regime, postal_code,
                             street, ext_number, neighborhood, city, municipality, state,
                             billing_plan, cap_timbres, monthly_fee, extra_stamp_fee,
-                            stamp_package_code, is_active)
-     VALUES (UPPER($1), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, COALESCE($15, 'PKG_100'), true)
+                            stamp_package_code, empresa_cobro_id, is_active)
+     VALUES (UPPER($1), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, COALESCE($15, 'PKG_100'), $16, true)
      RETURNING id, rfc, business_name`,
     [rfc, businessName, fiscalRegime, postalCode || null,
      street || null, extNumber || null, neighborhood || null, city || null, municipality || null, state || null,
      billingPlan || 'iguala', capTimbres || 100, monthlyFee || 500, extraStampFee || 0.80,
-     paquete]
+     paquete, empresaCobroId || null]
   );
 
   /* La cortesía se otorga por su propia vía: ahí viven el cupo de 3 empresas y
@@ -149,6 +163,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   const {
     businessName, fiscalRegime, postalCode, billingPlan, capTimbres, monthlyFee,
     extraStampFee, isActive, timbradoAmbiente, producto,
+    esEmisorCobro, empresaCobroId,
     // Domicilio fiscal completo (para la CFDI de cobro y el expediente)
     street, extNumber, neighborhood, city, municipality, state,
     // Contacto (contact_email es el remitente/destino de correos automáticos)
@@ -181,6 +196,12 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
     const p = String(producto).toUpperCase();
     if (!['NEXO', 'IVA', 'AMBOS'].includes(p)) throw new ValidationError('producto inválido (NEXO, IVA o AMBOS)');
     push('producto', p);
+  }
+  // Emisor de cobro (emite las facturas del servicio) y, por cliente, quién lo factura.
+  if (esEmisorCobro !== undefined) push('es_emisor_cobro', Boolean(esEmisorCobro));
+  if (empresaCobroId !== undefined) {
+    if (empresaCobroId && !/^[0-9a-f-]{36}$/i.test(empresaCobroId)) throw new ValidationError('empresaCobroId UUID inválido');
+    push('empresa_cobro_id', empresaCobroId || null);
   }
   // Domicilio
   if (street       !== undefined) push('street',        street || null);
