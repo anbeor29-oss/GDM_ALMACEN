@@ -117,6 +117,13 @@
 
 ---
 
+## I · Publicar en hosting mexico (cPanel) — al cerrar cada tanda de frontend
+- [ ] **I1 · Generar el .zip y re-subir a cPanel.** `hcgm.com.mx/erp` es estático y NO se actualiza con el push.
+    Tras cualquier cambio de **frontend** (p. ej. este Punto 1, y todo A–G):
+    1. `cd E:\Obsidian\GDM_NEXO\frontend && npm run build:hosting` → genera `frontend\dist-hosting\nexo-erp-hosting.zip`.
+    2. cPanel → Administrador de archivos → `public_html` → subir el ZIP y **descomprimir** sobre `public_html/erp/`.
+    Los cambios de **backend** NO lo necesitan (el push a `main` ya los sirve a ambas URLs). Ver `DESPLIEGUE_HCGM_ERP.md`.
+
 ## ⚠ Para confirmar mañana antes de arrancar
 1. **F1** — ¿$750 por 6 meses y luego $1,000, o todos a $1,000 el 01/01/2027? (define precio por cohorte vs global).
 2. **7º** — alcance del modelo "todas las empresas bajo GHC1707275Y0" vs RFC reales que se cobran / exención / multi-RFC.
