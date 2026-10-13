@@ -132,6 +132,16 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
     throw new ValidationError('companyId UUID inválido');
   }
 
+  // Módulos EXTRA (además de los del grupo), opcionales al dar de alta: un cliente
+  // puede querer solo "facturación + contabilidad" u otro solo "nómina". Aditivo y
+  // se valida contra el catálogo (igual que el PUT de permisos).
+  const { GROUP_MODULES } = await import('../../middleware/permissions');
+  const validosMod = new Set<string>((GROUP_MODULES as any).ADMIN_ALL || []);
+  const rawExtra: any[] = Array.isArray(req.body?.extraModules) ? req.body.extraModules : [];
+  const extraModules: string[] = Array.from(new Set(rawExtra.map((m) => String(m))));
+  const invalidMod = extraModules.filter((m) => !validosMod.has(m));
+  if (invalidMod.length) throw new ValidationError(`Módulos desconocidos: ${invalidMod.join(', ')}`);
+
   const dup = await query('SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1', [email]);
   if (dup.rowCount! > 0) throw new ConflictError('Ya existe un usuario con ese email');
 
@@ -140,10 +150,11 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 
   const r = await query<any>(
     `INSERT INTO users (email, first_name, last_name, password_hash, role, work_group,
-                        company_id, is_active, password_change_required, created_by_user_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, true, true, $8)
+                        extra_modules, company_id, is_active, password_change_required, created_by_user_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, true, $9)
      RETURNING id, email, role, work_group, company_id, password_change_required, created_at`,
     [email.toLowerCase(), firstName, lastName, hash, role, workGroup,
+     extraModules,
      role === 'SUPER_ADMIN' ? null : companyId,
      req.user!.userId]
   );

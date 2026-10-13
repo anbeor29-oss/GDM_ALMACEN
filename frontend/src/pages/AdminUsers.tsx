@@ -584,6 +584,10 @@ export function CreateUserModal({ companies, onClose, onDone, companyFija }: any
     email:'', firstName:'', lastName:'', role:'USER',
     companyId: companyFija || '', workGroup:'ADMIN_ALL',
   });
+  // Módulos EXTRA (además de los del grupo): permite enumerar "uno o varios
+  // módulos" por usuario (p. ej. solo Facturación + Contabilidad, u solo Nómina).
+  const [extraMods, setExtraMods] = useState<Set<string>>(new Set());
+  const toggleMod = (m: string) => setExtraMods((s) => { const n = new Set(s); n.has(m) ? n.delete(m) : n.add(m); return n; });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -591,7 +595,7 @@ export function CreateUserModal({ companies, onClose, onDone, companyFija }: any
     e.preventDefault();
     setError(''); setBusy(true);
     try {
-      const res = await api.adminCreateUser({ ...form });
+      const res = await api.adminCreateUser({ ...form, extraModules: Array.from(extraMods) });
       alert(
         `✅ Usuario creado.\n\n` +
         `Email: ${res.data.email}\n` +
@@ -605,8 +609,8 @@ export function CreateUserModal({ companies, onClose, onDone, companyFija }: any
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <form onSubmit={submit} className="bg-white rounded-lg shadow-2xl w-full max-w-lg">
-        <div className="flex items-center justify-between p-5 border-b">
+      <form onSubmit={submit} className="bg-white rounded-lg shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white z-10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
               <Plus size={18} />
@@ -652,6 +656,27 @@ export function CreateUserModal({ companies, onClose, onDone, companyFija }: any
               <p className="text-xs text-gray-500 mt-1">
                 {WORK_GROUP_DETAIL[form.workGroup as WorkGroup]}
               </p></label>
+          )}
+          {(form.role === 'USER' || form.role === 'MANAGER') && (
+            <div className="block">
+              <span className="text-sm font-medium block mb-1">Módulos que puede usar <span className="text-gray-400 font-normal">(uno o varios)</span></span>
+              <p className="text-xs text-gray-500 mb-1.5">
+                Marca los módulos que absorbe este usuario. Los que ya trae su grupo salen en gris (ya los tiene).
+                Ej.: solo <b>Facturación + Contabilidad</b>, o solo <b>Nómina</b>.
+              </p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 border rounded-lg p-2 max-h-48 overflow-y-auto">
+                {Object.keys(MODULE_LABELS).map((m) => {
+                  const base = canAccess(form.workGroup, m as any);
+                  return (
+                    <label key={m} className={`flex items-center gap-2 text-sm px-1 py-0.5 rounded ${base ? 'text-slate-400' : 'text-slate-700 hover:bg-slate-50 cursor-pointer'}`}>
+                      <input type="checkbox" disabled={base} checked={base || extraMods.has(m)} onChange={() => toggleMod(m)} />
+                      {MODULE_LABELS[m] || m}
+                      {base && <span className="text-[10px] text-slate-400">· del grupo</span>}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           )}
           <p className="text-xs text-gray-500">
             Se generará una contraseña temporal. El usuario debe cambiarla en el primer login.
