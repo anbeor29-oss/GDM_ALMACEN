@@ -37,11 +37,10 @@
 ## B · Súper Admin — Usuarios
 **Dónde:** `frontend/src/pages/AdminUsers.tsx` (+ `users.extra_modules` / `work_group`, ver [[usuarios-modulos-extra]])
 
-- [ ] **B1 · Módulos por usuario (uno o varios).** Al crear/editar un usuario de una empresa activa, poder
-    **marcar los módulos** que absorbe (facturación, contabilidad, nómina, tesorería, almacén/POS, …), para clientes
-    que solo quieren p. ej. *facturación + contabilidad* u otros solo *nómina*. Ya existe la pieza (`extra_modules`
-    aditivo al `work_group`); falta la **UI de selección múltiple** en el alta y guardarla.
-    ⚠ Confirmar la **lista exacta de módulos** a ofrecer y si se cobran por módulo o el precio sigue plano por usuario.
+- [x] **B1 · Módulos por usuario (uno o varios).** HECHO (2026-10-13, commit `bb8e78a`): el alta de usuario trae
+    el checklist de módulos (todo el catálogo `MODULE_LABELS`); se marca uno o varios y los que ya da el grupo salen
+    en gris. Backend `POST /admin/users` acepta y persiste `extra_modules`. La **lista de módulos** = el catálogo
+    completo. **Pendiente de decisión (no bloquea):** si el cobro cambia por módulo o sigue plano por usuario (va con F).
 - [ ] **B2 · Ordenar la lista de Usuarios por empresa** (agrupados/orden por `business_name`).
 
 ## C · Súper Admin — menú Empresas
