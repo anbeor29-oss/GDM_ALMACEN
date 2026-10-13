@@ -198,6 +198,34 @@ export async function consultarPdf(recurso: RecursoPdf, rfc: string, secretCiec?
 export const consultarPdfCiec = (recurso: 'csf' | 'oc', rfc: string, secretCiec: string) =>
   consultarPdf(recurso, rfc, secretCiec);
 
+/**
+ * CSF / Opinión 32-D por **e.firma (FIEL)** — SIN CIEC.
+ * SatGo: `POST /api/v2/Consultar/<csffiel|ocfiel>?api-version=2`, multipart con la
+ * e.firma (.cer/.key/contraseña); la respuesta es el **PDF en binario** (igual que
+ * la vía CIEC, pero autenticando con la e.firma de la empresa).
+ */
+export async function consultarPdfFiel(
+  recurso: 'csffiel' | 'ocfiel', rfc: string, cred: { cer: Buffer; key: Buffer; password: string },
+): Promise<Buffer> {
+  const jwt = await accessToken();
+  const base = await baseUrl();
+  const form = new FormData();
+  form.append('Certificado', new Blob([cred.cer]), 'efirma.cer');
+  form.append('llavePrivada', new Blob([cred.key]), 'efirma.key');
+  form.append('Contrasena', String(cred.password || ''));
+  const r = await axios.post(`${base}/api/v2/Consultar/${recurso}`, form, {
+    params: { 'api-version': '2' },
+    headers: { Authorization: `Bearer ${jwt}`, RFC: rfc },
+    responseType: 'arraybuffer', timeout: T, validateStatus: () => true,
+    maxBodyLength: Infinity, maxContentLength: Infinity,
+  });
+  if (r.status < 200 || r.status >= 300) {
+    const msg = Buffer.isBuffer(r.data) ? r.data.toString('utf8').slice(0, 400) : '';
+    throw new ValidationError(mensajeErrorSatgo(r.status, msg));
+  }
+  return Buffer.isBuffer(r.data) ? r.data : Buffer.from(r.data || []);
+}
+
 /** Información fiscal (JSON) por RFC (CIEC). */
 export async function infoFiscalCiec(rfc: string, secretCiec: string, requestId?: string): Promise<any> {
   const jwt = await accessToken();

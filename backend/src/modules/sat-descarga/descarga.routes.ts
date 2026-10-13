@@ -275,6 +275,19 @@ router.get(
   })
 );
 
+/** Baja en 2.º plano la CIF (CSF) y el 32-D (SAT) de una empresa, best-effort.
+ *  Se usa tras cargar la e.firma: con ella el motor baja ambos por FIEL, sin CIEC. */
+function dispararCumplimientoConEfirma(companyId: string, userId?: string): void {
+  (async () => {
+    try {
+      const compliance = await import('../compliance/compliance.service');
+      for (const tipo of ['SAT', 'CSF'] as const) {
+        try { await compliance.ejecutar(companyId, tipo, 'API', userId); } catch { /* best-effort */ }
+      }
+    } catch { /* compliance no disponible */ }
+  })();
+}
+
 /** POST /sat-descarga/credencial — carga la e.firma (.cer + .key + contraseña) */
 router.post(
   '/credencial',
@@ -308,6 +321,8 @@ router.post(
         { cer, key, password, borrarAlTerminar: req.body?.borrarAlTerminar !== 'false' },
         req.user?.userId
       );
+      // Con la e.firma recién cargada, baja solos la CIF (CSF) y el 32-D (SAT) por FIEL.
+      dispararCumplimientoConEfirma(companyId(req), req.user?.userId);
       res.status(201).json({ success: true, data });
     } catch (e) {
       /* Los motivos de EfirmaInvalida están escritos para que quien los lea sepa
