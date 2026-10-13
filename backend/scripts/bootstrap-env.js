@@ -55,6 +55,18 @@ async function bootstrap(db) {
     return;
   }
 
+  // La plataforma YA está aprovisionada: si existe cualquier empresa, este NO es
+  // el primer arranque. No recreamos la empresa demo (p. ej. "GDM NEXO DEMO" /
+  // EKU9003173C9) ni sembramos ejemplos, para que una empresa borrada desde Súper
+  // Admin NO reaparezca en el siguiente deploy. El bootstrap solo actúa en una BD
+  // virgen (0 empresas). El RFC EKU como emisor de prueba del sandbox SW sigue
+  // intacto en el timbrado; esto solo evita CREAR la empresa demo.
+  const yaHayEmpresas = await db.query('SELECT 1 FROM companies LIMIT 1');
+  if (yaHayEmpresas.rows.length > 0) {
+    console.log('[bootstrap] La plataforma ya tiene empresas -> no-op (no se crea la empresa demo ni ejemplos).');
+    return;
+  }
+
   const rfc = env('BOOTSTRAP_COMPANY_RFC', 'EKU9003173C9').toUpperCase();
   const companyName = env('BOOTSTRAP_COMPANY_NAME', 'GDM ALMACEN DEMO');
   const regime = env('BOOTSTRAP_COMPANY_REGIME', '601');

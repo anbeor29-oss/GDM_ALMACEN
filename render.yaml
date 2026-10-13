@@ -141,7 +141,11 @@ services:
       # la facturación nunca se bloquea por esto.
       - key: BANXICO_TOKEN
         sync: false
-      # ─── Bootstrap del primer arranque (empresa + admin) ────────────
+      # ─── Bootstrap del PRIMER arranque (empresa + admin) ────────────
+      # Solo actúa en una BD virgen (0 empresas). En producción ya aprovisionada
+      # es no-op: NO recrea la empresa demo (GDM NEXO DEMO / EKU) aunque se borre
+      # desde Súper Admin (guard en scripts/bootstrap-env.js). El RFC EKU como
+      # emisor de prueba del sandbox SW sigue intacto en el timbrado.
       - key: BOOTSTRAP_ADMIN_EMAIL
         value: "admin@gdmalmacen.mx"
       - key: BOOTSTRAP_ADMIN_PASSWORD
