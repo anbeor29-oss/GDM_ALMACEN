@@ -55,14 +55,16 @@
 ## D · Sidebar — quitar 2 opciones
 **Dónde:** `frontend/src/components/Layout.tsx`
 
-- [ ] **D1** · Quitar **«Promoción y cobros»** (`/admin/promocion`, línea ~693) y **«Importar XML»**
-    (`/import-xml`, línea ~694). Dejar **«Respaldos»** (`/admin/packages`). Las rutas pueden quedarse muertas o
-    redirigir; el ask es sacarlas del sidebar.
+- [x] **D1** · HECHO (2026-10-13, commit `9cdf495`): se quitaron del sidebar **«Promoción y cobros»**
+    (`/admin/promocion`) e **«Importar XML»** (`/import-xml`). Rutas sin enlace; se conserva **«Respaldos»**.
 
 ## E · Datos / RFC
-- [ ] **E1 · Eliminar el RFC `EKU9003173C9`** de la empresa **GDM NEXO DEMO** (está de más). Aparece en
-    `admin-companies.routes.ts`, `seed-examples.js`, `pac.service.ts`, `render.yaml`. ⚠ Definir si se borra el
-    **registro de empresa/RFC** o solo se desliga; EKU es el RFC genérico de pruebas del SAT.
+- [x] **E1 · Eliminar el RFC `EKU9003173C9`** del DEMO. Decidido: **el usuario lo borra en la UI** (Súper Admin →
+    Empresas → GDM NEXO DEMO → *Eliminar empresa completa*). **Código limpiado** (2026-10-13, commit `39a6f32`): el
+    **bootstrap** ya no recrea la empresa demo en una BD con empresas (guard en `bootstrap-env.js`); `render.yaml` con
+    nota. **OJO `pac.service.ts` NO se tocó**: ahí EKU es el emisor de prueba del **sandbox SW**, es timbrado de pruebas,
+    no la demo. ⚠ **Antes de borrar en la UI:** confirmar que el súper admin que usas NO quede sin acceso (el borrado
+    completo arrastra a los usuarios de esa empresa).
 - [ ] **E2 · Mover a pruebas** la empresa **EDGAR VILLAGRAN GARCIA · `VIGE6601128E1`** (es de GRUPO HCGM).
     Usar el mismo mecanismo de ambientes de prueba (`AdminDemos.tsx` / flag demo). ⚠ Confirmar que la empresa ya existe.
 
@@ -70,13 +72,13 @@
 **Dónde:** `frontend/src/pages/AdminFacturacion.tsx` · `facturacion-usuarios.service` · `facturacion_config`
 (ver [[cobro-por-usuario-algoritmo]])
 
-- [ ] **F1 · Plasmar el costo unitario por usuario con fechas:**
-  - **12/10/2026 → 31/12/2026:** **$750 + IVA** por usuario (precio de introducción).
-  - **Desde 01/01/2027:** **$1,000 + IVA** por usuario para **nuevas** contrataciones (precio del resto del año).
-  - **Igualar** a los que contrataron en la ventana 12/10–31/12/2026.
-  - ⚠ **Decisión clave (confirmar):** *"precio de 6 meses"* — ¿los que entran a $750 lo conservan **6 meses** y luego
-    suben a $1,000, o todos se **igualan a $1,000 el 01/01/2027**? Esto define si se necesita **precio por cohorte/fecha
-    de contratación** (`companies.precio_contratado` + `vigente_hasta`) o un solo precio global con fecha de cambio.
+- [x] **F1 · Calendario del precio por usuario.** HECHO (2026-10-13, commit `f5905e1`). Regla decidida por el usuario:
+  - **Oct–dic 2026 (y previas):** **$750** = precio de **introducción** (el editable del super admin).
+  - **Desde 01/01/2027:** **$1,000** para **nuevas** contrataciones.
+  - **01/04/2027:** **todas** las empresas saltan a **$1,000** (y así queda en 2027+).
+  - Motor: `precioUsuarioVigente(contratadaEl, periodo, cfgIntro)` en `generarLista` (guarda el precio por fila) y en
+    `resumenConsolidado` (preview), usando `inicioCobro` (firma/alta) como fecha de contratación. La pantalla de Precios
+    aclara el calendario; el salto a $1,000 es automático por fecha (no requiere cambiar config).
 
 ## G · Dos paneles de contratación (NEXO / IVA)
 - [ ] **G1** · Separar la vista de contratación/facturación por **producto**: un panel para quienes contratan **NEXO**
