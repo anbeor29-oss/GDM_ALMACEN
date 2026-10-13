@@ -46,10 +46,11 @@
 ## C · Súper Admin — menú Empresas
 **Dónde:** `frontend/src/pages/AdminCompanies.tsx` (+ ruta backend de reset)
 
-- [ ] **C1 · Quitar el icono de carga de CSD** y cambiarlo por **«Resetear claves de acceso»**: genera una
-    **contraseña temporal** para el usuario de esa empresa y **obliga a cambiarla** en el próximo login
-    (flag tipo `must_change_password`). ⚠ Confirmar a **qué usuario** se le resetea (el super-admin de la empresa) y
-    cómo se entrega la temporal (en pantalla / correo).
+- [x] **C1 · Quitar el icono de carga de CSD** y cambiarlo por **«Resetear claves de acceso»**. HECHO (2026-10-13,
+    commit `25da6f5`): el renglón de Empresas cambió el ícono de CSD por **«Resetear claves»** (KeyRound). Abre un
+    modal que **lista los usuarios de la empresa** y resetea al que elijas: temporal + **cambio forzado** en el
+    próximo login (`password_change_required`), y la muestra en pantalla. La carga de CSD sigue en **Editar empresa**.
+    Decisión resuelta: se elige al usuario en el modal (maneja 1 o varios); la temporal se muestra en pantalla.
 
 ## D · Sidebar — quitar 2 opciones
 **Dónde:** `frontend/src/components/Layout.tsx`
