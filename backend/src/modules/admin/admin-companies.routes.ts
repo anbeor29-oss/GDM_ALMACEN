@@ -155,8 +155,28 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 
   await audit(req, { action: 'COMPANY_CREATED', targetKind: 'company', targetId: r.rows[0].id,
     payload: { rfc, businessName, billingPlan, planCode: paquete } });
+
+  /* Auto-descarga del SAT al dar de alta la empresa (segundo plano, best-effort):
+   *  · 32-D (SAT): intenta la opinión PÚBLICA por RFC (ocpublico), sin CIEC.
+   *  · CIF (CSF): SatGo la baja con CIEC (no por e.firma), así que sólo baja si la
+   *    empresa ya tiene credencial; si no, queda anotado que falta la CIEC.
+   * No bloquea ni truena el alta pase lo que pase. */
+  dispararCumplimientoAlta(r.rows[0].id, req.user?.userId);
+
   res.status(201).json({ success: true, data: { ...r.rows[0], aviso } });
 }));
+
+/** Dispara, en segundo plano, la descarga de 32-D y CIF de una empresa recién creada. */
+function dispararCumplimientoAlta(companyId: string, userId?: string): void {
+  (async () => {
+    try {
+      const compliance = await import('../compliance/compliance.service');
+      for (const tipo of ['SAT', 'CSF'] as const) {
+        try { await compliance.ejecutar(companyId, tipo, 'API', userId); } catch { /* best-effort */ }
+      }
+    } catch { /* compliance no disponible */ }
+  })();
+}
 
 /* ────────────────────────  UPDATE  ──────────────────────── */
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {

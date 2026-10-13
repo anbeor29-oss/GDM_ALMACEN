@@ -193,6 +193,14 @@ export async function setConfig(companyId: string, tipo: string, d: any) {
     [companyId, tipo, metodo, d?.base_url || null, d?.usuario || null, credencial, token,
      d?.extra ? JSON.stringify(d.extra) : null, d?.activo === true || d?.activo === 'true',
      modo, diaMes, frecDias, proxima]);
+
+  /* Si se acaba de CAPTURAR una credencial (p. ej. la CIEC), intenta la descarga de
+   * una vez en segundo plano: así la CIF/32-D bajan solos al guardar la credencial,
+   * sin tener que volver a dar clic. Best-effort, no truena si falla. */
+  if (d?.credencial && String(d.credencial).trim() !== '') {
+    (async () => { try { await motor.ejecutar(companyId, tipo as OrganismoTipo, 'API'); } catch { /* best-effort */ } })();
+  }
+
   return getConfig(companyId, tipo);
 }
 
