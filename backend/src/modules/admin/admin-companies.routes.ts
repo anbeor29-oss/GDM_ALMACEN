@@ -80,7 +80,8 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 /* ────────────────────────  CREATE  ──────────────────────── */
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const { rfc, businessName, fiscalRegime, postalCode, billingPlan, capTimbres,
-          monthlyFee, extraStampFee, planCode } = req.body as any;
+          monthlyFee, extraStampFee, planCode,
+          street, extNumber, neighborhood, city, municipality, state } = req.body as any;
   if (!rfc || !RFC_REGEX.test(rfc)) throw new ValidationError('RFC inválido (formato SAT)');
   if (!businessName) throw new ValidationError('businessName requerido');
   if (!fiscalRegime) throw new ValidationError('fiscalRegime requerido');
@@ -113,11 +114,13 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 
   const r = await query<any>(
     `INSERT INTO companies (rfc, business_name, fiscal_regime, postal_code,
+                            street, ext_number, neighborhood, city, municipality, state,
                             billing_plan, cap_timbres, monthly_fee, extra_stamp_fee,
                             stamp_package_code, is_active)
-     VALUES (UPPER($1), $2, $3, $4, $5, $6, $7, $8, COALESCE($9, 'PKG_100'), true)
+     VALUES (UPPER($1), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, COALESCE($15, 'PKG_100'), true)
      RETURNING id, rfc, business_name`,
     [rfc, businessName, fiscalRegime, postalCode || null,
+     street || null, extNumber || null, neighborhood || null, city || null, municipality || null, state || null,
      billingPlan || 'iguala', capTimbres || 100, monthlyFee || 500, extraStampFee || 0.80,
      paquete]
   );

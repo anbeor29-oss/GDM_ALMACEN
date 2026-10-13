@@ -3202,7 +3202,9 @@ class APIClient {
   async adminCreateCompany(data: { rfc: string; businessName: string; fiscalRegime: string;
                                    postalCode?: string; billingPlan?: string; capTimbres?: number;
                                    monthlyFee?: number; extraStampFee?: number;
-                                   stampPackageCode?: string }) {
+                                   stampPackageCode?: string;
+                                   street?: string; extNumber?: string; neighborhood?: string;
+                                   city?: string; municipality?: string; state?: string }) {
     const r = await this.client.post('/admin/companies', data);
     return r.data;
   }

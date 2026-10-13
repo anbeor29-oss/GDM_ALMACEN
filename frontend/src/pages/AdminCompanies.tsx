@@ -623,69 +623,59 @@ function DangerDeleteModal({
   );
 }
 
-/* ─────────────── Catálogo de planes (espejo de stamp_packages) ─────────────── */
-
-interface StampPlanOption {
-  code: string;
-  label: string;                // texto que va en el <option>
-  billingPlan: 'iguala' | 'renta';
-  capTimbres: number;           // 0 = sin cap (pay-per-stamp)
-  monthlyFee: number;
-}
-
-const PLAN_OPTIONS: StampPlanOption[] = [
-  /* Empresarial estaba en $1,399 desde julio; el vigente es $1,800 y es el que
-   * cobra el cierre mensual. Con la cifra vieja, companies.monthly_fee nacía
-   * desalineada de stamp_packages desde el minuto cero. */
-  { code:'PKG_TRIAL',label:'Prueba · 10 timbres de cortesía · sin costo', billingPlan:'iguala', capTimbres:0, monthlyFee:0 },
-  { code:'PKG_100',  label:'Esencial · 100 timbres · $399/mes',    billingPlan:'iguala', capTimbres:100, monthlyFee:399 },
-  { code:'PKG_200',  label:'Pyme · 200 timbres · $699/mes',        billingPlan:'iguala', capTimbres:200, monthlyFee:699 },
-  { code:'PKG_500',  label:'Empresarial · 500 timbres · $1,800/mes', billingPlan:'iguala', capTimbres:500, monthlyFee:1800 },
-  { code:'PKG_FLEX', label:'Uso libre (pay-per-stamp) · sin renta', billingPlan:'renta',  capTimbres:0,   monthlyFee:0 },
-];
-
 /* ─────────────── Modal Nueva Empresa ─────────────── */
 
 function CreateCompanyModal({ onClose, onDone }: any) {
   const [form, setForm] = useState({
-    rfc:'', businessName:'', fiscalRegime:'601', postalCode:'',
-    // Default: plan Pyme (PKG_200) — el más recomendado.
-    planCode:'PKG_200',
-    billingPlan:'iguala' as 'iguala'|'renta',
-    capTimbres:200, monthlyFee:699,
-    // Timbre extra fijo $2.00 MXN — se puede ajustar por empresa si se negocia.
-    extraStampFee:2.00,
+    rfc:'', businessName:'', fiscalRegime:'', postalCode:'',
+    street:'', extNumber:'', neighborhood:'', city:'', municipality:'', state:'',
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [csfLoading, setCsfLoading] = useState(false);
 
-  // Aplica un plan al form (autollena billing_plan + cap + fee)
-  const applyPlan = (code: string) => {
-    const p = PLAN_OPTIONS.find((x) => x.code === code);
-    if (!p) return;
-    setForm((f) => ({
-      ...f,
-      planCode: p.code,
-      billingPlan: p.billingPlan,
-      capTimbres: p.capTimbres,
-      monthlyFee: p.monthlyFee,
-    }));
+  // Catálogo SAT de régimen fiscal para el combo (mismo que usan Clientes/Emisor).
+  const { data: regimenes } = useQuery({ queryKey: ['catalog', 'regimenFiscal'], queryFn: () => api.getCatalog('regimenFiscal') });
+
+  /* Autollenado por código postal: reusa el resolvedor del catálogo SAT ya cargado
+   * (el mismo de Carta Porte). Rellena estado, y ofrece colonias y municipios del CP
+   * en combos (datalist) para dejar el domicilio 80-90% listo antes de pasar al usuario. */
+  const [colonias, setColonias] = useState<Array<{ clave: string; descripcion: string }>>([]);
+  const [municipios, setMunicipios] = useState<Array<{ clave: string; descripcion: string }>>([]);
+  const [cpLoading, setCpLoading] = useState(false);
+  const resolverCp = async (cpRaw: string) => {
+    const cp = (cpRaw || '').trim();
+    if (!/^\d{5}$/.test(cp)) { setColonias([]); setMunicipios([]); return; }
+    setCpLoading(true);
+    try {
+      const d: any = await api.resolveCP(cp);
+      setColonias(d.colonias || []);
+      setMunicipios(d.municipios || []);
+      setForm((f) => ({
+        ...f,
+        state: d.estadoDescripcion || f.state,
+        // Una sola colonia → se elige sola; si hay varias, el combo las ofrece.
+        neighborhood: (d.colonias?.length === 1 ? d.colonias[0].descripcion : f.neighborhood),
+      }));
+    } catch { /* CP fuera del catálogo: se deja la captura manual */ }
+    finally { setCpLoading(false); }
   };
 
-  // Lector de CIF: sube PDF a /csf/extract y autollena RFC + razón + régimen + CP.
+  // Lector de CIF: autollena RFC + razón + régimen + CP, y dispara el autollenado por CP.
   const handleReadCIF = async (file: File) => {
     setError(''); setCsfLoading(true);
     try {
       const r = await api.extractCSF(file);
       const d = r.data || {};
+      const cp = d.postalCode || d.cp || form.postalCode;
       setForm((f) => ({
         ...f,
         rfc: (d.rfc || f.rfc).toUpperCase(),
         businessName: (d.businessName || d.razonSocial || f.businessName).toUpperCase(),
         fiscalRegime: d.fiscalRegime || d.regimenFiscal || f.fiscalRegime,
-        postalCode: d.postalCode || d.cp || f.postalCode,
+        postalCode: cp,
       }));
+      if (cp) resolverCp(cp);
     } catch (e: any) {
       setError(e.response?.data?.message || 'No se pudo leer el CIF. Verifica que sea un PDF de Constancia de Situación Fiscal SAT.');
     } finally { setCsfLoading(false); }
@@ -699,13 +689,21 @@ function CreateCompanyModal({ onClose, onDone }: any) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setBusy(true);
     try {
+      // Ya no hay paquetes: se manda solo la identidad fiscal + domicilio; el
+      // cobro es por usuario (super admin → Facturación). El backend aplica sus
+      // defaults de plan por compatibilidad.
       const r: any = await api.adminCreateCompany({
-        ...form,
-        stampPackageCode: form.planCode,
+        rfc: form.rfc,
+        businessName: form.businessName,
+        fiscalRegime: form.fiscalRegime,
+        postalCode: form.postalCode || undefined,
+        street: form.street || undefined,
+        extNumber: form.extNumber || undefined,
+        neighborhood: form.neighborhood || undefined,
+        city: form.city || undefined,
+        municipality: form.municipality || undefined,
+        state: form.state || undefined,
       });
-      /* La empresa pudo crearse Y la cortesía fallar —por ejemplo con los 3
-       * lugares ocupados—. Cerrar de golpe se llevaría ese aviso y el cliente
-       * se quedaría sin poder timbrar sin que nadie supiera por qué. */
       const aviso = (r?.data ?? r)?.aviso;
       if (aviso) { setError(aviso); setCreada(true); return; }
       onDone();
@@ -713,8 +711,6 @@ function CreateCompanyModal({ onClose, onDone }: any) {
       setError(e.response?.data?.message || e.message);
     } finally { setBusy(false); }
   };
-
-  const currentPlan = PLAN_OPTIONS.find((x) => x.code === form.planCode)!;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -732,7 +728,7 @@ function CreateCompanyModal({ onClose, onDone }: any) {
               <ScanText size={16}/> Leer Constancia de Situación Fiscal (CIF)
             </p>
             <p className="text-xs text-blue-700 mb-2">
-              Sube el PDF de la CSF del SAT y autollenamos RFC, razón social, régimen y CP.
+              Sube el PDF de la CSF del SAT y autollenamos RFC, razón social, régimen, CP y domicilio.
             </p>
             <label className="inline-flex items-center gap-2 cursor-pointer bg-white border border-blue-300 rounded px-3 py-1.5 hover:bg-blue-100 text-sm">
               <Upload size={14}/> {csfLoading ? 'Leyendo PDF…' : 'Seleccionar PDF'}
@@ -748,54 +744,53 @@ function CreateCompanyModal({ onClose, onDone }: any) {
               <input required className="input w-full font-mono uppercase" maxLength={13}
                 value={form.rfc} onChange={(e)=>setForm({...form,rfc:e.target.value.toUpperCase()})}/></label>
             <label className="block"><span className="text-sm font-medium block mb-1">Régimen fiscal *</span>
-              <input required className="input w-full" value={form.fiscalRegime}
-                onChange={(e)=>setForm({...form,fiscalRegime:e.target.value})}/></label>
+              <select required className="input w-full" value={form.fiscalRegime}
+                onChange={(e)=>setForm({...form,fiscalRegime:e.target.value})}>
+                <option value="">— seleccionar —</option>
+                {regimenes?.data?.entries?.map((rg: any) => (
+                  <option key={rg.catalog_key} value={rg.catalog_key}>{rg.catalog_key} — {rg.description}</option>
+                ))}
+              </select></label>
           </div>
           <label className="block"><span className="text-sm font-medium block mb-1">Razón social *</span>
             <input required className="input w-full uppercase" value={form.businessName}
               onChange={(e)=>setForm({...form,businessName:e.target.value.toUpperCase()})}/></label>
-          <label className="block"><span className="text-sm font-medium block mb-1">CP fiscal</span>
-            <input className="input w-full" maxLength={5} value={form.postalCode}
-              onChange={(e)=>setForm({...form,postalCode:e.target.value})}/></label>
 
-          {/* ─── Plan de cobro con selector ─── */}
+          {/* ─── Domicilio fiscal (autollenado por CP) ─── */}
           <div className="border-t pt-3">
-            <p className="text-sm font-semibold text-gray-700 mb-2">Plan de cobro</p>
-
-            <label className="block">
-              <span className="text-sm block mb-1">Paquete de timbres</span>
-              <select className="input w-full" value={form.planCode}
-                onChange={(e)=>applyPlan(e.target.value)}>
-                {PLAN_OPTIONS.map((p) => (
-                  <option key={p.code} value={p.code}>{p.label}</option>
-                ))}
-              </select>
-            </label>
-
-            {/* Resumen del plan seleccionado (read-only, autollenado) */}
-            <div className="grid grid-cols-3 gap-3 mt-3">
-              <div className="bg-gray-50 border rounded px-3 py-2">
-                <p className="text-[10px] uppercase text-gray-500">Cap timbres/mes</p>
-                <p className="text-lg font-bold text-gray-900">
-                  {currentPlan.capTimbres || '∞'}
-                </p>
-              </div>
-              <div className="bg-gray-50 border rounded px-3 py-2">
-                <p className="text-[10px] uppercase text-gray-500">Renta mensual</p>
-                <p className="text-lg font-bold text-gray-900">
-                  ${currentPlan.monthlyFee.toLocaleString('es-MX')}
-                </p>
-              </div>
-              <label className="block bg-white border rounded px-3 py-2">
-                <span className="text-[10px] uppercase text-gray-500 block">Timbre extra</span>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-lg font-bold text-gray-900">$</span>
-                  <input type="number" step="0.01" min="0"
-                    className="text-lg font-bold text-gray-900 border-0 p-0 w-full focus:ring-0"
-                    value={form.extraStampFee}
-                    onChange={(e)=>setForm({...form,extraStampFee:parseFloat(e.target.value)||0})}/>
+            <p className="text-sm font-semibold text-gray-700 mb-2">Domicilio fiscal</p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-sm font-medium block mb-1">Código postal</span>
+                <div className="relative">
+                  <input className="input w-full" maxLength={5} value={form.postalCode}
+                    onChange={(e)=>{ const v=e.target.value.replace(/\D/g,'').slice(0,5); setForm({...form,postalCode:v}); if (v.length===5) resolverCp(v); }}
+                    placeholder="20000"/>
+                  {cpLoading && <Loader2 size={14} className="animate-spin absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"/>}
                 </div>
+                <span className="text-[11px] text-gray-500">Al teclear 5 dígitos se rellena estado, municipio y colonia.</span>
               </label>
+              <label className="block"><span className="text-sm font-medium block mb-1">Estado</span>
+                <input className="input w-full" value={form.state}
+                  onChange={(e)=>setForm({...form,state:e.target.value})}/></label>
+              <label className="block"><span className="text-sm font-medium block mb-1">Municipio / Alcaldía</span>
+                <input className="input w-full" list="cc-municipios" value={form.municipality}
+                  onChange={(e)=>setForm({...form,municipality:e.target.value})}/>
+                <datalist id="cc-municipios">
+                  {municipios.map((m) => <option key={m.clave} value={m.descripcion} />)}
+                </datalist></label>
+              <label className="block"><span className="text-sm font-medium block mb-1">Colonia</span>
+                <input className="input w-full" list="cc-colonias" value={form.neighborhood}
+                  onChange={(e)=>setForm({...form,neighborhood:e.target.value})}/>
+                <datalist id="cc-colonias">
+                  {colonias.map((c) => <option key={c.clave} value={c.descripcion} />)}
+                </datalist></label>
+              <label className="block"><span className="text-sm font-medium block mb-1">Calle</span>
+                <input className="input w-full" value={form.street}
+                  onChange={(e)=>setForm({...form,street:e.target.value})}/></label>
+              <label className="block"><span className="text-sm font-medium block mb-1">Número exterior</span>
+                <input className="input w-full" value={form.extNumber}
+                  onChange={(e)=>setForm({...form,extNumber:e.target.value})}/></label>
             </div>
           </div>
         </div>
