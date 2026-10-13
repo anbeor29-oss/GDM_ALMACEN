@@ -6,7 +6,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload, AlertTriangle, Loader2, Pencil, Save, LogIn, UserPlus } from 'lucide-react';
+import { Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload, AlertTriangle, Loader2, Pencil, Save, LogIn, UserPlus, KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -19,6 +19,7 @@ export function AdminCompaniesPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [csdTarget, setCsdTarget] = useState<any>(null);
+  const [resetTarget, setResetTarget] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [userTarget, setUserTarget] = useState<any>(null);
   const [editTarget, setEditTarget] = useState<any>(null);
@@ -136,8 +137,8 @@ export function AdminCompaniesPage() {
                       className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded"><LogIn size={16}/></button>
                     <button title="Editar datos generales y domicilio" onClick={() => setEditTarget(c)}
                       className="p-1.5 text-sky-600 hover:bg-sky-50 rounded"><Pencil size={16}/></button>
-                    <button title="Cargar CSD" onClick={() => setCsdTarget(c)}
-                      className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded"><FileKey size={16}/></button>
+                    <button title="Resetear claves de acceso (contraseña temporal)" onClick={() => setResetTarget(c)}
+                      className="p-1.5 text-amber-600 hover:bg-amber-50 rounded"><KeyRound size={16}/></button>
                     {/* Dar de alta a la gente de ESTA empresa, sin salir del
                         renglón. Antes había que irse a Usuarios y buscar la
                         empresa en un combo de cincuenta: es donde se cuela el
@@ -176,6 +177,9 @@ export function AdminCompaniesPage() {
       {csdTarget && (
         <CSDUploadModal company={csdTarget} onClose={()=>setCsdTarget(null)}
           onDone={()=>{ setCsdTarget(null); qc.invalidateQueries({ queryKey: ['admin-companies'] }); }}/>
+      )}
+      {resetTarget && (
+        <ResetAccessModal company={resetTarget} onClose={()=>setResetTarget(null)}/>
       )}
       {userTarget && (
         <CreateUserModal
@@ -617,6 +621,96 @@ function DangerDeleteModal({
               {busy ? 'Eliminando…' : 'Eliminar definitivamente'}
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────── Modal: Resetear claves de acceso ───────────────
+   Reemplaza en el renglón al antiguo botón de "Cargar CSD" (la carga del CSD
+   sigue disponible desde Editar empresa → Cargar CSD). Lista los usuarios de la
+   empresa y resetea la contraseña de quien elijas: genera una temporal y fuerza
+   el cambio en el próximo login (POST /admin/users/:id/reset-password). Útil
+   cuando un responsable deja el puesto o se le olvidó la clave. */
+function ResetAccessModal({ company, onClose }: { company: any; onClose: () => void }) {
+  const usersQ = useQuery({
+    queryKey: ['admin-company-users', company.id],
+    queryFn: () => api.adminListUsers({ companyId: company.id }),
+  });
+  const users: any[] = (usersQ.data as any)?.data?.users || [];
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [result, setResult] = useState<{ email: string; temp: string } | null>(null);
+  const [error, setError] = useState('');
+
+  const resetear = async (u: any) => {
+    if (!confirm(`¿Resetear la contraseña de ${u.email}?\n\nSe genera una contraseña temporal y se le pedirá cambiarla al iniciar sesión.`)) return;
+    setBusyId(u.id); setError(''); setResult(null);
+    try {
+      const r: any = await api.adminResetPassword(u.id);
+      const d = r?.data ?? r;
+      setResult({ email: d.email || u.email, temp: d.temporary_password });
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e.message);
+    } finally { setBusyId(null); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+              <KeyRound className="text-amber-700" size={20}/>
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900">Resetear claves de acceso</h2>
+              <p className="text-xs text-gray-500 font-mono">{company.rfc} · {company.business_name}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded"><X size={20}/></button>
+        </div>
+
+        <div className="p-5 space-y-3">
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">{error}</div>}
+
+          {result && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+              <p className="text-sm font-semibold text-emerald-900">Contraseña temporal generada</p>
+              <p className="text-xs text-emerald-800 mt-1 font-mono">{result.email}</p>
+              <p className="font-mono text-lg font-bold text-emerald-900 bg-white border border-emerald-200 rounded px-3 py-1.5 mt-1 select-all">{result.temp}</p>
+              <p className="text-[11px] text-emerald-700 mt-1">Compártela al usuario. Al iniciar sesión se le pedirá cambiarla.</p>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-500">
+            Elige a quién resetearle la contraseña. Se genera una temporal y se fuerza el cambio en el primer login.
+          </p>
+
+          {usersQ.isLoading ? (
+            <p className="text-sm text-gray-500">Cargando usuarios…</p>
+          ) : users.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">Esta empresa no tiene usuarios.</p>
+          ) : (
+            <ul className="divide-y border rounded-lg">
+              {users.map((u) => (
+                <li key={u.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{u.first_name} {u.last_name}</p>
+                    <p className="text-xs text-gray-500 font-mono truncate">{u.email} · {u.role}</p>
+                  </div>
+                  <button onClick={() => resetear(u)} disabled={busyId === u.id}
+                    className="inline-flex items-center gap-1.5 text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded disabled:opacity-50 shrink-0">
+                    {busyId === u.id ? <Loader2 size={13} className="animate-spin"/> : <KeyRound size={13}/>} Resetear
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 p-5 border-t">
+          <button onClick={onClose} className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-gray-50">Cerrar</button>
         </div>
       </div>
     </div>
