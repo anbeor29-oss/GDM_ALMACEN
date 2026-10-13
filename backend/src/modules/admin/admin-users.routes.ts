@@ -88,7 +88,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
        FROM users u
        LEFT JOIN companies c ON c.id = u.company_id
       WHERE ${filters.join(' AND ')}
-      ORDER BY u.created_at DESC NULLS LAST
+      ORDER BY c.business_name ASC NULLS LAST, u.last_name ASC, u.first_name ASC, u.created_at DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
