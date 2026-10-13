@@ -41,7 +41,8 @@
     el checklist de módulos (todo el catálogo `MODULE_LABELS`); se marca uno o varios y los que ya da el grupo salen
     en gris. Backend `POST /admin/users` acepta y persiste `extra_modules`. La **lista de módulos** = el catálogo
     completo. **Pendiente de decisión (no bloquea):** si el cobro cambia por módulo o sigue plano por usuario (va con F).
-- [ ] **B2 · Ordenar la lista de Usuarios por empresa** (agrupados/orden por `business_name`).
+- [x] **B2 · Ordenar la lista de Usuarios por empresa** — HECHO (2026-10-13, commit `7348d84`): el GET de usuarios
+    ordena por `business_name` y luego por nombre; la columna Empresa ya existía.
 
 ## C · Súper Admin — menú Empresas
 **Dónde:** `frontend/src/pages/AdminCompanies.tsx` (+ ruta backend de reset)
@@ -65,8 +66,8 @@
     nota. **OJO `pac.service.ts` NO se tocó**: ahí EKU es el emisor de prueba del **sandbox SW**, es timbrado de pruebas,
     no la demo. ⚠ **Antes de borrar en la UI:** confirmar que el súper admin que usas NO quede sin acceso (el borrado
     completo arrastra a los usuarios de esa empresa).
-- [ ] **E2 · Mover a pruebas** la empresa **EDGAR VILLAGRAN GARCIA · `VIGE6601128E1`** (es de GRUPO HCGM).
-    Usar el mismo mecanismo de ambientes de prueba (`AdminDemos.tsx` / flag demo). ⚠ Confirmar que la empresa ya existe.
+- [x] **E2 · Mover a pruebas** la empresa **EDGAR VILLAGRAN GARCIA · `VIGE6601128E1`** (GRUPO HCGM). HECHO
+    (2026-10-13, commit `7348d84`): se agregó a `RFCS_SIN_COBRO` → sale en "ambientes de prueba" y no se cobra.
 
 ## F · Precio por usuario — calendario
 **Dónde:** `frontend/src/pages/AdminFacturacion.tsx` · `facturacion-usuarios.service` · `facturacion_config`
@@ -81,10 +82,10 @@
     aclara el calendario; el salto a $1,000 es automático por fecha (no requiere cambiar config).
 
 ## G · Dos paneles de contratación (NEXO / IVA)
-- [ ] **G1** · Separar la vista de contratación/facturación por **producto**: un panel para quienes contratan **NEXO**
-    y otro para quienes contratan **IVA** (IVA.HTML como producto de autoservicio, ver [[iva-html-satgo]] y
-    `IVA.HTML/COMERCIALIZACION_IVA.md`). ⚠ Confirmar si son dos **pestañas/pantallas** dentro de Súper Admin →
-    Facturación, o dos tableros separados, y qué métricas lleva cada uno.
+- [x] **G1** · HECHO (2026-10-13, commit `ef8ad4b`). Decidido (opción 1): **tag `producto` por empresa**
+    (NEXO / IVA / AMBOS, en Editar empresa) y **dos pestañas** en Súper Admin → Facturación que filtran listas y
+    totales. IVA = cliente del servicio IVA.HTML cuyo CFDI emite NEXO; se registra como empresa en NEXO con ese tag
+    (no lee del app IVA.HTML). Migración `companies.producto`.
 
 ## 7º · Modelo "empresas bajo RFC GHC1707275Y0"
 - [ ] **G/arquitectura** · Permitir que, al generar empresas, queden asociadas al **RFC GHC1707275Y0** para que el
