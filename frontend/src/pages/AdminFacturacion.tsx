@@ -250,7 +250,7 @@ function PanelConfig({ cfg, onGuardado }: { cfg: any; onGuardado: () => void }) 
   return (
     <div className="bg-white border rounded-lg p-4 space-y-3">
       <div className="flex flex-wrap items-end gap-4">
-        <label className="block"><span className="text-xs text-gray-600 block mb-1">Precio por usuario (MXN)</span>
+        <label className="block"><span className="text-xs text-gray-600 block mb-1">Precio por usuario — introducción (MXN)</span>
           <input value={precio} onChange={(e) => setPrecio(e.target.value)} className="input py-1.5 text-sm w-32" /></label>
         <label className="block"><span className="text-xs text-gray-600 block mb-1">Timbres incluidos base (1 usr)</span>
           <input value={incl} onChange={(e) => setIncl(e.target.value)} className="input py-1.5 text-sm w-32" /></label>
@@ -266,6 +266,11 @@ function PanelConfig({ cfg, onGuardado }: { cfg: any; onGuardado: () => void }) 
       <p className="text-[11px] text-gray-400">
         Escalonado: incluidos = base + (por usuario) × (usuarios − 1); timbre extra = base + (por usuario) × (usuarios − 1).
         Con estos valores: <b>1 usuario</b> = {incl} timbres / ${extra} · <b>10 usuarios</b> = {inc10} timbres / ${ext10}. Cobro mensual, sin plazo forzoso.
+      </p>
+      <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+        <b>Calendario del precio por usuario:</b> el valor de arriba es el de <b>introducción</b> (contrataciones de oct–dic 2026).
+        Las que contraten desde el <b>01/01/2027</b> pagan <b>$1,000</b>, y el <b>01/04/2027</b> <b>todas</b> las empresas saltan a <b>$1,000</b>
+        (y así queda en 2027). El salto es automático por fecha; aquí solo se ajusta el precio de introducción.
       </p>
     </div>
   );

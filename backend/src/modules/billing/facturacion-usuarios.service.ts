@@ -35,6 +35,24 @@ const iso = (d: Date) => { const p = (n: number) => String(n).padStart(2, '0'); 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const primerDia = (input?: string) => { const b = input ? new Date(input + 'T00:00:00') : new Date(); return { anio: b.getFullYear(), mes: b.getMonth() }; };
 
+/* ── Calendario de precio por usuario (decidido 2026-10-13) ──────────────────
+ *  · Contrataciones de oct–dic 2026 (y previas): PRECIO DE INTRODUCCIÓN = el
+ *    precio de lista editable del super admin (hoy $750).
+ *  · Contrataciones desde el 01/01/2027: PRECIO PLENO ($1,000).
+ *  · El 01/04/2027 TODAS las empresas saltan al PRECIO PLENO (y así queda en 2027).
+ * La config (precio_usuario_mxn) sigue siendo el precio de introducción editable;
+ * el salto a $1,000 es por calendario. */
+const PRECIO_USUARIO_PLENO = 1000;
+const FECHA_PRECIO_NUEVO   = new Date(2027, 0, 1);   // 01/01/2027 — nuevas contrataciones a pleno
+const FECHA_BRINCO_GLOBAL  = new Date(2027, 3, 1);   // 01/04/2027 — todas a pleno
+
+/** Precio por usuario que aplica a una empresa en un periodo, según el calendario. */
+export function precioUsuarioVigente(contratadaEl: Date | null, periodoDate: Date, cfgPrecioIntro: number): number {
+  if (periodoDate >= FECHA_BRINCO_GLOBAL) return PRECIO_USUARIO_PLENO;                       // 01/04/2027+: todas
+  if (contratadaEl && contratadaEl >= FECHA_PRECIO_NUEVO) return PRECIO_USUARIO_PLENO;        // contrató en 2027
+  return cfgPrecioIntro;                                                                      // cohorte de introducción
+}
+
 /* ── Config ── */
 export async function getConfig(): Promise<FacturacionConfig> {
   const r = await query<any>(`SELECT precio_usuario_mxn, timbres_incluidos, timbre_extra_mxn, timbres_por_usuario, timbre_extra_por_usuario FROM facturacion_config WHERE id = 1`);
@@ -115,7 +133,9 @@ export async function generarLista(periodoInput?: string, userId?: string) {
       diasCobrados = diasMes - inicioCobro.getDate() + 1;   // el día que se vuelve facturable se cobra
       prorrateado = true;
     }
-    const renta = r2(cfg.precioUsuario * usuarios * (diasCobrados / diasMes));
+    // Precio por usuario según el calendario (intro editable → $1,000 por fechas).
+    const precioU = precioUsuarioVigente(inicioCobro, new Date(anio, mes, 1), cfg.precioUsuario);
+    const renta = r2(precioU * usuarios * (diasCobrados / diasMes));
 
     // Timbres del periodo (los de SW: stamp_usage tiene billing_period = 1.º de mes).
     const tR = await query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM stamp_usage WHERE company_id = $1 AND billing_period = $2`, [e.id, periodo]);
@@ -141,7 +161,7 @@ export async function generarLista(periodoInput?: string, userId?: string) {
          timbres_extra=EXCLUDED.timbres_extra, timbre_extra_mxn=EXCLUDED.timbre_extra_mxn,
          extra_mxn=EXCLUDED.extra_mxn, total_mxn=EXCLUDED.total_mxn
        WHERE facturacion_mensual.status = 'PENDIENTE'`,
-      [e.id, periodo, usuarios, diasCobrados, diasMes, prorrateado, cfg.precioUsuario, renta,
+      [e.id, periodo, usuarios, diasCobrados, diasMes, prorrateado, precioU, renta,
        timbresUsados, incluidos, timbresExtra, precioExtra, extra, total]);
     creadas++;
   }
@@ -191,6 +211,8 @@ export async function resumenConsolidado(periodoInput?: string) {
 
   const empresas = await query<any>(
     `SELECT c.id, c.rfc, c.business_name, c.billing_exempt, c.prueba_inicio, c.servicio_suspendido,
+            c.created_at,
+            (SELECT MIN(sc.signed_at) FROM service_contracts sc WHERE sc.company_id = c.id) AS signed_at,
             (SELECT COUNT(*) FROM service_contracts sc WHERE sc.company_id = c.id) > 0 AS firmado,
             fm.id AS cargo_id, fm.status AS cargo_status
        FROM companies c
@@ -215,7 +237,10 @@ export async function resumenConsolidado(periodoInput?: string) {
     else if (e.prueba_inicio && !e.firmado) motivo = 'Prueba 72 h';
     const esPrueba = motivo !== '';
 
-    const renta = esPrueba ? 0 : r2(cfg.precioUsuario * usuarios);
+    // Precio por usuario según el calendario (mismo criterio que generarLista).
+    const inicioCobro = (e.prueba_inicio && e.signed_at) ? new Date(e.signed_at) : new Date(e.created_at);
+    const precioU = precioUsuarioVigente(inicioCobro, new Date(anio, mes, 1), cfg.precioUsuario);
+    const renta = esPrueba ? 0 : r2(precioU * usuarios);
     const extra = esPrueba ? 0 : r2(timbresExtra * precioExtra);
     const fila = {
       company_id: e.id, rfc: e.rfc, business_name: e.business_name,
