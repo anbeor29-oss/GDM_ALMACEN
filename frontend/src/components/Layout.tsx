@@ -576,6 +576,7 @@ export function Layout() {
                           { to: '/contabilidad/nif',        icon: emoji3D('📐'), label: 'NIF' },
                           { to: '/contabilidad/estados-financieros', icon: emoji3D('📋'), label: 'Estados financieros' },
                           { to: '/contabilidad/reportes-fiscales', icon: emoji3D('📤'), label: 'SAT' },
+                          { to: '/contabilidad/validar-cfdi',      icon: emoji3D('✅'), label: 'Validar CFDI' },
                           { to: '/contabilidad/cedulas',           icon: emoji3D('📑'), label: 'Cédulas fiscales (ISR/IVA)' },
                           /* Cumplimiento fiscal: todo vive en el Panel fiscal (opiniones +
                              Notificaciones/Declaraciones/Info fiscal/Validar CFDI en modales).

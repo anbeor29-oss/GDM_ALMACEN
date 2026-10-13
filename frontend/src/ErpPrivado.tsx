@@ -82,6 +82,7 @@ import { AutofacturacionPage } from '@/pages/contabilidad/Autofacturacion';
 import { PanelFiscalPage } from '@/pages/contabilidad/PanelFiscal';
 import { PldPage } from '@/pages/contabilidad/PLD';
 import { CedulasFiscalesPage } from '@/pages/contabilidad/CedulasFiscales';
+import { ValidarCfdiPage } from '@/pages/contabilidad/ValidarCfdi';
 import { CambioCuentaPage } from '@/pages/contabilidad/CambioCuenta';
 import {
   BalanzaPage, SituacionFinancieraPage, ResultadoIntegralPage, EstadoResultadosPage,
@@ -179,6 +180,7 @@ export default function ErpPrivado() {
         <Route path="contabilidad/opinion-cumplimiento"     element={<Navigate to="/contabilidad/panel-fiscal" replace />} />
         <Route path="contabilidad/cumplimiento-imss"        element={<Navigate to="/contabilidad/panel-fiscal" replace />} />
         <Route path="contabilidad/cumplimiento-infonavit"   element={<Navigate to="/contabilidad/panel-fiscal" replace />} />
+        <Route path="contabilidad/validar-cfdi"       element={<ModuleRoute module="contabilidad"><ValidarCfdiPage /></ModuleRoute>} />
         <Route path="contabilidad/cedulas"            element={<ModuleRoute module="contabilidad"><CedulasFiscalesPage /></ModuleRoute>} />
         <Route path="contabilidad/cambio-cuenta"      element={<ModuleRoute module="contabilidad"><CambioCuentaPage /></ModuleRoute>} />
         <Route path="contabilidad/conciliacion"       element={<ModuleRoute module="contabilidad"><ConciliacionContablePage /></ModuleRoute>} />
