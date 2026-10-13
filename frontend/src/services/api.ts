@@ -1056,6 +1056,16 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/contabilizar`, { contraCuentaId });
     return r.data;
   }
+  /** Recibos de nómina timbrados por pagar (modo "Nómina" de la conciliación). */
+  async getNominaPorPagar() {
+    const r = await this.client.get<APIResponse<any[]>>('/treasury/bancos/nomina-por-pagar');
+    return r.data;
+  }
+  /** Contabiliza un retiro como pago de nómina contra los recibos elegidos. */
+  async contabilizarNominaMovimiento(id: string, reciboIds: string[]) {
+    const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/contabilizar-nomina`, { reciboIds });
+    return r.data;
+  }
   async descontabilizarMovimiento(id: string) {
     const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/descontabilizar`, {});
     return r.data;

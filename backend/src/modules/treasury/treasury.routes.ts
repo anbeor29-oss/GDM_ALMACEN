@@ -486,6 +486,25 @@ router.post(
   })
 );
 
+/** Recibos de nómina timbrados por pagar (para el modo "Nómina" de la conciliación). */
+router.get(
+  '/bancos/nomina-por-pagar',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await concil.listarNominaPorPagar(companyId(req)) });
+  })
+);
+
+/** Contabiliza un retiro como PAGO DE NÓMINA contra los recibos elegidos
+ *  (body: { reciboIds: string[] }) → cargo 210.01 Nómina por pagar / abono Bancos. */
+router.post(
+  '/bancos/movimientos/:id/contabilizar-nomina',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const reciboIds = Array.isArray(req.body?.reciboIds) ? req.body.reciboIds.map(String) : [];
+    res.json({ success: true, data: await concil.contabilizarNomina(companyId(req), req.params.id, reciboIds, req.user?.userId) });
+  })
+);
+
 /** Cotejo MANUAL: liga uno o varios movimientos del banco con una línea de la 102
  *  (body: { movIds: string[], lineId }). */
 router.post(

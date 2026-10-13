@@ -248,6 +248,9 @@ export function ConciliacionContablePage() {
   const contabilizar = (m: any, contraId?: string) => correr(
     () => api.contabilizarMovimiento(m.id, contraId),
     (r) => { const d = r?.data; if (d?.error) setMsg(d.error); else if (d?.folio) setMsg(`Póliza #${d.folio} creada.`); });
+  const contabilizarNomina = (m: any, reciboIds: string[]) => correr(
+    () => api.contabilizarNominaMovimiento(m.id, reciboIds),
+    (r) => { const d = r?.data; if (d?.error) setMsg(d.error); else if (d?.folio) setMsg(`Póliza #${d.folio} creada (pago de nómina).`); });
   const deshacer = (id: string) => correr(() => api.descontabilizarMovimiento(id));
   const descargarConcil = async () => {
     if (!eid) return;
@@ -448,6 +451,7 @@ export function ConciliacionContablePage() {
                 onConfirmar={() => marcar(sel.id, { concilEstado: 'confirmado' })}
                 onOmitir={() => marcar(sel.id, { concilEstado: 'omitido' })}
                 onContabilizar={(contraId?: string) => contabilizar(sel, contraId)}
+                onContabilizarNomina={(reciboIds: string[]) => contabilizarNomina(sel, reciboIds)}
                 onDeshacer={() => deshacer(sel.id)}
                 onAbrirComis={() => setModalComis(true)} />
             </div>
@@ -540,8 +544,9 @@ export function ConciliacionContablePage() {
 }
 
 /* ── Panel derecho ── */
-function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onOmitir, onContabilizar, onDeshacer, onAbrirComis }: any) {
+function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onOmitir, onContabilizar, onContabilizarNomina, onDeshacer, onAbrirComis }: any) {
   const [contra, setContra] = useState('');
+  const [modo, setModo] = useState<'cuenta' | 'nomina'>('cuenta');   // modo de la sección "otro" en un retiro
   const dep = Number(sel.deposito) > 0;
   const monto = dep ? sel.deposito : sel.retiro;
   const clas = sel.clasificacion || 'otro';
@@ -636,11 +641,25 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onO
             </div>
           )}
 
-          {/* Otro: cuenta contra manual */}
+          {/* Otro: cuenta contra manual, o —en un retiro— pago de nómina */}
           {clas === 'otro' && (
-            <div className="border rounded p-3 space-y-1">
-              <div className="text-xs text-gray-500">Sin match automático. Elige la cuenta contra la que va:</div>
-              <SelCuenta ctas={ctas} value={contra} onChange={setContra} />
+            <div className="border rounded p-3 space-y-2">
+              {!dep && (
+                <div className="flex gap-1.5 flex-wrap">
+                  <button type="button" onClick={() => setModo('cuenta')}
+                    className={`text-xs rounded px-2.5 py-1 border ${modo === 'cuenta' ? 'bg-sky-600 text-white border-sky-600' : 'text-gray-600 hover:bg-gray-50'}`}>Cuenta directa</button>
+                  <button type="button" onClick={() => setModo('nomina')}
+                    className={`text-xs rounded px-2.5 py-1 border ${modo === 'nomina' ? 'bg-sky-600 text-white border-sky-600' : 'text-gray-600 hover:bg-gray-50'}`}>Nómina (pagar recibos)</button>
+                </div>
+              )}
+              {(dep || modo === 'cuenta') ? (
+                <>
+                  <div className="text-xs text-gray-500">Sin match automático. Elige la cuenta contra la que va:</div>
+                  <SelCuenta ctas={ctas} value={contra} onChange={setContra} />
+                </>
+              ) : (
+                <NominaPorPagar monto={Number(monto)} busy={busy} onContabilizar={(ids: string[]) => onContabilizarNomina(ids)} />
+              )}
             </div>
           )}
 
@@ -652,7 +671,7 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onO
                 <Check size={14} /> Sí, es el mismo
               </button>
             )}
-            {clas !== 'pago_tarjeta' && (
+            {clas !== 'pago_tarjeta' && !(clas === 'otro' && !dep && modo === 'nomina') && (
               <button onClick={() => onContabilizar((clas === 'otro' || esCompraTarjeta) ? (contra || undefined) : undefined)}
                 disabled={busy || (clas === 'otro' && !contra)}
                 className="flex items-center gap-1 text-sm bg-sky-700 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
@@ -666,6 +685,51 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onO
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/* ── Sub-panel: pago de nómina (recibos por pagar) ──
+   Para un RETIRO sin match: se eligen los recibos timbrados que suman el egreso.
+   Al contabilizar, el backend arma cargo 210.01 Nómina por pagar / abono Bancos. */
+function NominaPorPagar({ monto, busy, onContabilizar }: { monto: number; busy: boolean; onContabilizar: (ids: string[]) => void }) {
+  const q = useQuery({ queryKey: ['nomina-por-pagar'], queryFn: () => api.getNominaPorPagar() });
+  const recibos: any[] = (q.data as any)?.data || [];
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const suma = recibos.filter((r) => sel.has(r.recibo_id)).reduce((a, r) => a + Number(r.neto || 0), 0);
+  const dif = Math.round((suma - monto) * 100) / 100;
+  const cuadra = Math.abs(dif) <= 0.02 && sel.size > 0;
+  return (
+    <div className="space-y-2">
+      <div className="text-xs text-gray-500">
+        Elige los recibos que suman el pago. Al contabilizar: <b>cargo Nómina por pagar (210.01)</b> / abono Bancos.
+      </div>
+      {q.isLoading ? (
+        <p className="text-xs text-gray-500">Cargando recibos…</p>
+      ) : recibos.length === 0 ? (
+        <p className="text-xs text-gray-400 italic">No hay recibos de nómina timbrados por pagar.</p>
+      ) : (
+        <div className="border rounded max-h-56 overflow-y-auto divide-y">
+          {recibos.map((r) => (
+            <label key={r.recibo_id} className="flex items-center gap-2 px-2 py-1 text-xs hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" checked={sel.has(r.recibo_id)} onChange={() => toggle(r.recibo_id)} />
+              <span className="flex-1 min-w-0 truncate">
+                {r.nombre} <span className="text-gray-400">· {r.num_empleado} · per. {r.periodo_numero} · {r.fecha_fin}</span>
+              </span>
+              <span className="font-mono shrink-0">{money(Number(r.neto))}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      <div className={`text-xs flex items-center justify-between ${cuadra ? 'text-emerald-700 font-medium' : 'text-gray-600'}`}>
+        <span>Seleccionado: <b>{money(suma)}</b> · Retiro: {money(monto)}</span>
+        {sel.size > 0 && !cuadra && <span className="text-amber-700">Difiere {money(Math.abs(dif))}</span>}
+      </div>
+      <button onClick={() => onContabilizar(Array.from(sel))} disabled={busy || !cuadra}
+        className="flex items-center gap-1 text-sm bg-sky-700 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
+        <PlayCircle size={14} /> Contabilizar nómina
+      </button>
     </div>
   );
 }

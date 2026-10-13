@@ -15,6 +15,7 @@
  */
 import { query } from '../../config/database';
 import { crearPoliza } from '../accounting/polizas.service';
+import { conceptosConCuenta } from '../nomina/conceptos-cuenta.service';
 import { resolverOCrearSubcuentaTercero } from '../accounting/catalogo-terceros.service';
 import { reporteTablaPdf } from '../../utils/reporte-pdf';
 
@@ -343,6 +344,93 @@ export async function contabilizar(
   return { ok: true, folio: pol.folio };
 }
 
+/* ═══════════════════════ PAGO DE NÓMINA (modo "Nómina") ═══════════════════════
+ * En la conciliación, un RETIRO puede ser el pago de la nómina. Se listan los
+ * recibos TIMBRADOS que están por pagar; el usuario elige los que suman el egreso
+ * y se asienta: CARGO 210.01 (Nómina por pagar) / ABONO Bancos. Los recibos quedan
+ * marcados como pagados (pagado_mov_id) para no reaparecer; deshacer los libera. */
+
+/** Recibos de nómina timbrados aún no pagados por banco (neto = lo que se paga). */
+export async function listarNominaPorPagar(companyId: string) {
+  const r = await query<any>(
+    `SELECT r.id AS recibo_id, r.uuid, r.nombre, r.num_empleado, r.rfc, r.neto,
+            p.numero AS periodo_numero,
+            TO_CHAR(p.fecha_fin,'YYYY-MM-DD') AS fecha_fin
+       FROM nomina_recibos r
+       JOIN nomina_periodos p ON p.id = r.periodo_id
+      WHERE r.company_id = $1
+        AND r.uuid IS NOT NULL
+        AND COALESCE(r.estatus,'') <> 'CANCELADO'
+        AND r.pagado_mov_id IS NULL
+        AND r.neto > 0
+      ORDER BY p.fecha_fin DESC, r.nombre`,
+    [companyId]);
+  return r.rows;
+}
+
+/** Contabiliza el pago de nómina de un retiro contra los recibos seleccionados. */
+export async function contabilizarNomina(
+  companyId: string, movId: string, reciboIds: string[], userId?: string,
+): Promise<{ ok: true; folio: number } | { error: string }> {
+  if (!Array.isArray(reciboIds) || reciboIds.length === 0) return { error: 'selecciona al menos un recibo de nómina' };
+
+  const m = (await query<any>(
+    `SELECT bm.*, TO_CHAR(bm.fecha,'YYYY-MM-DD') AS fecha_ymd,
+            bc.cuenta_contable_id AS banco_cuenta_id, bc.tipo AS cuenta_tipo
+       FROM bancos_movimientos bm
+       JOIN bancos_cuentas bc ON bc.id = bm.cuenta_id
+      WHERE bm.id=$1 AND bm.company_id=$2`, [movId, companyId])).rows[0];
+  if (!m) return { error: 'no se encontró el movimiento' };
+  if (m.poliza_id) return { error: 'este movimiento ya está contabilizado' };
+  if (m.cuenta_tipo === 'TARJETA_CREDITO') return { error: 'el pago de nómina se contabiliza desde una cuenta de banco, no de tarjeta' };
+  if (!m.banco_cuenta_id) return { error: 'define la cuenta contable (102-xx) de esta cuenta bancaria antes de contabilizar' };
+  const ret = round2(m.retiro);
+  if (!(ret > 0)) return { error: 'el pago de nómina debe ser un retiro (egreso) del banco' };
+
+  const recibos = (await query<any>(
+    `SELECT r.id, r.uuid, r.nombre, r.rfc, r.neto
+       FROM nomina_recibos r
+      WHERE r.company_id=$1 AND r.id = ANY($2::uuid[])
+        AND r.uuid IS NOT NULL AND COALESCE(r.estatus,'') <> 'CANCELADO'
+        AND r.pagado_mov_id IS NULL`,
+    [companyId, reciboIds])).rows;
+  if (recibos.length === 0) return { error: 'los recibos ya no están disponibles (¿ya se pagaron?)' };
+  if (recibos.length !== reciboIds.length) return { error: 'algunos recibos ya no están disponibles; recarga la lista' };
+
+  const sumaNeto = round2(recibos.reduce((a: number, x: any) => a + Number(x.neto || 0), 0));
+  if (Math.abs(sumaNeto - ret) > 0.02) {
+    return { error: `los recibos suman ${sumaNeto.toFixed(2)} y el retiro es ${ret.toFixed(2)} (difieren por ${Math.abs(sumaNeto - ret).toFixed(2)})` };
+  }
+
+  // Cuenta "Nómina por pagar" (210.01): la MISMA del neto en el pasivo de nómina.
+  const cfg = await conceptosConCuenta(companyId);
+  const codNeto = (cfg.find((c: any) => c.grupo === 'NETO' && c.clave === 'NETO') as any)?.cuenta;
+  if (!codNeto) return { error: 'falta asignar la cuenta de "Neto por pagar" (210.01) en Contabilidad → Asignación de cuentas (Nómina)' };
+  const ctaNeto = (await query<any>(
+    `SELECT id, nombre FROM accounting_accounts
+      WHERE company_id=$1 AND codigo=$2 AND activa=true AND permite_movimientos=true LIMIT 1`,
+    [companyId, codNeto])).rows[0];
+  if (!ctaNeto) return { error: `la cuenta de nómina por pagar (${codNeto}) no existe o no admite movimientos` };
+
+  const fecha = m.fecha_ymd || String(m.fecha).slice(0, 10);
+  const concepto = (m.concepto || 'Pago de nómina').toString().slice(0, 180);
+  const lineas: any[] = [];
+  // Un cargo por recibo a 210.01 (trazabilidad por CFDI); un abono total a bancos.
+  for (const r of recibos) {
+    lineas.push({ account_id: ctaNeto.id, cargo: round2(r.neto), concepto: `Pago nómina ${r.nombre}`.slice(0, 180), uuid_cfdi: r.uuid, party_rfc: r.rfc });
+  }
+  lineas.push({ account_id: m.banco_cuenta_id, abono: sumaNeto, concepto });
+
+  const pol = await crearPoliza(companyId, {
+    tipo: 'EGRESO', fecha, concepto, origen: 'BANCO', origen_uuid: `BANCO:${movId}`, regla: 'conciliacion_nomina', lineas,
+  }, userId);
+
+  await query(`UPDATE nomina_recibos SET pagado_mov_id=$2, pagado_at=NOW() WHERE id = ANY($1::uuid[])`,
+    [recibos.map((x: any) => x.id), movId]);
+  await query(`UPDATE bancos_movimientos SET poliza_id=$2, concil_estado='contabilizado' WHERE id=$1`, [movId, pol.id]);
+  return { ok: true, folio: pol.folio };
+}
+
 /* ── Contabilizar de golpe lo confirmado del estado ────────────────────────── */
 export async function contabilizarLote(companyId: string, estadoId: string, userId?: string) {
   const movs = (await query<any>(
@@ -376,6 +464,8 @@ export async function descontabilizar(companyId: string, movId: string) {
     await query(`DELETE FROM journal_lines WHERE entry_id=$1`, [m.poliza_id]);
     await query(`DELETE FROM journal_entries WHERE id=$1 AND company_id=$2`, [m.poliza_id, companyId]);
   }
+  // Si era un pago de nómina, los recibos vuelven a quedar por pagar.
+  await query(`UPDATE nomina_recibos SET pagado_mov_id=NULL, pagado_at=NULL WHERE pagado_mov_id=$1 AND company_id=$2`, [movId, companyId]);
   await query(`UPDATE bancos_movimientos SET poliza_id=NULL, conciliado_line_id=NULL, concil_estado='confirmado' WHERE id=$1`, [movId]);
   return { ok: true };
 }
