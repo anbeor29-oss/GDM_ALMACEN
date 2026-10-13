@@ -494,6 +494,14 @@ router.get(
   })
 );
 
+/** Facturas recibidas (compras) por pagar (para el modo "Proveedor" de la conciliación). */
+router.get(
+  '/bancos/facturas-por-pagar',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await concil.listarFacturasRecibidasPorPagar(companyId(req)) });
+  })
+);
+
 /** Contabiliza un retiro como PAGO DE NÓMINA contra los recibos elegidos
  *  (body: { reciboIds: string[] }) → cargo 210.01 Nómina por pagar / abono Bancos. */
 router.post(

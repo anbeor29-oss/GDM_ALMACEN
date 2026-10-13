@@ -670,7 +670,7 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onO
               )}
               {modo === 'proveedor' && !dep && (
                 <ProveedorPasivo ctas={ctas} monto={Number(monto)} busy={busy}
-                  onContabilizar={(p: any) => onContabilizarEspecial({ modo: 'proveedor_pasivo', ...p })} />
+                  onContabilizar={(p: any) => onContabilizarEspecial({ modo: 'proveedor_facturas', ...p })} />
               )}
             </div>
           )}
@@ -750,35 +750,69 @@ function IngresoConIva({ ctas, monto, busy, onContabilizar }: { ctas: any; monto
   );
 }
 
-/* ── Sub-panel: retiro que cancela el pasivo de una compra PPD ──
-   Cargo Proveedores + IVA acreditable (pagado) / abono Banco + IVA acreditable por pagar. */
+/* ── Sub-panel: retiro contra FACTURAS del proveedor (cancela el pasivo) ──
+   Se eligen las facturas recibidas por pagar que cuadran con el egreso (filtro por
+   proveedor y/o fecha). Cargo a la subcuenta del proveedor de cada factura + IVA
+   acreditable (pagado) / abono Banco + IVA acreditable por pagar. Las marca pagadas
+   para no dejarlas "volando" solo con el pasivo. El IVA sale del propio CFDI. */
 function ProveedorPasivo({ ctas, monto, busy, onContabilizar }: { ctas: any; monto: number; busy: boolean; onContabilizar: (p: any) => void }) {
-  const [tasa, setTasa] = useState(0.16);
-  const [prov, setProv] = useState('');
+  const q = useQuery({ queryKey: ['facturas-por-pagar'], queryFn: () => api.getFacturasRecibidasPorPagar() });
+  const todas: any[] = (q.data as any)?.data || [];
+  const [rfc, setRfc] = useState('');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
+  const [sel, setSel] = useState<Set<string>>(new Set());
   const [ivaPag, setIvaPag] = useState('');
   const [ivaPp, setIvaPp] = useState('');
-  const iva = Math.round((monto - monto / (1 + tasa)) * 100) / 100;
-  const baseImp = Math.round((monto - iva) * 100) / 100;
-  const listo = !!prov && !!ivaPag && !!ivaPp;
+
+  const proveedores = Array.from(new Map(todas.map((f) => [f.rfc_emisor, f.nombre_emisor || f.rfc_emisor])).entries());
+  const lista = todas.filter((f) =>
+    (!rfc || f.rfc_emisor === rfc) && (!desde || f.fecha >= desde) && (!hasta || f.fecha <= hasta));
+  const toggle = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const elegidas = todas.filter((f) => sel.has(f.id));
+  const suma = elegidas.reduce((a, f) => a + Number(f.total || 0), 0);
+  const sumaIva = elegidas.reduce((a, f) => a + Number(f.iva || 0), 0);
+  const dif = Math.round((suma - monto) * 100) / 100;
+  const tol = Math.max(0.02, 0.01 * Math.max(1, elegidas.length));
+  const cuadra = Math.abs(dif) <= tol && sel.size > 0;
+  const listo = cuadra && !!ivaPag && !!ivaPp;
   return (
     <div className="space-y-2">
-      <div className="text-xs text-gray-500">Cancela el pasivo de una compra PPD: cargo Proveedores + IVA acreditable (pagado) / abono Banco + IVA acreditable por pagar.</div>
-      <label className="block text-xs text-gray-600">Tasa de IVA
-        <select value={tasa} onChange={(e) => setTasa(Number(e.target.value))} className="input w-full mt-0.5 text-sm">
-          <option value={0.16}>16%</option>
-          <option value={0.08}>8% (frontera)</option>
+      <div className="text-xs text-gray-500">
+        Elige las facturas del proveedor que cuadran con el egreso. Cargo Proveedores + IVA acreditable (pagado) / abono Banco + IVA acreditable por pagar. Se marcan pagadas (no dejan el pasivo volando).
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        <select value={rfc} onChange={(e) => setRfc(e.target.value)} className="input text-xs py-1 flex-1 min-w-[9rem]">
+          <option value="">Todos los proveedores</option>
+          {proveedores.map(([r, n]) => <option key={r} value={r}>{n}</option>)}
         </select>
-      </label>
-      <div className="text-xs text-gray-600">Cuenta de Proveedores</div>
-      <SelCuenta ctas={ctas} value={prov} onChange={setProv} placeholder="— proveedores —" />
+        <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="input text-xs py-1" title="Desde" />
+        <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="input text-xs py-1" title="Hasta" />
+      </div>
+      {q.isLoading ? (
+        <p className="text-xs text-gray-500">Cargando facturas…</p>
+      ) : lista.length === 0 ? (
+        <p className="text-xs text-gray-400 italic">No hay facturas recibidas por pagar con ese filtro.</p>
+      ) : (
+        <div className="border rounded max-h-56 overflow-y-auto divide-y">
+          {lista.map((f) => (
+            <label key={f.id} className="flex items-center gap-2 px-2 py-1 text-xs hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" checked={sel.has(f.id)} onChange={() => toggle(f.id)} />
+              <span className="flex-1 min-w-0 truncate">{f.nombre_emisor || f.rfc_emisor} <span className="text-gray-400">· {f.fecha} · {f.forma_pago || '—'}/{f.metodo_pago || '—'}</span></span>
+              <span className="font-mono shrink-0">{money(Number(f.total))}<span className="text-gray-400"> · IVA {money(Number(f.iva))}</span></span>
+            </label>
+          ))}
+        </div>
+      )}
+      <div className={`text-xs flex items-center justify-between ${cuadra ? 'text-emerald-700 font-medium' : 'text-gray-600'}`}>
+        <span>Seleccionado: <b>{money(suma)}</b> (IVA {money(sumaIva)}) · Retiro: {money(monto)}</span>
+        {sel.size > 0 && !cuadra && <span className="text-amber-700">Difiere {money(Math.abs(dif))}</span>}
+      </div>
       <div className="text-xs text-gray-600">IVA acreditable (pagado)</div>
       <SelCuenta ctas={ctas} value={ivaPag} onChange={setIvaPag} placeholder="— IVA acreditable pagado —" />
       <div className="text-xs text-gray-600">IVA acreditable por pagar</div>
       <SelCuenta ctas={ctas} value={ivaPp} onChange={setIvaPp} placeholder="— IVA acreditable por pagar —" />
-      <div className="text-xs text-gray-600 bg-slate-50 border rounded px-2 py-1">
-        Retiro {money(monto)} · IVA {money(iva)} · base {money(baseImp)}
-      </div>
-      <button onClick={() => onContabilizar({ tasa, proveedorCuentaId: prov, ivaPagadoCuentaId: ivaPag, ivaPorPagarCuentaId: ivaPp })}
+      <button onClick={() => onContabilizar({ facturaIds: Array.from(sel), ivaPagadoCuentaId: ivaPag, ivaPorPagarCuentaId: ivaPp })}
         disabled={busy || !listo}
         className="flex items-center gap-1 text-sm bg-sky-700 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
         <PlayCircle size={14} /> Contabilizar

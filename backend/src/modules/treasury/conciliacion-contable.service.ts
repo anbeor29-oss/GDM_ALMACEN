@@ -448,6 +448,34 @@ async function cuentaValida(companyId: string, accountId: string): Promise<boole
   return (q.rowCount || 0) > 0;
 }
 
+/** IVA trasladado de un CFDI (total de impuestos trasladados del comprobante). */
+function ivaTrasladadoDeXml(xml: string): number {
+  const m = String(xml || '').match(/TotalImpuestosTrasladados="([\d.]+)"/);
+  return m ? round2(Number(m[1]) || 0) : 0;
+}
+
+/** Facturas recibidas (compras) aún no pagadas por banco — para el modo Proveedor.
+ *  Trae su IVA trasladado (acreditable) para poder cuadrar el egreso y reclasificar. */
+export async function listarFacturasRecibidasPorPagar(companyId: string) {
+  const r = await query<any>(
+    `SELECT id, uuid, rfc_emisor, nombre_emisor, subtotal, total, forma_pago, metodo_pago,
+            TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha, xml
+       FROM cfdi_recibidos
+      WHERE company_id=$1
+        AND pagado_mov_id IS NULL
+        AND COALESCE(total,0) > 0
+        AND COALESCE(tipo_comprobante,'I') = 'I'
+        AND COALESCE(estado_sat,'Vigente') <> 'Cancelado'
+      ORDER BY fecha_emision DESC
+      LIMIT 400`,
+    [companyId]);
+  return r.rows.map((f: any) => ({
+    id: f.id, uuid: f.uuid, rfc_emisor: f.rfc_emisor, nombre_emisor: f.nombre_emisor,
+    total: round2(Number(f.total) || 0), iva: ivaTrasladadoDeXml(String(f.xml || '')),
+    fecha: f.fecha, forma_pago: f.forma_pago, metodo_pago: f.metodo_pago,
+  }));
+}
+
 export async function contabilizarEspecial(
   companyId: string, movId: string, payload: any, userId?: string,
 ): Promise<{ ok: true; folio: number } | { error: string }> {
@@ -467,6 +495,7 @@ export async function contabilizarEspecial(
   const concepto = (m.concepto || 'Movimiento bancario').toString().slice(0, 180);
   const modo = String(payload?.modo || '');
   const lineas: any[] = [];
+  const facturasAMarcar: string[] = [];
   let tipo: 'INGRESO' | 'EGRESO' = 'INGRESO';
 
   if (modo === 'ingreso') {
@@ -501,6 +530,43 @@ export async function contabilizarEspecial(
     lineas.push({ account_id: bankId, abono: ret, concepto });
     lineas.push({ account_id: ivaPpId, abono: iva, concepto: 'IVA acreditable por pagar (cancelado)' });
     tipo = 'EGRESO';
+  } else if (modo === 'proveedor_facturas') {
+    // Igual que proveedor_pasivo, pero contra FACTURAS reales: cuadra el egreso con
+    // sus totales e IVA, cargo a la subcuenta del proveedor de cada una, y las marca
+    // pagadas para no dejarlas "volando" con el pasivo abierto.
+    if (!(ret > 0)) return { error: 'este modo es para un retiro' };
+    const facturaIds = Array.isArray(payload?.facturaIds) ? payload.facturaIds.map(String) : [];
+    if (facturaIds.length === 0) return { error: 'selecciona al menos una factura' };
+    const ivaPagId = String(payload?.ivaPagadoCuentaId || '');
+    const ivaPpId = String(payload?.ivaPorPagarCuentaId || '');
+    if (!(await cuentaValida(companyId, ivaPagId))) return { error: 'elige la cuenta de IVA acreditable (pagado)' };
+    if (!(await cuentaValida(companyId, ivaPpId))) return { error: 'elige la cuenta de IVA acreditable por pagar' };
+    const facts = (await query<any>(
+      `SELECT id, uuid, rfc_emisor, nombre_emisor, total, xml FROM cfdi_recibidos
+        WHERE company_id=$1 AND id = ANY($2::uuid[]) AND pagado_mov_id IS NULL`,
+      [companyId, facturaIds])).rows;
+    if (facts.length === 0) return { error: 'las facturas ya no están disponibles (¿ya se pagaron?)' };
+    if (facts.length !== facturaIds.length) return { error: 'algunas facturas ya no están disponibles; recarga la lista' };
+    let sumaTotal = 0, sumaIva = 0;
+    for (const f of facts) {
+      const total = round2(Number(f.total) || 0);
+      const iva = ivaTrasladadoDeXml(String(f.xml || ''));
+      sumaTotal = round2(sumaTotal + total);
+      sumaIva = round2(sumaIva + iva);
+      const prov = await resolverOCrearSubcuentaTercero(companyId, 'proveedor', f.rfc_emisor, f.nombre_emisor);
+      if ('error' in prov) return { error: `proveedor ${f.rfc_emisor}: ${prov.error}` };
+      lineas.push({ account_id: prov.id, cargo: total, concepto: `Pago/pasivo ${f.nombre_emisor || f.rfc_emisor}`.slice(0, 180), uuid_cfdi: f.uuid, party_rfc: f.rfc_emisor });
+      if (iva > 0) lineas.push({ account_id: ivaPagId, cargo: iva, concepto: 'IVA acreditable (pagado)', uuid_cfdi: f.uuid });
+      facturasAMarcar.push(f.id);
+    }
+    const tol = Math.max(0.02, 0.01 * facts.length);
+    if (Math.abs(sumaTotal - ret) > tol) {
+      return { error: `las facturas suman ${sumaTotal.toFixed(2)} y el retiro es ${ret.toFixed(2)} (difieren por ${Math.abs(sumaTotal - ret).toFixed(2)})` };
+    }
+    // Abono al banco = suma de las facturas (balance exacto); el retiro cuadra ±centavos.
+    lineas.push({ account_id: bankId, abono: sumaTotal, concepto });
+    if (sumaIva > 0) lineas.push({ account_id: ivaPpId, abono: sumaIva, concepto: 'IVA acreditable por pagar (cancelado)' });
+    tipo = 'EGRESO';
   } else {
     return { error: 'modo no reconocido' };
   }
@@ -508,6 +574,9 @@ export async function contabilizarEspecial(
   const pol = await crearPoliza(companyId, {
     tipo, fecha, concepto, origen: 'BANCO', origen_uuid: `BANCO:${movId}`, regla: `conciliacion_${modo}`, lineas,
   }, userId);
+  if (facturasAMarcar.length) {
+    await query(`UPDATE cfdi_recibidos SET pagado_mov_id=$2, pagado_at=NOW() WHERE id = ANY($1::uuid[])`, [facturasAMarcar, movId]);
+  }
   await query(`UPDATE bancos_movimientos SET poliza_id=$2, concil_estado='contabilizado' WHERE id=$1`, [movId, pol.id]);
   return { ok: true, folio: pol.folio };
 }
@@ -545,8 +614,9 @@ export async function descontabilizar(companyId: string, movId: string) {
     await query(`DELETE FROM journal_lines WHERE entry_id=$1`, [m.poliza_id]);
     await query(`DELETE FROM journal_entries WHERE id=$1 AND company_id=$2`, [m.poliza_id, companyId]);
   }
-  // Si era un pago de nómina, los recibos vuelven a quedar por pagar.
+  // Si era un pago de nómina o de facturas, vuelven a quedar por pagar.
   await query(`UPDATE nomina_recibos SET pagado_mov_id=NULL, pagado_at=NULL WHERE pagado_mov_id=$1 AND company_id=$2`, [movId, companyId]);
+  await query(`UPDATE cfdi_recibidos SET pagado_mov_id=NULL, pagado_at=NULL WHERE pagado_mov_id=$1 AND company_id=$2`, [movId, companyId]);
   await query(`UPDATE bancos_movimientos SET poliza_id=NULL, conciliado_line_id=NULL, concil_estado='confirmado' WHERE id=$1`, [movId]);
   return { ok: true };
 }

@@ -1066,6 +1066,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/contabilizar-nomina`, { reciboIds });
     return r.data;
   }
+  /** Facturas recibidas (compras) por pagar — modo "Proveedor" de la conciliación. */
+  async getFacturasRecibidasPorPagar() {
+    const r = await this.client.get<APIResponse<any[]>>('/treasury/bancos/facturas-por-pagar');
+    return r.data;
+  }
   /** Contabilización especial: 'ingreso' (depósito con IVA) o 'proveedor_pasivo' (retiro PPD). */
   async contabilizarEspecialMovimiento(id: string, payload: any) {
     const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/contabilizar-especial`, payload);
