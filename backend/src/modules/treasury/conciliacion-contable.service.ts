@@ -431,6 +431,87 @@ export async function contabilizarNomina(
   return { ok: true, folio: pol.folio };
 }
 
+/* ═══════════════ CONTABILIZACIÓN ESPECIAL (depósito-ingreso / proveedor-pasivo) ═══
+ * Modos extra de la sección verde cuando no hay match:
+ *  · ingreso          (depósito): cargo Bancos / abono Ingresos + abono IVA trasladado
+ *                      (desglosa el IVA del total por la tasa elegida).
+ *  · proveedor_pasivo (retiro):   cancela el pasivo de una compra PPD →
+ *                      cargo Proveedores + cargo IVA acreditable (pagado) /
+ *                      abono Banco + abono IVA acreditable por pagar.
+ * Las cuentas las elige el usuario (flexibles); el IVA se deriva de la tasa. */
+
+async function cuentaValida(companyId: string, accountId: string): Promise<boolean> {
+  if (!accountId) return false;
+  const q = await query(
+    `SELECT 1 FROM accounting_accounts WHERE id=$1 AND company_id=$2 AND activa=true AND permite_movimientos=true LIMIT 1`,
+    [accountId, companyId]);
+  return (q.rowCount || 0) > 0;
+}
+
+export async function contabilizarEspecial(
+  companyId: string, movId: string, payload: any, userId?: string,
+): Promise<{ ok: true; folio: number } | { error: string }> {
+  const m = (await query<any>(
+    `SELECT bm.*, TO_CHAR(bm.fecha,'YYYY-MM-DD') AS fecha_ymd,
+            bc.cuenta_contable_id AS banco_cuenta_id, bc.tipo AS cuenta_tipo
+       FROM bancos_movimientos bm JOIN bancos_cuentas bc ON bc.id = bm.cuenta_id
+      WHERE bm.id=$1 AND bm.company_id=$2`, [movId, companyId])).rows[0];
+  if (!m) return { error: 'no se encontró el movimiento' };
+  if (m.poliza_id) return { error: 'este movimiento ya está contabilizado' };
+  if (m.cuenta_tipo === 'TARJETA_CREDITO') return { error: 'esta opción es para cuentas de banco, no de tarjeta' };
+  if (!m.banco_cuenta_id) return { error: 'define la cuenta contable (102-xx) de esta cuenta bancaria antes de contabilizar' };
+
+  const bankId = m.banco_cuenta_id;
+  const dep = round2(m.deposito), ret = round2(m.retiro);
+  const fecha = m.fecha_ymd || String(m.fecha).slice(0, 10);
+  const concepto = (m.concepto || 'Movimiento bancario').toString().slice(0, 180);
+  const modo = String(payload?.modo || '');
+  const lineas: any[] = [];
+  let tipo: 'INGRESO' | 'EGRESO' = 'INGRESO';
+
+  if (modo === 'ingreso') {
+    if (!(dep > 0)) return { error: 'el modo Ingreso es para un depósito' };
+    const tasa = Number(payload?.tasa);
+    if (!(tasa >= 0 && tasa <= 1)) return { error: 'tasa de IVA inválida' };
+    const ingresosId = String(payload?.ingresosCuentaId || '');
+    if (!(await cuentaValida(companyId, ingresosId))) return { error: 'elige la cuenta de Ingresos' };
+    const base = tasa > 0 ? round2(dep / (1 + tasa)) : dep;
+    const iva = round2(dep - base);
+    lineas.push({ account_id: bankId, cargo: dep, concepto, uuid_cfdi: m.cfdi_uuid || undefined });
+    lineas.push({ account_id: ingresosId, abono: base, concepto: 'Ingreso', uuid_cfdi: m.cfdi_uuid || undefined });
+    if (iva > 0) {
+      const ivaId = String(payload?.ivaCuentaId || '');
+      if (!(await cuentaValida(companyId, ivaId))) return { error: 'elige la cuenta de IVA trasladado' };
+      lineas.push({ account_id: ivaId, abono: iva, concepto: 'IVA trasladado' });
+    }
+    tipo = 'INGRESO';
+  } else if (modo === 'proveedor_pasivo') {
+    if (!(ret > 0)) return { error: 'el modo Proveedor (pasivo) es para un retiro' };
+    const tasa = Number(payload?.tasa);
+    if (!(tasa > 0 && tasa <= 1)) return { error: 'tasa de IVA inválida' };
+    const provId = String(payload?.proveedorCuentaId || '');
+    const ivaPagId = String(payload?.ivaPagadoCuentaId || '');
+    const ivaPpId = String(payload?.ivaPorPagarCuentaId || '');
+    if (!(await cuentaValida(companyId, provId))) return { error: 'elige la cuenta de Proveedores' };
+    if (!(await cuentaValida(companyId, ivaPagId))) return { error: 'elige la cuenta de IVA acreditable (pagado)' };
+    if (!(await cuentaValida(companyId, ivaPpId))) return { error: 'elige la cuenta de IVA acreditable por pagar' };
+    const iva = round2(ret - ret / (1 + tasa));
+    lineas.push({ account_id: provId, cargo: ret, concepto: 'Pago / cancelación de pasivo (proveedor)' });
+    lineas.push({ account_id: ivaPagId, cargo: iva, concepto: 'IVA acreditable (pagado)' });
+    lineas.push({ account_id: bankId, abono: ret, concepto });
+    lineas.push({ account_id: ivaPpId, abono: iva, concepto: 'IVA acreditable por pagar (cancelado)' });
+    tipo = 'EGRESO';
+  } else {
+    return { error: 'modo no reconocido' };
+  }
+
+  const pol = await crearPoliza(companyId, {
+    tipo, fecha, concepto, origen: 'BANCO', origen_uuid: `BANCO:${movId}`, regla: `conciliacion_${modo}`, lineas,
+  }, userId);
+  await query(`UPDATE bancos_movimientos SET poliza_id=$2, concil_estado='contabilizado' WHERE id=$1`, [movId, pol.id]);
+  return { ok: true, folio: pol.folio };
+}
+
 /* ── Contabilizar de golpe lo confirmado del estado ────────────────────────── */
 export async function contabilizarLote(companyId: string, estadoId: string, userId?: string) {
   const movs = (await query<any>(

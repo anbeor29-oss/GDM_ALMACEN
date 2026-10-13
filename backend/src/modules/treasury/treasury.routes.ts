@@ -505,6 +505,17 @@ router.post(
   })
 );
 
+/** Contabilización ESPECIAL de un movimiento sin match: modo 'ingreso' (depósito con
+ *  desglose de IVA) o 'proveedor_pasivo' (retiro que cancela el pasivo PPD con IVA).
+ *  body: { modo, tasa, ...cuentas } */
+router.post(
+  '/bancos/movimientos/:id/contabilizar-especial',
+  requireCapability('treasury:pay'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await concil.contabilizarEspecial(companyId(req), req.params.id, req.body || {}, req.user?.userId) });
+  })
+);
+
 /** Cotejo MANUAL: liga uno o varios movimientos del banco con una línea de la 102
  *  (body: { movIds: string[], lineId }). */
 router.post(

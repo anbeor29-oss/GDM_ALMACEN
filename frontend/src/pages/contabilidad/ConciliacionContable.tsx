@@ -251,6 +251,9 @@ export function ConciliacionContablePage() {
   const contabilizarNomina = (m: any, reciboIds: string[]) => correr(
     () => api.contabilizarNominaMovimiento(m.id, reciboIds),
     (r) => { const d = r?.data; if (d?.error) setMsg(d.error); else if (d?.folio) setMsg(`Póliza #${d.folio} creada (pago de nómina).`); });
+  const contabilizarEspecial = (m: any, payload: any) => correr(
+    () => api.contabilizarEspecialMovimiento(m.id, payload),
+    (r) => { const d = r?.data; if (d?.error) setMsg(d.error); else if (d?.folio) setMsg(`Póliza #${d.folio} creada.`); });
   const deshacer = (id: string) => correr(() => api.descontabilizarMovimiento(id));
   const descargarConcil = async () => {
     if (!eid) return;
@@ -452,6 +455,7 @@ export function ConciliacionContablePage() {
                 onOmitir={() => marcar(sel.id, { concilEstado: 'omitido' })}
                 onContabilizar={(contraId?: string) => contabilizar(sel, contraId)}
                 onContabilizarNomina={(reciboIds: string[]) => contabilizarNomina(sel, reciboIds)}
+                onContabilizarEspecial={(payload: any) => contabilizarEspecial(sel, payload)}
                 onDeshacer={() => deshacer(sel.id)}
                 onAbrirComis={() => setModalComis(true)} />
             </div>
@@ -544,9 +548,10 @@ export function ConciliacionContablePage() {
 }
 
 /* ── Panel derecho ── */
-function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onOmitir, onContabilizar, onContabilizarNomina, onDeshacer, onAbrirComis }: any) {
+function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onOmitir, onContabilizar, onContabilizarNomina, onContabilizarEspecial, onDeshacer, onAbrirComis }: any) {
   const [contra, setContra] = useState('');
-  const [modo, setModo] = useState<'cuenta' | 'nomina'>('cuenta');   // modo de la sección "otro" en un retiro
+  const [modo, setModo] = useState<'cuenta' | 'nomina' | 'ingreso' | 'proveedor'>('cuenta');   // modo de la sección "otro"
+  useEffect(() => { setModo('cuenta'); }, [sel.id]);   // al cambiar de movimiento, vuelve al modo base
   const dep = Number(sel.deposito) > 0;
   const monto = dep ? sel.deposito : sel.retiro;
   const clas = sel.clasificacion || 'otro';
@@ -641,24 +646,31 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onO
             </div>
           )}
 
-          {/* Otro: cuenta contra manual, o —en un retiro— pago de nómina */}
+          {/* Otro: cuenta directa, o modos especiales según depósito/retiro */}
           {clas === 'otro' && (
             <div className="border rounded p-3 space-y-2">
-              {!dep && (
-                <div className="flex gap-1.5 flex-wrap">
-                  <button type="button" onClick={() => setModo('cuenta')}
-                    className={`text-xs rounded px-2.5 py-1 border ${modo === 'cuenta' ? 'bg-sky-600 text-white border-sky-600' : 'text-gray-600 hover:bg-gray-50'}`}>Cuenta directa</button>
-                  <button type="button" onClick={() => setModo('nomina')}
-                    className={`text-xs rounded px-2.5 py-1 border ${modo === 'nomina' ? 'bg-sky-600 text-white border-sky-600' : 'text-gray-600 hover:bg-gray-50'}`}>Nómina (pagar recibos)</button>
-                </div>
-              )}
-              {(dep || modo === 'cuenta') ? (
+              <div className="flex gap-1.5 flex-wrap">
+                <ModoBtn activo={modo === 'cuenta'} onClick={() => setModo('cuenta')}>Cuenta directa</ModoBtn>
+                {dep && <ModoBtn activo={modo === 'ingreso'} onClick={() => setModo('ingreso')}>Ingreso (con IVA)</ModoBtn>}
+                {!dep && <ModoBtn activo={modo === 'nomina'} onClick={() => setModo('nomina')}>Nómina (pagar recibos)</ModoBtn>}
+                {!dep && <ModoBtn activo={modo === 'proveedor'} onClick={() => setModo('proveedor')}>Proveedor (cancelar pasivo)</ModoBtn>}
+              </div>
+              {modo === 'cuenta' && (
                 <>
-                  <div className="text-xs text-gray-500">Sin match automático. Elige la cuenta contra la que va:</div>
+                  <div className="text-xs text-gray-500">Sin match automático. Elige la cuenta contra la que va (cliente, deudor/acreedor diverso o cualquier cuenta):</div>
                   <SelCuenta ctas={ctas} value={contra} onChange={setContra} />
                 </>
-              ) : (
+              )}
+              {modo === 'ingreso' && dep && (
+                <IngresoConIva ctas={ctas} monto={Number(monto)} busy={busy}
+                  onContabilizar={(p: any) => onContabilizarEspecial({ modo: 'ingreso', ...p })} />
+              )}
+              {modo === 'nomina' && !dep && (
                 <NominaPorPagar monto={Number(monto)} busy={busy} onContabilizar={(ids: string[]) => onContabilizarNomina(ids)} />
+              )}
+              {modo === 'proveedor' && !dep && (
+                <ProveedorPasivo ctas={ctas} monto={Number(monto)} busy={busy}
+                  onContabilizar={(p: any) => onContabilizarEspecial({ modo: 'proveedor_pasivo', ...p })} />
               )}
             </div>
           )}
@@ -671,7 +683,7 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onO
                 <Check size={14} /> Sí, es el mismo
               </button>
             )}
-            {clas !== 'pago_tarjeta' && !(clas === 'otro' && !dep && modo === 'nomina') && (
+            {clas !== 'pago_tarjeta' && !(clas === 'otro' && modo !== 'cuenta') && (
               <button onClick={() => onContabilizar((clas === 'otro' || esCompraTarjeta) ? (contra || undefined) : undefined)}
                 disabled={busy || (clas === 'otro' && !contra)}
                 className="flex items-center gap-1 text-sm bg-sky-700 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
@@ -685,6 +697,92 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onO
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/* Botón de modo de la sección "otro". */
+function ModoBtn({ activo, onClick, children }: { activo: boolean; onClick: () => void; children: any }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`text-xs rounded px-2.5 py-1 border ${activo ? 'bg-sky-600 text-white border-sky-600' : 'text-gray-600 hover:bg-gray-50'}`}>
+      {children}
+    </button>
+  );
+}
+
+/* ── Sub-panel: depósito sin datos → ingreso con desglose de IVA ──
+   Cargo Bancos / abono Ingresos (base) + abono IVA trasladado (IVA del total por la tasa). */
+function IngresoConIva({ ctas, monto, busy, onContabilizar }: { ctas: any; monto: number; busy: boolean; onContabilizar: (p: any) => void }) {
+  const [tasa, setTasa] = useState(0.16);
+  const [ingresos, setIngresos] = useState('');
+  const [iva, setIva] = useState('');
+  const base = tasa > 0 ? Math.round((monto / (1 + tasa)) * 100) / 100 : monto;
+  const ivaImp = Math.round((monto - base) * 100) / 100;
+  const listo = !!ingresos && (tasa === 0 || !!iva);
+  return (
+    <div className="space-y-2">
+      <div className="text-xs text-gray-500">Sin datos del depósito: regístralo como ingreso. Cargo Bancos / abono Ingresos + IVA trasladado.</div>
+      <label className="block text-xs text-gray-600">Tasa de IVA
+        <select value={tasa} onChange={(e) => setTasa(Number(e.target.value))} className="input w-full mt-0.5 text-sm">
+          <option value={0.16}>16%</option>
+          <option value={0.08}>8% (frontera)</option>
+          <option value={0}>0% / Exento</option>
+        </select>
+      </label>
+      <div className="text-xs text-gray-600">Cuenta de Ingresos</div>
+      <SelCuenta ctas={ctas} value={ingresos} onChange={setIngresos} placeholder="— cuenta de ingresos —" />
+      {tasa > 0 && (
+        <>
+          <div className="text-xs text-gray-600">Cuenta de IVA trasladado (cobrado)</div>
+          <SelCuenta ctas={ctas} value={iva} onChange={setIva} placeholder="— IVA trasladado —" />
+        </>
+      )}
+      <div className="text-xs text-gray-600 bg-slate-50 border rounded px-2 py-1">
+        Depósito {money(monto)} = Base {money(base)}{tasa > 0 ? ` + IVA ${money(ivaImp)}` : ''}
+      </div>
+      <button onClick={() => onContabilizar({ tasa, ingresosCuentaId: ingresos, ivaCuentaId: iva || undefined })}
+        disabled={busy || !listo}
+        className="flex items-center gap-1 text-sm bg-sky-700 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
+        <PlayCircle size={14} /> Contabilizar ingreso
+      </button>
+    </div>
+  );
+}
+
+/* ── Sub-panel: retiro que cancela el pasivo de una compra PPD ──
+   Cargo Proveedores + IVA acreditable (pagado) / abono Banco + IVA acreditable por pagar. */
+function ProveedorPasivo({ ctas, monto, busy, onContabilizar }: { ctas: any; monto: number; busy: boolean; onContabilizar: (p: any) => void }) {
+  const [tasa, setTasa] = useState(0.16);
+  const [prov, setProv] = useState('');
+  const [ivaPag, setIvaPag] = useState('');
+  const [ivaPp, setIvaPp] = useState('');
+  const iva = Math.round((monto - monto / (1 + tasa)) * 100) / 100;
+  const baseImp = Math.round((monto - iva) * 100) / 100;
+  const listo = !!prov && !!ivaPag && !!ivaPp;
+  return (
+    <div className="space-y-2">
+      <div className="text-xs text-gray-500">Cancela el pasivo de una compra PPD: cargo Proveedores + IVA acreditable (pagado) / abono Banco + IVA acreditable por pagar.</div>
+      <label className="block text-xs text-gray-600">Tasa de IVA
+        <select value={tasa} onChange={(e) => setTasa(Number(e.target.value))} className="input w-full mt-0.5 text-sm">
+          <option value={0.16}>16%</option>
+          <option value={0.08}>8% (frontera)</option>
+        </select>
+      </label>
+      <div className="text-xs text-gray-600">Cuenta de Proveedores</div>
+      <SelCuenta ctas={ctas} value={prov} onChange={setProv} placeholder="— proveedores —" />
+      <div className="text-xs text-gray-600">IVA acreditable (pagado)</div>
+      <SelCuenta ctas={ctas} value={ivaPag} onChange={setIvaPag} placeholder="— IVA acreditable pagado —" />
+      <div className="text-xs text-gray-600">IVA acreditable por pagar</div>
+      <SelCuenta ctas={ctas} value={ivaPp} onChange={setIvaPp} placeholder="— IVA acreditable por pagar —" />
+      <div className="text-xs text-gray-600 bg-slate-50 border rounded px-2 py-1">
+        Retiro {money(monto)} · IVA {money(iva)} · base {money(baseImp)}
+      </div>
+      <button onClick={() => onContabilizar({ tasa, proveedorCuentaId: prov, ivaPagadoCuentaId: ivaPag, ivaPorPagarCuentaId: ivaPp })}
+        disabled={busy || !listo}
+        className="flex items-center gap-1 text-sm bg-sky-700 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
+        <PlayCircle size={14} /> Contabilizar
+      </button>
     </div>
   );
 }

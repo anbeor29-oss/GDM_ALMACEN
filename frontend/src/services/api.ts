@@ -1066,6 +1066,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/contabilizar-nomina`, { reciboIds });
     return r.data;
   }
+  /** Contabilización especial: 'ingreso' (depósito con IVA) o 'proveedor_pasivo' (retiro PPD). */
+  async contabilizarEspecialMovimiento(id: string, payload: any) {
+    const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/contabilizar-especial`, payload);
+    return r.data;
+  }
   async descontabilizarMovimiento(id: string) {
     const r = await this.client.post<APIResponse<any>>(`/treasury/bancos/movimientos/${id}/descontabilizar`, {});
     return r.data;
