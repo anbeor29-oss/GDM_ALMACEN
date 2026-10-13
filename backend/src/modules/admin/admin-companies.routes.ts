@@ -68,7 +68,8 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
             c.created_at,
             c.stamp_package_code,
             c.trial_stamps_left,
-            c.billing_exempt
+            c.billing_exempt,
+            COALESCE(c.producto,'NEXO') AS producto
        FROM companies c
       WHERE ${filters.join(' AND ')}
       ORDER BY c.business_name ASC`,
@@ -147,7 +148,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   const {
     businessName, fiscalRegime, postalCode, billingPlan, capTimbres, monthlyFee,
-    extraStampFee, isActive, timbradoAmbiente,
+    extraStampFee, isActive, timbradoAmbiente, producto,
     // Domicilio fiscal completo (para la CFDI de cobro y el expediente)
     street, extNumber, neighborhood, city, municipality, state,
     // Contacto (contact_email es el remitente/destino de correos automáticos)
@@ -174,6 +175,12 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
     const amb = String(timbradoAmbiente).toUpperCase();
     if (!['PRUEBAS', 'PRODUCCION'].includes(amb)) throw new ValidationError('timbradoAmbiente inválido (PRUEBAS o PRODUCCION)');
     push('timbrado_ambiente', amb);
+  }
+  // Producto contratado (separa los paneles NEXO / IVA del super admin).
+  if (producto !== undefined) {
+    const p = String(producto).toUpperCase();
+    if (!['NEXO', 'IVA', 'AMBOS'].includes(p)) throw new ValidationError('producto inválido (NEXO, IVA o AMBOS)');
+    push('producto', p);
   }
   // Domicilio
   if (street       !== undefined) push('street',        street || null);

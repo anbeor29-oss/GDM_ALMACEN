@@ -252,6 +252,7 @@ function EditCompanyModal({
   const [form, setForm] = useState({
     businessName: company.business_name || '',
     fiscalRegime: company.fiscal_regime || '601',
+    producto:     company.producto || 'NEXO',
     postalCode:   company.postal_code || '',
     street:       company.street || '',
     extNumber:    company.ext_number || '',
@@ -319,6 +320,15 @@ function EditCompanyModal({
               <F form={form} set={set} label="Razón social *" k="businessName" span2 />
               <F form={form} set={set} label="Régimen fiscal (c_RegimenFiscal)" k="fiscalRegime" ph="601" />
               <F form={form} set={set} label="Código postal fiscal" k="postalCode" ph="20000" />
+              <label className="block col-span-2">
+                <span className="text-xs font-medium text-gray-600 block mb-1">Producto contratado <span className="font-normal text-gray-400">(separa los paneles NEXO / IVA en Facturación)</span></span>
+                <select value={form.producto} onChange={(e) => setForm({ ...form, producto: e.target.value })}
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500">
+                  <option value="NEXO">NEXO (ERP)</option>
+                  <option value="IVA">IVA (servicio IVA.HTML)</option>
+                  <option value="AMBOS">Ambos</option>
+                </select>
+              </label>
             </div>
           </div>
 

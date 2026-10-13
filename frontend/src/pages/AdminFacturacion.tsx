@@ -27,8 +27,23 @@ export function AdminFacturacionPage() {
   const data = q.data?.data;
   const prueba: any[] = data?.prueba || [];
   const reales: any[] = data?.reales || [];
-  const totales = data?.totales;
   const cfg = cfgQ.data?.data;
+  // Dos paneles por producto contratado: NEXO (ERP) e IVA (servicio IVA.HTML, su CFDI
+  // lo emite NEXO). 'AMBOS' aparece en los dos. Las listas y los totales se filtran.
+  const [panel, setPanel] = useState<'NEXO' | 'IVA'>('NEXO');
+  const enPanel = (f: any) => {
+    const p = String(f?.producto || 'NEXO').toUpperCase();
+    return panel === 'NEXO' ? (p === 'NEXO' || p === 'AMBOS') : (p === 'IVA' || p === 'AMBOS');
+  };
+  const pruebaF = prueba.filter(enPanel);
+  const realesF = reales.filter(enPanel);
+  const totPanel = {
+    empresasReales: realesF.length,
+    usuariosReales: realesF.reduce((a, f) => a + Number(f.usuarios || 0), 0),
+    renta: realesF.reduce((a, f) => a + Number(f.renta_mxn || 0), 0),
+    extra: realesF.reduce((a, f) => a + Number(f.extra_mxn || 0), 0),
+    total: realesF.reduce((a, f) => a + Number(f.total_mxn || 0), 0),
+  };
 
   if (user?.role !== 'SUPER_ADMIN') {
     return <div className="bg-amber-50 border border-amber-200 text-amber-900 p-6 rounded-lg">
@@ -73,6 +88,14 @@ export function AdminFacturacionPage() {
 
       {cfgOpen && cfg && <PanelConfig cfg={cfg} onGuardado={() => cfgQ.refetch()} />}
 
+      {/* Dos paneles por producto contratado */}
+      <div className="flex gap-2">
+        <button onClick={() => setPanel('NEXO')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium border ${panel === 'NEXO' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>NEXO (ERP)</button>
+        <button onClick={() => setPanel('IVA')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium border ${panel === 'IVA' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>IVA (servicio)</button>
+      </div>
+
       <div className="flex flex-wrap items-center gap-3 bg-white border rounded-lg p-3">
         <label className="text-sm text-gray-600">Periodo:
           <input type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} className="input ml-2 py-1.5 text-sm w-40" />
@@ -85,16 +108,14 @@ export function AdminFacturacionPage() {
         {msg && <span className="text-sm text-gray-700">{msg}</span>}
       </div>
 
-      {/* Totales (solo reales) */}
-      {totales && (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <Tarjeta label="Empresas reales" valor={totales.empresasReales} />
-          <Tarjeta label="Usuarios" valor={totales.usuariosReales} />
-          <Tarjeta label="Renta" valor={money(totales.renta)} />
-          <Tarjeta label="Timbres extra" valor={money(totales.extra)} />
-          <Tarjeta label="Total a cobrar" valor={money(totales.total)} destacado />
-        </div>
-      )}
+      {/* Totales del panel activo (solo reales) */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <Tarjeta label={`Empresas ${panel}`} valor={totPanel.empresasReales} />
+        <Tarjeta label="Usuarios" valor={totPanel.usuariosReales} />
+        <Tarjeta label="Renta" valor={money(totPanel.renta)} />
+        <Tarjeta label="Timbres extra" valor={money(totPanel.extra)} />
+        <Tarjeta label="Total a cobrar" valor={money(totPanel.total)} destacado />
+      </div>
 
       {q.isLoading && <p className="text-gray-500">Cargando…</p>}
 
@@ -110,8 +131,8 @@ export function AdminFacturacionPage() {
             <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Cobro</th>
           </tr></thead>
           <tbody className="divide-y">
-            {prueba.length === 0 && <tr><td colSpan={5} className="px-3 py-4 text-center text-gray-400 italic">Ninguno.</td></tr>}
-            {prueba.map((f) => (
+            {pruebaF.length === 0 && <tr><td colSpan={5} className="px-3 py-4 text-center text-gray-400 italic">Ninguno.</td></tr>}
+            {pruebaF.map((f) => (
               <tr key={f.company_id} className="hover:bg-gray-50">
                 <td className="px-3 py-2"><p className="font-medium text-gray-800">{f.business_name}</p><p className="text-[11px] text-gray-500 font-mono">{f.rfc}</p></td>
                 <td className="px-3 py-2"><span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700">{f.motivo}</span></td>
@@ -139,8 +160,8 @@ export function AdminFacturacionPage() {
             <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Acciones</th>
           </tr></thead>
           <tbody className="divide-y">
-            {reales.length === 0 && <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400 italic">Sin clientes de pago todavía.</td></tr>}
-            {reales.map((f) => (
+            {realesF.length === 0 && <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400 italic">Sin clientes de pago todavía.</td></tr>}
+            {realesF.map((f) => (
               <tr key={f.company_id} className={`hover:bg-gray-50 ${f.status === 'SUSPENDIDO' ? 'bg-rose-50/40' : ''}`}>
                 <td className="px-3 py-2"><p className="font-medium text-gray-800">{f.business_name}</p><p className="text-[11px] text-gray-500 font-mono">{f.rfc}</p></td>
                 <td className="px-3 py-2 text-center">{f.usuarios}</td>
@@ -183,7 +204,7 @@ export function AdminFacturacionPage() {
             <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Excedente</th>
           </tr></thead>
           <tbody className="divide-y">
-            {[...reales, ...prueba].map((f) => (
+            {[...realesF, ...pruebaF].map((f) => (
               <tr key={f.company_id} className="hover:bg-gray-50">
                 <td className="px-3 py-2"><span className="text-gray-800">{f.business_name}</span> <span className="text-[11px] text-gray-400 font-mono">{f.rfc}</span></td>
                 <td className="px-3 py-2 text-center tabular-nums font-medium">{f.timbres_usados}</td>
