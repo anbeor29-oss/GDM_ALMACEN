@@ -690,10 +690,10 @@ export function Layout() {
                   de alta a sus propios usuarios desde su administración. La ruta
                   /admin/accesos queda sin enlace. */}
               <NavItem to="/admin/packages"  icon={navIcon('📦')} accent="violet"  label="Respaldos"             open={sidebarOpen} />
-              <NavItem to="/admin/promocion" icon={navIcon('🎁')} accent="amber"   label="Promoción y cobros"    open={sidebarOpen} />
-              <NavItem to="/import-xml"      icon={navIcon('📥')} accent="amber"   label="Importar XML"          open={sidebarOpen} />
-              {/* Proveedores ya vive en el grupo Compras, que sí ve el ADMIN
-                  de la empresa. Aquí duplicaba la entrada. */}
+              {/* "Promoción y cobros" (/admin/promocion) e "Importar XML" (/import-xml)
+                  se retiraron del sidebar a pedido; las rutas quedan sin enlace.
+                  Proveedores ya vive en el grupo Compras, que sí ve el ADMIN de la
+                  empresa; aquí duplicaba la entrada. */}
             </>
           )}
         </nav>
