@@ -9,7 +9,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShieldAlert, Save, AlertTriangle, Users, FileWarning, CalendarClock, Loader2, Lock, FolderOpen, X } from 'lucide-react';
+import { ShieldAlert, Save, AlertTriangle, Users, FileWarning, CalendarClock, Loader2, Lock, FolderOpen, X, UserX } from 'lucide-react';
 import api from '@/services/api';
 import { claseOpcion } from '@/utils/coloresOpciones';
 
@@ -91,6 +91,22 @@ function PanelActividad({ acts, cfg, onSaved }: { acts: any[]; cfg: any; onSaved
     finally { setBusy(false); }
   };
 
+  /* Quitar al Representante de Cumplimiento: los responsables a veces son removidos
+   * de su puesto y hay que dejar el dato en limpio hasta designar al nuevo. Borra
+   * nombre y RFC y lo PERSISTE de una vez (sin tocar actividad ni padrón). */
+  const limpiarRepresentante = async () => {
+    if (!window.confirm('¿Quitar al Representante de Cumplimiento (nombre y RFC)?\n\nÚsalo cuando el responsable deja el puesto. Captura al nuevo cuando lo designes.')) return;
+    const limpio = { ...form, representante_nombre: '', representante_rfc: '' };
+    setForm(limpio);
+    setBusy(true); setMsg('');
+    try {
+      await api.setPldConfig(limpio);
+      setMsg('Representante de Cumplimiento eliminado. Captura al nuevo cuando lo designes.');
+      onSaved(!!(limpio.activo && limpio.fraccion));
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo limpiar.'); }
+    finally { setBusy(false); }
+  };
+
   return (
     <div className="bg-white rounded-lg shadow p-5 space-y-3">
       <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
@@ -118,6 +134,12 @@ function PanelActividad({ acts, cfg, onSaved }: { acts: any[]; cfg: any; onSaved
             <label className="block"><span className="text-xs text-gray-600">Fecha de alta en el padrón</span>
               <input type="date" value={form.padron_alta} onChange={(e) => setForm({ ...form, padron_alta: e.target.value })} className="input w-full" /></label>
           </div>
+          {(form.representante_nombre || form.representante_rfc) && (
+            <button type="button" onClick={limpiarRepresentante} disabled={busy}
+              className="inline-flex items-center gap-1.5 text-xs text-rose-700 border border-rose-200 rounded-lg px-2.5 py-1.5 hover:bg-rose-50 disabled:opacity-50">
+              <UserX size={13} /> Limpiar Representante de Cumplimiento
+            </button>
+          )}
         </>
       )}
 
