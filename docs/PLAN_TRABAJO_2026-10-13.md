@@ -88,11 +88,13 @@
     (no lee del app IVA.HTML). Migración `companies.producto`.
 
 ## 7º · Modelo "empresas bajo RFC GHC1707275Y0"
-- [ ] **G/arquitectura** · Permitir que, al generar empresas, queden asociadas al **RFC GHC1707275Y0** para que el
-    **súper admin configure los CSD y facture** (de una o varias empresas) de forma central — modelo tipo matriz/despacho.
-    ⚠ **Decisión de arquitectura (confirmar alcance ANTES de tocar):** cómo convive con los **RFC reales** que sí se
-    cobran (p. ej. `BEOA730829LJ0`), con la **exención** (GHC/SAJ, [[exencion-facturacion-dos-rfc]]) y con la
-    **autofacturación/multi-RFC**. Riesgo alto si se mezcla el RFC emisor; definir bien antes de codificar.
+- [x] **Base HECHA** (2026-10-13, commit `5549b43`). Alcance acordado con el usuario: separar **quién EMITE el cobro**
+    del servicio de **a quién se cobra**, sin mezclar el RFC emisor de las ventas de cada empresa.
+    - `companies.es_emisor_cobro` (empresas que emiten el cobro; **GHC** queda marcado) y `empresa_cobro_id` (qué emisor
+      factura a cada cliente). En **Alta** y **Editar empresa** hay selector "empresa que factura el cobro"; el CSD de GHC
+      se carga por el flujo normal (Editar → Cargar CSD). La **exención** GHC/SAJ queda intacta.
+    - **PENDIENTE (siguiente paso, si se quiere):** EMITIR realmente el **CFDI del cobro** con el CSD del emisor
+      (timbrar la factura del servicio al cliente usando `empresa_cobro_id`). Hoy solo quedó la **configuración**.
 
 ---
 
