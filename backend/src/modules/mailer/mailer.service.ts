@@ -146,12 +146,19 @@ function getTransporter(): Transporter {
  */
 export async function sendTestMail(companyId: string, to: string): Promise<void> {
   const { t, from } = await getTransporterForCompany(companyId);
+  // Si la emisora ya tiene datos de depósito, se muestran en la prueba para que el
+  // admin vea cómo se verán en las facturas (con una referencia de ejemplo).
+  const depR = await query<any>(
+    `SELECT business_name, deposito_banco, deposito_titular, deposito_clabe, deposito_cuenta,
+            deposito_referencia, deposito_notas FROM companies WHERE id = $1`, [companyId]);
+  const dep = bloqueDeposito(depR.rows[0], { clienteRfc: 'XAXX010101000', folio: 'FAC-000123' });
+  const base = 'Este correo confirma que la configuración SMTP de tu empresa quedó lista para enviar facturas.';
   await t.sendMail({
     from: from || process.env.MAIL_FROM || process.env.MAIL_USER!,
     to,
     subject: 'Prueba SMTP · GDM NEXO',
-    text: 'Este correo confirma que la configuración SMTP de tu empresa quedó lista para enviar facturas.\n\n— GDM NEXO',
-    html: '<p>Este correo confirma que la configuración SMTP de tu empresa quedó lista para enviar facturas.</p><p>— <b>GDM NEXO</b></p>',
+    text: `${base}${dep ? `\n${dep.text}\n\n(Así se verán los datos de depósito en tus facturas.)` : ''}\n\n— GDM NEXO`,
+    html: `<p>${base}</p>${dep ? `${dep.html}<p style="font-size:12px;color:#64748b">Así se verán los datos de depósito en tus facturas.</p>` : ''}<p>— <b>GDM NEXO</b></p>`,
   });
 }
 
@@ -272,6 +279,8 @@ export async function sendInvoiceMail(input: {
   message: string;
   attachments: MailAttachmentSpec[];
   actingUserEmail?: string;
+  // Para armar la referencia de pago del bloque de depósito (RFC del cliente + folio).
+  reference?: { clienteRfc?: string; folio?: string };
 }): Promise<{
   messageId: string;
   recipients: string[];
@@ -285,9 +294,12 @@ export async function sendInvoiceMail(input: {
     throw new ValidationError('Selecciona al menos un archivo para enviar');
   }
 
-  // Datos del emisor para "from" y firma del correo.
-  const compR = await query<{ business_name: string; contact_email: string | null; rfc: string }>(
-    `SELECT business_name, contact_email, rfc FROM companies WHERE id = $1`,
+  // Datos del emisor para "from", firma y bloque de depósito del correo.
+  const compR = await query<any>(
+    `SELECT business_name, contact_email, rfc,
+            deposito_banco, deposito_titular, deposito_clabe, deposito_cuenta,
+            deposito_referencia, deposito_notas
+       FROM companies WHERE id = $1`,
     [input.companyId]
   );
   if (compR.rows.length === 0) throw new NotFoundError('Empresa emisora no encontrada');
@@ -313,14 +325,17 @@ export async function sendInvoiceMail(input: {
   // Transportador: SMTP propio de la empresa si está configurado, si no env.
   const { t: tx, from: smtpFrom } = await getTransporterForCompany(input.companyId);
   const effectiveFrom = smtpFrom || fromAddress;
+  // El bloque de depósito solo en facturas por COBRAR (el caller manda `reference`),
+  // no en confirmaciones de pago ya recibido.
+  const dep = input.reference ? bloqueDeposito(company, input.reference) : null;
   const info = await tx.sendMail({
     from: `"${company.business_name}" <${effectiveFrom}>`,
     replyTo: fromAddress,
     to: input.to.trim(),
     cc: input.cc?.trim() || undefined,
     subject: input.subject,
-    text: buildPlainText(input.message, company.business_name),
-    html: buildHtml(input.message, company.business_name),
+    text: buildPlainText(input.message, company.business_name, dep?.text),
+    html: buildHtml(input.message, company.business_name, dep?.html),
     attachments,
   });
 
@@ -340,24 +355,60 @@ export async function sendInvoiceMail(input: {
   };
 }
 
-function buildPlainText(userMsg: string, companyName: string): string {
+const escHtml = (s: any) => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function buildPlainText(userMsg: string, companyName: string, extra?: string): string {
   const clean = userMsg.trim() || 'Adjuntamos los documentos fiscales solicitados.';
-  return `${clean}\n\n---\n${companyName}\nSistema de facturación CFDI 4.0`;
+  return `${clean}${extra ? `\n${extra}` : ''}\n\n---\n${companyName}\nSistema de facturación CFDI 4.0`;
 }
 
-function buildHtml(userMsg: string, companyName: string): string {
+function buildHtml(userMsg: string, companyName: string, extraHtml?: string): string {
   const clean = (userMsg.trim() || 'Adjuntamos los documentos fiscales solicitados.')
     .replace(/</g, '&lt;')
     .replace(/\n/g, '<br>');
   return `
     <div style="font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#0f172a">
       <p>${clean}</p>
+      ${extraHtml || ''}
       <hr style="border:0;border-top:1px solid #e2e8f0;margin:20px 0">
       <p style="color:#64748b;font-size:12px">
         <b>${companyName}</b><br>
         Sistema de facturación CFDI 4.0
       </p>
     </div>`;
+}
+
+/** Bloque «datos para tu pago» (transferencia/depósito) de la empresa emisora.
+ *  `ref` arma la referencia con el RFC del cliente y el folio de la factura que
+ *  está pagando; si no viene, usa la referencia sugerida configurada. */
+export function bloqueDeposito(
+  dep: any,
+  ref?: { clienteRfc?: string; folio?: string }
+): { html: string; text: string } | null {
+  const tiene = dep && (dep.deposito_banco || dep.deposito_clabe || dep.deposito_cuenta || dep.deposito_titular);
+  if (!tiene) return null;
+  const refTxt = (ref?.clienteRfc || ref?.folio)
+    ? [ref?.clienteRfc, ref?.folio].filter(Boolean).join(' · ')
+    : (dep.deposito_referencia || '');
+  const filas: Array<[string, string]> = [];
+  if (dep.deposito_banco) filas.push(['Banco', dep.deposito_banco]);
+  if (dep.deposito_titular) filas.push(['Titular', dep.deposito_titular]);
+  if (dep.deposito_clabe) filas.push(['CLABE', dep.deposito_clabe]);
+  if (dep.deposito_cuenta) filas.push(['Cuenta', dep.deposito_cuenta]);
+  if (refTxt) filas.push(['Referencia', refTxt]);
+  const text = ['', 'Datos para tu pago (transferencia o depósito):',
+    ...filas.map(([k, v]) => `  ${k}: ${v}`),
+    ...(dep.deposito_notas ? ['', String(dep.deposito_notas)] : [])].join('\n');
+  const html = `
+      <div style="margin-top:16px;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;background:#f8fafc">
+        <p style="margin:0 0 8px;font-weight:700;color:#0f172a">Datos para tu pago (transferencia o depósito)</p>
+        <table style="font-size:13px;color:#0f172a;border-collapse:collapse">
+          ${filas.map(([k, v]) => `<tr><td style="padding:2px 12px 2px 0;color:#64748b">${escHtml(k)}</td><td style="padding:2px 0;font-weight:600">${escHtml(v)}</td></tr>`).join('')}
+        </table>
+        ${dep.deposito_notas ? `<p style="margin:8px 0 0;font-size:12px;color:#475569">${escHtml(dep.deposito_notas)}</p>` : ''}
+      </div>`;
+  return { html, text };
 }
 
 /**

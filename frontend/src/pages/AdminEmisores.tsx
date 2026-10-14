@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, Mail, Landmark, Star, Check, Loader2, Send, Save, AlertTriangle } from 'lucide-react';
+import { Building2, Mail, Landmark, Star, Check, Loader2, Send, Save, AlertTriangle, Plus, KeyRound, X, Upload } from 'lucide-react';
 import api from '@/services/api';
 
 type Tab = 'emisoras' | 'smtp' | 'deposito';
@@ -76,6 +76,8 @@ export function AdminEmisoresPage() {
 /* ── Pestaña 1: qué empresas son emisoras + cuál es la predeterminada ── */
 function EmisorasTab({ candidatas, emisoras, envRfc, onChange, flash }: any) {
   const [busy, setBusy] = useState('');
+  const [showNueva, setShowNueva] = useState(false);
+  const [csdTarget, setCsdTarget] = useState<any>(null);
   const marcar = async (c: any, esEmisor: boolean, predeterminado: boolean) => {
     setBusy(c.id);
     try { await api.setEmisor(c.id, { esEmisor, predeterminado }); flash('Guardado.'); onChange(); }
@@ -93,6 +95,14 @@ function EmisorasTab({ candidatas, emisoras, envRfc, onChange, flash }: any) {
             : <> El cobro automático no emitirá CFDI hasta que marques una.</>}</span>
         </div>
       )}
+
+      <div className="flex justify-end">
+        <button onClick={() => setShowNueva((v) => !v)}
+          className="inline-flex items-center gap-1.5 bg-sky-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-sky-700">
+          <Plus size={15} /> Nueva empresa emisora
+        </button>
+      </div>
+      {showNueva && <NuevaEmisora onDone={() => { setShowNueva(false); onChange(); }} flash={flash} />}
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <table className="w-full text-sm">
@@ -115,7 +125,11 @@ function EmisorasTab({ candidatas, emisoras, envRfc, onChange, flash }: any) {
                 <tr key={c.id} className="border-t border-gray-100">
                   <td className="px-4 py-2.5 font-medium text-gray-800">{c.business_name}</td>
                   <td className="px-3 py-2.5 font-mono text-xs text-gray-500">{c.rfc}</td>
-                  <td className="px-3 py-2.5 text-center">{em ? (em.tiene_csd ? <Check className="inline text-emerald-600" size={16} /> : <span className="text-rose-500 text-xs">falta</span>) : <span className="text-gray-300">—</span>}</td>
+                  <td className="px-3 py-2.5 text-center">
+                    {!em ? <span className="text-gray-300">—</span>
+                      : em.tiene_csd ? <Check className="inline text-emerald-600" size={16} />
+                      : <button onClick={() => setCsdTarget(c)} className="text-xs text-sky-600 hover:underline inline-flex items-center gap-1"><Upload size={12} /> Cargar</button>}
+                  </td>
                   <td className="px-3 py-2.5 text-center">{em ? (em.tiene_smtp ? <Check className="inline text-emerald-600" size={16} /> : <span className="text-amber-600 text-xs">—</span>) : <span className="text-gray-300">—</span>}</td>
                   <td className="px-3 py-2.5 text-center">
                     <input type="checkbox" checked={esEmisor} disabled={busy === c.id}
@@ -137,8 +151,148 @@ function EmisorasTab({ candidatas, emisoras, envRfc, onChange, flash }: any) {
       </div>
       <p className="text-xs text-gray-400">
         Una emisora es una empresa de NEXO con su <b>CSD</b> cargado. La <b>predeterminada</b> (★) es la que cobra a los
-        usuarios; puedes tener varias y cambiarla cuando quieras.
+        usuarios; puedes tener varias y cambiarla cuando quieras. Captura una emisora nueva aquí o desde <b>Empresas</b>;
+        su contabilidad vive en NEXO como cualquier empresa.
       </p>
+
+      {csdTarget && (
+        <CsdUploader company={csdTarget} onClose={() => setCsdTarget(null)}
+          onDone={() => { setCsdTarget(null); flash('CSD cargado.'); onChange(); }} />
+      )}
+    </div>
+  );
+}
+
+/* Alta rápida de una empresa emisora (razón social + datos fiscales mínimos).
+ * Crea la empresa y la marca como emisora; su CSD se carga con «Cargar» en la fila. */
+function NuevaEmisora({ onDone, flash }: any) {
+  const [f, setF] = useState<any>({ businessName: '', rfc: '', fiscalRegime: '601', postalCode: '' });
+  const [busy, setBusy] = useState(false);
+  const set = (k: string) => (e: any) => setF((p: any) => ({ ...p, [k]: e.target.value }));
+  const REGIMENES = ['601', '603', '605', '606', '612', '620', '621', '622', '626', '628'];
+
+  const crear = async () => {
+    if (!f.businessName.trim() || !/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i.test(f.rfc.trim())) {
+      flash('', 'Captura razón social y un RFC válido.'); return;
+    }
+    setBusy(true);
+    try {
+      const r: any = await api.adminCreateCompany({
+        businessName: f.businessName.trim(), rfc: f.rfc.trim().toUpperCase(),
+        fiscalRegime: f.fiscalRegime, postalCode: f.postalCode.trim() || undefined,
+      });
+      const id = r?.data?.id || r?.data?.company?.id || r?.id;
+      if (id) await api.setEmisor(id, { esEmisor: true, predeterminado: false });
+      flash('Empresa emisora creada. Ahora carga su CSD con «Cargar» en su fila.');
+      onDone();
+    } catch (e: any) {
+      flash('', e?.response?.data?.message || 'No se pudo crear la empresa.');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 space-y-3">
+      <p className="text-sm font-semibold text-sky-800">Nueva empresa emisora</p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Campo label="Razón social"><input className="input" value={f.businessName} onChange={set('businessName')} placeholder="RAZÓN SOCIAL S.A. DE C.V." /></Campo>
+        <Campo label="RFC"><input className="input font-mono uppercase" maxLength={13} value={f.rfc} onChange={set('rfc')} placeholder="XAXX010101000" /></Campo>
+        <Campo label="Régimen fiscal">
+          <select className="input" value={f.fiscalRegime} onChange={set('fiscalRegime')}>
+            {REGIMENES.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </Campo>
+        <Campo label="Código postal"><input className="input font-mono" maxLength={5} value={f.postalCode} onChange={set('postalCode')} placeholder="20126" /></Campo>
+      </div>
+      <button onClick={crear} disabled={busy} className="inline-flex items-center gap-1.5 bg-sky-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-sky-700 disabled:opacity-50">
+        {busy ? <Loader2 className="animate-spin" size={15} /> : <Plus size={15} />} Crear y marcar como emisora
+      </button>
+      <p className="text-[11px] text-gray-500">Luego carga su <b>CSD</b> (.cer + .key) con el botón «Cargar» de su fila para que pueda timbrar.</p>
+    </div>
+  );
+}
+
+/* Carga el CSD (.cer + .key + contraseña) de una emisora; reusa inspect + upload
+ * del panel de Empresas (el .cer trae No. de certificado y vigencia). */
+function CsdUploader({ company, onClose, onDone }: any) {
+  const [cerFile, setCerFile] = useState<File | null>(null);
+  const [keyFile, setKeyFile] = useState<File | null>(null);
+  const [pwd, setPwd] = useState('');
+  const [cert, setCert] = useState<any>(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const fileToB64 = async (file: File): Promise<string> => {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    let s = ''; for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
+    return btoa(s);
+  };
+
+  const inspect = async (cer: File | null, key: File | null, p: string) => {
+    if (!cer) { setCert(null); return; }
+    setErr('');
+    try {
+      const r: any = await api.adminInspectCSD(company.id, {
+        cerBase64: await fileToB64(cer),
+        keyBase64: key && p ? await fileToB64(key) : undefined,
+        keyPassword: key && p ? p : undefined,
+      });
+      setCert(r.data);
+    } catch (e: any) { setCert(null); setErr(e?.response?.data?.message || e?.message); }
+  };
+
+  const subir = async () => {
+    if (!cerFile || !keyFile || !pwd) { setErr('Selecciona el .cer, el .key y la contraseña.'); return; }
+    setBusy(true); setErr('');
+    try {
+      await api.adminUploadCSD(company.id, {
+        noCertificado: cert?.no_certificado || '',
+        cerBase64: await fileToB64(cerFile),
+        keyBase64: await fileToB64(keyFile),
+        keyPassword: pwd,
+        validFrom: (cert?.valid_from || '').slice(0, 10) || undefined,
+        validTo: (cert?.valid_to || '').slice(0, 10) || undefined,
+      });
+      onDone();
+    } catch (e: any) { setErr(e?.response?.data?.message || e?.message || 'No se pudo cargar el CSD.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md my-8" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <span className="font-semibold text-gray-700 flex items-center gap-2"><KeyRound size={16} /> Cargar CSD · {company.business_name}</span>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <Campo label="Archivo .cer (público)">
+            <input type="file" accept=".cer" className="text-sm"
+              onChange={(e) => { const fFile = e.target.files?.[0] || null; setCerFile(fFile); inspect(fFile, keyFile, pwd); }} />
+          </Campo>
+          <Campo label="Archivo .key (privado)">
+            <input type="file" accept=".key" className="text-sm"
+              onChange={(e) => { const fFile = e.target.files?.[0] || null; setKeyFile(fFile); inspect(cerFile, fFile, pwd); }} />
+          </Campo>
+          <Campo label="Contraseña del .key">
+            <input type="password" className="input" value={pwd}
+              onChange={(e) => setPwd(e.target.value)} onBlur={() => inspect(cerFile, keyFile, pwd)} />
+          </Campo>
+          {cert && (
+            <div className="text-xs bg-gray-50 border rounded-lg p-2.5 space-y-0.5 text-gray-600">
+              <p>No. certificado: <b className="font-mono">{cert.no_certificado}</b></p>
+              <p>Vigencia: {(cert.valid_from || '').slice(0, 10)} → {(cert.valid_to || '').slice(0, 10)}</p>
+              <p>RFC del .cer: <b className="font-mono">{cert.rfc || '—'}</b> {cert.rfc_matches ? <span className="text-emerald-600">✓ coincide</span> : <span className="text-rose-600">✗ no coincide con {cert.company_rfc}</span>}</p>
+              {cert.key_matches === false && <p className="text-rose-600">La .key o la contraseña no corresponden al .cer.</p>}
+              {cert.expired && <p className="text-rose-600">⚠ El certificado está vencido.</p>}
+            </div>
+          )}
+          {err && <p className="text-sm text-rose-600">{err}</p>}
+          <button onClick={subir} disabled={busy || !cerFile || !keyFile || !pwd}
+            className="inline-flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50">
+            {busy ? <Loader2 className="animate-spin" size={15} /> : <Upload size={15} />} Cargar CSD
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

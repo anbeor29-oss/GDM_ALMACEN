@@ -71,7 +71,7 @@ export function RegistroPage() {
           <GdmLogo size={52} className="shadow-md rounded-full shrink-0" />
           <div>
             <h1 className="text-3xl font-bold text-slate-900 leading-tight">Crea tu cuenta</h1>
-            <p className="text-slate-500 text-sm"><b>72 horas gratis</b> para explorar — 1 RFC, sin tarjeta. · GRUPO HCGM</p>
+            <p className="text-slate-500 text-sm"><b>72 horas gratis</b> para explorar — 1 RFC, sin tarjeta.</p>
           </div>
         </div>
 
@@ -87,7 +87,7 @@ export function RegistroPage() {
 
             <div className="p-6 grid sm:grid-cols-2 gap-4">
               <label className="block sm:col-span-2"><span className="text-sm text-slate-600 flex items-center gap-1.5 mb-1"><Building2 size={14} /> Nombre / Razón Social <span className="text-rose-500">*</span></span>
-                <input value={f.razonSocial} onChange={set('razonSocial')} required className="input w-full" placeholder="GRUPO HCGM S.A. DE C.V." /></label>
+                <input value={f.razonSocial} onChange={set('razonSocial')} required className="input w-full" placeholder="RAZÓN SOCIAL" /></label>
               <label className="block"><span className="text-sm text-slate-600 flex items-center gap-1.5 mb-1"><FileText size={14} /> RFC <span className="text-rose-500">*</span></span>
                 <input value={f.rfc} onChange={set('rfc')} required maxLength={13} className="input w-full font-mono uppercase" placeholder="XAXX010101000" /></label>
               <label className="block"><span className="text-sm text-slate-600 flex items-center gap-1.5 mb-1"><FileText size={14} /> Código Postal <span className="text-rose-500">*</span></span>

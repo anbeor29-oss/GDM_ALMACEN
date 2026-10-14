@@ -254,6 +254,7 @@ export async function issuePlatformInvoice(invoicingId: string): Promise<IssueRe
             (Number(mi.stamps_extra) > 0 ? ` (${mi.stamps_extra} extra)` : '') + `\n` +
             `Total: $${Number(mi.total_mxn).toFixed(2)} + IVA\n\n` +
             `Quedamos atentos a cualquier duda.`,
+          reference: { clienteRfc: mi.client_rfc, folio },
           attachments: [
             { kind: 'invoice_pdf', id: invoice.id },
             { kind: 'invoice_xml', id: invoice.id },

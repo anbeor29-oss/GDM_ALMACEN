@@ -7246,3 +7246,30 @@ por padre + `crearPoliza`), en vez de inventar un proceso nuevo. **OJO:** el pus
 `2026-10-14b_journal_entry_cfdi`; es un importador de ~3 800 pólizas (una transacción c/u) → puede tardar, pero es
 **re-ejecutable** (si el HTTP expira, re-subir continúa sin duplicar). Ver [[migracion-contpaqi-nexo]],
 [[contpaqi-formato-polizas]], [[contabilidad-motor-polizas]].
+
+---
+
+## 2026-10-14 (comercial) — Marca genérica en altas, depósito en el correo de cobro, y alta de emisoras + CSD
+
+Tres ajustes pedidos por el usuario:
+
+**1. No revelar la marca en las altas públicas.** El placeholder del nombre en el registro de **IVA**
+(`views/registro.html`, también en `GDM_IVA`) y en el de **NEXO** (`Registro.tsx`) decía «GRUPO HCGM S.A. DE C.V.» →
+ahora **«RAZÓN SOCIAL»**; se quitó el «· GRUPO HCGM» del subtítulo de NEXO. (Para no darse a conocer desde el inicio.)
+
+**2. Datos de depósito + referencia en el correo de la factura de cobro.** `mailer.service`: `bloqueDeposito(dep, ref)`
+arma un bloque «Datos para tu pago (transferencia o depósito)» con banco/titular/CLABE/cuenta + **Referencia = RFC del
+cliente · folio de la factura** + notas, tomados de la **emisora**. `sendInvoiceMail` lo incluye **solo cuando el caller
+manda `reference`** (factura por cobrar), no en confirmaciones de pago; `issue-invoice` pasa `{clienteRfc, folio}`.
+`buildHtml`/`buildPlainText` aceptan un bloque extra. La **prueba de SMTP** ahora muestra el bloque de depósito (con una
+referencia de ejemplo) para que el admin vea cómo se verá. Datos del depósito = los de `/admin/emisores` → Depósito.
+
+**3. Capturar más emisoras y su CSD desde «Emisor de facturas».** En la pestaña **Emisoras** (`AdminEmisores.tsx`):
+botón **«Nueva empresa emisora»** (alta mínima razón social/RFC/régimen/CP → `adminCreateCompany` + marcar emisora) y, por
+fila sin CSD, **«Cargar»** → modal `CsdUploader` que **reusa** `adminInspectCSD`/`adminUploadCSD` del panel de Empresas
+(lee No. de certificado y vigencia del .cer, valida que la .key corresponda). Así las emisoras se dan de alta aquí y su
+contabilidad vive en NEXO como cualquier empresa.
+
+**Resultado.** `tsc` back+front en verde. Sin migración (reusa columnas `deposito_*`/CSD existentes). Front tocado ⇒ ZIP.
+IVA: el placeholder va en el repo `GDM_IVA` (push a `main` → Render). Ver [[emisor-facturas-superadmin]],
+[[iva-html-satgo]], [[conciliacion-bancaria]].
