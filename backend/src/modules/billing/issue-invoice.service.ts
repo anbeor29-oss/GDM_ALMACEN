@@ -45,6 +45,21 @@ interface PlatformCompany {
 }
 
 export async function getPlatformCompany(): Promise<PlatformCompany | null> {
+  // 1) Emisora PREDETERMINADA marcada en el Súper Admin («Emisor de facturas»).
+  const predet = await query<PlatformCompany>(
+    `SELECT id, rfc, business_name FROM companies
+      WHERE es_emisor_cobro = TRUE AND emisor_predeterminado = TRUE AND deleted_at IS NULL
+      LIMIT 1`
+  );
+  if (predet.rows[0]) return predet.rows[0];
+  // 2) Cualquier emisora marcada (si sólo hay una, ésa cobra).
+  const any = await query<PlatformCompany>(
+    `SELECT id, rfc, business_name FROM companies
+      WHERE es_emisor_cobro = TRUE AND deleted_at IS NULL
+      ORDER BY business_name LIMIT 1`
+  );
+  if (any.rows[0]) return any.rows[0];
+  // 3) Respaldo: la variable de entorno PLATFORM_COMPANY_RFC (comportamiento previo).
   const rfc = platformRfc();
   if (!rfc) return null;
   const r = await query<PlatformCompany>(

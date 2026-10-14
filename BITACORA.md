@@ -7143,3 +7143,64 @@ memoria. (iii) `extraModules` TS *unknown*: el optional chaining no estrecha tip
 
 **Resultado.** `tsc` backend+frontend en verde. Cambios sólo de código (sin migración). Front tocado ⇒ regenerar ZIP
 `build:hosting` para hcgm.com.mx/erp. Ver [[contabilidad-motor-polizas]] y [[conciliacion-bancaria]].
+
+---
+
+## 2026-10-14 (IVA.HTML) — Comercialización: CRM + créditos prepago + bitácora/pagos
+
+**Contexto.** El usuario pidió «construir datos» de la comercialización de IVA.HTML: **registro/CRM + créditos + export
+Excel**. La v1 (2026-10-07) ya tenía autoregistro con 2 pruebas → bloqueo → anualidad $500+IVA y el export a Excel
+(adm-zip). Faltaba el **CRM** (teléfono/empresa/cómo nos conoció + consentimiento LFPDPPP) y el modelo de **créditos
+prepago**.
+
+**Hecho (IVA.HTML, Node/Express + better-sqlite3 — NO es git, se despliega aparte).**
+- **Datos (`src/db/database.js`):** columnas CRM en `usuarios` (`telefono`, `empresa`, `como_conocio`, `aviso_at`,
+  `aviso_version`) + 3 tablas nuevas: `creditos_mov` (libro: el saldo = Σ delta, nunca un número suelto), `uso`
+  (bitácora CONSULTA/EXPORT con la vía) y `pagos` (abonos que acreditan créditos). Migración idempotente (ALTER … ADD
+  COLUMN / CREATE TABLE IF NOT EXISTS).
+- **Acceso unificado (`estadoAcceso`):** orden cliente GDM · anualidad vigente · prueba con consultas · **créditos
+  prepago** · bloqueo. Los créditos sirven aun con la prueba agotada / anualidad vencida / bloqueo. `consumir(id,tipo)`
+  cobra según la vía (prueba = baja 1; créditos = −1; cliente/activo = gratis) y registra la bitácora. 1 crédito = 1
+  CONSULTA; el **export NO vuelve a cobrar** (el mes ya se pagó al consultarlo).
+- **Registro (`auth.js` + `registro.html`):** captura teléfono/empresa/cómo-nos-conoció + **casilla obligatoria de
+  Aviso de Privacidad** (nuevo `public/aviso-privacidad.html`). Guarda el sello de aceptación.
+- **Admin (`admin.js` + `views/admin/dashboard.html`):** columna de **créditos** + botón **«+ Créditos»** (acredita un
+  paquete tras el pago manual → `acreditarPago`), **«Exportar leads (CSV)»** (`GET /admin/leads.csv`), y teléfono/empresa
+  en la tabla. `GET /admin/api/usuarios/:id/detalle` (saldo+uso+pagos).
+- **Validado:** `node --check` en los 4 archivos + prueba de punta a punta (alta → 2 pruebas → bloqueo → acreditar 3
+  créditos → consumir → saldo 2) en una transacción con **rollback** (BD intacta).
+
+**ERROR / aprendizaje.** Al principio iba a tratar «construir datos» como si no existiera nada; la v1 ya tenía la mitad.
+**Lección:** leer el estado real (BD + rutas) antes de diseñar; lo que faltaba era CRM + créditos, no rehacer el alta.
+
+## 2026-10-14 (súper admin) — «Emisor de facturas»: emisoras + predeterminada + SMTP + depósito
+
+**Contexto.** El usuario pidió en el súper admin: (a) datos del **emisor** (GRUPO HCGM) para facturar a usuarios,
+(b) **más de una** empresa emisora, (c) un **menú** para configurar el correo (SMTP de facturas@hcgm.com.mx) y
+(d) un panel para los **datos del depósito**.
+
+**ERROR / aprendizaje (evitado a tiempo).** Casi dupliqué el concepto con una columna nueva `es_emisor_plataforma`.
+Al revisar, la marca de emisora **ya existía** desde ayer: `companies.es_emisor_cobro` + `empresa_cobro_id` (routing por
+cliente), migración `2026-10-13d`, con GHC ya marcada y un `GET /admin/companies/emisores`. **Lección:** grep del
+concepto antes de crear columnas; se CONSTRUYE encima, no se duplica. Reescribí todo para usar `es_emisor_cobro`.
+
+**Hecho.**
+- **Migración `2026-10-14_emisores_deposito.sql`:** SOLO agrega `emisor_predeterminado` (la emisora por defecto cuando el
+  cliente no trae `empresa_cobro_id`; índice único parcial = una sola predeterminada) + `deposito_*` (banco, titular,
+  CLABE, cuenta, referencia, notas). Arranque idempotente: deja a GHC como predeterminada si no hay otra. El SMTP por
+  emisora ya existía (`2026-07-22`).
+- **Backend `admin-emisores.routes.ts`** (montado en `/admin/emisores`, gated súper admin): `GET /` (emisoras +
+  candidatas + RFC del env), `POST /:id` (marca emisora / predeterminada; una sola predeterminada), `PUT /:id/smtp`
+  (reusa `encryptPass`/`invalidateSMTPCache` del mailer), `POST /:id/smtp/test` (`sendTestMail`), `PUT /:id/deposito`
+  (valida CLABE 18).
+- **`issue-invoice.getPlatformCompany`:** ahora resuelve la emisora por **BD** (predeterminada → cualquier
+  `es_emisor_cobro`) y deja `PLATFORM_COMPANY_RFC` sólo como respaldo (antes era la ÚNICA vía).
+- **Frontend `AdminEmisores.tsx`** (ruta `admin/emisores` + NavItem «Emisor de facturas» en el sidebar súper admin):
+  3 pestañas en pastillas de color — **Emisoras** (marcar emisora + estrella de predeterminada, con estado de CSD/SMTP),
+  **Correo (SMTP)** por emisora (+ enviar prueba) y **Depósito** por emisora. `api.ts`: getEmisores/setEmisor/
+  setEmisorSmtp/testEmisorSmtp/setEmisorDeposito. La captura fiscal y el CSD del emisor siguen en **Empresas**; el
+  routing por cliente, en la ficha de empresa (`empresa_cobro_id`).
+
+**Resultado.** `tsc` backend+frontend en verde. **OJO:** el push aplica la migración `2026-10-14_emisores_deposito`.
+Front tocado ⇒ regenerar ZIP `build:hosting` para hcgm.com.mx/erp. Ver [[cobro-por-usuario-algoritmo]],
+[[paquetes-uso-y-landing-nexo]], [[iva-html-satgo]].

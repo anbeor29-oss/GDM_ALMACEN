@@ -38,7 +38,13 @@
   afinarlo** contra el **formato/XSD OFICIAL del DOF por actividad** (claves de actividad e instrumento monetario) y la
   **clave de sujeto obligado del padrón** — se ajusta cuando el usuario pase el formato oficial de su actividad o lo
   validemos en el Portal. Ver [[pld-lfpiorpi]] y `docs/PLD_LFPIORPI_ANALISIS.md`.
-- **Comercializar IVA.HTML (producto de autoservicio).** Idea del usuario (2026-10-06): dejar de usar IVA sólo interno y
+- **Comercializar IVA.HTML — Fase 3 (pagos automáticos) + desplegar.** Las **Fases 1 y 2 YA ESTÁN** (2026-10-14):
+  CRM (teléfono/empresa/cómo-nos-conoció + consentimiento LFPDPPP), **créditos prepago** (tablas `creditos_mov`/`uso`/
+  `pagos`, consumo −1 por consulta, admin acredita paquetes), bitácora y export de leads a CSV. **Falta:** (a) **Fase 3**
+  = pasarela de pago (Stripe/MercadoPago/CoDi) que acredite créditos sola + emita el CFDI del servicio desde NEXO;
+  (b) **desplegar IVA** con estos cambios (IVA no es git: subir los archivos de `src/` + `views/` + `public/` al hosting
+  de IVA en Render, y correr una vez para aplicar la migración idempotente de SQLite). Ver [[iva-html-satgo]].
+- **(histórico) Comercializar IVA.HTML — idea original (2026-10-06):** dejar de usar IVA sólo interno y
   **venderlo**. (a) **Pantalla emergente (modal) de captura de datos** al primer uso: el usuario **graba sus datos**
   (nombre, RFC, correo, teléfono, empresa) antes de poder consultar — sirve de registro/CRM ligero y de aviso de
   privacidad (LFPDPPP). (b) **Monetización:** vender **consultas** (cada descarga/cálculo de IVA del mes = 1 consulta;
@@ -57,6 +63,18 @@
 - **IVA.HTML por SatGo** (al desplegar).
 
 ## ✅ Terminado recientemente (resumen; detalle en BITACORA)
+
+**2026-10-14 — Súper Admin «Emisor de facturas».** Pantalla nueva (`/admin/emisores`, NavItem en el sidebar) con 3
+pestañas: **Emisoras** (marca varias empresas como emisoras del cobro + estrella de predeterminada, sobre el
+`es_emisor_cobro` que ya existía), **Correo (SMTP)** por emisora (reusa el mailer, con envío de prueba) y **Depósito**
+(banco/titular/CLABE/cuenta/referencia). `issue-invoice` ya resuelve la emisora por BD (predeterminada → cualquiera) con
+`PLATFORM_COMPANY_RFC` sólo de respaldo. Migración `2026-10-14_emisores_deposito` (agrega `emisor_predeterminado` +
+`deposito_*`; deja GHC como predeterminada por defecto). `tsc` verde. **Front ⇒ ZIP**; el push aplica la migración.
+
+**2026-10-14 — IVA.HTML comercialización: CRM + créditos prepago.** Registro con CRM + consentimiento LFPDPPP
+(`aviso-privacidad.html`), créditos prepago (`creditos_mov`/`uso`/`pagos`, 1 crédito = 1 consulta, el admin acredita
+paquetes), export de leads a CSV. Validado con rollback. **IVA no es git → desplegar aparte** (ver arriba). Detalle en
+BITACORA y `IVA.HTML/COMERCIALIZACION_IVA.md`.
 
 **2026-10-13 — "Pago de compras" (antes PPD/PUE): cancela el pasivo de PUE y PPD, con guarda anti-doble.** La pestaña
 de Pólizas se **renombró «Pago de compras»** + color **teal**; el pago manual (doble clic → elegir banco) ahora **cancela

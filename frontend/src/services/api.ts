@@ -3207,6 +3207,23 @@ class APIClient {
   async reactivarFacturacion(id: string) {
     return (await this.client.post(`/admin/facturacion/${id}/reactivar`)).data;
   }
+
+  /* ── Emisor de facturas (SUPER_ADMIN): empresas emisoras, SMTP y depósito ── */
+  async getEmisores() {
+    return (await this.client.get('/admin/emisores')).data;
+  }
+  async setEmisor(companyId: string, d: { esEmisor: boolean; predeterminado: boolean }) {
+    return (await this.client.post(`/admin/emisores/${companyId}`, d)).data;
+  }
+  async setEmisorSmtp(companyId: string, d: { mail_host: string; mail_port?: number; mail_secure?: boolean; mail_user: string; mail_pass?: string; mail_from?: string }) {
+    return (await this.client.put(`/admin/emisores/${companyId}/smtp`, d)).data;
+  }
+  async testEmisorSmtp(companyId: string, to?: string) {
+    return (await this.client.post(`/admin/emisores/${companyId}/smtp/test`, { to })).data;
+  }
+  async setEmisorDeposito(companyId: string, d: { deposito_banco?: string; deposito_titular?: string; deposito_clabe?: string; deposito_cuenta?: string; deposito_referencia?: string; deposito_notas?: string }) {
+    return (await this.client.put(`/admin/emisores/${companyId}/deposito`, d)).data;
+  }
   // ── SatGo (proveedor fiscal) ──
   async getSatgoConfig() {
     return (await this.client.get('/admin/satgo/config')).data;

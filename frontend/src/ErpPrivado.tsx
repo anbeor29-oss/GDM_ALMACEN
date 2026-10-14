@@ -28,6 +28,7 @@ import { AdminPackagesPage } from '@/pages/AdminPackages';
 import { AdminUsersPage }    from '@/pages/AdminUsers';
 import { AdminCompaniesPage } from '@/pages/AdminCompanies';
 import { AdminFacturacionPage } from '@/pages/AdminFacturacion';
+import { AdminEmisoresPage } from '@/pages/AdminEmisores';
 import { AdminSatgoPage } from '@/pages/AdminSatgo';
 import { AdminDemosPage } from '@/pages/AdminDemos';
 import { AdminPromocionPage } from '@/pages/AdminPromocion';
@@ -207,6 +208,7 @@ export default function ErpPrivado() {
         {/* Plataforma — SOLO SUPER_ADMIN */}
         <Route path="admin/packages"  element={<SuperAdminRoute><AdminPackagesPage /></SuperAdminRoute>} />
         <Route path="admin/facturacion" element={<SuperAdminRoute><AdminFacturacionPage /></SuperAdminRoute>} />
+        <Route path="admin/emisores" element={<SuperAdminRoute><AdminEmisoresPage /></SuperAdminRoute>} />
         <Route path="admin/satgo" element={<SuperAdminRoute><AdminSatgoPage /></SuperAdminRoute>} />
         <Route path="admin/demos" element={<SuperAdminRoute><AdminDemosPage /></SuperAdminRoute>} />
         {/* Prepago/paquetes y «facturación y consumo» se unieron a Facturación. */}
