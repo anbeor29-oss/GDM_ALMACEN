@@ -64,6 +64,14 @@
 
 ## ✅ Terminado recientemente (resumen; detalle en BITACORA)
 
+**2026-10-14 — Importar respaldo: migración desde Contalink (CTLK).** Dos opciones nuevas en Contabilidad →
+«Importar respaldo»: **cargar catálogo de CTLK** y **subir pólizas de CTLK** (Excel). Lee la estructura real de
+Contalink (catálogo `Num/Nombre/Padre/Agrupador`; libro diario por bloques con CFDI asociados), conserva los números
+de cuenta tal cual, reconstruye la historia sin pérdida y liga los CFDI (tabla `journal_entry_cfdi`). Idempotente
+(catálogo por código; pólizas por hash). Validado con archivos reales: 675 cuentas / 3 824 pólizas (todas cuadran) /
+0 cuentas faltantes. **Para usarse en una empresa NUEVA/vacía; el catálogo va antes que las pólizas.** Migración
+`2026-10-14b_journal_entry_cfdi`. Detalle en BITACORA.
+
 **2026-10-14 — Súper Admin «Emisor de facturas».** Pantalla nueva (`/admin/emisores`, NavItem en el sidebar) con 3
 pestañas: **Emisoras** (marca varias empresas como emisoras del cobro + estrella de predeterminada, sobre el
 `es_emisor_cobro` que ya existía), **Correo (SMTP)** por emisora (reusa el mailer, con envío de prueba) y **Depósito**

@@ -133,6 +133,9 @@ export function ImportarContpaqiPage() {
       {/* Recuperar los XML/CFDI del respaldo a la bóveda (aparecen en el calendario). */}
       <RecuperarXmlRespaldo />
 
+      {/* Migración desde Contalink (CTLK): catálogo + pólizas en Excel. */}
+      <ImportarContalink />
+
       {/* Pasos + descargar herramienta */}
       <div className="bg-white rounded-lg shadow border p-5 space-y-4">
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -401,6 +404,99 @@ export function RecuperarXmlRespaldo() {
           </ul>
         </details>
       )}
+    </div>
+  );
+}
+
+/* ── Migración desde Contalink (CTLK) — catálogo + pólizas en Excel ──
+ * Dos pasos, en orden: primero el catálogo (crea las cuentas con los números de
+ * Contalink tal cual) y luego las pólizas (se mapean por código, así que el
+ * catálogo va antes). Pensado para una empresa NUEVA/vacía. No duplica: reimportar
+ * es seguro (el catálogo casa por código; las pólizas por un hash de su contenido). */
+export function ImportarContalink() {
+  const [busy, setBusy] = useState<'' | 'cat' | 'pol'>('');
+  const [repCat, setRepCat] = useState<any>(null);
+  const [repPol, setRepPol] = useState<any>(null);
+  const [err, setErr] = useState('');
+
+  const subir = async (kind: 'cat' | 'pol', file: File) => {
+    setBusy(kind); setErr('');
+    if (kind === 'cat') setRepCat(null); else setRepPol(null);
+    try {
+      const fd = new FormData();
+      fd.append('archivo', file, file.name);
+      const r: any = kind === 'cat'
+        ? await api.importarContalinkCatalogo(fd)
+        : await api.importarContalinkPolizas(fd);
+      if (kind === 'cat') setRepCat(r.data); else setRepPol(r.data);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || 'No se pudo importar.');
+    } finally { setBusy(''); }
+  };
+
+  const BotonXls = ({ kind, label }: { kind: 'cat' | 'pol'; label: string }) => (
+    <label className={`inline-flex items-center gap-2 border rounded-lg px-3 py-2 text-sm cursor-pointer w-fit ${busy ? 'opacity-50 pointer-events-none' : 'hover:bg-gray-50'}`}>
+      <Upload size={15} /> {busy === kind ? 'Importando…' : label}
+      <input type="file" accept=".xls,.xlsx" className="hidden" disabled={!!busy}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(kind, f); e.currentTarget.value = ''; }} />
+    </label>
+  );
+
+  return (
+    <div className="bg-white rounded-lg shadow border p-5 space-y-3">
+      <div className="flex items-center gap-2">
+        <Database size={18} className="text-indigo-700" />
+        <h2 className="font-semibold text-gray-800">Importar de Contalink (CTLK)</h2>
+      </div>
+      <p className="text-xs text-gray-500">
+        Pasa un cliente de <b>Contalink</b> a esta empresa (úsala <b>vacía</b>). Exporta de Contalink el
+        <b> catálogo de cuentas</b> y el <b>libro diario</b> en <b>Excel</b>. Importa <b>primero el catálogo</b>
+        (se conservan los números de cuenta tal cual) y luego las <b>pólizas</b> (se ligan por código y traen sus
+        <b> CFDI</b>). No duplica: repetirlo es seguro.
+      </p>
+
+      {err && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded px-3 py-2">{err}</p>}
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        {/* Paso 1 — catálogo */}
+        <div className="border rounded-lg p-3 space-y-2">
+          <p className="text-sm font-semibold text-gray-700">1 · Catálogo de cuentas</p>
+          <p className="text-[11px] text-gray-500">Excel con: Num cuenta · Nombre · Cuenta Padre · Agrupador SAT.</p>
+          <BotonXls kind="cat" label="Cargar catálogo de CTLK (.xls)" />
+          {repCat && (
+            <div className="text-xs bg-emerald-50 border border-emerald-200 rounded px-3 py-2 text-emerald-900 space-y-0.5">
+              <p className="flex items-center gap-1.5 font-semibold"><CheckCircle2 size={14} /> Catálogo importado</p>
+              <p>{repCat.creadas} creada(s) · {repCat.yaExistian} ya estaban{repCat.sinAgrupador ? ` · ${repCat.sinAgrupador} sin agrupador` : ''}</p>
+              {repCat.errores?.length > 0 && (
+                <details className="text-rose-700"><summary className="cursor-pointer">{repCat.errores.length} con error</summary>
+                  <ul className="list-disc pl-4">{repCat.errores.slice(0, 15).map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>
+                </details>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Paso 2 — pólizas */}
+        <div className="border rounded-lg p-3 space-y-2">
+          <p className="text-sm font-semibold text-gray-700">2 · Pólizas (libro diario)</p>
+          <p className="text-[11px] text-gray-500">Excel «Impreso de pólizas» de Contalink. Importa el catálogo antes.</p>
+          <BotonXls kind="pol" label="Subir pólizas de CTLK (.xls)" />
+          {repPol && (
+            <div className="text-xs bg-emerald-50 border border-emerald-200 rounded px-3 py-2 text-emerald-900 space-y-0.5">
+              <p className="flex items-center gap-1.5 font-semibold"><CheckCircle2 size={14} /> Pólizas importadas</p>
+              <p>{repPol.creadas} creada(s) · {repPol.yaExistian} ya estaban · {repPol.cfdiLigados} CFDI ligados</p>
+              {repPol.omitidas?.length > 0 && (
+                <details className="text-amber-700"><summary className="cursor-pointer">{repPol.omitidas.length} omitida(s) — ver por qué</summary>
+                  <ul className="list-disc pl-4">{repPol.omitidas.slice(0, 20).map((m: any, i: number) => <li key={i}><b>{m.folio}</b>: {m.motivo}</li>)}</ul>
+                </details>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      <p className="text-[11px] text-gray-400">
+        Al terminar, en <b>Balanza de comprobación</b> dale «Actualizar desde pólizas» para ver los saldos reconstruidos.
+      </p>
     </div>
   );
 }

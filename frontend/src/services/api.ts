@@ -1448,6 +1448,18 @@ class APIClient {
       { headers: { 'Content-Type': 'multipart/form-data' } });
     return r.data;
   }
+  /** Importa el catálogo de Contalink (CTLK) desde Excel (.xls/.xlsx). */
+  async importarContalinkCatalogo(fd: FormData) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/contalink/catalogo', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
+  /** Importa el libro diario (pólizas) de Contalink (CTLK) desde Excel; el catálogo va primero. */
+  async importarContalinkPolizas(fd: FormData) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/contalink/polizas', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data;
+  }
   /** Propone el agrupador SAT de las cuentas que no lo tienen (por nombre + herencia). Sólo propone. */
   async proponerAgrupadores() {
     const r = await this.client.get<APIResponse<any>>('/accounting/cuentas/agrupador/propuestas');

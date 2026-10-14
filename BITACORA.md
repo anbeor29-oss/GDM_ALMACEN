@@ -7204,3 +7204,45 @@ concepto antes de crear columnas; se CONSTRUYE encima, no se duplica. Reescribí
 **Resultado.** `tsc` backend+frontend en verde. **OJO:** el push aplica la migración `2026-10-14_emisores_deposito`.
 Front tocado ⇒ regenerar ZIP `build:hosting` para hcgm.com.mx/erp. Ver [[cobro-por-usuario-algoritmo]],
 [[paquetes-uso-y-landing-nexo]], [[iva-html-satgo]].
+
+---
+
+## 2026-10-14 (contabilidad) — Importar respaldo: migración desde Contalink (CTLK), catálogo + pólizas
+
+**Contexto.** Un cliente (DAVID ISLAS GUERRERO, IAGD860819MP3) migra de **Contalink** a NEXO. El usuario pidió dos
+opciones nuevas en «Importar respaldo»: **cargar el catálogo** y **subir las pólizas** de CTLK, leyendo su estructura
+real, **sin pérdida** y reconstruyendo la historia. Decisiones del usuario (preguntadas, no inventadas): empresa
+**nueva/vacía**, **conservar los números de cuenta tal cual**, **2024-05-06 es el inicio real** (sin apertura previa),
+catálogo = **.xls de Contalink** (naturaleza deducida del agrupador SAT), CFDI = **solo ligar el UUID**.
+
+**Estructura (medida con los archivos reales):**
+- **Catálogo** (`.xls` OLE2): hoja con `Num cuenta | Nombre | Cuenta Padre | Agrupador SAT`, máscara `1-00-00-000`,
+  675 cuentas (649 de movimiento), **todas con agrupador**. (El SAT Anexo 24 XML `…CT.xml` trae lo mismo + `Natur`;
+  no se usa porque el usuario eligió el .xls.)
+- **Libro diario** (`.xls`, 50 317 filas): reporte por **bloques**, una póliza por bloque — `Tipo de póliza`
+  (Compra/Venta/Cobro/Pago/Diario/Nota de Crédito/**Cierre**) · `Fecha` (serial Excel) · `Descripción` (consecutivo) ·
+  renglones `NumCta Nombre | Debe | Haber` · `Totales` · `Notas Adicionales` (concepto) · `CFDI Asociados` (UUID/RFC/Tipo).
+  **3 824 pólizas, TODAS cuadran**, 2024-05-06 → 2026-10-13; **3 947 CFDI ligables**; **0 cuentas usadas fuera del
+  catálogo** (reconstrucción completa, 0 omisiones esperadas).
+
+**Hecho.**
+- **Migración `2026-10-14b_journal_entry_cfdi.sql`:** tabla `journal_entry_cfdi (entry_id, company_id, uuid, rfc,
+  tipo_comprobante, documento)` — una póliza puede traer VARIOS CFDI (un cobro que salda 5 facturas); se guardan TODOS
+  (sin pérdida). Si la póliza trae uno solo, además se sella `uuid_cfdi`/`party_rfc` en los renglones (para que la vista
+  «asiento por UUID» la encuentre desde la bóveda).
+- **Backend `contalink-import.service.ts`** (lee .xls con **SheetJS/xlsx**, ya era dependencia del backend):
+  `importarCatalogoXls` (crea cuentas por padre explícito + agrupador, naturaleza por dígito, ON CONFLICT por código,
+  reusa `asignarAgrupadorFaltante`) e `importarPolizasXls` (máquina de estados por bloques → `crearPoliza`, mismo cuadre
+  por trigger; **idempotente por hash del contenido** `origen_uuid='CTLK:'+sha256(35)` porque Contalink no trae UUID de
+  póliza). Rutas `POST /accounting/contalink/catalogo` y `/contalink/polizas` (multer, igual que el importador CPQ).
+- **Frontend:** componente `ImportarContalink` en `ImportarContpaqi.tsx` (dos pasos: catálogo → pólizas, con reporte y
+  detalle de omitidas). `api.ts`: `importarContalinkCatalogo`/`importarContalinkPolizas`.
+- **Validado** con los archivos reales (parsers en un script aparte, sin BD): catálogo 675 / pólizas 3 824 / 0
+  descuadradas / 0 cuentas faltantes. `tsc` back+front verde.
+
+**Aprendizaje.** Antes de diseñar leí la estructura real (OLE2, bloques, seriales de fecha, agrupador numérico que podía
+perder el 0 final → se lee el texto formateado `.w`) y me apoyé en el importador CPQ existente (mismo patrón de catálogo
+por padre + `crearPoliza`), en vez de inventar un proceso nuevo. **OJO:** el push aplica la migración
+`2026-10-14b_journal_entry_cfdi`; es un importador de ~3 800 pólizas (una transacción c/u) → puede tardar, pero es
+**re-ejecutable** (si el HTTP expira, re-subir continúa sin duplicar). Ver [[migracion-contpaqi-nexo]],
+[[contpaqi-formato-polizas]], [[contabilidad-motor-polizas]].

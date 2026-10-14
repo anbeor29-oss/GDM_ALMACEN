@@ -40,6 +40,7 @@ import * as balanceGeneral from './balance-general.service';
 import * as erContable from './estado-resultados-contable.service';
 import * as indicadores from './indicadores.service';
 import * as contpaqiTxt from './contpaqi-txt.service';
+import * as contalink from './contalink-import.service';
 import * as cierre from './cierre-ejercicio.service';
 import * as diotSvc from './diot.service';
 import * as contabElec from './contabilidad-electronica.service';
@@ -514,6 +515,50 @@ router.post(
       message: `Catálogo CPQ: ${rep.creadas} creada(s), ${rep.yaExistian} ya existían` +
         (rep.sinAgrupador ? `, ${rep.sinAgrupador} sin agrupador` : '') +
         (rep.errores.length ? `, ${rep.errores.length} con error` : '') + '.',
+    });
+  })
+);
+
+/** POST /accounting/contalink/catalogo — catálogo de Contalink (CTLK) en Excel.
+ *  Conserva los números de cuenta tal cual, por padre explícito + agrupador SAT. */
+router.post(
+  '/contalink/catalogo',
+  requireCapability('contabilidad:catalogo'),
+  subir.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = (req as any).file;
+    if (!f) throw new ValidationError('Falta el archivo de Excel del catálogo.');
+    if (!/\.xlsx?$/i.test(f.originalname || '') && !/spreadsheet|excel/.test(f.mimetype || '')) {
+      throw new ValidationError('El catálogo de Contalink debe ser Excel (.xls/.xlsx).');
+    }
+    const rep = await contalink.importarCatalogoXls(companyId(req), f.buffer);
+    res.json({
+      success: true, data: rep,
+      message: `Catálogo CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya existían` +
+        (rep.sinAgrupador ? `, ${rep.sinAgrupador} sin agrupador` : '') +
+        (rep.errores.length ? `, ${rep.errores.length} con error` : '') + '.',
+    });
+  })
+);
+
+/** POST /accounting/contalink/polizas — libro diario de Contalink (CTLK) en Excel.
+ *  Asienta cada póliza (idempotente por hash) y liga sus CFDI. El catálogo va PRIMERO. */
+router.post(
+  '/contalink/polizas',
+  requireCapability('contabilidad:capturar'),
+  subir.single('archivo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = (req as any).file;
+    if (!f) throw new ValidationError('Falta el archivo de Excel del libro diario.');
+    if (!/\.xlsx?$/i.test(f.originalname || '') && !/spreadsheet|excel/.test(f.mimetype || '')) {
+      throw new ValidationError('El libro diario de Contalink debe ser Excel (.xls/.xlsx).');
+    }
+    const rep = await contalink.importarPolizasXls(companyId(req), f.buffer, req.user?.userId);
+    res.json({
+      success: true, data: rep,
+      message: `Pólizas CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya estaban` +
+        (rep.omitidas.length ? `, ${rep.omitidas.length} omitida(s)` : '') +
+        ` · ${rep.cfdiLigados} CFDI ligados.`,
     });
   })
 );
