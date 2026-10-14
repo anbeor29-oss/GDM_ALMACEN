@@ -462,6 +462,7 @@ export async function listarFacturasRecibidasPorPagar(companyId: string) {
             TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha, xml
        FROM cfdi_recibidos
       WHERE company_id=$1
+        AND direccion='recibidos'
         AND pagado_mov_id IS NULL
         AND COALESCE(total,0) > 0
         AND COALESCE(tipo_comprobante,'I') = 'I'
@@ -471,6 +472,29 @@ export async function listarFacturasRecibidasPorPagar(companyId: string) {
     [companyId]);
   return r.rows.map((f: any) => ({
     id: f.id, uuid: f.uuid, rfc_emisor: f.rfc_emisor, nombre_emisor: f.nombre_emisor,
+    total: round2(Number(f.total) || 0), iva: ivaTrasladadoDeXml(String(f.xml || '')),
+    fecha: f.fecha, forma_pago: f.forma_pago, metodo_pago: f.metodo_pago,
+  }));
+}
+
+/** Facturas EMITIDAS (ventas) aún no cobradas por banco — para el modo Cliente de un
+ *  DEPÓSITO. La contraparte es el receptor (cliente). */
+export async function listarFacturasEmitidasPorCobrar(companyId: string) {
+  const r = await query<any>(
+    `SELECT id, uuid, rfc_receptor, nombre_receptor, subtotal, total, forma_pago, metodo_pago,
+            TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha, xml
+       FROM cfdi_recibidos
+      WHERE company_id=$1
+        AND direccion='emitidos'
+        AND pagado_mov_id IS NULL
+        AND COALESCE(total,0) > 0
+        AND COALESCE(tipo_comprobante,'I') = 'I'
+        AND COALESCE(estado_sat,'Vigente') <> 'Cancelado'
+      ORDER BY fecha_emision DESC
+      LIMIT 400`,
+    [companyId]);
+  return r.rows.map((f: any) => ({
+    id: f.id, uuid: f.uuid, rfc_receptor: f.rfc_receptor, nombre_receptor: f.nombre_receptor,
     total: round2(Number(f.total) || 0), iva: ivaTrasladadoDeXml(String(f.xml || '')),
     fecha: f.fecha, forma_pago: f.forma_pago, metodo_pago: f.metodo_pago,
   }));
@@ -543,7 +567,7 @@ export async function contabilizarEspecial(
     if (!(await cuentaValida(companyId, ivaPpId))) return { error: 'elige la cuenta de IVA acreditable por pagar' };
     const facts = (await query<any>(
       `SELECT id, uuid, rfc_emisor, nombre_emisor, total, xml FROM cfdi_recibidos
-        WHERE company_id=$1 AND id = ANY($2::uuid[]) AND pagado_mov_id IS NULL`,
+        WHERE company_id=$1 AND id = ANY($2::uuid[]) AND pagado_mov_id IS NULL AND direccion='recibidos'`,
       [companyId, facturaIds])).rows;
     if (facts.length === 0) return { error: 'las facturas ya no están disponibles (¿ya se pagaron?)' };
     if (facts.length !== facturaIds.length) return { error: 'algunas facturas ya no están disponibles; recarga la lista' };
@@ -567,6 +591,34 @@ export async function contabilizarEspecial(
     lineas.push({ account_id: bankId, abono: sumaTotal, concepto });
     if (sumaIva > 0) lineas.push({ account_id: ivaPpId, abono: sumaIva, concepto: 'IVA acreditable por pagar (cancelado)' });
     tipo = 'EGRESO';
+  } else if (modo === 'cliente_facturas') {
+    // DEPÓSITO contra FACTURAS EMITIDAS (cobro): cuadra el depósito con sus totales,
+    // abono a la subcuenta del CLIENTE de cada una, cargo total a Bancos, y las marca
+    // cobradas para no dejarlas "volando" como cuenta por cobrar.
+    if (!(dep > 0)) return { error: 'este modo es para un depósito' };
+    const facturaIds = Array.isArray(payload?.facturaIds) ? payload.facturaIds.map(String) : [];
+    if (facturaIds.length === 0) return { error: 'selecciona al menos una factura' };
+    const facts = (await query<any>(
+      `SELECT id, uuid, rfc_receptor, nombre_receptor, total FROM cfdi_recibidos
+        WHERE company_id=$1 AND id = ANY($2::uuid[]) AND pagado_mov_id IS NULL AND direccion='emitidos'`,
+      [companyId, facturaIds])).rows;
+    if (facts.length === 0) return { error: 'las facturas ya no están disponibles (¿ya se cobraron?)' };
+    if (facts.length !== facturaIds.length) return { error: 'algunas facturas ya no están disponibles; recarga la lista' };
+    let sumaTotal = 0;
+    for (const f of facts) {
+      const total = round2(Number(f.total) || 0);
+      sumaTotal = round2(sumaTotal + total);
+      const cli = await resolverOCrearSubcuentaTercero(companyId, 'cliente', f.rfc_receptor, f.nombre_receptor);
+      if ('error' in cli) return { error: `cliente ${f.rfc_receptor}: ${cli.error}` };
+      lineas.push({ account_id: cli.id, abono: total, concepto: `Cobro ${f.nombre_receptor || f.rfc_receptor}`.slice(0, 180), uuid_cfdi: f.uuid, party_rfc: f.rfc_receptor });
+      facturasAMarcar.push(f.id);
+    }
+    const tol = Math.max(0.02, 0.01 * facts.length);
+    if (Math.abs(sumaTotal - dep) > tol) {
+      return { error: `las facturas suman ${sumaTotal.toFixed(2)} y el depósito es ${dep.toFixed(2)} (difieren por ${Math.abs(sumaTotal - dep).toFixed(2)})` };
+    }
+    lineas.push({ account_id: bankId, cargo: sumaTotal, concepto });
+    tipo = 'INGRESO';
   } else {
     return { error: 'modo no reconocido' };
   }

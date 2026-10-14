@@ -550,7 +550,7 @@ export function ConciliacionContablePage() {
 /* ── Panel derecho ── */
 function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onOmitir, onContabilizar, onContabilizarNomina, onContabilizarEspecial, onDeshacer, onAbrirComis }: any) {
   const [contra, setContra] = useState('');
-  const [modo, setModo] = useState<'cuenta' | 'nomina' | 'ingreso' | 'proveedor'>('cuenta');   // modo de la sección "otro"
+  const [modo, setModo] = useState<'cuenta' | 'nomina' | 'ingreso' | 'proveedor' | 'cliente'>('cuenta');   // modo de la sección "otro"
   useEffect(() => { setModo('cuenta'); }, [sel.id]);   // al cambiar de movimiento, vuelve al modo base
   const dep = Number(sel.deposito) > 0;
   const monto = dep ? sel.deposito : sel.retiro;
@@ -651,6 +651,7 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onO
             <div className="border rounded p-3 space-y-2">
               <div className="flex gap-1.5 flex-wrap">
                 <ModoBtn activo={modo === 'cuenta'} onClick={() => setModo('cuenta')}>Cuenta directa</ModoBtn>
+                {dep && <ModoBtn activo={modo === 'cliente'} onClick={() => setModo('cliente')}>Cliente (cobrar facturas)</ModoBtn>}
                 {dep && <ModoBtn activo={modo === 'ingreso'} onClick={() => setModo('ingreso')}>Ingreso (con IVA)</ModoBtn>}
                 {!dep && <ModoBtn activo={modo === 'nomina'} onClick={() => setModo('nomina')}>Nómina (pagar recibos)</ModoBtn>}
                 {!dep && <ModoBtn activo={modo === 'proveedor'} onClick={() => setModo('proveedor')}>Proveedor (cancelar pasivo)</ModoBtn>}
@@ -660,6 +661,10 @@ function DetalleMov({ sel, ctas, cfg, mascara, busy, esTarjeta, onConfirmar, onO
                   <div className="text-xs text-gray-500">Sin match automático. Elige la cuenta contra la que va (cliente, deudor/acreedor diverso o cualquier cuenta):</div>
                   <SelCuenta ctas={ctas} value={contra} onChange={setContra} />
                 </>
+              )}
+              {modo === 'cliente' && dep && (
+                <ClientePorCobrar monto={Number(monto)} busy={busy}
+                  onContabilizar={(ids: string[]) => onContabilizarEspecial({ modo: 'cliente_facturas', facturaIds: ids })} />
               )}
               {modo === 'ingreso' && dep && (
                 <IngresoConIva ctas={ctas} monto={Number(monto)} busy={busy}
@@ -816,6 +821,65 @@ function ProveedorPasivo({ ctas, monto, busy, onContabilizar }: { ctas: any; mon
         disabled={busy || !listo}
         className="flex items-center gap-1 text-sm bg-sky-700 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
         <PlayCircle size={14} /> Contabilizar
+      </button>
+    </div>
+  );
+}
+
+/* ── Sub-panel: depósito contra FACTURAS EMITIDAS (cobro) ──
+   Se eligen las facturas emitidas por cobrar (filtro por cliente y/o fecha) que cuadran
+   con el depósito. Cargo Banco / abono a la subcuenta del cliente de cada una; se marcan
+   cobradas. No lleva IVA (el trasladado se reconoció al emitir). */
+function ClientePorCobrar({ monto, busy, onContabilizar }: { monto: number; busy: boolean; onContabilizar: (ids: string[]) => void }) {
+  const q = useQuery({ queryKey: ['facturas-por-cobrar'], queryFn: () => api.getFacturasEmitidasPorCobrar() });
+  const todas: any[] = (q.data as any)?.data || [];
+  const [rfc, setRfc] = useState('');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
+  const [sel, setSel] = useState<Set<string>>(new Set());
+
+  const clientes = Array.from(new Map(todas.map((f) => [f.rfc_receptor, f.nombre_receptor || f.rfc_receptor])).entries());
+  const lista = todas.filter((f) =>
+    (!rfc || f.rfc_receptor === rfc) && (!desde || f.fecha >= desde) && (!hasta || f.fecha <= hasta));
+  const toggle = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const elegidas = todas.filter((f) => sel.has(f.id));
+  const suma = elegidas.reduce((a, f) => a + Number(f.total || 0), 0);
+  const dif = Math.round((suma - monto) * 100) / 100;
+  const tol = Math.max(0.02, 0.01 * Math.max(1, elegidas.length));
+  const cuadra = Math.abs(dif) <= tol && sel.size > 0;
+  return (
+    <div className="space-y-2">
+      <div className="text-xs text-gray-500">Elige las facturas emitidas que cuadran con el depósito. Cargo Banco / abono al Cliente de cada una. Se marcan cobradas.</div>
+      <div className="flex gap-2 flex-wrap">
+        <select value={rfc} onChange={(e) => setRfc(e.target.value)} className="input text-xs py-1 flex-1 min-w-[9rem]">
+          <option value="">Todos los clientes</option>
+          {clientes.map(([r, n]) => <option key={r} value={r}>{n}</option>)}
+        </select>
+        <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="input text-xs py-1" title="Desde" />
+        <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="input text-xs py-1" title="Hasta" />
+      </div>
+      {q.isLoading ? (
+        <p className="text-xs text-gray-500">Cargando facturas…</p>
+      ) : lista.length === 0 ? (
+        <p className="text-xs text-gray-400 italic">No hay facturas emitidas por cobrar con ese filtro.</p>
+      ) : (
+        <div className="border rounded max-h-56 overflow-y-auto divide-y">
+          {lista.map((f) => (
+            <label key={f.id} className="flex items-center gap-2 px-2 py-1 text-xs hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" checked={sel.has(f.id)} onChange={() => toggle(f.id)} />
+              <span className="flex-1 min-w-0 truncate">{f.nombre_receptor || f.rfc_receptor} <span className="text-gray-400">· {f.fecha} · {f.forma_pago || '—'}/{f.metodo_pago || '—'}</span></span>
+              <span className="font-mono shrink-0">{money(Number(f.total))}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      <div className={`text-xs flex items-center justify-between ${cuadra ? 'text-emerald-700 font-medium' : 'text-gray-600'}`}>
+        <span>Seleccionado: <b>{money(suma)}</b> · Depósito: {money(monto)}</span>
+        {sel.size > 0 && !cuadra && <span className="text-amber-700">Difiere {money(Math.abs(dif))}</span>}
+      </div>
+      <button onClick={() => onContabilizar(Array.from(sel))} disabled={busy || !cuadra}
+        className="flex items-center gap-1 text-sm bg-sky-700 text-white rounded px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
+        <PlayCircle size={14} /> Contabilizar cobro
       </button>
     </div>
   );

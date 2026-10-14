@@ -502,6 +502,14 @@ router.get(
   })
 );
 
+/** Facturas emitidas (ventas) por cobrar (para el modo "Cliente" de un depósito). */
+router.get(
+  '/bancos/facturas-por-cobrar',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await concil.listarFacturasEmitidasPorCobrar(companyId(req)) });
+  })
+);
+
 /** Contabiliza un retiro como PAGO DE NÓMINA contra los recibos elegidos
  *  (body: { reciboIds: string[] }) → cargo 210.01 Nómina por pagar / abono Bancos. */
 router.post(
