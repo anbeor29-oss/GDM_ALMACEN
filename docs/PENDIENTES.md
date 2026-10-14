@@ -1,6 +1,6 @@
 # Pendientes — GDM NEXO
 
-> Lista viva de lo que falta. Actualizada 2026-10-06. Lo hecho se documenta en `BITACORA.md`.
+> Lista viva de lo que falta. Actualizada 2026-10-13. Lo hecho se documenta en `BITACORA.md`.
 
 ## 🔴 Bloqueado / requiere acción del usuario (no es código)
 
@@ -57,6 +57,21 @@
 - **IVA.HTML por SatGo** (al desplegar).
 
 ## ✅ Terminado recientemente (resumen; detalle en BITACORA)
+
+**2026-10-13 — "Pago de compras" (antes PPD/PUE): cancela el pasivo de PUE y PPD, con guarda anti-doble.** La pestaña
+de Pólizas se **renombró «Pago de compras»** + color **teal**; el pago manual (doble clic → elegir banco) ahora **cancela
+el pasivo** también de las **PPD sin complemento REP** (antes sólo PUE). Asiento: *Cargo proveedor + Cargo 118.01 IVA
+acred. pagado / Abono 102 banco + Abono 119.01 IVA por acreditar*. Guarda **REP↔factura** (`docsRelacionadosDeXml` +
+`pagadaPorComplemento`) en las dos direcciones para no cancelar dos veces el mismo pasivo (manual↔complemento). `tsc`
+verde, sin migración. **Front tocado ⇒ regenerar ZIP `build:hosting`.** Ver [[contabilidad-motor-polizas]].
+
+**2026-10-13 — Lote del día (detalle en BITACORA/PLAN_TRABAJO_2026-10-13).** (1) **Validación de CFDI** como submenú de
+Contabilidad→Reportes (entre SAT y Cédulas). (2) **Plan de negocios** PDF (punto 7). (3) **PLD**: botón para limpiar al
+Representante de Cumplimiento. (4) **Conciliación bancaria**: modos por tipo (Nómina/Ingreso/Proveedor/Cliente), con
+**autofiltro** (depósito→emitidas por cobrar; retiro→recibidas por pagar) para no dejar facturas volando. (5) **Reportes
+NIF/Estados Financieros**: autoactualizan desde pólizas al entrar, con aviso de espera. (6) **CIF y 32-D por e.firma**
+(`csffiel`/`ocfiel`, PDF) y **autodescarga al dar de alta** una empresa. (7) Puntos 1-7 del plan (alta de empresa, módulos
+por usuario, reseteo de claves, precios, orden de usuarios, empresas bajo RFC).
 
 **2026-10-07 — Cumplimiento fiscal consolidado en el Panel fiscal; hub ELIMINADO.** Todo el cumplimiento vive ahora en
 el **Panel fiscal**: opiniones (32-D/CIF/IMSS/INFONAVIT) y las consultas (**Notificaciones**, **Declaraciones**,

@@ -25,6 +25,20 @@ export function complementoDeXml(xml: string): { monto: number; iva: number } {
   return { monto: Math.round(monto * 100) / 100, iva: Math.round(iva * 100) / 100 };
 }
 
+/** Los UUID de las facturas que un complemento de pago (REP) relaciona en
+ *  Pago/DoctoRelacionado@IdDocumento. En MAYÚSCULAS y sin repetir. Sirve para
+ *  ligar el complemento con la(s) factura(s) original(es): la póliza del REP se
+ *  guarda con el UUID DEL COMPLEMENTO, no con el de la factura, así que sin esto
+ *  no se puede saber que una factura PPD ya quedó pagada por su complemento. */
+export function docsRelacionadosDeXml(xml: string): string[] {
+  const out = new Set<string>();
+  for (const d of xml.match(/<(?:\w+:)?DoctoRelacionado\b[^>]*>/g) || []) {
+    const id = attr(d, 'IdDocumento');
+    if (id) out.add(id.toUpperCase());
+  }
+  return [...out];
+}
+
 /** Los conceptos de un CFDI, leídos del XML sin parser completo. `importe` es el
  *  bruto (Concepto@Importe, antes de descuento) y `descuento` el del propio
  *  concepto; el NETO gravado es `importe − descuento`, que es sobre lo que se

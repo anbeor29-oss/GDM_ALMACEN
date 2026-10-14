@@ -49,14 +49,16 @@ const COLOR_CAT: Record<string, { badge: string; accent: string; dot: string }> 
   nomina:    { badge: 'bg-amber-100 text-amber-700',     accent: 'border-l-amber-400',   dot: 'bg-amber-500' },
   manual:    { badge: 'bg-slate-100 text-slate-600',     accent: 'border-l-slate-300',   dot: 'bg-slate-400' },
   otro:      { badge: 'bg-gray-100 text-gray-600',       accent: 'border-l-gray-300',    dot: 'bg-gray-400' },
+  ppdpue:    { badge: 'bg-teal-100 text-teal-700',       accent: 'border-l-teal-400',    dot: 'bg-teal-500' },
 };
 const FILTROS = [
   ['', 'Todas'], ['venta', 'Ventas'], ['compra', 'Compras'],
   ['cobropago', 'Cobros/Pagos'], ['nomina', 'Nómina'], ['manual', 'Manuales'],
-  // PPD/PUE no es un origen de póliza: es la pantalla de comprobantes recibidos
-  // (el mismo menú de EML → Recibidos) para, con doble clic, contabilizar el pago
-  // de las facturas recibidas con método PUE. No lleva conteo de pólizas.
-  ['ppdpue', 'PPD/PUE'],
+  // "Pago de compras" no es un origen de póliza: es la pantalla de comprobantes
+  // recibidos (el mismo menú de EML → Recibidos) para, con doble clic, contabilizar
+  // el pago de las facturas recibidas (PUE, o PPD sin complemento) y cancelar su
+  // pasivo. No lleva conteo de pólizas.
+  ['ppdpue', 'Pago de compras'],
 ] as const;
 
 export function PolizasListaPage() {
@@ -243,7 +245,7 @@ export function PolizasListaPage() {
         {FILTROS.map(([k, label]) => {
           const n = k ? cuenta(k) : todas.length;
           const activo = filtro === k;
-          const col = k && k !== 'ppdpue' ? COLOR_CAT[k] : null;
+          const col = k ? COLOR_CAT[k] : null;
           return (
             <button key={k} onClick={() => setFiltro(k)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
@@ -298,8 +300,9 @@ export function PolizasListaPage() {
         <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{msg}</p>
       )}
 
-      {/* PPD/PUE: la misma pantalla de EML → Recibidos. Doble clic en un recibido
-          abre su asiento y genera el pago del CFDI recibido con método PUE. */}
+      {/* Pago de compras: la misma pantalla de EML → Recibidos. Doble clic en un
+          recibido abre su asiento y, si tiene compra sin pago, cancela su pasivo
+          (PUE, o PPD cuyo complemento de pago aún no llega). */}
       {filtro === 'ppdpue' ? (
         <TablaComprobantesSat direccion="recibidos" />
       ) : (

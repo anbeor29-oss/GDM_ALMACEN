@@ -1739,7 +1739,8 @@ router.post(
   })
 );
 
-/** POST /accounting/polizas/pago-pue — genera el pago de UNA factura PUE. body: { uuid, bancoCuentaId }. */
+/** POST /accounting/polizas/pago-pue — genera el pago de UNA factura recibida (PUE,
+ *  o PPD sin complemento) y cancela su pasivo. body: { uuid, bancoCuentaId }. */
 router.post(
   '/polizas/pago-pue',
   requireCapability('contabilidad:capturar'),

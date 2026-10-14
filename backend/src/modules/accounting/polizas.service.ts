@@ -18,7 +18,7 @@
  */
 import { query, transaction } from '../../config/database';
 import { resolverOCrearSubcuentaTercero } from './catalogo-terceros.service';
-import { conceptosDeXml, complementoDeXml, mapaProductoCuenta } from './ventas-cuentas.service';
+import { conceptosDeXml, complementoDeXml, docsRelacionadosDeXml, mapaProductoCuenta } from './ventas-cuentas.service';
 import { mapaProductoCuentaCompra } from './compras-cuentas.service';
 
 export interface LineaPoliza {
@@ -470,6 +470,15 @@ export async function generarCobrosPagosDelMes(
       if (!banco) { omitidas.push({ folio: folioTxt, motivo: 'falta la cuenta de banco (agrupador 102.01)' }); continue; }
       const { monto, iva } = complementoDeXml(String(c.xml));
       if (monto <= 0) { omitidas.push({ folio: folioTxt, motivo: 'el complemento no trae monto' }); continue; }
+      // Si la(s) factura(s) de este complemento ya se pagaron a mano (pago PPD/PUE
+      // en la pantalla de pólizas), el pasivo ya se canceló: no se duplica aquí.
+      const relac = docsRelacionadosDeXml(String(c.xml));
+      if (relac.length) {
+        const yaManual = (await query<any>(
+          `SELECT 1 FROM journal_entries WHERE company_id=$1 AND origen_uuid = ANY($2::text[]) LIMIT 1`,
+          [companyId, relac.map((u) => `PAGOPUE:${u}`)])).rows[0];
+        if (yaManual) { omitidas.push({ folio: folioTxt, motivo: 'su factura ya se pagó a mano; no se duplica' }); continue; }
+      }
       const prov = await resolverOCrearSubcuentaTercero(companyId, 'proveedor', c.rfc_emisor, c.nombre_emisor);
       if ('error' in prov) { omitidas.push({ folio: folioTxt, motivo: `proveedores: ${prov.error}` }); continue; }
 
@@ -547,26 +556,59 @@ export async function pagosPuePendientes(companyId: string, anio: number, mes: n
     .filter((x) => x.total > 0);
 }
 
-/** Genera la póliza de pago de UN recibido PUE contra la cuenta bancaria elegida. */
+/** ¿Esta factura (recibida) ya quedó pagada por un complemento de pago (REP)
+ *  que YA se contabilizó? El REP la referencia en DoctoRelacionado@IdDocumento,
+ *  pero su póliza se liga por el UUID DEL COMPLEMENTO (origen_uuid = uuid del REP),
+ *  así que buscamos los REP recibidos que mencionan esta factura y vemos si alguno
+ *  ya tiene su pago. Cierra el punto ciego: sin esto el pago manual (abajo) y el
+ *  pago por complemento (`generarCobrosPagosDelMes`) podrían cancelar dos veces el
+ *  mismo pasivo. */
+export async function pagadaPorComplemento(companyId: string, uuidFactura: string): Promise<boolean> {
+  const u = String(uuidFactura).toUpperCase();
+  const reps = (await query<any>(
+    `SELECT uuid, xml FROM cfdi_recibidos
+      WHERE company_id=$1 AND direccion='recibidos' AND tipo_comprobante='P' AND xml IS NOT NULL
+        AND (estado_sat IS NULL OR estado_sat <> 'Cancelado')`,
+    [companyId])).rows;
+  const repsRelac = reps
+    .filter((r) => docsRelacionadosDeXml(String(r.xml)).includes(u))
+    .map((r) => r.uuid);
+  if (!repsRelac.length) return false;
+  const hit = (await query<any>(
+    `SELECT 1 FROM journal_entries WHERE company_id=$1 AND origen_uuid = ANY($2::text[]) LIMIT 1`,
+    [companyId, repsRelac])).rows[0];
+  return !!hit;
+}
+
+/** Genera la póliza de pago de UN recibido (PUE o PPD) contra la cuenta bancaria
+ *  elegida. En PUE no hay complemento; en PPD es el pago "a mano" de una factura
+ *  cuyo complemento aún no está en el sistema (p. ej. el proveedor no lo emitió):
+ *  antes de asentarlo se verifica que no exista ya el pago por complemento. */
 export async function generarPagoPue(
   companyId: string, uuid: string, bancoCuentaId: string, userId?: string,
 ): Promise<{ ok: true; folio: number } | { error: string }> {
   const c = (await query<any>(
     `SELECT uuid, serie, folio, TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha_emision,
-            total, nombre_emisor, rfc_emisor, xml, metodo_pago
+            total, nombre_emisor, rfc_emisor, xml, metodo_pago, tipo_comprobante, pagado_mov_id
        FROM cfdi_recibidos WHERE company_id=$1 AND uuid=$2 AND direccion='recibidos' LIMIT 1`,
     [companyId, uuid])).rows[0];
   if (!c) return { error: 'no se encontró el CFDI' };
-  if (c.metodo_pago && c.metodo_pago !== 'PUE') return { error: 'este CFDI es PPD: su pago va por complemento, no por aquí' };
+  if (c.tipo_comprobante && c.tipo_comprobante !== 'I') return { error: 'solo se paga desde aquí una factura de ingreso (I)' };
   if (!c.xml) return { error: 'el CFDI no tiene XML' };
   const total = round2(c.total);
   if (total <= 0) return { error: 'el CFDI no tiene importe' };
+  const esPpd = (c.metodo_pago || '') === 'PPD';
 
   // Si ese CFDI ya se pagó desde el banco (conciliación), no se duplica el abono a la 102.
   const yaBanco = (await query<any>(
     `SELECT 1 FROM bancos_movimientos WHERE company_id=$1 AND cfdi_uuid=$2 AND poliza_id IS NOT NULL LIMIT 1`,
     [companyId, uuid])).rows[0];
-  if (yaBanco) return { error: 'esta factura ya se pagó desde el banco (conciliación); no se duplica' };
+  if (yaBanco || c.pagado_mov_id) return { error: 'esta factura ya se pagó desde el banco (conciliación); no se duplica' };
+
+  // PPD: si su complemento (REP) ya se contabilizó, el pasivo ya se canceló allí.
+  if (esPpd && await pagadaPorComplemento(companyId, uuid)) {
+    return { error: 'esta factura ya se pagó por su complemento (REP); no se duplica' };
+  }
 
   const bc = (await query<any>(
     `SELECT cuenta_contable_id FROM bancos_cuentas WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL`,
@@ -578,9 +620,10 @@ export async function generarPagoPue(
 
   const iva = round2(impuestosDeXml(String(c.xml)).trasladados);
   const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
+  const etiqueta = esPpd ? 'pago PPD' : 'pago PUE';
   const lineas: LineaPoliza[] = [
-    { account_id: prov.id, cargo: total, concepto: 'Proveedores (pago PUE)', uuid_cfdi: c.uuid, party_rfc: c.rfc_emisor },
-    { account_id: bc.cuenta_contable_id, abono: total, concepto: 'Banco (pago PUE)', uuid_cfdi: c.uuid },
+    { account_id: prov.id, cargo: total, concepto: `Proveedores (${etiqueta})`, uuid_cfdi: c.uuid, party_rfc: c.rfc_emisor },
+    { account_id: bc.cuenta_contable_id, abono: total, concepto: `Banco (${etiqueta})`, uuid_cfdi: c.uuid },
   ];
   if (iva > 0) {
     const c118 = await cuentaPorAgrupador(companyId, '118.01');
@@ -630,7 +673,7 @@ export async function generarPagosPueDelMes(
  */
 export async function asientoPorUuid(companyId: string, uuid: string) {
   const c = (await query<any>(
-    `SELECT uuid, serie, folio, total, moneda, metodo_pago, nombre_emisor, rfc_emisor, tipo_comprobante,
+    `SELECT uuid, serie, folio, total, moneda, metodo_pago, nombre_emisor, rfc_emisor, tipo_comprobante, direccion,
             TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha
        FROM cfdi_recibidos WHERE company_id=$1 AND uuid=$2 LIMIT 1`, [companyId, uuid])).rows[0];
 
@@ -661,6 +704,12 @@ export async function asientoPorUuid(companyId: string, uuid: string) {
   const pagadaPue = ents.some((e) => e.origen_uuid === `PAGOPUE:${uuid}`);
   const pagadaBanco = asientos.some((a) =>
     a.regla !== 'compras_cfdi_v1' && a.lineas.some((l: any) => /^102/.test(l.codigo || '') && Number(l.abono) > 0));
+  const esRecibido = (c?.direccion || '') === 'recibidos';
+  // PPD recibido: su complemento (REP) se contabiliza con el UUID del complemento,
+  // no con el de la factura, así que `pagadaBanco` no lo ve. Lo detectamos aparte
+  // para no volver a ofrecer el pago manual de algo que ya quedó pagado por el REP.
+  const pagadaComplemento = esRecibido && (c?.metodo_pago || '') === 'PPD' && c?.tipo_comprobante === 'I'
+    ? await pagadaPorComplemento(companyId, uuid) : false;
 
   return {
     comprobante: c ? {
@@ -670,8 +719,9 @@ export async function asientoPorUuid(companyId: string, uuid: string) {
     } : null,
     asientos,
     tieneCompra: ents.some((e) => e.origen_uuid === uuid),
+    esRecibido,
     esPue: (c?.metodo_pago || '') === 'PUE',
-    yaPagada: pagadaPue || pagadaBanco,
+    yaPagada: pagadaPue || pagadaBanco || pagadaComplemento,
   };
 }
 

@@ -335,10 +335,23 @@ function AsientoModal({ uuid, onClose, claveVista }: {
             );
           })}
 
-          {/* Pago PUE: elegir banco (cuentas activas) y generar */}
-          {!q.isLoading && d?.esPue && d?.tieneCompra && !d?.yaPagada && (
+          {/* Pago de la compra (cancelar el pasivo): elegir banco y generar. Sirve
+              para PUE (sin complemento) y para PPD cuyo complemento aún no llega. */}
+          {!q.isLoading && d?.esRecibido && d?.tieneCompra && !d?.yaPagada && (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
-              <p className="text-sm text-emerald-900 font-medium">Factura de contado (PUE) sin pago contabilizado</p>
+              <p className="text-sm text-emerald-900 font-medium">
+                {d?.comprobante?.metodoPago === 'PPD'
+                  ? 'Factura a crédito (PPD) sin pago registrado'
+                  : 'Factura de contado (PUE) sin pago contabilizado'}
+              </p>
+              <p className="text-xs text-emerald-800">
+                Al generarlo se <b>cancela el pasivo</b>: cargo al proveedor por el total e IVA acreditable (pagado),
+                con abono a bancos por el total y al IVA por acreditar.
+                {d?.comprobante?.metodoPago === 'PPD' && (
+                  <> Úsalo solo si el proveedor <b>no</b> te envió el complemento de pago (REP); si luego llega,
+                     no se duplica (se detecta por el CFDI relacionado).</>
+                )}
+              </p>
               {bancosOk.length === 0 ? (
                 <p className="text-xs text-amber-800">
                   {bancosTodos.length === 0
@@ -364,9 +377,9 @@ function AsientoModal({ uuid, onClose, claveVista }: {
               )}
             </div>
           )}
-          {!q.isLoading && d?.esPue && d?.yaPagada && (
+          {!q.isLoading && d?.esRecibido && d?.tieneCompra && d?.yaPagada && (
             <p className="text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded px-3 py-2">
-              Esta factura de contado ya tiene su pago contabilizado.
+              Esta factura ya tiene su pago contabilizado (el pasivo quedó cancelado).
             </p>
           )}
           {msg && <p className="text-sm text-emerald-700">{msg}</p>}

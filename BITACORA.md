@@ -7095,3 +7095,51 @@ Validar CFDI en modales). El menú «Cumplimiento fiscal» ya no existe. `tsc` +
   botón «Salir» claro de arriba (lo reemplaza la X). Los modales ya traían su «Salir».
 - Verificación: `tsc` (front+back) + `vite build` verdes. **OJO:** el push aplica la migración `sat_info_fiscal` en el
   backend. Ver [[panel-fiscal]].
+
+---
+
+## 2026-10-13 (contabilidad) — "Pago de compras": cancelar el pasivo de PUE **y** PPD, con guarda anti-doble contra el REP
+
+**Contexto.** En Pólizas, la pestaña **PPD/PUE** mostraba los recibidos para, con doble clic, pagar los PUE. El usuario
+pidió: (a) **renombrarla y darle color**; (b) que **al generar el pago se cancele el pasivo** con el asiento *Cargo
+Proveedor (total) + Cargo IVA acreditable (pagado) / Abono Bancos (total) + Abono IVA por acreditar*.
+
+**Hecho.**
+- **Pestaña renombrada a «Pago de compras»** + color **teal** (badge/acento/punto en `COLOR_CAT['ppdpue']`,
+  `PolizasLista.tsx`). Sigue sin conteo (no es un origen de póliza, es la vista de recibidos).
+- **El pago ahora también cancela PPD.** `generarPagoPue` (mal llamado, ya sirve PUE y PPD) dejó de rechazar PPD; su
+  asiento era **exactamente** el que pidió el usuario. El panel del asiento (`TablaComprobantesSat.tsx`) se abre para
+  cualquier **recibido con compra sin pagar** (antes sólo `esPue`), con nota para PPD de usarlo **sólo si el proveedor
+  no envió el complemento (REP)**.
+
+**ERROR / aprendizaje #1 — asumí que faltaba código.** "No haces la cancelación" lo leí como *falta implementar*, pero
+la cancelación **ya existía** para PUE (`generarPagoPue`) y para PPD por su complemento REP (`generarCobrosPagosDelMes`).
+**Lección:** antes de construir, verificar qué ya hace el sistema; el trabajo real era **extender** (PPD manual) y
+**cerrar un punto ciego**, no reescribir.
+
+**ERROR / aprendizaje #2 — trampa de doble conteo PPD↔REP (lo importante).** El pago por **complemento REP** se guarda
+con `origen_uuid = UUID del complemento`, **no** el de la factura, y sus partidas llevan `uuid_cfdi = UUID del
+complemento`. Por eso `asientoPorUuid.yaPagada` (que mira las partidas del *uuid de la factura*) **no veía** el pago por
+REP de un PPD: habría ofrecido pagarlo **otra vez** a mano → **doble cancelación del pasivo**. **Solución (en ambas
+direcciones):**
+  - Nuevo `docsRelacionadosDeXml(xml)` (lee `Pago/DoctoRelacionado@IdDocumento`) + `pagadaPorComplemento(company, uuid)`:
+    liga REP↔factura por el documento relacionado y checa si el REP ya tiene póliza.
+  - `generarPagoPue` (PPD): rechaza si `pagadaPorComplemento` (ya se pagó por REP) o si la factura ya trae
+    `pagado_mov_id` (conciliación).
+  - `generarCobrosPagosDelMes` (pagos): **omite** el REP cuyas facturas ya tienen pago manual `PAGOPUE:<uuid>`.
+  - `asientoPorUuid`: `yaPagada` ahora también es verdadero por `pagadaPorComplemento` (PPD-I recibido), y devuelve
+    `esRecibido` para que el panel no aparezca en emitidos.
+  **Lección:** abrir un **segundo camino** para cancelar un pasivo obliga a cerrar el punto ciego en **las dos
+  direcciones** (manual→REP y REP→manual); un UNIQUE por `origen_uuid` no basta cuando los dos caminos usan llaves
+  distintas.
+
+**Otros tropiezos del día (para no repetir).** (i) PDF del plan de negocios con **16 páginas fantasma**: un texto al pie
+en `y=806` caía bajo el margen inferior de pdfkit y disparaba paginación — se arregla con `doc.page.margins.bottom = 0`
+antes del pie (no basta `lineBreak:false`). (ii) Documenté el **timbre como plano** (2000/$2.00) cuando el modelo vivo es
+**escalado** (1000 + 500/usuario, extra $1.30 + $0.20/usuario): verificar contra `facturacion-usuarios.service.ts`, no de
+memoria. (iii) `extraModules` TS *unknown*: el optional chaining no estrecha tipo; normalizar con `rawExtra:any[]` →
+`Array.from(new Set(...map(String)))`. (iv) **Dirección emitidos/recibidos**: `cfdi_recibidos` guarda **ambos**
+(`direccion`); el modo Proveedor de conciliación no filtraba `='recibidos'` y podía listar emitidos — mismo cuidado aquí.
+
+**Resultado.** `tsc` backend+frontend en verde. Cambios sólo de código (sin migración). Front tocado ⇒ regenerar ZIP
+`build:hosting` para hcgm.com.mx/erp. Ver [[contabilidad-motor-polizas]] y [[conciliacion-bancaria]].
