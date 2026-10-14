@@ -36,7 +36,12 @@ const TIPO_POR_DIG: Record<string, string> = {
 const natPorTipo = (t: string): 'DEUDORA' | 'ACREEDORA' => (['ACTIVO', 'COSTO', 'GASTO'].includes(t) ? 'DEUDORA' : 'ACREEDORA');
 
 const norm = (v: any) => String(v == null ? '' : v).normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
-const acctRe = /^(\d-\d\d-\d\d-\d\d\d)\s+(.*)$/;
+const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+// Código de cuenta al INICIO del texto «<código> <nombre>». Mask-agnóstico: cada
+// cliente de Contalink numera distinto (1-00-00-000, 1-000-000, 10-100-0001…), así
+// que se toma cualquier código que empiece con dígito y lleve dígitos/guiones/puntos,
+// seguido de un espacio y el nombre. El importador valida el código contra el catálogo.
+const acctRe = /^(\d[\d.\-]*)\s+(\S.*)$/;
 
 /** Serial de Excel (sistema 1900) → 'YYYY-MM-DD'. */
 function fechaDeSerial(n: number): string {
@@ -264,11 +269,16 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
       const lineas: any[] = [];
       let faltante = '';
       for (const m of p.movimientos) {
-        if (!m.cargo && !m.abono) continue;    // renglones en 0 no cambian el cuadre
+        // Importe NETO del renglón: Contalink a veces registra correcciones con un
+        // importe NEGATIVO del mismo lado. Un cargo −500 = abono +500: se pasa a la
+        // columna correcta como positivo (la base no admite negativos, jl_no_negativos).
+        const neto = round2((m.cargo || 0) - (m.abono || 0));
+        if (neto === 0) continue;              // renglones en 0 no cambian el cuadre
         const id = idPorCodigo.get(m.cuenta);
         if (!id) { faltante = m.cuenta; break; }
         lineas.push({
-          account_id: id, cargo: m.cargo, abono: m.abono, concepto: p.concepto || undefined,
+          account_id: id, cargo: neto > 0 ? neto : 0, abono: neto < 0 ? -neto : 0,
+          concepto: p.concepto || undefined,
           uuid_cfdi: unicoCfdi?.uuid || undefined,
           party_rfc: unicoCfdi?.rfc || undefined,
         });
