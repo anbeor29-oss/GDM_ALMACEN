@@ -743,14 +743,14 @@ export async function crearPolizaManual(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.fecha || ''))) {
     throw new Error('La fecha debe venir como AAAA-MM-DD.');
   }
-  const filas = (d.lineas || []).filter((l) => l && l.codigo && (round2(l.cargo) > 0 || round2(l.abono) > 0));
+  const filas = (d.lineas || []).filter((l) => l && l.codigo && (round2(l.cargo) !== 0 || round2(l.abono) !== 0));
   if (filas.length < 2) throw new Error('Una póliza necesita al menos dos partidas con importe.');
 
   const lineas: LineaPoliza[] = [];
   let sumaCargo = 0, sumaAbono = 0;
   for (const l of filas) {
     const cargo = round2(l.cargo), abono = round2(l.abono);
-    if (cargo > 0 && abono > 0) throw new Error(`La cuenta ${l.codigo} no puede llevar cargo y abono a la vez.`);
+    if (cargo !== 0 && abono !== 0) throw new Error(`La cuenta ${l.codigo} no puede llevar cargo y abono a la vez.`);
     const cuenta = await cuentaPorCodigo(companyId, String(l.codigo).trim());
     if (!cuenta) throw new Error(`La cuenta ${l.codigo} no está en el catálogo.`);
     if (!cuenta.permite_movimientos) throw new Error(`La cuenta ${l.codigo} es de agrupación (tiene subcuentas): no admite movimientos.`);
@@ -762,7 +762,8 @@ export async function crearPolizaManual(
       uuid_cfdi: d.uuid || null, party_rfc: l.party_rfc || null,
     });
   }
-  if (sumaCargo <= 0) throw new Error('La póliza no tiene importes.');
+  // Sin tope de signo: con pólizas de ajuste, Σcargo puede ser ≤ 0; el cuadre y las ≥2 partidas bastan.
+  if (sumaCargo === 0 && sumaAbono === 0 && filas.length < 2) throw new Error('La póliza no tiene importes.');
   if (sumaCargo !== sumaAbono) {
     throw new Error(`No cuadra: cargos ${sumaCargo.toFixed(2)} ≠ abonos ${sumaAbono.toFixed(2)} (diferencia ${(sumaCargo - sumaAbono).toFixed(2)}).`);
   }
@@ -787,21 +788,22 @@ export async function editarPoliza(
   companyId: string, id: string,
   d: { fecha?: string; concepto?: string; lineas: Array<{ codigo: string; cargo?: number; abono?: number; concepto?: string }> }
 ) {
-  const filas = (d.lineas || []).filter((l) => l && l.codigo && (round2(l.cargo) > 0 || round2(l.abono) > 0));
+  const filas = (d.lineas || []).filter((l) => l && l.codigo && (round2(l.cargo) !== 0 || round2(l.abono) !== 0));
   if (filas.length < 2) throw new Error('Una póliza necesita al menos dos partidas con importe.');
 
   const nuevas: Array<{ account_id: string; cargo: number; abono: number; concepto: string | null }> = [];
   let sumaCargo = 0, sumaAbono = 0;
   for (const l of filas) {
     const cargo = round2(l.cargo), abono = round2(l.abono);
-    if (cargo > 0 && abono > 0) throw new Error(`La cuenta ${l.codigo} no puede llevar cargo y abono a la vez.`);
+    if (cargo !== 0 && abono !== 0) throw new Error(`La cuenta ${l.codigo} no puede llevar cargo y abono a la vez.`);
     const cuenta = await cuentaPorCodigo(companyId, String(l.codigo).trim());
     if (!cuenta) throw new Error(`La cuenta ${l.codigo} no está en el catálogo.`);
     if (!cuenta.permite_movimientos) throw new Error(`La cuenta ${l.codigo} es de agrupación: no admite movimientos.`);
     sumaCargo = round2(sumaCargo + cargo); sumaAbono = round2(sumaAbono + abono);
     nuevas.push({ account_id: cuenta.id, cargo, abono, concepto: (l.concepto || d.concepto || '').toString().slice(0, 200) || null });
   }
-  if (sumaCargo <= 0) throw new Error('La póliza no tiene importes.');
+  // Sin tope de signo: con pólizas de ajuste, Σcargo puede ser ≤ 0; el cuadre y las ≥2 partidas bastan.
+  if (sumaCargo === 0 && sumaAbono === 0 && filas.length < 2) throw new Error('La póliza no tiene importes.');
   if (sumaCargo !== sumaAbono) throw new Error(`No cuadra: cargos ${sumaCargo.toFixed(2)} ≠ abonos ${sumaAbono.toFixed(2)}.`);
 
   return transaction(async (client) => {

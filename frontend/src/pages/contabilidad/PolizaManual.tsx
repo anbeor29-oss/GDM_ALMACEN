@@ -79,8 +79,9 @@ export function PolizaManualPage() {
 
   const sumaCargo = round2(lineas.reduce((a, l) => a + (Number(l.cargo) || 0), 0));
   const sumaAbono = round2(lineas.reduce((a, l) => a + (Number(l.abono) || 0), 0));
-  const cuadra = sumaCargo > 0 && sumaCargo === sumaAbono;
-  const conImporte = lineas.filter((l) => l.codigo && (Number(l.cargo) > 0 || Number(l.abono) > 0)).length;
+  // Importes NO cero (un ajuste puede ser negativo); cuadra = ≥2 partidas y sumas iguales (con signo).
+  const conImporte = lineas.filter((l) => l.codigo && (Number(l.cargo) !== 0 || Number(l.abono) !== 0)).length;
+  const cuadra = conImporte >= 2 && sumaCargo === sumaAbono;
 
   const guardar = async () => {
     setBusy(true); setMsg(null);
@@ -88,7 +89,7 @@ export function PolizaManualPage() {
       const r: any = await api.crearPolizaManual({
         tipo, fecha, concepto: concepto.trim() || undefined, uuid: uuid.trim() || null,
         lineas: lineas
-          .filter((l) => l.codigo && (Number(l.cargo) > 0 || Number(l.abono) > 0))
+          .filter((l) => l.codigo && (Number(l.cargo) !== 0 || Number(l.abono) !== 0))
           .map((l) => ({ codigo: l.codigo.trim(), concepto: l.concepto.trim() || undefined, cargo: Number(l.cargo) || 0, abono: Number(l.abono) || 0 })),
       });
       setMsg({ tipo: 'ok', texto: `Póliza #${r.data?.poliza?.folio} guardada.` });

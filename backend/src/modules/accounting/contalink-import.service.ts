@@ -269,15 +269,16 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
       const lineas: any[] = [];
       let faltante = '';
       for (const m of p.movimientos) {
-        // Importe NETO del renglón: Contalink a veces registra correcciones con un
-        // importe NEGATIVO del mismo lado. Un cargo −500 = abono +500: se pasa a la
-        // columna correcta como positivo (la base no admite negativos, jl_no_negativos).
-        const neto = round2((m.cargo || 0) - (m.abono || 0));
-        if (neto === 0) continue;              // renglones en 0 no cambian el cuadre
+        // Se conserva el importe en SU columna con SU signo (NEXO ya acepta negativos):
+        // un ajuste con cargo −500 de Contalink queda como cargo −500, fiel al origen.
+        // Solo si un renglón trae valor en LAS DOS columnas (raro) se netea a una.
+        let cargo = round2(m.cargo || 0), abono = round2(m.abono || 0);
+        if (cargo !== 0 && abono !== 0) { cargo = round2(cargo - abono); abono = 0; }
+        if (cargo === 0 && abono === 0) continue;   // renglones en 0 no cambian el cuadre
         const id = idPorCodigo.get(m.cuenta);
         if (!id) { faltante = m.cuenta; break; }
         lineas.push({
-          account_id: id, cargo: neto > 0 ? neto : 0, abono: neto < 0 ? -neto : 0,
+          account_id: id, cargo, abono,
           concepto: p.concepto || undefined,
           uuid_cfdi: unicoCfdi?.uuid || undefined,
           party_rfc: unicoCfdi?.rfc || undefined,

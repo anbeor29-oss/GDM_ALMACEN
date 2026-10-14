@@ -7273,3 +7273,35 @@ contabilidad vive en NEXO como cualquier empresa.
 **Resultado.** `tsc` back+front en verde. Sin migración (reusa columnas `deposito_*`/CSD existentes). Front tocado ⇒ ZIP.
 IVA: el placeholder va en el repo `GDM_IVA` (push a `main` → Render). Ver [[emisor-facturas-superadmin]],
 [[iva-html-satgo]], [[conciliacion-bancaria]].
+
+---
+
+## 2026-10-14 (contabilidad) — Importador CTLK: máscara agnóstica + NEGATIVOS nativos en las pólizas
+
+**Al importar más respaldos de Contalink** salieron dos fallas (clientes distintos):
+
+**(a) Máscara de cuenta varía por cliente.** El 1er cliente usaba `1-00-00-000`, pero ALEJANDRO AYALA BARBA usa
+`102-01-002`/`301-03`. El regex del código estaba fijo a la 1ª máscara → 0 movimientos → «menos de 2 renglones» (192
+omitidas). Fix: `acctRe` **mask-agnóstico** `/^(\d[\d.\-]*)\s+(\S.*)$/`; el importador valida el código contra el catálogo.
+El layout del reporte es el MISMO entre clientes; solo cambia la máscara. Validado: 192 pólizas, 0 descuadradas.
+
+**(b) NEGATIVOS nativos (decisión del usuario).** Los contadores registran ajustes con importe **negativo del mismo
+lado** (un cargo −500 en vez de un abono +500). NEXO los prohibía (`jl_no_negativos`). Primero los **neteaba** el
+importador (saldo idéntico pero el movimiento bruto cambia de columna); el usuario pidió **conservarlos tal cual**. Se
+habilitaron **negativos nativos** en toda la contabilidad:
+- **Migración `2026-10-14c`:** se quita `jl_no_negativos` y `jl_cargo_o_abono`; se agrega `jl_un_solo_lado` = NOT
+  (cargo<>0 AND abono<>0) (un renglón sigue siendo de UNA columna, pero su importe puede ser negativo). El **cuadre**
+  (trigger Σcargo=Σabono) NO cambia (ahora con signo).
+- **`crearPolizaManual`/`editarPoliza`:** filtros a `!== 0`, «un solo lado» a `cargo!==0 && abono!==0`, se quitó el tope
+  `sumaCargo<=0`.
+- **Importador CTLK:** deja de netear; **conserva el importe en su columna con su signo** (solo netea el raro renglón
+  con valor en las dos columnas).
+- **SAT (Anexo 24 — Balanza):** el SAT **no admite** Debe/Haber negativos; `debeHaberSat()` los **netea a no-negativos
+  conservando el neto** al generar el XML (`contabilidad-electronica.service`). La balanza interna suma con signo
+  (`periodos.service`), así que los saldos salen correctos.
+- **Front:** la lista de pólizas, el PDF y el editor **muestran** los negativos (`!== 0`, antes `> 0` los ocultaba); el
+  editor los carga/guarda; la captura manual deja teclearlos — en `CampoImporte` la tecla **−** en vacío cuadra, y con un
+  importe **alterna el signo**.
+
+**Resultado.** `tsc` back+front en verde. El push aplica `2026-10-14c`. Front tocado ⇒ ZIP. **Reimportar es seguro**
+(idempotente por hash). Ver [[importador-contalink-ctlk]], [[contabilidad-motor-polizas]].

@@ -354,8 +354,8 @@ export function PolizasListaPage() {
                       <tr key={i} className="border-b border-gray-50 last:border-0">
                         <td className="px-3 py-1.5 font-mono text-gray-500 w-28">{formatCuenta(l.codigo, mascara)}</td>
                         <td className="px-2 py-1.5 text-gray-700">{l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}</td>
-                        <td className="px-3 py-1.5 text-right w-28 tabular-nums">{Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
-                        <td className="px-3 py-1.5 text-right w-28 tabular-nums">{Number(l.abono) > 0 ? money(l.abono) : ''}</td>
+                        <td className="px-3 py-1.5 text-right w-28 tabular-nums">{Number(l.cargo) !== 0 ? money(l.cargo) : ''}</td>
+                        <td className="px-3 py-1.5 text-right w-28 tabular-nums">{Number(l.abono) !== 0 ? money(l.abono) : ''}</td>
                       </tr>
                     ))}
                     <tr className="font-semibold bg-gray-50/70">
@@ -423,8 +423,8 @@ function PreviaPoliza({ poliza, mascara, onCerrar }: any) {
       <tr>
         <td class="mono">${formatCuenta(l.codigo, mascara)}</td>
         <td>${(l.nombre || '')}${l.concepto ? ' · ' + l.concepto : ''}${l.uuid_cfdi ? ` <span class="uuid">${l.uuid_cfdi}</span>` : ''}</td>
-        <td class="num">${Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
-        <td class="num">${Number(l.abono) > 0 ? money(l.abono) : ''}</td>
+        <td class="num">${Number(l.cargo) !== 0 ? money(l.cargo) : ''}</td>
+        <td class="num">${Number(l.abono) !== 0 ? money(l.abono) : ''}</td>
       </tr>`).join('');
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Póliza ${poliza.folio}</title>
       <style>
@@ -489,8 +489,8 @@ function PreviaPoliza({ poliza, mascara, onCerrar }: any) {
                     {l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}
                     {l.uuid_cfdi && <span className="ml-1.5 font-mono text-[10px] text-blue-600">{l.uuid_cfdi}</span>}
                   </td>
-                  <td className="px-3 py-1.5 text-right font-mono text-xs">{Number(l.cargo) > 0 ? money(l.cargo) : ''}</td>
-                  <td className="px-3 py-1.5 text-right font-mono text-xs">{Number(l.abono) > 0 ? money(l.abono) : ''}</td>
+                  <td className="px-3 py-1.5 text-right font-mono text-xs">{Number(l.cargo) !== 0 ? money(l.cargo) : ''}</td>
+                  <td className="px-3 py-1.5 text-right font-mono text-xs">{Number(l.abono) !== 0 ? money(l.abono) : ''}</td>
                 </tr>
               ))}
             </tbody>
@@ -517,8 +517,8 @@ function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
   const [lineas, setLineas] = useState<LineaPoliza[]>(
     (poliza.lineas || []).map((l: any) => ({
       codigo: l.codigo || '', nombre: l.nombre || '', concepto: l.concepto || '',
-      cargo: Number(l.cargo) > 0 ? String(l.cargo) : '',
-      abono: Number(l.abono) > 0 ? String(l.abono) : '',
+      cargo: Number(l.cargo) !== 0 ? String(l.cargo) : '',
+      abono: Number(l.abono) !== 0 ? String(l.abono) : '',
     })));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -550,7 +550,8 @@ function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
 
   const sumaCargo = round2(lineas.reduce((a, l) => a + (Number(l.cargo) || 0), 0));
   const sumaAbono = round2(lineas.reduce((a, l) => a + (Number(l.abono) || 0), 0));
-  const cuadra = sumaCargo > 0 && sumaCargo === sumaAbono;
+  const cuadra = sumaCargo === sumaAbono
+    && lineas.filter((l) => l.codigo && (Number(l.cargo) !== 0 || Number(l.abono) !== 0)).length >= 2;
 
   const guardar = async () => {
     setBusy(true); setError('');
@@ -558,7 +559,7 @@ function EditorPoliza({ poliza, onCerrar, onGuardado }: any) {
       await api.editarPoliza(poliza.id, {
         fecha, concepto: concepto.trim(),
         lineas: lineas
-          .filter((l) => l.codigo && (Number(l.cargo) > 0 || Number(l.abono) > 0))
+          .filter((l) => l.codigo && (Number(l.cargo) !== 0 || Number(l.abono) !== 0))
           .map((l) => ({ codigo: l.codigo.trim(), concepto: l.concepto.trim() || undefined, cargo: Number(l.cargo) || 0, abono: Number(l.abono) || 0 })),
       });
       onGuardado();

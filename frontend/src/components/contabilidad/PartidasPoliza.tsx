@@ -46,9 +46,19 @@ export function CampoImporte({ value, onChange, onMinus, className }: {
       type="text" inputMode="decimal" value={mostrado}
       onFocus={() => { setDraft(value); setFoco(true); }}
       onBlur={() => setFoco(false)}
-      onChange={(e) => { const limpio = e.target.value.replace(/[^\d.]/g, ''); setDraft(limpio); onChange(limpio); }}
-      onKeyDown={(e) => { if (e.key === '-') { e.preventDefault(); onMinus(); (e.target as HTMLInputElement).blur(); } }}
-      title="− para cuadrar"
+      onChange={(e) => {
+        // dígitos, punto y UN signo al inicio (importes negativos = ajustes contables)
+        const limpio = e.target.value.replace(/[^\d.\-]/g, '').replace(/(?!^)-/g, '');
+        setDraft(limpio); onChange(limpio);
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== '-') return;
+        e.preventDefault();
+        const el = e.target as HTMLInputElement;
+        if (!el.value) { onMinus(); el.blur(); }                       // vacío: atajo de cuadre
+        else { const v = el.value.startsWith('-') ? el.value.slice(1) : '-' + el.value; setDraft(v); onChange(v); }  // con valor: alterna el signo
+      }}
+      title="− en vacío cuadra; − con un importe alterna el signo (negativo)"
       className={className}
     />
   );

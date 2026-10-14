@@ -62,9 +62,13 @@ export async function balanzaXml(
   }
   const ctas = bal.filas
     .filter((f: any) => f.codigo_agrupador)
-    .map((f: any) =>
-      `  <BCE:Ctas NumCta="${esc(f.codigo)}" SaldoIni="${mnt(f.saldo_inicial)}" ` +
-      `Debe="${mnt(f.cargos)}" Haber="${mnt(f.abonos)}" SaldoFin="${mnt(f.saldo_final)}"/>`).join('\n');
+    .map((f: any) => {
+      // El SAT no admite Debe/Haber negativos: si un ajuste dejó el movimiento del
+      // periodo con signo, se netea a no-negativos conservando el neto del renglón.
+      const { debe, haber } = debeHaberSat(f.cargos, f.abonos);
+      return `  <BCE:Ctas NumCta="${esc(f.codigo)}" SaldoIni="${mnt(f.saldo_inicial)}" ` +
+        `Debe="${mnt(debe)}" Haber="${mnt(haber)}" SaldoFin="${mnt(f.saldo_final)}"/>`;
+    }).join('\n');
 
   const xml =
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
@@ -76,6 +80,16 @@ export async function balanzaXml(
 }
 
 const r2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
+
+/** Debe/Haber NO negativos para el SAT: si el movimiento del periodo quedó con
+ *  signo (por pólizas de ajuste con importes negativos), se netea a un solo lado
+ *  positivo conservando el neto (Debe − Haber). */
+function debeHaberSat(cargos: any, abonos: any): { debe: number; haber: number } {
+  let debe = r2(cargos), haber = r2(abonos);
+  if (debe < 0) { haber = r2(haber - debe); debe = 0; }
+  if (haber < 0) { debe = r2(debe - haber); haber = 0; }
+  return { debe, haber };
+}
 
 /** Vista previa del Catálogo (los mismos renglones que van al XML, en JSON). */
 export async function catalogoPreview(companyId: string, anio: number, mes: number) {
@@ -102,10 +116,13 @@ export async function balanzaPreview(companyId: string, anio: number, mes: numbe
   const bal = await balanzaDelPeriodo(companyId, anio, mes);
   const filas = (bal?.filas || [])
     .filter((f: any) => f.codigo_agrupador)
-    .map((f: any) => ({
-      numCta: f.codigo, desc: f.nombre,
-      saldoIni: r2(f.saldo_inicial), debe: r2(f.cargos), haber: r2(f.abonos), saldoFin: r2(f.saldo_final),
-    }));
+    .map((f: any) => {
+      const { debe, haber } = debeHaberSat(f.cargos, f.abonos);
+      return {
+        numCta: f.codigo, desc: f.nombre,
+        saldoIni: r2(f.saldo_inicial), debe, haber, saldoFin: r2(f.saldo_final),
+      };
+    });
   const tot = filas.reduce((t: any, f: any) => ({ debe: t.debe + f.debe, haber: t.haber + f.haber }), { debe: 0, haber: 0 });
   return {
     rfc: emp.rfc, anio, mes, cuentas: filas,
