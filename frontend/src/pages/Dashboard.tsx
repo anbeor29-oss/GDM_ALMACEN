@@ -11,12 +11,36 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { canAccess } from '@/utils/permissions';
-import { FileText, Wallet, TrendingDown, AlertCircle, Stamp, Boxes, ShieldCheck, ArrowRight } from 'lucide-react';
+import { FileText, Wallet, TrendingDown, AlertCircle, Stamp, Boxes, ShieldCheck, ArrowRight, Search } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
 import api from '@/services/api';
 import { fechaMx } from '@/utils/fecha';
+
+/* Color estable por empresa: un despacho con decenas de clientes los reconoce de
+ * un vistazo por su color (avatar + barra izquierda). El color sale de un hash del
+ * RFC/nombre, así que cada empresa SIEMPRE tiene el mismo. Clases estáticas para
+ * que Tailwind no las purgue. */
+const PALETA_EMP = [
+  { avatar: 'bg-rose-500',    accent: 'border-l-rose-400' },
+  { avatar: 'bg-orange-500',  accent: 'border-l-orange-400' },
+  { avatar: 'bg-amber-500',   accent: 'border-l-amber-400' },
+  { avatar: 'bg-lime-600',    accent: 'border-l-lime-500' },
+  { avatar: 'bg-emerald-500', accent: 'border-l-emerald-400' },
+  { avatar: 'bg-teal-500',    accent: 'border-l-teal-400' },
+  { avatar: 'bg-cyan-600',    accent: 'border-l-cyan-500' },
+  { avatar: 'bg-sky-500',     accent: 'border-l-sky-400' },
+  { avatar: 'bg-blue-500',    accent: 'border-l-blue-400' },
+  { avatar: 'bg-indigo-500',  accent: 'border-l-indigo-400' },
+  { avatar: 'bg-violet-500',  accent: 'border-l-violet-400' },
+  { avatar: 'bg-fuchsia-500', accent: 'border-l-fuchsia-400' },
+  { avatar: 'bg-pink-500',    accent: 'border-l-pink-400' },
+];
+const colorEmpresa = (key: string) => {
+  let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return PALETA_EMP[h % PALETA_EMP.length];
+};
 
 function fmt(n: any) {
   return Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -75,6 +99,7 @@ export function DashboardPage() {
   const empresaActiva = empresas.find((e) => e.id === user?.companyId) || empresas[0];
 
   const [cambiando, setCambiando] = useState('');
+  const [filtroEmp, setFiltroEmp] = useState('');
 
   const cambiarEmpresa = async (companyId: string, destino?: string) => {
     /* Si ya es la empresa activa, no hay que recargar: si venía con destino
@@ -264,14 +289,28 @@ export function DashboardPage() {
           <h2 className="text-xl font-bold text-gray-900 mb-1">
             {empresas.length > 1 ? 'Empresas que administras' : 'Tu empresa'}
           </h2>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-sm text-gray-500 mb-3">
             {empresas.length > 1
               ? 'Haz clic en una para trabajar en ella.'
               : 'Datos fiscales del emisor con el que timbras.'}
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {empresas.map((e) => {
+          {empresas.length > 8 && (
+            <div className="relative mb-3 max-w-xs">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input value={filtroEmp} onChange={(ev) => setFiltroEmp(ev.target.value)}
+                placeholder="Buscar empresa o RFC…"
+                className="w-full pl-8 pr-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+            {empresas
+              .filter((e) => {
+                const q = filtroEmp.trim().toLowerCase();
+                return !q || String(e.business_name || '').toLowerCase().includes(q) || String(e.rfc || '').toLowerCase().includes(q);
+              })
+              .map((e) => {
               const activa = e.id === user?.companyId;
+              const color = colorEmpresa(String(e.rfc || e.business_name || e.id));
               /* Iniciales para el avatar: dos letras bastan para reconocer la
                * empresa de un vistazo, y funcionan sin logotipo cargado. */
               const iniciales = String(e.business_name || '?')
@@ -289,25 +328,24 @@ export function DashboardPage() {
                    * clic: pedir dos es proporcional al estropicio. */
                   onDoubleClick={() => { if (!activa && !cambiando) cambiarEmpresa(e.id); }}
                   title={activa ? 'Es la empresa en la que estás trabajando' : 'Doble clic para trabajar en esta empresa'}
-                  className={`select-none rounded-xl border p-4 transition-all ${
+                  className={`select-none rounded-lg border-l-4 ${color.accent} ring-1 p-2.5 transition-all ${
                     activa
-                      ? 'border-indigo-300 bg-gradient-to-br from-indigo-50 to-white ring-1 ring-indigo-100'
-                      : 'border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md cursor-pointer'
+                      ? 'ring-indigo-300 bg-indigo-50/60'
+                      : 'ring-slate-200 bg-white hover:ring-indigo-300 hover:shadow-md cursor-pointer'
                   }`}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 ${
-                      activa ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold text-white shrink-0 ${color.avatar}`}>
                       {iniciales}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-gray-900 leading-tight truncate">
+                      <p className="text-sm font-semibold text-gray-900 leading-tight truncate" title={e.business_name}>
                         {e.business_name}
                       </p>
-                      <p className="text-xs font-mono text-gray-500 mt-0.5">{e.rfc}</p>
+                      <p className="text-[11px] font-mono text-gray-500 truncate">{e.rfc}</p>
                     </div>
                     {activa && (
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full shrink-0">
+                      <span className="text-[9px] font-bold uppercase tracking-wide text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full shrink-0">
                         Activa
                       </span>
                     )}
@@ -318,8 +356,8 @@ export function DashboardPage() {
                       empresas no queden accesos regados: cada RFC lleva el suyo.
                       En una empresa no activa, primero cambia a ella y luego abre
                       su panel. */}
-                  <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-slate-400 min-w-0 truncate">
+                  <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-slate-400 min-w-0 truncate">
                       {cambiando === e.id
                         ? <span className="text-indigo-600">Cambiando…</span>
                         : activa ? 'Empresa en uso' : 'Doble clic para entrar'}
@@ -328,9 +366,9 @@ export function DashboardPage() {
                       <button
                         onClick={(ev) => { ev.stopPropagation(); if (!cambiando) cambiarEmpresa(e.id, '/contabilidad/panel-fiscal'); }}
                         title={`Panel fiscal de ${e.business_name}: 32-D, CIF, IMSS, INFONAVIT e histórico`}
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 hover:text-indigo-900 shrink-0"
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-700 hover:text-indigo-900 shrink-0"
                       >
-                        <ShieldCheck size={12} /> Panel fiscal <ArrowRight size={11} />
+                        <ShieldCheck size={11} /> Panel fiscal <ArrowRight size={10} />
                       </button>
                     )}
                   </div>
