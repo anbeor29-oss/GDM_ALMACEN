@@ -36,8 +36,11 @@ export interface CuentaResultado {
  *  de UN mes si se pasa `mes`—, excluyendo TODA póliza de cierre (anual o mensual)
  *  para no contarlas doble. El saldo es el natural de la cuenta. */
 async function saldosDeResultados(companyId: string, anio: number, mes?: number): Promise<CuentaResultado[]> {
+  // Cuentas de RESULTADOS: por `tipo`, O por su AGRUPADOR SAT (4=ingresos,
+  // 5=costos, 6/7=gastos). El agrupador cubre catálogos importados cuyo `tipo`
+  // quedó mal clasificado (si no, el cierre no encontraba nada que cerrar).
   const r = await query<any>(
-    `SELECT a.id, a.codigo, a.nombre, a.tipo, a.naturaleza,
+    `SELECT a.id, a.codigo, a.nombre, a.tipo, a.naturaleza, a.codigo_agrupador,
             COALESCE(SUM(l.cargo),0)::float AS cargos,
             COALESCE(SUM(l.abono),0)::float AS abonos
        FROM journal_lines l
@@ -45,14 +48,18 @@ async function saldosDeResultados(companyId: string, anio: number, mes?: number)
        JOIN accounting_accounts a ON a.id = l.account_id
       WHERE e.company_id=$1 AND EXTRACT(YEAR FROM e.fecha)=$2
         AND ($3::int IS NULL OR EXTRACT(MONTH FROM e.fecha)=$3)
-        AND a.tipo IN ('INGRESO','COSTO','GASTO')
+        AND (a.tipo IN ('INGRESO','COSTO','GASTO')
+             OR LEFT(COALESCE(a.codigo_agrupador,''),1) IN ('4','5','6','7'))
         AND COALESCE(e.regla,'') NOT LIKE 'cierre%'
-      GROUP BY a.id, a.codigo, a.nombre, a.tipo, a.naturaleza
+      GROUP BY a.id, a.codigo, a.nombre, a.tipo, a.naturaleza, a.codigo_agrupador
       HAVING COALESCE(SUM(l.cargo),0) <> 0 OR COALESCE(SUM(l.abono),0) <> 0
       ORDER BY a.codigo`, [companyId, anio, mes ?? null]);
   return r.rows.map((x: any) => {
     const cargos = r2(x.cargos), abonos = r2(x.abonos);
-    const acreedora = x.naturaleza === 'ACREEDORA';
+    // Ingreso vs egreso: el agrupador manda (4=ingreso acreedor; 5/6/7=gasto
+    // deudor); si no hay agrupador, la naturaleza de la cuenta.
+    const agr1 = String(x.codigo_agrupador || '')[0];
+    const acreedora = agr1 === '4' ? true : ['5', '6', '7'].includes(agr1) ? false : x.naturaleza === 'ACREEDORA';
     return {
       id: x.id, codigo: x.codigo, nombre: x.nombre, tipo: x.tipo, naturaleza: x.naturaleza,
       cargos, abonos, acreedora,

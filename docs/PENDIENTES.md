@@ -4,6 +4,12 @@
 
 ## 🔴 Bloqueado / requiere acción del usuario (no es código)
 
+- **Descarga automática de XML — falta `ENABLE_SAT_DESCARGA_CRON=true` en Render.** El motor avanza solo con el cron
+  `sat-descarga-cron` (cada 15 min + 6:00 CDMX: crea el trabajo del día, avanza, indexa a la bóveda → el XML aparece en
+  el calendario **sin pulsar «Avanzar»**). Está gated por esa variable (y necesita `SAT_VAULT_KEY`). **Acción:** poner
+  `ENABLE_SAT_DESCARGA_CRON=true` en el env del backend en Render y reiniciar. Sin esa variable, hay que avanzar a mano.
+  Ver [[sat-descarga-estado]].
+
 - **Descarga por SatGo — el plan NO incluye la descarga masiva.** Al activar `SAT_DESCARGA_VIA=satgo`, el SAT devuelve
   `HTTP 403 · "Este plan no tiene acceso a esta funcionalidad" · featureCode "wssolicita" · dailyLimit 5 / monthlyLimit 5`.
   Es un **candado del plan de SatGo**, no un bug. **Acción:** contratar/actualizar el plan de SatGo que incluya la
@@ -23,6 +29,14 @@
   el esquema de 2 ramas (`produccion` aparte, ver `DESPLIEGUE.md`), si se quiere experimentar sin tocar lo vivo.
 
 ## 🟡 Por construir
+
+- **Panel de XML de nómina de personas físicas (sueldos/salarios, asimilados).** Las PF reciben CFDI tipo `N` (nómina:
+  sueldos y salarios, asimilados a salarios) y otros recibidos no relacionados con nómina. El cron ya los baja a
+  `cfdi_recibidos` (direccion='recibidos', tipo_comprobante='N'). **Falta un panel** (en el menú XML) para **analizar y
+  ordenar** esos XML: tabla filtrable por año/mes/emisor con el desglose de **percepciones/deducciones** del complemento
+  nómina 1.2, separando **ingresos** (gravado/exento, sueldos vs asimilados) de **egresos/retenciones** (ISR, IMSS), y
+  export. Fuente: parsear el complemento `nomina12:Nomina` del XML ya guardado (como hace `esNomina` en
+  `recuperacion-cpq.service`). Pedido por el usuario 2026-10-14.
 
 - **Punto de Venta (POS) — lector de código de barras + impresora de tickets.** Alcance (2026-10-06): **USB para
   ambos**. Lector USB (keyboard-wedge) e **impresora USB** por cadena Web Serial → WebUSB → `window.print()` (ESC/POS,
@@ -63,6 +77,12 @@
 - **IVA.HTML por SatGo** (al desplegar).
 
 ## ✅ Terminado recientemente (resumen; detalle en BITACORA)
+
+**2026-10-14 — SatGo por e.firma + cierre por agrupador.** (1) **Información fiscal** y **Declaraciones** ya NO piden
+CIEC: usan la **e.firma** (FIEL: `informacionfiscalfiel`/`decfiel`), con CIEC solo de respaldo; el buzón ya usaba
+e.firma. (2) **Cierre anual** reconoce las cuentas de resultados también por **agrupador SAT** (4/5/6/7), no solo por
+`tipo` — arregla el «no muestra datos del cierre anual» en catálogos importados con el tipo mal clasificado (p. ej.
+SAJ10120859A). Backend-only, sin migración. Detalle en BITACORA.
 
 **2026-10-14 — Importar respaldo: migración desde Contalink (CTLK).** Dos opciones nuevas en Contabilidad →
 «Importar respaldo»: **cargar catálogo de CTLK** y **subir pólizas de CTLK** (Excel). Lee la estructura real de

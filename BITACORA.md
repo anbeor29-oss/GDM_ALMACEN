@@ -7305,3 +7305,36 @@ habilitaron **negativos nativos** en toda la contabilidad:
 
 **Resultado.** `tsc` back+front en verde. El push aplica `2026-10-14c`. Front tocado ⇒ ZIP. **Reimportar es seguro**
 (idempotente por hash). Ver [[importador-contalink-ctlk]], [[contabilidad-motor-polizas]].
+
+---
+
+## 2026-10-14 (fiscal/contab) — SatGo por e.firma, cron de descarga, cierre por agrupador (4 temas)
+
+Cuatro reportes del usuario al cierre del día:
+
+**1. Info fiscal y Declaraciones seguían pidiendo CIEC → ahora por e.firma (FIEL).** `satgo.consultas.service`:
+`infoFiscal` y `declaraciones` **PREFIEREN la e.firma** (`credencialUsable`) y sólo caen a CIEC si no hay e.firma.
+Nuevos métodos en `satgo.service`: `postFiel()` genérico + `infoFiscalFiel` (`informacionfiscalfiel`) y `declaracionesFiel`
+(`decfiel`) — confirmados en el Swagger de SatGo (POST multipart .cer/.key/contraseña). El **buzón** (avisos/comunicados)
+**ya usaba e.firma** (`buzonNotificaciones` → `comunicadosfiel`/`notificacionesfiel`). Mensaje de «falta credencial»
+reescrito: pide la **e.firma** primero. (`tsc` verde; backend-only.)
+
+**2. «No veo los avances en XML si no pulso Avanzar» → es CONFIG, no código.** El motor de descarga avanza solo con el
+cron `jobs/sat-descarga-cron` (cada 15 min + 6:00 CDMX: crea el trabajo del día, avanza, indexa a la bóveda → aparecen
+en el calendario de XML). Está **gated por `ENABLE_SAT_DESCARGA_CRON=true`** (línea 31). Si no está esa variable en
+Render, nada avanza solo y hay que pulsar «Avanzar». **Acción del usuario:** poner `ENABLE_SAT_DESCARGA_CRON=true`
+(y `SAT_VAULT_KEY`) en Render. Sin cambio de código.
+
+**3. Panel de XML de nómina de personas físicas (sueldos/asimilados) — PENDIENTE (plan).** Las PF reciben CFDI de
+**nómina** (tipo `N`: sueldos y salarios, asimilados) y otros recibidos no-nómina. El cron ya los BAJA a `cfdi_recibidos`
+(direccion='recibidos'). Falta un **panel** para analizar/ordenar esos XML con sus ingresos/egresos. Plan en PENDIENTES.
+
+**4. Cierre anual «no muestra datos» (SAJ10120859A, respaldo 2018).** `cierre-ejercicio.saldosDeResultados` sólo
+reconocía las cuentas de resultados por `a.tipo IN (INGRESO,COSTO,GASTO)`; un catálogo importado con el `tipo` mal
+clasificado dejaba el cierre **vacío** («no hay nada que cerrar»). Fix: también se reconocen por **agrupador SAT**
+(`LEFT(codigo_agrupador,1) IN ('4','5','6','7')`, el clasificador autoritativo), y el reparto ingreso/egreso lo manda el
+agrupador (4=ingreso acreedor; 5/6/7=gasto deudor). Nota al usuario: el «Enero 2025 abierto» es el **banner del mes de
+trabajo**, no un candado del cierre anual; la pestaña **Cierre anual** tiene su **selector de ejercicio** (elige 2024).
+
+**Resultado.** `tsc` backend en verde, **sin migración, backend-only** (no requiere ZIP). Ver [[satgo-integracion]],
+[[sat-descarga-estado]], [[panel-fiscal]], [[cierre-y-traspaso-ejercicio]].

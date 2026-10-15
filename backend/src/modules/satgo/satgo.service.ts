@@ -226,6 +226,46 @@ export async function consultarPdfFiel(
   return Buffer.isBuffer(r.data) ? r.data : Buffer.from(r.data || []);
 }
 
+/**
+ * POST multipart con la e.firma (FIEL) a /Consultar/<recurso>, genérico.
+ * `responseType` 'arraybuffer' para PDF/ZIP, 'json' para informacionfiscal/
+ * comunicados/notificaciones. Mismo contrato que `consultarPdfFiel`.
+ */
+async function postFiel(
+  recurso: string, rfc: string, cred: { cer: Buffer; key: Buffer; password: string },
+  opts: { params?: Record<string, any>; responseType?: 'arraybuffer' | 'json' } = {},
+): Promise<any> {
+  const jwt = await accessToken();
+  const base = await baseUrl();
+  const form = new FormData();
+  form.append('Certificado', new Blob([cred.cer]), 'efirma.cer');
+  form.append('llavePrivada', new Blob([cred.key]), 'efirma.key');
+  form.append('Contrasena', String(cred.password || ''));
+  const responseType = opts.responseType || 'json';
+  const r = await axios.post(`${base}/api/v2/Consultar/${recurso}`, form, {
+    params: { 'api-version': '2', ...(opts.params || {}) },
+    headers: { Authorization: `Bearer ${jwt}`, RFC: rfc },
+    responseType, timeout: T, validateStatus: () => true,
+    maxBodyLength: Infinity, maxContentLength: Infinity,
+  });
+  if (r.status < 200 || r.status >= 300) {
+    const msg = Buffer.isBuffer(r.data) ? r.data.toString('utf8').slice(0, 400)
+      : typeof r.data === 'string' ? r.data.slice(0, 400) : JSON.stringify(r.data || {}).slice(0, 400);
+    throw new ValidationError(mensajeErrorSatgo(r.status, msg));
+  }
+  return responseType === 'arraybuffer' ? (Buffer.isBuffer(r.data) ? r.data : Buffer.from(r.data || [])) : r.data;
+}
+
+/** Información fiscal (JSON) por **e.firma (FIEL)** — SIN CIEC. */
+export async function infoFiscalFiel(rfc: string, cred: { cer: Buffer; key: Buffer; password: string }): Promise<any> {
+  return postFiel('informacionfiscalfiel', rfc, cred, { responseType: 'json' });
+}
+/** Declaraciones (ZIP) por **e.firma (FIEL)** — SIN CIEC. */
+export async function declaracionesFiel(
+  rfc: string, cred: { cer: Buffer; key: Buffer; password: string }, ejercicio: number, mes = 0,
+): Promise<Buffer> {
+  return postFiel('decfiel', rfc, cred, { params: { ejercicio, mes }, responseType: 'arraybuffer' });
+}
 /** Información fiscal (JSON) por RFC (CIEC). */
 export async function infoFiscalCiec(rfc: string, secretCiec: string, requestId?: string): Promise<any> {
   const jwt = await accessToken();

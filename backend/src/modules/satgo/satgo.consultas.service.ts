@@ -52,12 +52,20 @@ async function ciecDe(companyId: string): Promise<{ ciec: string; dispose: () =>
     if (ctx?.credencial) return { ciec: ctx.credencial, dispose: () => ctx.dispose() };
     ctx?.dispose();
   }
-  throw new ValidationError('Falta la clave CIEC de la empresa. Captúrala en Servicios SAT → Configurar (pestaña Opinión 32-D o CIF/CSF).');
+  throw new ValidationError('Falta la e.firma de la empresa (o la clave CIEC). Carga la e.firma en XML del SAT → Descargar del SAT; con ella se baja todo sin CIEC.');
 }
 
-/** Información fiscal (JSON) de la empresa — consulta EN VIVO al SAT (CIEC). */
+/** e.firma (FIEL) de la empresa si está cargada; null si no (para caer a CIEC). */
+async function efirmaDe(companyId: string) {
+  try { return await credencialUsable(companyId); } catch { return null; }
+}
+
+/** Información fiscal (JSON) — PREFIERE la e.firma (FIEL, sin CIEC); si no hay
+ *  e.firma, cae a la CIEC. Consulta EN VIVO al SAT. */
 export async function infoFiscal(companyId: string) {
   const rfc = await rfcDe(companyId);
+  const cred = await efirmaDe(companyId);
+  if (cred) return await satgo.infoFiscalFiel(cred.rfc || rfc, cred as any);
   const { ciec, dispose } = await ciecDe(companyId);
   try { return await satgo.infoFiscalCiec(rfc, ciec); }
   finally { dispose(); }
@@ -88,10 +96,16 @@ export async function declaraciones(companyId: string, ejercicio: number, mes = 
   if (!Number.isInteger(ejercicio) || ejercicio < 2000 || ejercicio > 2100) throw new ValidationError('Ejercicio inválido.');
   const m = Number.isInteger(mes) ? Math.max(0, Math.min(12, mes)) : 0;
   const rfc = await rfcDe(companyId);
+  const nombre = `Declaraciones_${rfc}_${ejercicio}${m ? '-' + String(m).padStart(2, '0') : ''}.zip`;
+  // PREFIERE la e.firma (FIEL, sin CIEC); si no hay e.firma, cae a la CIEC.
+  const cred = await efirmaDe(companyId);
+  if (cred) {
+    const buffer = await satgo.declaracionesFiel(cred.rfc || rfc, cred as any, ejercicio, m);
+    return { buffer, nombre };
+  }
   const { ciec, dispose } = await ciecDe(companyId);
   try {
     const buffer = await satgo.declaracionesCiec(rfc, ciec, ejercicio, m);
-    const nombre = `Declaraciones_${rfc}_${ejercicio}${m ? '-' + String(m).padStart(2, '0') : ''}.zip`;
     return { buffer, nombre };
   } finally { dispose(); }
 }
