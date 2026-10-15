@@ -19,6 +19,7 @@ import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import * as service from './descarga.service';
 import * as programacion from './programacion.service';
+import * as nominaPf from './nomina-pf.service';
 import * as satgoConsultas from '../satgo/satgo.consultas.service';
 import { bovedaLista } from './boveda';
 import { EfirmaInvalida } from './efirma';
@@ -460,6 +461,21 @@ router.get(
     res.json({ success: true, data: resumen });
   })
 );
+
+/** GET /sat-descarga/pf/nomina?anio=&mes= — nómina RECIBIDA por la persona física
+ *  (sueldos/asimilados), desglosada del complemento nómina 1.2. */
+router.get('/pf/nomina', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.query.anio) || new Date().getFullYear();
+  const mes = Number(req.query.mes) || 0;
+  res.json({ success: true, data: await nominaPf.nominaRecibidaPF(companyId(req), anio, mes) });
+}));
+
+/** GET /sat-descarga/pf/resumen?anio= — resumen por mes: ingresos de nómina, ISR/
+ *  IMSS, ingresos facturados (emitidos I) y egresos (recibidos I). */
+router.get('/pf/resumen', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.query.anio) || new Date().getFullYear();
+  res.json({ success: true, data: await nominaPf.resumenPF(companyId(req), anio) });
+}));
 
 /**
  * GET /sat-descarga/respaldo.zip?anio=&mes=&direccion=

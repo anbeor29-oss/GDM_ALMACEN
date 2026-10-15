@@ -154,6 +154,7 @@ export default function ErpPrivado() {
         <Route path="xml-sat/emitidos"                element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
         <Route path="xml-sat/calendario"              element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
         <Route path="xml-sat/respaldo"                element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
+        <Route path="xml-sat/nomina-pf"               element={<ModuleRoute module="auditoria"><XmlDelSatPage /></ModuleRoute>} />
         <Route path="mensajes"                        element={<ModuleRoute module="mensajes"><MensajesPage /></ModuleRoute>} />
         <Route path="nomina"                          element={<ModuleRoute module="nomina"><NominaGuard><NominaDashboardPage /></NominaGuard></ModuleRoute>} />
         <Route path="nomina/empleados"                element={<ModuleRoute module="nomina"><NominaGuard><EmpleadosPage /></NominaGuard></ModuleRoute>} />

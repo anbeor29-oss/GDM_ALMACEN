@@ -1953,6 +1953,16 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/sat-descarga/programacion');
     return r.data;
   }
+
+  /* ── Vista fiscal de una persona física desde sus XML (nómina + ingresos/egresos) ── */
+  async getNominaPF(anio: number, mes = 0) {
+    const r = await this.client.get<APIResponse<any>>('/sat-descarga/pf/nomina', { params: { anio, mes } });
+    return r.data;
+  }
+  async getResumenPF(anio: number) {
+    const r = await this.client.get<APIResponse<any>>('/sat-descarga/pf/resumen', { params: { anio } });
+    return r.data;
+  }
   /** Respaldo (.zip) de los XML del SAT almacenados (la fuente de la verdad). */
   async descargarRespaldoXml(anio?: number, mes?: number, direccion?: string) {
     const r = await this.client.get('/sat-descarga/respaldo.zip',

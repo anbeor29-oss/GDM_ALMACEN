@@ -30,13 +30,10 @@
 
 ## 🟡 Por construir
 
-- **Panel de XML de nómina de personas físicas (sueldos/salarios, asimilados).** Las PF reciben CFDI tipo `N` (nómina:
-  sueldos y salarios, asimilados a salarios) y otros recibidos no relacionados con nómina. El cron ya los baja a
-  `cfdi_recibidos` (direccion='recibidos', tipo_comprobante='N'). **Falta un panel** (en el menú XML) para **analizar y
-  ordenar** esos XML: tabla filtrable por año/mes/emisor con el desglose de **percepciones/deducciones** del complemento
-  nómina 1.2, separando **ingresos** (gravado/exento, sueldos vs asimilados) de **egresos/retenciones** (ISR, IMSS), y
-  export. Fuente: parsear el complemento `nomina12:Nomina` del XML ya guardado (como hace `esNomina` en
-  `recuperacion-cpq.service`). Pedido por el usuario 2026-10-14.
+- **(HECHO 2026-10-15) Panel de XML de nómina de personas físicas.** Pestaña «Persona física» en XML del SAT: desglosa
+  la nómina recibida (sueldos/asimilados por `TipoRegimen`, con ISR/IMSS/subsidio del complemento nómina 1.2) y el
+  resumen mensual con ingresos (nómina + facturado) y egresos (recibidos tipo I), con export CSV. Detalle en BITACORA.
+  **Pendiente opcional:** incluir el detalle de los otros recibidos (gastos) y emitidos en la misma pestaña, y un PDF.
 
 - **Punto de Venta (POS) — lector de código de barras + impresora de tickets.** Alcance (2026-10-06): **USB para
   ambos**. Lector USB (keyboard-wedge) e **impresora USB** por cadena Web Serial → WebUSB → `window.print()` (ESC/POS,

@@ -7338,3 +7338,29 @@ trabajo**, no un candado del cierre anual; la pestaña **Cierre anual** tiene su
 
 **Resultado.** `tsc` backend en verde, **sin migración, backend-only** (no requiere ZIP). Ver [[satgo-integracion]],
 [[sat-descarga-estado]], [[panel-fiscal]], [[cierre-y-traspaso-ejercicio]].
+
+---
+
+## 2026-10-15 (XML/fiscal) — Panel «Persona física»: nómina recibida (sueldos/asimilados) + ingresos/egresos
+
+**Contexto (Punto #3 del usuario).** Las personas físicas reciben CFDI de **nómina** (tipo `N`: sueldos y salarios,
+asimilados) como empleados, además de lo que facturan (ingresos) y sus gastos (egresos). Pidió un panel para descargar,
+analizar y ordenar esos XML con sus ingresos y egresos. La descarga ya los baja a `cfdi_recibidos`; faltaba el análisis.
+
+**Hecho.**
+- **Backend `sat-descarga/nomina-pf.service.ts`:** parsea el complemento **nómina 1.2** del XML ya guardado (regex, sin
+  DOM): `TotalPercepciones`/`TotalGravado`/`TotalExento`, deducciones por tipo (**002=ISR**, **001=IMSS**, resto=otras),
+  **SubsidioAlEmpleo**, y la **clase** por `TipoRegimen` del `nomina12:Receptor` (02=sueldos; 05-11=asimilados; 03/04=
+  jubilación). `nominaRecibidaPF` (detalle de los recibidos tipo N con XML) y `resumenPF` (por mes: ingreso de nómina
+  sueldos/asimilados, ISR/IMSS/subsidio, **ingresos facturados** = emitidos tipo I, **egresos** = recibidos tipo I) +
+  conteo de nómina **sin XML** (sólo metadata, no desglosable). Rutas `GET /sat-descarga/pf/nomina` y `/pf/resumen`.
+- **Frontend:** pestaña **«Persona física»** en XML del SAT (`XmlDelSat.tsx` + ruta `xml-sat/nomina-pf`): 4 tarjetas
+  (ingreso nómina, ISR retenido, facturado, egresos), **resumen mensual** (sueldos/asimilados/ISR/IMSS/facturado/egresos)
+  y **detalle** de la nómina recibida (patrón, clase, percepciones, ISR, neto), con selector de ejercicio/mes y **export
+  CSV**. Aviso si hay recibos de nómina sin XML. `api.ts`: `getNominaPF`/`getResumenPF`.
+- **Validado:** el parser contra una nómina 1.2 de muestra (sueldos→sueldos; asimilados 09→asimilados; perc 10000,
+  ISR 1500, IMSS 500, subsidio 150, neto 8150 ✓). Nota: sólo desglosa los recibos que tienen su **XML** (los que
+  quedaron sólo-metadata se cuentan aparte y hay que re-descargar/subir).
+
+**Resultado.** `tsc` back+front en verde, **sin migración**. Front tocado ⇒ ZIP. Ver [[respaldo-xml-fuente-verdad]],
+[[migracion-nomina-nexo]].
