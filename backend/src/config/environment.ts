@@ -136,7 +136,11 @@ function getConfig(): EnvironmentConfig {
     jwt: {
       secret: process.env.JWT_SECRET!,
       refreshSecret: process.env.JWT_REFRESH_SECRET!,
-      expiration: process.env.JWT_EXPIRATION || '1h',
+      // 8h por defecto: cubre una jornada completa y el auto-cierre por
+      // inactividad de 5h del front (si el token durara menos, la sesión se
+      // cerraría por 401 antes de llegar al contador). Se puede subir/bajar con
+      // la variable JWT_EXPIRATION en el entorno.
+      expiration: process.env.JWT_EXPIRATION || '8h',
       refreshExpiration: process.env.JWT_REFRESH_EXPIRATION || '7d',
     },
 

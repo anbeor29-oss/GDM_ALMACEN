@@ -29,9 +29,14 @@ import { ImpersonationBanner } from './ImpersonationBanner';
 import { QueVersionEstoyViendo } from './QueVersionEstoyViendo';
 
 /** Minutos de inactividad tras los cuales se cierra la sesión.
- *  20 (no 10): da margen a que termine de correr el motor de descarga del XML
- *  del SAT sin que la sesión se cierre a media bajada. */
-const IDLE_MINUTES = 20;
+ *  300 (5 horas): sesiones largas de trabajo (captura, descargas del SAT) sin que
+ *  se cierre a media jornada. OJO: para que las 5 h surtan efecto, el token de
+ *  acceso debe durar al menos ese tiempo (JWT_EXPIRATION del backend ≥ 5 h; el
+ *  default ya es 8 h). Si el token expira antes, la siguiente petición da 401 y
+ *  cierra la sesión aunque el contador no haya llegado. */
+const IDLE_MINUTES = 300;
+/** Texto legible del plazo para los avisos (5 horas, no «300 minutos»). */
+const IDLE_LABEL = IDLE_MINUTES % 60 === 0 ? `${IDLE_MINUTES / 60} hora${IDLE_MINUTES / 60 === 1 ? '' : 's'}` : `${IDLE_MINUTES} minutos`;
 
 /** Cubre el contenido mientras una empresa nueva/sin operación no ha firmado el
  *  contrato. No es un error: es el SIGUIENTE PASO para continuar. */
@@ -305,7 +310,7 @@ export function Layout() {
     if (reason === 'idle') {
       // Aviso tras redirigir — el usuario entiende por qué salió.
       setTimeout(() => {
-        alert(`Tu sesión se cerró por ${IDLE_MINUTES} minutos de inactividad. Vuelve a iniciar sesión.`);
+        alert(`Tu sesión se cerró por ${IDLE_LABEL} de inactividad. Vuelve a iniciar sesión.`);
       }, 100);
     }
   }, [logout, navigate]);
