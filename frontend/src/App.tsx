@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
-import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
+import { QueryClientProvider, QueryClient, useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
 import { CheckadorKioscoPage } from '@/pages/nomina/CheckadorKiosco';
 import { CheckadorEnrolarPage } from '@/pages/nomina/CheckadorEnrolar';
@@ -113,13 +113,44 @@ export function CompanyOnlyRoute({ children }: { children: React.ReactNode }) {
  */
 export function ModuleRoute({ module, children }: { module: ModuleKey; children: React.ReactNode }) {
   const { user } = useAuthStore();
+  /* Módulos habilitados de la EMPRESA activa (servicios contratados). Mismo
+   * queryKey que el Layout, así que sale de caché. Hook SIEMPRE antes de los
+   * returns (reglas de hooks). */
+  const empresasQ = useQuery({
+    queryKey: ['mis-empresas-header'],
+    queryFn: () => api.misEmpresas(),
+    enabled: !!user?.companyId && user?.role !== 'SUPER_ADMIN',
+    staleTime: 5 * 60 * 1000,
+  });
   if (user?.role === 'SUPER_ADMIN') return <Navigate to="/admin/companies" replace />;
   /* Se rebota a la casa del grupo, NO al dashboard: si el grupo tampoco lo
    * alcanza —y seis de los siete no— el rebote sería a otra negativa.
    * Además del grupo, se respetan los MÓDULOS EXTRA del usuario (varias funciones). */
   const extra = (user?.extraModules || []) as ModuleKey[];
   if (!canAccess(user?.workGroup, module) && !extra.includes(module)) return <Navigate to={homeDe(user)} replace />;
+  /* Restricción por EMPRESA (servicios contratados). Sólo aplica cuando YA cargó
+   * la lista y la empresa restringe este módulo; 'dashboard' nunca se bloquea.
+   * Se muestra un aviso (no un redirect) para no arriesgar bucles si la casa del
+   * grupo tampoco estuviera contratada. */
+  const activa = (empresasQ.data?.data as any[] | undefined)?.find((e) => e.id === user?.companyId);
+  const mods: string[] | undefined = activa?.modulos_habilitados?.length ? activa.modulos_habilitados : undefined;
+  if (mods && (module as string) !== 'dashboard' && !mods.includes(module)) return <ModuloNoContratado />;
   return <>{children}</>;
+}
+
+/** Aviso cuando la EMPRESA activa no tiene contratado el módulo de la ruta. */
+function ModuloNoContratado() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center p-6">
+      <div className="max-w-md text-center bg-white border border-gray-200 rounded-xl shadow-sm p-8">
+        <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-3 text-2xl">🔒</div>
+        <h2 className="text-lg font-bold text-gray-900">Módulo no habilitado</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          Esta empresa no tiene contratado este módulo. Si necesitas activarlo, pídelo a tu administrador.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 /**

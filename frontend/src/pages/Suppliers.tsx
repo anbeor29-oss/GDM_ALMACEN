@@ -101,7 +101,7 @@ export function SuppliersPage() {
         {canEdit && (
           <div className="flex items-center gap-2">
             <button onClick={traerDelCatalogo} disabled={trayendo}
-              title="Trae los proveedores desde el catálogo contable y los CFDI recibidos (RFC + nombre). Úsalo si la lista está vacía tras importar un respaldo."
+              title="Trae los proveedores desde el catálogo contable y los CFDI recibidos (RFC, nombre, régimen y CP de los XML). Úsalo si la lista está vacía tras importar un respaldo."
               className="flex items-center gap-2 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-2.5 rounded-lg disabled:opacity-50">
               {trayendo ? 'Trayendo…' : 'Traer del catálogo'}
             </button>

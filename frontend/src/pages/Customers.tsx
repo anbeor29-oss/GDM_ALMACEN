@@ -86,7 +86,7 @@ export function CustomersPage() {
           <button
             onClick={traerDelCatalogo}
             disabled={trayendo}
-            title="Trae los clientes desde el catálogo contable y los CFDI emitidos (RFC + nombre). Úsalo si la lista está vacía tras importar un respaldo."
+            title="Trae los clientes desde el catálogo contable y los CFDI emitidos (RFC, nombre, régimen y CP de los XML). Úsalo si la lista está vacía tras importar un respaldo."
             className="flex items-center gap-2 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-3 rounded-lg transition-colors disabled:opacity-50"
           >
             {trayendo ? <Loader2 size={18} className="animate-spin" /> : null}

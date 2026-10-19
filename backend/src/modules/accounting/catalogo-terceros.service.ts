@@ -454,10 +454,10 @@ export async function capturarTercerosEnCatalogo(
   const emp = await query<any>('SELECT UPPER(rfc) AS rfc FROM companies WHERE id=$1', [companyId]);
   const rfcEmpresa = String(emp.rows[0]?.rfc || '').trim();
 
-  // Fuente 1: los CFDI (por RFC, el nombre más reciente). Fuente 2: las subcuentas
-  // de tercero (nombre curado del respaldo).
+  // Fuente 1: los CFDI (por RFC, el más reciente, con su XML para sacar los datos
+  // fiscales). Fuente 2: las subcuentas de tercero (nombre curado del respaldo).
   const deCfdi = await query<any>(
-    `SELECT DISTINCT ON (UPPER(${colRfc})) UPPER(${colRfc}) AS rfc, ${colNom} AS nombre
+    `SELECT DISTINCT ON (UPPER(${colRfc})) UPPER(${colRfc}) AS rfc, ${colNom} AS nombre, xml
        FROM cfdi_recibidos
       WHERE company_id=$1 AND direccion=$2 AND ${colRfc} IS NOT NULL AND ${colRfc} <> ''
       ORDER BY UPPER(${colRfc}), fecha_emision DESC`, [companyId, direccion]);
@@ -467,31 +467,66 @@ export async function capturarTercerosEnCatalogo(
       WHERE company_id=$1 AND tercero_rfc IS NOT NULL AND codigo_agrupador = ANY($2)
       ORDER BY UPPER(tercero_rfc)`, [companyId, agrups]);
 
-  const porRfc = new Map<string, string>();
-  for (const r of deCfdi.rows) porRfc.set(String(r.rfc).trim(), r.nombre);
-  for (const r of deCtas.rows) if (r.nombre) porRfc.set(String(r.rfc).trim(), r.nombre);
+  const porRfc = new Map<string, { nombre: string; xml?: string }>();
+  for (const r of deCfdi.rows) porRfc.set(String(r.rfc).trim(), { nombre: r.nombre, xml: r.xml });
+  for (const r of deCtas.rows) {
+    const k = String(r.rfc).trim();
+    const prev = porRfc.get(k);
+    // El nombre curado del catálogo gana; se conserva el XML del CFDI si lo había.
+    if (r.nombre) porRfc.set(k, { nombre: r.nombre, xml: prev?.xml });
+    else if (!prev) porRfc.set(k, { nombre: '', xml: undefined });
+  }
 
   let creados = 0, actualizados = 0, omitidos = 0;
-  for (const [rfc, nombre] of porRfc) {
+  for (const [rfc, info] of porRfc) {
     const rfcU = rfc.toUpperCase().trim();
     if (!rfcU || rfcU.length > 13 || rfcU === rfcEmpresa) { omitidos++; continue; }
     // Nombre normalizado: a las morales se les quita el sufijo societario
     // (S.A. de C.V., etc.) y a las físicas se las deja igual.
-    const nom = (normalizarNombreFiscal(nombre) || rfcU).slice(0, 255);
+    const nom = (normalizarNombreFiscal(info.nombre) || rfcU).slice(0, 255);
+    // Datos fiscales del XML (etapa posterior: «complementar con los XML»).
+    const fisc = datosFiscalesDeCfdi(info.xml, tipo);
     try {
       const r = await query<any>(
-        `INSERT INTO customers (company_id, rfc, business_name, ${rol})
-         VALUES ($1,$2,$3,true)
+        `INSERT INTO customers (company_id, rfc, business_name, ${rol}, fiscal_regime, postal_code, default_cfdi_use)
+         VALUES ($1,$2,$3,true,$4,$5,$6)
          ON CONFLICT (company_id, rfc) DO UPDATE SET
            ${rol} = true,
            business_name = CASE
              WHEN customers.business_name IS NULL OR customers.business_name = ''
                THEN EXCLUDED.business_name ELSE customers.business_name END,
+           fiscal_regime    = COALESCE(NULLIF(customers.fiscal_regime, ''),    EXCLUDED.fiscal_regime),
+           postal_code      = COALESCE(NULLIF(customers.postal_code, ''),      EXCLUDED.postal_code),
+           default_cfdi_use = COALESCE(NULLIF(customers.default_cfdi_use, ''), EXCLUDED.default_cfdi_use),
            updated_at = NOW()
          RETURNING (xmax = 0) AS creado`,
-        [companyId, rfcU, nom]);
+        [companyId, rfcU, nom, fisc.regimen, fisc.cp, fisc.uso]);
       if (r.rows[0].creado) creados++; else actualizados++;
     } catch { omitidos++; }
   }
   return { creados, actualizados, omitidos };
+}
+
+/**
+ * Datos fiscales del tercero sacados del XML de un CFDI (sin DOM, por regex):
+ *  - cliente (emitidos): del RECEPTOR → RegimenFiscalReceptor, DomicilioFiscalReceptor (CP), UsoCFDI.
+ *  - proveedor (recibidos): del EMISOR → RegimenFiscal y LugarExpedicion (CP). El uso no aplica.
+ * Devuelve null en lo que no encuentre (el upsert sólo rellena lo vacío).
+ */
+function datosFiscalesDeCfdi(xml: string | undefined, tipo: 'cliente' | 'proveedor'): { regimen: string | null; cp: string | null; uso: string | null } {
+  if (!xml) return { regimen: null, cp: null, uso: null };
+  const buscar = (re: RegExp) => { const m = xml.match(re); return m ? m[1] : null; };
+  if (tipo === 'cliente') {
+    return {
+      regimen: buscar(/RegimenFiscalReceptor="(\d{3})"/),
+      cp: buscar(/DomicilioFiscalReceptor="(\d{5})"/),
+      uso: buscar(/UsoCFDI="([A-Za-z0-9]{2,4})"/),
+    };
+  }
+  // proveedor: el régimen del emisor NO lleva "Receptor" pegado; el CP es LugarExpedicion.
+  return {
+    regimen: buscar(/RegimenFiscal="(\d{3})"/),
+    cp: buscar(/LugarExpedicion="(\d{5})"/),
+    uso: null,
+  };
 }
