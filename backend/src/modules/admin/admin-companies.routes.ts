@@ -101,6 +101,29 @@ router.get('/emisores', asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: { emisores: r.rows } });
 }));
 
+/* ──────────  Activar CUMPLIMIENTO en automático para TODAS las empresas  ──────────
+ * Marca activo=true los tres tipos públicos (SAT 32-D, CSF/CIF, IMSS) de cada
+ * empresa con RFC, para que el barrido semanal (lunes 5:30, SatGo) las incluya.
+ * Sólo pone activo=true; conserva credenciales/método existentes. Idempotente.
+ * Debe ir ANTES de GET /:id para que no lo capture como un id. */
+router.post('/cumplimiento/activar-todas', asyncHandler(async (req: Request, res: Response) => {
+  const r = await query<any>(
+    `INSERT INTO cumplimiento_config (company_id, tipo, metodo, activo)
+     SELECT c.id, t.tipo, 'API', true
+       FROM companies c
+       CROSS JOIN (VALUES ('SAT'),('CSF'),('IMSS')) AS t(tipo)
+      WHERE c.deleted_at IS NULL AND c.rfc IS NOT NULL AND c.rfc <> ''
+     ON CONFLICT (company_id, tipo) DO UPDATE SET activo = true, updated_at = NOW()
+     RETURNING company_id`);
+  const empresas = new Set(r.rows.map((x: any) => x.company_id)).size;
+  await audit(req, { action: 'COMPLIANCE_ACTIVATE_ALL', targetKind: 'company', targetId: 'ALL', payload: { empresas, configs: r.rowCount } });
+  res.json({
+    success: true,
+    data: { empresas, configs: r.rowCount },
+    message: `Cumplimiento activado en automático para ${empresas} empresa(s) (SAT, CSF e IMSS). El barrido de los lunes 5:30 ya las incluye.`,
+  });
+}));
+
 /* ────────────────────────  CREATE  ──────────────────────── */
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const { rfc, businessName, fiscalRegime, postalCode, billingPlan, capTimbres,

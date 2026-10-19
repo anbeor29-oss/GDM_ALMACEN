@@ -24,6 +24,16 @@ export function AdminCompaniesPage() {
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [userTarget, setUserTarget] = useState<any>(null);
   const [editTarget, setEditTarget] = useState<any>(null);
+  const [activandoCump, setActivandoCump] = useState(false);
+  const activarCumplimientoTodas = async () => {
+    if (!confirm('¿Activar el cumplimiento (SAT 32-D, CSF/CIF e IMSS) en automático para TODAS las empresas?\n\nEl barrido de los lunes 5:30 consultará a SatGo por cada RFC. Sólo activa; conserva credenciales. Es repetible.')) return;
+    setActivandoCump(true);
+    try {
+      const r: any = await api.adminActivarCumplimientoTodas();
+      alert(r?.message || 'Cumplimiento activado para todas las empresas.');
+    } catch (e: any) { alert(e?.response?.data?.message || 'No se pudo activar.'); }
+    finally { setActivandoCump(false); }
+  };
 
   if (user?.role !== 'SUPER_ADMIN') {
     return (
@@ -68,9 +78,16 @@ export function AdminCompaniesPage() {
           </h1>
           <p className="text-gray-600 mt-1">Empresas registradas en la plataforma SaaS, plan y sellos digitales.</p>
         </div>
-        <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg shadow">
-          <Plus size={18}/> Nueva empresa
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={activarCumplimientoTodas} disabled={activandoCump}
+            title="Activa el cumplimiento (SAT 32-D, CSF/CIF, IMSS) en automático para TODAS las empresas, para que el barrido de los lunes 5:30 las incluya."
+            className="flex items-center gap-2 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-2.5 rounded-lg disabled:opacity-50">
+            <ShieldCheck size={16}/> {activandoCump ? 'Activando…' : 'Activar cumplimiento a todas'}
+          </button>
+          <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg shadow">
+            <Plus size={18}/> Nueva empresa
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow overflow-hidden">

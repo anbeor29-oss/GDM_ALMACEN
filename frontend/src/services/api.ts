@@ -3314,6 +3314,12 @@ class APIClient {
     const r = await this.client.put(`/admin/companies/${id}`, data);
     return r.data;
   }
+  /** Activa el cumplimiento (SAT/CSF/IMSS) en automático para TODAS las empresas,
+   *  para que el barrido de los lunes 5:30 las incluya. */
+  async adminActivarCumplimientoTodas() {
+    const r = await this.client.post<APIResponse<{ empresas: number; configs: number }>>('/admin/companies/cumplimiento/activar-todas');
+    return r.data;
+  }
   /**
    * Lee el .cer (y opcionalmente comprueba el .key) SIN guardar nada.
    * Devuelve No. de certificado, vigencia, RFC y razón social para autollenar
