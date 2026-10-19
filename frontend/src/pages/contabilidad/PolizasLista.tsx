@@ -99,6 +99,17 @@ export function PolizasListaPage() {
   const q = useQuery({ queryKey: ['polizas', anio, mes], queryFn: () => api.getPolizas(anio, mes) });
   const todas: any[] = q.data?.data?.polizas || [];
 
+  /* Pólizas que entraron con un ajuste a la CUENTA DE CUADRE (MIG-TEMPORAL): al
+   * importar respaldos (CPQ/CTLK) las que no cuadraban de origen NO se omiten, se
+   * salvan mandando la diferencia a esa cuenta. Aquí se listan —del mismo periodo
+   * que la lista— para abrirlas por su folio en azul y reasignar el importe. */
+  const qCuadre = useQuery({ queryKey: ['polizas-cuadre', anio, mes], queryFn: () => api.getPolizasConCuadre(anio, mes) });
+  const conCuadre: any[] = qCuadre.data?.data || [];
+  const abrirCuadre = (cc: any) => {
+    const local = todas.find((x) => x.id === cc.id);
+    if (local) setEditar(local);
+  };
+
   const aBalanza = () => navigate(`/contabilidad/balanza?anio=${anio}&mes=${mes}`);
   const aCambio = () => navigate(`/contabilidad/cambio-cuenta${cuentaCambio ? `?cuenta=${cuentaCambio}` : ''}`);
 
@@ -298,6 +309,32 @@ export function PolizasListaPage() {
 
       {msg && filtro !== 'ppdpue' && (
         <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{msg}</p>
+      )}
+
+      {/* Pólizas con CUENTA DE CUADRE (MIG-TEMPORAL): las que, al importar respaldos,
+          no cuadraban de origen y se salvaron mandando la diferencia a esa cuenta.
+          El #folio en azul abre el editor para reasignar el importe a la cuenta real. */}
+      {conCuadre.length > 0 && filtro !== 'ppdpue' && (
+        <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
+          <p className="font-semibold text-sky-900 flex items-center gap-1.5 text-sm">
+            <AlertTriangle size={16} className="text-sky-600 shrink-0" />
+            {conCuadre.length} póliza(s) con cuenta de cuadre en {MESES[mes] || 'el año'} {anio}
+          </p>
+          <p className="text-xs text-sky-700 mt-0.5 leading-relaxed">
+            Entraron con un ajuste a la <b>cuenta de cuadre (MIG-TEMPORAL)</b> porque no cuadraban de origen
+            —así no se perdió información—. Ábrelas por su <b>folio en azul</b> y reasigna el importe a la cuenta correcta:
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2">
+            {conCuadre.map((cc) => (
+              <button key={cc.id} onClick={() => abrirCuadre(cc)}
+                title="Abrir esta póliza para reasignar la cuenta de cuadre"
+                className="inline-flex items-baseline gap-1.5 hover:underline decoration-blue-400">
+                <span className="font-bold text-blue-600 tabular-nums">#{cc.folio}</span>
+                <span className="text-xs text-sky-600">{fecha(cc.fecha)} · ajuste {money(cc.ajuste)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Pago de compras: la misma pantalla de EML → Recibidos. Doble clic en un

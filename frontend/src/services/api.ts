@@ -1607,6 +1607,10 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas', { params: { anio, mes } });
     return r.data;
   }
+  async getPolizasConCuadre(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/polizas/con-cuadre', { params: { anio, mes } });
+    return r.data;
+  }
   async generarVentas(anio: number, mes: number, todoElAnio = false) {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-ventas', { anio, mes, todoElAnio });
     return r.data;

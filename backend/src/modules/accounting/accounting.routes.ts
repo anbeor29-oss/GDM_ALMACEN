@@ -558,6 +558,7 @@ router.post(
       success: true, data: rep,
       message: `Pólizas CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya estaban` +
         (rep.omitidas.length ? `, ${rep.omitidas.length} omitida(s)` : '') +
+        (rep.conCuadre.length ? `, ${rep.conCuadre.length} con cuenta de cuadre` : '') +
         ` · ${rep.cfdiLigados} CFDI ligados.`,
     });
   })
@@ -1682,6 +1683,16 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const data = await polizas.listarPolizas(companyId(req), Number(req.query.anio), Number(req.query.mes));
     res.json({ success: true, data: { polizas: data } });
+  })
+);
+
+/** GET /accounting/polizas/con-cuadre?anio&mes — pólizas que tocan la cuenta de
+ *  cuadre (MIG-TEMPORAL): entraron con ajuste por descuadre de origen; a corregir. */
+router.get(
+  '/polizas/con-cuadre',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await polizas.polizasConCuadre(companyId(req), Number(req.query.anio), Number(req.query.mes) || 0);
+    res.json({ success: true, data });
   })
 );
 

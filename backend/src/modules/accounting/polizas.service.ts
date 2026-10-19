@@ -666,6 +666,31 @@ export async function generarPagosPueDelMes(
 }
 
 /**
+ * Pólizas que tocan la CUENTA DE CUADRE (MIG-TEMPORAL): entraron con un ajuste
+ * porque no cuadraban de origen (migración), y hay que corregirlas a mano. Del
+ * periodo (o todo el año si mes = 0/omitido). Devuelve folio + el ajuste que
+ * quedó en la cuenta de cuadre, para listarlas y abrirlas desde Pólizas.
+ */
+export async function polizasConCuadre(companyId: string, anio: number, mes?: number) {
+  const r = await query<any>(
+    `SELECT e.id, e.folio, e.tipo, TO_CHAR(e.fecha,'YYYY-MM-DD') AS fecha, e.concepto,
+            COALESCE(SUM(l.cargo - l.abono), 0)::float AS ajuste
+       FROM journal_entries e
+       JOIN journal_lines l ON l.entry_id = e.id
+       JOIN accounting_accounts a ON a.id = l.account_id
+      WHERE e.company_id=$1 AND a.codigo='MIG-TEMPORAL'
+        AND EXTRACT(YEAR FROM e.fecha)=$2
+        AND ($3::int IS NULL OR $3 = 0 OR EXTRACT(MONTH FROM e.fecha)=$3)
+      GROUP BY e.id, e.folio, e.tipo, e.fecha, e.concepto
+      ORDER BY e.fecha, e.folio`,
+    [companyId, anio, mes ?? null]);
+  return r.rows.map((x: any) => ({
+    id: x.id, folio: x.folio, tipo: x.tipo, fecha: x.fecha,
+    concepto: x.concepto, ajuste: round2(x.ajuste),
+  }));
+}
+
+/**
  * El ASIENTO CONTABLE de un CFDI: todas las pólizas que lo tocan (su compra y su
  * pago, sea por complemento, conciliación o PUE), con sus partidas. Sirve para
  * ver, desde el comprobante, cómo quedó contabilizado. Se ligan por `origen_uuid`

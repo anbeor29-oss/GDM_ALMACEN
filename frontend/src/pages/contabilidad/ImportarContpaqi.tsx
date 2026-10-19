@@ -485,6 +485,12 @@ export function ImportarContalink() {
             <div className="text-xs bg-emerald-50 border border-emerald-200 rounded px-3 py-2 text-emerald-900 space-y-0.5">
               <p className="flex items-center gap-1.5 font-semibold"><CheckCircle2 size={14} /> Pólizas importadas</p>
               <p>{repPol.creadas} creada(s) · {repPol.yaExistian} ya estaban · {repPol.cfdiLigados} CFDI ligados</p>
+              {repPol.conCuadre?.length > 0 && (
+                <details className="text-sky-700" open><summary className="cursor-pointer font-semibold">{repPol.conCuadre.length} póliza(s) entraron con cuenta de cuadre — revísalas</summary>
+                  <p className="mt-0.5">No cuadraban de origen; la diferencia se mandó a <b>MIG-TEMPORAL</b> para no perder nada. En <b>Contabilidad → Pólizas</b> aparecen marcadas: ábrelas por su folio azul y corrige la cuenta.</p>
+                  <ul className="list-disc pl-4">{repPol.conCuadre.slice(0, 20).map((m: any, i: number) => <li key={i}><b>{m.folio}</b>: diferencia {m.diferencia}</li>)}</ul>
+                </details>
+              )}
               {repPol.omitidas?.length > 0 && (
                 <details className="text-amber-700"><summary className="cursor-pointer">{repPol.omitidas.length} omitida(s) — ver por qué</summary>
                   <ul className="list-disc pl-4">{repPol.omitidas.slice(0, 20).map((m: any, i: number) => <li key={i}><b>{m.folio}</b>: {m.motivo}</li>)}</ul>

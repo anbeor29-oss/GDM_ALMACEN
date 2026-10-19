@@ -28,6 +28,7 @@ import crypto from 'crypto';
 import { query } from '../../config/database';
 import { crearPoliza } from './polizas.service';
 import { asignarAgrupadorFaltante } from './catalogo.service';
+import { asegurarCuentaTemporal } from './contpaqi-import.service';
 
 /* Tipo + naturaleza natural por el primer dígito del agrupador SAT. */
 const TIPO_POR_DIG: Record<string, string> = {
@@ -251,6 +252,9 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
   const rep = {
     total: polizas.length, creadas: 0, yaExistian: 0, cfdiLigados: 0,
     omitidas: [] as Array<{ folio: string; motivo: string }>,
+    // Pólizas que NO cuadraban de origen: su diferencia se mandó a la cuenta de
+    // cuadre (MIG-TEMPORAL) para no perderlas; hay que revisarlas y corregirlas.
+    conCuadre: [] as Array<{ folio: string; diferencia: number }>,
   };
 
   for (const [i, p] of polizas.entries()) {
@@ -287,11 +291,26 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
       if (faltante) { rep.omitidas.push({ folio: etq, motivo: `la cuenta ${faltante} no está en el catálogo — importa el catálogo de CTLK primero` }); continue; }
       if (lineas.length < 2) { rep.omitidas.push({ folio: etq, motivo: 'menos de 2 renglones con importe' }); continue; }
 
+      // Si NO cuadra (descuadre del origen), se manda la diferencia a la CUENTA DE
+      // CUADRE (MIG-TEMPORAL) para que la póliza entre completa, sin perder nada;
+      // se reporta para corregirla a mano en Pólizas.
+      const sc = round2(lineas.reduce((a, l) => a + (l.cargo || 0), 0));
+      const sa = round2(lineas.reduce((a, l) => a + (l.abono || 0), 0));
+      const dif = round2(sc - sa);
+      if (dif !== 0) {
+        lineas.push({
+          account_id: await asegurarCuentaTemporal(companyId),
+          cargo: dif < 0 ? -dif : 0, abono: dif > 0 ? dif : 0,
+          concepto: 'Ajuste de cuadre (migración CTLK)',
+        });
+      }
+
       const pol = await crearPoliza(companyId, {
         tipo: p.tipo, fecha: p.fecha, concepto: p.concepto || p.tipoRaw || 'Póliza CTLK',
         origen: 'MANUAL', origen_uuid: origenUuid, regla: reglaDeTipo(p.tipoRaw), lineas,
       } as any, userId);
       rep.creadas++;
+      if (dif !== 0) rep.conCuadre.push({ folio: etq, diferencia: dif });
 
       // Guardar TODOS los CFDI asociados (sin pérdida), idempotente por (entry, uuid).
       for (const cf of p.cfdis) {
