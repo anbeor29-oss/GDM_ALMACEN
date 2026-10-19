@@ -7364,3 +7364,29 @@ analizar y ordenar esos XML con sus ingresos y egresos. La descarga ya los baja 
 
 **Resultado.** `tsc` back+front en verde, **sin migración**. Front tocado ⇒ ZIP. Ver [[respaldo-xml-fuente-verdad]],
 [[migracion-nomina-nexo]].
+
+---
+
+## 2026-10-19 (contabilidad) — Importación CTLK/CPQ: póliza descuadrada → cuenta de cuadre (sin pérdida) + aviso en Pólizas
+
+**Contexto.** Al importar respaldos de Contalink (CTLK), una póliza que no cuadraba de origen se **omitía**
+(ej.: `Compra (Egreso) 2026-01-07 #346: Póliza descuadrada: cargos - abonos = -1800.00`). El usuario pidió:
+que la diferencia se mande a la **cuenta de cuadre** para no perder información y que, al abrir Pólizas, un
+mensaje liste esas pólizas con su **número en azul** para poder modificarlas.
+
+**Hecho.**
+- **`contalink-import.service`:** si `Σcargo ≠ Σabono`, antes de crear la póliza se agrega un renglón de ajuste a
+  **MIG-TEMPORAL** (`asegurarCuentaTemporal`, la misma cuenta de cuadre que ya usaba el importador CPQ): si
+  `dif<0` va como cargo, si `dif>0` como abono, de modo que la póliza **entra completa y cuadra** (pasa el trigger
+  `trg_poliza_cuadra`). Se acumula `rep.conCuadre {folio, diferencia}` y el mensaje final suma "N con cuenta de cuadre".
+- **`polizas.service.polizasConCuadre(company, anio, mes)`:** lista las pólizas del periodo que tocan MIG-TEMPORAL,
+  con su `ajuste` firmado (`Σ cargo-abono`). Ruta **`GET /accounting/polizas/con-cuadre`** (registrada **antes** de
+  `/polizas/:id` para que no la sombree el param).
+- **`PolizasLista`:** aviso azul arriba de la lista — "N póliza(s) con cuenta de cuadre en {mes} {año}" — con cada
+  **#folio en azul** que abre el editor (`setEditar`) para reasignar el importe a la cuenta real. Es periodo-scoped
+  (igual que la lista): con "Todo el año" se ven todas. `api.ts`: `getPolizasConCuadre`.
+- **`ImportarContpaqi`:** en el resultado del importador CTLK, detalle "N póliza(s) entraron con cuenta de cuadre — revísalas".
+
+**Resultado.** `tsc` back+front en verde, **sin migración** (MIG-TEMPORAL ya existía). Front tocado ⇒ ZIP. No se
+pierde ni una póliza del respaldo: las descuadradas entran salvadas y quedan señaladas para corregir a mano.
+Ver [[importador-contalink-ctlk]], [[migracion-contpaqi-nexo]], [[contabilidad-motor-polizas]].
