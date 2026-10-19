@@ -386,7 +386,15 @@ router.get(
  * Timbrados de periodos anteriores rescatados del respaldo: se listan, se descarga
  * su XML (para dar de alta con el otro menú) y de un clic se pasa al trabajador a activo. */
 router.get('/cfdi-recuperados', asyncHandler(async (req: Request, res: Response) =>
-  res.json({ success: true, data: await nominaRecuperados.listar(companyId(req)) })));
+  res.json({ success: true, data: await nominaRecuperados.listar(companyId(req), Number(req.query.anio) || undefined) })));
+
+/** Años con CFDI de nómina recuperados (para el filtro por ejercicio). */
+router.get('/cfdi-recuperados/anios', asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await nominaRecuperados.aniosDisponibles(companyId(req)) })));
+
+/** Completa los datos VACÍOS del trabajador desde el XML del recibo (migración). */
+router.post('/cfdi-recuperados/:uuid/completar', soloAdmin, asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await nominaRecuperados.completarDesdeUuid(companyId(req), req.params.uuid) })));
 
 router.get('/cfdi-recuperados/:uuid/xml', asyncHandler(async (req: Request, res: Response) => {
   const r = await nominaRecuperados.xmlDeUuid(companyId(req), req.params.uuid);

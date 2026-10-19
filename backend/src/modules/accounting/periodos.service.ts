@@ -645,6 +645,37 @@ export async function alimentarAnioDesdePolizas(companyId: string, anio: number,
   return { anio, meses, reconstruidos };
 }
 
+/**
+ * RECONSTRUCCIÓN INTEGRAL del respaldo: reconstruye la balanza de TODOS los
+ * ejercicios que tengan pólizas, de un tirón y en orden (año por año, mes por
+ * mes), sin tener que ir ejercicio por ejercicio. Es idempotente y conserva
+ * intactos los meses sin pólizas (la apertura del respaldo de balanza no se
+ * borra). Pensada para, tras importar un respaldo, dejar toda la historia
+ * cuadrada y los ejercicios activados de una sola operación.
+ */
+export async function reconstruirIntegral(companyId: string, userId?: string) {
+  const yy = await query<any>(
+    `SELECT DISTINCT EXTRACT(YEAR FROM e.fecha)::int AS anio
+       FROM journal_entries e
+      WHERE e.company_id = $1 AND e.fecha IS NOT NULL
+      ORDER BY anio`, [companyId]);
+  const anios: number[] = yy.rows.map((r: any) => Number(r.anio)).filter((a: number) => a > 1900 && a < 3000);
+
+  const porAnio: Array<{ anio: number; reconstruidos: number }> = [];
+  for (const anio of anios) {
+    try {
+      const r = await alimentarAnioDesdePolizas(companyId, anio, userId);
+      porAnio.push({ anio, reconstruidos: r.reconstruidos });
+    } catch (e: any) {
+      logger.warn(`[contabilidad] reconstrucción integral ${anio}: ${(e?.message || 'error').toString().slice(0, 120)}`);
+      porAnio.push({ anio, reconstruidos: 0 });
+    }
+  }
+  const mesesTotal = porAnio.reduce((s, x) => s + x.reconstruidos, 0);
+  logger.info(`[contabilidad] reconstrucción integral: ${anios.length} ejercicio(s), ${mesesTotal} mes(es)`);
+  return { anios: anios.length, ejercicios: anios, meses: mesesTotal, porAnio };
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    4. CIERRE
    ═══════════════════════════════════════════════════════════════════════════ */

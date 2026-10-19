@@ -146,6 +146,16 @@ export function requireModule(mod: ModuleKey) {
         message: `Tu grupo de trabajo (${group}) no tiene acceso a este módulo.`,
       });
     }
+    // Además del grupo, la EMPRESA debe tener el módulo habilitado (servicios
+    // contratados). undefined/vacío = sin restricción; 'dashboard' nunca se niega
+    // (es la casa, negarla causaría un bucle de redirección).
+    const empMods = req.user.empresaModulos as ModuleKey[] | undefined;
+    if (empMods && empMods.length && String(mod) !== 'dashboard' && !empMods.includes(mod)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Esta empresa no tiene habilitado este módulo (servicios contratados).',
+      });
+    }
     return next();
   };
 }

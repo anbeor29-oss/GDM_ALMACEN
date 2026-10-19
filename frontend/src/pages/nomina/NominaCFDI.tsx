@@ -20,7 +20,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  FileCode2, FileDown, Download, Eye, Mail, AlertTriangle, X, CheckCircle2, Stamp, Check, Search,
+  FileCode2, FileDown, Download, Eye, Mail, AlertTriangle, X, CheckCircle2, Stamp, Check, Search, UserCog,
 } from 'lucide-react';
 import api from '@/services/api';
 import { aTextoMx } from '@/components/CampoFecha';
@@ -470,12 +470,16 @@ export function NominaCFDIPage() {
  * Timbrados de periodos anteriores: ordenar por fecha/trabajador, descargar XML y
  * pasar al trabajador a activo de un clic (si ya existe; el alta va por Empleados). */
 function CfdiRecuperados() {
-  const q = useQuery({ queryKey: ['nomina-cfdi-recuperados'], queryFn: () => api.getCfdiNominaRecuperados() });
+  const [anio, setAnio] = useState<number>(0);   // 0 = todos los ejercicios
+  const qAnios = useQuery({ queryKey: ['nomina-cfdi-recuperados-anios'], queryFn: () => api.getAniosNominaRecuperados() });
+  const anios: number[] = qAnios.data?.data || [];
+  const q = useQuery({ queryKey: ['nomina-cfdi-recuperados', anio], queryFn: () => api.getCfdiNominaRecuperados(anio || undefined) });
   const filas: any[] = q.data?.data || [];
   const [busca, setBusca] = useState('');
   const [orden, setOrden] = useState<{ campo: 'fecha' | 'nombre'; dir: 1 | -1 }>({ campo: 'fecha', dir: -1 });
   const [msg, setMsg] = useState('');
   const [activando, setActivando] = useState('');
+  const [completando, setCompletando] = useState('');
 
   const ordenar = (campo: 'fecha' | 'nombre') =>
     setOrden((o) => ({ campo, dir: (o.campo === campo ? (o.dir === 1 ? -1 : 1) : 1) as 1 | -1 }));
@@ -505,20 +509,40 @@ function CfdiRecuperados() {
     finally { setActivando(''); }
   };
 
+  const completar = async (f: any) => {
+    setCompletando(f.uuid); setMsg('');
+    try {
+      const r: any = await api.completarTrabajadorRecuperado(f.uuid);
+      const d = r?.data || {};
+      setMsg(
+        d.estado === 'completado' ? `${d.nombre}: se completaron ${d.campos.length} dato(s) desde el XML (${d.campos.join(', ')}).`
+          : d.estado === 'sin_cambios' ? `${d.nombre} ya tenía todos sus datos: nada que completar.`
+            : `${d.nombre || d.rfc} no existe como empleado: dálo de alta con su XML.`);
+      q.refetch();
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo completar.'); }
+    finally { setCompletando(''); }
+  };
+
   const flecha = (campo: string) => (orden.campo === campo ? (orden.dir === 1 ? ' ▲' : ' ▼') : '');
 
   return (
     <div className="space-y-3">
       <div className="bg-white rounded-lg border shadow-sm p-3 text-sm text-gray-600">
         Timbrados de <b>periodos anteriores</b> rescatados del respaldo. Descarga el XML de quien necesites
-        para darlo de alta (Empleados → alta con XML). El <b>check</b> pasa al trabajador a <b>activo</b> si ya existe.
+        para darlo de alta (Empleados → alta con XML). El <b>check</b> pasa al trabajador a <b>activo</b> si ya existe,
+        y <b>Completar</b> rellena sus datos vacíos (NSS, puesto, salarios…) con los del recibo, sin pisar lo capturado.
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 max-w-xs">
           <Search size={14} className="absolute left-2.5 top-2.5 text-gray-400" />
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar trabajador o RFC…"
             className="w-full border rounded-lg pl-8 pr-3 py-1.5 text-sm" />
         </div>
+        <select value={anio} onChange={(e) => setAnio(Number(e.target.value))}
+          title="Filtrar por ejercicio" className="border rounded-lg px-2 py-1.5 text-sm">
+          <option value={0}>Todos los años</option>
+          {anios.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
         <span className="text-xs text-gray-500">{lista.length} de {filas.length}</span>
       </div>
       {msg && <p className="text-sm bg-sky-50 border border-sky-200 text-sky-900 rounded px-3 py-2">{msg}</p>}
@@ -530,13 +554,14 @@ function CfdiRecuperados() {
               <th className="px-3 py-2 text-left cursor-pointer select-none" onClick={() => ordenar('nombre')}>Trabajador{flecha('nombre')}</th>
               <th className="px-3 py-2 text-left cursor-pointer select-none w-32" onClick={() => ordenar('fecha')}>Fecha{flecha('fecha')}</th>
               <th className="px-3 py-2 text-left">Folio fiscal (UUID)</th>
+              <th className="px-2 py-2 text-center w-20" title="Completar datos vacíos del empleado con los del recibo">Datos</th>
               <th className="px-2 py-2 text-center w-16">XML</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {q.isLoading && <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>}
+            {q.isLoading && <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">Cargando…</td></tr>}
             {!q.isLoading && lista.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-500 italic">
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-500 italic">
                 No hay CFDI de nómina recuperados. Recupéralos en Contabilidad → Importar respaldo.
               </td></tr>)}
             {lista.map((f) => (
@@ -560,6 +585,13 @@ function CfdiRecuperados() {
                 </td>
                 <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{aTextoMx(f.fecha_emision)}</td>
                 <td className="px-3 py-1.5"><span className="font-mono text-[11px] text-gray-700 select-all break-all">{f.uuid}</span></td>
+                <td className="px-2 py-1.5 text-center">
+                  {f.existe ? (
+                    <button onClick={() => completar(f)} disabled={completando === f.uuid}
+                      title="Completar los datos vacíos del empleado (NSS, puesto, salarios…) con los del recibo"
+                      className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg disabled:opacity-50"><UserCog size={16} /></button>
+                  ) : <span className="text-gray-300" title="Primero dálo de alta con su XML">—</span>}
+                </td>
                 <td className="px-2 py-1.5 text-center">
                   <button onClick={() => api.descargarXmlNominaRecuperado(f.uuid, `nomina_${f.rfc}_${String(f.uuid).slice(0, 8)}.xml`)}
                     title="Descargar XML" className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"><Download size={16} /></button>

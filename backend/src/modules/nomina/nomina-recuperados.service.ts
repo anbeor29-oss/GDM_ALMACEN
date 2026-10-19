@@ -7,9 +7,26 @@
  */
 import { query } from '../../config/database';
 import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
+import * as empleados from './empleados.service';
+import { detect } from '../xml-super-import/xml-super-import.service';
 
-/** Lista los CFDI de nómina del vault con el estado del trabajador (existe/activo). */
-export async function listar(companyId: string) {
+/** Años con CFDI de nómina recuperados (para el filtro por ejercicio). */
+export async function aniosDisponibles(companyId: string): Promise<number[]> {
+  const r = await query<any>(
+    `SELECT DISTINCT EXTRACT(YEAR FROM fecha_emision)::int AS anio
+       FROM cfdi_recibidos
+      WHERE company_id = $1 AND tipo_comprobante = 'N' AND fecha_emision IS NOT NULL
+      ORDER BY anio DESC`,
+    [companyId]);
+  return r.rows.map((x: any) => x.anio);
+}
+
+/** Lista los CFDI de nómina del vault con el estado del trabajador (existe/activo).
+ *  Filtra por AÑO de emisión cuando se indica (para migraciones por ejercicio). */
+export async function listar(companyId: string, anio?: number) {
+  const params: any[] = [companyId];
+  let filtroAnio = '';
+  if (anio) { params.push(anio); filtroAnio = ` AND EXTRACT(YEAR FROM c.fecha_emision) = $${params.length}`; }
   const r = await query<any>(
     `SELECT c.uuid,
             c.rfc_receptor  AS rfc,
@@ -24,9 +41,9 @@ export async function listar(companyId: string) {
          ON emp.company_id = c.company_id
         AND UPPER(emp.rfc) = UPPER(c.rfc_receptor)
         AND emp.deleted_at IS NULL
-      WHERE c.company_id = $1 AND c.tipo_comprobante = 'N'
+      WHERE c.company_id = $1 AND c.tipo_comprobante = 'N'${filtroAnio}
       ORDER BY c.fecha_emision DESC NULLS LAST, c.nombre_receptor`,
-    [companyId]);
+    params);
   return r.rows;
 }
 
@@ -66,4 +83,57 @@ export async function activarTrabajador(companyId: string, uuid: string): Promis
 
   await query(`UPDATE nomina_empleados SET activo = true, updated_at = NOW() WHERE id = $1`, [emp.id]);
   return { estado: 'activado', rfc: cfdi.rfc, nombre: cfdi.nombre };
+}
+
+/**
+ * «Completar datos»: lee el XML del CFDI de nómina recuperado y rellena los campos
+ * VACÍOS del expediente del trabajador (NSS, CURP, puesto, departamento, fecha de
+ * ingreso, salarios, banco, etc.) sin pisar lo ya capturado. Es el «lector de XML
+ * que actualiza/completa los datos del empleado al migrarlo de otra plataforma».
+ * Si el trabajador aún no existe, se avisa (se da de alta desde el lector en bloque).
+ */
+export async function completarDesdeUuid(
+  companyId: string, uuid: string,
+): Promise<{ estado: 'completado' | 'sin_cambios' | 'no_existe'; rfc: string; nombre: string; num_empleado?: string; campos: string[] }> {
+  const row = (await query<any>(
+    `SELECT xml, rfc_receptor, nombre_receptor FROM cfdi_recibidos
+      WHERE company_id = $1 AND uuid = $2 AND tipo_comprobante = 'N'`,
+    [companyId, String(uuid).toUpperCase()])).rows[0];
+  if (!row || !row.xml) throw new NotFoundError('No se encontró el XML de ese CFDI de nómina.');
+
+  const det: any = await detect(row.xml);
+  if (det?.type !== 'CFDI_NOMINA' || !det.nomina) throw new ValidationError('Ese XML no trae complemento de nómina.');
+
+  const t = det.nomina.trabajador || {};
+  const rfc = String(det.receptor?.rfc || row.rfc_receptor || '').toUpperCase().trim();
+  const curp = String(t.curp || '').toUpperCase().trim();
+
+  const emp = await empleados.buscarPorIdentidad(companyId, { rfc, curp });
+  if (!emp) return { estado: 'no_existe', rfc, nombre: row.nombre_receptor, campos: [] };
+
+  // Los dos sueldos: el menor es el diario, el mayor el integrado (el factor de
+  // integración nunca baja de 1); con uno solo, sirve para ambos.
+  const sueldos = [t.salarioBaseCotApor, t.salarioDiarioIntegrado]
+    .filter((v) => v !== undefined && v !== null && Number.isFinite(Number(v))).map(Number);
+  const salDiario = sueldos.length ? Math.min(...sueldos) : undefined;
+  const salInteg = sueldos.length ? Math.max(...sueldos) : undefined;
+
+  const datos: any = {
+    nss: t.numSeguridadSocial ? String(t.numSeguridadSocial).replace(/[\s-]/g, '') : undefined,
+    curp: curp || undefined,
+    puesto: t.puesto, departamento: t.departamento,
+    fecha_ingreso: t.fechaInicioRelLaboral,
+    tipo_contrato: t.tipoContrato, tipo_regimen: t.tipoRegimen, tipo_jornada: t.tipoJornada,
+    periodicidad_pago: t.periodicidadPago, entidad_federativa: t.claveEntFed,
+    banco_clave: t.banco,
+    cuenta_clabe: t.cuentaBancaria ? String(t.cuentaBancaria).replace(/\s/g, '') : undefined,
+    codigo_postal: det.receptor?.domicilioFiscal,
+    salario_diario: salDiario, salario_diario_integrado: salInteg,
+  };
+
+  const campos = await empleados.completarCamposVacios(companyId, emp.id, datos);
+  return {
+    estado: campos.length ? 'completado' : 'sin_cambios',
+    rfc, nombre: emp.nombre_completo, num_empleado: emp.num_empleado, campos,
+  };
 }

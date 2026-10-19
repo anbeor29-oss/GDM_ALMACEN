@@ -220,6 +220,27 @@ function NominaPFPanel() {
                   <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400 italic">Sin XML en {anio}. Descarga del SAT primero.</td></tr>
                 )}
               </tbody>
+              {/* Totales del año: suma de cada columna, para el control de la declaración anual. */}
+              {r.filas.some((f: any) => f.docs || f.facturado || f.egresos) && (() => {
+                const T = r.filas.reduce((a: any, f: any) => ({
+                  sueldos: a.sueldos + (f.sueldos || 0), asimilados: a.asimilados + (f.asimilados || 0),
+                  isr: a.isr + (f.isr || 0), imss: a.imss + (f.imss || 0),
+                  facturado: a.facturado + (f.facturado || 0), egresos: a.egresos + (f.egresos || 0),
+                }), { sueldos: 0, asimilados: 0, isr: 0, imss: 0, facturado: 0, egresos: 0 });
+                return (
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold text-gray-800">
+                      <td className="px-3 py-2">Totales {anio}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{money(T.sueldos)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{money(T.asimilados)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-rose-600">{money(T.isr)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{money(T.imss)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{money(T.facturado)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-amber-700">{money(T.egresos)}</td>
+                    </tr>
+                  </tfoot>
+                );
+              })()}
             </table>
           </div>
 

@@ -553,19 +553,20 @@ export async function detallePolizaPendiente(companyId: string, guid: string) {
   };
 }
 
-/** La cuenta temporal de migración (suspense): las partidas que no tienen cuenta
- *  o el descuadre de una póliza caen aquí para no perder nada; se reasignan luego. */
+/** La cuenta temporal de migración (suspense) «POR CODIFICAR»: las partidas que no
+ *  tienen cuenta o el descuadre de una póliza caen aquí para no perder nada; se
+ *  reasignan luego. El código interno sigue siendo MIG-TEMPORAL (no romper las
+ *  pólizas ya ligadas), pero el nombre visible es «POR CODIFICAR». */
 export async function asegurarCuentaTemporal(companyId: string): Promise<string> {
   const cod = 'MIG-TEMPORAL';
-  const ya = await query<any>('SELECT id FROM accounting_accounts WHERE company_id=$1 AND codigo=$2', [companyId, cod]);
-  if (ya.rows[0]) return ya.rows[0].id;
+  // Siempre upsert para que el nombre quede actualizado aunque la cuenta ya existiera.
   const r = await query<any>(
     `INSERT INTO accounting_accounts
        (company_id, codigo, nombre, tipo, naturaleza, nivel, permite_movimientos, requiere_tercero, moneda, activa)
      VALUES ($1,$2,$3,'ACTIVO','DEUDORA',1,true,false,'MXN',true)
-     ON CONFLICT (company_id, codigo) DO UPDATE SET updated_at=NOW()
+     ON CONFLICT (company_id, codigo) DO UPDATE SET nombre=EXCLUDED.nombre, updated_at=NOW()
      RETURNING id`,
-    [companyId, cod, 'CUENTA TEMPORAL DE MIGRACIÓN (reasignar)']);
+    [companyId, cod, 'POR CODIFICAR (reasignar)']);
   return r.rows[0].id;
 }
 

@@ -23,6 +23,7 @@ import * as nominaPf from './nomina-pf.service';
 import * as satgoConsultas from '../satgo/satgo.consultas.service';
 import { bovedaLista } from './boveda';
 import { EfirmaInvalida } from './efirma';
+import logger from '../../middleware/logger';
 // archiver es CJS — require para evitar el namespace import (igual que /archive).
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const archiver = require('archiver');
@@ -431,6 +432,59 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const r = await service.avanzar(companyId(req), req.body?.trabajoId);
     res.json({ success: true, data: r });
+  })
+);
+
+/**
+ * POST /sat-descarga/avanzar-todas — avanza el motor de descarga del SAT para
+ * TODAS las empresas del usuario que tengan e.firma vigente, de un tirón (desde
+ * «Empresas que administras» del Dashboard). Crea el trabajo del día y empuja los
+ * pendientes de cada una —lo mismo que el cron— pero a petición, sin ir empresa
+ * por empresa. Corre en SEGUNDO PLANO: responde de inmediato y los XML van
+ * apareciendo en el menú XML conforme el SAT los libera.
+ *
+ * Alcance acotado al usuario: sólo sus empresas (tabla puente), nunca todas las
+ * del sistema. Requiere e.firma ACTIVA y vigente (sin ella no hay nada que pedir).
+ */
+router.post(
+  '/avanzar-todas',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.user?.userId;
+    if (!userId) throw new ValidationError('Sesión inválida.');
+    if (!bovedaLista()) throw new ValidationError('Falta SAT_VAULT_KEY: no se puede usar la e.firma.');
+
+    const empresas = await query<any>(
+      `SELECT DISTINCT c.company_id, co.business_name
+         FROM sat_credenciales c
+         JOIN user_companies uc ON uc.company_id = c.company_id
+         JOIN companies co ON co.id = c.company_id AND co.deleted_at IS NULL
+        WHERE uc.user_id = $1 AND c.estado = 'ACTIVA'
+          AND (c.vigencia_hasta IS NULL OR c.vigencia_hasta > NOW())`,
+      [userId]);
+    const ids: string[] = empresas.rows.map((r: any) => r.company_id);
+
+    // Segundo plano: crear el trabajo del día y avanzar cada empresa en serie (con
+    // factor 2, como una corrida enérgica). Los errores por empresa no detienen al resto.
+    void (async () => {
+      for (const id of ids) {
+        try {
+          await programacion.crearTrabajoDiario(id, userId);
+          await service.avanzar(id, undefined, 2);
+        } catch (e) {
+          logger.warn(`[avanzar-todas] ${id}: ${(e as Error).message}`);
+        }
+      }
+      logger.info(`[avanzar-todas] usuario ${userId}: avance disparado para ${ids.length} empresa(s)`);
+    })();
+
+    res.json({
+      success: true,
+      data: { empresas: ids.length },
+      message: ids.length
+        ? `Avance del SAT iniciado para ${ids.length} empresa(s). Los XML irán apareciendo en el menú XML de cada una.`
+        : 'Ninguna de tus empresas tiene e.firma vigente: no hay nada que avanzar.',
+    });
   })
 );
 

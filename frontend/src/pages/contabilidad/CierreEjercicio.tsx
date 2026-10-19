@@ -41,10 +41,17 @@ export function CierreEjercicioPage() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [confirmar, setConfirmar] = useState(false);
+  /* Cuenta de capital donde acumular el resultado. Vacío = automático (crea/usa
+   * «Resultado Ejercicio {año}» bajo 305). El usuario puede elegir una existente
+   * del bloque de capital o capturar una nueva en el Catálogo. */
+  const [cuentaResultado, setCuentaResultado] = useState('');
 
   const qMes = useQuery({ queryKey: ['cierre-mes', anio, mes], queryFn: () => api.getCierreMes(anio, mes), enabled: vista === 'mes' });
   const qAnual = useQuery({ queryKey: ['cierre-anual', anioSel], queryFn: () => api.getCierreEjercicio(anioSel), enabled: vista === 'anual' });
   const qCerrados = useQuery({ queryKey: ['meses-cerrados', anioSel], queryFn: () => api.getMesesCerrados(anioSel), enabled: vista === 'cerrados' });
+  // Cuentas de CAPITAL que aceptan movimientos: candidatas para acumular el cierre.
+  const qCapital = useQuery({ queryKey: ['cuentas-capital'], queryFn: () => api.getCuentasContables({ tipo: 'CAPITAL', soloMovimientos: true }) });
+  const cuentasCapital: any[] = qCapital.data?.data?.cuentas || [];
 
   const d: any = vista === 'anual' ? qAnual.data?.data : qMes.data?.data;
   const cerrados: number[] = (qCerrados.data?.data as number[]) || [];
@@ -53,7 +60,9 @@ export function CierreEjercicioPage() {
   const generar = async () => {
     setConfirmar(false); setBusy(true); setMsg(''); setError('');
     try {
-      const r: any = vista === 'anual' ? await api.generarCierreEjercicio(anioSel) : await api.generarCierreMes(anio, mes);
+      const r: any = vista === 'anual'
+        ? await api.generarCierreEjercicio(anioSel, cuentaResultado || undefined)
+        : await api.generarCierreMes(anio, mes, cuentaResultado || undefined);
       setMsg(r?.message || 'Póliza de cierre generada.');
       (vista === 'anual' ? qAnual : qMes).refetch();
     } catch (e: any) { setError(e?.response?.data?.message || 'No se pudo generar el cierre.'); }
@@ -112,6 +121,7 @@ export function CierreEjercicioPage() {
           </div>
           {cargando && <p className="text-sm text-gray-500">Cargando…</p>}
           {d && <ResultadoMes d={d} periodo={periodo} mensual
+            cuentas={cuentasCapital} cuentaSel={cuentaResultado} onCuenta={setCuentaResultado}
             onGenerar={() => setConfirmar(true)} busy={busy} esAdmin={esAdmin} />}
         </>
       )}
@@ -168,6 +178,7 @@ export function CierreEjercicioPage() {
           </div>
           {cargando && <p className="text-sm text-gray-500">Cargando…</p>}
           {d && <ResultadoMes d={d} periodo={periodo} mensual={false}
+            cuentas={cuentasCapital} cuentaSel={cuentaResultado} onCuenta={setCuentaResultado}
             onGenerar={() => setConfirmar(true)} onRevertir={revertirAnual} busy={busy} esAdmin={esAdmin} />}
         </>
       )}
@@ -181,8 +192,9 @@ export function CierreEjercicioPage() {
   );
 }
 
-function ResultadoMes({ d, periodo, mensual, onGenerar, onRevertir, busy, esAdmin }: {
+function ResultadoMes({ d, periodo, mensual, onGenerar, onRevertir, busy, esAdmin, cuentas, cuentaSel, onCuenta }: {
   d: any; periodo: string; mensual: boolean; onGenerar: () => void; onRevertir?: () => void; busy: boolean; esAdmin: boolean;
+  cuentas: any[]; cuentaSel: string; onCuenta: (id: string) => void;
 }) {
   return (
     <>
@@ -212,6 +224,26 @@ function ResultadoMes({ d, periodo, mensual, onGenerar, onRevertir, busy, esAdmi
             <span>Hubo operaciones en <b>{d.monedaExtranjera.map((x: any) => x.moneda).join(', ')}</b>: revisa el tipo de cambio en el cuadro al cerrar.</span>
           </p>
         )}
+
+        {/* Cuenta de capital donde se acumula el resultado. Por omisión es
+            automática (305 «Resultado Ejercicio {año}»); aquí se puede fijar una
+            cuenta de detalle del bloque de capital —o capturar una nueva en el
+            Catálogo— para no depender de que exista la 305.01/305.02. */}
+        <div className="border-t pt-3">
+          <label className="text-xs font-semibold text-gray-600 flex items-center gap-1.5 mb-1">
+            <Coins size={14} className="text-indigo-500" /> Cuenta de capital para el resultado
+          </label>
+          <select value={cuentaSel} onChange={(e) => onCuenta(e.target.value)} className="input w-full max-w-md text-sm">
+            <option value="">Automático — «Resultado del ejercicio» (agrupador 305)</option>
+            {cuentas.map((c) => (
+              <option key={c.id} value={c.id}>{c.codigo} · {c.nombre}</option>
+            ))}
+          </select>
+          <p className="text-[11px] text-gray-400 mt-1">
+            ¿No está la cuenta? Captúrala en <b>Catálogo → Nueva cuenta</b> (bloque de capital, que acepte movimientos) y vuelve aquí.
+          </p>
+        </div>
+
         <div className="flex flex-wrap gap-2">
           <button onClick={onGenerar} disabled={busy || !esAdmin || !d.cuentas?.length} className="btn-primary">
             <PlayCircle size={16} /> {d.cierreAsentado ? 'Regenerar cierre' : 'Cerrar el periodo'}

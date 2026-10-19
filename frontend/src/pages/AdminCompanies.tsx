@@ -10,6 +10,7 @@ import { Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload, Ale
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { MODULE_LABELS } from '@/utils/permissions';
 import { CampoFecha } from '@/components/CampoFecha';
 import { CreateUserModal } from '@/pages/AdminUsers';
 
@@ -266,6 +267,9 @@ function EditCompanyModal({
     timbradoAmbiente: company.timbrado_ambiente || 'PRUEBAS',
     esEmisorCobro: company.es_emisor_cobro === true,
     empresaCobroId: company.empresa_cobro_id || '',
+    // Módulos habilitados (servicios contratados). null = sin restricción (todos).
+    modulosHabilitados: (Array.isArray(company.modulos_habilitados) && company.modulos_habilitados.length)
+      ? (company.modulos_habilitados as string[]) : (null as string[] | null),
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -335,6 +339,43 @@ function EditCompanyModal({
                 </select>
               </label>
             </div>
+          </div>
+
+          {/* Módulos habilitados (servicios contratados por el cliente) */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-sky-700">Módulos habilitados (servicios contratados)</p>
+              <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                <input type="checkbox" checked={form.modulosHabilitados !== null}
+                  onChange={(e) => setForm({ ...form, modulosHabilitados: e.target.checked ? ['invoices', 'contabilidad'] : null })} />
+                Restringir a lo contratado
+              </label>
+            </div>
+            {form.modulosHabilitados === null ? (
+              <p className="text-xs text-gray-500 bg-gray-50 border rounded p-2">
+                Sin restricción: la empresa ve <b>todos</b> los módulos que permita el grupo de trabajo de cada usuario.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 bg-sky-50 border border-sky-200 rounded p-2">
+                {Object.entries(MODULE_LABELS).filter(([k]) => k !== 'dashboard').map(([k, label]) => {
+                  const on = form.modulosHabilitados!.includes(k);
+                  return (
+                    <label key={k} className="flex items-center gap-1.5 text-xs text-gray-700">
+                      <input type="checkbox" checked={on}
+                        onChange={(e) => {
+                          const s = new Set(form.modulosHabilitados!);
+                          if (e.target.checked) s.add(k); else s.delete(k);
+                          setForm({ ...form, modulosHabilitados: [...s] });
+                        }} />
+                      {label}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-[11px] text-gray-400 mt-1">
+              Oculta a TODOS los usuarios de esta empresa los módulos no contratados (p. ej. Nómina, Compras, Almacén). El tablero siempre queda disponible.
+            </p>
           </div>
 
           {/* Domicilio */}

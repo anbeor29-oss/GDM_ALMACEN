@@ -136,6 +136,7 @@ class APIClient {
     const r = await this.client.get<APIResponse<Array<{
       id: string; rfc: string; business_name: string;
       work_group: string | null; is_default: boolean;
+      opinion_negativa?: number;
     }>>>('/auth/companies');
     return r.data;
   }
@@ -1122,9 +1123,10 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/accounting/cierre/${anio}`);
     return r.data;
   }
-  /** Genera/regenera la póliza de cierre (ADMIN). */
-  async generarCierreEjercicio(anio: number) {
-    const r = await this.client.post<APIResponse<any>>(`/accounting/cierre/${anio}/generar`, {});
+  /** Genera/regenera la póliza de cierre (ADMIN). cuentaResultadoId: cuenta de
+   *  capital elegida para acumular el resultado (opcional; si no, automático). */
+  async generarCierreEjercicio(anio: number, cuentaResultadoId?: string) {
+    const r = await this.client.post<APIResponse<any>>(`/accounting/cierre/${anio}/generar`, { cuentaResultadoId });
     return r.data;
   }
   /** Deshace la póliza de cierre del año (ADMIN). */
@@ -1142,8 +1144,8 @@ class APIClient {
     const r = await this.client.get<APIResponse<number[]>>(`/accounting/meses-cerrados/${anio}`);
     return r.data;
   }
-  async generarCierreMes(anio: number, mes: number) {
-    const r = await this.client.post<APIResponse<any>>(`/accounting/cierre/${anio}/${mes}/generar`, {});
+  async generarCierreMes(anio: number, mes: number, cuentaResultadoId?: string) {
+    const r = await this.client.post<APIResponse<any>>(`/accounting/cierre/${anio}/${mes}/generar`, { cuentaResultadoId });
     return r.data;
   }
   async revertirCierreMes(anio: number, mes: number) {
@@ -1951,6 +1953,12 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/desde-polizas-anual`);
     return r.data;
   }
+  /** Reconstrucción INTEGRAL: reconstruye la balanza de TODOS los ejercicios con
+   *  pólizas de un tirón (tras importar un respaldo). */
+  async reconstruirIntegral() {
+    const r = await this.client.post<APIResponse<any>>('/accounting/periodos/reconstruir-integral');
+    return r.data;
+  }
 
   /* ── Programación de la descarga del SAT ── */
   async getProgramacionSat() {
@@ -1980,6 +1988,11 @@ class APIClient {
   }
   async crearDiarioSat() {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/diario');
+    return r.data;
+  }
+  /** Avanza la descarga del SAT de TODAS mis empresas con e.firma vigente (en 2º plano). */
+  async avanzarDescargaTodas() {
+    const r = await this.client.post<APIResponse<{ empresas: number }>>('/sat-descarga/avanzar-todas');
     return r.data;
   }
   async reiniciarSatDescarga() {
@@ -2751,8 +2764,13 @@ class APIClient {
     return r.data;
   }
   /** CFDI de nómina recuperados del respaldo (histórico timbrado en la bóveda). */
-  async getCfdiNominaRecuperados() {
-    const r = await this.client.get<APIResponse<any[]>>('/nomina/cfdi-recuperados');
+  async getCfdiNominaRecuperados(anio?: number) {
+    const r = await this.client.get<APIResponse<any[]>>('/nomina/cfdi-recuperados', { params: anio ? { anio } : {} });
+    return r.data;
+  }
+  /** Años con CFDI de nómina recuperados (para el filtro por ejercicio). */
+  async getAniosNominaRecuperados() {
+    const r = await this.client.get<APIResponse<number[]>>('/nomina/cfdi-recuperados/anios');
     return r.data;
   }
   async descargarXmlNominaRecuperado(uuid: string, nombre: string) {
@@ -2761,6 +2779,11 @@ class APIClient {
   }
   async activarTrabajadorRecuperado(uuid: string) {
     const r = await this.client.post<APIResponse<any>>(`/nomina/cfdi-recuperados/${uuid}/activar`, {});
+    return r.data;
+  }
+  /** Completa los datos VACÍOS del trabajador desde el XML del recibo (migración). */
+  async completarTrabajadorRecuperado(uuid: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/cfdi-recuperados/${uuid}/completar`, {});
     return r.data;
   }
   async getXmlRecibo(id: string) {
@@ -3271,6 +3294,11 @@ class APIClient {
   /** Tablero de conectores externos: SAT (SatGo), Banco de México e INEGI. */
   async getConectoresEstado() {
     return (await this.client.get('/admin/satgo/conectores')).data;
+  }
+  /** Panel de rendimiento del servicio en Render: memoria del proceso/contenedor
+   *  y disco ocupado por la base de datos (SUPER_ADMIN). */
+  async getRendimiento() {
+    return (await this.client.get<APIResponse<any>>('/admin/rendimiento')).data;
   }
   async adminCreateCompany(data: { rfc: string; businessName: string; fiscalRegime: string;
                                    postalCode?: string; billingPlan?: string; capTimbres?: number;

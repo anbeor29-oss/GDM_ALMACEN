@@ -74,6 +74,19 @@ export function SuppliersPage() {
     finally { setGenerando(false); }
   };
 
+  /* Traer proveedores DESDE el catálogo contable y los CFDI recibidos (RFC +
+   * nombre normalizado). Puebla la lista cuando la empresa llegó de un respaldo. */
+  const [trayendo, setTrayendo] = useState(false);
+  const traerDelCatalogo = async () => {
+    setTrayendo(true);
+    try {
+      const r: any = await api.capturarTercerosCatalogo('proveedor');
+      qc.invalidateQueries({ queryKey: ['suppliers'] });
+      alert(r?.message || 'Proveedores traídos del catálogo.');
+    } catch (e: any) { alert(e?.response?.data?.message || 'No se pudieron traer los proveedores del catálogo.'); }
+    finally { setTrayendo(false); }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -87,6 +100,11 @@ export function SuppliersPage() {
         </div>
         {canEdit && (
           <div className="flex items-center gap-2">
+            <button onClick={traerDelCatalogo} disabled={trayendo}
+              title="Trae los proveedores desde el catálogo contable y los CFDI recibidos (RFC + nombre). Úsalo si la lista está vacía tras importar un respaldo."
+              className="flex items-center gap-2 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-2.5 rounded-lg disabled:opacity-50">
+              {trayendo ? 'Trayendo…' : 'Traer del catálogo'}
+            </button>
             <button onClick={generarCuentas} disabled={generando}
               title="Crea/correlaciona la subcuenta contable de cada proveedor por su RFC (201.01-###)"
               className="flex items-center gap-2 border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-lg disabled:opacity-50">

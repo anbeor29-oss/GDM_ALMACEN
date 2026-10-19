@@ -28,7 +28,27 @@ export interface EmpresaDelUsuario {
   business_name: string;
   work_group: string | null;
   is_default: boolean;
+  /** Nº de opiniones de cumplimiento VIGENTES con sentido NEGATIVA (para el punto
+   *  rojo de alerta en el Dashboard). 0 = al corriente / sin dato. */
+  opinion_negativa?: number;
+  /** Módulos que la empresa tiene habilitados (servicios contratados). NULL/vacío
+   *  = sin restricción (todos). El menú oculta los que no estén aquí. */
+  modulos_habilitados?: string[] | null;
 }
+
+/* Subconsulta: por empresa, cuántas opiniones VIGENTES (la más reciente por tipo)
+ * salieron NEGATIVA. Sirve para el punto rojo de alerta en «Empresas que administras». */
+const SQL_OPINION_NEG = `
+  LEFT JOIN (
+    SELECT company_id, COUNT(*)::int AS n
+      FROM (
+        SELECT DISTINCT ON (company_id, tipo) company_id, sentido
+          FROM opinion_cumplimiento
+         ORDER BY company_id, tipo, fecha_opinion DESC, created_at DESC
+      ) v
+     WHERE v.sentido = 'NEGATIVA'
+     GROUP BY company_id
+  ) neg ON neg.company_id = c.id`;
 
 /**
  * Empresas a las que este usuario tiene acceso.
@@ -39,9 +59,12 @@ export interface EmpresaDelUsuario {
 export async function empresasDelUsuario(userId: string): Promise<EmpresaDelUsuario[]> {
   const r = await query<EmpresaDelUsuario>(
     `SELECT c.id, c.rfc, c.business_name,
-            uc.work_group, uc.is_default
+            uc.work_group, uc.is_default,
+            c.modulos_habilitados,
+            COALESCE(neg.n, 0) AS opinion_negativa
        FROM user_companies uc
        JOIN companies c ON c.id = uc.company_id
+       ${SQL_OPINION_NEG}
       WHERE uc.user_id = $1
         AND c.deleted_at IS NULL
       ORDER BY uc.is_default DESC, c.business_name`,
@@ -51,9 +74,12 @@ export async function empresasDelUsuario(userId: string): Promise<EmpresaDelUsua
 
   const legado = await query<EmpresaDelUsuario>(
     `SELECT c.id, c.rfc, c.business_name,
-            u.work_group, true AS is_default
+            u.work_group, true AS is_default,
+            c.modulos_habilitados,
+            COALESCE(neg.n, 0) AS opinion_negativa
        FROM users u
        JOIN companies c ON c.id = u.company_id
+       ${SQL_OPINION_NEG}
       WHERE u.id = $1 AND c.deleted_at IS NULL`,
     [userId]
   );

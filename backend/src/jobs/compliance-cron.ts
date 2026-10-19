@@ -4,10 +4,9 @@
  * vigente (no se acumula: solo se conserva la más reciente por tipo, para no ocupar
  * espacio — ver compliance.service).
  *
- * Horario: **lunes 01:50 CDMX** (`50 1 * * 1`), para que las tarjetas del Panel fiscal
- * estén frescas a primera hora del lunes (decisión del usuario, 2026-10-07). Antes fue
- * domingos 04:00 y luego diario 06:00; se volvió a semanal a este horario.
- * Zona horaria fija a CDMX (Render corre en UTC) para que "la 1:50" sea la de México.
+ * Horario: **lunes 05:30 CDMX** (`30 5 * * 1`), para que las tarjetas del Panel fiscal
+ * estén frescas a primera hora del lunes (decisión del usuario, 2026-10-19; antes 01:50).
+ * Zona horaria fija a CDMX (Render corre en UTC) para que "las 5:30" sea la de México.
  *
  * Trade-off a tener presente: si el servicio está reiniciando justo el lunes 01:50, ese
  * barrido se pierde y la opinión queda una semana vieja. El botón «Actualizar» (ahora en
@@ -43,10 +42,10 @@ export function registerComplianceCron(): void {
     logger.info('[compliance-cron] Deshabilitado (ENABLE_COMPLIANCE_CRON != true)');
     return;
   }
-  // Lunes 01:50 CDMX. La zona horaria se fija explícita para no depender de que el
+  // Lunes 05:30 CDMX. La zona horaria se fija explícita para no depender de que el
   // servidor esté en UTC o cambie de región.
-  cron.schedule('50 1 * * 1', () => {
+  cron.schedule('30 5 * * 1', () => {
     correrBarrido().catch((e) => logger.error(`[compliance-cron] error: ${e.message}`));
   }, { timezone: 'America/Mexico_City' });
-  logger.info('[compliance-cron] Registrado: barrido SEMANAL (lunes 01:50 CDMX).');
+  logger.info('[compliance-cron] Registrado: barrido SEMANAL (lunes 05:30 CDMX).');
 }

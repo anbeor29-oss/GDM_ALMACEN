@@ -787,6 +787,36 @@ export async function actualizar(companyId: string, id: string, datos: DatosEmpl
 }
 
 /**
+ * Rellena SÓLO los campos VACÍOS del expediente con lo que traiga `datos`, sin
+ * pisar nada ya capturado (migración: «completar los datos del empleado» desde un
+ * XML de nómina). Devuelve las columnas que de verdad se llenaron. No usa el
+ * optimistic-lock porque, al no sobrescribir, no hay trabajo ajeno que pisar.
+ */
+export async function completarCamposVacios(companyId: string, id: string, datos: DatosEmpleado): Promise<string[]> {
+  const d = normalizar(datos, true);
+  // Campos que tiene sentido completar desde un recibo de nómina timbrado.
+  const PERMITIDAS = new Set([
+    'nss', 'curp', 'rfc', 'fecha_nacimiento', 'codigo_postal', 'puesto', 'departamento',
+    'fecha_ingreso', 'tipo_contrato', 'tipo_regimen', 'tipo_jornada', 'periodicidad_pago',
+    'entidad_federativa', 'banco_clave', 'cuenta_clabe', 'salario_diario', 'salario_diario_integrado',
+    'regimen_fiscal', 'uso_cfdi',
+  ]);
+  const cols = Object.keys(d).filter((c) => PERMITIDAS.has(c) && d[c] !== undefined && d[c] !== null && d[c] !== '');
+  if (!cols.length) return [];
+  // Sólo escribe donde la columna está NULL o vacía: un CASE por columna protege
+  // lo ya capturado (la migración completa huecos, no corrige lo existente).
+  const sets = cols.map((c, i) => `${c} = CASE WHEN (${c} IS NULL OR ${c}::text = '') THEN $${i + 3} ELSE ${c} END`);
+  const r = await query<any>(
+    `UPDATE nomina_empleados SET ${sets.join(', ')}, updated_at = NOW()
+      WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
+      RETURNING ${cols.join(', ')}`,
+    [id, companyId, ...cols.map((c) => d[c])]);
+  if (!r.rowCount) throw new NotFoundError('Ese trabajador no existe en esta empresa');
+  // Las columnas cuyo valor final es el nuevo = las que estaban vacías y se llenaron.
+  return cols.filter((c) => String(r.rows[0][c] ?? '') === String(d[c] ?? ''));
+}
+
+/**
  * Baja del trabajador.
  *
  * NO borra el expediente: los recibos timbrados siguen apuntando a él y la

@@ -228,8 +228,12 @@ export function Layout() {
     enabled: !!user?.companyId,
     staleTime: 5 * 60 * 1000,
   });
-  const nombreEmpresa: string | undefined =
-    (empresasQ.data?.data as any[] | undefined)?.find((e) => e.id === user?.companyId)?.business_name;
+  const empresaActivaRow = (empresasQ.data?.data as any[] | undefined)?.find((e) => e.id === user?.companyId);
+  const nombreEmpresa: string | undefined = empresaActivaRow?.business_name;
+  /* Módulos que la EMPRESA activa tiene habilitados (servicios contratados).
+   * null/vacío = sin restricción (todos); el menú oculta los que no estén. */
+  const empresaModulos: string[] | null = (empresaActivaRow?.modulos_habilitados?.length)
+    ? empresaActivaRow.modulos_habilitados : null;
 
   /* ¿La empresa ya tiene catálogo contable? Sin él, en Contabilidad sólo se
      ofrece arrancar/importar (catálogo o respaldo); lo demás se desbloquea
@@ -360,7 +364,11 @@ export function Layout() {
             const g = user?.workGroup;
             // Además del grupo, los módulos EXTRA que se le otorgaron (varias funciones).
             const extra = (user?.extraModules || []) as ModuleKey[];
-            const show = (m: ModuleKey) => canAccess(g, m) || extra.includes(m);
+            /* Además del grupo/extra, la EMPRESA debe tener el módulo habilitado
+             * (servicios contratados). 'dashboard' nunca se oculta (es la casa). */
+            const show = (m: ModuleKey) =>
+              (canAccess(g, m) || extra.includes(m))
+              && (!empresaModulos || m === 'dashboard' || empresaModulos.includes(m));
             const esAdmin = user?.role === 'ADMIN';   // aquí ya se excluyó SUPER_ADMIN
             // Cada entrada se muestra solo si el grupo de trabajo la permite.
             // El dashboard es común a todos.
@@ -413,6 +421,9 @@ export function Layout() {
                       ] : []),
                       ...(show('customers') ? [
                         { to: '/customers',          icon: emoji3D('👥'), label: 'Clientes' },
+                      ] : []),
+                      ...(show('suppliers') ? [
+                        { to: '/suppliers',          icon: emoji3D('🚚'), label: 'Proveedores' },
                       ] : []),
                       ...(show('exchange_rates') ? [
                         { to: '/tipos-de-cambio',      icon: emoji3D('🪙'), label: 'Tipos de cambio' },
@@ -692,6 +703,7 @@ export function Layout() {
               <NavItem to="/admin/demos" icon={navIcon('🖥️')} accent="sky" label="Onboarding (firmas y demos)"  open={sidebarOpen} />
               <NavItem to="/admin/satgo" icon={navIcon('☁️')} accent="sky" label="Conector fiscal"  open={sidebarOpen} />
               <NavItem to="/admin/users"     icon={navIcon('🛡️')} accent="emerald" label="Usuarios"              open={sidebarOpen} />
+              <NavItem to="/admin/rendimiento" icon={navIcon('📈')} accent="rose" label="Rendimiento (Render)"  open={sidebarOpen} />
               {/* "Accesos por empresa" se retiró del sidebar: cada cliente da
                   de alta a sus propios usuarios desde su administración. La ruta
                   /admin/accesos queda sin enlace. */}

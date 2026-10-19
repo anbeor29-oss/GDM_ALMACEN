@@ -1,0 +1,14 @@
+-- ============================================================================
+-- Módulos habilitados POR EMPRESA (servicios contratados de cada cliente)
+--
+-- Un despacho administra varias empresas y cada una contrata distintos módulos
+-- (una sólo Contabilidad + Facturación, otra además Nómina, etc.). Esta columna
+-- guarda QUÉ módulos tiene habilitados la empresa; las pantallas y el backend
+-- ocultan/niegan los demás.
+--
+-- SEGURIDAD / COMPATIBILIDAD: NULL o arreglo vacío = SIN restricción (todos los
+-- módulos), que es el comportamiento de siempre. Las empresas existentes quedan
+-- intactas hasta que el Súper Admin restrinja una a propósito. El Súper Admin
+-- nunca se ve afectado (opera la plataforma).
+-- ============================================================================
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS modulos_habilitados TEXT[];

@@ -23,11 +23,20 @@ import { authenticateToken } from '../../middleware/authentication';
 import { asyncHandler, ValidationError, NotFoundError, ConflictError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import { requireSuperAdmin, audit } from './admin.middleware';
+import { invalidarModulosEmpresa } from '../../middleware/authentication';
 import * as promo from '../billing/prueba-y-prorrateo.service';
 
 const router = Router();
 router.use(authenticateToken);
 router.use(requireSuperAdmin);
+
+/* Claves de módulo válidas para «servicios contratados» por empresa (espejo de
+ * ModuleKey del front y de permissions.ts). 'dashboard' se incluye siempre. */
+const MODULOS_VALIDOS = [
+  'dashboard', 'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
+  'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos', 'treasury',
+  'reports', 'exchange_rates', 'auditoria', 'mensajes', 'nomina', 'contabilidad',
+];
 
 const CSD_MASTER_KEY = process.env.CSD_MASTER_KEY || 'change-me-in-prod-' + crypto.randomBytes(8).toString('hex');
 if (CSD_MASTER_KEY.startsWith('change-me-in-prod-')) {
@@ -70,6 +79,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
             c.trial_stamps_left,
             c.billing_exempt,
             COALESCE(c.producto,'NEXO') AS producto,
+            c.modulos_habilitados,
             c.es_emisor_cobro, c.empresa_cobro_id,
             (SELECT ec.business_name FROM companies ec WHERE ec.id = c.empresa_cobro_id) AS empresa_cobro_nombre
        FROM companies c
@@ -188,6 +198,8 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
     street, extNumber, neighborhood, city, municipality, state,
     // Contacto (contact_email es el remitente/destino de correos automáticos)
     contactEmail, phone, website,
+    // Módulos habilitados (servicios contratados): array de claves, [] / null = todos.
+    modulosHabilitados,
   } = req.body as any;
   const fields: string[] = [];
   const params: any[] = [];
@@ -239,6 +251,21 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   }
   if (phone        !== undefined) push('phone',   phone || null);
   if (website      !== undefined) push('website', website || null);
+  // Módulos habilitados: se validan contra el catálogo conocido; [] / null = sin
+  // restricción (todos). 'dashboard' se agrega implícito (es la casa) si viene lista.
+  if (modulosHabilitados !== undefined) {
+    if (modulosHabilitados === null || (Array.isArray(modulosHabilitados) && modulosHabilitados.length === 0)) {
+      push('modulos_habilitados', null);
+    } else if (Array.isArray(modulosHabilitados)) {
+      const limpio = [...new Set(
+        modulosHabilitados.map((m: any) => String(m).trim()).filter((m: string) => MODULOS_VALIDOS.includes(m)),
+      )];
+      if (!limpio.includes('dashboard')) limpio.push('dashboard');
+      push('modulos_habilitados', limpio);
+    } else {
+      throw new ValidationError('modulosHabilitados debe ser un arreglo de claves o null');
+    }
+  }
 
   if (fields.length === 0) throw new ValidationError('Nada que actualizar');
   params.push(req.params.id);
@@ -248,6 +275,9 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
     params
   );
   if (r.rows.length === 0) throw new NotFoundError('Empresa no encontrada');
+  // Si cambiaron los módulos de la empresa, se invalida la caché para que el
+  // nuevo alcance se aplique de inmediato (sin esperar el TTL ni re-login).
+  if (modulosHabilitados !== undefined) invalidarModulosEmpresa(req.params.id);
   await audit(req, { action: 'COMPANY_UPDATED', targetKind: 'company', targetId: req.params.id,
     payload: req.body });
   res.json({ success: true, data: r.rows[0] });

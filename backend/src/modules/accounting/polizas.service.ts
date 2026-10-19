@@ -671,22 +671,25 @@ export async function generarPagosPueDelMes(
  * periodo (o todo el año si mes = 0/omitido). Devuelve folio + el ajuste que
  * quedó en la cuenta de cuadre, para listarlas y abrirlas desde Pólizas.
  */
-export async function polizasConCuadre(companyId: string, anio: number, mes?: number) {
+export async function polizasConCuadre(companyId: string, anio?: number, mes?: number) {
+  // anio 0/null = TODOS los ejercicios (el aviso en Pólizas lista todas las
+  // pendientes, no sólo las del periodo en pantalla). mes 0/null = todo el año.
   const r = await query<any>(
     `SELECT e.id, e.folio, e.tipo, TO_CHAR(e.fecha,'YYYY-MM-DD') AS fecha, e.concepto,
+            EXTRACT(YEAR FROM e.fecha)::int AS anio, EXTRACT(MONTH FROM e.fecha)::int AS mes,
             COALESCE(SUM(l.cargo - l.abono), 0)::float AS ajuste
        FROM journal_entries e
        JOIN journal_lines l ON l.entry_id = e.id
        JOIN accounting_accounts a ON a.id = l.account_id
       WHERE e.company_id=$1 AND a.codigo='MIG-TEMPORAL'
-        AND EXTRACT(YEAR FROM e.fecha)=$2
+        AND ($2::int IS NULL OR $2 = 0 OR EXTRACT(YEAR FROM e.fecha)=$2)
         AND ($3::int IS NULL OR $3 = 0 OR EXTRACT(MONTH FROM e.fecha)=$3)
       GROUP BY e.id, e.folio, e.tipo, e.fecha, e.concepto
       ORDER BY e.fecha, e.folio`,
-    [companyId, anio, mes ?? null]);
+    [companyId, anio ?? null, mes ?? null]);
   return r.rows.map((x: any) => ({
     id: x.id, folio: x.folio, tipo: x.tipo, fecha: x.fecha,
-    concepto: x.concepto, ajuste: round2(x.ajuste),
+    anio: x.anio, mes: x.mes, concepto: x.concepto, ajuste: round2(x.ajuste),
   }));
 }
 

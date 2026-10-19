@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { canAccess } from '@/utils/permissions';
-import { FileText, Wallet, TrendingDown, AlertCircle, Stamp, Boxes, ShieldCheck, ArrowRight, Search } from 'lucide-react';
+import { FileText, Wallet, TrendingDown, AlertCircle, Stamp, Boxes, ShieldCheck, ArrowRight, Search, DownloadCloud } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
@@ -100,6 +100,19 @@ export function DashboardPage() {
 
   const [cambiando, setCambiando] = useState('');
   const [filtroEmp, setFiltroEmp] = useState('');
+  /* Avance de la descarga del SAT para TODAS mis empresas (en 2º plano), sin ir
+   * empresa por empresa ni esperar al cron. */
+  const [avanzandoSat, setAvanzandoSat] = useState(false);
+  const [msgSat, setMsgSat] = useState('');
+  const avanzarSatTodas = async () => {
+    setAvanzandoSat(true); setMsgSat('');
+    try {
+      const r: any = await api.avanzarDescargaTodas();
+      setMsgSat(r?.message || 'Avance del SAT iniciado.');
+    } catch (e: any) {
+      setMsgSat(e?.response?.data?.message || 'No se pudo iniciar el avance del SAT.');
+    } finally { setAvanzandoSat(false); }
+  };
 
   const cambiarEmpresa = async (companyId: string, destino?: string) => {
     /* Si ya es la empresa activa, no hay que recargar: si venía con destino
@@ -286,14 +299,27 @@ export function DashboardPage() {
           esta cuenta y en cuál se está trabajando. */}
       {empresas.length > 0 && (
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-1">
-            {empresas.length > 1 ? 'Empresas que administras' : 'Tu empresa'}
-          </h2>
+          <div className="flex items-start justify-between gap-3 mb-1">
+            <h2 className="text-xl font-bold text-gray-900">
+              {empresas.length > 1 ? 'Empresas que administras' : 'Tu empresa'}
+            </h2>
+            {puedeContab && (
+              <button onClick={avanzarSatTodas} disabled={avanzandoSat}
+                title="Inicia/avanza la descarga del SAT de TODAS tus empresas con e.firma vigente, sin ir una por una. Corre en segundo plano; los XML aparecen en el menú XML."
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 rounded-lg px-3 py-1.5 disabled:opacity-50 shrink-0">
+                <DownloadCloud size={14} className={avanzandoSat ? 'animate-pulse' : ''} />
+                {avanzandoSat ? 'Iniciando…' : 'Avanzar descargas del SAT'}
+              </button>
+            )}
+          </div>
           <p className="text-sm text-gray-500 mb-3">
             {empresas.length > 1
               ? 'Haz clic en una para trabajar en ella.'
               : 'Datos fiscales del emisor con el que timbras.'}
           </p>
+          {msgSat && (
+            <p className="text-xs text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 mb-3">{msgSat}</p>
+          )}
           {empresas.length > 8 && (
             <div className="relative mb-3 max-w-xs">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -344,6 +370,16 @@ export function DashboardPage() {
                       </p>
                       <p className="text-[11px] font-mono text-gray-500 truncate">{e.rfc}</p>
                     </div>
+                    {/* Punto(s) rojo(s): alerta de opinión de cumplimiento NEGATIVA
+                        (uno o dos, según cuántos tipos salieron negativos). */}
+                    {Number(e.opinion_negativa) > 0 && (
+                      <span className="flex items-center gap-0.5 shrink-0"
+                        title={`${e.opinion_negativa} opinión(es) de cumplimiento NEGATIVA(s) — revisa el Panel fiscal`}>
+                        {Array.from({ length: Math.min(Number(e.opinion_negativa), 2) }).map((_, i) => (
+                          <span key={i} className="w-2 h-2 rounded-full bg-rose-500 ring-2 ring-rose-200 animate-pulse" />
+                        ))}
+                      </span>
+                    )}
                     {activa && (
                       <span className="text-[9px] font-bold uppercase tracking-wide text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full shrink-0">
                         Activa
@@ -365,8 +401,11 @@ export function DashboardPage() {
                     {puedeContab && (
                       <button
                         onClick={(ev) => { ev.stopPropagation(); if (!cambiando) cambiarEmpresa(e.id, '/contabilidad/panel-fiscal'); }}
-                        title={`Panel fiscal de ${e.business_name}: 32-D, CIF, IMSS, INFONAVIT e histórico`}
-                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-700 hover:text-indigo-900 shrink-0"
+                        title={Number(e.opinion_negativa) > 0
+                          ? `Panel fiscal de ${e.business_name}: ${e.opinion_negativa} opinión(es) NEGATIVA(s) — revisa 32-D/IMSS`
+                          : `Panel fiscal de ${e.business_name}: 32-D, CIF, IMSS, INFONAVIT e histórico`}
+                        className={`inline-flex items-center gap-1 text-[10px] font-semibold shrink-0 ${
+                          Number(e.opinion_negativa) > 0 ? 'text-rose-600 hover:text-rose-800' : 'text-indigo-700 hover:text-indigo-900'}`}
                       >
                         <ShieldCheck size={11} /> Panel fiscal <ArrowRight size={10} />
                       </button>

@@ -99,16 +99,27 @@ export function PolizasListaPage() {
   const q = useQuery({ queryKey: ['polizas', anio, mes], queryFn: () => api.getPolizas(anio, mes) });
   const todas: any[] = q.data?.data?.polizas || [];
 
-  /* Pólizas que entraron con un ajuste a la CUENTA DE CUADRE (MIG-TEMPORAL): al
-   * importar respaldos (CPQ/CTLK) las que no cuadraban de origen NO se omiten, se
-   * salvan mandando la diferencia a esa cuenta. Aquí se listan —del mismo periodo
-   * que la lista— para abrirlas por su folio en azul y reasignar el importe. */
-  const qCuadre = useQuery({ queryKey: ['polizas-cuadre', anio, mes], queryFn: () => api.getPolizasConCuadre(anio, mes) });
+  /* Pólizas que entraron con un ajuste a la cuenta «POR CODIFICAR»: al importar
+   * respaldos (CPQ/CTLK) las que no cuadraban de origen NO se omiten, se salvan
+   * mandando la diferencia a esa cuenta. Se listan de TODOS los ejercicios (no
+   * sólo el periodo en pantalla) para no perder de vista ninguna pendiente; el
+   * folio en azul abre el editor —cambiando de periodo si hace falta—. */
+  const qCuadre = useQuery({ queryKey: ['polizas-cuadre', 'todas'], queryFn: () => api.getPolizasConCuadre(0, 0) });
   const conCuadre: any[] = qCuadre.data?.data || [];
+  const [pendienteEditar, setPendienteEditar] = useState<string | null>(null);
   const abrirCuadre = (cc: any) => {
     const local = todas.find((x) => x.id === cc.id);
-    if (local) setEditar(local);
+    if (local) { setEditar(local); return; }
+    // Está en otro periodo: cambia el periodo y abre el editor al recargar la lista.
+    setPendienteEditar(cc.id);
+    if (cc.anio) setAnio(cc.anio);
+    setMes(cc.mes || 0);
   };
+  useEffect(() => {
+    if (!pendienteEditar || !todas.length) return;
+    const p = todas.find((x) => x.id === pendienteEditar);
+    if (p) { setEditar(p); setPendienteEditar(null); }
+  }, [pendienteEditar, todas]);
 
   const aBalanza = () => navigate(`/contabilidad/balanza?anio=${anio}&mes=${mes}`);
   const aCambio = () => navigate(`/contabilidad/cambio-cuenta${cuentaCambio ? `?cuenta=${cuentaCambio}` : ''}`);
@@ -311,26 +322,28 @@ export function PolizasListaPage() {
         <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{msg}</p>
       )}
 
-      {/* Pólizas con CUENTA DE CUADRE (MIG-TEMPORAL): las que, al importar respaldos,
-          no cuadraban de origen y se salvaron mandando la diferencia a esa cuenta.
-          El #folio en azul abre el editor para reasignar el importe a la cuenta real. */}
+      {/* Pólizas «POR CODIFICAR»: las que, al importar respaldos, no cuadraban de
+          origen y se salvaron mandando la diferencia a esa cuenta temporal. Se
+          listan de TODOS los ejercicios para no perder ninguna pendiente; el
+          #folio en azul abre el editor (cambia de periodo si hace falta) para
+          reasignar el importe a la cuenta real. */}
       {conCuadre.length > 0 && filtro !== 'ppdpue' && (
-        <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
-          <p className="font-semibold text-sky-900 flex items-center gap-1.5 text-sm">
-            <AlertTriangle size={16} className="text-sky-600 shrink-0" />
-            {conCuadre.length} póliza(s) con cuenta de cuadre en {MESES[mes] || 'el año'} {anio}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          <p className="font-semibold text-amber-900 flex items-center gap-1.5 text-sm">
+            <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+            {conCuadre.length} póliza(s) por codificar (ajuste pendiente de reasignar)
           </p>
-          <p className="text-xs text-sky-700 mt-0.5 leading-relaxed">
-            Entraron con un ajuste a la <b>cuenta de cuadre (MIG-TEMPORAL)</b> porque no cuadraban de origen
+          <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+            Entraron con un ajuste a la cuenta <b>«Por codificar»</b> porque no cuadraban de origen
             —así no se perdió información—. Ábrelas por su <b>folio en azul</b> y reasigna el importe a la cuenta correcta:
           </p>
           <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2">
             {conCuadre.map((cc) => (
               <button key={cc.id} onClick={() => abrirCuadre(cc)}
-                title="Abrir esta póliza para reasignar la cuenta de cuadre"
+                title="Abrir esta póliza para reasignar la cuenta «Por codificar»"
                 className="inline-flex items-baseline gap-1.5 hover:underline decoration-blue-400">
                 <span className="font-bold text-blue-600 tabular-nums">#{cc.folio}</span>
-                <span className="text-xs text-sky-600">{fecha(cc.fecha)} · ajuste {money(cc.ajuste)}</span>
+                <span className="text-xs text-amber-700">{fecha(cc.fecha)} · ajuste {money(cc.ajuste)}</span>
               </button>
             ))}
           </div>
@@ -421,6 +434,7 @@ export function PolizasListaPage() {
           onGuardado={async () => {
             setEditar(null);
             qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
+            qc.invalidateQueries({ queryKey: ['polizas-cuadre', 'todas'] });
             if (volverBalanza) {
               setVolverBalanza(false);
               /* Se volvió a editar desde la balanza: se recalcula para que refleje

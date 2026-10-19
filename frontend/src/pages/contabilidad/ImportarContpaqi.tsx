@@ -9,7 +9,7 @@
  */
 import { useState, useEffect } from 'react';
 import { unzipSync, strFromU8 } from 'fflate';
-import { Database, Download, Upload, PlayCircle, CheckCircle2, FileArchive, ShieldAlert } from 'lucide-react';
+import { Database, Download, Upload, PlayCircle, CheckCircle2, FileArchive, ShieldAlert, RefreshCw } from 'lucide-react';
 import api from '@/services/api';
 import { formatCuenta } from '@/utils/cuenta';
 import { extraerCfdisDeZip } from '@/utils/recuperarCfdi';
@@ -135,6 +135,9 @@ export function ImportarContpaqiPage() {
 
       {/* Migración desde Contalink (CTLK): catálogo + pólizas en Excel. */}
       <ImportarContalink />
+
+      {/* Reconstrucción integral: cuadra toda la historia de un tirón. */}
+      <ReconstruirIntegral />
 
       {/* Pasos + descargar herramienta */}
       <div className="bg-white rounded-lg shadow border p-5 space-y-4">
@@ -486,8 +489,8 @@ export function ImportarContalink() {
               <p className="flex items-center gap-1.5 font-semibold"><CheckCircle2 size={14} /> Pólizas importadas</p>
               <p>{repPol.creadas} creada(s) · {repPol.yaExistian} ya estaban · {repPol.cfdiLigados} CFDI ligados</p>
               {repPol.conCuadre?.length > 0 && (
-                <details className="text-sky-700" open><summary className="cursor-pointer font-semibold">{repPol.conCuadre.length} póliza(s) entraron con cuenta de cuadre — revísalas</summary>
-                  <p className="mt-0.5">No cuadraban de origen; la diferencia se mandó a <b>MIG-TEMPORAL</b> para no perder nada. En <b>Contabilidad → Pólizas</b> aparecen marcadas: ábrelas por su folio azul y corrige la cuenta.</p>
+                <details className="text-amber-700" open><summary className="cursor-pointer font-semibold">{repPol.conCuadre.length} póliza(s) entraron con la cuenta «Por codificar» — revísalas</summary>
+                  <p className="mt-0.5">No cuadraban de origen; la diferencia se mandó a la cuenta <b>«Por codificar»</b> para no perder nada. En <b>Contabilidad → Pólizas</b> aparecen marcadas: ábrelas por su folio azul y corrige la cuenta.</p>
                   <ul className="list-disc pl-4">{repPol.conCuadre.slice(0, 20).map((m: any, i: number) => <li key={i}><b>{m.folio}</b>: diferencia {m.diferencia}</li>)}</ul>
                 </details>
               )}
@@ -503,6 +506,42 @@ export function ImportarContalink() {
       <p className="text-[11px] text-gray-400">
         Al terminar, en <b>Balanza de comprobación</b> dale «Actualizar desde pólizas» para ver los saldos reconstruidos.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Reconstrucción INTEGRAL: tras importar un respaldo, reconstruye la balanza de
+ * TODOS los ejercicios con pólizas de un tirón (en vez de ir año por año con
+ * «Actualizar desde pólizas»). Idempotente y seguro: no borra los meses sin
+ * pólizas (la apertura del respaldo de balanza se conserva).
+ */
+export function ReconstruirIntegral() {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+  const reconstruir = async () => {
+    if (!confirm('¿Reconstruir la balanza de TODOS los ejercicios desde las pólizas?\n\nEs seguro y repetible: no borra nada, sólo vuelve a cuadrar la historia. Puede tardar un poco si hay muchos años.')) return;
+    setBusy(true); setMsg(''); setError('');
+    try {
+      const r: any = await api.reconstruirIntegral();
+      setMsg(r?.message || 'Reconstrucción integral terminada.');
+    } catch (e: any) { setError(e?.response?.data?.message || 'No se pudo reconstruir.'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="bg-white rounded-lg shadow border p-5 space-y-3">
+      <h2 className="font-semibold text-gray-800 flex items-center gap-2"><RefreshCw size={18} className="text-indigo-600" /> Reconstruir todo el respaldo</h2>
+      <p className="text-sm text-gray-600">
+        Vuelve a cuadrar la balanza de <b>todos los ejercicios</b> que tengan pólizas, en orden y de una sola vez.
+        Úsalo después de importar un respaldo para dejar toda la historia lista sin ir año por año. No duplica ni borra: es repetible.
+      </p>
+      <button onClick={reconstruir} disabled={busy}
+        className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-sm font-semibold">
+        <RefreshCw size={16} className={busy ? 'animate-spin' : ''} /> {busy ? 'Reconstruyendo…' : 'Reconstruir todos los ejercicios'}
+      </button>
+      {msg && <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{msg}</p>}
+      {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{error}</p>}
     </div>
   );
 }

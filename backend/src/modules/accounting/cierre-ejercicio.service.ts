@@ -128,8 +128,22 @@ export async function mesesCerrados(companyId: string, anio: number): Promise<nu
  * Si no existe, se crea colgada de su mayor 305 (o 305.01/305.02 si están como control).
  */
 async function resolverCuentaResultado(
-  companyId: string, anio: number, utilidad: boolean,
+  companyId: string, anio: number, utilidad: boolean, cuentaForzadaId?: string,
 ): Promise<{ id: string; codigo: string; creada: boolean } | { error: string }> {
+  // Si el usuario eligió/capturó una cuenta para acumular el resultado, se usa ESA
+  // (siempre que acepte movimientos). Evita que el automático caiga en una 305.01/
+  // 305.02 que sólo existe como control (agrupador) y no deja registrar.
+  if (cuentaForzadaId) {
+    const c = (await query<any>(
+      `SELECT id, codigo, permite_movimientos FROM accounting_accounts WHERE company_id=$1 AND id=$2`,
+      [companyId, cuentaForzadaId])).rows[0];
+    if (!c) return { error: 'La cuenta de resultado elegida no existe en esta empresa.' };
+    if (!c.permite_movimientos) {
+      return { error: `La cuenta ${c.codigo} es de control (no acepta movimientos): elige o captura una cuenta de detalle del bloque de capital.` };
+    }
+    return { id: c.id, codigo: c.codigo, creada: false };
+  }
+
   const agr = utilidad ? '305.01' : '305.02';
   const natur = utilidad ? 'ACREEDORA' : 'DEUDORA';
   const nombre = `Resultado Ejercicio ${anio}`;
@@ -173,11 +187,11 @@ async function resolverCuentaResultado(
 }
 
 /** Genera (o REGENERA) la póliza de cierre del año. Re-ejecutable. */
-export async function generarPolizaDeCierre(companyId: string, anio: number, userId?: string) {
+export async function generarPolizaDeCierre(companyId: string, anio: number, userId?: string, cuentaResultadoId?: string) {
   const det = await determinarResultado(companyId, anio);
   if (!det.cuentas.length) return { error: `No hay movimientos de resultados en ${anio}: no hay nada que cerrar.` };
 
-  const c305 = await resolverCuentaResultado(companyId, anio, det.resultado >= 0);
+  const c305 = await resolverCuentaResultado(companyId, anio, det.resultado >= 0, cuentaResultadoId);
   if ('error' in c305) return c305;
 
   const lineas: any[] = [];
@@ -225,12 +239,12 @@ export async function revertirCierre(companyId: string, anio: number) {
  * estado de resultados). Sirve para dejar asentado el resultado del mes (pagos
  * provisionales). El cierre que pasa a capital al cruzar de año es el ANUAL.
  */
-export async function generarPolizaDeCierreMes(companyId: string, anio: number, mes: number, userId?: string) {
+export async function generarPolizaDeCierreMes(companyId: string, anio: number, mes: number, userId?: string, cuentaResultadoId?: string) {
   if (!(mes >= 1 && mes <= 12)) return { error: 'mes inválido (1-12).' };
   const det = await determinarResultado(companyId, anio, mes);
   if (!det.cuentas.length) return { error: `No hay movimientos de resultados en ${mes}/${anio}: no hay nada que cerrar.` };
 
-  const c305 = await resolverCuentaResultado(companyId, anio, det.resultado >= 0);
+  const c305 = await resolverCuentaResultado(companyId, anio, det.resultado >= 0, cuentaResultadoId);
   if ('error' in c305) return c305;
 
   const lineas: any[] = [];

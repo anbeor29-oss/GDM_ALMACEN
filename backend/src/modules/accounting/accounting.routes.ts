@@ -211,7 +211,7 @@ router.post(
   '/cierre/:anio/generar',
   authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
-    const r: any = await cierre.generarPolizaDeCierre(companyId(req), Number(req.params.anio), req.user?.userId);
+    const r: any = await cierre.generarPolizaDeCierre(companyId(req), Number(req.params.anio), req.user?.userId, req.body?.cuentaResultadoId || undefined);
     if (r?.error) { res.status(400).json({ success: false, message: r.error }); return; }
     res.json({
       success: true, data: r,
@@ -235,7 +235,7 @@ router.post(
   '/cierre/:anio/:mes/generar',
   authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
-    const r: any = await cierre.generarPolizaDeCierreMes(companyId(req), Number(req.params.anio), Number(req.params.mes), req.user?.userId);
+    const r: any = await cierre.generarPolizaDeCierreMes(companyId(req), Number(req.params.anio), Number(req.params.mes), req.user?.userId, req.body?.cuentaResultadoId || undefined);
     if (r?.error) { res.status(400).json({ success: false, message: r.error }); return; }
     res.json({
       success: true, data: r,
@@ -558,7 +558,7 @@ router.post(
       success: true, data: rep,
       message: `Pólizas CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya estaban` +
         (rep.omitidas.length ? `, ${rep.omitidas.length} omitida(s)` : '') +
-        (rep.conCuadre.length ? `, ${rep.conCuadre.length} con cuenta de cuadre` : '') +
+        (rep.conCuadre.length ? `, ${rep.conCuadre.length} por codificar` : '') +
         ` · ${rep.cfdiLigados} CFDI ligados.`,
     });
   })
@@ -1022,6 +1022,20 @@ router.post(
     res.json({
       success: true, data: r,
       message: `${req.params.anio}: ${r.reconstruidos} mes(es) reconstruido(s) desde pólizas (en orden).`,
+    });
+  })
+);
+
+/** POST /accounting/periodos/reconstruir-integral — reconstruye la balanza de TODOS
+ *  los ejercicios con pólizas, de un tirón (tras importar un respaldo). */
+router.post(
+  '/periodos/reconstruir-integral',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await periodos.reconstruirIntegral(companyId(req), req.user?.userId);
+    res.json({
+      success: true, data: r,
+      message: `Reconstrucción integral: ${r.anios} ejercicio(s) y ${r.meses} mes(es) reconstruido(s) desde pólizas.`,
     });
   })
 );
@@ -1691,7 +1705,7 @@ router.get(
 router.get(
   '/polizas/con-cuadre',
   asyncHandler(async (req: Request, res: Response) => {
-    const data = await polizas.polizasConCuadre(companyId(req), Number(req.query.anio), Number(req.query.mes) || 0);
+    const data = await polizas.polizasConCuadre(companyId(req), Number(req.query.anio) || 0, Number(req.query.mes) || 0);
     res.json({ success: true, data });
   })
 );

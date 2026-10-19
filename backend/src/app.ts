@@ -38,6 +38,7 @@ import activityLog from './middleware/activity-log';
 import adminUsersRoutes     from './modules/admin/admin-users.routes';
 import adminCompaniesRoutes from './modules/admin/admin-companies.routes';
 import adminAuditRoutes     from './modules/admin/admin-audit.routes';
+import adminRendimientoRoutes from './modules/admin/admin-rendimiento.routes';
 import adminBillingRoutes   from './modules/admin/admin-billing.routes';
 import adminFacturacionRoutes from './modules/admin/admin-facturacion.routes';
 import adminEmisoresRoutes from './modules/admin/admin-emisores.routes';
@@ -212,6 +213,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/admin/users`,     adminUsersRoutes);
   app.use(`/api/${config.apiVersion}/admin/companies`, adminCompaniesRoutes);
   app.use(`/api/${config.apiVersion}/admin/audit`,     adminAuditRoutes);
+  app.use(`/api/${config.apiVersion}/admin/rendimiento`, adminRendimientoRoutes);
   app.use(`/api/${config.apiVersion}/admin/billing`,   adminBillingRoutes);
   app.use(`/api/${config.apiVersion}/admin/facturacion`, adminFacturacionRoutes);
   app.use(`/api/${config.apiVersion}/admin/emisores`, adminEmisoresRoutes);

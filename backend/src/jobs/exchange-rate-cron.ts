@@ -3,13 +3,14 @@
  *
  * Base: TIPOS_CAMBIO_BANXICO.MD §"Proceso Automático".
  *
- * Corre a las 12:05. Banxico publica el FIX del día alrededor del mediodía;
- * antes de esa hora la consulta traería el del día anterior.
+ * Corre todos los días a las 5:30 (hora de México). A esa hora Banxico aún no
+ * determina el FIX de hoy, así que la consulta trae el ÚLTIMO FIX publicado —que
+ * es justamente el que se aplica a las operaciones del día (Art. 20 CFF: el del
+ * día hábil inmediato anterior)—. Así el tipo de cambio está listo a primera hora.
  *
- * Si algo falla, reintenta UNA vez a los 30 minutos, como pide el documento.
- * No se insiste más: si a las 12:35 Banxico sigue caído, la facturación
- * continúa con el último tipo de cambio vigente y la bitácora deja constancia
- * de que el dato no es del día. Un reintento infinito solo llenaría el log.
+ * Si algo falla, reintenta UNA vez a los 30 minutos. No se insiste más: si sigue
+ * caído, la facturación continúa con el último tipo de cambio vigente y la
+ * bitácora deja constancia. Un reintento infinito solo llenaría el log.
  */
 
 import cron from 'node-cron';
@@ -66,13 +67,14 @@ export function registerExchangeRateCron(): void {
     return;
   }
 
-  // 12:05 hora de México, de lunes a viernes: en sábado y domingo Banxico no
-  // determina nada y la consulta solo generaría ruido en la bitácora.
-  cron.schedule('5 12 * * 1-5', () => {
+  // 5:30 hora de México, TODOS los días: el tipo de cambio queda disponible a
+  // primera hora. En fin de semana Banxico no determina nada nuevo, así que la
+  // consulta sólo reafirma el último FIX (el del viernes) —sin efecto, sin ruido—.
+  cron.schedule('30 5 * * *', () => {
     actualizar(1).catch(e => logger.error(`[tc-cron] error no capturado: ${e.message}`));
   }, { timezone: ZONA });
 
-  logger.info('[tc-cron] Registrado: lunes a viernes 12:05 (America/Mexico_City)');
+  logger.info('[tc-cron] Registrado: todos los días 5:30 (America/Mexico_City)');
 
   // Al arrancar, si la base viene vacía o el servicio estuvo caído varios
   // días, se hace una consulta para no empezar el día sin dato.

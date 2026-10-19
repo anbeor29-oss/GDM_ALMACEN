@@ -61,6 +61,20 @@ export function CustomersPage() {
     finally { setGenerando(false); }
   };
 
+  /* Traer clientes DESDE el catálogo contable y los CFDI emitidos (RFC + nombre,
+   * el nombre con el sufijo societario recortado). Puebla el selector de la
+   * facturación cuando la empresa llegó de un respaldo y la lista está vacía. */
+  const [trayendo, setTrayendo] = useState(false);
+  const traerDelCatalogo = async () => {
+    setTrayendo(true);
+    try {
+      const r: any = await api.capturarTercerosCatalogo('cliente');
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      alert(r?.message || 'Clientes traídos del catálogo.');
+    } catch (e: any) { alert(e?.response?.data?.message || 'No se pudieron traer los clientes del catálogo.'); }
+    finally { setTrayendo(false); }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -69,6 +83,15 @@ export function CustomersPage() {
           <p className="text-gray-600 mt-2">Receptores conforme a CFDI 4.0 (CFF Art. 29-A)</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={traerDelCatalogo}
+            disabled={trayendo}
+            title="Trae los clientes desde el catálogo contable y los CFDI emitidos (RFC + nombre). Úsalo si la lista está vacía tras importar un respaldo."
+            className="flex items-center gap-2 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-3 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {trayendo ? <Loader2 size={18} className="animate-spin" /> : null}
+            Traer del catálogo
+          </button>
           <button
             onClick={generarCuentas}
             disabled={generando}

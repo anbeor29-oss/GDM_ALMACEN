@@ -9,6 +9,25 @@ import { config } from '../config/environment';
 import { UnauthorizedError } from './errorHandler';
 import logger from './logger';
 
+/* Caché corto (60 s) de los módulos habilitados por empresa, para no pegarle a la
+ * BD en cada request. Un cambio del Súper Admin se refleja en ≤ 60 s sin re-login.
+ * NULL/vacío en la BD ⇒ se guarda [] y se interpreta como «sin restricción». */
+const cacheModulos = new Map<string, { mods: string[]; exp: number }>();
+async function modulosDeEmpresa(companyId: string): Promise<string[] | undefined> {
+  const hit = cacheModulos.get(companyId);
+  if (hit && hit.exp > Date.now()) return hit.mods.length ? hit.mods : undefined;
+  const { query } = await import('../config/database');
+  const r = await query<{ modulos_habilitados: string[] | null }>(
+    'SELECT modulos_habilitados FROM companies WHERE id = $1', [companyId]);
+  const mods = (r.rows[0]?.modulos_habilitados || []).filter(Boolean);
+  cacheModulos.set(companyId, { mods, exp: Date.now() + 60_000 });
+  return mods.length ? mods : undefined;
+}
+/** Invalida la caché de una empresa (tras cambiar sus módulos). */
+export function invalidarModulosEmpresa(companyId: string): void {
+  cacheModulos.delete(companyId);
+}
+
 // Extend Express Request to include user info
 declare global {
   namespace Express {
@@ -24,6 +43,9 @@ declare global {
         extraModules?: string[];
         /** Si presente, indica que el SUPER_ADMIN está suplantando a este usuario. */
         impersonatedBy?: { userId: string; email: string };
+        /** Módulos que la EMPRESA activa tiene habilitados (servicios contratados).
+         *  undefined / vacío = sin restricción (todos). Se resuelve de la BD aquí. */
+        empresaModulos?: string[];
       };
       token?: string;
     }
@@ -174,6 +196,14 @@ export const authenticateToken = async (
           error: e instanceof Error ? e.message : 'unknown',
         });
       }
+    }
+
+    // Módulos habilitados de la EMPRESA activa (servicios contratados). Se
+    // resuelve de la BD con caché corto; undefined/vacío = sin restricción. Nunca
+    // lanza: si algo falla, se deja sin restricción (comportamiento de siempre).
+    if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId) {
+      try { req.user.empresaModulos = await modulosDeEmpresa(req.user.companyId); }
+      catch { /* sin restricción */ }
     }
 
     logger.debug(`User authenticated: ${payload.email}`);

@@ -13,6 +13,7 @@
  */
 import { query } from '../../config/database';
 import { asignarAgrupadorFaltante } from './catalogo.service';
+import { normalizarNombreFiscal } from '../../utils/nombre-fiscal';
 
 const AGRUP = {
   cliente: { nacional: '105.01', extranjero: '105.02' },
@@ -474,7 +475,9 @@ export async function capturarTercerosEnCatalogo(
   for (const [rfc, nombre] of porRfc) {
     const rfcU = rfc.toUpperCase().trim();
     if (!rfcU || rfcU.length > 13 || rfcU === rfcEmpresa) { omitidos++; continue; }
-    const nom = (String(nombre || '').trim() || rfcU).slice(0, 255);
+    // Nombre normalizado: a las morales se les quita el sufijo societario
+    // (S.A. de C.V., etc.) y a las físicas se las deja igual.
+    const nom = (normalizarNombreFiscal(nombre) || rfcU).slice(0, 255);
     try {
       const r = await query<any>(
         `INSERT INTO customers (company_id, rfc, business_name, ${rol})
