@@ -1367,6 +1367,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/satgo/consultas/buzon', { timeout: 180000 });
     return r.data;
   }
+  /** Contenido de un comunicado del buzón (PDF y/o texto) para leerlo. */
+  async getComunicadoContenido(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/satgo/consultas/buzon/comunicado/${encodeURIComponent(id)}`, { timeout: 120000 });
+    return r.data;
+  }
   // ── PLD / antilavado (LFPIORPI) ──
   async getPldActividades() {
     return (await this.client.get<APIResponse<any>>('/pld/actividades')).data;

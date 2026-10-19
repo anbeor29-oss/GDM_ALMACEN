@@ -166,10 +166,19 @@ async function zipDelAnio(companyId: string, rfc: string, ejercicio: number, for
     const g = await zipGuardado(companyId, ejercicio);
     if (g) return { buf: g.buf, desdeCache: true, descargadoAt: g.descargadoAt };
   }
-  const { ciec, dispose } = await ciecDe(companyId);
+  // PREFIERE la e.firma (FIEL), igual que la descarga directa: las empresas operan
+  // con e.firma y muchas NO tienen CIEC cargada. Antes esta ruta usaba SÓLO CIEC, así
+  // que sin CIEC la cuadrícula marcaba «!» (no se podía descargar). Cae a CIEC si no
+  // hay e.firma.
   let buf: Buffer;
-  try { buf = await satgo.declaracionesCiec(rfc, ciec, ejercicio, 0); }
-  finally { dispose(); }
+  const cred = await efirmaDe(companyId);
+  if (cred) {
+    buf = await satgo.declaracionesFiel(cred.rfc || rfc, cred as any, ejercicio, 0);
+  } else {
+    const { ciec, dispose } = await ciecDe(companyId);
+    try { buf = await satgo.declaracionesCiec(rfc, ciec, ejercicio, 0); }
+    finally { dispose(); }
+  }
   await guardarZip(companyId, ejercicio, rfc, buf).catch(() => { /* la vista no debe depender del guardado */ });
   return { buf, desdeCache: false };
 }
@@ -289,6 +298,32 @@ export async function buzonNotificaciones(companyId: string) {
   const avisos = [...mapNotif(pendRes.notificaciones, false), ...mapNotif(notifRes.notificaciones, true)];
 
   return { conectado: true, comunicados, avisos };
+}
+
+/**
+ * Contenido de UN comunicado del buzón para LEERLO: se vuelve a llamar a SatGo con
+ * `descargar: true` y se extrae el documento (PDF) y/o el texto del comunicado que
+ * coincida con el `id`. El proveedor puede nombrar el campo del contenido de varias
+ * formas, así que se prueban las usuales; si no viene ninguno, se devuelve sólo el
+ * encabezado y la pantalla lo dice.
+ */
+export async function comunicadoContenido(companyId: string, id: string) {
+  const cred = await credencialUsable(companyId);
+  const res = await postFiel('/api/v2/Consultar/comunicadosfiel', cred.rfc, cred, { descargar: true, id });
+  const lista: any[] = res.comunicados || res.Comunicados || [];
+  const c = lista.find((x: any) => String(x.id ?? x.Id ?? '') === String(id)) || lista[0] || res || {};
+  const crudo = c.archivo || c.contenido || c.pdf || c.documento || c.base64 || c.Archivo || res.archivo || res.contenido || null;
+  const base64 = crudo
+    ? (String(crudo).startsWith('data:') ? String(crudo) : `data:application/pdf;base64,${String(crudo).replace(/^data:[^,]*,/, '')}`)
+    : null;
+  const texto = c.texto || c.cuerpo || c.mensaje || c.descripcion || c.Texto || null;
+  return {
+    id,
+    asunto: c.titulo || c.Titulo || null,
+    fecha: String(c.fechaComunicado || c.fecha || '').slice(0, 10) || null,
+    base64,
+    texto,
+  };
 }
 
 /**

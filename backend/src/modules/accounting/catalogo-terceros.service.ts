@@ -307,13 +307,21 @@ export async function generarSubcuentasDeComprobantes(
   return { creadas, existentes, errores };
 }
 
-/** Las subcuentas de tercero ya creadas (para revisarlas / capturar su código). */
+/**
+ * Las subcuentas de CLIENTE (105.01/105.02) o PROVEEDOR (201.01/201.02) que existen
+ * en el CATÁLOGO DE CUENTAS: TODAS las cuentas de detalle (hoja) bajo esos
+ * agrupadores, tengan o no RFC amarrado. Así, al importar un respaldo, los clientes
+ * y proveedores del catálogo aparecen de una vez (aunque todavía no tengan su RFC);
+ * las que ya lo tienen lo muestran. Antes se exigía `tercero_rfc IS NOT NULL` y el
+ * catálogo importado salía vacío.
+ */
 export async function listarSubcuentasTercero(companyId: string, tipo: 'cliente' | 'proveedor') {
   const agrups = tipo === 'cliente' ? ['105.01', '105.02'] : ['201.01', '201.02'];
   const r = await query<any>(
     `SELECT id, codigo, nombre, tercero_rfc, codigo_agrupador
        FROM accounting_accounts
-      WHERE company_id=$1 AND tercero_rfc IS NOT NULL AND codigo_agrupador = ANY($2)
+      WHERE company_id=$1 AND codigo_agrupador = ANY($2)
+        AND permite_movimientos = true
       ORDER BY codigo`, [companyId, agrups]);
   return r.rows;
 }

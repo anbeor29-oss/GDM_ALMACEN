@@ -235,7 +235,7 @@ export function TabClientes() {
           <tbody className="divide-y">
             {!q.isLoading && subs.length === 0 && (
               <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-500 italic">
-                Aún no hay subcuentas. Dale «Generar subcuentas» (necesita clientes en los emitidos).
+                No hay cuentas de cliente en el catálogo (bajo 105.01/105.02). Si importaste un respaldo, revisa que tengan ese agrupador; o dale «Generar subcuentas» para crearlas desde los CFDI emitidos y el catálogo.
               </td></tr>
             )}
             {subs.map((s) => <RenglonCliente key={s.id} s={s} mascara={mascara} onListo={() => qc.invalidateQueries({ queryKey: ['subcuentas-cliente'] })} />)}

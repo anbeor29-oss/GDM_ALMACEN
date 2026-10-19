@@ -277,7 +277,7 @@ export function TabProveedores() {
           <tbody className="divide-y">
             {!q.isLoading && subs.length === 0 && (
               <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-500 italic">
-                Aún no hay subcuentas. Dale «Generar subcuentas»: toma los proveedores de los recibidos y del catálogo.
+                No hay cuentas de proveedor en el catálogo (bajo 201.01/201.02). Si importaste un respaldo, revisa que tengan ese agrupador; o dale «Generar subcuentas»: toma los proveedores de los recibidos y del catálogo.
               </td></tr>
             )}
             {subs.map((s) => <RenglonProveedor key={s.id} s={s} mascara={mascara} onListo={() => qc.invalidateQueries({ queryKey: ['subcuentas-prov'] })} />)}

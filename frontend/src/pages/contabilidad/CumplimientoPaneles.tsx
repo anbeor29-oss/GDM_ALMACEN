@@ -6,7 +6,7 @@
  */
 import { useState, useEffect, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen, RefreshCw, Upload } from 'lucide-react';
+import { FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen, RefreshCw, Upload, X } from 'lucide-react';
 import api from '@/services/api';
 import { PuntosCargando } from '@/components/PuntosCargando';
 import { aTextoMx } from '@/components/CampoFecha';
@@ -30,22 +30,26 @@ function abrirDoc(dataUrl: string) {
 /* ═══════════════ Notificaciones y comunicados ═══════════════ */
 interface Notif { id?: string; asunto?: string; titulo?: string; fecha?: string; leido?: boolean; texto?: string }
 
-function ItemNotif({ n }: { n: Notif }) {
+function ItemNotif({ n, onOpen }: { n: Notif; onOpen: (n: Notif) => void }) {
   const leido = !!n.leido;
   return (
-    <li className="flex items-start gap-2.5 py-2">
-      {leido ? <MailOpen size={18} className="text-emerald-500 mt-0.5 shrink-0" />
-        : <Mail size={18} className="text-rose-500 mt-0.5 shrink-0" />}
-      <div className="min-w-0">
-        <p className={`text-sm truncate ${leido ? 'text-gray-600' : 'text-gray-900 font-medium'}`}>{n.asunto || n.titulo || 'Sin asunto'}</p>
-        {n.fecha && <p className="text-[11px] text-gray-400">{n.fecha}</p>}
-        {n.texto && <p className="text-xs text-gray-500 line-clamp-2">{n.texto}</p>}
-      </div>
+    <li>
+      <button onClick={() => onOpen(n)}
+        title="Abrir para leer"
+        className="w-full flex items-start gap-2.5 py-2 text-left hover:bg-gray-50 rounded px-1 -mx-1">
+        {leido ? <MailOpen size={18} className="text-emerald-500 mt-0.5 shrink-0" />
+          : <Mail size={18} className="text-rose-500 mt-0.5 shrink-0" />}
+        <div className="min-w-0 flex-1">
+          <p className={`text-sm truncate ${leido ? 'text-gray-600' : 'text-gray-900 font-medium'}`}>{n.asunto || n.titulo || 'Sin asunto'}</p>
+          {n.fecha && <p className="text-[11px] text-gray-400">{n.fecha}</p>}
+          {n.texto && <p className="text-xs text-gray-500 line-clamp-2">{n.texto}</p>}
+        </div>
+      </button>
     </li>
   );
 }
 
-function ColumnaNotif({ titulo, items }: { titulo: string; items: Notif[] }) {
+function ColumnaNotif({ titulo, items, onOpen }: { titulo: string; items: Notif[]; onOpen: (n: Notif) => void }) {
   // Descendente: primero la más reciente (por fecha si existe).
   const orden = [...items].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
   return (
@@ -53,7 +57,60 @@ function ColumnaNotif({ titulo, items }: { titulo: string; items: Notif[] }) {
       <h4 className="text-sm font-semibold text-gray-800 mb-1">{titulo}</h4>
       {orden.length === 0
         ? <p className="text-sm text-gray-400 italic py-8 text-center">Sin {titulo.toLowerCase()} por ahora.</p>
-        : <ul className="divide-y">{orden.map((n, i) => <ItemNotif key={n.id || i} n={n} />)}</ul>}
+        : <ul className="divide-y">{orden.map((n, i) => <ItemNotif key={n.id || i} n={n} onOpen={onOpen} />)}</ul>}
+    </div>
+  );
+}
+
+/** Modal para LEER un comunicado/aviso: trae su PDF y/o texto del SAT (vía SatGo). */
+function ModalComunicado({ item, onClose }: { item: Notif; onClose: () => void }) {
+  const [det, setDet] = useState<any>(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      setCargando(true); setError('');
+      try {
+        if (item.id) {
+          const r: any = await api.getComunicadoContenido(item.id);
+          if (vivo) setDet(r?.data || {});
+        } else if (vivo) setDet({});
+      } catch (e: any) { if (vivo) setError(e?.response?.data?.message || 'No se pudo traer el contenido del SAT.'); }
+      finally { if (vivo) setCargando(false); }
+    })();
+    return () => { vivo = false; };
+  }, [item.id]);
+  const texto = det?.texto || item.texto;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 px-5 py-3 border-b">
+          <div className="min-w-0">
+            <h3 className="font-bold text-gray-900">{item.asunto || item.titulo || 'Comunicado'}</h3>
+            {item.fecha && <p className="text-xs text-gray-400">{item.fecha}</p>}
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 shrink-0"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-3 text-sm">
+          {cargando && <p className="text-primary flex items-center gap-2"><PuntosCargando /> Trayendo el contenido del SAT…</p>}
+          {error && <p className="text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{error}</p>}
+          {!cargando && !error && (
+            <>
+              {det?.base64 && (
+                <button onClick={() => abrirDoc(det.base64)}
+                  className="inline-flex items-center gap-2 bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 text-sm font-semibold">
+                  <FileText size={16} /> Abrir el documento (PDF)
+                </button>
+              )}
+              {texto && <p className="text-gray-700 whitespace-pre-wrap">{texto}</p>}
+              {!det?.base64 && !texto && (
+                <p className="text-gray-500 italic">El SAT no devolvió el contenido de este comunicado (sólo el encabezado). Ábrelo en el buzón tributario del SAT si necesitas el detalle.</p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -69,6 +126,7 @@ export function PanelNotificaciones() {
   const comunicados: Notif[] = d.comunicados || [];
   const avisos: Notif[] = d.avisos || [];
   const conectado = !!d.conectado;
+  const [abierto, setAbierto] = useState<Notif | null>(null);
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -83,9 +141,10 @@ export function PanelNotificaciones() {
         </button>
       </div>
       <div className="grid md:grid-cols-2 gap-4">
-        <ColumnaNotif titulo="Comunicados" items={comunicados} />
-        <ColumnaNotif titulo="Avisos" items={avisos} />
+        <ColumnaNotif titulo="Comunicados" items={comunicados} onOpen={setAbierto} />
+        <ColumnaNotif titulo="Avisos" items={avisos} onOpen={setAbierto} />
       </div>
+      {abierto && <ModalComunicado item={abierto} onClose={() => setAbierto(null)} />}
     </div>
   );
 }

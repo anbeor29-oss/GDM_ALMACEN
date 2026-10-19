@@ -51,9 +51,14 @@ router.get('/declaraciones/resumen', asyncHandler(async (req: Request, res: Resp
   res.json({ success: true, data: await consultas.declaracionesResumen(companyId(req)) });
 }));
 
-// Buzón: comunicados y avisos (mensajes) del SAT. Integración pendiente (Fase B).
+// Buzón: comunicados y avisos (mensajes) del SAT.
 router.get('/buzon', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await consultas.buzonNotificaciones(companyId(req)) });
+}));
+
+// Contenido de un comunicado (para leerlo): PDF y/o texto.
+router.get('/buzon/comunicado/:id', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await consultas.comunicadoContenido(companyId(req), String(req.params.id)) });
 }));
 
 router.get('/validar-cfdi', asyncHandler(async (req: Request, res: Response) => {
