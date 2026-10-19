@@ -134,7 +134,8 @@ export function ModuleRoute({ module, children }: { module: ModuleKey; children:
    * grupo tampoco estuviera contratada. */
   const activa = (empresasQ.data?.data as any[] | undefined)?.find((e) => e.id === user?.companyId);
   const mods: string[] | undefined = activa?.modulos_habilitados?.length ? activa.modulos_habilitados : undefined;
-  if (mods && (module as string) !== 'dashboard' && !mods.includes(module)) return <ModuloNoContratado />;
+  const SIEMPRE = ['dashboard', 'xml_reader'];   // nunca se restringen por empresa
+  if (mods && !SIEMPRE.includes(module as string) && !mods.includes(module)) return <ModuloNoContratado />;
   return <>{children}</>;
 }
 

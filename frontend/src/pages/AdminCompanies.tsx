@@ -11,6 +11,21 @@ import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { MODULE_LABELS } from '@/utils/permissions';
+
+/* Módulos que se activan/desactivan POR EMPRESA (servicios contratados). El tablero
+ * y el XML del SAT NO se listan: quedan SIEMPRE disponibles para todas (igual que
+ * el contrato y el equipo de trabajo, que no son por módulo). */
+const MODS_TOGGLE: Array<{ k: string; label: string }> = [
+  { k: 'invoices', label: 'Facturación' }, { k: 'purchasing', label: 'Compras' },
+  { k: 'inventory', label: 'Almacén' }, { k: 'pos', label: 'Punto de venta' },
+  { k: 'nomina', label: 'Nómina' }, { k: 'contabilidad', label: 'Contabilidad' },
+  { k: 'treasury', label: 'Tesorería' }, { k: 'suppliers', label: 'Proveedores' },
+  { k: 'customers', label: 'Clientes' }, { k: 'products', label: 'Productos' },
+  { k: 'carta_porte', label: 'Carta Porte' }, { k: 'credit_notes', label: 'Notas de crédito' },
+  { k: 'exchange_rates', label: 'Tipos de cambio' }, { k: 'auditoria', label: 'Auditoría' },
+  { k: 'reports', label: 'Reportes' }, { k: 'mensajes', label: 'Mensajes' },
+];
+const MODS_TOGGLE_KEYS = MODS_TOGGLE.map((m) => m.k);
 import { CampoFecha } from '@/components/CampoFecha';
 import { CreateUserModal } from '@/pages/AdminUsers';
 
@@ -33,6 +48,17 @@ export function AdminCompaniesPage() {
       alert(r?.message || 'Cumplimiento activado para todas las empresas.');
     } catch (e: any) { alert(e?.response?.data?.message || 'No se pudo activar.'); }
     finally { setActivandoCump(false); }
+  };
+
+  /* Guarda los módulos habilitados de una empresa (null = todos). Refresca la lista. */
+  const [guardandoMods, setGuardandoMods] = useState<string>('');
+  const guardarMods = async (companyId: string, arr: string[] | null) => {
+    setGuardandoMods(companyId);
+    try {
+      await api.adminUpdateCompany(companyId, { modulosHabilitados: arr });
+      await qc.invalidateQueries({ queryKey: ['admin-companies'] });
+    } catch (e: any) { alert(e?.response?.data?.message || 'No se pudieron guardar los módulos.'); }
+    finally { setGuardandoMods(''); }
   };
 
   if (user?.role !== 'SUPER_ADMIN') {
@@ -96,11 +122,7 @@ export function AdminCompaniesPage() {
             <tr>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">RFC</th>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Razón social</th>
-              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Plan</th>
-              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Contratada</th>
-              <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">Cap / Usados</th>
-              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">CSD</th>
-              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Usuarios</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Módulos contratados <span className="font-normal text-gray-400">(tablero y XML siempre activos)</span></th>
               <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Acciones</th>
             </tr>
           </thead>
@@ -114,41 +136,42 @@ export function AdminCompaniesPage() {
                     <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold align-middle">EN VIVO</span>
                   )}
                 </td>
-                <td className="px-4 py-2">
-                  <span className={`text-xs px-2 py-1 rounded font-medium ${
-                    c.billing_plan==='iguala' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                  }`}>
-                    {c.billing_plan} · ${c.monthly_fee}
-                  </span>
+                <td className="px-4 py-2 align-top">
+                  {(() => {
+                    // null/vacío = TODOS. Si no, sólo los marcados (filtrados a los toggleables).
+                    const actuales = (Array.isArray(c.modulos_habilitados) && c.modulos_habilitados.length)
+                      ? MODS_TOGGLE_KEYS.filter((k) => c.modulos_habilitados.includes(k))
+                      : [...MODS_TOGGLE_KEYS];
+                    const todos = !(Array.isArray(c.modulos_habilitados) && c.modulos_habilitados.length);
+                    const guardando = guardandoMods === c.id;
+                    const toggle = (k: string, on: boolean) => {
+                      const s = new Set(actuales);
+                      if (on) s.add(k); else s.delete(k);
+                      const arr = MODS_TOGGLE_KEYS.filter((x) => s.has(x));
+                      // Si quedaron TODOS, se vuelve a «sin restricción» (null).
+                      guardarMods(c.id, arr.length === MODS_TOGGLE_KEYS.length ? null : arr);
+                    };
+                    return (
+                      <div className={`space-y-1 ${guardando ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+                          <input type="checkbox" checked={todos}
+                            onChange={(e) => guardarMods(c.id, e.target.checked ? null : [])} />
+                          Todos los módulos
+                        </label>
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-0.5">
+                          {MODS_TOGGLE.map((m) => (
+                            <label key={m.k} className="flex items-center gap-1 text-[11px] text-gray-600">
+                              <input type="checkbox" checked={actuales.includes(m.k)}
+                                onChange={(e) => toggle(m.k, e.target.checked)} />
+                              {m.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </td>
-                <td className="px-4 py-2 text-sm whitespace-nowrap">
-                  {/* Fecha en que empezó el servicio PAGADO. Sin pago no se
-                      inventa una: poner el alta haría creer que la empresa
-                      lleva meses pagando cuando todavía no paga nada. */}
-                  {c.contratada_el ? (
-                    <span className="text-gray-700">{String(c.contratada_el).slice(0, 10)}</span>
-                  ) : c.billing_exempt ? (
-                    <span className="text-xs text-slate-500 italic">empresa propia</span>
-                  ) : c.stamp_package_code === 'PKG_TRIAL' ? (
-                    <span className="text-xs text-fuchsia-700">
-                      cortesía · {c.trial_stamps_left ?? 0} timbres
-                    </span>
-                  ) : (
-                    <span className="text-xs text-amber-700 italic">sin contratar</span>
-                  )}
-                </td>
-                <td className="px-4 py-2 text-right text-sm">
-                  <b>{c.facturas_mes}</b><span className="text-gray-400"> / {c.cap_timbres}</span>
-                </td>
-                <td className="px-4 py-2 text-center">
-                  {c.has_csd ? (
-                    <span className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded border border-emerald-200">
-                      <ShieldCheck size={12}/> cargado
-                    </span>
-                  ) : <span className="text-xs text-gray-400 italic">sin CSD</span>}
-                </td>
-                <td className="px-4 py-2 text-center text-sm">{c.users_active}</td>
-                <td className="px-4 py-2">
+                <td className="px-4 py-2 align-top">
                   <div className="flex items-center justify-center gap-1">
                     <button title="Entrar a esta empresa como su ADMIN (impersonación)" onClick={() => enterCompany.mutate(c.id)}
                       disabled={enterCompany.isPending}
@@ -182,7 +205,7 @@ export function AdminCompaniesPage() {
               </tr>
             ))}
             {!q.isLoading && rows.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500 italic">Sin empresas</td></tr>
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-500 italic">Sin empresas</td></tr>
             )}
           </tbody>
         </table>

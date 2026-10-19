@@ -368,7 +368,7 @@ export function Layout() {
              * (servicios contratados). 'dashboard' nunca se oculta (es la casa). */
             const show = (m: ModuleKey) =>
               (canAccess(g, m) || extra.includes(m))
-              && (!empresaModulos || m === 'dashboard' || empresaModulos.includes(m));
+              && (!empresaModulos || m === 'dashboard' || m === 'xml_reader' || empresaModulos.includes(m));
             const esAdmin = user?.role === 'ADMIN';   // aquí ya se excluyó SUPER_ADMIN
             // Cada entrada se muestra solo si el grupo de trabajo la permite.
             // El dashboard es común a todos.

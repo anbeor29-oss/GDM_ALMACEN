@@ -274,10 +274,13 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   }
   if (phone        !== undefined) push('phone',   phone || null);
   if (website      !== undefined) push('website', website || null);
-  // Módulos habilitados: se validan contra el catálogo conocido; [] / null = sin
-  // restricción (todos). 'dashboard' se agrega implícito (es la casa) si viene lista.
+  // Módulos habilitados (servicios contratados):
+  //   · null           = SIN restricción (todos los módulos).
+  //   · arreglo (aun [])= lista explícita; sólo esos (más los SIEMPRE disponibles:
+  //                       el tablero y el XML del SAT, que nunca se restringen).
+  // 'dashboard' se agrega implícito a la lista para dejar constancia.
   if (modulosHabilitados !== undefined) {
-    if (modulosHabilitados === null || (Array.isArray(modulosHabilitados) && modulosHabilitados.length === 0)) {
+    if (modulosHabilitados === null) {
       push('modulos_habilitados', null);
     } else if (Array.isArray(modulosHabilitados)) {
       const limpio = [...new Set(

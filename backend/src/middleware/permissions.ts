@@ -147,10 +147,11 @@ export function requireModule(mod: ModuleKey) {
       });
     }
     // Además del grupo, la EMPRESA debe tener el módulo habilitado (servicios
-    // contratados). undefined/vacío = sin restricción; 'dashboard' nunca se niega
-    // (es la casa, negarla causaría un bucle de redirección).
+    // contratados). undefined/vacío = sin restricción. SIEMPRE disponibles para
+    // todas (no se restringen por empresa): el tablero y el XML del SAT.
+    const SIEMPRE = ['dashboard', 'xml_reader'];
     const empMods = req.user.empresaModulos as ModuleKey[] | undefined;
-    if (empMods && empMods.length && String(mod) !== 'dashboard' && !empMods.includes(mod)) {
+    if (empMods && empMods.length && !SIEMPRE.includes(String(mod)) && !empMods.includes(mod)) {
       return res.status(403).json({
         success: false,
         message: 'Esta empresa no tiene habilitado este módulo (servicios contratados).',
