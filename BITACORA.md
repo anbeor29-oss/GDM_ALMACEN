@@ -7450,3 +7450,24 @@ bien. Encabezados/árbol colapsables. Las **emisoras** (GHC/SAJ) no se listan co
 - **PENDIENTE (mañana):** el **panel de «Usuarios reales (cobro)» aún NO convence al usuario**; se reorganiza mañana.
   Idea del usuario: pensar el **precio por DESPACHO** — un despacho con p.ej. **5 usuarios** es donde se puede **subir
   un poco más el precio** (escalón por nº de usuarios del despacho, no sólo por empresa). Ver [[cobro-por-usuario-algoritmo]].
+
+---
+
+## 2026-10-20 (contabilidad/facturación) — Fix: subcuenta cuelga por SEGMENTOS + Consumo de timbres ordenado y colapsable
+
+**1. BUG del catálogo — no dejaba crear la cuenta de capital del resultado.** Al crear «3-2-00-05 Resultado del
+ejercicio 2025» bajo «3-2-00-00» marcaba *«El código no cuelga de…»*. La validación comparaba el dígito literal:
+`soloDig("3-2-00-05")="320005"` vs `soloDig("3-2-00-00")="320000"` → `"320005".startsWith("320000")` = **false**, porque
+el padre arrastra los segmentos **«00-00»** al final como dígitos. Nuevo **`cuelgaDe(hijo, padre)`** en
+`catalogo.service`: compara por **SEGMENTOS** ignorando los segmentos CERO finales del padre (el hijo repite los
+significativos —3 y 2— y extiende/llena los demás); sin separadores cae al prefijo de dígitos de antes (no rompe
+«11025000-001»). Así se puede **crear y acumular** la cuenta de capital del resultado del ejercicio (utilidad **o
+pérdida**, el signo no importaba) en el bloque 3 de capital. Backend-only.
+
+**2. Facturación → «Consumo de timbres del periodo».** (a) Ordenado de **mayor a menor consumo** (timbres usados).
+(b) La sección es **colapsable** y **arranca cerrada** para no llenar la pantalla (el componente `Seccion` ganó props
+`colapsable`/`defaultColapsado`). Front ⇒ ZIP.
+
+**Resultado.** `tsc` back+front en verde, sin migración. Sigue pendiente (para acordar con el usuario, no codificar
+aún) el **modelo de precio por despacho** y la reorganización del panel de cobro. Ver [[cobro-por-usuario-algoritmo]],
+PENDIENTES.md.
