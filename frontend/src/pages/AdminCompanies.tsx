@@ -4,9 +4,9 @@
  *   · Subir CSD (.cer + .key + password) — cifrado en BD
  *   · Ver consumo del mes + facturación estimada
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload, AlertTriangle, Loader2, Pencil, Save, LogIn, UserPlus, KeyRound } from 'lucide-react';
+import { Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload, AlertTriangle, Loader2, Pencil, Save, LogIn, UserPlus, KeyRound, ChevronRight, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -73,6 +73,30 @@ export function AdminCompaniesPage() {
   const q = useQuery({ queryKey: ['admin-companies'], queryFn: () => api.adminListCompanies() });
   const rows = q.data?.data?.companies || [];
 
+  /* ÁRBOL POR DESPACHO: la emisora de cobro (es_emisor_cobro) es el PADRE y sus
+   * empresas facturadas (empresa_cobro_id = su id) cuelgan de ella, colapsables.
+   * Las que no tienen emisora quedan sueltas arriba. */
+  const [expandido, setExpandido] = useState<Set<string>>(new Set());
+  const alternar = (id: string) => setExpandido((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const { filas, hijosDe } = useMemo(() => {
+    const byId = new Map<string, any>(rows.map((c: any) => [c.id, c]));
+    const hijos = new Map<string, any[]>();
+    const top: any[] = [];
+    for (const c of rows) {
+      const p = c.empresa_cobro_id;
+      if (p && p !== c.id && byId.has(p)) { (hijos.get(p) || hijos.set(p, []).get(p)!).push(c); }
+      else top.push(c);
+    }
+    const out: Array<{ c: any; depth: number; nHijos: number }> = [];
+    for (const c of top) {
+      const kids = hijos.get(c.id) || [];
+      out.push({ c, depth: 0, nHijos: kids.length });
+      if (kids.length && expandido.has(c.id)) for (const k of kids) out.push({ c: k, depth: 1, nHijos: 0 });
+    }
+    return { filas: out, hijosDe: hijos };
+  }, [rows, expandido]);
+  void hijosDe;
+
   const delCsd = useMutation({
     mutationFn: (id: string) => api.adminDeleteCSD(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-companies'] }),
@@ -127,11 +151,23 @@ export function AdminCompaniesPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {rows.map((c: any) => (
-              <tr key={c.id} className="hover:bg-gray-50">
-                <td className="px-4 py-2 text-sm font-mono">{c.rfc}</td>
+            {filas.map(({ c, depth, nHijos }: any) => (
+              <tr key={c.id} className={`hover:bg-gray-50 ${depth > 0 ? 'bg-gray-50/40' : ''}`}>
+                <td className="px-4 py-2 text-sm font-mono">
+                  <div className="flex items-center gap-1" style={{ paddingLeft: depth * 18 }}>
+                    {nHijos > 0 ? (
+                      <button onClick={() => alternar(c.id)} className="text-gray-400 hover:text-gray-700 shrink-0" title={expandido.has(c.id) ? 'Contraer' : 'Desplegar'}>
+                        {expandido.has(c.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </button>
+                    ) : depth > 0 ? <span className="w-3.5 shrink-0 text-gray-300">└</span> : <span className="w-3.5 shrink-0" />}
+                    <span>{c.rfc}</span>
+                  </div>
+                </td>
                 <td className="px-4 py-2 text-sm font-medium">
                   {c.business_name}
+                  {nHijos > 0 && (
+                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-semibold align-middle">despacho · {nHijos}</span>
+                  )}
                   {c.timbrado_ambiente === 'PRODUCCION' && (
                     <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold align-middle">EN VIVO</span>
                   )}

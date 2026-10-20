@@ -84,9 +84,13 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     `SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.work_group, u.is_active,
             u.password_change_required, u.last_login, u.disabled_at,
             u.company_id, c.business_name AS company_name, c.rfc AS company_rfc,
+            c.es_emisor_cobro, c.empresa_cobro_id,
+            COALESCE(ec.id, CASE WHEN c.es_emisor_cobro THEN c.id END) AS despacho_id,
+            COALESCE(ec.business_name, CASE WHEN c.es_emisor_cobro THEN c.business_name END) AS despacho_nombre,
             u.created_at, u.created_by_user_id
        FROM users u
        LEFT JOIN companies c ON c.id = u.company_id
+       LEFT JOIN companies ec ON ec.id = c.empresa_cobro_id
       WHERE ${filters.join(' AND ')}
       ORDER BY c.business_name ASC NULLS LAST, u.last_name ASC, u.first_name ASC, u.created_at DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}`,

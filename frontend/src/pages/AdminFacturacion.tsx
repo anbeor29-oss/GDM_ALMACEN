@@ -6,9 +6,9 @@
  * (cobro $precio × usuarios + excedente de timbres), (3) consumo de timbres.
  * Prepago: generar la lista del día 30, marcar pagado / suspender por falta de pago.
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { DollarSign, RefreshCw, Check, Ban, RotateCcw, Settings, Loader2, AlertTriangle, FlaskConical, Users, Stamp } from 'lucide-react';
+import { DollarSign, RefreshCw, Check, Ban, RotateCcw, Settings, Loader2, AlertTriangle, FlaskConical, Users, Stamp, ChevronRight, ChevronDown } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 
@@ -37,6 +37,28 @@ export function AdminFacturacionPage() {
   };
   const pruebaF = prueba.filter(enPanel);
   const realesF = reales.filter(enPanel);
+
+  /* Árbol por despacho: la emisora de cobro es el padre; sus empresas facturadas
+   * (empresa_cobro_id = su company_id) cuelgan de ella, colapsables. */
+  const [expandido, setExpandido] = useState<Set<string>>(new Set());
+  const alternar = (id: string) => setExpandido((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const filasReales = useMemo(() => {
+    const byId = new Map<string, any>(realesF.map((f) => [f.company_id, f]));
+    const hijos = new Map<string, any[]>();
+    const top: any[] = [];
+    for (const f of realesF) {
+      const p = f.empresa_cobro_id;
+      if (p && p !== f.company_id && byId.has(p)) { (hijos.get(p) || hijos.set(p, []).get(p)!).push(f); }
+      else top.push(f);
+    }
+    const out: Array<{ f: any; depth: number; nHijos: number }> = [];
+    for (const f of top) {
+      const kids = hijos.get(f.company_id) || [];
+      out.push({ f, depth: 0, nHijos: kids.length });
+      if (kids.length && expandido.has(f.company_id)) for (const k of kids) out.push({ f: k, depth: 1, nHijos: 0 });
+    }
+    return out;
+  }, [realesF, expandido]);
   const totPanel = {
     empresasReales: realesF.length,
     usuariosReales: realesF.reduce((a, f) => a + Number(f.usuarios || 0), 0),
@@ -161,9 +183,23 @@ export function AdminFacturacionPage() {
           </tr></thead>
           <tbody className="divide-y">
             {realesF.length === 0 && <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400 italic">Sin clientes de pago todavía.</td></tr>}
-            {realesF.map((f) => (
-              <tr key={f.company_id} className={`hover:bg-gray-50 ${f.status === 'SUSPENDIDO' ? 'bg-rose-50/40' : ''}`}>
-                <td className="px-3 py-2"><p className="font-medium text-gray-800">{f.business_name}</p><p className="text-[11px] text-gray-500 font-mono">{f.rfc}</p></td>
+            {filasReales.map(({ f, depth, nHijos }) => (
+              <tr key={f.company_id} className={`hover:bg-gray-50 ${f.status === 'SUSPENDIDO' ? 'bg-rose-50/40' : depth > 0 ? 'bg-gray-50/40' : ''}`}>
+                <td className="px-3 py-2">
+                  <div className="flex items-start gap-1" style={{ paddingLeft: depth * 18 }}>
+                    {nHijos > 0 ? (
+                      <button onClick={() => alternar(f.company_id)} className="text-gray-400 hover:text-gray-700 shrink-0 mt-0.5" title={expandido.has(f.company_id) ? 'Contraer' : 'Desplegar'}>
+                        {expandido.has(f.company_id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </button>
+                    ) : depth > 0 ? <span className="w-3.5 shrink-0 text-gray-300 mt-0.5">└</span> : <span className="w-3.5 shrink-0" />}
+                    <div>
+                      <p className="font-medium text-gray-800">{f.business_name}
+                        {nHijos > 0 && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-semibold">despacho · {nHijos}</span>}
+                      </p>
+                      <p className="text-[11px] text-gray-500 font-mono">{f.rfc}</p>
+                    </div>
+                  </div>
+                </td>
                 <td className="px-3 py-2 text-center">{f.usuarios}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{money(f.renta_mxn)}</td>
                 <td className="px-3 py-2 text-center text-xs">{f.timbres_usados}<span className="text-gray-400">/{f.timbres_incluidos}</span>{f.timbres_extra > 0 && <span className="block text-[10px] text-rose-600">+{f.timbres_extra} extra</span>}</td>

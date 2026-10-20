@@ -212,7 +212,7 @@ export async function resumenConsolidado(periodoInput?: string) {
 
   const empresas = await query<any>(
     `SELECT c.id, c.rfc, c.business_name, c.billing_exempt, c.prueba_inicio, c.servicio_suspendido,
-            c.created_at, COALESCE(c.producto,'NEXO') AS producto,
+            c.created_at, c.empresa_cobro_id, COALESCE(c.producto,'NEXO') AS producto,
             (SELECT MIN(sc.signed_at) FROM service_contracts sc WHERE sc.company_id = c.id) AS signed_at,
             (SELECT COUNT(*) FROM service_contracts sc WHERE sc.company_id = c.id) > 0 AS firmado,
             fm.id AS cargo_id, fm.status AS cargo_status
@@ -245,6 +245,7 @@ export async function resumenConsolidado(periodoInput?: string) {
     const extra = esPrueba ? 0 : r2(timbresExtra * precioExtra);
     const fila = {
       company_id: e.id, rfc: e.rfc, business_name: e.business_name,
+      empresa_cobro_id: e.empresa_cobro_id || null,
       usuarios, timbres_usados: timbresUsados, timbres_incluidos: incluidos, timbres_extra: timbresExtra,
       renta_mxn: renta, extra_mxn: extra, total_mxn: r2(renta + extra),
       esPrueba, motivo, producto: e.producto || 'NEXO',

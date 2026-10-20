@@ -4,10 +4,10 @@
  *   · Asignar a empresa
  *   · Visible solo para role=SUPER_ADMIN
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { X, Shield, Plus, Pencil, Building2, Key, Drama, Ban, CheckCircle, Trash2 } from 'lucide-react';
+import { X, Shield, Plus, Pencil, Building2, Key, Drama, Ban, CheckCircle, Trash2, ChevronRight, ChevronDown } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { WORK_GROUP_LABELS, WORK_GROUP_DETAIL, WorkGroup, MODULE_LABELS, canAccess } from '@/utils/permissions';
@@ -50,6 +50,25 @@ export function AdminUsersPage() {
     queryFn: () => api.adminListCompanies(),
   });
   const companies = companiesQ.data?.data?.companies || [];
+
+  /* Árbol por despacho: agrupa los usuarios por la emisora de cobro de su empresa
+   * (despacho_id). Cada despacho es un encabezado colapsable; los usuarios sin
+   * despacho quedan en su propio grupo. Por omisión TODO abierto (para que la
+   * búsqueda no esconda resultados); el encabezado colapsa/expande. */
+  const [colapsado, setColapsado] = useState<Set<string>>(new Set());
+  const alternarGrupo = (id: string) => setColapsado((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const grupos = useMemo(() => {
+    const users = usersQ.data?.data?.users || [];
+    const m = new Map<string, { nombre: string; users: any[] }>();
+    for (const u of users) {
+      const key = u.despacho_id || '__none__';
+      const nombre = u.despacho_nombre || 'Sin despacho (independientes)';
+      if (!m.has(key)) m.set(key, { nombre, users: [] });
+      m.get(key)!.users.push(u);
+    }
+    return [...m.entries()].sort((a, b) =>
+      a[0] === '__none__' ? 1 : b[0] === '__none__' ? -1 : a[1].nombre.localeCompare(b[1].nombre));
+  }, [usersQ.data]);
 
   const reset = useMutation({
     mutationFn: (id: string) => api.adminResetPassword(id),
@@ -131,7 +150,18 @@ export function AdminUsersPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {(usersQ.data?.data?.users || []).map((u: any) => (
+            {grupos.map(([key, g]) => (
+              <Fragment key={key}>
+                <tr className="bg-indigo-50/70 border-y border-indigo-100">
+                  <td colSpan={6} className="px-4 py-1.5">
+                    <button onClick={() => alternarGrupo(key)} className="flex items-center gap-1.5 text-sm font-semibold text-indigo-800 hover:text-indigo-900">
+                      {colapsado.has(key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                      <Building2 size={14} /> {g.nombre}
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">{g.users.length} usuario(s)</span>
+                    </button>
+                  </td>
+                </tr>
+                {!colapsado.has(key) && g.users.map((u: any) => (
               <tr key={u.id} className="hover:bg-gray-50">
                 <td className="px-4 py-2 text-sm font-mono">{u.email}</td>
                 <td className="px-4 py-2 text-sm">{u.first_name} {u.last_name}</td>
@@ -215,6 +245,8 @@ export function AdminUsersPage() {
                   </div>
                 </td>
               </tr>
+                ))}
+              </Fragment>
             ))}
             {!usersQ.isLoading && (usersQ.data?.data?.users || []).length === 0 && (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500 italic">Sin resultados</td></tr>
