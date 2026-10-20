@@ -2229,6 +2229,14 @@ class APIClient {
     const r = await this.client.post(`/admin/users/${id}/reset-password`, {});
     return r.data;
   }
+  /** Reseteo PROTEGIDO de un super admin: paso 1 (manda código al correo de seguridad). */
+  async adminResetSuperSolicitar(id: string) {
+    return (await this.client.post(`/admin/users/${id}/reset-super/solicitar`, {})).data;
+  }
+  /** Paso 2: confirma con el código de 12 dígitos y devuelve la contraseña temporal. */
+  async adminResetSuperConfirmar(id: string, codigo: string) {
+    return (await this.client.post(`/admin/users/${id}/reset-super/confirmar`, { codigo })).data;
+  }
   async adminDisableUser(id: string) {
     const r = await this.client.post(`/admin/users/${id}/disable`, {});
     return r.data;

@@ -7,7 +7,7 @@
 import { useEffect, useState, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { X, Shield, Plus, Pencil, Building2, Key, Drama, Ban, CheckCircle, Trash2, ChevronRight, ChevronDown } from 'lucide-react';
+import { X, Shield, Plus, Pencil, Building2, Key, Drama, Ban, CheckCircle, Trash2, ChevronRight, ChevronDown, Lock } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { WORK_GROUP_LABELS, WORK_GROUP_DETAIL, WorkGroup, MODULE_LABELS, canAccess } from '@/utils/permissions';
@@ -93,6 +93,9 @@ export function AdminUsersPage() {
     onSuccess: () => { setEliminar(null); qc.invalidateQueries({ queryKey: ['admin-users'] }); },
     onError: (e: any) => alert(e?.response?.data?.message || 'No se pudo borrar.'),
   });
+  /* Reseteo de un SUPER_ADMIN: requiere un código de 12 dígitos enviado por correo
+   * a anbeor@hotmail.com (protege el acceso a la administración). */
+  const [resetSuper, setResetSuper] = useState<any>(null);
 
   /** Impersonar: reemplaza el JWT local por el del usuario target y navega al dashboard. */
   const impersonate = useMutation({
@@ -145,6 +148,7 @@ export function AdminUsersPage() {
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Nombre</th>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Rol</th>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Empresa</th>
+              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600" title="Usuarios activos de la empresa">Usuarios</th>
               <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Estado</th>
               <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Acciones</th>
             </tr>
@@ -153,7 +157,7 @@ export function AdminUsersPage() {
             {grupos.map(([key, g]) => (
               <Fragment key={key}>
                 <tr className="bg-indigo-50/70 border-y border-indigo-100">
-                  <td colSpan={6} className="px-4 py-1.5">
+                  <td colSpan={7} className="px-4 py-1.5">
                     <button onClick={() => alternarGrupo(key)} className="flex items-center gap-1.5 text-sm font-semibold text-indigo-800 hover:text-indigo-900">
                       {colapsado.has(key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                       <Building2 size={14} /> {g.nombre}
@@ -171,6 +175,7 @@ export function AdminUsersPage() {
                     <span><b>{u.company_rfc}</b> <span className="text-gray-500">· {u.company_name}</span></span>
                   ) : <span className="text-gray-400 italic">—</span>}
                 </td>
+                <td className="px-4 py-2 text-center text-sm tabular-nums">{u.company_users != null ? u.company_users : '—'}</td>
                 <td className="px-4 py-2 text-center">
                   {u.is_active ? (
                     <span className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">Activo</span>
@@ -208,8 +213,13 @@ export function AdminUsersPage() {
                         <Building2 size={16} />
                       </IconBtn>
                     )}
-                    <IconBtn title="Resetear password" color="amber"
-                      onClick={() => { if (confirm(`Generar nueva contraseña temporal para ${u.email}?`)) reset.mutate(u.id); }}>
+                    {/* Resetear password. Para un SUPER_ADMIN exige CÓDIGO por correo
+                        a anbeor@hotmail.com (protege el acceso a la administración). */}
+                    <IconBtn title={u.role === 'SUPER_ADMIN' ? 'Resetear password (requiere código por correo)' : 'Resetear password'} color="amber"
+                      onClick={() => {
+                        if (u.role === 'SUPER_ADMIN') { setResetSuper(u); return; }
+                        if (confirm(`Generar nueva contraseña temporal para ${u.email}?`)) reset.mutate(u.id);
+                      }}>
                       <Key size={16} />
                     </IconBtn>
                     {/* Solo se puede suplantar a usuarios distintos del propio super-admin
@@ -224,7 +234,11 @@ export function AdminUsersPage() {
                         <Drama size={16} />
                       </IconBtn>
                     )}
-                    {u.is_active ? (
+                    {/* Un SUPER_ADMIN NO se deshabilita ni se borra: es el acceso a la
+                        plataforma. Se muestra como protegido. */}
+                    {u.role === 'SUPER_ADMIN' ? (
+                      <span className="p-1.5 text-gray-300" title="Super admin protegido: no se puede deshabilitar ni eliminar"><Lock size={15} /></span>
+                    ) : u.is_active ? (
                       <IconBtn title="Deshabilitar" color="red"
                         onClick={() => { if (confirm(`Deshabilitar ${u.email}?`)) disable.mutate(u.id); }}>
                         <Ban size={16} />
@@ -249,7 +263,7 @@ export function AdminUsersPage() {
               </Fragment>
             ))}
             {!usersQ.isLoading && (usersQ.data?.data?.users || []).length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500 italic">Sin resultados</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500 italic">Sin resultados</td></tr>
             )}
           </tbody>
         </table>
@@ -294,6 +308,89 @@ export function AdminUsersPage() {
           onConfirmar={(email: string) => del.mutate({ id: eliminar.id, email })}
         />
       )}
+
+      {resetSuper && (
+        <ModalResetSuper
+          usuario={resetSuper}
+          onClose={() => setResetSuper(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Reseteo PROTEGIDO de la contraseña de un SUPER_ADMIN. Flujo de 2 pasos:
+ *  1) «Enviar código» → el backend genera un código de 12 dígitos, lo manda al
+ *     correo de seguridad (anbeor@hotmail.com) y lo guarda ~15 min.
+ *  2) Se teclea el código → el backend lo verifica y entrega la contraseña temporal.
+ * Protege la administración de usuarios de accesos no autorizados.
+ */
+function ModalResetSuper({ usuario, onClose }: any) {
+  const [paso, setPaso] = useState<1 | 2>(1);
+  const [correo, setCorreo] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [tempPass, setTempPass] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const enviar = async () => {
+    setBusy(true); setError('');
+    try {
+      const r: any = await api.adminResetSuperSolicitar(usuario.id);
+      setCorreo(r?.data?.correo || 'el correo de seguridad');
+      setPaso(2);
+    } catch (e: any) { setError(e?.response?.data?.message || 'No se pudo enviar el código.'); }
+    finally { setBusy(false); }
+  };
+  const confirmar = async () => {
+    setBusy(true); setError('');
+    try {
+      const r: any = await api.adminResetSuperConfirmar(usuario.id, codigo.trim());
+      setTempPass(r?.data?.tempPassword || '');
+    } catch (e: any) { setError(e?.response?.data?.message || 'Código inválido o vencido.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <h3 className="font-bold text-gray-900 flex items-center gap-2"><Lock size={18} className="text-amber-600" /> Resetear super admin</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-3 text-sm">
+          <p className="text-gray-600">Vas a resetear la contraseña de <b>{usuario.email}</b> (SUPER_ADMIN). Por seguridad se confirma con un <b>código de 12 dígitos</b> enviado a tu correo de seguridad.</p>
+          {tempPass ? (
+            <div className="bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+              <p className="text-emerald-900 font-semibold">Contraseña temporal generada:</p>
+              <p className="font-mono text-lg tracking-wide text-emerald-800 select-all">{tempPass}</p>
+              <p className="text-[11px] text-emerald-700 mt-1">Entrégala por un canal seguro. Se pedirá cambiarla al entrar.</p>
+            </div>
+          ) : paso === 1 ? (
+            <button onClick={enviar} disabled={busy}
+              className="inline-flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 disabled:opacity-50 font-medium">
+              <Key size={15} /> {busy ? 'Enviando…' : 'Enviar código al correo de seguridad'}
+            </button>
+          ) : (
+            <>
+              <p className="text-gray-600">Enviamos un código a <b>{correo}</b>. Tecléalo para confirmar:</p>
+              <input value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                placeholder="000000000000" inputMode="numeric"
+                className="w-full border border-slate-300 rounded px-3 py-2 text-center font-mono text-lg tracking-widest" />
+              <button onClick={confirmar} disabled={busy || codigo.trim().length !== 12}
+                className="inline-flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 disabled:opacity-50 font-medium">
+                {busy ? 'Verificando…' : 'Confirmar y resetear'}
+              </button>
+              <button onClick={enviar} disabled={busy} className="ml-2 text-xs text-gray-500 hover:underline">Reenviar código</button>
+            </>
+          )}
+          {error && <p className="text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{error}</p>}
+        </div>
+        <div className="flex justify-end px-5 py-3 border-t bg-gray-50">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border text-gray-700 hover:bg-gray-100">{tempPass ? 'Cerrar' : 'Cancelar'}</button>
+        </div>
+      </div>
     </div>
   );
 }

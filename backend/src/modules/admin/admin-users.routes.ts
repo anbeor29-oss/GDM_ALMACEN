@@ -24,10 +24,17 @@ import { query } from '../../config/database';
 import { requireSuperAdmin, audit } from './admin.middleware';
 import logger from '../../middleware/logger';
 import { GROUP_MODULES } from '../../middleware/permissions';
+import { sendPlainMail } from '../mailer/mailer.service';
 
 const router = Router();
 router.use(authenticateToken);
 router.use(requireSuperAdmin);
+
+/* Correo de SEGURIDAD al que se manda el código para resetear un SUPER_ADMIN. */
+const SECURITY_EMAIL = (process.env.SECURITY_EMAIL || 'anbeor@hotmail.com').trim();
+/* Códigos de confirmación de reseteo de super admin, en memoria y de vida corta
+ * (15 min). Clave = userId del super admin a resetear. */
+const superResetCodes = new Map<string, { code: string; exp: number }>();
 
 const VALID_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'USER'] as const;
 type Role = typeof VALID_ROLES[number];
@@ -87,6 +94,8 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
             c.es_emisor_cobro, c.empresa_cobro_id,
             COALESCE(ec.id, CASE WHEN c.es_emisor_cobro THEN c.id END) AS despacho_id,
             COALESCE(ec.business_name, CASE WHEN c.es_emisor_cobro THEN c.business_name END) AS despacho_nombre,
+            (SELECT COUNT(*)::int FROM users u2
+               WHERE u2.company_id = u.company_id AND u2.is_active = TRUE AND u2.deleted_at IS NULL) AS company_users,
             u.created_at, u.created_by_user_id
        FROM users u
        LEFT JOIN companies c ON c.id = u.company_id
@@ -311,11 +320,63 @@ router.post('/:id/reset-password', asyncHandler(async (req: Request, res: Respon
   res.json({ success: true, data: { ...r.rows[0], temporary_password: tempPass } });
 }));
 
+/* ──────────  RESET PROTEGIDO de un SUPER_ADMIN (código por correo)  ──────────
+ * Paso 1: genera un código de 12 dígitos, lo manda al correo de seguridad y lo
+ * guarda 15 min. Paso 2: verifica el código y resetea la contraseña. Protege la
+ * administración de usuarios de accesos no autorizados. */
+router.post('/:id/reset-super/solicitar', asyncHandler(async (req: Request, res: Response) => {
+  const u = (await query<any>(`SELECT id, email, role FROM users WHERE id=$1 AND deleted_at IS NULL`, [req.params.id])).rows[0];
+  if (!u) throw new NotFoundError('Usuario no encontrado');
+  if (u.role !== 'SUPER_ADMIN') throw new ValidationError('Este flujo es sólo para super administradores.');
+
+  const code = String(Math.floor(Math.random() * 1e12)).padStart(12, '0');
+  superResetCodes.set(u.id, { code, exp: Date.now() + 15 * 60 * 1000 });
+  const correoOculto = SECURITY_EMAIL.replace(/^(.{2}).*(@.*)$/, '$1•••$2');
+  try {
+    await sendPlainMail({
+      to: SECURITY_EMAIL,
+      subject: 'NEXO · Código para resetear un super administrador',
+      message:
+        `Se solicitó RESETEAR la contraseña del super administrador ${u.email}.\n\n` +
+        `Código de confirmación (12 dígitos): ${code}\n\n` +
+        `Vence en 15 minutos. Si NO fuiste tú, IGNORA este correo y revisa quién tiene acceso a la administración de usuarios.`,
+    });
+  } catch (e: any) {
+    throw new ValidationError(`No se pudo enviar el código al correo de seguridad: ${e?.message || 'revisa el SMTP de la plataforma'}.`);
+  }
+  await audit(req, { action: 'SUPERADMIN_RESET_CODE_SENT', targetKind: 'user', targetId: u.id });
+  res.json({ success: true, data: { correo: correoOculto }, message: 'Código enviado al correo de seguridad.' });
+}));
+
+router.post('/:id/reset-super/confirmar', asyncHandler(async (req: Request, res: Response) => {
+  const u = (await query<any>(`SELECT id, email, role FROM users WHERE id=$1 AND deleted_at IS NULL`, [req.params.id])).rows[0];
+  if (!u) throw new NotFoundError('Usuario no encontrado');
+  if (u.role !== 'SUPER_ADMIN') throw new ValidationError('Este flujo es sólo para super administradores.');
+
+  const guardado = superResetCodes.get(u.id);
+  const codigo = String(req.body?.codigo || '').trim();
+  if (!guardado || guardado.exp < Date.now()) { superResetCodes.delete(u.id); throw new ValidationError('El código venció. Solicita uno nuevo.'); }
+  if (codigo !== guardado.code) throw new ValidationError('Código incorrecto.');
+  superResetCodes.delete(u.id);
+
+  const tempPass = generateTemporaryPassword();
+  const hash = await bcrypt.hash(tempPass, 10);
+  await query(
+    `UPDATE users SET password_hash=$1, password_change_required=true,
+            failed_login_attempts=0, locked_until=NULL, updated_at=NOW() WHERE id=$2`,
+    [hash, u.id]);
+  await audit(req, { action: 'SUPERADMIN_PASSWORD_RESET', targetKind: 'user', targetId: u.id });
+  res.json({ success: true, data: { tempPassword: tempPass }, message: 'Contraseña reseteada.' });
+}));
+
 /* ────────────────────────  DISABLE / ENABLE  ──────────────────────── */
 router.post('/:id/disable', asyncHandler(async (req: Request, res: Response) => {
   if (req.params.id === req.user!.userId) {
     throw new ValidationError('No puedes deshabilitar tu propia cuenta');
   }
+  // Un SUPER_ADMIN es el acceso a la plataforma: no se deshabilita (protegido).
+  const tgt = (await query<any>(`SELECT role FROM users WHERE id=$1`, [req.params.id])).rows[0];
+  if (tgt?.role === 'SUPER_ADMIN') throw new ValidationError('Un super administrador no se puede deshabilitar.');
   const r = await query<any>(
     `UPDATE users SET is_active = false, disabled_at = NOW(), updated_at = NOW()
       WHERE id = $1 RETURNING id, email, is_active`,
