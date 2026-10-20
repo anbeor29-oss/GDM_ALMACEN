@@ -7471,3 +7471,13 @@ pérdida**, el signo no importaba) en el bloque 3 de capital. Backend-only.
 **Resultado.** `tsc` back+front en verde, sin migración. Sigue pendiente (para acordar con el usuario, no codificar
 aún) el **modelo de precio por despacho** y la reorganización del panel de cobro. Ver [[cobro-por-usuario-algoritmo]],
 PENDIENTES.md.
+
+**3. Cierre — la PÉRDIDA no se acumulaba y descuadraba el balance.** Al cerrar 2025 (pérdida), el resultado no entraba
+en «RESULTADO DE EJERCICIOS» (3-2-00-00) y el PASIVO+CAPITAL se descuadraba ~$1.2M. `resolverCuentaResultado` (a)
+buscaba la cuenta por nombre EXACTO «Resultado Ejercicio {año}» (no hallaba la del usuario «Resultado **del** ejercicio
+2025»), (b) partía por signo utilidad→305.01 / pérdida→305.02 mandando la pérdida a otra rama (naturaleza DEUDORA), y
+(c) generaba el código ignorando la máscara. **Fix:** encuentra la cuenta del año con match flexible bajo cualquier 305
+y **sin importar el signo** (usa la que el usuario capturó); si la crea, la cuelga del **mismo padre** que los otros
+años heredando su naturaleza (ACREEDORA, la pérdida es un saldo negativo ahí); `siguienteCodigoHijo` respeta la máscara
+(3-2-00-04 → 3-2-00-05). El usuario **re-genera** el cierre (re-ejecutable) y reconstruye la balanza; la 305.02 vacía
+del cierre viejo se borra a mano. Backend-only. Ver [[cierre-y-traspaso-ejercicio]].
