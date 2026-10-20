@@ -80,7 +80,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
             c.billing_exempt,
             COALESCE(c.producto,'NEXO') AS producto,
             c.modulos_habilitados,
-            c.es_emisor_cobro, c.empresa_cobro_id,
+            c.es_emisor_cobro, c.empresa_cobro_id, COALESCE(c.emisor_predeterminado,false) AS emisor_predeterminado,
             (SELECT ec.business_name FROM companies ec WHERE ec.id = c.empresa_cobro_id) AS empresa_cobro_nombre
        FROM companies c
       WHERE ${filters.join(' AND ')}

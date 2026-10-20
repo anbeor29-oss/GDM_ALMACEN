@@ -80,10 +80,14 @@ export function AdminCompaniesPage() {
   const alternar = (id: string) => setExpandido((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const { filas, hijosDe } = useMemo(() => {
     const byId = new Map<string, any>(rows.map((c: any) => [c.id, c]));
+    // Emisora PREDETERMINADA (p.ej. GRUPO HCGM): las empresas sin «quién factura»
+    // cuelgan de ella por defecto, para que el árbol agrupe sin capturar nada.
+    const predetId = rows.find((c: any) => c.emisor_predeterminado)?.id;
     const hijos = new Map<string, any[]>();
     const top: any[] = [];
     for (const c of rows) {
-      const p = c.empresa_cobro_id;
+      let p = c.empresa_cobro_id;
+      if (!p && !c.es_emisor_cobro && predetId && predetId !== c.id) p = predetId;
       if (p && p !== c.id && byId.has(p)) { (hijos.get(p) || hijos.set(p, []).get(p)!).push(c); }
       else top.push(c);
     }

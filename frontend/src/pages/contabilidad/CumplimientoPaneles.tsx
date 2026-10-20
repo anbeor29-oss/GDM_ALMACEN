@@ -28,7 +28,7 @@ function abrirDoc(dataUrl: string) {
 }
 
 /* ═══════════════ Notificaciones y comunicados ═══════════════ */
-interface Notif { id?: string; asunto?: string; titulo?: string; fecha?: string; leido?: boolean; texto?: string }
+interface Notif { id?: string; asunto?: string; titulo?: string; fecha?: string; fechaOrden?: string; leido?: boolean; texto?: string }
 
 function ItemNotif({ n, onOpen }: { n: Notif; onOpen: (n: Notif) => void }) {
   const leido = !!n.leido;
@@ -50,8 +50,9 @@ function ItemNotif({ n, onOpen }: { n: Notif; onOpen: (n: Notif) => void }) {
 }
 
 function ColumnaNotif({ titulo, items, onOpen }: { titulo: string; items: Notif[]; onOpen: (n: Notif) => void }) {
-  // Descendente: primero la más reciente (por fecha si existe).
-  const orden = [...items].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
+  // Descendente: primero la más reciente. Se ordena por la clave ISO (fechaOrden),
+  // NO por la fecha visible (DD/MM/AAAA), que ordenaría por día en vez de por año.
+  const orden = [...items].sort((a, b) => String(b.fechaOrden || b.fecha || '').localeCompare(String(a.fechaOrden || a.fecha || '')));
   return (
     <div className="bg-white rounded-lg shadow p-4">
       <h4 className="text-sm font-semibold text-gray-800 mb-1">{titulo}</h4>

@@ -3261,6 +3261,10 @@ class APIClient {
   async reactivarFacturacion(id: string) {
     return (await this.client.post(`/admin/facturacion/${id}/reactivar`)).data;
   }
+  /** Emite el CFDI del cargo mensual desde la emisora elegida (GHC/SAJ). */
+  async emitirFacturaMensual(id: string, emisoraId: string) {
+    return (await this.client.post(`/admin/facturacion/${id}/emitir`, { emisoraId })).data;
+  }
 
   /* ── Emisor de facturas (SUPER_ADMIN): empresas emisoras, SMTP y depósito ── */
   async getEmisores() {

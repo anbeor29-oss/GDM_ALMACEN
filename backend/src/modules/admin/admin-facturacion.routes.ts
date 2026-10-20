@@ -77,4 +77,11 @@ router.post('/:id/reactivar', asyncHandler(async (req: Request, res: Response) =
   res.json({ success: true, data });
 }));
 
+/** Emite el CFDI del cargo mensual desde la emisora elegida (GHC/SAJ). */
+router.post('/:id/emitir', asyncHandler(async (req: Request, res: Response) => {
+  const data = await fact.emitirFacturaMensual(req.params.id, req.body?.emisoraId || undefined);
+  await audit(req, { action: 'FACTURACION_EMITIR', targetKind: 'facturacion_mensual', targetId: req.params.id, payload: { emisoraId: req.body?.emisoraId, folio: data.folio } });
+  res.json({ success: true, data, message: `Factura ${data.folio} emitida desde ${data.emisora}.` });
+}));
+
 export default router;

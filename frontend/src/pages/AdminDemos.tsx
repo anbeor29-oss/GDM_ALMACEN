@@ -3,8 +3,9 @@
  *   · Empresas que FIRMARON → elaborar su factura y pasarlas a PRODUCCIÓN.
  *   · Solicitudes de demostración en línea (durante la prueba).
  */
+import { useState, useMemo, Fragment } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { MonitorPlay, Check, Phone, Mail, FileSignature } from 'lucide-react';
+import { MonitorPlay, Check, Phone, Mail, FileSignature, ChevronRight, ChevronDown } from 'lucide-react';
 import api from '@/services/api';
 
 export function AdminDemosPage() {
@@ -13,6 +14,21 @@ export function AdminDemosPage() {
   const demosQ = useQuery({ queryKey: ['admin-demos'], queryFn: () => api.getDemos() });
   const firmas: any[] = firmasQ.data?.data || [];
   const demos: any[] = demosQ.data?.data || [];
+
+  /* Árbol por despacho: agrupa las firmas por la emisora de su empresa (o la
+   * predeterminada). Encabezados colapsables; «Sin despacho» para el resto. */
+  const [colapsado, setColapsado] = useState<Set<string>>(new Set());
+  const alternarGrupo = (id: string) => setColapsado((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const gruposFirmas = useMemo(() => {
+    const m = new Map<string, { nombre: string; rows: any[] }>();
+    for (const f of firmas) {
+      const key = f.despacho_id || '__none__';
+      const nombre = f.despacho_nombre || 'Sin despacho';
+      if (!m.has(key)) m.set(key, { nombre, rows: [] });
+      m.get(key)!.rows.push(f);
+    }
+    return [...m.entries()].sort((a, b) => a[0] === '__none__' ? 1 : b[0] === '__none__' ? -1 : a[1].nombre.localeCompare(b[1].nombre));
+  }, [firmas]);
 
   const atenderFirma = async (id: string) => {
     try { await api.atenderFirma(id); qc.invalidateQueries({ queryKey: ['admin-firmas'] }); } catch { /* noop */ }
@@ -47,9 +63,20 @@ export function AdminDemosPage() {
               {!firmasQ.isLoading && firmas.length === 0 && (
                 <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500 italic">Sin firmas por atender.</td></tr>
               )}
-              {firmas.map((f) => (
+              {gruposFirmas.map(([key, g]) => (
+                <Fragment key={key}>
+                  <tr className="bg-indigo-50/70 border-y border-indigo-100">
+                    <td colSpan={6} className="px-4 py-1.5">
+                      <button onClick={() => alternarGrupo(key)} className="flex items-center gap-1.5 text-sm font-semibold text-indigo-800 hover:text-indigo-900">
+                        {colapsado.has(key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                        {g.nombre}
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">{g.rows.length}</span>
+                      </button>
+                    </td>
+                  </tr>
+                  {!colapsado.has(key) && g.rows.map((f: any) => (
                 <tr key={f.id} className={`hover:bg-gray-50 ${f.estado === 'ATENDIDA' ? 'opacity-60' : ''}`}>
-                  <td className="px-4 py-2 text-sm text-gray-600 whitespace-nowrap">{f.firmado}</td>
+                  <td className="px-4 py-2 text-sm text-gray-600 whitespace-nowrap pl-8">{f.firmado}</td>
                   <td className="px-4 py-2 text-sm"><p className="font-medium text-gray-800">{f.business_name || '—'}</p><p className="text-xs font-mono text-gray-500">{f.rfc || ''}</p></td>
                   <td className="px-4 py-2 text-xs text-gray-500">{f.email || ''}</td>
                   <td className="px-4 py-2"><span className={`text-[10px] px-1.5 py-0.5 rounded ${f.timbrado_ambiente === 'PRODUCCION' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{f.timbrado_ambiente || 'PRUEBAS'}</span></td>
@@ -60,6 +87,8 @@ export function AdminDemosPage() {
                     )}
                   </td>
                 </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>

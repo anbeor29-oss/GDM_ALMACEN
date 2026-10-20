@@ -259,12 +259,44 @@ async function postFiel(pathUrl: string, rfc: string, cred: any, params: Record<
   return (r.status >= 200 && r.status < 300) ? (r.data || {}) : { success: false, errorMessage: `HTTP ${r.status}` };
 }
 
+/* Meses abreviados en español como los manda el SAT ("29/jul/2024"). */
+const MESES_ES: Record<string, string> = {
+  ene: '01', feb: '02', mar: '03', abr: '04', may: '05', jun: '06',
+  jul: '07', ago: '08', sep: '09', oct: '10', nov: '11', dic: '12',
+};
+/**
+ * Parsea la fecha del SAT, que llega como **"29/jul/2024"** (día/mes-abrev/año) o,
+ * en su defecto, como ISO. Devuelve el día para mostrar (DD/MM/AAAA) y una clave
+ * ISO (AAAA-MM-DD) para ORDENAR. Antes se hacía `slice(0,10)` sobre "29/jul/2024",
+ * que recortaba el año a "29/jul/202" y además ordenaba mal (alfabéticamente).
+ */
+function parseFechaSat(f?: string): { display: string; iso: string; date: Date | null } {
+  const s = String(f || '').trim();
+  if (!s) return { display: '', iso: '', date: null };
+  // "29/jul/2024" o "29/Jul/2024"
+  const m = s.match(/^(\d{1,2})[/-]([A-Za-zÁ-úñ]{3})[/-](\d{4})/);
+  if (m) {
+    const dd = m[1].padStart(2, '0');
+    const mm = MESES_ES[m[2].toLowerCase().slice(0, 3)] || '01';
+    const yyyy = m[3];
+    return { display: `${dd}/${mm}/${yyyy}`, iso: `${yyyy}-${mm}-${dd}`, date: new Date(`${yyyy}-${mm}-${dd}T12:00:00`) };
+  }
+  // ISO "2024-07-29..." o cualquier cosa que Date entienda.
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    const iso = d.toISOString().slice(0, 10);
+    const [yyyy, mm, dd] = iso.split('-');
+    return { display: `${dd}/${mm}/${yyyy}`, iso, date: d };
+  }
+  return { display: s, iso: '', date: null };
+}
+
 /** ¿la fecha cae en los últimos 6 meses? (si no se puede parsear, se conserva). */
 function dentro6Meses(f?: string): boolean {
-  if (!f) return true;
-  const d = new Date(f); if (isNaN(d.getTime())) return true;
+  const { date } = parseFechaSat(f);
+  if (!date) return true;
   const corte = new Date(); corte.setMonth(corte.getMonth() - 6);
-  return d >= corte;
+  return date >= corte;
 }
 
 /**
@@ -289,11 +321,11 @@ export async function buzonNotificaciones(companyId: string) {
 
   const comunicados = (comRes.comunicados || [])
     .filter((c: any) => dentro6Meses(c.fechaComunicado))
-    .map((c: any) => ({ id: c.id, asunto: c.titulo, fecha: String(c.fechaComunicado || '').slice(0, 10), leido: !!c.esLeido }));
+    .map((c: any) => { const f = parseFechaSat(c.fechaComunicado); return { id: c.id, asunto: c.titulo, fecha: f.display, fechaOrden: f.iso, leido: !!c.esLeido }; });
 
   const mapNotif = (arr: any[] | undefined, leido: boolean) => (arr || [])
     .filter((r: any) => dentro6Meses(r.fecha))
-    .map((r: any) => ({ id: r.rowKey || r.folio, asunto: r.acto || 'Notificación', fecha: String(r.fecha || '').slice(0, 10), texto: r.autoridad, folio: r.folio, leido }));
+    .map((r: any) => { const f = parseFechaSat(r.fecha); return { id: r.rowKey || r.folio, asunto: r.acto || 'Notificación', fecha: f.display, fechaOrden: f.iso, texto: r.autoridad, folio: r.folio, leido }; });
 
   const avisos = [...mapNotif(pendRes.notificaciones, false), ...mapNotif(notifRes.notificaciones, true)];
 

@@ -6,9 +6,9 @@
  * (cobro $precio × usuarios + excedente de timbres), (3) consumo de timbres.
  * Prepago: generar la lista del día 30, marcar pagado / suspender por falta de pago.
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { DollarSign, RefreshCw, Check, Ban, RotateCcw, Settings, Loader2, AlertTriangle, FlaskConical, Users, Stamp, ChevronRight, ChevronDown } from 'lucide-react';
+import { DollarSign, RefreshCw, Check, Ban, RotateCcw, Settings, Loader2, AlertTriangle, FlaskConical, Users, Stamp, ChevronRight, ChevronDown, FileText, X } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 
@@ -24,6 +24,9 @@ export function AdminFacturacionPage() {
 
   const q = useQuery({ queryKey: ['facturacion-consolidado', periodo], queryFn: () => api.getFacturacionConsolidado(periodo) });
   const cfgQ = useQuery({ queryKey: ['facturacion-config'], queryFn: () => api.getFacturacionConfig() });
+  const emisorasQ = useQuery({ queryKey: ['admin-emisores'], queryFn: () => api.adminListEmisores() });
+  const emisoras: any[] = ((emisorasQ.data as any)?.data?.emisores || []).filter((e: any) => e.es_emisor);
+  const [emitir, setEmitir] = useState<any>(null);   // cargo a facturar (abre el modal de emisora)
   const data = q.data?.data;
   const prueba: any[] = data?.prueba || [];
   const reales: any[] = data?.reales || [];
@@ -38,27 +41,27 @@ export function AdminFacturacionPage() {
   const pruebaF = prueba.filter(enPanel);
   const realesF = reales.filter(enPanel);
 
-  /* Árbol por despacho: la emisora de cobro es el padre; sus empresas facturadas
-   * (empresa_cobro_id = su company_id) cuelgan de ella, colapsables. */
-  const [expandido, setExpandido] = useState<Set<string>>(new Set());
-  const alternar = (id: string) => setExpandido((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const filasReales = useMemo(() => {
-    const byId = new Map<string, any>(realesF.map((f) => [f.company_id, f]));
-    const hijos = new Map<string, any[]>();
-    const top: any[] = [];
+  /* Árbol por despacho (encabezados colapsables): las empresas se agrupan por su
+   * emisora de cobro (empresa_cobro_id) y, si no la tienen, por la emisora
+   * PREDETERMINADA (GRUPO HCGM). El encabezado es el nombre del despacho. Por
+   * omisión TODO abierto; se colapsa por grupo. */
+  const emisoraPred: any = data?.emisoraPredeterminada || null;
+  const [colapsado, setColapsado] = useState<Set<string>>(new Set());
+  const alternarGrupo = (id: string) => setColapsado((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const gruposReales = useMemo(() => {
+    const nombrePorId = new Map<string, string>(realesF.map((f) => [f.company_id, f.business_name]));
+    if (emisoraPred?.id) nombrePorId.set(emisoraPred.id, emisoraPred.business_name);
+    const m = new Map<string, { nombre: string; rows: any[] }>();
     for (const f of realesF) {
-      const p = f.empresa_cobro_id;
-      if (p && p !== f.company_id && byId.has(p)) { (hijos.get(p) || hijos.set(p, []).get(p)!).push(f); }
-      else top.push(f);
+      let key = f.empresa_cobro_id;
+      if (!key && !f.emisor_predeterminado && emisoraPred?.id && emisoraPred.id !== f.company_id) key = emisoraPred.id;
+      const k = key || '__none__';
+      const nombre = k === '__none__' ? 'Sin despacho' : (nombrePorId.get(k) || 'Despacho');
+      if (!m.has(k)) m.set(k, { nombre, rows: [] });
+      m.get(k)!.rows.push(f);
     }
-    const out: Array<{ f: any; depth: number; nHijos: number }> = [];
-    for (const f of top) {
-      const kids = hijos.get(f.company_id) || [];
-      out.push({ f, depth: 0, nHijos: kids.length });
-      if (kids.length && expandido.has(f.company_id)) for (const k of kids) out.push({ f: k, depth: 1, nHijos: 0 });
-    }
-    return out;
-  }, [realesF, expandido]);
+    return [...m.entries()].sort((a, b) => a[0] === '__none__' ? 1 : b[0] === '__none__' ? -1 : a[1].nombre.localeCompare(b[1].nombre));
+  }, [realesF, data]);
   const totPanel = {
     empresasReales: realesF.length,
     usuariosReales: realesF.reduce((a, f) => a + Number(f.usuarios || 0), 0),
@@ -183,23 +186,20 @@ export function AdminFacturacionPage() {
           </tr></thead>
           <tbody className="divide-y">
             {realesF.length === 0 && <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400 italic">Sin clientes de pago todavía.</td></tr>}
-            {filasReales.map(({ f, depth, nHijos }) => (
-              <tr key={f.company_id} className={`hover:bg-gray-50 ${f.status === 'SUSPENDIDO' ? 'bg-rose-50/40' : depth > 0 ? 'bg-gray-50/40' : ''}`}>
-                <td className="px-3 py-2">
-                  <div className="flex items-start gap-1" style={{ paddingLeft: depth * 18 }}>
-                    {nHijos > 0 ? (
-                      <button onClick={() => alternar(f.company_id)} className="text-gray-400 hover:text-gray-700 shrink-0 mt-0.5" title={expandido.has(f.company_id) ? 'Contraer' : 'Desplegar'}>
-                        {expandido.has(f.company_id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                      </button>
-                    ) : depth > 0 ? <span className="w-3.5 shrink-0 text-gray-300 mt-0.5">└</span> : <span className="w-3.5 shrink-0" />}
-                    <div>
-                      <p className="font-medium text-gray-800">{f.business_name}
-                        {nHijos > 0 && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-semibold">despacho · {nHijos}</span>}
-                      </p>
-                      <p className="text-[11px] text-gray-500 font-mono">{f.rfc}</p>
-                    </div>
-                  </div>
-                </td>
+            {gruposReales.map(([key, g]) => (
+              <Fragment key={key}>
+                <tr className="bg-indigo-50/70 border-y border-indigo-100">
+                  <td colSpan={8} className="px-3 py-1.5">
+                    <button onClick={() => alternarGrupo(key)} className="flex items-center gap-1.5 text-sm font-semibold text-indigo-800 hover:text-indigo-900">
+                      {colapsado.has(key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                      {g.nombre}
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">{g.rows.length} empresa(s)</span>
+                    </button>
+                  </td>
+                </tr>
+                {!colapsado.has(key) && g.rows.map((f: any) => (
+              <tr key={f.company_id} className={`hover:bg-gray-50 ${f.status === 'SUSPENDIDO' ? 'bg-rose-50/40' : ''}`}>
+                <td className="px-3 py-2 pl-8"><p className="font-medium text-gray-800">{f.business_name}</p><p className="text-[11px] text-gray-500 font-mono">{f.rfc}</p></td>
                 <td className="px-3 py-2 text-center">{f.usuarios}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{money(f.renta_mxn)}</td>
                 <td className="px-3 py-2 text-center text-xs">{f.timbres_usados}<span className="text-gray-400">/{f.timbres_incluidos}</span>{f.timbres_extra > 0 && <span className="block text-[10px] text-rose-600">+{f.timbres_extra} extra</span>}</td>
@@ -208,6 +208,14 @@ export function AdminFacturacionPage() {
                 <td className="px-3 py-2 text-center"><span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge(f.status)}`}>{f.status === 'SIN_GENERAR' ? 'sin generar' : f.status}</span></td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   {!f.cargo_id && <span className="text-[11px] text-gray-400">genera la lista</span>}
+                  {/* Emitir la factura del servicio: pregunta desde cuál de las dos
+                      emisoras (GHC/SAJ) se timbra. Disponible cuando hay cargo y no está pagada. */}
+                  {f.cargo_id && f.status !== 'PAGADO' && (
+                    <button onClick={() => setEmitir(f)}
+                      disabled={busy === f.cargo_id} className="p-1.5 text-violet-600 hover:bg-violet-50 rounded" title="Emitir factura (elige la emisora)">
+                      <FileText size={15} />
+                    </button>
+                  )}
                   {f.cargo_id && f.status !== 'PAGADO' && (
                     <button onClick={() => accion(() => api.pagarFacturacion(f.cargo_id), f.cargo_id, 'Marcado como pagado.')}
                       disabled={busy === f.cargo_id} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="Marcar pagado">
@@ -224,6 +232,8 @@ export function AdminFacturacionPage() {
                   )}
                 </td>
               </tr>
+                ))}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -257,6 +267,60 @@ export function AdminFacturacionPage() {
         Prepago: se cobra por adelantado. Suspender bloquea el login de la empresa; al marcar pagado se reactiva sola.
         Los ambientes de prueba no se cobran hasta que se eliminen.
       </p>
+
+      {emitir && (
+        <ModalEmitir cargo={emitir} emisoras={emisoras}
+          onClose={() => setEmitir(null)}
+          onDone={(m: string) => { setEmitir(null); setMsg(m); q.refetch(); }} />
+      )}
+    </div>
+  );
+}
+
+/** Pregunta DESDE CUÁL emisora (GHC/SAJ) se emite el CFDI del cargo, y lo timbra. */
+function ModalEmitir({ cargo, emisoras, onClose, onDone }: { cargo: any; emisoras: any[]; onClose: () => void; onDone: (m: string) => void }) {
+  const [emisoraId, setEmisoraId] = useState<string>(emisoras.find((e) => e.predeterminado)?.id || emisoras[0]?.id || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const emitir = async () => {
+    if (!emisoraId) { setError('Elige la emisora.'); return; }
+    setBusy(true); setError('');
+    try {
+      const r: any = await api.emitirFacturaMensual(cargo.cargo_id, emisoraId);
+      onDone(r?.message || `Factura ${r?.data?.folio || ''} emitida.`);
+    } catch (e: any) { setError(e?.response?.data?.message || 'No se pudo emitir.'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <h3 className="font-bold text-gray-900 flex items-center gap-2"><FileText size={18} className="text-violet-600" /> Emitir factura</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-3 text-sm">
+          <p className="text-gray-600">Cliente: <b>{cargo.business_name}</b> <span className="font-mono text-gray-400">{cargo.rfc}</span></p>
+          <p className="text-gray-600">Total: <b>{money(cargo.total_mxn)}</b> + IVA · periodo del cargo.</p>
+          <label className="block">
+            <span className="text-xs font-semibold text-gray-600 block mb-1">¿Desde cuál emisora se factura?</span>
+            <select value={emisoraId} onChange={(e) => setEmisoraId(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+              {emisoras.length === 0 && <option value="">No hay emisoras marcadas</option>}
+              {emisoras.map((e) => (
+                <option key={e.id} value={e.id}>{e.business_name} · {e.rfc}{e.predeterminado ? ' (predeterminada)' : ''}</option>
+              ))}
+            </select>
+          </label>
+          {error && <p className="text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{error}</p>}
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">Se timbrará un CFDI real desde la emisora elegida. Asegúrate de que el cliente tenga RFC, régimen y CP correctos.</p>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t bg-gray-50">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border text-gray-700 hover:bg-gray-100">Cancelar</button>
+          <button onClick={emitir} disabled={busy || !emisoraId}
+            className="px-4 py-2 text-sm rounded-lg bg-violet-600 text-white font-medium hover:bg-violet-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+            <FileText size={15} /> {busy ? 'Emitiendo…' : 'Emitir CFDI'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

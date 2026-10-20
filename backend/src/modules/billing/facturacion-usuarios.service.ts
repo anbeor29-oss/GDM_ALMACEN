@@ -11,6 +11,9 @@
 import { query } from '../../config/database';
 import { NotFoundError, ConflictError, ValidationError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
+import { getEmisoraComoPlatform, getPlatformCompany, upsertPlatformCustomer, upsertPlatformProduct } from './issue-invoice.service';
+import * as invoicesService from '../invoices/invoices.service';
+import * as pacService from '../pac/pac.service';
 
 export interface FacturacionConfig {
   precioUsuario: number;
@@ -212,7 +215,8 @@ export async function resumenConsolidado(periodoInput?: string) {
 
   const empresas = await query<any>(
     `SELECT c.id, c.rfc, c.business_name, c.billing_exempt, c.prueba_inicio, c.servicio_suspendido,
-            c.created_at, c.empresa_cobro_id, COALESCE(c.producto,'NEXO') AS producto,
+            c.created_at, c.empresa_cobro_id, COALESCE(c.emisor_predeterminado,false) AS emisor_predeterminado,
+            COALESCE(c.producto,'NEXO') AS producto,
             (SELECT MIN(sc.signed_at) FROM service_contracts sc WHERE sc.company_id = c.id) AS signed_at,
             (SELECT COUNT(*) FROM service_contracts sc WHERE sc.company_id = c.id) > 0 AS firmado,
             fm.id AS cargo_id, fm.status AS cargo_status
@@ -245,7 +249,7 @@ export async function resumenConsolidado(periodoInput?: string) {
     const extra = esPrueba ? 0 : r2(timbresExtra * precioExtra);
     const fila = {
       company_id: e.id, rfc: e.rfc, business_name: e.business_name,
-      empresa_cobro_id: e.empresa_cobro_id || null,
+      empresa_cobro_id: e.empresa_cobro_id || null, emisor_predeterminado: e.emisor_predeterminado === true,
       usuarios, timbres_usados: timbresUsados, timbres_incluidos: incluidos, timbres_extra: timbresExtra,
       renta_mxn: renta, extra_mxn: extra, total_mxn: r2(renta + extra),
       esPrueba, motivo, producto: e.producto || 'NEXO',
@@ -258,8 +262,12 @@ export async function resumenConsolidado(periodoInput?: string) {
 
   const suma = (arr: any[], k: string) => r2(arr.reduce((a, x) => a + Number(x[k] || 0), 0));
   const timbresTotal = [...reales, ...prueba].reduce((a, x) => a + x.timbres_usados, 0);
+  // Emisora predeterminada (p.ej. GRUPO HCGM): bajo ella se agrupan en el árbol las
+  // empresas que no tengan «quién factura» capturado.
+  const predet = empresas.rows.find((e: any) => e.emisor_predeterminado === true);
+  const emisoraPredeterminada = predet ? { id: predet.id, business_name: predet.business_name, rfc: predet.rfc } : null;
   return {
-    periodo, prueba, reales,
+    periodo, prueba, reales, emisoraPredeterminada,
     totales: {
       empresasReales: reales.length,
       usuariosReales: reales.reduce((a, x) => a + x.usuarios, 0),
@@ -298,4 +306,50 @@ export async function reactivar(id: string) {
   if (!r.rows.length) throw new NotFoundError('Ese cargo no estaba suspendido.');
   await query(`UPDATE companies SET servicio_suspendido = FALSE, updated_at = NOW() WHERE id = $1`, [r.rows[0].company_id]);
   return { reactivado: true };
+}
+
+/**
+ * EMITE el CFDI del cargo mensual (servicio por usuario) desde la emisora ELEGIDA
+ * (GHC o SAJ). Reúsa los helpers de emisión de la plataforma (cliente/producto +
+ * timbrado real por el PAC). Guarda el `factura_id` en el cargo; no lo marca pagado
+ * (el pago se registra aparte). Idempotente: si el cargo ya tiene factura, no re-emite.
+ */
+export async function emitirFacturaMensual(cargoId: string, emisoraId?: string): Promise<{ folio: string; uuid?: string; emisora: string }> {
+  const r = await query<any>(
+    `SELECT fm.id, fm.company_id, fm.periodo, fm.total_mxn, fm.timbres_extra, fm.factura_id, fm.status,
+            TO_CHAR(fm.periodo,'YYYY-MM') AS periodo_label,
+            c.rfc AS client_rfc, c.business_name AS client_name, c.fiscal_regime AS client_regime,
+            c.postal_code AS client_cp, c.contact_email AS client_email
+       FROM facturacion_mensual fm JOIN companies c ON c.id = fm.company_id
+      WHERE fm.id = $1`, [cargoId]);
+  const fm = r.rows[0];
+  if (!fm) throw new NotFoundError('Cargo mensual no encontrado.');
+  if (fm.factura_id) throw new ConflictError('Ese cargo ya tiene una factura emitida.');
+  if (Number(fm.total_mxn) <= 0) throw new ValidationError('El total es 0: no hay nada que facturar.');
+  if (!fm.client_cp || !fm.client_regime) {
+    throw new ValidationError(`Al cliente ${fm.client_rfc} le falta CP o régimen fiscal — complétalos antes de facturar.`);
+  }
+
+  // Emisora elegida (o la predeterminada / única).
+  const platform = emisoraId ? await getEmisoraComoPlatform(emisoraId) : await getPlatformCompany();
+  if (!platform) throw new ValidationError('La emisora elegida no existe o no está marcada como emisora de cobro.');
+  if (platform.id === fm.company_id) throw new ValidationError('La emisora no se factura a sí misma.');
+
+  const customerId = await upsertPlatformCustomer(platform.id, {
+    rfc: fm.client_rfc, business_name: fm.client_name,
+    fiscal_regime: fm.client_regime, postal_code: fm.client_cp, contact_email: fm.client_email,
+  });
+  const productId = await upsertPlatformProduct(platform.id);
+  const desc = `Servicio de facturación electrónica ${fm.periodo_label} (cobro por usuario)` +
+    (Number(fm.timbres_extra) > 0 ? ` — incluye ${fm.timbres_extra} timbres extra` : '');
+  const invoice = await invoicesService.createInvoice(platform.id, {
+    customerId, cfdiType: 'I', paymentForm: '99', paymentMethod: 'PPD', cfdiUse: 'G03',
+    items: [{ productId, quantity: 1, unitPrice: Number(fm.total_mxn), taxPresetId: 'iva16', description: desc } as any],
+  });
+  const stamp = await pacService.stampInvoice(platform.id, invoice.id);
+  const folio = `${invoice.serie || 'FAC'}-${String(invoice.folio).padStart(6, '0')}`;
+
+  await query(`UPDATE facturacion_mensual SET factura_id = $2 WHERE id = $1`, [cargoId, invoice.id]);
+  logger.info(`[facturacion] CFDI de cobro emitido: ${folio} (${stamp.uuid}) desde ${platform.rfc} → ${fm.client_rfc} [${fm.periodo_label}]`);
+  return { folio, uuid: stamp.uuid, emisora: platform.business_name };
 }

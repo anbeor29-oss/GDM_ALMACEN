@@ -153,7 +153,16 @@ export interface IssueResult {
  * Emite y timbra el CFDI de cobro para UN cargo mensual.
  * Idempotente: si el cargo ya está INVOICED/PAID, no re-emite.
  */
-export async function issuePlatformInvoice(invoicingId: string): Promise<IssueResult> {
+/** Una emisora concreta (elegida a mano) como empresa plataforma, validando que
+ *  sea emisora de cobro. Para «¿desde cuál de las dos emisoras facturamos?». */
+export async function getEmisoraComoPlatform(id: string): Promise<PlatformCompany | null> {
+  const r = await query<PlatformCompany>(
+    `SELECT id, rfc, business_name FROM companies
+      WHERE id = $1 AND es_emisor_cobro = TRUE AND deleted_at IS NULL LIMIT 1`, [id]);
+  return r.rows[0] || null;
+}
+
+export async function issuePlatformInvoice(invoicingId: string, emisoraId?: string): Promise<IssueResult> {
   // 1) Cargar el cargo + datos del cliente
   const miR = await query<any>(
     `SELECT mi.*, c.rfc AS client_rfc, c.business_name AS client_name,
@@ -177,12 +186,15 @@ export async function issuePlatformInvoice(invoicingId: string): Promise<IssueRe
     return { invoicingId, status: 'SKIPPED', detail: 'Total 0 — no se emite CFDI' };
   }
 
-  // 2) Empresa plataforma
-  const platform = await getPlatformCompany();
+  // 2) Empresa plataforma (emisora). Si se eligió una a mano, se usa ESA; si no,
+  //    la predeterminada / la única emisora.
+  const platform = emisoraId ? await getEmisoraComoPlatform(emisoraId) : await getPlatformCompany();
   if (!platform) {
     return {
       invoicingId, status: 'SKIPPED',
-      detail: 'PLATFORM_COMPANY_RFC no configurado o la empresa no existe — emisión manual',
+      detail: emisoraId
+        ? 'La emisora elegida no existe o no está marcada como emisora de cobro'
+        : 'PLATFORM_COMPANY_RFC no configurado o la empresa no existe — emisión manual',
     };
   }
   if (platform.id === mi.company_id) {

@@ -164,8 +164,14 @@ export async function listarFirmas(soloPendientes = false) {
   const r = await query<any>(
     `SELECT f.id, f.rfc, f.business_name, f.estado,
             TO_CHAR(f.signed_at,'YYYY-MM-DD HH24:MI') AS firmado,
-            c.email, c.timbrado_ambiente
-       FROM onboarding_firmas f LEFT JOIN companies c ON c.id = f.company_id
+            c.email, c.timbrado_ambiente,
+            c.id AS company_id, c.empresa_cobro_id, COALESCE(c.es_emisor_cobro,false) AS es_emisor_cobro,
+            COALESCE(ec.business_name, pred.business_name) AS despacho_nombre,
+            COALESCE(c.empresa_cobro_id, CASE WHEN c.es_emisor_cobro THEN c.id ELSE pred.id END) AS despacho_id
+       FROM onboarding_firmas f
+       LEFT JOIN companies c ON c.id = f.company_id
+       LEFT JOIN companies ec ON ec.id = c.empresa_cobro_id
+       LEFT JOIN LATERAL (SELECT p.id, p.business_name FROM companies p WHERE p.emisor_predeterminado = TRUE AND p.deleted_at IS NULL LIMIT 1) pred ON TRUE
       ${soloPendientes ? `WHERE f.estado = 'PENDIENTE'` : ''}
       ORDER BY f.created_at DESC LIMIT 200`);
   return r.rows;
