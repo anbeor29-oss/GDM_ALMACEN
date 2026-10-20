@@ -5,7 +5,7 @@
  */
 import { useState, useMemo, Fragment } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { MonitorPlay, Check, Phone, Mail, FileSignature, ChevronRight, ChevronDown } from 'lucide-react';
+import { MonitorPlay, Check, Phone, Mail, FileSignature, ChevronRight, ChevronDown, Building2, X } from 'lucide-react';
 import api from '@/services/api';
 
 export function AdminDemosPage() {
@@ -29,6 +29,23 @@ export function AdminDemosPage() {
     }
     return [...m.entries()].sort((a, b) => a[0] === '__none__' ? 1 : b[0] === '__none__' ? -1 : a[1].nombre.localeCompare(b[1].nombre));
   }, [firmas]);
+
+  /* Doble clic en el encabezado de un grupo → asignar esas empresas a un despacho
+   * (emisora de cobro). Así se agrupan bajo su nombre sin ir empresa por empresa. */
+  const emisorasQ = useQuery({ queryKey: ['admin-emisores'], queryFn: () => api.adminListEmisores() });
+  const emisoras: any[] = ((emisorasQ.data as any)?.data?.emisores || []).filter((e: any) => e.es_emisor);
+  const [asignar, setAsignar] = useState<{ nombre: string; companyIds: string[] } | null>(null);
+  const [asignando, setAsignando] = useState(false);
+  const hacerAsignar = async (emisoraId: string | null) => {
+    if (!asignar) return;
+    setAsignando(true);
+    try {
+      await api.asignarEmisoraEmpresas(asignar.companyIds, emisoraId);
+      setAsignar(null);
+      qc.invalidateQueries({ queryKey: ['admin-firmas'] });
+    } catch (e: any) { alert(e?.response?.data?.message || 'No se pudo agrupar.'); }
+    finally { setAsignando(false); }
+  };
 
   const atenderFirma = async (id: string) => {
     try { await api.atenderFirma(id); qc.invalidateQueries({ queryKey: ['admin-firmas'] }); } catch { /* noop */ }
@@ -67,10 +84,14 @@ export function AdminDemosPage() {
                 <Fragment key={key}>
                   <tr className="bg-indigo-50/70 border-y border-indigo-100">
                     <td colSpan={6} className="px-4 py-1.5">
-                      <button onClick={() => alternarGrupo(key)} className="flex items-center gap-1.5 text-sm font-semibold text-indigo-800 hover:text-indigo-900">
+                      <button onClick={() => alternarGrupo(key)}
+                        onDoubleClick={() => setAsignar({ nombre: g.nombre, companyIds: g.rows.map((r: any) => r.company_id).filter(Boolean) })}
+                        title="Doble clic para asignar estas empresas a un despacho (emisora)"
+                        className="flex items-center gap-1.5 text-sm font-semibold text-indigo-800 hover:text-indigo-900 select-none">
                         {colapsado.has(key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                         {g.nombre}
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">{g.rows.length}</span>
+                        <span className="text-[10px] font-normal text-indigo-400 ml-1">doble clic para nombrar el despacho</span>
                       </button>
                     </td>
                   </tr>
@@ -136,6 +157,35 @@ export function AdminDemosPage() {
           </table>
         </div>
       </section>
+
+      {asignar && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setAsignar(null)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2"><Building2 size={18} className="text-indigo-600" /> Asignar a un despacho</h3>
+              <button onClick={() => setAsignar(null)} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-3 text-sm">
+              <p className="text-gray-600">Vas a agrupar las <b>{asignar.companyIds.length}</b> empresa(s) de «{asignar.nombre}» bajo una <b>emisora de cobro</b> (el despacho que las factura). Se agruparán por ese nombre en todas las pantallas.</p>
+              {emisoras.length === 0 ? (
+                <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">No hay emisoras marcadas. Primero marca una empresa como emisora de cobro en <b>Súper Admin → Emisor de facturas</b>.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {emisoras.map((e) => (
+                    <button key={e.id} onClick={() => hacerAsignar(e.id)} disabled={asignando}
+                      className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 disabled:opacity-50">
+                      <span className="font-medium text-gray-800">{e.business_name}</span> <span className="text-[11px] text-gray-400 font-mono">{e.rfc}</span>
+                      {e.predeterminado && <span className="ml-1 text-[10px] text-indigo-600">(predeterminada)</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button onClick={() => hacerAsignar(null)} disabled={asignando}
+                className="text-xs text-gray-500 hover:underline">Quitar despacho (dejar sin agrupar)</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

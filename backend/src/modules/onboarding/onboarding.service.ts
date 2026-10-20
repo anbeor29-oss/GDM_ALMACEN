@@ -166,7 +166,7 @@ export async function listarFirmas(soloPendientes = false) {
             TO_CHAR(f.signed_at,'YYYY-MM-DD HH24:MI') AS firmado,
             c.email, c.timbrado_ambiente,
             c.id AS company_id, c.empresa_cobro_id, COALESCE(c.es_emisor_cobro,false) AS es_emisor_cobro,
-            COALESCE(ec.business_name, pred.business_name) AS despacho_nombre,
+            COALESCE(ec.business_name, CASE WHEN c.es_emisor_cobro THEN c.business_name END, pred.business_name) AS despacho_nombre,
             COALESCE(c.empresa_cobro_id, CASE WHEN c.es_emisor_cobro THEN c.id ELSE pred.id END) AS despacho_id
        FROM onboarding_firmas f
        LEFT JOIN companies c ON c.id = f.company_id

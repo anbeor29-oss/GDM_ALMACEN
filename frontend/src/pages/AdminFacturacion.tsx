@@ -190,11 +190,23 @@ export function AdminFacturacionPage() {
               <Fragment key={key}>
                 <tr className="bg-indigo-50/70 border-y border-indigo-100">
                   <td colSpan={8} className="px-3 py-1.5">
-                    <button onClick={() => alternarGrupo(key)} className="flex items-center gap-1.5 text-sm font-semibold text-indigo-800 hover:text-indigo-900">
-                      {colapsado.has(key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                      {g.nombre}
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">{g.rows.length} empresa(s)</span>
-                    </button>
+                    <div className="flex items-center justify-between gap-2">
+                      <button onClick={() => alternarGrupo(key)} className="flex items-center gap-1.5 text-sm font-semibold text-indigo-800 hover:text-indigo-900">
+                        {colapsado.has(key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                        {g.nombre}
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">{g.rows.length} empresa(s)</span>
+                      </button>
+                      {(() => {
+                        const emitibles = g.rows.filter((r: any) => r.cargo_id && r.status !== 'PAGADO' && !r.exenta);
+                        return emitibles.length > 0 ? (
+                          <button onClick={() => setEmitir(emitibles)}
+                            title="Emitir las facturas del despacho (elige la emisora)"
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 border border-violet-200 bg-violet-50 hover:bg-violet-100 rounded px-2 py-1">
+                            <FileText size={13} /> Emitir facturas del grupo ({emitibles.length})
+                          </button>
+                        ) : null;
+                      })()}
+                    </div>
                   </td>
                 </tr>
                 {!colapsado.has(key) && g.rows.map((f: any) => (
@@ -218,8 +230,8 @@ export function AdminFacturacionPage() {
                   {!f.exenta && !f.cargo_id && <span className="text-[11px] text-gray-400">genera la lista</span>}
                   {/* Emitir la factura del servicio: pregunta desde cuál de las dos
                       emisoras (GHC/SAJ) se timbra. Disponible cuando hay cargo y no está pagada. */}
-                  {f.cargo_id && f.status !== 'PAGADO' && (
-                    <button onClick={() => setEmitir(f)}
+                  {f.cargo_id && f.status !== 'PAGADO' && !f.exenta && (
+                    <button onClick={() => setEmitir([f])}
                       disabled={busy === f.cargo_id} className="p-1.5 text-violet-600 hover:bg-violet-50 rounded" title="Emitir factura (elige la emisora)">
                       <FileText size={15} />
                     </button>
@@ -276,8 +288,8 @@ export function AdminFacturacionPage() {
         Los ambientes de prueba no se cobran hasta que se eliminen.
       </p>
 
-      {emitir && (
-        <ModalEmitir cargo={emitir} emisoras={emisoras}
+      {emitir && emitir.length > 0 && (
+        <ModalEmitir cargos={emitir} emisoras={emisoras}
           onClose={() => setEmitir(null)}
           onDone={(m: string) => { setEmitir(null); setMsg(m); q.refetch(); }} />
       )}
@@ -286,16 +298,29 @@ export function AdminFacturacionPage() {
 }
 
 /** Pregunta DESDE CUÁL emisora (GHC/SAJ) se emite el CFDI del cargo, y lo timbra. */
-function ModalEmitir({ cargo, emisoras, onClose, onDone }: { cargo: any; emisoras: any[]; onClose: () => void; onDone: (m: string) => void }) {
+function ModalEmitir({ cargos, emisoras, onClose, onDone }: { cargos: any[]; emisoras: any[]; onClose: () => void; onDone: (m: string) => void }) {
   const [emisoraId, setEmisoraId] = useState<string>(emisoras.find((e) => e.predeterminado)?.id || emisoras[0]?.id || '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const uno = cargos.length === 1;
+  const totalGrupo = cargos.reduce((a, c) => a + Number(c.total_mxn || 0), 0);
   const emitir = async () => {
     if (!emisoraId) { setError('Elige la emisora.'); return; }
     setBusy(true); setError('');
     try {
-      const r: any = await api.emitirFacturaMensual(cargo.cargo_id, emisoraId);
-      onDone(r?.message || `Factura ${r?.data?.folio || ''} emitida.`);
+      if (uno) {
+        const r: any = await api.emitirFacturaMensual(cargos[0].cargo_id, emisoraId);
+        onDone(r?.message || `Factura ${r?.data?.folio || ''} emitida.`);
+        return;
+      }
+      // Grupo: emite una por una; una falla no detiene al resto.
+      let ok = 0; const fallos: string[] = [];
+      for (const c of cargos) {
+        try { await api.emitirFacturaMensual(c.cargo_id, emisoraId); ok++; }
+        catch (e: any) { fallos.push(`${c.business_name}: ${e?.response?.data?.message || 'error'}`); }
+      }
+      if (fallos.length && !ok) { setError(`No se emitió ninguna. ${fallos.slice(0, 2).join(' · ')}`); return; }
+      onDone(`${ok} factura(s) emitida(s)${fallos.length ? `, ${fallos.length} con error` : ''}.`);
     } catch (e: any) { setError(e?.response?.data?.message || 'No se pudo emitir.'); }
     finally { setBusy(false); }
   };
@@ -303,12 +328,18 @@ function ModalEmitir({ cargo, emisoras, onClose, onDone }: { cargo: any; emisora
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3 border-b">
-          <h3 className="font-bold text-gray-900 flex items-center gap-2"><FileText size={18} className="text-violet-600" /> Emitir factura</h3>
+          <h3 className="font-bold text-gray-900 flex items-center gap-2"><FileText size={18} className="text-violet-600" /> {uno ? 'Emitir factura' : 'Emitir facturas del grupo'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-3 text-sm">
-          <p className="text-gray-600">Cliente: <b>{cargo.business_name}</b> <span className="font-mono text-gray-400">{cargo.rfc}</span></p>
-          <p className="text-gray-600">Total: <b>{money(cargo.total_mxn)}</b> + IVA · periodo del cargo.</p>
+          {uno ? (
+            <>
+              <p className="text-gray-600">Cliente: <b>{cargos[0].business_name}</b> <span className="font-mono text-gray-400">{cargos[0].rfc}</span></p>
+              <p className="text-gray-600">Total: <b>{money(cargos[0].total_mxn)}</b> + IVA · periodo del cargo.</p>
+            </>
+          ) : (
+            <p className="text-gray-600">Se emitirán <b>{cargos.length}</b> factura(s) del despacho, total <b>{money(totalGrupo)}</b> + IVA, <b>todas desde la misma emisora</b>.</p>
+          )}
           <label className="block">
             <span className="text-xs font-semibold text-gray-600 block mb-1">¿Desde cuál emisora se factura?</span>
             <select value={emisoraId} onChange={(e) => setEmisoraId(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-2 text-sm">

@@ -124,6 +124,32 @@ router.post('/cumplimiento/activar-todas', asyncHandler(async (req: Request, res
   });
 }));
 
+/* ──────────  Asignar una EMISORA de cobro a varias empresas de un tirón  ──────────
+ * Para agrupar un «despacho» con doble clic: se marca `empresa_cobro_id` = emisora
+ * a todas las empresas de la lista, y así cuelgan de ese despacho en los árboles.
+ * emisoraId null = quitar la asignación (vuelven a «Sin despacho»). Debe ir ANTES
+ * de /:id. */
+router.post('/asignar-emisora', asyncHandler(async (req: Request, res: Response) => {
+  const companyIds: string[] = Array.isArray(req.body?.companyIds) ? req.body.companyIds : [];
+  const emisoraId: string | null = req.body?.emisoraId || null;
+  if (!companyIds.length) throw new ValidationError('No hay empresas que asignar.');
+  if (companyIds.some((x) => !/^[0-9a-f-]{36}$/i.test(String(x)))) throw new ValidationError('Lista de empresas inválida.');
+  if (emisoraId) {
+    if (!/^[0-9a-f-]{36}$/i.test(emisoraId)) throw new ValidationError('Emisora inválida.');
+    const em = (await query<any>(`SELECT es_emisor_cobro FROM companies WHERE id=$1 AND deleted_at IS NULL`, [emisoraId])).rows[0];
+    if (!em) throw new NotFoundError('La emisora no existe.');
+    if (!em.es_emisor_cobro) throw new ValidationError('La empresa elegida no está marcada como emisora de cobro.');
+  }
+  // Una empresa no se factura a sí misma: se excluye la propia emisora de la lista.
+  const r = await query<any>(
+    `UPDATE companies SET empresa_cobro_id = $1, updated_at = NOW()
+      WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL AND ($1::uuid IS NULL OR id <> $1)
+      RETURNING id`,
+    [emisoraId, companyIds]);
+  await audit(req, { action: 'EMPRESAS_ASIGNAR_EMISORA', targetKind: 'company', targetId: emisoraId || 'NULL', payload: { n: r.rowCount } });
+  res.json({ success: true, data: { asignadas: r.rowCount }, message: `${r.rowCount} empresa(s) ${emisoraId ? 'agrupadas en el despacho' : 'sin despacho'}.` });
+}));
+
 /* ────────────────────────  CREATE  ──────────────────────── */
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const { rfc, businessName, fiscalRegime, postalCode, billingPlan, capTimbres,

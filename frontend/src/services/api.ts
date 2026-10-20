@@ -3331,6 +3331,11 @@ class APIClient {
     const r = await this.client.put(`/admin/companies/${id}`, data);
     return r.data;
   }
+  /** Asigna una emisora de cobro (despacho) a varias empresas de un tirón (agrupar). */
+  async asignarEmisoraEmpresas(companyIds: string[], emisoraId: string | null) {
+    const r = await this.client.post<APIResponse<{ asignadas: number }>>('/admin/companies/asignar-emisora', { companyIds, emisoraId });
+    return r.data;
+  }
   /** Activa el cumplimiento (SAT/CSF/IMSS) en automático para TODAS las empresas,
    *  para que el barrido de los lunes 5:30 las incluya. */
   async adminActivarCumplimientoTodas() {
