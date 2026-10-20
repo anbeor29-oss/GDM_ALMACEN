@@ -30,6 +30,17 @@
 
 ## 🟡 Por construir
 
+- **⭐ (EN DISEÑO — 2026-10-19, lo ve el usuario mañana) Reorganizar el panel «Usuarios reales (cobro por usuario)».**
+  El usuario **aún no está conforme** con cómo quedó organizado (Súper Admin → Facturación mensual). Hoy ya se agrupó
+  por **despacho** (árbol por emisora de cobro / predeterminada) y las exentas pasaron a reales como «sin cobro», pero
+  falta definir la **vista de cobro**. **Idea del usuario a pensar:** el **precio por DESPACHO** — un despacho con,
+  p.ej., **5 usuarios** es donde se puede **subir un poco más el precio** (un **escalón por número de usuarios del
+  despacho**, no sólo por empresa). Hoy el precio es **$750/usuario plano** ([[cobro-por-usuario-algoritmo]]); la idea
+  es un escalonado por tamaño del despacho (más usuarios ⇒ precio por usuario un poco mayor, o un cargo del despacho).
+  **Pendiente mañana:** acordar con el usuario el modelo exacto (tabla de escalones, si cobra por empresa o por
+  despacho, cómo se ve en el panel) ANTES de codificar. No tocar el algoritmo de cobro hasta tener la regla clara.
+  Ver [[cobro-por-usuario-algoritmo]], [[paquetes-uso-y-landing-nexo]].
+
 - **(HECHO 2026-10-15) Panel de XML de nómina de personas físicas.** Pestaña «Persona física» en XML del SAT: desglosa
   la nómina recibida (sueldos/asimilados por `TipoRegimen`, con ISR/IMSS/subsidio del complemento nómina 1.2) y el
   resumen mensual con ingresos (nómina + facturado) y egresos (recibidos tipo I), con export CSV. Detalle en BITACORA.

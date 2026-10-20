@@ -7390,3 +7390,63 @@ mensaje liste esas pólizas con su **número en azul** para poder modificarlas.
 **Resultado.** `tsc` back+front en verde, **sin migración** (MIG-TEMPORAL ya existía). Front tocado ⇒ ZIP. No se
 pierde ni una póliza del respaldo: las descuadradas entran salvadas y quedan señaladas para corregir a mano.
 Ver [[importador-contalink-ctlk]], [[migracion-contpaqi-nexo]], [[contabilidad-motor-polizas]].
+
+---
+
+## 2026-10-19 (varios) — Lote grande: 10 pendientes + panel Rendimiento, módulos por empresa, árbol de despacho, buzón/declaraciones y emitir factura
+
+Jornada larga sobre `Cambios_pendientes_en_GDM_NEXO.md` y varias rondas de imágenes del usuario. Resumen por tema
+(cada bloque fue su commit; todo `tsc` back+front en verde; sin pérdida de datos).
+
+**A. Los 10 puntos del documento + panel de rendimiento.**
+1. **Nómina XML** (XML del SAT → Recuperados): filtro por **año** + botón **«Completar datos»** que lee el XML del
+   recibo y rellena los campos VACÍOS del empleado (NSS, puesto, salarios…) sin pisar (`completarCamposVacios`,
+   `completarDesdeUuid`). 2. **«Por codificar»** (ver entrada anterior). 3. **Clientes/Proveedores**: Proveedores
+   al menú de Ventas; botón **«Traer del catálogo»** (catálogo contable + CFDI, nombre **normalizado** quitando el
+   sufijo societario — `utils/nombre-fiscal`); completa régimen/CP/uso desde el XML del CFDI más reciente.
+   4. **Cierre**: selector de **cuenta de capital** (existente o captura) para acumular el resultado; rechaza cuentas de
+   control. 5. **Módulos por empresa** (ver B). 6. **Cron cumplimiento** a **lunes 5:30** + **puntos rojos** en el
+   Dashboard por opinión NEGATIVA (`empresasDelUsuario` trae `opinion_negativa`). 7. **Totales** del año en Persona
+   física. 8. Botón **«Avanzar descargas del SAT»** (todas mis empresas con e.firma, 2º plano). 9. **«Reconstruir todo
+   el respaldo»** (todos los ejercicios de un tirón, `reconstruirIntegral`). 10. **Tipo de cambio** a **diario 5:30**.
+   **Consideración:** panel Súper Admin **«Rendimiento (Render)»** (memoria del proceso/contenedor + disco de la BD /
+   tablas más pesadas, sólo lectura).
+
+**B. Módulos por EMPRESA (servicios contratados).** `companies.modulos_habilitados TEXT[]` (migración
+`2026-10-19b`). **NULL/vacío = sin restricción (todos)** — compatible, las empresas quedan intactas hasta restringir
+una. Intersección `(grupo ∪ extra) ∩ módulos_empresa`; **tablero y XML SIEMPRE** disponibles (exentos en
+`requireModule`, `Layout.show` y `ModuleRoute`). Se resuelve en el middleware con **caché 60 s** (`modulosDeEmpresa`
++ `invalidarModulosEmpresa`), no en el JWT → cambio del Súper Admin surte efecto en ≤60 s sin re-login. **UI:** casillas
+por módulo en la **lista de Empresas** (se quitaron Plan/Contratada/Cap/CSD/Usuarios) + en Editar empresa. Ver
+[[usuarios-modulos-extra]].
+
+**C. Fiscal (SatGo/Panel fiscal).**
+- **Declaraciones — BUG corregido:** la cuadrícula (`zipDelAnio`) bajaba **sólo con CIEC**; sin CIEC marcaba «!» en
+  todo. Ahora **prefiere e.firma** (`declaracionesFiel`) y cae a CIEC — como la descarga directa.
+- **Comunicados del buzón:** se abren en **modal** para leerlos (`comunicadoContenido` = `comunicadosfiel` con
+  `descargar:true` → PDF/texto; parseo defensivo de campos, a confirmar en vivo). La **fecha** venía "29/jul/2024" y
+  un `slice(0,10)` la truncaba y ordenaba mal → ahora se **parsea** (ES/ISO), se muestra **DD/MM/AAAA** y se **ordena**
+  por clave ISO (más reciente arriba).
+- **Botón «Activar cumplimiento a todas»** (Súper Admin → Empresas): marca activo SAT/CSF/IMSS de todas las empresas
+  con RFC para el barrido de los lunes.
+- Ver [[satgo-integracion]], [[panel-fiscal]].
+
+**D. Asignación de cuentas → Clientes/Proveedores.** `listarSubcuentasTercero` ya **no exige `tercero_rfc`**: muestra
+TODAS las cuentas de detalle bajo 105.01/105.02 (clientes) y 201.01/201.02 (proveedores) del catálogo, con o sin RFC,
+así el respaldo importado aparece de una vez. Ver [[contabilidad-asignacion-centralizada]].
+
+**E. Árbol de DESPACHO (Súper Admin).** Empresas, **Facturación mensual** y **Onboarding** agrupan por **«empresa que
+factura»** (`empresa_cobro_id`); las empresas sin emisora cuelgan de la **emisora PREDETERMINADA**
+(`companies.emisor_predeterminado`, p.ej. GRUPO HCGM) como fallback → agrupa sin capturar nada. Usuarios ya agrupaba
+bien. Encabezados/árbol colapsables. Las **emisoras** (GHC/SAJ) no se listan como clientes.
+
+**F. Facturación mensual (cobro por usuario).**
+- **Emitir factura eligiendo emisora (CUARTO):** en «Usuarios reales» → Acciones, botón **«Emitir factura»** abre un
+  modal que pregunta **desde cuál emisora (GHC/SAJ)** se timbra; `emitirFacturaMensual(cargoId, emisoraId)` reúsa los
+  helpers de `issue-invoice` (cliente/producto + timbrado PAC real) sobre `facturacion_mensual`; `issuePlatformInvoice`
+  acepta `emisoraId` override. Ruta `POST /admin/facturacion/:id/emitir`.
+- **«Ambiente de prueba» → «Solicitudes en prueba (72 h)»:** sólo altas nuevas sin firmar. Las SIN_COBRO/exentas pasan
+  a «Usuarios reales» como **EXENTAS** ($0, etiqueta «sin cobro»); las emisoras ya no se listan como clientes.
+- **PENDIENTE (mañana):** el **panel de «Usuarios reales (cobro)» aún NO convence al usuario**; se reorganiza mañana.
+  Idea del usuario: pensar el **precio por DESPACHO** — un despacho con p.ej. **5 usuarios** es donde se puede **subir
+  un poco más el precio** (escalón por nº de usuarios del despacho, no sólo por empresa). Ver [[cobro-por-usuario-algoritmo]].
