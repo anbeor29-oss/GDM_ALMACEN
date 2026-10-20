@@ -29,7 +29,10 @@ export interface FacturacionConfig {
  * login; aquí es sólo facturación.)
  */
 export const RFCS_SIN_COBRO = [
-  'GHC1707275Y0', 'AABA020418BW2', 'FAMC800303RN4',
+  'GHC1707275Y0', 'AABA020418BW2',
+  // FAMC800303RN4 (CARLOS ERNESTO FRANCO) salió de la lista: es el ÚNICO cliente de
+  // HCGM con usuario propio, así que SÍ se cobra (cobro por usuario). Las demás
+  // empresas del grupo no tienen usuarios → quedan «sin usuarios», no se facturan.
   'LOGJ9010071V0',  // JESSICA LOPEZ GONZALEZ — alta en pruebas
   'IAGD860819MP3',  // DAVID ISLAS GUERRERO   — alta en pruebas
   'VIGE6601128E1',  // EDGAR VILLAGRAN GARCIA — parte de GRUPO HCGM, a pruebas (sin cobro)
@@ -70,6 +73,37 @@ export async function getConfig(): Promise<FacturacionConfig> {
   };
 }
 
+/** Config con la marca de si el precio por usuario lo FIJA el despacho (precio propio
+ *  negociado) o lo hereda del global. Si lo fija, no se le aplica el brinco por calendario. */
+interface ConfigDespacho extends FacturacionConfig { precioFijo: boolean; }
+
+/**
+ * Mapa despacho_id → precios efectivos (overrides del despacho sobre el global).
+ * Un campo NULL en el despacho hereda el valor global. Se precarga una vez por corrida
+ * para no consultar por empresa.
+ */
+async function mapaPreciosDespacho(base: FacturacionConfig): Promise<Map<string, ConfigDespacho>> {
+  const r = await query<any>(
+    `SELECT id, precio_usuario_mxn, timbres_incluidos, timbre_extra_mxn, timbres_por_usuario, timbre_extra_por_usuario
+       FROM despachos_contables WHERE deleted_at IS NULL`).catch(() => ({ rows: [] as any[] }));
+  const m = new Map<string, ConfigDespacho>();
+  for (const d of r.rows) {
+    m.set(d.id, {
+      precioUsuario:         d.precio_usuario_mxn       != null ? Number(d.precio_usuario_mxn)       : base.precioUsuario,
+      timbresIncluidos:      d.timbres_incluidos        != null ? Number(d.timbres_incluidos)        : base.timbresIncluidos,
+      timbreExtra:           d.timbre_extra_mxn         != null ? Number(d.timbre_extra_mxn)         : base.timbreExtra,
+      timbresPorUsuario:     d.timbres_por_usuario      != null ? Number(d.timbres_por_usuario)      : base.timbresPorUsuario,
+      timbreExtraPorUsuario: d.timbre_extra_por_usuario != null ? Number(d.timbre_extra_por_usuario) : base.timbreExtraPorUsuario,
+      precioFijo:            d.precio_usuario_mxn != null,
+    });
+  }
+  return m;
+}
+/** Precios de una empresa según su despacho (o el global si no tiene). */
+function configDeEmpresa(mapa: Map<string, ConfigDespacho>, despachoId: string | null, base: FacturacionConfig): ConfigDespacho {
+  return (despachoId && mapa.get(despachoId)) || { ...base, precioFijo: false };
+}
+
 export async function setConfig(d: Partial<FacturacionConfig>): Promise<FacturacionConfig> {
   const cur = await getConfig();
   const precio = d.precioUsuario ?? cur.precioUsuario;
@@ -106,9 +140,10 @@ export async function generarLista(periodoInput?: string, userId?: string) {
   const periodo = iso(new Date(anio, mes, 1));
   const diasMes = new Date(anio, mes + 1, 0).getDate();
   const cfg = await getConfig();
+  const mapaDesp = await mapaPreciosDespacho(cfg);
 
   const empresas = await query<any>(
-    `SELECT c.id, c.rfc, c.business_name, c.created_at, c.prueba_inicio,
+    `SELECT c.id, c.rfc, c.business_name, c.created_at, c.prueba_inicio, c.despacho_id,
             (SELECT MIN(sc.signed_at) FROM service_contracts sc WHERE sc.company_id = c.id) AS signed_at
        FROM companies c
       WHERE c.deleted_at IS NULL AND c.is_active = TRUE
@@ -137,8 +172,10 @@ export async function generarLista(periodoInput?: string, userId?: string) {
       diasCobrados = diasMes - inicioCobro.getDate() + 1;   // el día que se vuelve facturable se cobra
       prorrateado = true;
     }
-    // Precio por usuario según el calendario (intro editable → $1,000 por fechas).
-    const precioU = precioUsuarioVigente(inicioCobro, new Date(anio, mes, 1), cfg.precioUsuario);
+    // Precios del despacho de la empresa (o el global). Si el despacho fija un precio
+    // propio (negociado) ése manda; si lo hereda, aplica el brinco por calendario.
+    const cfgE = configDeEmpresa(mapaDesp, e.despacho_id, cfg);
+    const precioU = cfgE.precioFijo ? cfgE.precioUsuario : precioUsuarioVigente(inicioCobro, new Date(anio, mes, 1), cfgE.precioUsuario);
     const renta = r2(precioU * usuarios * (diasCobrados / diasMes));
 
     // Timbres del periodo (los de SW: stamp_usage tiene billing_period = 1.º de mes).
@@ -146,8 +183,8 @@ export async function generarLista(periodoInput?: string, userId?: string) {
     const timbresUsados = Number(tR.rows[0]?.n) || 0;
     // Escalonado: los incluidos y el precio del timbre extra crecen con los usuarios.
     const nivel = Math.max(0, usuarios - 1);
-    const incluidos = cfg.timbresIncluidos + cfg.timbresPorUsuario * nivel;
-    const precioExtra = r2(cfg.timbreExtra + cfg.timbreExtraPorUsuario * nivel);
+    const incluidos = cfgE.timbresIncluidos + cfgE.timbresPorUsuario * nivel;
+    const precioExtra = r2(cfgE.timbreExtra + cfgE.timbreExtraPorUsuario * nivel);
     const timbresExtra = Math.max(0, timbresUsados - incluidos);
     const extra = r2(timbresExtra * precioExtra);
     const total = r2(renta + extra);
@@ -212,11 +249,14 @@ export async function resumenConsolidado(periodoInput?: string) {
   const { anio, mes } = primerDia(periodoInput);
   const periodo = iso(new Date(anio, mes, 1));
   const cfg = await getConfig();
+  const mapaDesp = await mapaPreciosDespacho(cfg);
 
   const empresas = await query<any>(
     `SELECT c.id, c.rfc, c.business_name, c.billing_exempt, c.prueba_inicio, c.servicio_suspendido,
             c.created_at, c.empresa_cobro_id, COALESCE(c.emisor_predeterminado,false) AS emisor_predeterminado,
             COALESCE(c.es_emisor_cobro,false) AS es_emisor_cobro,
+            c.despacho_id,
+            (SELECT d.nombre FROM despachos_contables d WHERE d.id = c.despacho_id AND d.deleted_at IS NULL) AS despacho_nombre,
             COALESCE(c.producto,'NEXO') AS producto,
             (SELECT MIN(sc.signed_at) FROM service_contracts sc WHERE sc.company_id = c.id) AS signed_at,
             (SELECT COUNT(*) FROM service_contracts sc WHERE sc.company_id = c.id) > 0 AS firmado,
@@ -233,12 +273,13 @@ export async function resumenConsolidado(periodoInput?: string) {
     // no a quién se factura. Sólo son el encabezado del despacho en el árbol.
     if (e.es_emisor_cobro === true) continue;
 
+    const cfgE = configDeEmpresa(mapaDesp, e.despacho_id, cfg);
     const usuarios = await usuariosFacturables(e.id);
     const tR = await query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM stamp_usage WHERE company_id = $1 AND billing_period = $2`, [e.id, periodo]);
     const timbresUsados = Number(tR.rows[0]?.n) || 0;
     const nivel = Math.max(0, usuarios - 1);
-    const incluidos = cfg.timbresIncluidos + cfg.timbresPorUsuario * nivel;
-    const precioExtra = r2(cfg.timbreExtra + cfg.timbreExtraPorUsuario * nivel);
+    const incluidos = cfgE.timbresIncluidos + cfgE.timbresPorUsuario * nivel;
+    const precioExtra = r2(cfgE.timbreExtra + cfgE.timbreExtraPorUsuario * nivel);
     const timbresExtra = Math.max(0, timbresUsados - incluidos);
 
     // «Ambiente de prueba» = SÓLO altas nuevas en su prueba de 72 h (solicitudes de
@@ -250,15 +291,16 @@ export async function resumenConsolidado(periodoInput?: string) {
     else if (RFCS_SIN_COBRO.includes(rfc)) { exenta = true; motivo = 'Sin cobro'; }
     else if (e.billing_exempt === true) { exenta = true; motivo = 'Exenta'; }
 
-    // Precio por usuario según el calendario (mismo criterio que generarLista).
+    // Precio por usuario: el del despacho si lo fija, si no el del calendario.
     const inicioCobro = (e.prueba_inicio && e.signed_at) ? new Date(e.signed_at) : new Date(e.created_at);
-    const precioU = precioUsuarioVigente(inicioCobro, new Date(anio, mes, 1), cfg.precioUsuario);
+    const precioU = cfgE.precioFijo ? cfgE.precioUsuario : precioUsuarioVigente(inicioCobro, new Date(anio, mes, 1), cfgE.precioUsuario);
     const sinCobro = esPrueba || exenta;
     const renta = sinCobro ? 0 : r2(precioU * usuarios);
     const extra = sinCobro ? 0 : r2(timbresExtra * precioExtra);
     const fila = {
       company_id: e.id, rfc: e.rfc, business_name: e.business_name,
       empresa_cobro_id: e.empresa_cobro_id || null, emisor_predeterminado: e.emisor_predeterminado === true,
+      despacho_id: e.despacho_id || null, despacho_nombre: e.despacho_nombre || null,
       usuarios, timbres_usados: timbresUsados, timbres_incluidos: incluidos, timbres_extra: timbresExtra,
       renta_mxn: renta, extra_mxn: extra, total_mxn: r2(renta + extra),
       esPrueba, exenta, motivo, producto: e.producto || 'NEXO',

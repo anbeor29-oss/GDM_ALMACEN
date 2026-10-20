@@ -78,6 +78,10 @@ function EmisorasTab({ candidatas, emisoras, envRfc, onChange, flash }: any) {
   const [busy, setBusy] = useState('');
   const [showNueva, setShowNueva] = useState(false);
   const [csdTarget, setCsdTarget] = useState<any>(null);
+  /* Por omisión se muestran SÓLO las empresas marcadas como emisoras (para no
+   * llenar la pantalla con todas); un toggle revela el resto para marcar una nueva. */
+  const [verTodas, setVerTodas] = useState(false);
+  const filas = verTodas ? candidatas : candidatas.filter((c: any) => emisoras.some((e: any) => e.id === c.id));
   const marcar = async (c: any, esEmisor: boolean, predeterminado: boolean) => {
     setBusy(c.id);
     try { await api.setEmisor(c.id, { esEmisor, predeterminado }); flash('Guardado.'); onChange(); }
@@ -96,7 +100,11 @@ function EmisorasTab({ candidatas, emisoras, envRfc, onChange, flash }: any) {
         </div>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex justify-between items-center gap-2">
+        <button onClick={() => setVerTodas((v) => !v)}
+          className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50">
+          {verTodas ? 'Mostrar sólo emisoras' : 'Mostrar todas las empresas (para marcar una)'}
+        </button>
         <button onClick={() => setShowNueva((v) => !v)}
           className="inline-flex items-center gap-1.5 bg-sky-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-sky-700">
           <Plus size={15} /> Nueva empresa emisora
@@ -117,7 +125,10 @@ function EmisorasTab({ candidatas, emisoras, envRfc, onChange, flash }: any) {
             </tr>
           </thead>
           <tbody>
-            {candidatas.map((c: any) => {
+            {filas.length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400 italic">Sin emisoras marcadas. Usa «Mostrar todas» para marcar una, o «Nueva empresa emisora».</td></tr>
+            )}
+            {filas.map((c: any) => {
               const em = emisoras.find((e: any) => e.id === c.id);
               const esEmisor = !!em;
               const predet = !!em?.predeterminado;

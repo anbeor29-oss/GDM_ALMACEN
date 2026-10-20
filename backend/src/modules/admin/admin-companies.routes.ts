@@ -81,7 +81,9 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
             COALESCE(c.producto,'NEXO') AS producto,
             c.modulos_habilitados,
             c.es_emisor_cobro, c.empresa_cobro_id, COALESCE(c.emisor_predeterminado,false) AS emisor_predeterminado,
-            (SELECT ec.business_name FROM companies ec WHERE ec.id = c.empresa_cobro_id) AS empresa_cobro_nombre
+            (SELECT ec.business_name FROM companies ec WHERE ec.id = c.empresa_cobro_id) AS empresa_cobro_nombre,
+            c.despacho_id,
+            (SELECT d.nombre FROM despachos_contables d WHERE d.id = c.despacho_id AND d.deleted_at IS NULL) AS despacho_nombre
        FROM companies c
       WHERE ${filters.join(' AND ')}
       ORDER BY c.business_name ASC`,
@@ -94,10 +96,13 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
    Debe ir ANTES de GET /:id para que no lo capture como un id. */
 router.get('/emisores', asyncHandler(async (_req: Request, res: Response) => {
   const r = await query<any>(
-    `SELECT id, rfc, business_name, (csd_key_encrypted IS NOT NULL) AS has_csd
+    `SELECT id, rfc, business_name,
+            (csd_key_data IS NOT NULL OR csd_key_encrypted IS NOT NULL OR csd_key_path IS NOT NULL) AS has_csd,
+            TRUE AS es_emisor,
+            COALESCE(emisor_predeterminado,false) AS predeterminado
        FROM companies
       WHERE es_emisor_cobro = TRUE AND is_active = TRUE
-      ORDER BY business_name`);
+      ORDER BY emisor_predeterminado DESC, business_name`);
   res.json({ success: true, data: { emisores: r.rows } });
 }));
 
@@ -242,7 +247,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   const {
     businessName, fiscalRegime, postalCode, billingPlan, capTimbres, monthlyFee,
     extraStampFee, isActive, timbradoAmbiente, producto,
-    esEmisorCobro, empresaCobroId,
+    esEmisorCobro, empresaCobroId, despachoId,
     // Domicilio fiscal completo (para la CFDI de cobro y el expediente)
     street, extNumber, neighborhood, city, municipality, state,
     // Contacto (contact_email es el remitente/destino de correos automáticos)
@@ -283,6 +288,11 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   if (empresaCobroId !== undefined) {
     if (empresaCobroId && !/^[0-9a-f-]{36}$/i.test(empresaCobroId)) throw new ValidationError('empresaCobroId UUID inválido');
     push('empresa_cobro_id', empresaCobroId || null);
+  }
+  // Despacho contable al que pertenece la empresa (NULL = sin despacho).
+  if (despachoId !== undefined) {
+    if (despachoId && !/^[0-9a-f-]{36}$/i.test(despachoId)) throw new ValidationError('despachoId UUID inválido');
+    push('despacho_id', despachoId || null);
   }
   // Domicilio
   if (street       !== undefined) push('street',        street || null);

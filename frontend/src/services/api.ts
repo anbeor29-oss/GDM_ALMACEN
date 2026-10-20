@@ -3336,6 +3336,26 @@ class APIClient {
     const r = await this.client.post<APIResponse<{ asignadas: number }>>('/admin/companies/asignar-emisora', { companyIds, emisoraId });
     return r.data;
   }
+
+  /* ── Despachos contables (SUPER_ADMIN): alta/baja y PRECIOS por despacho ── */
+  async listDespachos() {
+    return (await this.client.get('/admin/despachos')).data;
+  }
+  async crearDespacho(d: { nombre: string; precioUsuario?: number | null; timbresIncluidos?: number | null;
+                           timbreExtra?: number | null; timbresPorUsuario?: number | null;
+                           timbreExtraPorUsuario?: number | null; emisoraPredeterminadaId?: string | null; notas?: string }) {
+    return (await this.client.post('/admin/despachos', d)).data;
+  }
+  async actualizarDespacho(id: string, d: any) {
+    return (await this.client.put(`/admin/despachos/${id}`, d)).data;
+  }
+  async eliminarDespacho(id: string) {
+    return (await this.client.delete(`/admin/despachos/${id}`)).data;
+  }
+  /** Mete varias empresas al despacho de un tirón. */
+  async asignarDespachoEmpresas(despachoId: string, companyIds: string[]) {
+    return (await this.client.post(`/admin/despachos/${despachoId}/asignar`, { companyIds })).data;
+  }
   /** Activa el cumplimiento (SAT/CSF/IMSS) en automático para TODAS las empresas,
    *  para que el barrido de los lunes 5:30 las incluya. */
   async adminActivarCumplimientoTodas() {

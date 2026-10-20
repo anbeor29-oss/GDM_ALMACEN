@@ -347,6 +347,7 @@ function EditCompanyModal({
     timbradoAmbiente: company.timbrado_ambiente || 'PRUEBAS',
     esEmisorCobro: company.es_emisor_cobro === true,
     empresaCobroId: company.empresa_cobro_id || '',
+    despachoId: company.despacho_id || '',
     // Módulos habilitados (servicios contratados). null = sin restricción (todos).
     modulosHabilitados: (Array.isArray(company.modulos_habilitados) && company.modulos_habilitados.length)
       ? (company.modulos_habilitados as string[]) : (null as string[] | null),
@@ -356,6 +357,9 @@ function EditCompanyModal({
   // Emisores del cobro (para "esta empresa es emisor" / "quién le factura").
   const { data: emisoresData } = useQuery({ queryKey: ['admin-emisores'], queryFn: () => api.adminListEmisores() });
   const emisores: any[] = ((emisoresData as any)?.data?.emisores || []).filter((e: any) => e.id !== company.id);
+  // Despachos contables (para asignar la empresa a uno). Donde se fijan los precios.
+  const { data: despachosData } = useQuery({ queryKey: ['admin-despachos'], queryFn: () => api.listDespachos() });
+  const despachos: any[] = ((despachosData as any)?.data?.despachos || []);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [k]: e.target.value });
@@ -498,6 +502,22 @@ function EditCompanyModal({
             >
               <FileKey size={14}/> {company.has_csd ? 'Actualizar CSD' : 'Cargar CSD'}
             </button>
+          </div>
+
+          {/* Despacho contable: a qué despacho pertenece (ahí se fijan los precios). */}
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 space-y-2">
+            <p className="text-xs font-semibold text-indigo-900">Despacho contable</p>
+            <label className="block">
+              <span className="text-xs text-indigo-900 block mb-0.5">Despacho al que pertenece esta empresa <span className="font-normal text-indigo-700">(agrupa y fija el precio)</span></span>
+              <select value={form.despachoId} onChange={(e) => setForm({ ...form, despachoId: e.target.value })}
+                className="w-full border border-indigo-300 rounded px-3 py-2 text-sm bg-white">
+                <option value="">— sin despacho —</option>
+                {despachos.map((d) => <option key={d.id} value={d.id}>{d.nombre}{d.precio_usuario_mxn != null ? ` · $${Number(d.precio_usuario_mxn).toLocaleString('es-MX')}/usuario` : ' · precio global'}</option>)}
+              </select>
+            </label>
+            <p className="text-[11px] text-indigo-700">
+              ¿Falta un despacho? Créalo en <b>Plataforma → Despachos contables</b>.
+            </p>
           </div>
 
           {/* Cobro del servicio: emisor y a quién factura */}

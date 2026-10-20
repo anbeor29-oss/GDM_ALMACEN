@@ -700,6 +700,7 @@ export function Layout() {
               <NavItem to="/admin/companies" icon={navIcon('🏢')} accent="sky"     label="Empresas"              open={sidebarOpen} />
               <NavItem to="/admin/facturacion" icon={navIcon('💰')} accent="emerald" label="Facturación mensual"  open={sidebarOpen} />
               <NavItem to="/admin/emisores" icon={navIcon('🧾')} accent="sky" label="Emisor de facturas"  open={sidebarOpen} />
+              <NavItem to="/admin/despachos" icon={navIcon('🏛️')} accent="violet" label="Despachos contables"  open={sidebarOpen} />
               <NavItem to="/admin/demos" icon={navIcon('🖥️')} accent="sky" label="Onboarding (firmas y demos)"  open={sidebarOpen} />
               <NavItem to="/admin/satgo" icon={navIcon('☁️')} accent="sky" label="Conector fiscal"  open={sidebarOpen} />
               <NavItem to="/admin/users"     icon={navIcon('🛡️')} accent="emerald" label="Usuarios"              open={sidebarOpen} />

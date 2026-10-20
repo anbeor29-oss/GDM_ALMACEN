@@ -29,6 +29,7 @@ import { AdminUsersPage }    from '@/pages/AdminUsers';
 import { AdminCompaniesPage } from '@/pages/AdminCompanies';
 import { AdminFacturacionPage } from '@/pages/AdminFacturacion';
 import { AdminEmisoresPage } from '@/pages/AdminEmisores';
+import { AdminDespachosPage } from '@/pages/AdminDespachos';
 import { AdminSatgoPage } from '@/pages/AdminSatgo';
 import { AdminRendimientoPage } from '@/pages/AdminRendimiento';
 import { AdminDemosPage } from '@/pages/AdminDemos';
@@ -211,6 +212,7 @@ export default function ErpPrivado() {
         <Route path="admin/packages"  element={<SuperAdminRoute><AdminPackagesPage /></SuperAdminRoute>} />
         <Route path="admin/facturacion" element={<SuperAdminRoute><AdminFacturacionPage /></SuperAdminRoute>} />
         <Route path="admin/emisores" element={<SuperAdminRoute><AdminEmisoresPage /></SuperAdminRoute>} />
+        <Route path="admin/despachos" element={<SuperAdminRoute><AdminDespachosPage /></SuperAdminRoute>} />
         <Route path="admin/satgo" element={<SuperAdminRoute><AdminSatgoPage /></SuperAdminRoute>} />
         <Route path="admin/rendimiento" element={<SuperAdminRoute><AdminRendimientoPage /></SuperAdminRoute>} />
         <Route path="admin/demos" element={<SuperAdminRoute><AdminDemosPage /></SuperAdminRoute>} />

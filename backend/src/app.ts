@@ -42,6 +42,7 @@ import adminRendimientoRoutes from './modules/admin/admin-rendimiento.routes';
 import adminBillingRoutes   from './modules/admin/admin-billing.routes';
 import adminFacturacionRoutes from './modules/admin/admin-facturacion.routes';
 import adminEmisoresRoutes from './modules/admin/admin-emisores.routes';
+import adminDespachosRoutes from './modules/admin/admin-despachos.routes';
 import satgoRoutes from './modules/satgo/satgo.routes';
 import satgoConsultasRoutes from './modules/satgo/satgo.consultas.routes';
 import onboardingRoutes from './modules/onboarding/onboarding.routes';
@@ -217,6 +218,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/admin/billing`,   adminBillingRoutes);
   app.use(`/api/${config.apiVersion}/admin/facturacion`, adminFacturacionRoutes);
   app.use(`/api/${config.apiVersion}/admin/emisores`, adminEmisoresRoutes);
+  app.use(`/api/${config.apiVersion}/admin/despachos`, adminDespachosRoutes);
   app.use(`/api/${config.apiVersion}/admin/satgo`, satgoRoutes);
   app.use(`/api/${config.apiVersion}/admin/prepaid`,   adminPrepaidRoutes);
   app.use(`/api/${config.apiVersion}/admin/promocion`, adminPromocionRoutes);

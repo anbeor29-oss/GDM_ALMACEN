@@ -30,16 +30,22 @@
 
 ## 🟡 Por construir
 
-- **⭐ (EN DISEÑO — 2026-10-19, lo ve el usuario mañana) Reorganizar el panel «Usuarios reales (cobro por usuario)».**
-  El usuario **aún no está conforme** con cómo quedó organizado (Súper Admin → Facturación mensual). Hoy ya se agrupó
-  por **despacho** (árbol por emisora de cobro / predeterminada) y las exentas pasaron a reales como «sin cobro», pero
-  falta definir la **vista de cobro**. **Idea del usuario a pensar:** el **precio por DESPACHO** — un despacho con,
-  p.ej., **5 usuarios** es donde se puede **subir un poco más el precio** (un **escalón por número de usuarios del
-  despacho**, no sólo por empresa). Hoy el precio es **$750/usuario plano** ([[cobro-por-usuario-algoritmo]]); la idea
-  es un escalonado por tamaño del despacho (más usuarios ⇒ precio por usuario un poco mayor, o un cargo del despacho).
-  **Pendiente mañana:** acordar con el usuario el modelo exacto (tabla de escalones, si cobra por empresa o por
-  despacho, cómo se ve en el panel) ANTES de codificar. No tocar el algoritmo de cobro hasta tener la regla clara.
-  Ver [[cobro-por-usuario-algoritmo]], [[paquetes-uso-y-landing-nexo]].
+- **(HECHO 2026-10-20) Despacho contable como entidad + precio por despacho + panel de cobro por usuarios.**
+  Se creó la entidad **`despachos_contables`** (migración `2026-10-20_despachos_contables.sql`): nombre, **precios
+  propios** (precio/usuario y escalón de timbres; NULL = hereda el global), emisora predeterminada y `activo`. Las
+  empresas se cuelgan de un despacho con `companies.despacho_id`. Nuevo sidebar **Plataforma → «Despachos contables»**
+  (`/admin/despachos`, `AdminDespachos.tsx`) para **dar de alta/baja y fijar los precios**; y en **Empresas → Editar
+  empresa** un selector para meter la empresa a un despacho. El cobro (`facturacion-usuarios.service`) ahora resuelve el
+  **precio por despacho** (si el despacho fija precio propio, ése manda y NO se le aplica el brinco por calendario; si
+  no, hereda el global). El panel «Usuarios reales» agrupa por **despacho** (prefiere `despacho_id`, cae al viejo
+  agrupamiento por emisora para empresas sin despacho) y **sólo factura a quien TIENE usuarios**: las de 0 usuarios
+  salen «sin usuarios» sin acción de emitir (base del cobro por usuario). **Seed CUARTO:** un único despacho interno
+  **«GRUPO HCGM»** con TODAS las empresas activas dentro (incluida SERVICIOS ADMINISTRATIVOS JOMAR / SAJ10120859A).
+  **OJO facturación:** `FAMC800303RN4` (CARLOS ERNESTO FRANCO) **salió** de `RFCS_SIN_COBRO` porque es el único cliente
+  de HCGM con usuario propio y SÍ se cobra. Si tras desplegar sigue saliendo «sin cobro», es porque tiene el flag
+  `billing_exempt=TRUE` en la BD → quitarlo desde Empresas. Ver [[cobro-por-usuario-algoritmo]].
+  **Pendiente opcional (a conversar):** escalón de precio por **tamaño del despacho** (p. ej. 5+ usuarios ⇒ precio por
+  usuario un poco mayor) — hoy el precio por despacho es un valor fijo, no escalonado por nº de usuarios.
 
 - **(HECHO 2026-10-15) Panel de XML de nómina de personas físicas.** Pestaña «Persona física» en XML del SAT: desglosa
   la nómina recibida (sueldos/asimilados por `TipoRegimen`, con ISR/IMSS/subsidio del complemento nómina 1.2) y el

@@ -53,10 +53,17 @@ export function AdminFacturacionPage() {
     if (emisoraPred?.id) nombrePorId.set(emisoraPred.id, emisoraPred.business_name);
     const m = new Map<string, { nombre: string; rows: any[] }>();
     for (const f of realesF) {
-      let key = f.empresa_cobro_id;
-      if (!key && !f.emisor_predeterminado && emisoraPred?.id && emisoraPred.id !== f.company_id) key = emisoraPred.id;
+      // El despacho contable manda; si la empresa aún no tiene despacho, se cae al
+      // agrupamiento viejo por emisora de cobro / predeterminada (compatibilidad).
+      let key: string | null = f.despacho_id || null;
+      let nombre = f.despacho_nombre || '';
+      if (!key) {
+        key = f.empresa_cobro_id;
+        if (!key && !f.emisor_predeterminado && emisoraPred?.id && emisoraPred.id !== f.company_id) key = emisoraPred.id;
+        nombre = key ? (nombrePorId.get(key) || 'Despacho') : '';
+      }
       const k = key || '__none__';
-      const nombre = k === '__none__' ? 'Sin despacho' : (nombrePorId.get(k) || 'Despacho');
+      if (!nombre) nombre = k === '__none__' ? 'Sin despacho' : 'Despacho';
       if (!m.has(k)) m.set(k, { nombre, rows: [] });
       m.get(k)!.rows.push(f);
     }
@@ -197,7 +204,7 @@ export function AdminFacturacionPage() {
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">{g.rows.length} empresa(s)</span>
                       </button>
                       {(() => {
-                        const emitibles = g.rows.filter((r: any) => r.cargo_id && r.status !== 'PAGADO' && !r.exenta);
+                        const emitibles = g.rows.filter((r: any) => r.cargo_id && r.status !== 'PAGADO' && !r.exenta && r.usuarios > 0);
                         return emitibles.length > 0 ? (
                           <button onClick={() => setEmitir(emitibles)}
                             title="Emitir las facturas del despacho (elige la emisora)"
@@ -224,13 +231,16 @@ export function AdminFacturacionPage() {
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{money(f.total_mxn)}</td>
                 <td className="px-3 py-2 text-center">{f.exenta
                   ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">sin cobro</span>
-                  : <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge(f.status)}`}>{f.status === 'SIN_GENERAR' ? 'sin generar' : f.status}</span>}</td>
+                  : f.usuarios === 0
+                    ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-500">sin usuarios</span>
+                    : <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge(f.status)}`}>{f.status === 'SIN_GENERAR' ? 'sin generar' : f.status}</span>}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
-                  {f.exenta && <span className="text-[11px] text-gray-400">—</span>}
-                  {!f.exenta && !f.cargo_id && <span className="text-[11px] text-gray-400">genera la lista</span>}
-                  {/* Emitir la factura del servicio: pregunta desde cuál de las dos
-                      emisoras (GHC/SAJ) se timbra. Disponible cuando hay cargo y no está pagada. */}
-                  {f.cargo_id && f.status !== 'PAGADO' && !f.exenta && (
+                  {/* Sólo se factura a quien TIENE usuarios (cobro por usuario). Las
+                      exentas y las de 0 usuarios no llevan cobro. */}
+                  {(f.exenta || f.usuarios === 0) && <span className="text-[11px] text-gray-400" title={f.usuarios === 0 ? 'Sin usuarios: no se factura' : 'Exenta'}>—</span>}
+                  {!f.exenta && f.usuarios > 0 && !f.cargo_id && <span className="text-[11px] text-gray-400">genera la lista</span>}
+                  {/* Emitir la factura del servicio: pregunta desde cuál emisora se timbra. */}
+                  {f.cargo_id && f.status !== 'PAGADO' && !f.exenta && f.usuarios > 0 && (
                     <button onClick={() => setEmitir([f])}
                       disabled={busy === f.cargo_id} className="p-1.5 text-violet-600 hover:bg-violet-50 rounded" title="Emitir factura (elige la emisora)">
                       <FileText size={15} />
