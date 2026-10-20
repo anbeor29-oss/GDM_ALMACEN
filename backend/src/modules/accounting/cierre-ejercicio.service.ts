@@ -144,37 +144,51 @@ async function resolverCuentaResultado(
     return { id: c.id, codigo: c.codigo, creada: false };
   }
 
-  const agr = utilidad ? '305.01' : '305.02';
-  const natur = utilidad ? 'ACREEDORA' : 'DEUDORA';
-  const nombre = `Resultado Ejercicio ${anio}`;
+  const nombre = `Resultado del ejercicio ${anio}`;
 
-  // ¿Ya existe la cuenta de resultado de ESTE año? (por nombre, bajo el 305).
+  /* 1) USAR la cuenta de resultado de ESTE año si ya existe —incluida la que el
+   *    usuario capturó a mano—. Match FLEXIBLE (con o sin «del», mayúsc./minúsc.),
+   *    bajo cualquier 305, y SIN importar el signo: la utilidad y la pérdida van a
+   *    la MISMA cuenta (un número con signo), NO a ramas 305.01/305.02 separadas.
+   *    Así la pérdida se acumula bajo «RESULTADO DE EJERCICIOS» como los demás años. */
   const ya = (await query<any>(
-    `SELECT id, codigo, codigo_agrupador FROM accounting_accounts
-      WHERE company_id=$1 AND permite_movimientos AND codigo_agrupador LIKE '305%' AND nombre=$2
-      LIMIT 1`, [companyId, nombre])).rows[0];
-  if (ya) {
-    if (ya.codigo_agrupador !== agr) {
-      // El signo cambió (utilidad↔pérdida) entre corridas: corrige el rubro.
-      await query(`UPDATE accounting_accounts SET codigo_agrupador=$2, naturaleza=$3 WHERE id=$1`, [ya.id, agr, natur]);
-    }
-    return { id: ya.id, codigo: ya.codigo, creada: false };
+    `SELECT id, codigo FROM accounting_accounts
+      WHERE company_id=$1 AND permite_movimientos AND codigo_agrupador LIKE '305%'
+        AND lower(nombre) LIKE $2
+      ORDER BY codigo LIMIT 1`, [companyId, `%resultado%${anio}%`])).rows[0];
+  if (ya) return { id: ya.id, codigo: ya.codigo, creada: false };
+
+  /* 2) Crear bajo el MISMO padre donde viven los resultados de los OTROS años
+   *    (p.ej. «3-2-00-00 RESULTADO DE EJERCICIOS»), heredando su naturaleza —así
+   *    todos los ejercicios quedan juntos y el reporte los consolida—. Si no hay
+   *    hermanos, se cuelga del control 305. */
+  const hermano = (await query<any>(
+    `SELECT parent_id FROM accounting_accounts
+      WHERE company_id=$1 AND permite_movimientos AND codigo_agrupador LIKE '305%'
+        AND lower(nombre) LIKE '%resultado%' AND parent_id IS NOT NULL
+      ORDER BY codigo DESC LIMIT 1`, [companyId])).rows[0];
+  let mayor: any = null;
+  if (hermano?.parent_id) {
+    mayor = (await query<any>(
+      `SELECT id, codigo, nivel, naturaleza, codigo_agrupador FROM accounting_accounts WHERE id=$1`,
+      [hermano.parent_id])).rows[0];
+  }
+  if (!mayor) {
+    mayor = (await query<any>(
+      `SELECT id, codigo, nivel, naturaleza, codigo_agrupador FROM accounting_accounts
+        WHERE company_id=$1 AND NOT permite_movimientos AND codigo_agrupador LIKE '305%'
+        ORDER BY nivel DESC, codigo LIMIT 1`, [companyId])).rows[0];
+  }
+  if (!mayor) {
+    return { error: 'No hay una cuenta de capital de «Resultado de ejercicios» (agrupador 305) en el catálogo. Créala primero en el bloque 3 de capital.' };
   }
 
-  // Mayor del que cuelga: 305.01/305.02 como control si existe; si no, el 305.
-  const mayor = (await query<any>(
-    `SELECT id, codigo, nivel FROM accounting_accounts
-      WHERE company_id=$1 AND NOT permite_movimientos AND codigo_agrupador IN ($2,'305')
-      ORDER BY (codigo_agrupador=$2) DESC, nivel DESC LIMIT 1`, [companyId, agr])).rows[0];
-
-  const base = (mayor?.codigo ? String(mayor.codigo).replace(/\D+$/, '') : '305');
-  let codigo = '';
-  for (let i = 1; i <= 99; i++) {
-    const cand = `${base}${String(i).padStart(2, '0')}`;
-    const existe = (await query<any>(`SELECT 1 FROM accounting_accounts WHERE company_id=$1 AND codigo=$2`, [companyId, cand])).rows[0];
-    if (!existe) { codigo = cand; break; }
-  }
-  if (!codigo) return { error: 'no se pudo generar un código libre para la cuenta 305 (Resultado del ejercicio).' };
+  const natur = mayor.naturaleza || 'ACREEDORA';
+  // Agrupador: el del padre si es un detalle (305.01/305.02); si el padre es el
+  // genérico «305», se usa 305.01 (rubro de resultado del ejercicio).
+  const agr = (mayor.codigo_agrupador && mayor.codigo_agrupador !== '305') ? mayor.codigo_agrupador : '305.01';
+  const codigo = await siguienteCodigoHijo(companyId, String(mayor.codigo), mayor.id);
+  if (!codigo) return { error: `No se pudo generar un código libre bajo «${mayor.codigo}».` };
 
   const ins = (await query<any>(
     `INSERT INTO accounting_accounts
@@ -182,8 +196,45 @@ async function resolverCuentaResultado(
         es_complementaria, nivel, permite_movimientos, requiere_tercero, moneda, activa)
      VALUES ($1,$2,$3,$4,$5,'CAPITAL',$6,false,$7,true,false,'MXN',true)
      RETURNING id, codigo`,
-    [companyId, mayor?.id || null, codigo, nombre, agr, natur, mayor ? mayor.nivel + 1 : 1])).rows[0];
+    [companyId, mayor.id, codigo, nombre, agr, natur, (mayor.nivel || 1) + 1])).rows[0];
   return { id: ins.id, codigo: ins.codigo, creada: true };
+}
+
+/**
+ * Siguiente código LIBRE para un hijo de `padreCodigo`, respetando la MÁSCARA: toma
+ * el hijo de mayor código e incrementa su ÚLTIMO segmento (3-2-00-04 → 3-2-00-05);
+ * si no hay hijos, pone «1» en el último segmento del padre. Para códigos SIN
+ * separadores (p.ej. «305») cae a «305»+«01», «02»… como antes.
+ */
+async function siguienteCodigoHijo(companyId: string, padreCodigo: string, padreId: string): Promise<string | null> {
+  const hijos = (await query<any>(
+    `SELECT codigo FROM accounting_accounts WHERE company_id=$1 AND parent_id=$2`, [companyId, padreId])).rows;
+  const existe = async (cod: string) =>
+    (await query<any>(`SELECT 1 FROM accounting_accounts WHERE company_id=$1 AND codigo=$2`, [companyId, cod])).rows[0];
+
+  const sepMatch = padreCodigo.match(/[.\-\s/]/);
+  if (sepMatch) {
+    const sep = sepMatch[0];
+    const partes = padreCodigo.split(/[.\-\s/]/);
+    const ancho = (partes[partes.length - 1] || '00').length || 2;
+    let maxUlt = 0;
+    for (const h of hijos) {
+      const hp = String(h.codigo).split(/[.\-\s/]/);
+      if (hp.length === partes.length) maxUlt = Math.max(maxUlt, Number(hp[hp.length - 1]) || 0);
+    }
+    for (let i = maxUlt + 1; i <= 99999; i++) {
+      const cand = [...partes.slice(0, -1), String(i).padStart(ancho, '0')].join(sep);
+      if (!(await existe(cand))) return cand;
+    }
+    return null;
+  }
+  // Sin separadores: padre + 01, 02, …
+  const base = padreCodigo.replace(/0+$/, '') || padreCodigo;
+  for (let i = 1; i <= 99; i++) {
+    const cand = `${base}${String(i).padStart(2, '0')}`;
+    if (!(await existe(cand))) return cand;
+  }
+  return null;
 }
 
 /** Genera (o REGENERA) la póliza de cierre del año. Re-ejecutable. */
