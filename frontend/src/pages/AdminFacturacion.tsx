@@ -247,9 +247,9 @@ export function AdminFacturacionPage() {
         </table>
       </Seccion>
 
-      {/* 3) Consumo de timbres */}
-      <Seccion icon={<Stamp size={16} className="text-violet-600" />} titulo="Consumo de timbres del periodo"
-        nota="Timbres timbrados vía SW (stamp_usage). Los incluidos crecen con los usuarios; el excedente se cobra a los reales.">
+      {/* 3) Consumo de timbres — colapsable (arranca cerrado) y ordenado por USADOS. */}
+      <Seccion colapsable defaultColapsado icon={<Stamp size={16} className="text-violet-600" />} titulo="Consumo de timbres del periodo"
+        nota="Timbres timbrados vía SW (stamp_usage), de mayor a menor consumo. Los incluidos crecen con los usuarios; el excedente se cobra a los reales.">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b"><tr>
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Empresa</th>
@@ -258,7 +258,7 @@ export function AdminFacturacionPage() {
             <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Excedente</th>
           </tr></thead>
           <tbody className="divide-y">
-            {[...realesF, ...pruebaF].map((f) => (
+            {[...realesF, ...pruebaF].sort((a, b) => (b.timbres_usados || 0) - (a.timbres_usados || 0)).map((f) => (
               <tr key={f.company_id} className="hover:bg-gray-50">
                 <td className="px-3 py-2"><span className="text-gray-800">{f.business_name}</span> <span className="text-[11px] text-gray-400 font-mono">{f.rfc}</span></td>
                 <td className="px-3 py-2 text-center tabular-nums font-medium">{f.timbres_usados}</td>
@@ -333,12 +333,19 @@ function ModalEmitir({ cargo, emisoras, onClose, onDone }: { cargo: any; emisora
   );
 }
 
-function Seccion({ icon, titulo, nota, children }: { icon: React.ReactNode; titulo: string; nota?: string; children: React.ReactNode }) {
+function Seccion({ icon, titulo, nota, children, colapsable, defaultColapsado }: { icon: React.ReactNode; titulo: string; nota?: string; children: React.ReactNode; colapsable?: boolean; defaultColapsado?: boolean }) {
+  const [abierto, setAbierto] = useState(!defaultColapsado);
   return (
     <section>
-      <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">{icon} {titulo}</h2>
-      {nota && <p className="text-xs text-gray-400 mb-1.5">{nota}</p>}
-      <div className="bg-white rounded-lg shadow overflow-x-auto">{children}</div>
+      <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+        {colapsable ? (
+          <button onClick={() => setAbierto((a) => !a)} className="flex items-center gap-1.5 hover:text-gray-900">
+            {abierto ? <ChevronDown size={15} /> : <ChevronRight size={15} />}{icon} {titulo}
+          </button>
+        ) : <>{icon} {titulo}</>}
+      </h2>
+      {nota && abierto && <p className="text-xs text-gray-400 mb-1.5">{nota}</p>}
+      {(!colapsable || abierto) && <div className="bg-white rounded-lg shadow overflow-x-auto">{children}</div>}
     </section>
   );
 }

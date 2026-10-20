@@ -25,6 +25,39 @@ import { NIF_NORMAS } from './nif-normas.data';
 import { construirCatalogoSat, SUBCUENTAS_ARRANQUE, NIVEL2_PENDIENTE, type CodigoSat } from './catalogo-sat.data';
 import logger from '../../middleware/logger';
 
+/**
+ * ¿La cuenta `hijo` cuelga de la cuenta `padre` (consolidación por prefijo)?
+ *
+ * El padre suele llevar SEGMENTOS CERO al final de su máscara: «3-2-00-00» =
+ * RESULTADO DE EJERCICIOS. Sus hijos van en el último segmento: «3-2-00-01»,
+ * «3-2-00-05»… Compararlos por el dígito literal (`"320005".startsWith("320000")`)
+ * los rechazaba, porque el padre tiene «00-00» al final y el hijo «00-05» no. La
+ * comparación correcta es por SEGMENTOS, ignorando los segmentos CERO finales del
+ * padre: el hijo debe repetir los segmentos SIGNIFICATIVOS del padre (3 y 2) y
+ * puede llenar/extender los demás.
+ *
+ * Si alguno NO trae separadores (p.ej. «11025000»), se cae al prefijo literal de
+ * dígitos de antes —ahí el código completo ES la identidad y no hay ambigüedad—.
+ */
+function cuelgaDe(hijo: string, padre: string): boolean {
+  const SEP = /[.\-\s/]+/;
+  const pSeg = String(padre).trim().split(SEP).filter((x) => x !== '');
+  const hSeg = String(hijo).trim().split(SEP).filter((x) => x !== '');
+  if (pSeg.length > 1) {
+    // Último segmento SIGNIFICATIVO del padre (se ignoran los «00» finales).
+    let sig = pSeg.length;
+    while (sig > 0 && /^0+$/.test(pSeg[sig - 1])) sig--;
+    if (hSeg.length < sig) return false;
+    for (let i = 0; i < sig; i++) {
+      // Por valor: «05» == «5», «01» == «1» (no debe pesar el relleno de ceros).
+      if (Number(hSeg[i]) !== Number(pSeg[i])) return false;
+    }
+    return true;
+  }
+  const soloDig = (s: string) => String(s).replace(/[.\-\s/]/g, '');
+  return soloDig(hijo).startsWith(soloDig(padre));
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    1. SIEMBRA DE REFERENCIAS (global, idempotente)
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -461,11 +494,7 @@ export async function crearCuenta(companyId: string, d: DatosCuenta) {
     padre = r.rows[0];
     if (!padre) throw new Error('La cuenta padre no existe en esta empresa.');
 
-    // El prefijo se compara SIN separadores: así '105-01-001' cuelga de '105.01'
-    // igual que '11025000-001' de '11025000' — el estilo de puntos/guiones no
-    // debe decidir si una subcuenta es válida, sólo los dígitos.
-    const soloDig = (s: string) => String(s).replace(/[.\-\s]/g, '');
-    if (!soloDig(codigo).startsWith(soloDig(padre.codigo))) {
+    if (!cuelgaDe(codigo, padre.codigo)) {
       throw new Error(
         `El código "${codigo}" no cuelga de "${padre.codigo}". Una subcuenta ` +
         `tiene que empezar con el código de su cuenta padre, o el catálogo ` +
