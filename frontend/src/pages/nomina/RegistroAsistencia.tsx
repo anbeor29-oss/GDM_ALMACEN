@@ -13,7 +13,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Calendar, MapPin, Download, ClipboardList, Settings, FileSpreadsheet, FileText, ArrowLeft } from 'lucide-react';
+import { Calendar, Download, ClipboardList, Settings, FileSpreadsheet, FileText, ArrowLeft } from 'lucide-react';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 
@@ -169,8 +169,12 @@ function VistaHistorial() {
                 <td className="px-3 py-2 text-gray-600">{f.kiosco || '—'}</td>
                 <td className="px-3 py-2 text-center text-gray-500">{f.estado}</td>
                 <td className="px-3 py-2 text-center">
+                  {/* Se muestran las COORDENADAS (lat, lng) en vez de un punto; siguen
+                      siendo enlace a Google Maps al hacer clic. */}
                   {f.lat != null && f.lng != null
-                    ? <a className="text-cyan-700 inline-flex items-center gap-0.5" href={`https://www.google.com/maps?q=${f.lat},${f.lng}`} target="_blank" rel="noreferrer"><MapPin size={13} /> ver</a>
+                    ? <a className="font-mono text-[11px] text-cyan-700 hover:underline whitespace-nowrap"
+                         href={`https://www.google.com/maps?q=${f.lat},${f.lng}`} target="_blank" rel="noreferrer"
+                         title="Abrir en Google Maps">{Number(f.lat).toFixed(6)}, {Number(f.lng).toFixed(6)}</a>
                     : <span className="text-gray-300">—</span>}
                 </td>
               </tr>
