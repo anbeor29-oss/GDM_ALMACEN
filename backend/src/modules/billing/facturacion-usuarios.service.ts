@@ -216,6 +216,7 @@ export async function resumenConsolidado(periodoInput?: string) {
   const empresas = await query<any>(
     `SELECT c.id, c.rfc, c.business_name, c.billing_exempt, c.prueba_inicio, c.servicio_suspendido,
             c.created_at, c.empresa_cobro_id, COALESCE(c.emisor_predeterminado,false) AS emisor_predeterminado,
+            COALESCE(c.es_emisor_cobro,false) AS es_emisor_cobro,
             COALESCE(c.producto,'NEXO') AS producto,
             (SELECT MIN(sc.signed_at) FROM service_contracts sc WHERE sc.company_id = c.id) AS signed_at,
             (SELECT COUNT(*) FROM service_contracts sc WHERE sc.company_id = c.id) > 0 AS firmado,
@@ -227,6 +228,11 @@ export async function resumenConsolidado(periodoInput?: string) {
 
   const prueba: any[] = [], reales: any[] = [];
   for (const e of empresas.rows) {
+    const rfc = String(e.rfc || '').toUpperCase();
+    // Las EMISORAS de cobro (GHC/SAJ) NO se listan como clientes: son quien factura,
+    // no a quién se factura. Sólo son el encabezado del despacho en el árbol.
+    if (e.es_emisor_cobro === true) continue;
+
     const usuarios = await usuariosFacturables(e.id);
     const tR = await query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM stamp_usage WHERE company_id = $1 AND billing_period = $2`, [e.id, periodo]);
     const timbresUsados = Number(tR.rows[0]?.n) || 0;
@@ -234,27 +240,30 @@ export async function resumenConsolidado(periodoInput?: string) {
     const incluidos = cfg.timbresIncluidos + cfg.timbresPorUsuario * nivel;
     const precioExtra = r2(cfg.timbreExtra + cfg.timbreExtraPorUsuario * nivel);
     const timbresExtra = Math.max(0, timbresUsados - incluidos);
-    const rfc = String(e.rfc || '').toUpperCase();
 
-    let motivo = '';
-    if (RFCS_SIN_COBRO.includes(rfc)) motivo = 'Ambiente de prueba';
-    else if (e.billing_exempt === true) motivo = 'Exenta';
-    else if (e.prueba_inicio && !e.firmado) motivo = 'Prueba 72 h';
-    const esPrueba = motivo !== '';
+    // «Ambiente de prueba» = SÓLO altas nuevas en su prueba de 72 h (solicitudes de
+    // IVA/NEXO). Las SIN_COBRO/exentas NO son prueba: van a «Usuarios reales» como
+    // EXENTAS ($0), para que la sección de prueba quede sólo con lo realmente nuevo.
+    const esPrueba = !!(e.prueba_inicio && !e.firmado);
+    let exenta = false, motivo = '';
+    if (esPrueba) motivo = 'Prueba 72 h';
+    else if (RFCS_SIN_COBRO.includes(rfc)) { exenta = true; motivo = 'Sin cobro'; }
+    else if (e.billing_exempt === true) { exenta = true; motivo = 'Exenta'; }
 
     // Precio por usuario según el calendario (mismo criterio que generarLista).
     const inicioCobro = (e.prueba_inicio && e.signed_at) ? new Date(e.signed_at) : new Date(e.created_at);
     const precioU = precioUsuarioVigente(inicioCobro, new Date(anio, mes, 1), cfg.precioUsuario);
-    const renta = esPrueba ? 0 : r2(precioU * usuarios);
-    const extra = esPrueba ? 0 : r2(timbresExtra * precioExtra);
+    const sinCobro = esPrueba || exenta;
+    const renta = sinCobro ? 0 : r2(precioU * usuarios);
+    const extra = sinCobro ? 0 : r2(timbresExtra * precioExtra);
     const fila = {
       company_id: e.id, rfc: e.rfc, business_name: e.business_name,
       empresa_cobro_id: e.empresa_cobro_id || null, emisor_predeterminado: e.emisor_predeterminado === true,
       usuarios, timbres_usados: timbresUsados, timbres_incluidos: incluidos, timbres_extra: timbresExtra,
       renta_mxn: renta, extra_mxn: extra, total_mxn: r2(renta + extra),
-      esPrueba, motivo, producto: e.producto || 'NEXO',
+      esPrueba, exenta, motivo, producto: e.producto || 'NEXO',
       cargo_id: e.cargo_id || null,
-      status: e.cargo_status || (esPrueba ? 'SIN_COBRO' : 'SIN_GENERAR'),
+      status: e.cargo_status || (sinCobro ? 'SIN_COBRO' : 'SIN_GENERAR'),
       servicio_suspendido: e.servicio_suspendido === true,
     };
     (esPrueba ? prueba : reales).push(fila);

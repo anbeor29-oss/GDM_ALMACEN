@@ -145,8 +145,8 @@ export function AdminFacturacionPage() {
       {q.isLoading && <p className="text-gray-500">Cargando…</p>}
 
       {/* 1) Ambientes de PRUEBA — sin cobro */}
-      <Seccion icon={<FlaskConical size={16} className="text-sky-600" />} titulo="Ambientes de prueba (sin cobro)"
-        nota="RFC de prueba/dueño/demo y altas en prueba de 72 h sin firmar — no se cobran.">
+      <Seccion icon={<FlaskConical size={16} className="text-sky-600" />} titulo="Solicitudes en prueba (72 h)"
+        nota="Altas nuevas de IVA/NEXO en su prueba de 72 h sin firmar — aquí se concentran las solicitudes de servicio. Las exentas y propias ya NO salen aquí: aparecen en «Usuarios reales» marcadas «sin cobro».">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b"><tr>
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Empresa</th>
@@ -156,7 +156,7 @@ export function AdminFacturacionPage() {
             <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Cobro</th>
           </tr></thead>
           <tbody className="divide-y">
-            {pruebaF.length === 0 && <tr><td colSpan={5} className="px-3 py-4 text-center text-gray-400 italic">Ninguno.</td></tr>}
+            {pruebaF.length === 0 && <tr><td colSpan={5} className="px-3 py-4 text-center text-gray-400 italic">Sin solicitudes en prueba por ahora. Aquí aparecen las altas nuevas (IVA/NEXO) en su prueba de 72 h.</td></tr>}
             {pruebaF.map((f) => (
               <tr key={f.company_id} className="hover:bg-gray-50">
                 <td className="px-3 py-2"><p className="font-medium text-gray-800">{f.business_name}</p><p className="text-[11px] text-gray-500 font-mono">{f.rfc}</p></td>
@@ -198,16 +198,24 @@ export function AdminFacturacionPage() {
                   </td>
                 </tr>
                 {!colapsado.has(key) && g.rows.map((f: any) => (
-              <tr key={f.company_id} className={`hover:bg-gray-50 ${f.status === 'SUSPENDIDO' ? 'bg-rose-50/40' : ''}`}>
-                <td className="px-3 py-2 pl-8"><p className="font-medium text-gray-800">{f.business_name}</p><p className="text-[11px] text-gray-500 font-mono">{f.rfc}</p></td>
+              <tr key={f.company_id} className={`hover:bg-gray-50 ${f.status === 'SUSPENDIDO' ? 'bg-rose-50/40' : f.exenta ? 'bg-slate-50/40' : ''}`}>
+                <td className="px-3 py-2 pl-8">
+                  <p className="font-medium text-gray-800">{f.business_name}
+                    {f.exenta && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">{f.motivo || 'exenta'}</span>}
+                  </p>
+                  <p className="text-[11px] text-gray-500 font-mono">{f.rfc}</p>
+                </td>
                 <td className="px-3 py-2 text-center">{f.usuarios}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{money(f.renta_mxn)}</td>
                 <td className="px-3 py-2 text-center text-xs">{f.timbres_usados}<span className="text-gray-400">/{f.timbres_incluidos}</span>{f.timbres_extra > 0 && <span className="block text-[10px] text-rose-600">+{f.timbres_extra} extra</span>}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-gray-600">{money(f.extra_mxn)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{money(f.total_mxn)}</td>
-                <td className="px-3 py-2 text-center"><span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge(f.status)}`}>{f.status === 'SIN_GENERAR' ? 'sin generar' : f.status}</span></td>
+                <td className="px-3 py-2 text-center">{f.exenta
+                  ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">sin cobro</span>
+                  : <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge(f.status)}`}>{f.status === 'SIN_GENERAR' ? 'sin generar' : f.status}</span>}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
-                  {!f.cargo_id && <span className="text-[11px] text-gray-400">genera la lista</span>}
+                  {f.exenta && <span className="text-[11px] text-gray-400">—</span>}
+                  {!f.exenta && !f.cargo_id && <span className="text-[11px] text-gray-400">genera la lista</span>}
                   {/* Emitir la factura del servicio: pregunta desde cuál de las dos
                       emisoras (GHC/SAJ) se timbra. Disponible cuando hay cargo y no está pagada. */}
                   {f.cargo_id && f.status !== 'PAGADO' && (
