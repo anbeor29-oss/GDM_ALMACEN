@@ -64,26 +64,21 @@ function codigoSiguienteTercero(control: any, mascara: string | null, usados: Se
     const W = anchos[anchos.length - 1];
     const pref = soloDig.slice(0, total - W);          // «11025»
     const maxN = Math.pow(10, W) - 1;
-    let n = 0;
-    for (const u of usados) {
-      // Sólo cuentan los que YA están en formato de máscara (largo exacto, puro
-      // dígito, mismo prefijo); los mal formados no corren la numeración.
-      if (u.length === total && /^\d+$/.test(u) && u.slice(0, pref.length) === pref) {
-        n = Math.max(n, Number(u.slice(pref.length)));
-      }
-    }
-    for (n = n + 1; n <= maxN; n++) {
+    // RELLENA HUECOS: el PRIMER número libre de la secuencia (001, 002, 003…), no el
+    // siguiente al mayor. Así una alta nueva ocupa el hueco que dejó un tercero dado
+    // de baja y sólo crece al final cuando ya no hay huecos. (Pedido del usuario.)
+    for (let n = 1; n <= maxN; n++) {
       const cod = pref + String(n).padStart(W, '0');
       if (!usados.has(cod)) return cod;
     }
   }
-  // Fallback SÓLO sin máscara numérica utilizable: <control con guiones>-NNN.
+  // Fallback SÓLO sin máscara numérica utilizable: <control con guiones>-NNN. También
+  // rellena el primer sufijo libre.
   const base = code.replace(/\./g, '-');
-  let n = 0;
-  for (const u of usados) { const m = /^(.+)-(\d+)$/.exec(u); if (m && m[1] === base) n = Math.max(n, Number(m[2])); }
-  let cod: string;
-  do { n++; cod = `${base}-${String(n).padStart(3, '0')}`; } while (usados.has(cod));
-  return cod;
+  for (let n = 1; ; n++) {
+    const cod = `${base}-${String(n).padStart(3, '0')}`;
+    if (!usados.has(cod)) return cod;
+  }
 }
 
 /** ¿El código YA está en el formato de máscara de su control (mismo largo, numérico,

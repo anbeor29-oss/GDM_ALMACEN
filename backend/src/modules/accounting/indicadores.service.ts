@@ -72,6 +72,10 @@ export async function resumen() {
  * reasigna la clave (consolidó el banco en dic-2025; los ejemplos ya usan BISE). */
 const INDICADOR_INPC = process.env.INEGI_INDICADOR_INPC || '910417';
 const FUENTE_INEGI = process.env.INEGI_FUENTE || 'BISE';
+/* Área geográfica. Para el INPC (serie económica) el INEGI usa `0700` (nacional);
+ * NO `00`. Con `00` el API responde 400 Bad Request (era el bug reportado). Se puede
+ * sobreescribir con INEGI_AREA por si el INEGI cambia la clave (p. ej. `00000`). */
+const AREA_INPC = process.env.INEGI_AREA || '0700';
 
 /**
  * Arma la URL de la API del INEGI. Dos caminos:
@@ -80,53 +84,90 @@ const FUENTE_INEGI = process.env.INEGI_FUENTE || 'BISE';
  *    cambios: se pega tal cual y se usa. Si trae `{TOKEN}`, se sustituye.
  *  · si no, se construye con INEGI_TOKEN + el indicador y fuente por defecto.
  */
-function urlInpc(): string | null {
+/** Áreas geográficas a PROBAR, en orden. El INPC suele ir con `0700`; se dejan
+ *  alternativas por si el INEGI usa otra tras la consolidación de dic-2025, y así el
+ *  mismo 400 «No se encontraron resultados» no depende de adivinar el área correcta. */
+function areasCandidatas(): string[] {
+  return [...new Set([AREA_INPC, '0700', '00000', '00'])];
+}
+
+/** Arma la URL para un área concreta (o la plantilla completa del Constructor). */
+function urlInpcPara(area: string): string | null {
   const token = process.env.INEGI_TOKEN || '';
   const plantilla = process.env.INEGI_INPC_URL;
   if (plantilla) return plantilla.includes('{TOKEN}') ? plantilla.replace('{TOKEN}', token) : plantilla;
   if (!token) return null;
   return `https://www.inegi.org.mx/app/api/indicadores/desarrolladores/jsonxml/INDICATOR/` +
-    `${INDICADOR_INPC}/es/00/false/${FUENTE_INEGI}/2.0/${token}?type=json`;
+    `${INDICADOR_INPC}/es/${area}/false/${FUENTE_INEGI}/2.0/${token}?type=json`;
 }
 
-/** Baja la serie del INPC del INEGI y la guarda en `fiscal_inpc`. */
-export async function actualizarInpc(): Promise<{ actualizados: number; desde?: string; hasta?: string; mensaje?: string }> {
-  const url = urlInpc();
-  if (!url) {
-    throw new Error(
-      'Falta la conexión con el INEGI. Pon el token en INEGI_TOKEN, o pega la URL completa del ' +
-      'Constructor de Consultas del INEGI en INEGI_INPC_URL (en Render).');
-  }
+type FilasInpc = Array<{ anio: number; mes: number; valor: number }>;
 
+/** Baja e interpreta la serie de UNA URL. Devuelve las filas si las hay; null si el
+ *  INEGI respondió pero sin observaciones (se prueba el siguiente candidato); o
+ *  `{error}` con el detalle (p. ej. el 400 «No se encontraron resultados»). */
+async function descargarSerieInpc(url: string): Promise<FilasInpc | { error: string } | null> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 20000);
-  let json: any;
   try {
     const resp = await fetch(url, { signal: ctrl.signal });
-    if (!resp.ok) throw new Error(`El INEGI respondió ${resp.status}.`);
-    json = await resp.json();
+    const texto = await resp.text();
+    if (!resp.ok) return { error: `HTTP ${resp.status} · ${texto.slice(0, 140)}` };
+    let json: any;
+    try { json = JSON.parse(texto); } catch { return { error: 'el INEGI no devolvió JSON' }; }
+    // { Series: [ { OBSERVATIONS: [ { TIME_PERIOD:'2026/07', OBS_VALUE:'...' } ] } ] }
+    const series = json?.Series?.[0]?.OBSERVATIONS || json?.series?.[0]?.OBSERVATIONS || [];
+    if (!Array.isArray(series) || series.length === 0) return null;
+    const filas: FilasInpc = [];
+    for (const o of series) {
+      const per = String(o.TIME_PERIOD || o.time_period || '');
+      const val = Number(o.OBS_VALUE ?? o.obs_value);
+      const m = per.match(/^(\d{4})[/\-](\d{1,2})$/);   // 'YYYY/MM'
+      if (!m || !Number.isFinite(val)) continue;
+      filas.push({ anio: Number(m[1]), mes: Number(m[2]), valor: val });
+    }
+    return filas.length ? filas : null;
   } catch (e: any) {
     if (e?.name === 'AbortError') throw new Error('El INEGI no respondió a tiempo. Intenta de nuevo.');
     throw new Error(`No se pudo consultar el INEGI: ${e?.message || e}.`);
   } finally {
     clearTimeout(t);
   }
+}
 
-  // La API devuelve { Series: [ { OBSERVATIONS: [ { TIME_PERIOD:'2026/07', OBS_VALUE:'...' } ] } ] }
-  const series = json?.Series?.[0]?.OBSERVATIONS || json?.series?.[0]?.OBSERVATIONS || [];
-  if (!Array.isArray(series) || series.length === 0) {
-    throw new Error('El INEGI no devolvió observaciones del INPC. Revisa el indicador (INEGI_INDICADOR_INPC).');
+/** Baja la serie del INPC del INEGI y la guarda en `fiscal_inpc`. */
+export async function actualizarInpc(): Promise<{ actualizados: number; desde?: string; hasta?: string; mensaje?: string }> {
+  const plantilla = process.env.INEGI_INPC_URL;
+  const token = process.env.INEGI_TOKEN || '';
+  if (!plantilla && !token) {
+    throw new Error(
+      'Falta la conexión con el INEGI. Pon el token en INEGI_TOKEN, o pega la URL completa del ' +
+      'Constructor de Consultas del INEGI en INEGI_INPC_URL (en Render).');
   }
 
-  const filas: Array<{ anio: number; mes: number; valor: number }> = [];
-  for (const o of series) {
-    const per = String(o.TIME_PERIOD || o.time_period || '');
-    const val = Number(o.OBS_VALUE ?? o.obs_value);
-    const m = per.match(/^(\d{4})[/\-](\d{1,2})$/);   // 'YYYY/MM'
-    if (!m || !Number.isFinite(val)) continue;
-    filas.push({ anio: Number(m[1]), mes: Number(m[2]), valor: val });
+  // Con plantilla completa es un solo intento; si no, se prueban varias áreas hasta
+  // que una devuelva observaciones (resiste que el INEGI cambie la clave del área).
+  const areas = plantilla ? ['(plantilla)'] : areasCandidatas();
+  let filas: FilasInpc | null = null;
+  const fallos: string[] = [];
+  for (const area of areas) {
+    const url = plantilla ? urlInpcPara('') : urlInpcPara(area);
+    if (!url) continue;
+    const r = await descargarSerieInpc(url);
+    if (Array.isArray(r)) { filas = r; break; }
+    if (r && 'error' in r) fallos.push(`área ${area}: ${r.error}`);
+    // r === null → respondió sin observaciones; se intenta la siguiente área.
   }
-  if (!filas.length) throw new Error('No se pudieron interpretar las observaciones del INPC.');
+
+  if (!filas || !filas.length) {
+    throw new Error(
+      'El INEGI no devolvió el INPC. Dos causas típicas: (1) el TOKEN (INEGI_TOKEN) está inválido o ' +
+      'caducado — genera uno nuevo en el INEGI y actualízalo en Render; o (2) cambió el indicador/área ' +
+      `(hoy INDICADOR=${INDICADOR_INPC}, FUENTE=${FUENTE_INEGI}; ajusta INEGI_INDICADOR_INPC / INEGI_AREA / ` +
+      'INEGI_FUENTE, o pega la URL del Constructor de Consultas en INEGI_INPC_URL). Mientras tanto, sube el ' +
+      'archivo «Índice general» del INPC (CSV/XLSX) con el botón de importar. ' +
+      (fallos.length ? `Detalle: ${fallos.join(' · ')}` : ''));
+  }
 
   for (const f of filas) {
     await query(

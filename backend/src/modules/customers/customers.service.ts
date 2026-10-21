@@ -83,6 +83,37 @@ const SALDO_SQL = `
 /**
  * Create customer
  */
+/**
+ * Asigna la CUENTA CONTABLE del tercero al darlo de alta. Resuelve (o liga del
+ * catálogo) su subcuenta bajo el control 105.xx (cliente) / 201.xx (proveedor):
+ * primero liga una cuenta del respaldo por nombre, y si no hay, toma el PRIMER
+ * número libre de la secuencia (rellena huecos) con su dígito agrupador. Espeja el
+ * código en `customers.cuenta_contable` (sólo si estaba vacío, para no pisar la
+ * cuenta ya visible de un tercero con doble rol). Best-effort: si la empresa aún no
+ * tiene la cuenta de control, el tercero se queda sin número hasta «Generar cuentas
+ * contables» y el alta NUNCA se bloquea por esto.
+ */
+async function asignarCuentaContableTercero(
+  companyId: string, partyType: 'CUSTOMER' | 'SUPPLIER' | undefined,
+  rfc: string, nombre: string, customerId: string,
+): Promise<string | null> {
+  try {
+    const tipo = partyType === 'SUPPLIER' ? 'proveedor' : 'cliente';
+    const mod = await import('../accounting/catalogo-terceros.service');
+    const res = await mod.resolverOCrearSubcuentaTercero(companyId, tipo, rfc, nombre);
+    if (res && 'codigo' in res && res.codigo) {
+      await query(
+        `UPDATE customers SET cuenta_contable=$2, updated_at=NOW()
+          WHERE id=$1 AND (cuenta_contable IS NULL OR cuenta_contable='')`,
+        [customerId, res.codigo]);
+      return res.codigo;
+    }
+  } catch (e) {
+    logger.warn(`No se pudo asignar cuenta contable a ${rfc}: ${(e as Error).message}`);
+  }
+  return null;
+}
+
 export async function createCustomer(companyId: string, data: {
   rfc: string;
   businessName: string;
@@ -156,6 +187,9 @@ export async function createCustomer(companyId: string, data: {
           WHERE id = $1 RETURNING *`,
         [row.id]
       );
+      // Nuevo rol → asegura su cuenta contable del rubro que corresponde (201.xx si
+      // ahora es proveedor, 105.xx si ahora es cliente). No pisa la ya visible.
+      await asignarCuentaContableTercero(companyId, data.partyType, data.rfc, data.businessName, row.id);
       return conRol.rows[0];
     }
     // Reactivar el registro borrado con los datos nuevos
@@ -243,9 +277,14 @@ export async function createCustomer(companyId: string, data: {
     throw new Error('Failed to create customer');
   }
 
+  const created = result.rows[0];
   logger.info(`Customer created: ${data.rfc} in company ${companyId}`);
 
-  return result.rows[0];
+  // Alta nueva → asigna su cuenta contable (rellena huecos). Best-effort.
+  const cod = await asignarCuentaContableTercero(companyId, data.partyType, data.rfc, data.businessName, created.id);
+  if (cod) (created as any).cuenta_contable = cod;
+
+  return created;
 }
 
 /**
