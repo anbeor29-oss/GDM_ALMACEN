@@ -2202,6 +2202,21 @@ function enviarXml(res: Response, r: { xml: string; nombre: string }) {
   res.send(r.xml);
 }
 
+/** Envía el mismo XML pero COMPRIMIDO en .zip (el XML conserva su nombre del SAT
+ *  adentro). Útil para subir la balanza como paquete .zip. */
+async function enviarXmlZip(res: Response, r: { xml: string; nombre: string }) {
+  const base = r.nombre.replace(/\.xml$/i, '');
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${base}.zip"`);
+  // @types/archiver v8 no tipa el default como callable, aunque en runtime lo es.
+  const zip = (archiver as unknown as (f: string, o?: any) => import('archiver').Archiver)(
+    'zip', { zlib: { level: 9 } });
+  zip.on('error', (e: Error) => { res.destroy(e); });
+  zip.pipe(res);
+  zip.append(r.xml, { name: r.nombre });
+  await zip.finalize();
+}
+
 /** GET /accounting/contabilidad-electronica/catalogo/:anio/:mes — Catálogo XML (Anexo 24). */
 router.get(
   '/contabilidad-electronica/catalogo/:anio/:mes',
@@ -2217,6 +2232,16 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const tipo = req.query.tipoEnvio === 'C' ? 'C' : 'N';
     enviarXml(res, await contabElec.balanzaXml(
+      companyId(req), Number(req.params.anio), Number(req.params.mes), tipo));
+  })
+);
+
+/** GET /accounting/contabilidad-electronica/balanza/:anio/:mes/zip?tipoEnvio=N|C — Balanza XML en .zip. */
+router.get(
+  '/contabilidad-electronica/balanza/:anio/:mes/zip',
+  asyncHandler(async (req: Request, res: Response) => {
+    const tipo = req.query.tipoEnvio === 'C' ? 'C' : 'N';
+    await enviarXmlZip(res, await contabElec.balanzaXml(
       companyId(req), Number(req.params.anio), Number(req.params.mes), tipo));
   })
 );

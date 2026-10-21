@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, Download, ScrollText, AlertCircle } from 'lucide-react';
+import { FileText, Download, ScrollText, AlertCircle, FileArchive } from 'lucide-react';
 import { api } from '@/services/api';
 import { aniosContables } from '@/utils/anios';
 import { usePeriodoTrabajo } from '@/utils/periodoActivo';
@@ -242,10 +242,11 @@ function Electronica({ anio, mes }: { anio: number; mes: number }) {
   const [tipoEnvio, setTipoEnvio] = useState<'N' | 'C'>('N');
   const [error, setError] = useState<string>('');
 
-  const bajar = async (que: 'catalogo' | 'balanza') => {
+  const bajar = async (que: 'catalogo' | 'balanza' | 'balanzaZip') => {
     setBajando(que); setError('');
     try {
       if (que === 'catalogo') await api.descargarCatalogoElectronico(anio, mes);
+      else if (que === 'balanzaZip') await api.descargarBalanzaElectronicaZip(anio, mes, tipoEnvio);
       else await api.descargarBalanzaElectronica(anio, mes, tipoEnvio);
     } catch (e: any) {
       setError(e?.message || 'No se pudo generar el XML.');
@@ -285,13 +286,18 @@ function Electronica({ anio, mes }: { anio: number; mes: number }) {
             Saldos iniciales, cargos, abonos y saldo final del mes. Se envía mensualmente. Sale de
             la balanza del periodo: si está vacía, actualízala desde pólizas primero.
           </p>
-          <div className="flex items-center gap-2 mt-3">
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
             <select value={tipoEnvio} onChange={(e) => setTipoEnvio(e.target.value as 'N' | 'C')} className="input text-sm">
               <option value="N">Normal</option>
               <option value="C">Complementaria</option>
             </select>
             <button onClick={() => bajar('balanza')} disabled={!!bajando} className="btn-export">
               <Download size={14} /> {bajando === 'balanza' ? 'Generando…' : `Balanza XML · ${per}`}
+            </button>
+            {/* La misma balanza, pero empaquetada en .zip (para subir como archivo comprimido). */}
+            <button onClick={() => bajar('balanzaZip')} disabled={!!bajando} className="btn-export"
+              title="La misma balanza, comprimida en .zip">
+              <FileArchive size={14} /> {bajando === 'balanzaZip' ? 'Generando…' : 'Balanza .zip'}
             </button>
           </div>
         </div>

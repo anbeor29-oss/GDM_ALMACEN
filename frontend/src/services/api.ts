@@ -1939,6 +1939,14 @@ class APIClient {
     await this.downloadFile(r.data as Blob,
       this.nombreDeHeader(r, `Balanza_${anio}-${String(mes).padStart(2, '0')}B${tipoEnvio}.xml`));
   }
+  /** La misma balanza XML, pero comprimida en .zip (el XML conserva su nombre del SAT adentro). */
+  async descargarBalanzaElectronicaZip(anio: number, mes: number, tipoEnvio: 'N' | 'C' = 'N') {
+    const r = await this.client.get(
+      `/accounting/contabilidad-electronica/balanza/${anio}/${mes}/zip`,
+      { params: { tipoEnvio }, responseType: 'blob' });
+    await this.downloadFile(r.data as Blob,
+      this.nombreDeHeader(r, `Balanza_${anio}-${String(mes).padStart(2, '0')}B${tipoEnvio}.zip`));
+  }
   /** Vista previa (JSON) del catálogo / balanza de Contabilidad Electrónica. */
   async getCatalogoElectronicoPreview(anio: number, mes: number) {
     const r = await this.client.get<APIResponse<any>>(`/accounting/contabilidad-electronica/catalogo/${anio}/${mes}/preview`);
