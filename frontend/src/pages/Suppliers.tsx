@@ -6,9 +6,10 @@
  *  automáticamente al importar XMLs de compra (sin duplicar por RFC) y aquí se
  *  completan sus datos bancarios y de crédito para poder pagarles al instante.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Truck, Search, Edit2, X, Star, Plus, Landmark } from 'lucide-react';
+import { Truck, Search, Edit2, X, Star, Plus, Landmark, FileCode, Loader2 } from 'lucide-react';
+import { leerCfdiXml, ladoParaRfc } from '@/utils/leerCfdiXml';
 import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
@@ -259,6 +260,10 @@ function SupplierModal({ mode, supplierId, onClose, onSaved }: {
   const [form, setForm] = useState<SupplierForm>(empty);
   const [error, setError] = useState('');
   const upper = (v: string) => v.toUpperCase();
+  // Lectura de una FACTURA (XML) del proveedor para traer sus datos sin recapturar.
+  const [xmlMsg, setXmlMsg] = useState<{ type: 'ok' | 'warn'; text: string } | null>(null);
+  const [xmlLoading, setXmlLoading] = useState(false);
+  const xmlRef = useRef<HTMLInputElement>(null);
 
   const { data: regimenes } = useQuery({ queryKey: ['catalog', 'regimenFiscal'], queryFn: () => api.getCatalog('regimenFiscal'), staleTime: Infinity });
   const { data: estados }   = useQuery({ queryKey: ['catalog', 'estado'], queryFn: () => api.getCatalog('estado'), staleTime: Infinity });
@@ -305,6 +310,43 @@ function SupplierModal({ mode, supplierId, onClose, onSaved }: {
     setForm((f) => ({ ...f, bankClabe: clabe, bankCode: match ? match.code : f.bankCode }));
   };
 
+  /* ----- Lectura de una FACTURA (XML) -----
+   * El proveedor es el EMISOR de la factura que nos emite. Se cotejan AMBOS lados por
+   * RFC: si el RFC del proveedor no coincide con el emisor ni el receptor del XML, NO
+   * se actualiza nada (evita meter datos de otra empresa). Sólo rellena lo que falta. */
+  const onPickXml = async (file: File) => {
+    setXmlMsg(null); setError(''); setXmlLoading(true);
+    try {
+      const partes = await leerCfdiXml(file);
+      const lado = ladoParaRfc(partes, form.rfc, 'emisor');
+      if (!lado) {
+        setXmlMsg({ type: 'warn', text:
+          `El RFC de la factura (emisor ${partes.emisor.rfc || '—'} / receptor ${partes.receptor.rfc || '—'}) no coincide con ${form.rfc || '(sin RFC)'}. No se actualizó nada.` });
+        return;
+      }
+      setForm((prev) => ({
+        ...prev,
+        rfc: prev.rfc || lado.rfc,
+        businessName: prev.businessName || (lado.nombre || '').toUpperCase(),
+        fiscalRegime: prev.fiscalRegime || lado.regimenFiscal,
+        postalCode: prev.postalCode || lado.codigoPostal,
+      }));
+      const faltan: string[] = [];
+      if (!form.fiscalRegime && !lado.regimenFiscal) faltan.push('régimen');
+      if (!form.postalCode && !lado.codigoPostal) faltan.push('código postal');
+      if (faltan.length) {
+        setXmlMsg({ type: 'warn', text: `Factura leída (${lado.lado}), pero no traía ${faltan.join(' ni ')}. Complétalo a mano.` });
+      } else {
+        setXmlMsg({ type: 'ok', text: `Datos tomados de la factura (${lado.lado}). Verifica antes de guardar.` });
+      }
+    } catch (e: any) {
+      setError(e.message || 'No se pudo leer el XML de la factura.');
+    } finally {
+      setXmlLoading(false);
+      if (xmlRef.current) xmlRef.current.value = '';
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault(); setError('');
     if (!form.rfc.trim() || !form.businessName.trim()) { setError('RFC y Razón Social son obligatorios'); return; }
@@ -332,6 +374,41 @@ function SupplierModal({ mode, supplierId, onClose, onSaved }: {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
+
+          {/* Traer datos fiscales de una FACTURA (XML) del proveedor, sin recapturar. */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3 flex-wrap">
+            <FileCode className="text-blue-600 flex-shrink-0" size={22} />
+            <div className="flex-1 min-w-[160px]">
+              <p className="text-sm font-semibold text-blue-900">Traer datos de una factura (XML)</p>
+              <p className="text-xs text-blue-700">de un CFDI que te emitió; toma RFC, nombre, régimen y CP (sólo si el RFC coincide).</p>
+            </div>
+            <input
+              ref={xmlRef}
+              type="file"
+              accept="text/xml,application/xml,.xml"
+              hidden
+              onChange={(e) => e.target.files?.[0] && onPickXml(e.target.files[0])}
+            />
+            <button
+              type="button"
+              onClick={() => xmlRef.current?.click()}
+              disabled={xmlLoading}
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            >
+              {xmlLoading ? <Loader2 size={16} className="animate-spin" /> : <FileCode size={16} />}
+              {xmlLoading ? 'Leyendo…' : 'Leer factura (XML)'}
+            </button>
+          </div>
+
+          {xmlMsg && (
+            <div className={`px-4 py-2 rounded-lg text-sm ${
+              xmlMsg.type === 'ok'
+                ? 'bg-green-50 border border-green-200 text-green-700'
+                : 'bg-yellow-50 border border-yellow-200 text-yellow-800'
+            }`}>
+              {xmlMsg.text}
+            </div>
+          )}
 
           {/* Fiscales */}
           <Section>Datos fiscales</Section>

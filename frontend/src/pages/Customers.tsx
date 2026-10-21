@@ -9,7 +9,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { revisarRfcPersonaFisica } from '@/utils/rfc';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Edit2, X, FileUp, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, FileUp, Loader2, FileCode } from 'lucide-react';
+import { leerCfdiXml, ladoParaRfc } from '@/utils/leerCfdiXml';
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 
@@ -283,6 +284,10 @@ function CustomerModal({
   const [csfMsg, setCsfMsg] = useState<{ type: 'ok' | 'warn'; text: string } | null>(null);
   const [csfLoading, setCsfLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Lectura de una FACTURA (XML) para traer los datos fiscales sin recapturar.
+  const [xmlMsg, setXmlMsg] = useState<{ type: 'ok' | 'warn'; text: string } | null>(null);
+  const [xmlLoading, setXmlLoading] = useState(false);
+  const xmlRef = useRef<HTMLInputElement>(null);
 
   // Catálogos SAT
   const { data: regimenes } = useQuery({
@@ -400,6 +405,45 @@ function CustomerModal({
     }
   };
 
+  /* ----- Lectura de una FACTURA (XML) -----
+   * El cliente es el RECEPTOR de la factura que le emitimos. Se cotejan AMBOS lados
+   * por RFC: si el RFC del cliente no coincide con el emisor ni el receptor del XML,
+   * NO se actualiza nada (evita meter datos de otra empresa). Sólo se rellenan los
+   * campos que faltan (no pisa lo ya capturado). */
+  const onPickXml = async (file: File) => {
+    setXmlMsg(null); setError(''); setXmlLoading(true);
+    try {
+      const partes = await leerCfdiXml(file);
+      const lado = ladoParaRfc(partes, form.rfc, 'receptor');
+      if (!lado) {
+        setXmlMsg({ type: 'warn', text:
+          `El RFC de la factura (emisor ${partes.emisor.rfc || '—'} / receptor ${partes.receptor.rfc || '—'}) no coincide con ${form.rfc || '(sin RFC)'}. No se actualizó nada.` });
+        return;
+      }
+      setForm((prev) => ({
+        ...prev,
+        rfc: prev.rfc || lado.rfc,
+        businessName: prev.businessName || (lado.nombre || '').toUpperCase(),
+        fiscalRegime: prev.fiscalRegime || lado.regimenFiscal,
+        postalCode: prev.postalCode || lado.codigoPostal,
+        defaultCfdiUse: prev.defaultCfdiUse || lado.usoCfdi || '',
+      }));
+      const faltan: string[] = [];
+      if (!form.fiscalRegime && !lado.regimenFiscal) faltan.push('régimen');
+      if (!form.postalCode && !lado.codigoPostal) faltan.push('código postal');
+      if (faltan.length) {
+        setXmlMsg({ type: 'warn', text: `Factura leída (${lado.lado}), pero no traía ${faltan.join(' ni ')} (¿CFDI 3.3?). Complétalo a mano o usa la CSF.` });
+      } else {
+        setXmlMsg({ type: 'ok', text: `Datos tomados de la factura (${lado.lado}). Verifica antes de guardar.` });
+      }
+    } catch (e: any) {
+      setError(e.message || 'No se pudo leer el XML de la factura.');
+    } finally {
+      setXmlLoading(false);
+      if (xmlRef.current) xmlRef.current.value = '';
+    }
+  };
+
   // helper: cambiar texto preservando MAYÚSCULAS
   const upper = (v: string) => v.toUpperCase();
 
@@ -419,11 +463,12 @@ function CustomerModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Carga de CSF */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
+          {/* Carga de CSF (PDF) y de FACTURA (XML) — autollenan sin recapturar */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3 flex-wrap">
             <FileUp className="text-blue-600 flex-shrink-0" size={22} />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-blue-900">Leer Constancia de Situación Fiscal</p>
+            <div className="flex-1 min-w-[160px]">
+              <p className="text-sm font-semibold text-blue-900">Traer datos fiscales</p>
+              <p className="text-xs text-blue-700">de la Constancia (PDF) o de una factura emitida (XML).</p>
             </div>
             <input
               ref={fileRef}
@@ -435,11 +480,29 @@ function CustomerModal({
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              disabled={csfLoading}
+              disabled={csfLoading || xmlLoading}
               className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
             >
               {csfLoading ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16} />}
               {csfLoading ? 'Procesando…' : 'Subir PDF'}
+            </button>
+            {/* Lectura de la FACTURA (XML): toma RFC/nombre/régimen/CP/uso del CFDI. */}
+            <input
+              ref={xmlRef}
+              type="file"
+              accept="text/xml,application/xml,.xml"
+              hidden
+              onChange={(e) => e.target.files?.[0] && onPickXml(e.target.files[0])}
+            />
+            <button
+              type="button"
+              onClick={() => xmlRef.current?.click()}
+              disabled={csfLoading || xmlLoading}
+              title="Lee una factura (XML) que le emitiste y trae sus datos fiscales (sólo si el RFC coincide)."
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            >
+              {xmlLoading ? <Loader2 size={16} className="animate-spin" /> : <FileCode size={16} />}
+              {xmlLoading ? 'Leyendo…' : 'Leer factura (XML)'}
             </button>
           </div>
 
@@ -450,6 +513,16 @@ function CustomerModal({
                 : 'bg-yellow-50 border border-yellow-200 text-yellow-800'
             }`}>
               {csfMsg.text}
+            </div>
+          )}
+
+          {xmlMsg && (
+            <div className={`px-4 py-2 rounded-lg text-sm ${
+              xmlMsg.type === 'ok'
+                ? 'bg-green-50 border border-green-200 text-green-700'
+                : 'bg-yellow-50 border border-yellow-200 text-yellow-800'
+            }`}>
+              {xmlMsg.text}
             </div>
           )}
 
