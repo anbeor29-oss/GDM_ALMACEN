@@ -21,7 +21,6 @@ import { canAccess, type ModuleKey } from '@/utils/permissions';
 import { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
-import { useIdleTimeout } from '@/hooks/useIdleTimeout';
 import api from '@/services/api';
 import { IssuerModal } from './IssuerModal';
 import { ForcePasswordChange } from './ForcePasswordChange';
@@ -321,9 +320,10 @@ export function Layout() {
 
   const handleLogout = () => doLogout();
 
-  // Cierre automático por inactividad (20 min). El hook reinicia el conteo
-  // con cualquier interacción del usuario.
-  useIdleTimeout(() => doLogout('idle'), IDLE_MINUTES * 60 * 1000);
+  // Cierre automático por inactividad: DESACTIVADO a pedido del usuario
+  // (2026-10-21). El sistema NO cierra la sesión solo; sólo se cierra cuando el
+  // usuario pulsa «Salir» o cierra la pestaña. Para reactivarlo, restaurar la
+  // llamada a useIdleTimeout con el tiempo deseado (ver git).
 
   return (
     <div className="flex flex-col h-screen bg-gray-100">

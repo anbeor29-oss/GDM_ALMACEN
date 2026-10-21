@@ -136,11 +136,15 @@ function getConfig(): EnvironmentConfig {
     jwt: {
       secret: process.env.JWT_SECRET!,
       refreshSecret: process.env.JWT_REFRESH_SECRET!,
-      // 8h por defecto: cubre una jornada completa y el auto-cierre por
-      // inactividad de 5h del front (si el token durara menos, la sesión se
-      // cerraría por 401 antes de llegar al contador). Se puede subir/bajar con
-      // la variable JWT_EXPIRATION en el entorno.
-      expiration: process.env.JWT_EXPIRATION || '8h',
+      // 30d por defecto (2026-10-21): a pedido del usuario el sistema NO debe
+      // cerrar la sesión solo. Antes el token vivía 8h y al expirar la siguiente
+      // petición daba 401 → el front saca al usuario a /login «en cierto momento»
+      // de la jornada. Como el front guarda la sesión en sessionStorage, la sesión
+      // YA se cierra sola al cerrar la pestaña o con «Salir»; con un token largo no
+      // se cierra a media jornada. Se puede ajustar con JWT_EXPIRATION en el entorno.
+      // (El arreglo «correcto» a futuro: refresco silencioso con el refresh token,
+      // que hoy no sirve porque /auth/refresh exige req.user y nadie lo puebla.)
+      expiration: process.env.JWT_EXPIRATION || '30d',
       refreshExpiration: process.env.JWT_REFRESH_EXPIRATION || '7d',
     },
 
