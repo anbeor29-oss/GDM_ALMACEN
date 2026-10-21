@@ -5,7 +5,7 @@
 
 import bcryptjs from 'bcryptjs';
 import { query, transaction } from '../../config/database';
-import { generateToken, generateRefreshToken } from '../../middleware/authentication';
+import { generateToken, generateRefreshToken, verifyRefreshToken } from '../../middleware/authentication';
 import { UnauthorizedError, ConflictError, NotFoundError, ValidationError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import * as redis from '../../config/redis';
@@ -130,15 +130,28 @@ export async function login(email: string, password: string): Promise<AuthRespon
 }
 
 /**
- * Refresh token
+ * Refresh token — emite un NUEVO access token a partir del refresh token.
+ *
+ * El userId sale del PROPIO refresh token (se verifica su firma), no de req.user:
+ * así funciona justo cuando el access token ya expiró (que es cuando hace falta).
+ * La validación contra Redis (revocación en logout) se aplica SÓLO si Redis está
+ * disponible; en «modo degradado» (sin Redis, como suele correr en prod) se confía
+ * en la firma del refresh token. Sin esto el endpoint respondía siempre «Invalid
+ * refresh token» (Redis null) o «User not authenticated» (req.user vacío).
  */
-export async function refreshAccessToken(userId: string, refreshToken: string): Promise<AuthResponse> {
-  // Verify refresh token exists in Redis
-  const storedToken = await redis.get<string>(`refresh_token:${userId}`);
+export async function refreshAccessToken(refreshToken: string): Promise<AuthResponse> {
+  // Verifica la firma del refresh token → userId (sirve con el access token expirado).
+  const payload = verifyRefreshToken(refreshToken);
+  const userId = payload.userId;
 
-  if (!storedToken || storedToken !== refreshToken) {
-    logger.warn(`Invalid refresh token attempt for user: ${userId}`);
-    throw new UnauthorizedError('Invalid refresh token');
+  // Con Redis disponible, exige que sea el refresh token VIGENTE (permite revocarlo
+  // en logout). En modo degradado (sin Redis) se confía en la firma JWT.
+  if (redis.isRedisReady()) {
+    const storedToken = await redis.get<string>(`refresh_token:${userId}`);
+    if (!storedToken || storedToken !== refreshToken) {
+      logger.warn(`Invalid refresh token attempt for user: ${userId}`);
+      throw new UnauthorizedError('Invalid refresh token');
+    }
   }
 
   // Get user info
@@ -148,7 +161,7 @@ export async function refreshAccessToken(userId: string, refreshToken: string): 
   );
 
   if (result.rows.length === 0) {
-    await redis.del(`refresh_token:${userId}`);
+    await redis.del(`refresh_token:${userId}`).catch(() => { /* degradado */ });
     throw new NotFoundError('User not found');
   }
 

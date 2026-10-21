@@ -45,12 +45,10 @@ export async function refreshToken(req: Request, res: Response) {
     throw new ValidationError('Refresh token is required');
   }
 
-  if (!req.user) {
-    throw new ValidationError('User not authenticated');
-  }
-
-  // Refresh token
-  const result = await authService.refreshAccessToken(req.user.userId, refreshToken);
+  // El userId sale del propio refresh token (se verifica adentro), NO de req.user:
+  // este endpoint se llama JUSTO cuando el access token ya expiró, así que exigir
+  // req.user lo volvía inservible (y por eso el front hacía logout duro en cada 401).
+  const result = await authService.refreshAccessToken(refreshToken);
 
   res.status(200).json({
     success: true,

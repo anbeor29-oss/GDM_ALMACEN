@@ -5,6 +5,7 @@
 
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { APIResponse, Invoice, Customer, Product } from '@/types';
+import { getToken, getRefreshToken, setToken, clearSession } from '@/utils/authStorage';
 
 // En dev, Vite hace proxy de /api → localhost:3000 (ver vite.config.ts).
 // En prod (Render), VITE_API_BASE apunta al servicio backend.
@@ -24,9 +25,9 @@ class APIClient {
       },
     });
 
-    // Add token to requests
+    // Add token to requests (sessionStorage es la única fuente de verdad del token).
     this.client.interceptors.request.use((config) => {
-      const token = sessionStorage.getItem('token') || localStorage.getItem('token');
+      const token = getToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -40,9 +41,32 @@ class APIClient {
     this.client.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
-        if (error.response?.status === 401) {
-          localStorage.removeItem('token');
-          window.location.href = '/login';
+        // 401: antes CUALQUIER 401 mandaba directo a /login — al expirar el access
+        // token, sacaba al usuario a media jornada. Ahora se intenta REFRESCAR el
+        // token una vez y reintentar la petición; sólo si no se puede (sin refresh
+        // token, el refresh falló, o ya se reintentó) se cierra la sesión.
+        const original: any = error.config || {};
+        const status0 = error.response?.status || 0;
+        const url0 = String(original.url || '');
+        const esLlamadaAuth = url0.includes('/auth/login') || url0.includes('/auth/refresh');
+        if (status0 === 401 && !esLlamadaAuth) {
+          const rt = getRefreshToken();
+          if (!original._retry && rt) {
+            original._retry = true;
+            try {
+              const resp = await this.client.post<APIResponse<any>>('/auth/refresh', { refreshToken: rt });
+              const nuevo = (resp.data as any)?.data?.token;
+              if (nuevo) {
+                setToken(nuevo);
+                original.headers = { ...(original.headers || {}), Authorization: `Bearer ${nuevo}` };
+                return this.client(original);   // reintenta con el token nuevo
+              }
+            } catch { /* el refresh falló → se cierra sesión abajo */ }
+          }
+          clearSession();
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
         }
         const r: any = error.response;
         const status = r?.status || 0;
