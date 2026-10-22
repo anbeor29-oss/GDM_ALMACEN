@@ -232,4 +232,17 @@ conseguir la **cuenta de Mercado Pago + credenciales sandbox** del piloto.
 - **Cómo probarlo tras desplegar:** Empresas → Editar empresa → en «Módulos» marcar **sólo** «Comercio Electrónico» →
   entrar como admin de esa empresa (o impersonar) → el menú muestra únicamente esa entrada y abre el hub.
 - **Estado:** typecheck (back+front) y `build:hosting` OK.
-- **Siguiente (rebanada 2):** migración de tablas `ec_*` + alta de **tienda** (branding, subdominio, políticas).
+
+### Rebanada 2 — Tiendas (alta/edición/baja) · **HECHO 2026-10-22**
+- **Migración** `2026-10-22_ecommerce_tiendas.sql`: tabla **`ec_store`** (company_id, nombre, **slug=subdominio** único global,
+  moneda, zona_horaria, branding `logo_url`/`color_primario`/`color_secundario`, políticas de envío/devolución/privacidad/
+  términos, `activa`, soft-delete). Índice único parcial `lower(slug)` entre tiendas vivas.
+- **Backend:** `ecommerce-tiendas.service.ts` (listar/contar/crear/actualizar/eliminar; valida slug como subdominio y su
+  unicidad, normaliza acentos) + rutas `GET/POST/PUT/DELETE /ecommerce/tiendas` (gated `ecommerce`, acotadas por
+  `companyId`); `/ecommerce/estado` ya cuenta tiendas reales.
+- **Frontend:** `pages/ecommerce/Tiendas.tsx` (lista con tarjetas de gradiente del branding + modal de alta/edición:
+  nombre, subdominio con preview `tienda.hcgm.com.mx/<slug>` y auto-sugerencia desde el nombre, moneda, colores con
+  `input[type=color]`, logo, políticas colapsables); ruta `/ecommerce/tiendas`; la tarjeta «Tiendas» del hub ya es
+  navegable y marcada «Disponible»; `api.listTiendas/crearTienda/actualizarTienda/eliminarTienda`.
+- **Estado:** typecheck (back+front) y `build:hosting` OK. La migración corre sola en Render al desplegar.
+- **Siguiente (rebanada 3):** **Productos e Inventario embebidos** (reusar servicios del ERP bajo el gate `ecommerce`) + **Catálogo web** (`ec_product_channel`).

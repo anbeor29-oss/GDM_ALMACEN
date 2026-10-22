@@ -31,6 +31,7 @@ import { AdminFacturacionPage } from '@/pages/AdminFacturacion';
 import { AdminEmisoresPage } from '@/pages/AdminEmisores';
 import { AdminDespachosPage } from '@/pages/AdminDespachos';
 import { EcommerceHubPage } from '@/pages/ecommerce/EcommerceHub';
+import { TiendasPage } from '@/pages/ecommerce/Tiendas';
 import { AdminSatgoPage } from '@/pages/AdminSatgo';
 import { AdminRendimientoPage } from '@/pages/AdminRendimiento';
 import { AdminDemosPage } from '@/pages/AdminDemos';
@@ -128,6 +129,7 @@ export default function ErpPrivado() {
         <Route path="reports"      element={<ModuleRoute module="reports"><ReportsPage /></ModuleRoute>} />
         <Route path="products" element={<ModuleRoute module="products"><ProductsPage /></ModuleRoute>} />
         <Route path="ecommerce" element={<ModuleRoute module="ecommerce"><EcommerceHubPage /></ModuleRoute>} />
+        <Route path="ecommerce/tiendas" element={<ModuleRoute module="ecommerce"><TiendasPage /></ModuleRoute>} />
         <Route path="team" element={<CompanyOnlyRoute><CompanyAdminRoute><TeamPage /></CompanyAdminRoute></CompanyOnlyRoute>} />
         <Route path="contract" element={<CompanyOnlyRoute><CompanyAdminRoute><ModuleRoute module="dashboard"><ContractPage /></ModuleRoute></CompanyAdminRoute></CompanyOnlyRoute>} />
         <Route path="carta-porte"                     element={<ModuleRoute module="carta_porte"><CartaPortePage /></ModuleRoute>} />

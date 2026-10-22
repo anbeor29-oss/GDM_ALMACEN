@@ -3389,9 +3389,21 @@ class APIClient {
     return (await this.client.post(`/admin/despachos/${despachoId}/asignar`, { companyIds })).data;
   }
 
-  /* ── Comercio Electrónico (rebanada 1) ── */
+  /* ── Comercio Electrónico ── */
   async getEcommerceEstado() {
     return (await this.client.get('/ecommerce/estado')).data;
+  }
+  async listTiendas() {
+    return (await this.client.get('/ecommerce/tiendas')).data;
+  }
+  async crearTienda(d: any) {
+    return (await this.client.post('/ecommerce/tiendas', d)).data;
+  }
+  async actualizarTienda(id: string, d: any) {
+    return (await this.client.put(`/ecommerce/tiendas/${id}`, d)).data;
+  }
+  async eliminarTienda(id: string) {
+    return (await this.client.delete(`/ecommerce/tiendas/${id}`)).data;
   }
   /** Activa el cumplimiento (SAT/CSF/IMSS) en automático para TODAS las empresas,
    *  para que el barrido de los lunes 5:30 las incluya. */

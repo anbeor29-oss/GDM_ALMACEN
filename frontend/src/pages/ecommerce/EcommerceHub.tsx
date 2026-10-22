@@ -7,6 +7,7 @@
  * ve sólo esta pantalla; el despacho (SUPER_ADMIN) ve todo.
  */
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import {
   ShoppingCart, Store, Package, Boxes, Globe, ClipboardList,
   CreditCard, Tag, Truck, Users, BarChart3, Sparkles,
@@ -16,11 +17,12 @@ import api from '@/services/api';
 type Seccion = {
   icon: any; titulo: string; desc: string;
   color: string;    // clases de acento del ícono
-  listo?: boolean;  // true cuando la sección ya opere (hoy ninguna)
+  listo?: boolean;  // true cuando la sección ya opere
+  to?: string;      // ruta si la sección ya es navegable
 };
 
 const SECCIONES: Seccion[] = [
-  { icon: Store,         titulo: 'Tiendas',       desc: 'Alta de tienda, subdominio, moneda, branding y políticas.',          color: 'bg-emerald-100 text-emerald-700' },
+  { icon: Store,         titulo: 'Tiendas',       desc: 'Alta de tienda, subdominio, moneda, branding y políticas.',          color: 'bg-emerald-100 text-emerald-700', listo: true, to: '/ecommerce/tiendas' },
   { icon: Package,       titulo: 'Productos',     desc: 'Catálogo maestro (SKU, precio, impuestos) sobre los datos del ERP.', color: 'bg-blue-100 text-blue-700' },
   { icon: Boxes,         titulo: 'Inventario',    desc: 'Existencias por almacén y disponibilidad para venta.',               color: 'bg-indigo-100 text-indigo-700' },
   { icon: Globe,         titulo: 'Catálogo web',  desc: 'Qué productos salen a la tienda, fotos, SEO y precio web.',           color: 'bg-cyan-100 text-cyan-700' },
@@ -72,21 +74,25 @@ export function EcommerceHubPage() {
 
       {/* Secciones */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {SECCIONES.map((s) => (
-          <div key={s.titulo}
-            className="group relative bg-white border border-gray-200 rounded-xl p-5 transition-all hover:shadow-md hover:-translate-y-0.5">
-            {!s.listo && (
-              <span className="absolute top-3 right-3 text-[10px] font-semibold text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
-                Próximamente
+        {SECCIONES.map((s) => {
+          const contenido = (
+            <>
+              <span className={`absolute top-3 right-3 text-[10px] font-semibold rounded-full px-2 py-0.5 ${
+                s.listo ? 'text-emerald-700 bg-emerald-50' : 'text-gray-400 bg-gray-100'}`}>
+                {s.listo ? 'Disponible' : 'Próximamente'}
               </span>
-            )}
-            <div className={`w-11 h-11 rounded-lg flex items-center justify-center ${s.color}`}>
-              <s.icon size={22} />
-            </div>
-            <h3 className="mt-3 font-semibold text-gray-900">{s.titulo}</h3>
-            <p className="mt-1 text-sm text-gray-500 leading-snug">{s.desc}</p>
-          </div>
-        ))}
+              <div className={`w-11 h-11 rounded-lg flex items-center justify-center ${s.color}`}>
+                <s.icon size={22} />
+              </div>
+              <h3 className="mt-3 font-semibold text-gray-900">{s.titulo}</h3>
+              <p className="mt-1 text-sm text-gray-500 leading-snug">{s.desc}</p>
+            </>
+          );
+          const clase = 'group relative block bg-white border border-gray-200 rounded-xl p-5 transition-all hover:shadow-md hover:-translate-y-0.5';
+          return s.to
+            ? <Link key={s.titulo} to={s.to} className={clase}>{contenido}</Link>
+            : <div key={s.titulo} className={`${clase} cursor-default`}>{contenido}</div>;
+        })}
       </div>
     </div>
   );
