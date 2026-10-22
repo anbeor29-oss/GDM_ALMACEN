@@ -32,7 +32,7 @@ export function IndicadoresPage() {
     try {
       const r: any = await api.actualizarInpc();
       const x = r?.data || {};
-      setMsg(`INPC actualizado: ${x.actualizados} periodo(s) (${x.desde} → ${x.hasta}).`);
+      setMsg(`INPC actualizado${x.fuente ? ` desde ${x.fuente}` : ''}: ${x.actualizados} periodo(s) (${x.desde} → ${x.hasta}).`);
       qc.invalidateQueries({ queryKey: ['indicadores'] });
       qc.invalidateQueries({ queryKey: ['inpc-serie'] });
     } catch (e: any) {
@@ -60,8 +60,8 @@ export function IndicadoresPage() {
           <TrendingUp size={22} className="text-primary" /> Indicadores económicos
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          INPC, UMA, salarios mínimos y UMI. El INPC se baja solo del INEGI; los demás se
-          capturan una vez al año en Nómina → Parámetros.
+          INPC, UMA, salarios mínimos y UMI. El INPC se baja solo del INEGI (o de Banxico como
+          respaldo); los demás se capturan una vez al año en Nómina → Parámetros.
         </p>
       </div>
 
@@ -73,8 +73,8 @@ export function IndicadoresPage() {
           <h2 className="font-semibold text-gray-800">INPC — Índice Nacional de Precios al Consumidor</h2>
           <div className="ml-auto flex items-center gap-2">
             {d.tieneToken === false && (
-              <span className="text-xs text-amber-700 flex items-center gap-1" title="Registra un token gratuito del INEGI y ponlo en INEGI_TOKEN (Render)">
-                <AlertTriangle size={13} /> Falta el token del INEGI
+              <span className="text-xs text-amber-700 flex items-center gap-1" title="Pon INEGI_TOKEN (INEGI) o BANXICO_TOKEN (Banxico, el mismo del tipo de cambio) en Render; o sube el archivo.">
+                <AlertTriangle size={13} /> Falta INEGI_TOKEN o BANXICO_TOKEN
               </span>
             )}
             <label className="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 hover:bg-gray-50 text-sm cursor-pointer"
@@ -85,7 +85,7 @@ export function IndicadoresPage() {
             </label>
             <button onClick={actualizar} disabled={busy}
               className="flex items-center gap-1.5 bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm">
-              <RefreshCw size={15} className={busy ? 'animate-spin' : ''} /> {busy ? 'Actualizando…' : 'Actualizar desde INEGI'}
+              <RefreshCw size={15} className={busy ? 'animate-spin' : ''} /> {busy ? 'Actualizando…' : 'Actualizar INPC'}
             </button>
           </div>
         </div>
@@ -96,7 +96,7 @@ export function IndicadoresPage() {
             <span className="text-gray-400"> (base 2ª quincena julio 2018 = 100)</span>
           </p>
         ) : (
-          <p className="text-sm text-gray-500 italic">Todavía no hay serie del INPC. Dale «Actualizar desde INEGI».</p>
+          <p className="text-sm text-gray-500 italic">Todavía no hay serie del INPC. Dale «Actualizar INPC».</p>
         )}
 
         {serie.length > 0 && (() => {

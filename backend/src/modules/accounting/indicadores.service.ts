@@ -61,7 +61,9 @@ export async function resumen() {
   return {
     inpc: inpc ? { anio: Number(inpc.anio), mes: Number(inpc.mes), valor: inpc.valor } : null,
     ejercicios: anios,
-    tieneToken: !!(process.env.INEGI_TOKEN || process.env.INEGI_INPC_URL),
+    // Hay conexión para actualizar el INPC si está el INEGI (token/URL) O Banxico (su
+    // token, el mismo del tipo de cambio) — Banxico es el respaldo oficial del INEGI.
+    tieneToken: !!(process.env.INEGI_TOKEN || process.env.INEGI_INPC_URL || process.env.BANXICO_TOKEN),
   };
 }
 
@@ -135,52 +137,110 @@ async function descargarSerieInpc(url: string): Promise<FilasInpc | { error: str
   }
 }
 
-/** Baja la serie del INPC del INEGI y la guarda en `fiscal_inpc`. */
-export async function actualizarInpc(): Promise<{ actualizados: number; desde?: string; hasta?: string; mensaje?: string }> {
+/** Baja el INPC del INEGI (probando varias áreas). Devuelve null si el INEGI NO está
+ *  configurado (sin token ni URL) para que el llamador intente otra fuente. */
+async function descargarInpcInegi(): Promise<FilasInpc | { error: string } | null> {
   const plantilla = process.env.INEGI_INPC_URL;
   const token = process.env.INEGI_TOKEN || '';
-  if (!plantilla && !token) {
-    throw new Error(
-      'Falta la conexión con el INEGI. Pon el token en INEGI_TOKEN, o pega la URL completa del ' +
-      'Constructor de Consultas del INEGI en INEGI_INPC_URL (en Render).');
-  }
-
-  // Con plantilla completa es un solo intento; si no, se prueban varias áreas hasta
-  // que una devuelva observaciones (resiste que el INEGI cambie la clave del área).
+  if (!plantilla && !token) return null;   // INEGI no configurado → que intente otra fuente
   const areas = plantilla ? ['(plantilla)'] : areasCandidatas();
-  let filas: FilasInpc | null = null;
   const fallos: string[] = [];
   for (const area of areas) {
     const url = plantilla ? urlInpcPara('') : urlInpcPara(area);
     if (!url) continue;
     const r = await descargarSerieInpc(url);
-    if (Array.isArray(r)) { filas = r; break; }
+    if (Array.isArray(r) && r.length) return r;
     if (r && 'error' in r) fallos.push(`área ${area}: ${r.error}`);
-    // r === null → respondió sin observaciones; se intenta la siguiente área.
+  }
+  return fallos.length
+    ? { error: `indicador=${INDICADOR_INPC} fuente=${FUENTE_INEGI} · ${fallos.join(' · ')}` }
+    : null;
+}
+
+/**
+ * Lee el INPC desde el SIE de Banxico (RESPALDO del INEGI). Reusa el MISMO token del
+ * tipo de cambio (`BANXICO_TOKEN`), así que no hace falta otra credencial. Banxico
+ * republica el INPC que produce el INEGI con la misma base (2ª quincena jul-2018), por
+ * lo que los valores coinciden con lo que NEXO guarda. Serie SP1 (configurable con
+ * INPC_SERIE_BANXICO). Devuelve null si no hay token de Banxico (esta fuente no aplica).
+ */
+async function descargarInpcBanxico(): Promise<FilasInpc | { error: string } | null> {
+  const token = process.env.BANXICO_TOKEN;
+  if (!token) return null;
+  const serie = process.env.INPC_SERIE_BANXICO || 'SP1';
+  const hoy = new Date();
+  const dd = (n: number) => String(n).padStart(2, '0');
+  const desde = `01/01/${hoy.getFullYear() - 8}`;                                   // ~8 años de histórico
+  const hasta = `${dd(hoy.getDate())}/${dd(hoy.getMonth() + 1)}/${hoy.getFullYear()}`;
+  const url = `https://www.banxico.org.mx/SieAPIRest/service/v1/series/${encodeURIComponent(serie)}/datos/${desde}/${hasta}`;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const resp = await fetch(url, { signal: ctrl.signal, headers: { 'Bmx-Token': token, Accept: 'application/json' } });
+    const texto = await resp.text();
+    if (!resp.ok) return { error: `HTTP ${resp.status} (serie ${serie}) · ${texto.slice(0, 120)}` };
+    let json: any;
+    try { json = JSON.parse(texto); } catch { return { error: 'Banxico no devolvió JSON.' }; }
+    const datos: any[] = json?.bmx?.series?.[0]?.datos || [];
+    if (!Array.isArray(datos) || !datos.length) return { error: `la serie ${serie} no devolvió datos.` };
+    const filas: FilasInpc = [];
+    for (const d of datos) {
+      const m = String(d?.fecha || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);        // Banxico: dd/mm/aaaa
+      const val = Number(String(d?.dato ?? '').replace(/,/g, ''));
+      if (!m || !Number.isFinite(val) || val <= 0) continue;                        // 'N/E' = sin dato
+      filas.push({ anio: Number(m[3]), mes: Number(m[2]), valor: val });
+    }
+    return filas.length ? filas : { error: 'no se pudieron interpretar los datos de Banxico.' };
+  } catch (e: any) {
+    if (e?.name === 'AbortError') return { error: 'Banxico no respondió a tiempo.' };
+    return { error: `no se pudo consultar Banxico: ${e?.message || e}` };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
+ * Baja la serie del INPC y la guarda en `fiscal_inpc`. Fuentes oficiales, en orden:
+ * INEGI y, de respaldo, **Banxico** (SIE, reusa `BANXICO_TOKEN`). Con `INPC_VIA=banxico`
+ * se prueba Banxico primero. Si una fuente no está configurada se salta a la siguiente.
+ */
+export async function actualizarInpc(): Promise<{ actualizados: number; desde?: string; hasta?: string; fuente?: string; mensaje?: string }> {
+  const fuentes: Array<{ nombre: string; etiqueta: string; fn: () => Promise<FilasInpc | { error: string } | null> }> = [
+    { nombre: 'INEGI', etiqueta: 'INEGI API', fn: descargarInpcInegi },
+    { nombre: 'Banxico', etiqueta: 'Banxico SIE', fn: descargarInpcBanxico },
+  ];
+  if (String(process.env.INPC_VIA || '').toLowerCase() === 'banxico') fuentes.reverse();
+
+  let filas: FilasInpc | null = null;
+  let etiqueta = 'INEGI API';
+  let fuenteOk = '';
+  const fallos: string[] = [];
+  for (const f of fuentes) {
+    const r = await f.fn();
+    if (Array.isArray(r) && r.length) { filas = r; etiqueta = f.etiqueta; fuenteOk = f.nombre; break; }
+    if (r && 'error' in r) fallos.push(`${f.nombre}: ${r.error}`);
+    // null → fuente no configurada; se intenta la siguiente.
   }
 
   if (!filas || !filas.length) {
     throw new Error(
-      'El INEGI no devolvió el INPC. Dos causas típicas: (1) el TOKEN (INEGI_TOKEN) está inválido o ' +
-      'caducado — genera uno nuevo en el INEGI y actualízalo en Render; o (2) cambió el indicador/área ' +
-      `(hoy INDICADOR=${INDICADOR_INPC}, FUENTE=${FUENTE_INEGI}; ajusta INEGI_INDICADOR_INPC / INEGI_AREA / ` +
-      'INEGI_FUENTE, o pega la URL del Constructor de Consultas en INEGI_INPC_URL). Mientras tanto, sube el ' +
-      'archivo «Índice general» del INPC (CSV/XLSX) con el botón de importar. ' +
-      (fallos.length ? `Detalle: ${fallos.join(' · ')}` : ''));
+      'No se pudo obtener el INPC de ninguna fuente (INEGI/Banxico). ' +
+      (fallos.length ? `Detalle: ${fallos.join(' · ')}. ` : 'Revisa INEGI_TOKEN o BANXICO_TOKEN en Render. ') +
+      'Como respaldo manual, sube el «Índice general» del INPC (CSV/XLSX) con el botón de importar.');
   }
 
   for (const f of filas) {
     await query(
       `INSERT INTO fiscal_inpc (anio, mes, valor, base, fuente, updated_at)
-       VALUES ($1,$2,$3,$4,'INEGI API',NOW())
+       VALUES ($1,$2,$3,$4,$5,NOW())
        ON CONFLICT (anio, mes) DO UPDATE
-         SET valor=EXCLUDED.valor, base=EXCLUDED.base, fuente='INEGI API', updated_at=NOW()`,
-      [f.anio, f.mes, f.valor, '2Q Jul 2018 = 100']);
+         SET valor=EXCLUDED.valor, base=EXCLUDED.base, fuente=EXCLUDED.fuente, updated_at=NOW()`,
+      [f.anio, f.mes, f.valor, '2Q Jul 2018 = 100', etiqueta]);
   }
 
   filas.sort((a, b) => (a.anio - b.anio) || (a.mes - b.mes));
   const p = (x: { anio: number; mes: number }) => `${x.anio}-${String(x.mes).padStart(2, '0')}`;
-  return { actualizados: filas.length, desde: p(filas[0]), hasta: p(filas[filas.length - 1]) };
+  return { actualizados: filas.length, desde: p(filas[0]), hasta: p(filas[filas.length - 1]), fuente: fuenteOk };
 }
 
 /* ── Importar el INPC desde un archivo del INEGI (CSV/XLSX), SIN token ──────
