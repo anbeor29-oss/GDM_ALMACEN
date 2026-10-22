@@ -407,16 +407,20 @@ function PaymentModal({
   const monitoreadas: string[] = (((monedasQ.data as any)?.items) || [])
     .map((x: any) => String(x?.moneda || '').toUpperCase()).filter(Boolean);
   const monedasPago = [...new Set(['MXN', monedaFactura, ...(monitoreadas.length ? monitoreadas : ['USD', 'EUR', 'GBP'])])];
-  // Prellena el tipo de cambio del día con el del conector (FIX de Banxico).
+  // El tipo de cambio es el del DÍA DEL PAGO (la «Fecha del pago» de arriba): así hay
+  // diferencia cambiaria contra el de la factura. Se refresca al cambiar la fecha; si lo
+  // escribes a mano se respeta (hasta que cambies la fecha).
+  const [tcManual, setTcManual] = useState(false);
+  const fechaPagoDia = (paymentDate || '').slice(0, 10);
   const tcQuery = useQuery({
-    queryKey: ['exrate', monedaFactura],
-    queryFn: () => api.getExchangeRate(monedaFactura),
-    enabled: esMonedaExtranjera,
+    queryKey: ['exrate', monedaFactura, fechaPagoDia],
+    queryFn: () => api.getExchangeRate(monedaFactura, fechaPagoDia || undefined),
+    enabled: esMonedaExtranjera && !!fechaPagoDia,
   });
   useEffect(() => {
-    const v = (tcQuery.data as any)?.data?.valor ?? (tcQuery.data as any)?.valor;
-    if (v && !tipoCambio) setTipoCambio(Number(v));
-  }, [tcQuery.data]);
+    const v = (tcQuery.data as any)?.valor ?? (tcQuery.data as any)?.data?.valor;
+    if (v && !tcManual) setTipoCambio(Number(v));
+  }, [tcQuery.data, tcManual]);
 
   /* OTRAS FACTURAS DEL MISMO CLIENTE.
    *
@@ -584,7 +588,7 @@ function PaymentModal({
           <label className="block">
             <span className="text-sm font-medium text-gray-700 block mb-1">Fecha del pago</span>
             <input type="datetime-local" value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)} className="input" />
+              onChange={(e) => { setPaymentDate(e.target.value); setTcManual(false); }} className="input" />
           </label>
 
           {/* Moneda del pago + tipo de cambio. Para una factura en USD cobrada en pesos,
@@ -605,7 +609,7 @@ function PaymentModal({
               <label className="block">
                 <span className="text-sm font-medium text-gray-700 block mb-1">Tipo de cambio (MXN/{monedaFactura})</span>
                 <input type="number" step="0.0001" min={0} value={tipoCambio || ''}
-                  onChange={(e) => setTipoCambio(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => { setTcManual(true); setTipoCambio(parseFloat(e.target.value) || 0); }}
                   placeholder={tcQuery.isLoading ? 'cargando…' : '0.0000'}
                   className="input text-right" />
               </label>

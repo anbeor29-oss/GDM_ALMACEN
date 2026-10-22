@@ -37,7 +37,8 @@ export function BalanzaPage() {
   // la URL (p. ej. al volver del auxiliar) respeta ese mes.
   const pAnio = params.get('anio') ? Number(params.get('anio')) : undefined;
   const pMes = params.get('mes') ? Number(params.get('mes')) : undefined;
-  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo(pAnio, pMes);
+  // Reportes: arrancan en el mes/año ACTUAL (salvo que la URL fije otro).
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo(pAnio, pMes, true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [auxiliar, setAuxiliar] = useState<string | null>(null);

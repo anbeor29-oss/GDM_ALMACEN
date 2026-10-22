@@ -45,8 +45,8 @@ export function MarcoEstado({ titulo, norma, descripcion, children, descargas }:
   /** Si se pasa, muestra los botones de Excel y PDF (con el ícono rojo) del estado. */
   descargas?: { excel: (a: number, m: number) => Promise<void>; pdf: (a: number, m: number) => Promise<void>; anual?: (a: number) => Promise<void> };
 }) {
-  // Arranca en el mes de trabajo (siguiente al último cerrado), no en el del calendario.
-  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
+  // Reportes (estados financieros NIF): arrancan en el mes y año ACTUAL.
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo(undefined, undefined, true);
   const q = usePeriodo(anio, mes);
   const d: any = q.data?.data;
 

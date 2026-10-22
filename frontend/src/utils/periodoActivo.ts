@@ -21,13 +21,15 @@ export function usePeriodoActivo(): { anio: number; mes: number } | undefined {
   return q.data?.data;
 }
 
-export function usePeriodoTrabajo(inicialAnio?: number, inicialMes?: number) {
+export function usePeriodoTrabajo(inicialAnio?: number, inicialMes?: number, preferirActual = false) {
   const hoy = new Date();
   const activo = usePeriodoActivo();
   const [anio, setAnioRaw] = useState(inicialAnio ?? hoy.getFullYear());
   const [mes, setMesRaw] = useState(inicialMes ?? hoy.getMonth() + 1);
-  // Si venía fijado (URL) o el usuario ya tocó el selector, no se auto-mueve.
-  const [tocado, setTocado] = useState(inicialAnio != null || inicialMes != null);
+  // No se auto-mueve al periodo activo si: venía fijado (URL), el usuario ya tocó el
+  // selector, o la pantalla PREFIERE el mes/año ACTUAL (reportes NIF y estados
+  // financieros: arrancan en el mes y año de hoy). URL manda sobre «preferir actual».
+  const [tocado, setTocado] = useState(inicialAnio != null || inicialMes != null || preferirActual);
 
   useEffect(() => {
     if (activo && !tocado) { setAnioRaw(activo.anio); setMesRaw(activo.mes); }

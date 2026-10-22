@@ -70,7 +70,8 @@ function Bloque({ titulo, nodos, total, etiquetaTotal, mascara, fuerte }: {
 
 export function BalanceGeneralPage() {
   const mascara = useMascara();
-  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
+  // Reporte: arranca en el mes y año ACTUAL.
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo(undefined, undefined, true);
   const [modo, setModo] = useState<'mensual' | 'anual'>('mensual');
   const [msg, setMsg] = useState('');
 

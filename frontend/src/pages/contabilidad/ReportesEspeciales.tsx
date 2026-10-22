@@ -19,7 +19,8 @@ const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio
 
 export function ReportesEspecialesPage() {
   const mascara = useMascara();
-  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
+  // Reporte: arranca en el mes y año ACTUAL.
+  const { anio, mes, setAnio, setMes } = usePeriodoTrabajo(undefined, undefined, true);
   const [tab, setTab] = useState<'balanza' | 'situacion'>('situacion');
   const [bajando, setBajando] = useState(false);
 

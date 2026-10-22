@@ -60,7 +60,8 @@ export function Hub({ titulo, subtitulo, icono, pestanas }: {
  * pantalla de Balanza conserva su botón (actualización manual) tal cual.
  */
 function HubConActualizacion({ children }: { children: ReactNode }) {
-  const { anio, mes } = usePeriodoTrabajo();
+  // Reportes NIF / estados financieros: trabajan el mes y año ACTUAL.
+  const { anio, mes } = usePeriodoTrabajo(undefined, undefined, true);
   const qc = useQueryClient();
   const [listo, setListo] = useState(false);
   const corrido = useRef(false);
