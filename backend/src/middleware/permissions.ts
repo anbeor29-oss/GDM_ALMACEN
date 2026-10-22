@@ -32,13 +32,13 @@ export type ModuleKey =
   | 'invoices' | 'carta_porte' | 'credit_notes' | 'customers' | 'products'
   | 'xml_reader' | 'inventory' | 'purchasing' | 'suppliers' | 'pos'
   | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria' | 'mensajes'
-  | 'nomina' | 'contabilidad' | 'checador';
+  | 'nomina' | 'contabilidad' | 'checador' | 'ecommerce';
 
 const ALL_MODULES: ModuleKey[] = [
   'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
   'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos',
   'treasury', 'reports', 'exchange_rates', 'auditoria', 'mensajes',
-  'nomina', 'contabilidad', 'checador',
+  'nomina', 'contabilidad', 'checador', 'ecommerce',
 ];
 
 /**

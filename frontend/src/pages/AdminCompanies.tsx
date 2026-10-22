@@ -24,6 +24,7 @@ const MODS_TOGGLE: Array<{ k: string; label: string }> = [
   { k: 'carta_porte', label: 'Carta Porte' }, { k: 'credit_notes', label: 'Notas de crédito' },
   { k: 'exchange_rates', label: 'Tipos de cambio' }, { k: 'auditoria', label: 'Auditoría' },
   { k: 'reports', label: 'Reportes' }, { k: 'mensajes', label: 'Mensajes' },
+  { k: 'ecommerce', label: 'Comercio Electrónico' },
 ];
 const MODS_TOGGLE_KEYS = MODS_TOGGLE.map((m) => m.k);
 import { CampoFecha } from '@/components/CampoFecha';

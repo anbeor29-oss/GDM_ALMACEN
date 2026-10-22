@@ -83,6 +83,7 @@ import { requireModule, ModuleKey } from './middleware/permissions';
 const gated = (mod: ModuleKey) => [authenticateToken, requireModule(mod)];
 import nominaRoutes          from './modules/nomina/nomina.routes';
 import checadorRoutes        from './modules/checador/checador.routes';
+import ecommerceRoutes       from './modules/ecommerce/ecommerce.routes';
 import accountingRoutes      from './modules/accounting/accounting.routes';
 import autofacturaRoutes     from './modules/autofactura/autofactura.routes';
 
@@ -252,6 +253,7 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/physical-counts`, physicalCountRoutes);
   app.use(`/api/${config.apiVersion}/nomina`,          ...gated('nomina'), nominaRoutes);
   app.use(`/api/${config.apiVersion}/checador`,        ...gated('checador'), checadorRoutes);
+  app.use(`/api/${config.apiVersion}/ecommerce`,       ...gated('ecommerce'), ecommerceRoutes);
   app.use(`/api/${config.apiVersion}/accounting`,      ...gated('contabilidad'), accountingRoutes);
   app.use(`/api/${config.apiVersion}/satgo/consultas`, ...gated('contabilidad'), satgoConsultasRoutes);
   app.use(`/api/${config.apiVersion}/pld`,             ...gated('contabilidad'), pldRoutes);

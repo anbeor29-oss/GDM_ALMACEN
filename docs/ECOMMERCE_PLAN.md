@@ -213,3 +213,23 @@ conseguir la **cuenta de Mercado Pago + credenciales sandbox** del piloto.
 - Mexico Social Commerce Report 2026 (Yahoo Finance / ResearchAndMarkets) · marketing4ecommerce.mx · orbis.agency · pangostudio.com
 - UX/diseño: cleverence.com, techwyse.com, makdigitaldesign.com · Live commerce: getstream.io, videowise.com, marketingltb.com
 - Pasarelas: Conekta, Mercado Pago, Stripe, Openpay, PayPal (docs oficiales) · PCI DSS · OWASP ASVS · SAT
+
+---
+
+## 11. Bitácora de construcción (se avanza ~1.5 h/semana, en paralelo al pulido de NEXO)
+
+### Rebanada 1 — Base + aislamiento del módulo · **HECHO 2026-10-22**
+- **Backend:** `ModuleKey 'ecommerce'` en `middleware/permissions.ts` (+ `ALL_MODULES`); `'ecommerce'` en `MODULOS_VALIDOS`
+  (admin-companies); nuevo módulo `modules/ecommerce/ecommerce.routes.ts` con `GET /ecommerce/estado`, montado en `app.ts`
+  con `gated('ecommerce')` (authenticateToken + requireModule).
+- **Frontend:** `ModuleKey 'ecommerce'` + `MODULE_LABELS` ('Comercio Electrónico') en `utils/permissions.ts`; NavItem en
+  `Layout` (`show('ecommerce')`, ícono 🛒, acento esmeralda); ruta `/ecommerce` en `ErpPrivado`; **hub**
+  `pages/ecommerce/EcommerceHub.tsx` (encabezado con gradiente + 10 tarjetas de sección «Próximamente», mobile-first);
+  `'ecommerce'` agregado a `MODS_TOGGLE` (Editar empresa); `api.getEcommerceEstado()`.
+- **Aislamiento (condición B) — por diseño, sin permisos nuevos:** una empresa con `companies.modulos_habilitados=['ecommerce']`
+  hace que su usuario ADMIN vea **SÓLO Comercio Electrónico** (lo resuelve el gating que ya existe: `requireModule` back +
+  `show()`/`ModuleRoute` front). SUPER_ADMIN/despacho ve todo. **No** se agregó `WorkGroup` nuevo (no hace falta en esta etapa).
+- **Cómo probarlo tras desplegar:** Empresas → Editar empresa → en «Módulos» marcar **sólo** «Comercio Electrónico» →
+  entrar como admin de esa empresa (o impersonar) → el menú muestra únicamente esa entrada y abre el hub.
+- **Estado:** typecheck (back+front) y `build:hosting` OK.
+- **Siguiente (rebanada 2):** migración de tablas `ec_*` + alta de **tienda** (branding, subdominio, políticas).

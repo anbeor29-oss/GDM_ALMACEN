@@ -3388,6 +3388,11 @@ class APIClient {
   async asignarDespachoEmpresas(despachoId: string, companyIds: string[]) {
     return (await this.client.post(`/admin/despachos/${despachoId}/asignar`, { companyIds })).data;
   }
+
+  /* ── Comercio Electrónico (rebanada 1) ── */
+  async getEcommerceEstado() {
+    return (await this.client.get('/ecommerce/estado')).data;
+  }
   /** Activa el cumplimiento (SAT/CSF/IMSS) en automático para TODAS las empresas,
    *  para que el barrido de los lunes 5:30 las incluya. */
   async adminActivarCumplimientoTodas() {

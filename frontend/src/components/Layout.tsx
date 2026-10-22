@@ -395,6 +395,9 @@ export function Layout() {
                     que más veces se abre al día en un mostrador, y estaba hasta
                     abajo de la lista. Para el cajero es además la única. */}
                 {show('pos')          && <NavItem to="/pos"          icon={emoji3D('🧮')} accent="rose"    label="Punto de Venta"   open={sidebarOpen} />}
+                {/* Comercio Electrónico: módulo contratable aparte. La empresa que lo
+                    tiene (modulos_habilitados=['ecommerce']) ve SÓLO esta entrada. */}
+                {show('ecommerce')    && <NavItem to="/ecommerce"    icon={emoji3D('🛒')} accent="emerald" label="Comercio Electrónico" open={sidebarOpen} />}
                 {/* FACTURAS COMO AGRUPADOR.
                      Facturas, notas de crédito, complementos de pago, clientes y
                      monedas son partes del MISMO ciclo: se factura, se corrige,

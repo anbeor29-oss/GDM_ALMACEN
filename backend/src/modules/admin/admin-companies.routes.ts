@@ -36,6 +36,7 @@ const MODULOS_VALIDOS = [
   'dashboard', 'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
   'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos', 'treasury',
   'reports', 'exchange_rates', 'auditoria', 'mensajes', 'nomina', 'contabilidad',
+  'ecommerce',
 ];
 
 const CSD_MASTER_KEY = process.env.CSD_MASTER_KEY || 'change-me-in-prod-' + crypto.randomBytes(8).toString('hex');

@@ -22,7 +22,7 @@ export type ModuleKey =
   | 'invoices' | 'carta_porte' | 'credit_notes' | 'customers' | 'products'
   | 'xml_reader' | 'inventory' | 'purchasing' | 'suppliers' | 'pos'
   | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria' | 'mensajes'
-  | 'nomina' | 'contabilidad';
+  | 'nomina' | 'contabilidad' | 'ecommerce';
 
 const ALL_MODULES: ModuleKey[] = [
   'dashboard',
@@ -32,7 +32,7 @@ const ALL_MODULES: ModuleKey[] = [
   /* Nómina sólo la alcanzan ADMIN_ALL y RECURSOS_HUMANOS: sueldos, CURP,
    * cuentas bancarias y órdenes de pensión alimenticia no son "un módulo
    * más". */
-  'nomina', 'contabilidad',
+  'nomina', 'contabilidad', 'ecommerce',
 ];
 
 /** Etiquetas legibles de cada módulo (para elegir módulos EXTRA de un usuario). */
@@ -43,6 +43,7 @@ export const MODULE_LABELS: Record<string, string> = {
   suppliers: 'Proveedores', pos: 'Punto de venta', treasury: 'Tesorería',
   reports: 'Reportes', exchange_rates: 'Tipos de cambio', auditoria: 'Auditoría',
   mensajes: 'Mensajes', nomina: 'Nómina', contabilidad: 'Contabilidad',
+  ecommerce: 'Comercio Electrónico',
 };
 
 /**
