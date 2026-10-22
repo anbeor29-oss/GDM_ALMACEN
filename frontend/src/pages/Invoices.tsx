@@ -401,7 +401,12 @@ function PaymentModal({
   const esMonedaExtranjera = monedaFactura !== 'MXN';
   const [monedaPago, setMonedaPago] = useState(monedaFactura);
   const [tipoCambio, setTipoCambio] = useState<number>(0);
-  const monedasPago = [...new Set([monedaFactura, 'MXN'])];
+  // Se puede COBRAR en cualquiera de las monedas monitoreadas (el conector trae MXN/USD/
+  // EUR/GBP). La lista sale del conector; MXN y la moneda de la factura siempre están.
+  const monedasQ = useQuery({ queryKey: ['exrates-list'], queryFn: () => api.getExchangeRates(), staleTime: 5 * 60 * 1000 });
+  const monitoreadas: string[] = (((monedasQ.data as any)?.items) || [])
+    .map((x: any) => String(x?.moneda || '').toUpperCase()).filter(Boolean);
+  const monedasPago = [...new Set(['MXN', monedaFactura, ...(monitoreadas.length ? monitoreadas : ['USD', 'EUR', 'GBP'])])];
   // Prellena el tipo de cambio del día con el del conector (FIX de Banxico).
   const tcQuery = useQuery({
     queryKey: ['exrate', monedaFactura],

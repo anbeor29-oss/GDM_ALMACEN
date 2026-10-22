@@ -337,17 +337,28 @@ export async function createPayment(companyId: string, data: PaymentInput) {
       : (data.tipoCambio && data.tipoCambio > 0
           ? { valor: data.tipoCambio, fecha: fechaISO.slice(0, 10) }
           : await resolverTipoCambioPago(moneda, fechaISO));
-    /** EquivalenciaDR de un doc: unidades de MonedaDR por 1 de MonedaP (doc USD, pago
-     *  MXN → 1/tc; misma moneda → 1). */
+    /* Se puede FACTURAR en cualquier moneda y COBRAR en cualquiera de las monitoreadas
+     * (MXN/USD/EUR/GBP). Para la equivalencia se necesita el tipo de cambio en pesos de
+     * CADA moneda involucrada: el de la factura puede venir del usuario; las demás (p. ej.
+     * la de pago, si es distinta) se resuelven del conector (Banxico). */
+    const tcMxn: Record<string, number> = { MXN: 1, [moneda]: tcFactura.valor };
+    const rateMxn = async (m: string): Promise<number> => {
+      const k = (m || 'MXN').toUpperCase();
+      if (tcMxn[k] == null) tcMxn[k] = (await resolverTipoCambioPago(k, fechaISO)).valor;
+      return tcMxn[k];
+    };
+    const tcPagoMoneda = await rateMxn(monedaPago);
+    for (const dc of docs) await rateMxn(dc.invoice.currency || 'MXN');
+    /** EquivalenciaDR de un doc: unidades de MonedaDR por 1 de MonedaP = rateP/rateDR
+     *  (doc USD, pago MXN → 1/tcUSD; doc USD, pago GBP → tcGBP/tcUSD; misma moneda → 1). */
     const equivalenciaDe = (docMoneda: string): number => {
       const dm = (docMoneda || 'MXN').toUpperCase();
       if (dm === monedaPago) return 1;
-      const rateDR = dm === 'MXN' ? 1 : tcFactura.valor;      // MXN por 1 de MonedaDR
-      const rateP = monedaPago === 'MXN' ? 1 : tcFactura.valor; // MXN por 1 de MonedaP
-      return rateP / rateDR;
+      const rateDR = tcMxn[dm] ?? tcFactura.valor;   // MXN por 1 de MonedaDR
+      return tcPagoMoneda / rateDR;                  // = rateP / rateDR
     };
-    // TipoCambioP: pesos por 1 de MonedaP. MXN → 1; si se paga en la extranjera → tc.
-    const tipoCambioP = monedaPago === 'MXN' ? 1 : tcFactura.valor;
+    // TipoCambioP: pesos por 1 de MonedaP (MXN → 1).
+    const tipoCambioP = tcPagoMoneda;
     // Monto del pago en MonedaP (para el respaldo inline del provider MOCK).
     const montoMonedaP = Math.round(montoTotalPago / (equivalenciaDe(moneda) || 1) * 100) / 100;
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
