@@ -32,6 +32,9 @@ import { AdminEmisoresPage } from '@/pages/AdminEmisores';
 import { AdminDespachosPage } from '@/pages/AdminDespachos';
 import { EcommerceHubPage } from '@/pages/ecommerce/EcommerceHub';
 import { TiendasPage } from '@/pages/ecommerce/Tiendas';
+import { ProductosEcPage } from '@/pages/ecommerce/Productos';
+import { InventarioEcPage } from '@/pages/ecommerce/Inventario';
+import { CatalogoWebPage } from '@/pages/ecommerce/CatalogoWeb';
 import { AdminSatgoPage } from '@/pages/AdminSatgo';
 import { AdminRendimientoPage } from '@/pages/AdminRendimiento';
 import { AdminDemosPage } from '@/pages/AdminDemos';
@@ -130,6 +133,9 @@ export default function ErpPrivado() {
         <Route path="products" element={<ModuleRoute module="products"><ProductsPage /></ModuleRoute>} />
         <Route path="ecommerce" element={<ModuleRoute module="ecommerce"><EcommerceHubPage /></ModuleRoute>} />
         <Route path="ecommerce/tiendas" element={<ModuleRoute module="ecommerce"><TiendasPage /></ModuleRoute>} />
+        <Route path="ecommerce/productos" element={<ModuleRoute module="ecommerce"><ProductosEcPage /></ModuleRoute>} />
+        <Route path="ecommerce/inventario" element={<ModuleRoute module="ecommerce"><InventarioEcPage /></ModuleRoute>} />
+        <Route path="ecommerce/catalogo" element={<ModuleRoute module="ecommerce"><CatalogoWebPage /></ModuleRoute>} />
         <Route path="team" element={<CompanyOnlyRoute><CompanyAdminRoute><TeamPage /></CompanyAdminRoute></CompanyOnlyRoute>} />
         <Route path="contract" element={<CompanyOnlyRoute><CompanyAdminRoute><ModuleRoute module="dashboard"><ContractPage /></ModuleRoute></CompanyAdminRoute></CompanyOnlyRoute>} />
         <Route path="carta-porte"                     element={<ModuleRoute module="carta_porte"><CartaPortePage /></ModuleRoute>} />

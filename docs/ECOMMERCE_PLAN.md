@@ -245,4 +245,20 @@ conseguir la **cuenta de Mercado Pago + credenciales sandbox** del piloto.
   `input[type=color]`, logo, políticas colapsables); ruta `/ecommerce/tiendas`; la tarjeta «Tiendas» del hub ya es
   navegable y marcada «Disponible»; `api.listTiendas/crearTienda/actualizarTienda/eliminarTienda`.
 - **Estado:** typecheck (back+front) y `build:hosting` OK. La migración corre sola en Render al desplegar.
-- **Siguiente (rebanada 3):** **Productos e Inventario embebidos** (reusar servicios del ERP bajo el gate `ecommerce`) + **Catálogo web** (`ec_product_channel`).
+
+### Rebanada 3 — Productos/Inventario embebidos + Catálogo web · **HECHO 2026-10-22**
+- **Productos (embebido):** `GET/POST/PUT/DELETE /ecommerce/productos` **reusan `products.service`** del ERP (listProducts/
+  createProduct/updateProduct/deleteProduct) bajo el gate `ecommerce` → el merchant administra la MISMA tabla `products`
+  sin ver el módulo Productos del ERP. Pantalla `pages/ecommerce/Productos.tsx` (lista + buscador + modal lean: nombre,
+  SKU auto, precio, código de barras, clave SAT/unidad con genéricos editables + aviso de que el despacho las ajusta).
+- **Inventario (embebido, lectura):** `GET /ecommerce/inventario` lee `warehouse_stock`×`products`×`warehouses` (existencias
+  por almacén + total por producto). Sólo consulta: los movimientos con capas de costo siguen en el ERP (no romper kardex).
+  Pantalla `pages/ecommerce/Inventario.tsx`.
+- **Catálogo web (núcleo):** migración `2026-10-22b_ecommerce_catalogo.sql` con **`ec_product_channel`** (publicado,
+  destacado, precio_web, titulo_web, descripcion_web, SEO; **liga por product_id, NO copia** — campo web NULL = usa el
+  maestro). Servicio `ecommerce-catalogo.service` (listar overlay, upsert web, toggle publicar, contar publicados) +
+  rutas `/ecommerce/catalogo`. Pantalla `pages/ecommerce/CatalogoWeb.tsx` (interruptor de publicado por producto, precio
+  web opcional, destacado, descripción y SEO; filtro «sólo publicados»). `/estado` ya cuenta publicados.
+- Las tres tarjetas del hub (Productos/Inventario/Catálogo web) quedan «Disponible» y navegables.
+- **Estado:** typecheck (back+front) y `build:hosting` OK; migración corre sola en Render.
+- **Siguiente (rebanada 4):** **storefront público** (catálogo→carrito→checkout) + **reserva transaccional** de stock.

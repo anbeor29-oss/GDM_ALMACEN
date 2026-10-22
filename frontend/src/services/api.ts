@@ -3405,6 +3405,33 @@ class APIClient {
   async eliminarTienda(id: string) {
     return (await this.client.delete(`/ecommerce/tiendas/${id}`)).data;
   }
+  // Productos embebidos (reusan el servicio del ERP bajo el gate ecommerce)
+  async listProductosEc(search?: string) {
+    return (await this.client.get('/ecommerce/productos', { params: { search } })).data;
+  }
+  async crearProductoEc(d: any) {
+    return (await this.client.post('/ecommerce/productos', d)).data;
+  }
+  async actualizarProductoEc(id: string, d: any) {
+    return (await this.client.put(`/ecommerce/productos/${id}`, d)).data;
+  }
+  async eliminarProductoEc(id: string) {
+    return (await this.client.delete(`/ecommerce/productos/${id}`)).data;
+  }
+  // Inventario embebido (lectura)
+  async getInventarioEc(search?: string) {
+    return (await this.client.get('/ecommerce/inventario', { params: { search } })).data;
+  }
+  // Catálogo web
+  async getCatalogoEc(params: { search?: string; publicados?: boolean } = {}) {
+    return (await this.client.get('/ecommerce/catalogo', { params })).data;
+  }
+  async guardarCatalogoWeb(productId: string, d: any) {
+    return (await this.client.put(`/ecommerce/catalogo/${productId}`, d)).data;
+  }
+  async publicarProductoEc(productId: string, publicado: boolean) {
+    return (await this.client.post(`/ecommerce/catalogo/${productId}/publicar`, { publicado })).data;
+  }
   /** Activa el cumplimiento (SAT/CSF/IMSS) en automático para TODAS las empresas,
    *  para que el barrido de los lunes 5:30 las incluya. */
   async adminActivarCumplimientoTodas() {
