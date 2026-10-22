@@ -395,6 +395,24 @@ function PaymentModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  /* Moneda de la FACTURA vs moneda EN QUE SE PAGA. Caso del usuario: factura en USD
+   * cobrada en MXN → se captura el tipo de cambio y de ahí sale la diferencia cambiaria. */
+  const monedaFactura = String((invoice as any).currency || 'MXN').toUpperCase();
+  const esMonedaExtranjera = monedaFactura !== 'MXN';
+  const [monedaPago, setMonedaPago] = useState(monedaFactura);
+  const [tipoCambio, setTipoCambio] = useState<number>(0);
+  const monedasPago = [...new Set([monedaFactura, 'MXN'])];
+  // Prellena el tipo de cambio del día con el del conector (FIX de Banxico).
+  const tcQuery = useQuery({
+    queryKey: ['exrate', monedaFactura],
+    queryFn: () => api.getExchangeRate(monedaFactura),
+    enabled: esMonedaExtranjera,
+  });
+  useEffect(() => {
+    const v = (tcQuery.data as any)?.data?.valor ?? (tcQuery.data as any)?.valor;
+    if (v && !tipoCambio) setTipoCambio(Number(v));
+  }, [tcQuery.data]);
+
   /* OTRAS FACTURAS DEL MISMO CLIENTE.
    *
    * Un CFDI tipo P admite varios DoctoRelacionado, así que un depósito que cubre
@@ -466,9 +484,17 @@ function PaymentModal({
       setError(`El monto excede el saldo restante ($${restante.toFixed(2)})`);
       return;
     }
+    // Factura extranjera cobrada en pesos: el tipo de cambio es obligatorio (alimenta
+    // la diferencia cambiaria y la EquivalenciaDR del complemento).
+    if (esMonedaExtranjera && monedaPago === 'MXN' && !(tipoCambio > 0)) {
+      setError(`Captura el tipo de cambio (MXN por ${monedaFactura}) del día del pago.`);
+      return;
+    }
     setBusy(true);
     try {
       const res = await api.createPayment({
+        monedaP: monedaPago,
+        ...(esMonedaExtranjera ? { tipoCambio } : {}),
         /* La factura desde la que se abrió el modal va primero; las demás
          * después, en el orden en que se marcaron. El backend valida cada una
          * ANTES de llamar al PAC: si alguna no puede pagarse, no se gasta el
@@ -556,6 +582,31 @@ function PaymentModal({
               onChange={(e) => setPaymentDate(e.target.value)} className="input" />
           </label>
 
+          {/* Moneda del pago + tipo de cambio. Para una factura en USD cobrada en pesos,
+              aquí se elige MXN y se captura el tipo de cambio: de ahí sale la diferencia
+              cambiaria y el complemento se timbra con MonedaP=MXN / EquivalenciaDR. */}
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700 block mb-1">Moneda del pago</span>
+              <select value={monedaPago} onChange={(e) => setMonedaPago(e.target.value)} className="input">
+                {monedasPago.map((m) => (
+                  <option key={m} value={m}>
+                    {m}{m === 'MXN' ? ' — Pesos' : m === monedaFactura ? ' (de la factura)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {esMonedaExtranjera && (
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700 block mb-1">Tipo de cambio (MXN/{monedaFactura})</span>
+                <input type="number" step="0.0001" min={0} value={tipoCambio || ''}
+                  onChange={(e) => setTipoCambio(parseFloat(e.target.value) || 0)}
+                  placeholder={tcQuery.isLoading ? 'cargando…' : '0.0000'}
+                  className="input text-right" />
+              </label>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-sm font-medium text-gray-700 block mb-1">Forma de pago (c_FormaPago)</span>
@@ -579,7 +630,7 @@ function PaymentModal({
 
           <label className="block">
             <span className="text-sm font-medium text-gray-700 block mb-1">
-              Monto del pago (MXN)
+              Monto del pago ({monedaFactura})
             </span>
             <div className="flex gap-2">
               <input type="number" min={0.01} step="0.01" max={restante}
@@ -594,6 +645,13 @@ function PaymentModal({
             <span className="text-xs text-gray-500 block mt-1">
               {amount >= restante ? '→ Marca la factura como Pagada' : '→ Marca la factura como Pago parcial'}
             </span>
+            {/* Cuando la factura es extranjera y se cobra en pesos, el equivalente en MXN. */}
+            {esMonedaExtranjera && monedaPago === 'MXN' && tipoCambio > 0 && (
+              <span className="text-xs text-emerald-700 block mt-0.5">
+                ≈ $ {(amount * tipoCambio).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                <span className="text-gray-400"> (monto que se timbra en el complemento)</span>
+              </span>
+            )}
           </label>
 
           {/* CUBRIR OTRAS FACTURAS CON EL MISMO PAGO.

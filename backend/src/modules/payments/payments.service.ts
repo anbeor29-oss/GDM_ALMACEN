@@ -62,6 +62,13 @@ export interface PaymentInput {
   paymentForm: string;        // c_FormaPago (01 efectivo, 03 transferencia, etc.)
   paymentMethod?: string;     // PUE/PPD — opcional, se hereda de la factura
   currency?: string;          // ISO 4217 (default = la moneda de la factura)
+  /* Moneda EN LA QUE SE PAGA (MonedaP del complemento). Por omisión = la moneda de la
+   * factura. Caso típico: factura en USD cobrada en MXN → monedaP='MXN'. */
+  monedaP?: string;
+  /* Tipo de cambio del día del pago: pesos por 1 unidad de la moneda de la FACTURA
+   * (p. ej. MXN por USD). Si la factura es extranjera y no viene, se resuelve del
+   * conector de tipos de cambio. Alimenta la diferencia cambiaria. */
+  tipoCambio?: number;
   notes?: string;
 }
 
@@ -318,7 +325,31 @@ export async function createPayment(companyId: string, data: PaymentInput) {
     const fechaISO = data.paymentDate
       ? fmtFechaSAT(new Date(data.paymentDate))
       : fechaEmision;
+    // `moneda` = moneda de la FACTURA (de los documentos / MonedaDR). `monedaPago` =
+    // moneda EN LA QUE SE PAGA (MonedaP). Caso del usuario: factura USD, pago en MXN.
     const moneda = data.currency || invoice.currency || 'MXN';
+    const monedaPago = (data.monedaP || moneda).toUpperCase();
+    // Pesos por 1 unidad de la moneda de la FACTURA (para la equivalencia del
+    // complemento y la diferencia cambiaria). Si el usuario lo capturó, manda; si no, se
+    // resuelve del conector (FIX de Banxico). En MXN es 1.
+    const tcFactura = moneda === 'MXN'
+      ? { valor: 1, fecha: null as string | null }
+      : (data.tipoCambio && data.tipoCambio > 0
+          ? { valor: data.tipoCambio, fecha: fechaISO.slice(0, 10) }
+          : await resolverTipoCambioPago(moneda, fechaISO));
+    /** EquivalenciaDR de un doc: unidades de MonedaDR por 1 de MonedaP (doc USD, pago
+     *  MXN → 1/tc; misma moneda → 1). */
+    const equivalenciaDe = (docMoneda: string): number => {
+      const dm = (docMoneda || 'MXN').toUpperCase();
+      if (dm === monedaPago) return 1;
+      const rateDR = dm === 'MXN' ? 1 : tcFactura.valor;      // MXN por 1 de MonedaDR
+      const rateP = monedaPago === 'MXN' ? 1 : tcFactura.valor; // MXN por 1 de MonedaP
+      return rateP / rateDR;
+    };
+    // TipoCambioP: pesos por 1 de MonedaP. MXN → 1; si se paga en la extranjera → tc.
+    const tipoCambioP = monedaPago === 'MXN' ? 1 : tcFactura.valor;
+    // Monto del pago en MonedaP (para el respaldo inline del provider MOCK).
+    const montoMonedaP = Math.round(montoTotalPago / (equivalenciaDe(moneda) || 1) * 100) / 100;
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4"
   xmlns:pago20="http://www.sat.gob.mx/Pagos20"
@@ -341,10 +372,12 @@ export async function createPayment(companyId: string, data: PaymentInput) {
   <cfdi:Complemento>
     <pago20:Pagos Version="2.0">
       <pago20:Pago FechaPago="${fechaISO}"
-        FormaDePagoP="${data.paymentForm}" MonedaP="${moneda}"
-        Monto="${montoTotalPago.toFixed(2)}">
+        FormaDePagoP="${data.paymentForm}" MonedaP="${monedaPago}"
+        TipoCambioP="${monedaPago === 'MXN' ? '1' : tipoCambioP.toFixed(6)}"
+        Monto="${montoMonedaP.toFixed(2)}">
         <pago20:DoctoRelacionado IdDocumento="${invoice.cfdi_uuid || ''}"
-          MonedaDR="${moneda}" NumParcialidad="1"
+          MonedaDR="${moneda}" EquivalenciaDR="${monedaPago === moneda ? '1' : equivalenciaDe(moneda).toFixed(6)}"
+          NumParcialidad="1"
           ImpSaldoAnt="${Number(total - alreadyPaid - alreadyCredited).toFixed(2)}"
           ImpPagado="${docs[0].monto.toFixed(2)}"
           ImpSaldoInsoluto="${docs[0].saldoInsoluto.toFixed(2)}"
@@ -454,7 +487,7 @@ export async function createPayment(companyId: string, data: PaymentInput) {
         documentos: docs.map((d) => ({
           partidas: d.partidas,
           totalFactura: d.totalFactura,
-          montoPagado: d.monto,
+          montoPagado: d.monto,              // en la moneda del DOCUMENTO (ImpPagado)
           saldoAnterior: d.saldoAnterior,
           saldoInsoluto: d.saldoInsoluto,
           parcialidad: d.parcialidad,
@@ -462,9 +495,11 @@ export async function createPayment(companyId: string, data: PaymentInput) {
           serie: d.invoice.serie,
           folio: d.invoice.folio,
           metodoPago: d.invoice.payment_method,
-          monedaDR: d.invoice.currency || 'MXN',
+          monedaDR: (d.invoice.currency || 'MXN').toUpperCase(),
+          equivalenciaDR: equivalenciaDe(d.invoice.currency || 'MXN'),
         })),
-        monedaP: moneda,
+        monedaP: monedaPago,
+        tipoCambioP,
         fechaPago: fechaISO,
         formaPago: data.paymentForm,
       })),
@@ -493,7 +528,11 @@ export async function createPayment(companyId: string, data: PaymentInput) {
     // llegan los mismos 1 000 USD pero 500 pesos más. Esa diferencia es
     // utilidad cambiaria y solo se puede calcular si aquí queda guardado el
     // tipo de cambio de hoy en lugar de reusar el de la factura.
-    const tcPago = await resolverTipoCambioPago(moneda, fechaISO);
+    // Diferencia cambiaria: se guarda el tipo de cambio pesos-por-unidad de la moneda de
+    // la FACTURA del día del pago (el que capturó el usuario o el del conector). Con
+    // factura en USD cobrada en MXN es el que alimenta la ganancia/pérdida cambiaria
+    // contra el de la factura. `montoTotalPago` va en la moneda de la factura.
+    const tcPago = tcFactura;
     const montoMxn = Math.round(montoTotalPago * tcPago.valor * 100) / 100;
 
     const insR = await transactionQuery<any>(

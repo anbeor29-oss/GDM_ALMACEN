@@ -952,6 +952,12 @@ class APIClient {
     paymentForm: string;
     paymentMethod?: string;
     currency?: string;
+    /** Moneda en que se PAGA (MonedaP). Por omisión = la de la factura. Ej.: factura
+     *  en USD cobrada en MXN → 'MXN'. */
+    monedaP?: string;
+    /** Tipo de cambio del día del pago (pesos por 1 unidad de la moneda de la factura).
+     *  Alimenta la diferencia cambiaria y la EquivalenciaDR del complemento. */
+    tipoCambio?: number;
     notes?: string;
   }) {
     const r = await this.client.post('/payments', data);

@@ -176,9 +176,15 @@ export function construirPagos20(d: DatosPago): Record<string, any> {
 
   for (const doc of d.documentos) {
     const { traslados, retenciones } = impuestosDelDocumento(doc);
-    trasladosPago.push(...traslados.map((g) => ({ ...g })));
-    retencionesPago.push(...retenciones.map((g) => ({ ...g })));
-    montoTotal += doc.montoPagado;
+    /* Factor MonedaDR → MonedaP: con la misma moneda es 1; con factura en USD y pago
+     * en MXN es el tipo de cambio (= 1/EquivalenciaDR). Los nodos *DR* (BaseDR,
+     * ImpPagado, saldos…) quedan en la moneda del DOCUMENTO; los acumulados del PAGO
+     * (Monto, ImpuestosP, Totales) van en la moneda del PAGO. Sin esto, con pago en
+     * MXN de una factura en USD, los totales saldrían en dólares y el SAT rechaza. */
+    const factorAp = doc.monedaDR === d.monedaP ? 1 : (1 / (doc.equivalenciaDR || 1));
+    trasladosPago.push(...traslados.map((g) => ({ ...g, base: g.base * factorAp })));
+    retencionesPago.push(...retenciones.map((g) => ({ ...g, base: g.base * factorAp })));
+    montoTotal += doc.montoPagado * factorAp;
 
     const hayImpuestos = traslados.length > 0 || retenciones.length > 0;
 
