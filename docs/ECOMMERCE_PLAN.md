@@ -8,6 +8,16 @@
 > **B) Módulo 100% aparte**: un usuario que yo dé de alta en Comercio Electrónico **no ve nada más que ese módulo**; y
 > yo como **SUPER_ADMIN (despacho contable) veo todos los módulos**.
 
+### Decisiones tomadas (2026-10-21)
+1. **Operación: Tienda + productos/inventario.** El módulo **embebe** la gestión de productos e inventario (como pestañas
+   DENTRO de Comercio Electrónico) para que el merchant sea autónomo. Importante: **sobre las MISMAS tablas** `products`/
+   `inventory` (no copia) — el despacho ve esos mismos datos desde el ERP completo. Así se cumplen A y B a la vez.
+2. **Segmento: B2C primero.** B2B (precios por cliente, cotizaciones, crédito) a fase 3.
+3. **Pasarela inicial: Mercado Pago** (tarjeta, OXXO, SPEI, Meses Sin Intereses), con adaptador para sumar otras.
+4. **Storefront: subdominio por tienda** (`tienda.hcgm.com.mx/<slug>`), multi-tienda desde el diseño.
+
+Pendiente de cerrar: **el merchant piloto** (empresa/cliente real que arranca primero).
+
 ---
 
 ## 0. Lo que YA existe en NEXO y vamos a reutilizar (no inventar)
@@ -33,18 +43,26 @@ NEXO ya resuelve lo difícil. El e-commerce se monta ENCIMA, no al lado:
 
 ## 1. Qué ES el módulo (alcance del cockpit)
 
-**Comercio Electrónico** es un **cockpit autocontenido** dentro de NEXO. El merchant opera SU tienda desde ahí y
-**nada más**; el back-office pesado (catálogo maestro, costos, CFDI, contabilidad) lo lleva el **despacho**.
+**Comercio Electrónico** es un **cockpit autocontenido** dentro de NEXO: el merchant opera SU tienda **y gestiona sus
+productos e inventario desde ahí**, sin ver el resto del ERP. El back-office pesado (CFDI, contabilidad, conciliación)
+lo lleva el **despacho** sobre los mismos datos.
 
-Pantallas del módulo (lo que ve el usuario del merchant):
-1. **Tiendas** — alta de tienda, dominio/subdominio, moneda, zona horaria, logo/colores (branding), políticas (envío, cambios, devoluciones, privacidad).
-2. **Catálogo web** — elige qué `products` salen a la tienda; agrega fotos, descripción larga, SEO, precio web/promo y visibilidad. **No** crea el producto maestro (ese vive en Productos, del despacho).
-3. **Pedidos** — tablero con estados (`DRAFT`→…→`DELIVERED`/`RETURNED`), historial, guía de envío.
-4. **Pagos** — operaciones de la pasarela (aprobadas, pendientes, rechazadas, reembolsos).
-5. **Promociones** — cupones, ofertas con vigencia, envío gratis.
-6. **Clientes web** — cuentas de compradores (ligadas a `customers`).
-7. **Envíos** — método/costo, captura de guía, recoger en sucursal.
-8. **Reportes** — ventas, conversión, carrito abandonado, stock bajo.
+Pantallas del módulo (pestañas que ve el usuario del merchant — y **nada más**):
+1. **Tiendas** — alta de tienda, subdominio, moneda, zona horaria, logo/colores (branding), políticas (envío, cambios, devoluciones, privacidad).
+2. **Productos** *(embebido)* — alta/edición de producto sobre la tabla real `products` (SKU, código de barras, precio, unidad, impuestos). Reusa el servicio de productos del ERP; el despacho ve lo mismo desde el módulo Productos.
+3. **Inventario** *(embebido)* — existencias por almacén sobre `warehouses`/`inventory`: entradas, ajustes y consulta. Mismos datos que ve el despacho.
+4. **Catálogo web** — elige qué productos salen a la tienda; agrega fotos, descripción larga, SEO, precio web/promo y visibilidad (contenido web en `ec_product_channel`, sin tocar el maestro).
+5. **Pedidos** — tablero con estados (`DRAFT`→…→`DELIVERED`/`RETURNED`), historial, guía de envío.
+6. **Pagos** — operaciones de la pasarela (aprobadas, pendientes, rechazadas, reembolsos).
+7. **Promociones** — cupones, ofertas con vigencia, envío gratis.
+8. **Clientes web** — cuentas de compradores (ligadas a `customers`).
+9. **Envíos** — método/costo, captura de guía, recoger en sucursal.
+10. **Reportes** — ventas, conversión, carrito abandonado, stock bajo.
+
+**Clave del aislamiento (B):** Productos e Inventario se montan como **pestañas dentro del módulo Comercio Electrónico**
+(rutas y endpoints protegidos por `requireModule('ecommerce')`), **no** como las entradas separadas del ERP. Así el
+merchant con `modulos_habilitados=['ecommerce']` gestiona los datos reales **sin que aparezcan** los módulos Productos/
+Inventario en su menú; el despacho (SUPER_ADMIN) sí los ve, sobre las mismas tablas.
 
 El **storefront público** (la tienda que ve el comprador) es un sitio aparte servido por NEXO (ver §4).
 
@@ -66,10 +84,11 @@ El **storefront público** (la tienda que ve el comprador) es un sitio aparte se
 5. **El merchant es un cliente del despacho**: encaja con `despachos_contables` — el despacho factura el servicio de
    e-commerce por el mismo motor de cobro por usuario ([[cobro-por-usuario-algoritmo]], [[despachos-contables]]).
 
-> **Decisión clave (te pregunto):** ¿el merchant **sólo opera la tienda** (catálogo web, pedidos, promos, pagos, envíos)
-> y el despacho lleva productos maestros + inventario + CFDI + contabilidad? Es lo que recomiendo y lo que hace limpio
-> el “no ve nada más”. La alternativa (embeber también Productos/Inventario dentro del módulo) es más trabajo y rompe el
-> aislamiento.
+> **Decisión tomada:** el módulo **embebe productos e inventario** (el merchant es autónomo). El aislamiento se mantiene
+> porque esas pestañas viven **dentro** del módulo `ecommerce` y sus endpoints se protegen con `requireModule('ecommerce')`:
+> el merchant NO ve las entradas separadas de Productos/Inventario, pero escribe en las **mismas tablas** que el despacho
+> lee desde el ERP. Un poco más de trabajo (reusar los servicios de productos/inventario bajo el gate de ecommerce), pero
+> cumple A (misma BD) y B (un solo módulo visible) a la vez.
 
 ---
 
@@ -139,11 +158,12 @@ Investigación oct-2026 (fuentes al final; cifras de blogs/reportes, direccional
 - **Entregable:** este plan aprobado + contratos de datos.
 
 ### Fase 1 — MVP B2C (P0)
-- `ModuleKey ecommerce` + gating (condición B funcionando: usuario merchant ve sólo el módulo).
-- Alta de **tienda** + branding + 1 almacén habilitado.
+- `ModuleKey ecommerce` + gating (condición B: el usuario merchant ve **sólo** Comercio Electrónico).
+- **Productos e Inventario embebidos** (pestañas del módulo, gated `ecommerce`, sobre `products`/`inventory` reales).
+- Alta de **tienda** + branding + 1 almacén habilitado + **subdominio** (`tienda.hcgm.com.mx/<slug>`).
 - **Catálogo web** sobre `products` (publicar, fotos, precio web, SEO).
 - **Storefront** mobile-first: catálogo, búsqueda simple, carrito, **checkout de 1 página**, pago como invitado.
-- **1 pasarela** (ver decisión) con checkout tokenizado + **webhook firmado**.
+- **Mercado Pago** con checkout tokenizado/alojado (tarjeta, OXXO, SPEI, MSI) + **webhook firmado** (pago asíncrono real).
 - **Reserva transaccional** de stock + idempotencia (anti-sobreventa).
 - **Pedido** con estados + fotografía histórica, integrado a Ventas/`invoices`.
 - Tablero de pedidos + bitácora + reconciliación mínima.
@@ -180,12 +200,12 @@ dependencia de una pasarela (adaptador común + 2º proveedor a futuro) · exces
 
 ---
 
-## 9. Decisiones que necesito de ti (antes de programar)
-1. **Modelo de operación (condición B):** ¿el merchant **sólo opera la tienda** y el despacho lleva back-office (recomendado), o el módulo embebe también productos/inventario?
-2. **B2C o B2B primero:** recomiendo **B2C** para el MVP y B2B en fase 3. ¿De acuerdo?
-3. **Pasarela inicial:** Mercado Pago (ecosistema + MSI + OXXO), Conekta (API mexicana), Stripe u otra.
-4. **Storefront:** nativo en NEXO, **multi-tienda por subdominio** (recomendado), o ¿dominio propio por cliente desde el MVP?
-5. **Piloto:** ¿qué empresa/cliente real arranca primero?
+## 9. Decisiones
+**Cerradas (2026-10-21):** (1) operación = **tienda + productos/inventario embebidos**; (2) **B2C** primero; (3) pasarela
+= **Mercado Pago**; (4) storefront = **subdominio por tienda**.
+
+**Pendiente:** (5) **merchant piloto** — ¿qué empresa/cliente real arranca primero? Y, cuando toque programar la pasarela,
+conseguir la **cuenta de Mercado Pago + credenciales sandbox** del piloto.
 
 ---
 
