@@ -11,7 +11,7 @@
 
 export type WorkGroup =
   | 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA' | 'PUNTO_VENTA'
-  | 'RECURSOS_HUMANOS' | 'CONTABILIDAD' | 'CHECADOR';
+  | 'RECURSOS_HUMANOS' | 'CONTABILIDAD' | 'CHECADOR' | 'ECOMMERCE';
 
 /**
  * Una clave por bloque del menú. 'dashboard' es común a todos los grupos y se
@@ -91,6 +91,12 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
    * kiosco a pantalla completa). El acceso al kiosco/campo lo da <ChecadorRoute>,
    * no este mapa; enrolar/registro/admin le quedan vedados (no tiene 'nomina'). */
   CHECADOR: [],
+  /* COMERCIO ELECTRÓNICO: tienda en línea y nada más. El usuario no debe ver el
+   * ERP fiscal (facturación, nómina, contabilidad): entra directo a su tienda.
+   * El catálogo/inventario que el módulo necesita los sirve el propio e-commerce
+   * (reusa products/inventory bajo requireModule('ecommerce')), así que el grupo
+   * sólo necesita 'ecommerce'. El super admin sí ve todo (no usa grupos). */
+  ECOMMERCE: ['ecommerce'],
 };
 
 /** Etiquetas legibles de cada grupo (para selectores). */
@@ -104,6 +110,7 @@ export const WORK_GROUP_LABELS: Record<WorkGroup, string> = {
   RECURSOS_HUMANOS: 'Recursos Humanos (sólo nómina)',
   CONTABILIDAD: 'Contabilidad',
   CHECADOR: 'Checador (sólo checar entrada/salida)',
+  ECOMMERCE: 'Comercio Electrónico (sólo tienda en línea)',
 };
 
 /** Detalle de lo que ve cada grupo — se muestra bajo el selector al dar de alta. */
@@ -129,6 +136,9 @@ export const WORK_GROUP_DETAIL: Record<WorkGroup, string> = {
   CHECADOR: 'Cuenta compartida para checar entrada/salida en el kiosco o el '
     + 'celular. La cara identifica a cada quien. NO ve nómina, ni enrola, ni '
     + 'administra: sólo registra su asistencia.',
+  ECOMMERCE: 'Sólo Comercio Electrónico (tienda, catálogo web, pedidos). Pensado '
+    + 'para quien administra la tienda en línea: entra directo a ella y no ve el '
+    + 'resto del sistema (facturación, nómina, contabilidad).',
 };
 
 export function canAccess(group: string | undefined, mod: ModuleKey): boolean {
@@ -178,6 +188,7 @@ export const HOME_POR_GRUPO: Record<string, string> = {
   RECURSOS_HUMANOS: '/nomina',
   CONTABILIDAD: '/contabilidad/cuentas',
   CHECADOR: '/checador/kiosco',
+  ECOMMERCE: '/ecommerce',
 };
 
 /** A dónde mandar a este usuario. Sin grupo conocido, al dashboard. */

@@ -234,6 +234,16 @@ export function Layout() {
   const empresaModulos: string[] | null = (empresaActivaRow?.modulos_habilitados?.length)
     ? empresaActivaRow.modulos_habilitados : null;
 
+  /* Inquilino SÓLO de Comercio Electrónico: su usuario entra directo a la tienda
+   * y NO ve el ERP fiscal (ni el tablero, ni el XML del SAT, ni las paredes de
+   * contrato/vigencias, que no le aplican). Dos señales lo marcan: el grupo de
+   * trabajo del usuario es ECOMMERCE, o la empresa tiene habilitado únicamente
+   * 'ecommerce'. El SUPER_ADMIN nunca entra aquí: opera toda la plataforma. */
+  const soloEcommerce =
+    user?.role !== 'SUPER_ADMIN' &&
+    ((user as any)?.workGroup === 'ECOMMERCE' ||
+      (!!empresaModulos && empresaModulos.length === 1 && empresaModulos[0] === 'ecommerce'));
+
   /* ¿La empresa ya tiene catálogo contable? Sin él, en Contabilidad sólo se
      ofrece arrancar/importar (catálogo o respaldo); lo demás se desbloquea
      cuando ya hay catálogo. Se refresca al cambiar de empresa. */
@@ -276,7 +286,9 @@ export function Layout() {
   const horasRestantes = ob?.horasRestantes ?? null;
   // Se cubre el contenido/menú si venció la prueba o (empresa no-prueba sin firmar),
   // pero NUNCA durante la prueba activa (ahí se explora).
-  const bloquearContenido = pruebaVencida || (debeeFirmarContrato && !enPruebaActiva);
+  // El inquilino de sólo-ecommerce no tiene obligaciones fiscales de NEXO
+  // (contrato de facturación, prueba 72 h): no se le cubre el contenido.
+  const bloquearContenido = !soloEcommerce && (pruebaVencida || (debeeFirmarContrato && !enPruebaActiva));
   const [showDemo, setShowDemo] = useState(false);
 
   /* Habilita la opción del checador en ESTE equipo sólo si la empresa ya está
@@ -300,7 +312,9 @@ export function Layout() {
   const nivelVig = vig?.nivel || 'OK';
   // Bloqueo por vencimiento: cubre el contenido salvo donde se cargan los certificados
   // (XML del SAT para la e.firma; el CSD se carga en el modal del Emisor, que va encima).
-  const bloquearVigencia = nivelVig === 'BLOQUEO' && !location.pathname.startsWith('/xml-sat');
+  // Igual con el vencimiento de sellos/e.firma: son certificados de facturación,
+  // ajenos a una tienda en línea. No bloquean al inquilino de sólo-ecommerce.
+  const bloquearVigencia = !soloEcommerce && nivelVig === 'BLOQUEO' && !location.pathname.startsWith('/xml-sat');
 
   const doLogout = useCallback(async (reason?: 'idle') => {
     try {
@@ -341,7 +355,7 @@ export function Layout() {
             <div className="flex items-center gap-2.5">
               <GdmLogo size={40} className="shadow-md shrink-0" />
               <div className="leading-tight">
-                <h1 className="font-semibold text-sm text-slate-800 tracking-tight">GDM NEXO</h1>
+                <h1 className="font-semibold text-sm text-slate-800 tracking-tight">{soloEcommerce ? 'Comercio Electrónico' : 'GDM NEXO'}</h1>
               </div>
             </div>
           )}
@@ -367,6 +381,9 @@ export function Layout() {
             /* Además del grupo/extra, la EMPRESA debe tener el módulo habilitado
              * (servicios contratados). 'dashboard' nunca se oculta (es la casa). */
             const show = (m: ModuleKey) =>
+              // Inquilino de sólo-ecommerce: ÚNICAMENTE la tienda. Ni el tablero ni
+              // el XML del SAT (que normalmente van siempre): aquí estorban.
+              soloEcommerce ? m === 'ecommerce' :
               (canAccess(g, m) || extra.includes(m))
               && (!empresaModulos || m === 'dashboard' || m === 'xml_reader' || empresaModulos.includes(m));
             const esAdmin = user?.role === 'ADMIN';   // aquí ya se excluyó SUPER_ADMIN
@@ -637,7 +654,7 @@ export function Layout() {
                 {/* Mensajería: el ADMIN de la empresa siempre la ve (recados internos
                     para dar mantenimiento a su gente); además, cualquier grupo que
                     traiga el módulo 'mensajes'. */}
-                {(show('mensajes') || esAdmin) && <NavItem to="/mensajes"     icon={emoji3D('✉️')} accent="sky"     label="Mensajes"         open={sidebarOpen} contador={sinLeer} />}
+                {(show('mensajes') || (esAdmin && !soloEcommerce)) && <NavItem to="/mensajes"     icon={emoji3D('✉️')} accent="sky"     label="Mensajes"         open={sidebarOpen} contador={sinLeer} />}
                 {/* «Reportes» general se oculta a todos: ese mismo reporte ya vive
                     dentro de Facturas. La ruta /reports sigue existiendo por si se
                     necesita, pero no se muestra en el menú. */}
@@ -674,7 +691,7 @@ export function Layout() {
                     el módulo 'dashboard', y un admin acotado a otro grupo perdía
                     el control de sus usuarios). Gestionar al equipo es cuestión de
                     AUTORIDAD, no de grupo de trabajo. */}
-                {esAdmin && (
+                {esAdmin && !soloEcommerce && (
                   <NavItem to="/team"       icon={emoji3D('👥')} accent="violet"  label="Equipo · Usuarios" open={sidebarOpen} />
                 )}
                 {/* El contrato lo ve el ADMINISTRADOR de la empresa, y sólo
@@ -722,7 +739,9 @@ export function Layout() {
 
         {/* Bloque Emisor + Sesión + Salir */}
         <div className="border-t border-slate-200">
-          {/* Emisor (datos de la empresa que factura) */}
+          {/* Emisor (datos de la empresa que factura). El inquilino de sólo-ecommerce
+              no factura con CSD: no se le ofrece este bloque. */}
+          {!soloEcommerce && (
           <button
             onClick={() => setShowIssuer(true)}
             className="w-full flex items-center gap-3 px-3 py-3 hover:bg-slate-50 transition-colors text-left group"
@@ -740,6 +759,7 @@ export function Layout() {
               </div>
             )}
           </button>
+          )}
 
           {/* Sesión + Salir */}
           <div className="p-3 border-t border-slate-200 bg-slate-50/50">
@@ -767,7 +787,7 @@ export function Layout() {
 
       {/* Contenido principal */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        {enPruebaActiva && (
+        {enPruebaActiva && !soloEcommerce && (
           <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
             <span className="font-medium text-amber-900 flex items-center gap-1.5">
               <Clock size={15} /> Modo prueba{typeof horasRestantes === 'number' ? ` — te quedan ~${horasRestantes} h` : ''}
@@ -811,7 +831,7 @@ export function Layout() {
         <IssuerModal companyId={user.companyId} onClose={() => setShowIssuer(false)} />
       )}
       {showDemo && <ModalDemo correoInicial={user?.email} onCerrar={() => setShowDemo(false)} />}
-      {(nivelVig === 'AVISO' || nivelVig === 'DIARIO') && (
+      {!soloEcommerce && (nivelVig === 'AVISO' || nivelVig === 'DIARIO') && (
         <AvisoVigencias nivel={nivelVig} sellos={vig?.sellos || []} minDias={vig?.minDias ?? null}
           onIrCertificados={() => { setShowIssuer(true); }} />
       )}

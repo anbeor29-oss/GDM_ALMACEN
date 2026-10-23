@@ -234,8 +234,14 @@ router.post('/:id/reset-password', asyncHandler(async (req: Request, res: Respon
  * ══════════════════════════════════════════════════════════════════════════ */
 
 /** Vocabulario único de grupos — espejo del CHECK de users.work_group
- *  (migración 2026-07-28c) y de middleware/permissions.ts. */
-const WORK_GROUPS = ['ADMIN_ALL', 'VENTAS', 'ALMACEN', 'COMPRAS', 'TESORERIA', 'CHECADOR'];
+ *  (última: migración 2026-10-23_grupo_ecommerce) y de middleware/permissions.ts.
+ *  Debe traer TODOS los grupos del CHECK; si falta uno, el alta por «Equipo» lo
+ *  rechaza aunque la base lo acepte (así se habían quedado fuera RECURSOS_HUMANOS,
+ *  CONTABILIDAD y PUNTO_VENTA). */
+const WORK_GROUPS = [
+  'ADMIN_ALL', 'VENTAS', 'ALMACEN', 'COMPRAS', 'TESORERIA', 'PUNTO_VENTA',
+  'RECURSOS_HUMANOS', 'CONTABILIDAD', 'CHECADOR', 'ECOMMERCE',
+];
 
 /** Roles que un ADMIN de empresa puede asignar dentro de su propia empresa. */
 const ASSIGNABLE_ROLES = ['USER', 'MANAGER'];

@@ -17,7 +17,7 @@ import { Request, Response, NextFunction } from 'express';
 
 export type WorkGroup =
   | 'ADMIN_ALL' | 'VENTAS' | 'ALMACEN' | 'COMPRAS' | 'TESORERIA' | 'PUNTO_VENTA'
-  | 'RECURSOS_HUMANOS' | 'CONTABILIDAD' | 'CHECADOR';
+  | 'RECURSOS_HUMANOS' | 'CONTABILIDAD' | 'CHECADOR' | 'ECOMMERCE';
 
 /**
  * Claves de módulo protegibles — una por bloque del menú.
@@ -118,6 +118,11 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
    * check-in (POST /checador/checada). Quien enrola/administra es RECURSOS_HUMANOS
    * o ADMIN. La CARA identifica a cada quien; la cuenta sólo abre la puerta. */
   CHECADOR: ['checador'],
+  /* COMERCIO ELECTRÓNICO: sólo la tienda en línea. El usuario administra su
+   * e-commerce y no ve el ERP fiscal. El catálogo/inventario que el módulo
+   * necesita los expone el propio e-commerce bajo requireModule('ecommerce'),
+   * así que el grupo sólo necesita 'ecommerce'. SUPER_ADMIN ve todo. */
+  ECOMMERCE: ['ecommerce'],
 };
 
 export function groupCanAccess(group: WorkGroup | undefined, mod: ModuleKey): boolean {
