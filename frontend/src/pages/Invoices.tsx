@@ -391,7 +391,8 @@ function PaymentModal({
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 16));
   const [paymentForm, setPaymentForm] = useState('03');
   const [paymentMethod, setPaymentMethod] = useState('PUE');
-  const [amount, setAmount] = useState<number>(0);
+  const [amount, setAmount] = useState<number>(0);   // en la MONEDA DEL PAGO
+  const [amountTouched, setAmountTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -481,22 +482,46 @@ function PaymentModal({
   const acreditado = Number(totals?.credited || 0);
   const restante  = Number(totals?.remaining ?? invoice.total);
 
-  // Cuando llega el balance real, precargamos el campo "monto" con el saldo
+  /* Conversión moneda del PAGO ↔ moneda de la FACTURA. El «Monto del pago» se captura en
+   * la moneda del pago (p. ej. 17,000 MXN) y se CONVIERTE a la de la factura para aplicarlo
+   * al saldo (ImpPagado): el peso no es 1:1 con el dólar. */
+  const tcPagoQuery = useQuery({
+    queryKey: ['exrate', monedaPago, fechaPagoDia],
+    queryFn: () => api.getExchangeRate(monedaPago, fechaPagoDia || undefined),
+    enabled: monedaPago !== 'MXN' && monedaPago !== monedaFactura && !!fechaPagoDia,
+  });
+  const rateInvoiceMxn = monedaFactura === 'MXN' ? 1 : (tipoCambio > 0 ? tipoCambio : 0);
+  const ratePagoMxn = monedaPago === 'MXN' ? 1
+    : monedaPago === monedaFactura ? (tipoCambio > 0 ? tipoCambio : 0)
+    : Number((tcPagoQuery.data as any)?.valor ?? (tcPagoQuery.data as any)?.data?.valor ?? 0);
+  const necesitaConv = monedaPago !== monedaFactura;
+  const factorPagoAFactura = (ratePagoMxn > 0 && rateInvoiceMxn > 0) ? ratePagoMxn / rateInvoiceMxn : 0;
+  // Lo que este monto (en moneda del pago) aplica a la factura (en su moneda) = ImpPagado.
+  const impPagadoFactura = !necesitaConv
+    ? amount
+    : (factorPagoAFactura > 0 ? Math.round(amount * factorPagoAFactura * 100) / 100 : 0);
+  // Saldo expresado en la moneda del pago (para «Pago total» y la precarga).
+  const saldoEnPago = !necesitaConv ? restante
+    : (factorPagoAFactura > 0 ? Math.round(restante / factorPagoAFactura * 100) / 100 : restante);
+
+  // Precarga el monto con el saldo (en la moneda del pago) mientras el usuario no lo toque.
   useEffect(() => {
-    if (totals && amount === 0) setAmount(restante);
-  }, [totals]);
+    if (restante > 0 && !amountTouched) setAmount(saldoEnPago);
+  }, [totals, saldoEnPago, amountTouched, restante]);
 
   const submit = async () => {
     setError('');
     if (amount <= 0) { setError('Captura un monto mayor que 0'); return; }
-    if (amount > restante + 0.01) {
-      setError(`El monto excede el saldo restante ($${restante.toFixed(2)})`);
+    // Si se paga en una moneda distinta a la de la factura, hace falta el tipo de cambio
+    // para convertir (si no, no se puede validar contra el saldo ni armar el complemento).
+    if (necesitaConv && factorPagoAFactura <= 0) {
+      setError(`Captura el tipo de cambio (MXN por ${monedaFactura}) del día del pago.`);
       return;
     }
-    // Factura extranjera cobrada en pesos: el tipo de cambio es obligatorio (alimenta
-    // la diferencia cambiaria y la EquivalenciaDR del complemento).
-    if (esMonedaExtranjera && monedaPago === 'MXN' && !(tipoCambio > 0)) {
-      setError(`Captura el tipo de cambio (MXN por ${monedaFactura}) del día del pago.`);
+    // El monto se valida YA CONVERTIDO a la moneda de la factura contra el saldo (el peso
+    // no es 1:1 con el dólar): 17,000 MXN ≈ 912 USD, que cabe en un saldo de 8,460 USD.
+    if (impPagadoFactura > restante + 0.01) {
+      setError(`El monto excede el saldo restante (${restante.toFixed(2)} ${monedaFactura}).`);
       return;
     }
     setBusy(true);
@@ -509,7 +534,8 @@ function PaymentModal({
          * ANTES de llamar al PAC: si alguna no puede pagarse, no se gasta el
          * timbre. */
         documentos: [
-          { invoiceId: invoice.id, monto: amount },
+          // `monto` va en la moneda de la FACTURA (ImpPagado): el capturado, ya convertido.
+          { invoiceId: invoice.id, monto: impPagadoFactura },
           ...Object.entries(extras).map(([invoiceId, monto]) => ({
             invoiceId,
             monto: Number(monto),
@@ -639,26 +665,26 @@ function PaymentModal({
 
           <label className="block">
             <span className="text-sm font-medium text-gray-700 block mb-1">
-              Monto del pago ({monedaFactura})
+              Monto del pago ({monedaPago})
             </span>
             <div className="flex gap-2">
-              <input type="number" min={0.01} step="0.01" max={restante}
+              <input type="number" min={0.01} step="0.01"
                 value={amount}
-                onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+                onChange={(e) => { setAmountTouched(true); setAmount(parseFloat(e.target.value) || 0); }}
                 className="input flex-1 text-right" />
-              <button type="button" onClick={() => setAmount(restante)}
+              <button type="button" onClick={() => { setAmountTouched(true); setAmount(saldoEnPago); }}
                 className="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50">
                 Pago total
               </button>
             </div>
             <span className="text-xs text-gray-500 block mt-1">
-              {amount >= restante ? '→ Marca la factura como Pagada' : '→ Marca la factura como Pago parcial'}
+              {impPagadoFactura >= restante - 0.01 ? '→ Marca la factura como Pagada' : '→ Marca la factura como Pago parcial'}
             </span>
-            {/* Cuando la factura es extranjera y se cobra en pesos, el equivalente en MXN. */}
-            {esMonedaExtranjera && monedaPago === 'MXN' && tipoCambio > 0 && (
+            {/* Si se paga en otra moneda, lo que REALMENTE se aplica a la factura (convertido). */}
+            {necesitaConv && factorPagoAFactura > 0 && (
               <span className="text-xs text-emerald-700 block mt-0.5">
-                ≈ $ {(amount * tipoCambio).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
-                <span className="text-gray-400"> (monto que se timbra en el complemento)</span>
+                ≈ {impPagadoFactura.toLocaleString('es-MX', { minimumFractionDigits: 2 })} {monedaFactura} se aplican a la factura
+                <span className="text-gray-400"> · saldo {restante.toLocaleString('es-MX', { minimumFractionDigits: 2 })} {monedaFactura}</span>
               </span>
             )}
           </label>
