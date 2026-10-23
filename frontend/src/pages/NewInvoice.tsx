@@ -326,10 +326,14 @@ export function NewInvoicePage() {
         // así el valor guardado es el mismo que consultó el backend y no el que
         // el navegador tenía en pantalla hace diez minutos.
         notes,
+        // Se envían tanto líneas de catálogo (con productId) como de texto libre
+        // (honorarios, servicio único): basta cantidad + precio y producto O
+        // descripción. En el texto libre mandamos clave SAT / unidad capturadas
+        // a mano; el backend las guarda en invoice_items y el CFDI las usa.
         items: lines
-          .filter((l) => l.productId && l.cantidad > 0)
+          .filter((l) => l.cantidad > 0 && l.precioUnit > 0 && (l.productId || (l.description || '').trim()))
           .map((l) => ({
-            productId: l.productId,
+            productId: l.productId || undefined,
             quantity: l.cantidad,
             unitPrice: l.precioUnit,
             taxPresetId: l.taxPresetId,
@@ -337,6 +341,9 @@ export function NewInvoicePage() {
             // el texto respecto al catálogo (ej. clave SAT 01010101 genérica pero
             // descripción específica por factura). El backend la usa en el XML.
             description: (l.description || '').trim() || undefined,
+            // Solo relevantes en texto libre; en catálogo el backend prioriza el producto.
+            claveSat: (l.claveSat || '').trim() || undefined,
+            unitCode: (l.unitCode || '').trim() || undefined,
           })),
       };
       return isEditing
@@ -358,8 +365,12 @@ export function NewInvoicePage() {
     e.preventDefault();
     setError('');
     if (!customerId) { setError('Selecciona un cliente'); return; }
-    const hasLines = lines.some((l) => l.productId && l.cantidad > 0);
-    if (!hasLines) { setError('Captura al menos una línea con producto y cantidad'); return; }
+    // Una línea sirve si tiene cantidad y precio, y producto del catálogo O una
+    // descripción (texto libre: honorarios, servicio único, etc.).
+    const hasLines = lines.some(
+      (l) => l.cantidad > 0 && l.precioUnit > 0 && (l.productId || (l.description || '').trim())
+    );
+    if (!hasLines) { setError('Captura al menos una línea con cantidad, precio y producto o descripción'); return; }
     saveMutation.mutate();
   };
 

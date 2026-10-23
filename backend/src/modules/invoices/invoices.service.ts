@@ -47,10 +47,15 @@ async function resolverTipoCambio(
 }
 
 interface InvoiceLineItem {
-  productId: string;
+  productId?: string;   // Opcional: líneas de texto libre (honorarios, servicio único) no llevan producto del catálogo
   quantity: number;
   unitPrice?: number;  // Si no se proporciona, se toma del producto
   taxPresetId?: string; // ej. 'iva16', 'iva0', 'ivaex', 'hon_pf_pm', ...
+  // Campos de texto libre — se usan cuando NO hay productId. El usuario captura
+  // clave SAT, unidad y descripción a mano (el CFDI los toma de invoice_items).
+  claveSat?: string;
+  unitCode?: string;
+  description?: string;
 }
 
 /**
@@ -98,6 +103,64 @@ function r2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/**
+ * Resuelve una línea de factura (con o sin producto del catálogo) a la forma
+ * que se inserta en invoice_items, junto con sus importes por línea.
+ *
+ * Si `item.productId` viene, se toma clave SAT / unidad / precio / descripción
+ * del producto (comportamiento histórico). Si NO viene, es una línea de texto
+ * libre (ej. "Pago de honorarios médicos"): el usuario capturó clave SAT,
+ * unidad y descripción a mano. El CFDI (build-cfdi-json) lee esos valores
+ * directo de invoice_items, así que product_id queda NULL sin romper el timbrado.
+ */
+async function resolverLineaFactura(companyId: string, item: InvoiceLineItem) {
+  const product = item.productId
+    ? await productsService.getProductById(companyId, item.productId)
+    : null;
+  const preset = resolveTaxPreset(item.taxPresetId, product);
+
+  const unitPrice    = item.unitPrice || product?.base_price || 0;
+  const lineSubtotal = r2(item.quantity * unitPrice);
+  const lineIvaTrasl = r2(lineSubtotal * preset.rateIva);
+  const lineRetIva   = r2(lineSubtotal * preset.retIva);
+  const lineRetIsr   = r2(lineSubtotal * preset.retIsr);
+  const lineIeps     = r2(lineSubtotal * preset.iepsRate);
+  const lineTotal    = r2(lineSubtotal + lineIvaTrasl + lineIeps - lineRetIva - lineRetIsr);
+
+  const claveSat    = (product?.clave_sat || item.claveSat || '').toString().trim();
+  const unitCode    = (product?.unit_code || item.unitCode || '').toString().trim();
+  const description = (item.description || product?.name || '').toString().trim();
+
+  // Una línea de texto libre necesita al menos descripción (la clave SAT puede
+  // quedar genérica y la ajusta el usuario antes de timbrar).
+  if (!product && !description) {
+    throw new ValidationError('Cada concepto necesita un producto del catálogo o una descripción');
+  }
+
+  const line = {
+    productId: item.productId || null,
+    quantity: item.quantity,
+    unitPrice,
+    subtotal: lineSubtotal,
+    taxAmount: lineIvaTrasl,        // IVA trasladado por línea (compat)
+    total: lineTotal,
+    claveSat: claveSat || null,
+    unitCode: unitCode || null,
+    taxRate: preset.rateIva,
+    description,
+    taxPresetId: preset.id,
+    retIvaRate: preset.retIva,
+    retIsrRate: preset.retIsr,
+    iepsRate: preset.iepsRate,
+    retIvaAmount: lineRetIva,
+    retIsrAmount: lineRetIsr,
+    iepsAmount: lineIeps,
+    isExempt: preset.isExempt,
+  };
+
+  return { line, lineSubtotal, lineIvaTrasl, lineRetIva, lineRetIsr, lineIeps };
+}
+
 export { TAX_PRESETS };
 
 /**
@@ -135,45 +198,13 @@ export async function createInvoice(
     let totIeps = 0;
 
     for (const item of data.items) {
-      const product = await productsService.getProductById(companyId, item.productId);
-      const preset  = resolveTaxPreset(item.taxPresetId, product);
-
-      const unitPrice    = item.unitPrice || product.base_price || 0;
-      const lineSubtotal = r2(item.quantity * unitPrice);
-      const lineIvaTrasl = r2(lineSubtotal * preset.rateIva);
-      const lineRetIva   = r2(lineSubtotal * preset.retIva);
-      const lineRetIsr   = r2(lineSubtotal * preset.retIsr);
-      const lineIeps     = r2(lineSubtotal * preset.iepsRate);
-      const lineTotal    = r2(lineSubtotal + lineIvaTrasl + lineIeps - lineRetIva - lineRetIsr);
-
-      invoiceItems.push({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice,
-        subtotal: lineSubtotal,
-        taxAmount: lineIvaTrasl,      // IVA trasladado por línea (compat)
-        total: lineTotal,
-        claveSat: product.clave_sat,
-        unitCode: product.unit_code,
-        taxRate: preset.rateIva,
-        // Prioriza descripción custom del item (usuario puede cambiarla en
-        // Nueva Factura sin tocar el catálogo). Solo fallback al name del producto.
-        description: ((item as any).description || product.name || '').toString().trim(),
-        taxPresetId: preset.id,
-        retIvaRate: preset.retIva,
-        retIsrRate: preset.retIsr,
-        iepsRate: preset.iepsRate,
-        retIvaAmount: lineRetIva,
-        retIsrAmount: lineRetIsr,
-        iepsAmount: lineIeps,
-        isExempt: preset.isExempt,
-      });
-
-      subtotal       += lineSubtotal;
-      totIvaTraslado += lineIvaTrasl;
-      totIvaRetenido += lineRetIva;
-      totIsrRetenido += lineRetIsr;
-      totIeps        += lineIeps;
+      const r = await resolverLineaFactura(companyId, item);
+      invoiceItems.push(r.line);
+      subtotal       += r.lineSubtotal;
+      totIvaTraslado += r.lineIvaTrasl;
+      totIvaRetenido += r.lineRetIva;
+      totIsrRetenido += r.lineRetIsr;
+      totIeps        += r.lineIeps;
     }
 
     if (invoiceItems.length === 0) {
@@ -484,41 +515,13 @@ export async function updateInvoice(
     const invoiceItems: any[] = [];
 
     for (const item of data.items!) {
-      const product = await productsService.getProductById(companyId, item.productId);
-      const preset  = resolveTaxPreset(item.taxPresetId, product);
-      const unitPrice    = item.unitPrice || product.base_price || 0;
-      const lineSubtotal = r2(item.quantity * unitPrice);
-      const lineIvaTrasl = r2(lineSubtotal * preset.rateIva);
-      const lineRetIva   = r2(lineSubtotal * preset.retIva);
-      const lineRetIsr   = r2(lineSubtotal * preset.retIsr);
-      const lineIeps     = r2(lineSubtotal * preset.iepsRate);
-      const lineTotal    = r2(lineSubtotal + lineIvaTrasl + lineIeps - lineRetIva - lineRetIsr);
-
-      invoiceItems.push({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice,
-        subtotal: lineSubtotal,
-        taxAmount: lineIvaTrasl,
-        total: lineTotal,
-        claveSat: product.clave_sat,
-        unitCode: product.unit_code,
-        taxRate: preset.rateIva,
-        description: ((item as any).description || product.name || '').toString().trim(),
-        taxPresetId: preset.id,
-        retIvaRate: preset.retIva,
-        retIsrRate: preset.retIsr,
-        iepsRate: preset.iepsRate,
-        retIvaAmount: lineRetIva,
-        retIsrAmount: lineRetIsr,
-        iepsAmount: lineIeps,
-        isExempt: preset.isExempt,
-      });
-      subtotal       += lineSubtotal;
-      totIvaTraslado += lineIvaTrasl;
-      totIvaRetenido += lineRetIva;
-      totIsrRetenido += lineRetIsr;
-      totIeps        += lineIeps;
+      const r = await resolverLineaFactura(companyId, item);
+      invoiceItems.push(r.line);
+      subtotal       += r.lineSubtotal;
+      totIvaTraslado += r.lineIvaTrasl;
+      totIvaRetenido += r.lineRetIva;
+      totIsrRetenido += r.lineRetIsr;
+      totIeps        += r.lineIeps;
     }
 
     if (invoiceItems.length === 0) {
