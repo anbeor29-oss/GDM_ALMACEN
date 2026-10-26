@@ -351,12 +351,13 @@ export function IssuerModal({ companyId, onClose }: Props) {
             <LogoUploader companyId={companyId} />
 
             <Section>Formato de impresión (PDF) — Factura, Timbre de pago y Nota de crédito</Section>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               {[
-                { key: 'clasico',   nombre: 'Clásico',   sub: 'Azul',        color: '#1e40af' },
-                { key: 'esmeralda', nombre: 'Esmeralda', sub: 'Verde',       color: '#047857' },
-                { key: 'carbon',    nombre: 'Carbón',    sub: 'Gris · rojo', color: '#b91c1c' },
-                { key: 'cielo',     nombre: 'Cielo',     sub: 'Azul claro',  color: '#0284c7' },
+                { key: 'clasico',    nombre: 'Clásico',    sub: 'Azul',        color: '#1e40af' },
+                { key: 'esmeralda',  nombre: 'Esmeralda',  sub: 'Verde',       color: '#047857' },
+                { key: 'carbon',     nombre: 'Carbón',     sub: 'Gris · rojo', color: '#b91c1c' },
+                { key: 'cielo',      nombre: 'Cielo',      sub: 'Azul claro',  color: '#0284c7' },
+                { key: 'farsystems', nombre: 'FarSystems', sub: 'Réplica',     color: '#1d4ed8' },
               ].map((f) => {
                 const sel = (form.pdf_formato || 'clasico') === f.key;
                 return (

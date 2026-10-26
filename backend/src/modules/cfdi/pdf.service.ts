@@ -34,6 +34,7 @@ import { NotFoundError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import { getCompanyLogo } from './logo-cache';
 import { getTema } from './pdf-temas';
+import { renderFacturaFarsystems } from './pdf-farsystems';
 import {
   drawTimbreFiscal, drawPageNumbers, extractNoCertificado, montoEnLetra,
   extractTimbreData, buildQrSatPng, drawCancelledWatermark,
@@ -237,19 +238,31 @@ export async function generateInvoicePDF(data: PDFGenerationData): Promise<Buffe
     }
   }
 
+  const formatoPdf = (company as any).pdf_formato;
   // Tema de color elegido por la empresa (vanity). Se cuelga del doc para que
   // todas las secciones lo usen sin cambiar cada firma (como _nextY).
-  (doc as any)._tema = getTema((company as any).pdf_formato);
-  generateHeader(doc, company, invoice, cat.regE, logoBuf);
-  generateReceptor(doc, customer, invoice, cat.regR, cat.uso);
-  generateItems(doc, invoice.items);
-  generateTotals(doc, invoice);
-  generateStampedSection(doc, invoice, qrPng);
-  if (cp) {
-    generateCartaPorteSection(doc, cp, invoice, company, qrPng, cpSat);
-    generateCartaPorteContract(doc);
+  (doc as any)._tema = getTema(formatoPdf);
+
+  if (formatoPdf === 'farsystems') {
+    // Réplica del formato FarSystems — layout propio en pdf-farsystems.
+    renderFacturaFarsystems(doc, { company, customer, invoice, cat, logoBuf, t, qrPng });
+    if (cp) {
+      (doc as any)._nextY = doc.y + 12;
+      generateCartaPorteSection(doc, cp, invoice, company, qrPng, cpSat);
+      generateCartaPorteContract(doc);
+    }
+  } else {
+    generateHeader(doc, company, invoice, cat.regE, logoBuf);
+    generateReceptor(doc, customer, invoice, cat.regR, cat.uso);
+    generateItems(doc, invoice.items);
+    generateTotals(doc, invoice);
+    generateStampedSection(doc, invoice, qrPng);
+    if (cp) {
+      generateCartaPorteSection(doc, cp, invoice, company, qrPng, cpSat);
+      generateCartaPorteContract(doc);
+    }
+    generateFooter(doc, invoice);
   }
-  generateFooter(doc, invoice);
   drawPageNumbers(doc);
   if (invoice.status === 'CANCELLED') {
     drawCancelledWatermark(doc);
