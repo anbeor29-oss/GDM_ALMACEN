@@ -35,6 +35,7 @@ import logger from '../../middleware/logger';
 import { getCompanyLogo } from './logo-cache';
 import { getTema } from './pdf-temas';
 import { renderFacturaFarsystems } from './pdf-farsystems';
+import { renderFacturaGncys } from './pdf-gncys';
 import {
   drawTimbreFiscal, drawPageNumbers, extractNoCertificado, montoEnLetra,
   extractTimbreData, buildQrSatPng, drawCancelledWatermark,
@@ -243,9 +244,10 @@ export async function generateInvoicePDF(data: PDFGenerationData): Promise<Buffe
   // todas las secciones lo usen sin cambiar cada firma (como _nextY).
   (doc as any)._tema = getTema(formatoPdf);
 
-  if (formatoPdf === 'farsystems') {
-    // Réplica del formato FarSystems — layout propio en pdf-farsystems.
-    renderFacturaFarsystems(doc, { company, customer, invoice, cat, logoBuf, t, qrPng });
+  if (formatoPdf === 'farsystems' || formatoPdf === 'gncys') {
+    // Réplicas con layout propio (FarSystems / GNcys).
+    if (formatoPdf === 'gncys') renderFacturaGncys(doc, { company, customer, invoice, cat, logoBuf, t, qrPng });
+    else renderFacturaFarsystems(doc, { company, customer, invoice, cat, logoBuf, t, qrPng });
     if (cp) {
       (doc as any)._nextY = doc.y + 12;
       generateCartaPorteSection(doc, cp, invoice, company, qrPng, cpSat);

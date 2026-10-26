@@ -6,16 +6,16 @@
  * el LAYOUT no cambia (sigue siendo un CFDI válido), sólo los colores/acentos.
  */
 
-export type FormatoPdf = 'clasico' | 'esmeralda' | 'carbon' | 'cielo' | 'farsystems';
+export type FormatoPdf = 'clasico' | 'esmeralda' | 'carbon' | 'cielo' | 'farsystems' | 'gncys';
 
-/** Catálogo para el selector (clave + nombre visible + color de muestra).
- *  'farsystems' NO es sólo color: usa un LAYOUT distinto (réplica), ver pdf-farsystems. */
+/** Catálogo para el selector (4 formatos). 'farsystems' y 'gncys' NO son sólo
+ *  color: usan un LAYOUT propio (réplica), ver pdf-farsystems / pdf-gncys.
+ *  'clasico' y 'cielo' se retiraron del selector (quedan como respaldo interno). */
 export const FORMATOS_PDF: Array<{ key: FormatoPdf; nombre: string; muestra: string }> = [
-  { key: 'clasico',    nombre: 'Clásico (azul)',       muestra: '#1e40af' },
   { key: 'esmeralda',  nombre: 'Esmeralda (verde)',    muestra: '#047857' },
   { key: 'carbon',     nombre: 'Carbón (gris · rojo)', muestra: '#b91c1c' },
-  { key: 'cielo',      nombre: 'Cielo (azul claro)',   muestra: '#0284c7' },
   { key: 'farsystems', nombre: 'FarSystems (réplica)', muestra: '#1d4ed8' },
+  { key: 'gncys',      nombre: 'GNcys (réplica)',      muestra: '#1e3a8a' },
 ];
 
 export interface TemaPdf {
@@ -35,6 +35,8 @@ const TEMAS: Record<FormatoPdf, TemaPdf> = {
   // FarSystems: el layout propio vive en pdf-farsystems; estos colores sólo sirven
   // de respaldo si algún comprobante que aún no tiene la réplica (pago/NC) lo usa.
   farsystems: { titulo: '#1d4ed8', tablaHeaderBg: '#1d4ed8', tablaHeaderText: '#ffffff', boxBg: '#eff6ff', boxBorder: '#93c5fd', acento: '#1e3a8a' },
+  // GNcys: layout propio en pdf-gncys; colores de respaldo (azul marino sobrio).
+  gncys:      { titulo: '#1e3a8a', tablaHeaderBg: '#1e3a8a', tablaHeaderText: '#ffffff', boxBg: '#eef2ff', boxBorder: '#c7d2fe', acento: '#1e3a8a' },
 };
 
 /** Tema por clave; ante cualquier valor desconocido o vacío, el clásico. */

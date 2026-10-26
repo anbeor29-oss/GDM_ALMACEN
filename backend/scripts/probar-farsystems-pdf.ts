@@ -6,8 +6,10 @@
 import PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import { renderFacturaFarsystems } from '../src/modules/cfdi/pdf-farsystems';
+import { renderFacturaGncys } from '../src/modules/cfdi/pdf-gncys';
 
 const out = process.argv[2] || 'farsystems-muestra.pdf';
+const formato = (process.env.FORMATO || 'farsystems').toLowerCase();
 
 const invoice: any = {
   serie: 'FA', folio: 433, cfdi_type: 'I', currency: 'MXN', exchange_rate: 1,
@@ -49,5 +51,7 @@ doc.on('end', () => {
   console.log(`OK: ${out} (${buf.length} bytes, ${(doc as any).bufferedPageRange().count} página[s])`);
 });
 
-renderFacturaFarsystems(doc as any, { company, customer, invoice, cat, logoBuf: null, t, qrPng: null });
+const ctx = { company, customer, invoice, cat, logoBuf: null, t, qrPng: null };
+if (formato === 'gncys') renderFacturaGncys(doc as any, ctx);
+else renderFacturaFarsystems(doc as any, ctx);
 doc.end();
