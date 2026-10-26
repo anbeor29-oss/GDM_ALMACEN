@@ -527,6 +527,13 @@ export function PanelValidarCfdi() {
   ) : '';
   const esVigente = /vigente/i.test(estado);
   const esCancelado = /cancel/i.test(estado);
+  // Campos del SAT, interpretados para el usuario final (ver más abajo).
+  const efos = data ? String(data.validacionEFOS ?? data.ValidacionEFOS ?? '').trim() : '';
+  const efosOk = efos === '200';
+  const cancelable = data ? String(data.esCancelable || data.EsCancelable || '').trim() : '';
+  const estatusCanc = data ? String(data.estatusCancelacion || data.EstatusCancelacion || '').trim() : '';
+  const codigoSat = data ? String(data.codigoEstatus || data.CodigoEstatus || '').trim() : '';
+  const errorMsg = data?.errorMessage ? String(data.errorMessage) : '';
 
   return (
     <div className="bg-white rounded-lg shadow p-5 space-y-4 max-w-2xl">
@@ -557,14 +564,74 @@ export function PanelValidarCfdi() {
       </button>
       {error && <p className="text-sm text-rose-700 flex items-center gap-1.5"><AlertTriangle size={14} /> {error}</p>}
       {data && (
-        <div className="space-y-2">
-          {estado && (
-            <p className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg font-medium ${
-              esVigente ? 'bg-emerald-100 text-emerald-700' : esCancelado ? 'bg-rose-100 text-rose-700' : 'bg-gray-100 text-gray-700'}`}>
-              <BadgeCheck size={15} /> {estado}
+        <div className="space-y-3">
+          {/* Resumen grande: lo primero que debe entender el usuario. */}
+          <div className={`flex items-start gap-3 rounded-xl px-4 py-3 border ${
+            esVigente ? 'bg-emerald-50 border-emerald-200'
+              : esCancelado ? 'bg-rose-50 border-rose-200'
+              : 'bg-gray-50 border-gray-200'}`}>
+            {esCancelado
+              ? <AlertTriangle size={22} className="text-rose-600 mt-0.5 shrink-0" />
+              : <BadgeCheck size={22} className={`${esVigente ? 'text-emerald-600' : 'text-gray-500'} mt-0.5 shrink-0`} />}
+            <div>
+              <p className={`font-semibold ${esVigente ? 'text-emerald-800' : esCancelado ? 'text-rose-800' : 'text-gray-700'}`}>
+                {esVigente ? 'Comprobante vigente' : esCancelado ? 'Comprobante cancelado' : (estado || 'Estado desconocido')}
+              </p>
+              <p className="text-xs text-gray-600 mt-0.5">
+                {esVigente ? 'El SAT lo reconoce y está activo.'
+                  : esCancelado ? 'El SAT lo tiene registrado como cancelado.'
+                  : 'Estado reportado por el SAT.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Detalle, renglón por renglón y en lenguaje claro. */}
+          <dl className="rounded-xl border border-gray-200 divide-y divide-gray-100 text-sm">
+            <div className="flex flex-col sm:flex-row sm:gap-3 px-4 py-2.5">
+              <dt className="text-xs font-medium text-gray-500 sm:w-56 shrink-0">Estado ante el SAT</dt>
+              <dd className="text-gray-800">{estado || '—'}</dd>
+            </div>
+            <div className="flex flex-col sm:flex-row sm:gap-3 px-4 py-2.5">
+              <dt className="text-xs font-medium text-gray-500 sm:w-56 shrink-0">Lista negra 69-B (EFOS)</dt>
+              <dd>
+                {efosOk
+                  ? <span className="inline-flex items-center gap-1.5 text-emerald-700">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Sin observaciones — el SAT no reporta al emisor en la lista de EFOS
+                    </span>
+                  : efos
+                    ? <span className="text-amber-700">Código {efos} — conviene revisarlo en el portal del SAT</span>
+                    : <span className="text-gray-400">No disponible</span>}
+              </dd>
+            </div>
+            {cancelable && (
+              <div className="flex flex-col sm:flex-row sm:gap-3 px-4 py-2.5">
+                <dt className="text-xs font-medium text-gray-500 sm:w-56 shrink-0">¿Se puede cancelar?</dt>
+                <dd className="text-gray-800">{cancelable}</dd>
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row sm:gap-3 px-4 py-2.5">
+              <dt className="text-xs font-medium text-gray-500 sm:w-56 shrink-0">Proceso de cancelación</dt>
+              <dd className="text-gray-800">{estatusCanc || <span className="text-gray-400">Ninguno en curso</span>}</dd>
+            </div>
+            {codigoSat && (
+              <div className="flex flex-col sm:flex-row sm:gap-3 px-4 py-2.5">
+                <dt className="text-xs font-medium text-gray-500 sm:w-56 shrink-0">Mensaje del SAT</dt>
+                <dd className="text-gray-600">{codigoSat}</dd>
+              </div>
+            )}
+          </dl>
+
+          {errorMsg && (
+            <p className="text-sm text-rose-700 flex items-center gap-1.5">
+              <AlertTriangle size={14} /> {errorMsg}
             </p>
           )}
-          <pre className="text-xs bg-gray-50 border rounded p-3 overflow-x-auto max-h-80 whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre>
+
+          {/* El JSON crudo queda disponible para quien lo necesite, pero oculto. */}
+          <details className="text-xs">
+            <summary className="cursor-pointer text-gray-500 hover:text-gray-700 select-none">Ver detalle técnico (JSON)</summary>
+            <pre className="mt-2 bg-gray-50 border rounded p-3 overflow-x-auto max-h-80 whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre>
+          </details>
         </div>
       )}
     </div>
