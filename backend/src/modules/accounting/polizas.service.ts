@@ -187,21 +187,35 @@ export async function crearPoliza(companyId: string, p: NuevaPoliza, userId?: st
  * su motivo.
  */
 export async function generarVentasDelMes(
-  companyId: string, anio: number, mes: number, userId?: string
+  companyId: string, anio: number, mes: number, userId?: string, soloUuid?: string
 ): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
   const mapaProd = await mapaProductoCuenta(companyId);
+  // CANDADO por comprobante. El `NOT EXISTS` ya evita re-contabilizar un UUID que
+  // YA tiene póliza. `soloUuid` acota a UNA factura (su folio fiscal): al timbrar
+  // se contabiliza SÓLO esa, sin barrer el mes —así el timbrado no re-contabiliza
+  // otras facturas ya capturadas y no se duplican pólizas—. Sin `soloUuid`, el
+  // botón «Ventas» sí barre el mes como siempre.
+  const params: any[] = [companyId];
+  const conds: string[] = [
+    `c.company_id=$1`, `c.direccion='emitidos'`, `c.tipo_comprobante='I'`,
+    `c.xml IS NOT NULL`, `(c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')`,
+    `NOT EXISTS (SELECT 1 FROM journal_entries e WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)`,
+  ];
+  if (soloUuid) {
+    params.push(soloUuid.toUpperCase());
+    conds.push(`UPPER(c.uuid) = $${params.length}`);
+  } else {
+    params.push(iniDeMes(anio, mes)); const iIdx = params.length;
+    params.push(finDeMes(anio, mes)); const fIdx = params.length;
+    conds.push(`c.fecha_emision::date BETWEEN $${iIdx} AND $${fIdx}`);
+  }
   const r = await query<any>(
     `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.total, c.descuento, c.metodo_pago,
             c.nombre_receptor, c.rfc_receptor, c.xml
        FROM cfdi_recibidos c
-      WHERE c.company_id=$1 AND c.direccion='emitidos'
-        AND c.tipo_comprobante='I' AND c.xml IS NOT NULL
-        AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
-        AND c.fecha_emision::date BETWEEN $2 AND $3
-        AND NOT EXISTS (SELECT 1 FROM journal_entries e
-                         WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)
+      WHERE ${conds.join(' AND ')}
       ORDER BY c.fecha_emision`,
-    [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
+    params);
 
   let creadas = 0;
   const omitidas: Array<{ folio: string; motivo: string }> = [];
@@ -414,23 +428,37 @@ export async function generarComprasDelMes(
  * primera). Idempotente por origen_uuid.
  */
 export async function generarCobrosPagosDelMes(
-  companyId: string, anio: number, mes: number, userId?: string
+  companyId: string, anio: number, mes: number, userId?: string, soloUuid?: string
 ): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
   let creadas = 0;
   const omitidas: Array<{ folio: string; motivo: string }> = [];
   const banco = await cuentaPorAgrupador(companyId, '102.01');
 
-  const traer = (direccion: 'emitidos' | 'recibidos') => query<any>(
-    `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.moneda,
-            c.nombre_emisor, c.rfc_emisor, c.nombre_receptor, c.rfc_receptor, c.xml
-       FROM cfdi_recibidos c
-      WHERE c.company_id=$1 AND c.direccion=$2 AND c.tipo_comprobante='P' AND c.xml IS NOT NULL
-        AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
-        AND c.fecha_emision::date BETWEEN $3 AND $4
-        AND NOT EXISTS (SELECT 1 FROM journal_entries e
-                         WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)
-      ORDER BY c.fecha_emision`,
-    [companyId, direccion, iniDeMes(anio, mes), finDeMes(anio, mes)]);
+  // `soloUuid` acota a UN complemento (al timbrar); sin él barre el mes (botón).
+  // El `NOT EXISTS` ya evita re-contabilizar un UUID con póliza (candado).
+  const traer = (direccion: 'emitidos' | 'recibidos') => {
+    const params: any[] = [companyId, direccion];
+    const conds: string[] = [
+      `c.company_id=$1`, `c.direccion=$2`, `c.tipo_comprobante='P'`, `c.xml IS NOT NULL`,
+      `(c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')`,
+      `NOT EXISTS (SELECT 1 FROM journal_entries e WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)`,
+    ];
+    if (soloUuid) {
+      params.push(soloUuid.toUpperCase());
+      conds.push(`UPPER(c.uuid) = $${params.length}`);
+    } else {
+      params.push(iniDeMes(anio, mes)); const iIdx = params.length;
+      params.push(finDeMes(anio, mes)); const fIdx = params.length;
+      conds.push(`c.fecha_emision::date BETWEEN $${iIdx} AND $${fIdx}`);
+    }
+    return query<any>(
+      `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.moneda,
+              c.nombre_emisor, c.rfc_emisor, c.nombre_receptor, c.rfc_receptor, c.xml
+         FROM cfdi_recibidos c
+        WHERE ${conds.join(' AND ')}
+        ORDER BY c.fecha_emision`,
+      params);
+  };
 
   const cobros = await traer('emitidos');   // los que NOSOTROS timbramos = cobros a clientes
   const pagos = await traer('recibidos');   // los que el proveedor timbró = pagos a proveedores

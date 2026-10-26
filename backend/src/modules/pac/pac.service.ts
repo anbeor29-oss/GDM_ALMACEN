@@ -176,23 +176,35 @@ async function stampFromJsonConAutoRegistroCsd(
 async function postTimbradoEmitido(
   companyId: string, result: StampResult, tipo?: string,
 ): Promise<void> {
-  if (!result.success || !result.xml_stamped) return;
+  if (!result.success || !result.xml_stamped || !result.uuid) return;
+  const uuid = result.uuid.toUpperCase();
 
-  // 1) Bóveda — se espera: que aparezca YA en «Emitidos» y habilite la póliza.
+  // 1) Bóveda — CANDADO: sólo se indexa si el UUID NO está ya en la bóveda, para
+  //    no crear una fila duplicada (p. ej. si la descarga del SAT lo trajo con
+  //    otro rfc_propietario). indexarCfdi ya es idempotente por
+  //    (company, rfc, uuid); este chequeo cubre además distinto rfc_propietario.
   try {
-    const rfcR = await query<{ rfc: string }>(`SELECT rfc FROM companies WHERE id = $1`, [companyId]);
-    const rfcEmisor = (rfcR.rows[0]?.rfc || '').toUpperCase().trim();
-    if (rfcEmisor) {
-      const { indexarCfdi } = await import('../sat-descarga/descarga.service');
-      await indexarCfdi(companyId, rfcEmisor, 'emitidos', result.xml_stamped);
+    const ya = await query(
+      `SELECT 1 FROM cfdi_recibidos WHERE company_id=$1 AND UPPER(uuid)=$2 LIMIT 1`,
+      [companyId, uuid]);
+    if (ya.rowCount) {
+      logger.info(`[post-timbrado] UUID ${uuid} ya está en la bóveda; no se re-indexa.`);
+    } else {
+      const rfcR = await query<{ rfc: string }>(`SELECT rfc FROM companies WHERE id = $1`, [companyId]);
+      const rfcEmisor = (rfcR.rows[0]?.rfc || '').toUpperCase().trim();
+      if (rfcEmisor) {
+        const { indexarCfdi } = await import('../sat-descarga/descarga.service');
+        await indexarCfdi(companyId, rfcEmisor, 'emitidos', result.xml_stamped);
+      }
     }
   } catch (e: any) {
     logger.warn(`[post-timbrado] no se indexó el XML emitido en la bóveda: ${e.message}`);
   }
 
-  // 2) Póliza según el tipo (fire-and-forget). I → ventas, P → cobros/pagos.
-  //    E (nota de crédito) y T (traslado) por ahora sólo se indexan: no hay
-  //    generador dedicado, así que la póliza queda al proceso mensual/manual.
+  // 2) Póliza SÓLO de ESTE comprobante (soloUuid), no del mes: así el timbrado no
+  //    barre ni re-contabiliza otras facturas → no duplica pólizas. El NOT EXISTS
+  //    por origen_uuid es el otro candado (no re-contabiliza un UUID ya con póliza).
+  //    I → ventas, P → cobros/pagos. E (NC) y T: sólo bóveda (sin generador).
   const f = new Date(result.fecha_timbrado || Date.now());
   const anio = f.getFullYear(), mes = f.getMonth() + 1;
   const t = (tipo || '').toUpperCase();
@@ -200,8 +212,8 @@ async function postTimbradoEmitido(
   import('../accounting/polizas.service')
     .then((m) =>
       t === 'I'
-        ? m.generarVentasDelMes(companyId, anio, mes)
-        : m.generarCobrosPagosDelMes(companyId, anio, mes))
+        ? m.generarVentasDelMes(companyId, anio, mes, undefined, uuid)
+        : m.generarCobrosPagosDelMes(companyId, anio, mes, undefined, uuid))
     .then((r: any) => { if (r?.creadas) logger.info(`[post-timbrado] pólizas generadas (${t}): ${r.creadas}`); })
     .catch((e) => logger.warn(`[post-timbrado] generación de póliza (${t}) falló: ${e.message}`));
 }
