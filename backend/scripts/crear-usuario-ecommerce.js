@@ -9,7 +9,8 @@
  *     admin de la plataforma sigue viendo todo; esto sólo acota a ESTE usuario.
  *   · El usuario vive en una EMPRESA EXISTENTE —la que ya tiene el catálogo y las
  *     existencias— para aprovechar la misma base de datos: la tienda vende esos
- *     productos. No se crea una empresa aparte ni se copian productos.
+ *     productos. O, con EC_CREAR_EMPRESA=true, en una EMPRESA APARTE (standalone)
+ *     que se crea bloqueada a 'ecommerce' (no comparte con ninguna empresa NEXO).
  *   · Rol USER (no ADMIN): manda en SU TIENDA (todo el módulo de e-commerce), pero
  *     NO administra la empresa —no toca usuarios de NEXO, contrato ni ajustes—. Así
  *     un encargado de la tienda no puede, por accidente, mover la cuenta del contador.
@@ -24,13 +25,22 @@
  * Variables (Render → Environment del backend, o inline al correr):
  *   EC_COMPANY_RFC     RFC de la empresa de la tienda   (o EC_COMPANY_ID con el UUID)
  *                      Si hay una sola empresa, se toma esa y no hace falta.
+ *   EC_CREAR_EMPRESA   'true' → crea una empresa APARTE (standalone) bloqueada a
+ *                      'ecommerce' cuando el RFC no existe. Default: usa la existente.
+ *   EC_COMPANY_NAME    nombre de la empresa APARTE que se crea (def: «Tienda <RFC>»)
  *   EC_ADMIN_EMAIL     correo/usuario del admin de la tienda  (def: tienda@<rfc>.local)
  *   EC_ADMIN_PASSWORD  contraseña   (OBLIGATORIA, mínimo 8)
  *   EC_ADMIN_NAME      nombre para mostrar   (def: «Administrador de la tienda»)
  *
- * Ejemplo:
+ * Ejemplos:
+ *   # Variante A — tienda sobre una empresa EXISTENTE (comparte su catálogo):
  *   EC_COMPANY_RFC=GHC1707275Y0 EC_ADMIN_EMAIL=tienda@grupohcgm.com \
  *   EC_ADMIN_PASSWORD='MiClaveFuerte2026' node scripts/crear-usuario-ecommerce.js
+ *
+ *   # Variante B — tienda como empresa APARTE (no comparte con ninguna NEXO):
+ *   EC_CREAR_EMPRESA=true EC_COMPANY_RFC=TIE260101AB1 EC_COMPANY_NAME='Mi Tienda' \
+ *   EC_ADMIN_EMAIL=admin@mitienda.com EC_ADMIN_PASSWORD='MiClaveFuerte2026' \
+ *   node scripts/crear-usuario-ecommerce.js
  */
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
@@ -43,22 +53,44 @@ async function main() {
     ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
   });
 
-  // 1. Resolver la empresa (la que ya tiene el catálogo que venderá la tienda).
+  // 1. Resolver la empresa de la tienda. DOS variantes:
+  //    · EXISTENTE (default): la tienda comparte el catálogo/BD de esa empresa.
+  //    · APARTE: EC_CREAR_EMPRESA=true crea una empresa standalone BLOQUEADA a
+  //      'ecommerce' (requiere EC_COMPANY_RFC; EC_COMPANY_NAME para el nombre).
+  //      Útil cuando la tienda NO debe compartir con una empresa NEXO.
   let companyId = process.env.EC_COMPANY_ID || null;
   let rfc = (process.env.EC_COMPANY_RFC || '').trim().toUpperCase();
   let nombreEmpresa = '';
+  let creada = false;
+  const crearEmpresa = (process.env.EC_CREAR_EMPRESA || '').trim().toLowerCase() === 'true';
   if (!companyId) {
     if (rfc) {
       const c = await pool.query('SELECT id, business_name FROM companies WHERE UPPER(rfc) = $1 LIMIT 1', [rfc]);
-      if (!c.rows.length) throw new Error(`No hay empresa con RFC ${rfc}.`);
-      companyId = c.rows[0].id; nombreEmpresa = c.rows[0].business_name;
+      if (c.rows.length) {
+        companyId = c.rows[0].id; nombreEmpresa = c.rows[0].business_name;
+        if (crearEmpresa) console.log(`Aviso: EC_CREAR_EMPRESA=true pero el RFC ${rfc} YA existe → se usa esa empresa (no se crea otra).`);
+      } else if (crearEmpresa) {
+        // Empresa APARTE: nace bloqueada a 'ecommerce' (sus usuarios ven sólo la tienda).
+        nombreEmpresa = (process.env.EC_COMPANY_NAME || `Tienda ${rfc}`).trim();
+        const ins = await pool.query(
+          `INSERT INTO companies (rfc, business_name, modulos_habilitados, is_active)
+           VALUES ($1, $2, ARRAY['ecommerce'], true) RETURNING id`,
+          [rfc, nombreEmpresa]);
+        companyId = ins.rows[0].id; creada = true;
+        console.log(`Empresa APARTE creada: ${nombreEmpresa} (${rfc}) — bloqueada a Comercio Electrónico.`);
+      } else {
+        throw new Error(
+          `No hay empresa con RFC ${rfc}. Para crearla como empresa APARTE (sólo tienda), ` +
+          `define EC_CREAR_EMPRESA=true (y EC_COMPANY_NAME para el nombre).`);
+      }
     } else {
       const c = await pool.query('SELECT id, rfc, business_name FROM companies ORDER BY created_at LIMIT 10');
       if (c.rows.length === 1) {
         companyId = c.rows[0].id; rfc = c.rows[0].rfc; nombreEmpresa = c.rows[0].business_name;
       } else {
         throw new Error(
-          'Hay varias empresas; indica EC_COMPANY_RFC o EC_COMPANY_ID. Encontradas: ' +
+          'Hay varias empresas; indica EC_COMPANY_RFC o EC_COMPANY_ID (o EC_CREAR_EMPRESA=true + ' +
+          'EC_COMPANY_RFC para una empresa APARTE). Encontradas: ' +
           c.rows.map((r) => `${r.business_name} [${r.rfc}]`).join(' · '));
       }
     }
@@ -67,7 +99,7 @@ async function main() {
     if (!c.rows.length) throw new Error(`No hay empresa con id ${companyId}.`);
     rfc = c.rows[0].rfc; nombreEmpresa = c.rows[0].business_name;
   }
-  console.log(`Empresa de la tienda: ${nombreEmpresa} (${rfc})`);
+  console.log(`Empresa de la tienda: ${nombreEmpresa} (${rfc})${creada ? ' [NUEVA · aparte]' : ''}`);
 
   // 2. Contraseña (obligatoria, sin default inseguro).
   const pass = process.env.EC_ADMIN_PASSWORD || '';
