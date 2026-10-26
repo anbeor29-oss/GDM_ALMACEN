@@ -831,6 +831,13 @@ class APIClient {
     return response.data;
   }
 
+  /** Sube el CSD de la empresa a la bóveda del PAC (SW) a propósito. Para dejarlo
+   *  listo antes de timbrar y para probar el registro en PRUEBAS. */
+  async registrarCsdEnPac() {
+    const response = await this.client.post('/pac/registrar-csd');
+    return response.data;
+  }
+
   /**
    * Catálogos SAT (regimenFiscal | usoCfdi | estado | formaPago | ...)
    */

@@ -22,5 +22,6 @@ router.get('/test-connection', asyncHandler(pacController.testConnection));
 
 router.post('/stamp/:invoiceId', asyncHandler(pacController.stamp));
 router.post('/cancel/:invoiceId', asyncHandler(pacController.cancel));
+router.post('/registrar-csd', asyncHandler(pacController.registrarCsd));
 
 export default router;

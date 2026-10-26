@@ -112,6 +112,17 @@ export async function testConnection(req: Request, res: Response) {
 }
 
 /**
+ * POST /api/v1/pac/registrar-csd
+ * Sube el CSD de la empresa a la bóveda del PAC (SW) a propósito. Para dejarlo
+ * listo antes de timbrar y para PROBAR el registro en PRUEBAS.
+ */
+export async function registrarCsd(req: Request, res: Response) {
+  const companyId = getCompanyId(req);
+  const r = await pacService.registrarCsdEnPac(companyId);
+  res.status(r.ok ? 200 : 400).json({ success: r.ok, message: r.mensaje });
+}
+
+/**
  * GET /api/v1/pac/providers
  * Listar proveedores PAC disponibles
  */
@@ -139,6 +150,7 @@ export default {
   cancel,
   accountStatus,
   testConnection,
+  registrarCsd,
   providers,
 };
 

@@ -773,6 +773,33 @@ export async function testConnection(companyId: string): Promise<boolean> {
 }
 
 /**
+ * Sube el CSD de la empresa a la bóveda del PAC A PROPÓSITO (no sólo como
+ * reintento del timbrado). Sirve para dejarlo listo ANTES de timbrar y para
+ * PROBAR en PRUEBAS que el registro funciona. Usa el ambiente de la empresa.
+ */
+export async function registrarCsdEnPac(
+  companyId: string,
+): Promise<{ ok: boolean; mensaje: string }> {
+  const provider = getProvider();
+  if (typeof provider.registrarCsd !== 'function') {
+    return { ok: false, mensaje: `El PAC activo (${provider.name}) no permite registrar el CSD por API.` };
+  }
+  const { csd, motivo } = await obtenerCsdConAviso(companyId, 'registro manual de CSD en el PAC');
+  if (!csd) {
+    return { ok: false, mensaje: `No hay CSD para registrar: ${motivo}. Cárgalo en Emisor (.cer + .key + contraseña).` };
+  }
+  const credentials = await getCredentials(companyId);
+  const r = await provider.registrarCsd(csd, credentials);
+  const ambiente = credentials.env === 'production' ? 'PRODUCCIÓN' : 'PRUEBAS';
+  return {
+    ok: r.ok,
+    mensaje: r.ok
+      ? `CSD registrado en la bóveda del PAC (${ambiente}).`
+      : `El PAC no aceptó el CSD (${ambiente}): ${r.mensaje || 'sin detalle'}`,
+  };
+}
+
+/**
  * Listar providers disponibles
  */
 export function listProviders(): { active: string; available: string[] } {

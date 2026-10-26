@@ -456,6 +456,7 @@ function CSDUploader({ companyId }: { companyId: string }) {
   const [pwd, setPwd] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [regBusy, setRegBusy] = useState(false);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   const status = useQuery({
@@ -463,6 +464,22 @@ function CSDUploader({ companyId }: { companyId: string }) {
     queryFn: () => api.getCompanyUploadStatus(companyId),
   });
   const s = status.data?.data || {};
+
+  /* Sube el CSD ya guardado a la bóveda del PAC (SW), para dejarlo listo antes
+   * de timbrar y para probar el registro en PRUEBAS. El timbrado también lo hace
+   * solo si hace falta; esto es el disparo manual. */
+  const registrarEnPac = async () => {
+    setMsg(null);
+    setRegBusy(true);
+    try {
+      const r = await api.registrarCsdEnPac();
+      setMsg({ type: r.success ? 'ok' : 'err', text: r.message });
+    } catch (e: any) {
+      setMsg({ type: 'err', text: e.response?.data?.message || e.message });
+    } finally {
+      setRegBusy(false);
+    }
+  };
 
   const submit = async () => {
     if (!cer || !key || !pwd) {
@@ -539,6 +556,23 @@ function CSDUploader({ companyId }: { companyId: string }) {
         <KeyRound size={16} />
         {busy ? 'Guardando…' : 'Guardar CSD'}
       </button>
+      {s.has_cer && s.has_key && s.has_password && (
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={registrarEnPac}
+            disabled={regBusy}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm"
+          >
+            <KeyRound size={16} />
+            {regBusy ? 'Registrando en el PAC…' : 'Registrar CSD en el PAC (SW)'}
+          </button>
+          <p className="text-xs text-gray-500 mt-1">
+            Sube el CSD a la bóveda del PAC según el ambiente de la empresa (PRUEBAS o PRODUCCIÓN),
+            para que el timbrado no dependa de cargarlo a mano. El timbrado también lo intenta solo si hace falta.
+          </p>
+        </div>
+      )}
       <p className="text-xs text-gray-500">
         La contraseña se almacena cifrada con AES-256-GCM. Sólo se usará al timbrar; nunca se
         regresa al frontend.
