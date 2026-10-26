@@ -19,6 +19,7 @@
  */
 import cron from 'node-cron';
 import logger from '../middleware/logger';
+import { banderaEncendida } from '../utils/env-flag';
 import { todasActivas } from '../modules/compliance/programacion';
 import { ejecutar } from '../modules/compliance/compliance.service';
 
@@ -38,7 +39,7 @@ export async function correrBarrido(): Promise<void> {
 }
 
 export function registerComplianceCron(): void {
-  if (process.env.ENABLE_COMPLIANCE_CRON !== 'true') {
+  if (!banderaEncendida(process.env.ENABLE_COMPLIANCE_CRON)) {
     logger.info('[compliance-cron] Deshabilitado (ENABLE_COMPLIANCE_CRON != true)');
     return;
   }

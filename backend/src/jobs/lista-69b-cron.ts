@@ -26,10 +26,11 @@
 
 import cron from 'node-cron';
 import logger from '../middleware/logger';
+import { banderaEncendida } from '../utils/env-flag';
 import { actualizarDesdeElSat, URL_69B } from '../modules/auditoria/descarga-69b.service';
 
 export function registerLista69BCron(): void {
-  if (process.env.ENABLE_69B_CRON !== 'true') {
+  if (!banderaEncendida(process.env.ENABLE_69B_CRON)) {
     logger.info('[69b-cron] Apagado (para encenderlo: ENABLE_69B_CRON=true)');
     return;
   }

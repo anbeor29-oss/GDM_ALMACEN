@@ -30,10 +30,11 @@
 
 import cron from 'node-cron';
 import logger from '../middleware/logger';
+import { banderaApagada } from '../utils/env-flag';
 import { correrAuditoriaGlobal, HORAS_ENTRE_REVISIONES } from '../modules/auditoria/auditoria.service';
 
 export function registerAuditoriaCron(): void {
-  if (process.env.ENABLE_AUDITORIA_CRON === 'false') {
+  if (banderaApagada(process.env.ENABLE_AUDITORIA_CRON)) {
     logger.info('[auditoria-cron] Apagado a propósito (ENABLE_AUDITORIA_CRON=false)');
     return;
   }

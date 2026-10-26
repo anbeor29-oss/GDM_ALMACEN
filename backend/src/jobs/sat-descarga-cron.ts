@@ -22,13 +22,14 @@
 
 import cron from 'node-cron';
 import logger from '../middleware/logger';
+import { banderaEncendida } from '../utils/env-flag';
 import { query } from '../config/database';
 import { avanzar } from '../modules/sat-descarga/descarga.service';
 import { crearTrabajoDiario } from '../modules/sat-descarga/programacion.service';
 import { bovedaLista } from '../modules/sat-descarga/boveda';
 
 export function registerSatDescargaCron(): void {
-  if (process.env.ENABLE_SAT_DESCARGA_CRON !== 'true') {
+  if (!banderaEncendida(process.env.ENABLE_SAT_DESCARGA_CRON)) {
     logger.info('[sat-descarga-cron] Deshabilitado (ENABLE_SAT_DESCARGA_CRON != true)');
     return;
   }

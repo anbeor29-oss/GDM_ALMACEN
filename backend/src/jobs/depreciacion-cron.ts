@@ -18,6 +18,7 @@
 
 import cron from 'node-cron';
 import logger from '../middleware/logger';
+import { banderaEncendida } from '../utils/env-flag';
 import { query } from '../config/database';
 import { generarDepreciacionDelMes } from '../modules/accounting/activos-fijos.service';
 import { alimentarDesdePolizas } from '../modules/accounting/periodos.service';
@@ -71,7 +72,7 @@ export async function correrDepreciacionMensual(anioArg?: number, mesArg?: numbe
 }
 
 export function registerDepreciacionCron(): void {
-  if (process.env.ENABLE_DEPRECIACION_CRON !== 'true') {
+  if (!banderaEncendida(process.env.ENABLE_DEPRECIACION_CRON)) {
     logger.info('[depre-cron] Deshabilitado (ENABLE_DEPRECIACION_CRON != true)');
     return;
   }

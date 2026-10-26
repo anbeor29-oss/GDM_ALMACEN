@@ -14,6 +14,7 @@
 
 import cron from 'node-cron';
 import logger from '../middleware/logger';
+import { banderaEncendida } from '../utils/env-flag';
 import { actualizarInpc } from '../modules/accounting/indicadores.service';
 
 const ZONA = 'America/Mexico_City';
@@ -29,7 +30,7 @@ export async function correrActualizacionInpc(): Promise<void> {
 }
 
 export function registerInpcCron(): void {
-  if (process.env.ENABLE_INPC_CRON !== 'true') {
+  if (!banderaEncendida(process.env.ENABLE_INPC_CRON)) {
     logger.info('[inpc-cron] Deshabilitado (ENABLE_INPC_CRON != true)');
     return;
   }

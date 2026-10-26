@@ -18,6 +18,7 @@
 
 import cron from 'node-cron';
 import logger from '../middleware/logger';
+import { banderaEncendida } from '../utils/env-flag';
 import { sendMonthlyReports } from '../modules/team/monitoring.service';
 import { closeMonth, prevMonthStart } from '../modules/billing/close-month.service';
 import { issueAllForPeriod } from '../modules/billing/issue-invoice.service';
@@ -51,7 +52,7 @@ export async function runMonthlyClose(): Promise<void> {
 }
 
 export function registerBillingCron(): void {
-  if (process.env.ENABLE_BILLING_CRON !== 'true') {
+  if (!banderaEncendida(process.env.ENABLE_BILLING_CRON)) {
     logger.info('[billing-cron] Deshabilitado (ENABLE_BILLING_CRON != true)');
     return;
   }

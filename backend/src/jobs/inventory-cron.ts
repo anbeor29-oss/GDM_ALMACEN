@@ -13,11 +13,12 @@
 
 import cron from 'node-cron';
 import logger from '../middleware/logger';
+import { banderaEncendida } from '../utils/env-flag';
 import { takeSnapshotAllCompanies } from '../modules/inventory/inventory-reports.service';
 import { runReorderCheckAllCompanies } from '../modules/purchasing/purchasing.service';
 
 export function registerInventoryCron(): void {
-  if (process.env.ENABLE_INVENTORY_CRON !== 'true') {
+  if (!banderaEncendida(process.env.ENABLE_INVENTORY_CRON)) {
     logger.info('[inventory-cron] Deshabilitado (ENABLE_INVENTORY_CRON != true)');
     return;
   }

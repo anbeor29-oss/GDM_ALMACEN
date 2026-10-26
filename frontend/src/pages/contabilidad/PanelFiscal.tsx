@@ -29,10 +29,10 @@ import { aTextoMx } from '@/components/CampoFecha';
 import { PanelOpinion, DESC_TIPO } from './PanelOpinion';
 import { PanelNotificaciones, PanelDeclaraciones, PanelInfoFiscal, PanelValidarCfdi } from './CumplimientoPaneles';
 
-/* Horario del refresco automático de las opiniones (compliance-cron): lunes 01:50
+/* Horario del refresco automático de las opiniones (compliance-cron): lunes 05:30
  * CDMX, para que las tarjetas estén frescas a primera hora del lunes. Se refleja en
  * la condición de actualización de cada documento permanente. */
-const HORARIO_REFRESCO = 'lunes 01:50';
+const HORARIO_REFRESCO = 'lunes 05:30';
 
 /* Paleta NEXO (del documento de diseño). Se escriben como literales completos para
  * que Tailwind (JIT) los compile. */
