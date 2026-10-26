@@ -97,6 +97,67 @@ async function getCredentials(companyId: string): Promise<PACCredentials> {
 }
 
 /**
+ * ¿El rechazo del PAC es porque NO tiene el CSD del emisor en su bóveda?
+ * (p. ej. "No fue posible obtener el Certificado para el Rfc: X … no se haya
+ * cargado correctamente y/o esté vencido"). Es el único caso que conviene
+ * auto-reparar subiendo el CSD; cualquier otro error se devuelve tal cual.
+ */
+function esErrorCsdEnBoveda(result: StampResult): boolean {
+  const txt = (result.errors || []).join(' ').toLowerCase();
+  return /obtener el certificado|no se haya cargado|certificado para el rfc/.test(txt);
+}
+
+/**
+ * Timbra por JSON y, si el PAC responde que NO tiene el CSD del emisor en su
+ * bóveda, lo SUBE con el que NEXO ya guarda (provider.registrarCsd) y reintenta
+ * UNA vez. Así el timbrado deja de depender de que alguien cargue el CSD a mano
+ * en el panel del PAC — NEXO ya guarda .cer/.key/contraseña de cada empresa.
+ *
+ * El camino feliz NO cambia: el registro sólo ocurre ante ese error puntual, y
+ * sólo si el provider expone registrarCsd y NEXO tiene el CSD guardado.
+ */
+async function stampFromJsonConAutoRegistroCsd(
+  companyId: string,
+  payload: any,
+  credentials: PACCredentials,
+): Promise<StampResult> {
+  const provider = getProvider();
+  const primero = await provider.stampFromJson!(payload, credentials);
+  if (
+    primero.success ||
+    typeof provider.registrarCsd !== 'function' ||
+    !esErrorCsdEnBoveda(primero)
+  ) {
+    return primero;
+  }
+  // El PAC no tiene el CSD: lo tomamos de donde NEXO lo guarda y lo subimos.
+  const { csd, motivo } = await obtenerCsdConAviso(companyId, 'auto-registro de CSD en el PAC');
+  if (!csd) {
+    return {
+      ...primero,
+      errors: [
+        ...primero.errors,
+        `No se pudo subir el CSD al PAC automáticamente: ${motivo}. ` +
+        `Cárgalo en NEXO (Emisor) para que pueda registrarse solo, o súbelo en el panel del PAC.`,
+      ],
+    };
+  }
+  const reg = await provider.registrarCsd(csd, credentials);
+  if (!reg.ok) {
+    return {
+      ...primero,
+      errors: [
+        ...primero.errors,
+        `El PAC no aceptó el CSD al registrarlo (${reg.mensaje || 'sin detalle'}). ` +
+        `Verifica que el .cer/.key y la contraseña correspondan al RFC emisor y estén vigentes.`,
+      ],
+    };
+  }
+  logger.info(`[CSD] Registrado en la bóveda del PAC para ${companyId}; reintentando timbrado.`);
+  return provider.stampFromJson!(payload, credentials);
+}
+
+/**
  * Timbra un XML ya armado con el PAC activo.
  *
  * Existe para que OTROS comprobantes —hoy el Complemento de Pago— usen el mismo
@@ -206,7 +267,7 @@ export async function timbrarJson(
      * el diagnóstico del siguiente error real, porque el mensaje que se reporta
      * al usuario sería el de la primera forma y no el de la verdadera.
      */
-    return provider.stampFromJson(payload, credentials);
+    return stampFromJsonConAutoRegistroCsd(companyId, payload, credentials);
   }
 
   return provider.stamp(xmlFallback, credentials);
@@ -415,7 +476,7 @@ export async function stampInvoice(companyId: string, invoiceId: string): Promis
       `Timbrando factura ${invoiceId} vía ${provider.name} (JSON): ` +
       `${payload.Serie || ''}${payload.Folio || ''} → ${payload.Receptor.Rfc}`
     );
-    result = await provider.stampFromJson(payload, credentials);
+    result = await stampFromJsonConAutoRegistroCsd(companyId, payload, credentials);
   } else {
     let xmlContent = invoice.xml_content;
     if (!xmlContent) {

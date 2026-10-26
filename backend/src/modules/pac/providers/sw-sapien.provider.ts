@@ -439,6 +439,58 @@ export class SWSapienProvider implements IPACProvider {
     }
   }
 
+  /* ─────────────── REGISTRO DE CSD EN LA BÓVEDA ─────────────── */
+
+  /**
+   * Sube el CSD del emisor a la cuenta de SW (POST /certificates/save), para que
+   * la emisión JSON pueda sellar con él. SW documenta el cuerpo como
+   *   { type: 'stamp', b64Cer, b64Key, password }
+   * y responde { status:'success', data:'CSD Guardados Correctamente.' }.
+   *
+   * OJO: el Base64 NO debe traer saltos de línea ni espacios — SW responde 400
+   * si vienen, así que se limpian antes de enviar.
+   *
+   * Se arma un cliente axios LIMPIO (Authorization Bearer + Content-Type JSON):
+   * la instancia de this.http() fija 'application/jsontoxml' a nivel de instancia
+   * y, al fusionarse, contaminaría este request (mismo tropiezo que en stamp()).
+   */
+  async registrarCsd(
+    csd: CsdParaCancelar,
+    credentials: PACCredentials,
+  ): Promise<{ ok: boolean; mensaje?: string }> {
+    try {
+      const cfgSW = readEnvConfig(credentials.env);
+      if (!cfgSW) {
+        return {
+          ok: false,
+          mensaje: credentials.env === 'production'
+            ? 'SW_SAPIEN_TOKEN_PROD (token de PRODUCCIÓN) no configurado en el backend.'
+            : 'SW_SAPIEN_TOKEN no configurado en el backend.',
+        };
+      }
+      const limpiaB64 = (s: string) => (s || '').replace(/\s+/g, '');
+      const cliente = axios.create({
+        baseURL: SW_ENDPOINTS[cfgSW.env],
+        timeout: 30_000,
+        headers: { Authorization: `Bearer ${cfgSW.token}`, 'Content-Type': 'application/json' },
+      });
+      const r = await cliente.post('/certificates/save', {
+        type: 'stamp',
+        b64Cer: limpiaB64(csd.b64Cer),
+        b64Key: limpiaB64(csd.b64Key),
+        password: csd.password,
+      }, { validateStatus: () => true });
+      if (r.data?.status === 'success') {
+        logger.info('[SW] CSD registrado en la bóveda (certificates/save).');
+        return { ok: true };
+      }
+      return { ok: false, mensaje: r.data?.messageDetail || r.data?.message || `HTTP ${r.status}` };
+    } catch (e) {
+      const err = this.handleAxiosError(e, 'registro-csd');
+      return { ok: false, mensaje: err.errors.join('; ') };
+    }
+  }
+
   /* ─────────────── ESTADO DE CUENTA ─────────────── */
 
   async getAccountStatus(credentials: PACCredentials): Promise<PACAccountStatus> {

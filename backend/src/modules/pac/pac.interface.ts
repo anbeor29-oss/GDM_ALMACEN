@@ -119,6 +119,18 @@ export interface IPACProvider {
     csd?: CsdParaCancelar
   ): Promise<CancelResult>;
 
+  /**
+   * Registra (sube) el CSD del emisor en la bóveda del PAC para que la ruta de
+   * emisión JSON pueda sellar sin depender de que alguien lo haya cargado a mano
+   * en el panel del PAC. NEXO ya guarda .cer/.key/contraseña de cada empresa, así
+   * que puede subirlo solo. Opcional: no todo PAC lo expone por API.
+   * Devuelve { ok } y, si falla, el motivo que dio el PAC.
+   */
+  registrarCsd?(
+    csd: CsdParaCancelar,
+    credentials: PACCredentials,
+  ): Promise<{ ok: boolean; mensaje?: string }>;
+
   /** Consultar timbres disponibles */
   getAccountStatus(credentials: PACCredentials): Promise<PACAccountStatus>;
 
