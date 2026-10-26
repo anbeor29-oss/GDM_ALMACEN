@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Store, Plus, Pencil, Trash2, Loader2, Save, X, ArrowLeft } from 'lucide-react';
+import { Store, Plus, Pencil, Trash2, Loader2, Save, X, ArrowLeft, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '@/services/api';
 
@@ -80,6 +80,13 @@ export function TiendasPage() {
                   <button onClick={() => eliminar(t)} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded" title="Dar de baja"><Trash2 size={15} /></button>
                 </div>
               </div>
+              {/* Enlace público del comprador (ruta /t/:slug bajo la base del sitio). */}
+              {t.activa && (
+                <a href={`${import.meta.env.BASE_URL}t/${t.slug}`} target="_blank" rel="noreferrer"
+                  className="mt-3 flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50">
+                  <ExternalLink size={13} /> Ver tienda pública
+                </a>
+              )}
             </div>
           ))}
         </div>

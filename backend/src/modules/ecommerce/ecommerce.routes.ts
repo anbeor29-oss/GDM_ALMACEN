@@ -30,11 +30,11 @@ router.get('/estado', asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: {
-      modulo: 'ecommerce', etapa: 'rebanada-3 (productos/inventario + catálogo)',
+      modulo: 'ecommerce', etapa: 'rebanada-4 (storefront público + pedidos)',
       companyId: cid,
       tiendas: cid ? await tiendas.contarTiendas(cid) : 0,
       publicados: cid ? await catalogo.contarPublicados(cid) : 0,
-      pedidos: 0,
+      pedidos: cid ? Number((await query(`SELECT COUNT(*)::int AS n FROM ec_order WHERE company_id=$1`, [cid])).rows[0]?.n || 0) : 0,
     },
   });
 }));

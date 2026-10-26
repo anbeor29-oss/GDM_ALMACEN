@@ -30,6 +30,8 @@ const RegistroPage = lazy(() => import('@/pages/Registro').then((m) => ({ defaul
 const PublicHomePage = lazy(() => import('@/pages/PublicHome').then((m) => ({ default: m.PublicHomePage })));
 const TerminosPage = lazy(() => import('@/pages/LegalDoc').then((m) => ({ default: m.TerminosPage })));
 const PrivacidadPage = lazy(() => import('@/pages/LegalDoc').then((m) => ({ default: m.PrivacidadPage })));
+/* Storefront público (la tienda del comprador): ruta pública /t/:slug, SIN login. */
+const StorefrontPage = lazy(() => import('@/pages/storefront/Storefront').then((m) => ({ default: m.StorefrontPage })));
 
 /** Se ve un instante mientras baja el pedazo del ERP (solo la primera vez). */
 function CargandoErp() {
@@ -265,6 +267,8 @@ export function App() {
           <Route path="/registro" element={<RegistroPage />} />
           <Route path="/terminos"   element={<TerminosPage />} />
           <Route path="/privacidad" element={<PrivacidadPage />} />
+          {/* Tienda pública del comprador (SIN login): hcgm.com.mx/erp/t/<slug>. */}
+          <Route path="/t/:slug" element={<Suspense fallback={<CargandoErp />}><StorefrontPage /></Suspense>} />
 
           {/* PANTALLA COMPLETA, SIN la cáscara del ERP (sidebar/header): el checador
               corre en tabletas y celulares y debe verse solo él —no "todo el

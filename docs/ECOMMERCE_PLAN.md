@@ -261,4 +261,24 @@ conseguir la **cuenta de Mercado Pago + credenciales sandbox** del piloto.
   web opcional, destacado, descripción y SEO; filtro «sólo publicados»). `/estado` ya cuenta publicados.
 - Las tres tarjetas del hub (Productos/Inventario/Catálogo web) quedan «Disponible» y navegables.
 - **Estado:** typecheck (back+front) y `build:hosting` OK; migración corre sola en Render.
-- **Siguiente (rebanada 4):** **storefront público** (catálogo→carrito→checkout) + **reserva transaccional** de stock.
+
+### Rebanada 4 — Storefront público (catálogo→carrito→checkout) + reserva · **HECHO 2026-10-26**
+- **Migración `2026-10-26_ecommerce_pedidos.sql`:** `ec_order` (pedido espejo con fotografía de precio/IVA, estado
+  `PENDIENTE_PAGO`, datos del comprador invitado, folio `WEB-000001` único por tienda), `ec_order_item` (renglón con
+  precio_unit sin IVA + tasa + importe + iva) y `ec_inventory_reservation` (reserva ACTIVA con `expira_at`, 60 min).
+- **Storefront API PÚBLICA (sin login):** `backend/src/modules/ecommerce/ecommerce-storefront.{service,routes}.ts`,
+  montada en `app.ts` como **`/api/v1/storefront`** (NO gated), acotada por **slug** de la tienda.
+  - `GET /storefront/:slug` → marca + políticas. `GET /storefront/:slug/productos` → catálogo publicado con precio
+    (con IVA) y **disponible** (= stock físico − reservas ACTIVAS vivas; producto sin filas de stock = servicio, sin tope).
+  - `POST /storefront/:slug/pedido` → **transacción**: valida producto publicado + empresa, **bloquea las filas de
+    `warehouse_stock` (FOR UPDATE)** para serializar checkouts, verifica disponible (evita sobreventa), inserta
+    `ec_order` + items + reservas. Devuelve folio/total. **El cobro (pasarela) es la rebanada 5.**
+- **Frontend storefront (público):** ruta **`/t/:slug`** (SIN login, en App.tsx) + `pages/storefront/Storefront.tsx`,
+  mobile-first, con los colores de marca de la tienda. Catálogo (grid) → carrito (lado cliente) → checkout (datos del
+  comprador) → confirmación con folio. Usa `fetch` plano (no el cliente autenticado, para no disparar el redirect a login).
+  URL pública hoy: `hcgm.com.mx/erp/t/<slug>` (el subdominio `tienda.hcgm.com.mx/<slug>` queda para infra posterior).
+- **Admin:** la tarjeta de cada tienda (cockpit Tiendas) trae **«Ver tienda pública»** (abre `/t/:slug`); `/estado`
+  ya cuenta pedidos.
+- **Estado:** typecheck (back+front) OK; migración corre sola en Render.
+- **Siguiente (rebanada 5):** **Mercado Pago** (checkout alojado/tokenizado, webhook firmado) + al pagar:
+  consumir reserva → **pedido→venta→CFDI→póliza** con el motor que ya existe.
