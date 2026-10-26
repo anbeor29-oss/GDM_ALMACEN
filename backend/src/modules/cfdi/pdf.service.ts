@@ -33,6 +33,7 @@ import { query } from '../../config/database';
 import { NotFoundError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import { getCompanyLogo } from './logo-cache';
+import { getTema } from './pdf-temas';
 import {
   drawTimbreFiscal, drawPageNumbers, extractNoCertificado, montoEnLetra,
   extractTimbreData, buildQrSatPng, drawCancelledWatermark,
@@ -236,6 +237,9 @@ export async function generateInvoicePDF(data: PDFGenerationData): Promise<Buffe
     }
   }
 
+  // Tema de color elegido por la empresa (vanity). Se cuelga del doc para que
+  // todas las secciones lo usen sin cambiar cada firma (como _nextY).
+  (doc as any)._tema = getTema((company as any).pdf_formato);
   generateHeader(doc, company, invoice, cat.regE, logoBuf);
   generateReceptor(doc, customer, invoice, cat.regR, cat.uso);
   generateItems(doc, invoice.items);
@@ -270,6 +274,7 @@ const PAGE_RIGHT = 555;
 const PAGE_TOP = 40;
 
 function generateHeader(doc: PDFDoc, company: any, invoice: any, regimenDesc: string, logoBuf: Buffer | null) {
+  const tema = (doc as any)._tema || getTema();
   // 1) Logo — usamos el thumbnail comprimido (~30 KB) en vez del JPG original
   //    para evitar PDFs de 3 MB que el navegador no puede descargar.
   let hasLogo = false;
@@ -287,14 +292,20 @@ function generateHeader(doc: PDFDoc, company: any, invoice: any, regimenDesc: st
 
   // 2) Bloque emisor (centro) — debajo del logo cuando hay, o desde el margen
   const emisorX = hasLogo ? PAGE_LEFT + LOGO_SIZE + 14 : PAGE_LEFT;
-  doc.fontSize(22).font('Helvetica-Bold').fillColor('#1e40af').text('FACTURA', emisorX, PAGE_TOP);
+  doc.fontSize(22).font('Helvetica-Bold').fillColor(tema.titulo).text('FACTURA', emisorX, PAGE_TOP);
 
-  doc.fontSize(9).font('Helvetica-Bold').fillColor('#374151')
-    .text((company.business_name || '').toUpperCase(), emisorX, PAGE_TOP + 28);
+  // El bloque emisor debe terminar ANTES de la caja de folio (boxX=345): antes
+  // se extendía hasta x=380 y se ENCIMABA con esa caja (y el nombre, sin ancho,
+  // la invadía de lleno). 12 pt de respiro antes de la caja.
+  const emisorBlockW = 345 - emisorX - 12;
+  const nombreEmisor = (company.business_name || '').toUpperCase();
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#374151');
+  const nombreH = doc.heightOfString(nombreEmisor, { width: emisorBlockW });
+  doc.text(nombreEmisor, emisorX, PAGE_TOP + 28, { width: emisorBlockW });
   // Letra un punto más chica (8 en vez de 9) para que el domicilio quepa cómodo.
   doc.font('Helvetica').fillColor('#374151').fontSize(8);
-  const emisorBlockW = 340 - emisorX + PAGE_LEFT;
-  let y = PAGE_TOP + 40;
+  // La dirección arranca DEBAJO del nombre real (que puede ocupar 2 líneas).
+  let y = PAGE_TOP + 28 + Math.max(12, nombreH);
   doc.text(`RFC: ${company.rfc || '—'}`, emisorX, y, { width: emisorBlockW }); y += 11;
   const regCodeE = company.fiscal_regime || '—';
   const regTextE = regimenDesc ? `${regCodeE} — ${regimenDesc}` : regCodeE;
@@ -379,7 +390,7 @@ function generateHeader(doc: PDFDoc, company: any, invoice: any, regimenDesc: st
     6;                                                  // padding bottom
 
   const boxH = Math.max(150, Math.ceil(computedH));
-  doc.roundedRect(boxX, boxY, boxW, boxH, 6).fillAndStroke('#eff6ff', '#94a3b8');
+  doc.roundedRect(boxX, boxY, boxW, boxH, 6).fillAndStroke(tema.boxBg, tema.boxBorder);
 
   let by = boxY + 8;
 
@@ -484,14 +495,15 @@ function generateReceptor(doc: PDFDoc, customer: any, invoice: any, regimenDesc:
 }
 
 function generateItems(doc: PDFDoc, items: any[]) {
+  const tema = (doc as any)._tema || getTema();
   const y0 = (doc as any)._nextY || 280;
   doc.font('Helvetica-Bold').fontSize(8).fillColor('#64748b')
     .text('CONCEPTOS', PAGE_LEFT, y0);
 
-  // encabezados de tabla — azul suave en lugar de negro
+  // encabezados de tabla — color del tema elegido
   const headerY = y0 + 14;
-  doc.rect(PAGE_LEFT, headerY, PAGE_RIGHT - PAGE_LEFT, 18).fill('#3b82f6');
-  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8);
+  doc.rect(PAGE_LEFT, headerY, PAGE_RIGHT - PAGE_LEFT, 18).fill(tema.tablaHeaderBg);
+  doc.fillColor(tema.tablaHeaderText).font('Helvetica-Bold').fontSize(8);
 
   // Orden: CANT · DESCRIPCIÓN · UNIDAD · CLAVE SAT · P. UNIT · IVA · IMPORTE
   const cols = {

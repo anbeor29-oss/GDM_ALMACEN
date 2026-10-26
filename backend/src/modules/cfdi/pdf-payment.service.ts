@@ -33,6 +33,7 @@ import {
   drawCancelledWatermark,
 } from './pdf-helpers';
 import { getCompanyLogo } from './logo-cache';
+import { getTema } from './pdf-temas';
 
 export async function generatePaymentPDF(companyId: string, paymentId: string): Promise<Buffer> {
   // 1) Cargar el pago
@@ -86,6 +87,7 @@ export async function generatePaymentPDF(companyId: string, paymentId: string): 
 
   // 2) Empresa + cliente
   const company = await companiesService.getCompanyById(companyId);
+  const tema = getTema((company as any).pdf_formato);
   const customer = await customersService.getCustomerById(companyId, payment.customer_id);
 
   /* Ya NO se recalculan saldos ni parcialidad aquí.
@@ -109,7 +111,7 @@ export async function generatePaymentPDF(companyId: string, paymentId: string): 
   const folio = `${payment.serie || 'P'}-${String(payment.folio).padStart(6, '0')}`;
   const logoBuf = await getCompanyLogo((company as any).id);
   let y = drawCommonHeader(doc, company, {
-    titulo: 'COMPLEMENTO DE PAGO',
+    titulo: 'TIMBRE DE PAGO',
     folio,
     fecha: payment.payment_date,
     forma: payment.payment_form,
@@ -117,7 +119,7 @@ export async function generatePaymentPDF(companyId: string, paymentId: string): 
     uuid: payment.uuid,
     moneda: payment.currency || 'MXN',
     regimenDesc: regE,
-    color: '#15803d',  // verde — distintivo del CFDI de pago
+    color: tema.titulo,  // color del formato elegido por la empresa
     logoBuf,
     xml: (payment as any).xml_content,
   });
@@ -156,8 +158,8 @@ export async function generatePaymentPDF(companyId: string, paymentId: string): 
 
   // Tabla de documentos relacionados
   const headerY = y;
-  doc.rect(PAGE_LEFT, headerY, PAGE_RIGHT - PAGE_LEFT, 18).fill('#15803d');
-  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(7.5);
+  doc.rect(PAGE_LEFT, headerY, PAGE_RIGHT - PAGE_LEFT, 18).fill(tema.tablaHeaderBg);
+  doc.fillColor(tema.tablaHeaderText).font('Helvetica-Bold').fontSize(7.5);
   // Anchos recalculados para que "SALDO INSOLUTO" quepa en una sola línea
   // en Helvetica-Bold 7.5 (~60pt) sin partirse "SALDO\\nINSOLUTO".
   const cols = {
@@ -227,7 +229,7 @@ export async function generatePaymentPDF(companyId: string, paymentId: string): 
   drawTimbreFiscal(doc, rowY + 30, {
     uuid: payment.uuid,
     fechaTimbrado: payment.pac_timestamp || payment.payment_date,
-    color: '#15803d',
+    color: tema.titulo,
     xml: (payment as any).xml_content,
     qrPng: qrPngPay,
   });

@@ -37,6 +37,7 @@ import {
   extractTimbreData, buildQrSatPng, drawCancelledWatermark,
 } from './pdf-helpers';
 import { getCompanyLogo } from './logo-cache';
+import { getTema } from './pdf-temas';
 import { MOTIVOS } from '../credit-notes/credit-notes.service';
 
 export async function generateCreditNotePDF(companyId: string, creditNoteId: string): Promise<Buffer> {
@@ -51,6 +52,7 @@ export async function generateCreditNotePDF(companyId: string, creditNoteId: str
   if (!note) throw new NotFoundError('Nota de crédito no encontrada');
 
   const company = await companiesService.getCompanyById(companyId);
+  const tema = getTema((company as any).pdf_formato);
   const customer = await customersService.getCustomerById(companyId, note.customer_id);
 
   const [regE, regR] = await Promise.all([
@@ -71,7 +73,7 @@ export async function generateCreditNotePDF(companyId: string, creditNoteId: str
     uuid: note.uuid,
     moneda: note.currency || 'MXN',
     regimenDesc: regE,
-    color: '#be123c',  // rojo/rosa — distintivo de Egreso
+    color: tema.titulo,  // color del formato elegido por la empresa
     logoBuf,
     xml: (note as any).xml_content,
   });
@@ -113,8 +115,8 @@ export async function generateCreditNotePDF(companyId: string, creditNoteId: str
     .text('CONCEPTO', PAGE_LEFT, y);
   y += 14;
   const headerY = y;
-  doc.rect(PAGE_LEFT, headerY, PAGE_RIGHT - PAGE_LEFT, 18).fill('#be123c');
-  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8);
+  doc.rect(PAGE_LEFT, headerY, PAGE_RIGHT - PAGE_LEFT, 18).fill(tema.tablaHeaderBg);
+  doc.fillColor(tema.tablaHeaderText).font('Helvetica-Bold').fontSize(8);
   doc.text('CANT', PAGE_LEFT + 6,   headerY + 5);
   doc.text('DESCRIPCIÓN', PAGE_LEFT + 60,  headerY + 5);
   doc.text('IMPORTE',  PAGE_LEFT + 448, headerY + 5, { width: 60, align: 'right' });
@@ -144,8 +146,8 @@ export async function generateCreditNotePDF(companyId: string, creditNoteId: str
 
   function line(label: string, value: string, big = false) {
     if (big) {
-      doc.rect(boxLX, y - 2, PAGE_RIGHT - boxLX, 24).fill('#be123c');
-      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(11);
+      doc.rect(boxLX, y - 2, PAGE_RIGHT - boxLX, 24).fill(tema.tablaHeaderBg);
+      doc.fillColor(tema.tablaHeaderText).font('Helvetica-Bold').fontSize(11);
     } else {
       doc.fillColor('#374151').font('Helvetica').fontSize(9);
     }
@@ -177,7 +179,7 @@ export async function generateCreditNotePDF(companyId: string, creditNoteId: str
   drawTimbreFiscal(doc, y + 4, {
     uuid: note.uuid,
     fechaTimbrado: note.pac_timestamp || note.date_issued,
-    color: '#be123c',
+    color: tema.titulo,
     xml: note.xml_content,
     qrPng: qrPngNc,
   });

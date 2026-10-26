@@ -115,6 +115,7 @@ export function IssuerModal({ companyId, onClose }: Props) {
       ext_number: form.ext_number,
       default_invoice_series: form.default_invoice_series,
       next_invoice_folio: form.next_invoice_folio,
+      pdf_formato: form.pdf_formato || 'clasico',
     });
   };
 
@@ -348,6 +349,30 @@ export function IssuerModal({ companyId, onClose }: Props) {
             {/* Logo + CSD */}
             <Section>Logo de la empresa (3×3 cm en el PDF)</Section>
             <LogoUploader companyId={companyId} />
+
+            <Section>Formato de impresión (PDF) — Factura, Timbre de pago y Nota de crédito</Section>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { key: 'clasico',   nombre: 'Clásico',   sub: 'Azul',        color: '#1e40af' },
+                { key: 'esmeralda', nombre: 'Esmeralda', sub: 'Verde',       color: '#047857' },
+                { key: 'carbon',    nombre: 'Carbón',    sub: 'Gris · rojo', color: '#b91c1c' },
+                { key: 'cielo',     nombre: 'Cielo',     sub: 'Azul claro',  color: '#0284c7' },
+              ].map((f) => {
+                const sel = (form.pdf_formato || 'clasico') === f.key;
+                return (
+                  <button type="button" key={f.key}
+                    onClick={() => setForm((p) => ({ ...p, pdf_formato: f.key }))}
+                    className={`text-left rounded-lg p-2.5 transition ${sel ? 'border-2 border-blue-500 bg-blue-50' : 'border border-gray-200 hover:bg-gray-50'}`}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-4 h-4 rounded shrink-0" style={{ backgroundColor: f.color }} />
+                      <span className="text-sm font-medium text-gray-800">{f.nombre}</span>
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-0.5">{f.sub}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-gray-500">El color elegido se aplica a los tres comprobantes. Pulsa «Guardar» para aplicarlo.</p>
 
             <Section>CSD — Certificado de Sello Digital (para timbrar)</Section>
             <CSDUploader companyId={companyId} />
