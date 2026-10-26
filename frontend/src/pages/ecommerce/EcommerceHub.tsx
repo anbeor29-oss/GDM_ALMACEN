@@ -26,7 +26,7 @@ const SECCIONES: Seccion[] = [
   { icon: Package,       titulo: 'Productos',     desc: 'Catálogo maestro (SKU, precio, impuestos) sobre los datos del ERP.', color: 'bg-blue-100 text-blue-700', listo: true, to: '/ecommerce/productos' },
   { icon: Boxes,         titulo: 'Inventario',    desc: 'Existencias por almacén y disponibilidad para venta.',               color: 'bg-indigo-100 text-indigo-700', listo: true, to: '/ecommerce/inventario' },
   { icon: Globe,         titulo: 'Catálogo web',  desc: 'Qué productos salen a la tienda, fotos, SEO y precio web.',           color: 'bg-cyan-100 text-cyan-700', listo: true, to: '/ecommerce/catalogo' },
-  { icon: ClipboardList, titulo: 'Pedidos',       desc: 'Tablero de pedidos, estados, historial y guía de envío.',            color: 'bg-amber-100 text-amber-700' },
+  { icon: ClipboardList, titulo: 'Pedidos',       desc: 'Tablero de pedidos; «Pagar y facturar» genera el CFDI y su póliza.',  color: 'bg-amber-100 text-amber-700', listo: true, to: '/ecommerce/pedidos' },
   { icon: CreditCard,    titulo: 'Pagos',         desc: 'Mercado Pago: tarjeta, OXXO, SPEI y meses sin intereses.',           color: 'bg-rose-100 text-rose-700' },
   { icon: Tag,           titulo: 'Promociones',   desc: 'Cupones, ofertas con vigencia y envío gratis.',                      color: 'bg-fuchsia-100 text-fuchsia-700' },
   { icon: Truck,         titulo: 'Envíos',        desc: 'Método y costo, captura de guía y recoger en sucursal.',             color: 'bg-orange-100 text-orange-700' },

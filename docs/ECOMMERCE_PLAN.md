@@ -280,5 +280,22 @@ conseguir la **cuenta de Mercado Pago + credenciales sandbox** del piloto.
 - **Admin:** la tarjeta de cada tienda (cockpit Tiendas) trae **«Ver tienda pública»** (abre `/t/:slug`); `/estado`
   ya cuenta pedidos.
 - **Estado:** typecheck (back+front) OK; migración corre sola en Render.
-- **Siguiente (rebanada 5):** **Mercado Pago** (checkout alojado/tokenizado, webhook firmado) + al pagar:
-  consumir reserva → **pedido→venta→CFDI→póliza** con el motor que ya existe.
+
+### Rebanada 5 — Mercado Pago + pedido→CFDI→póliza · **HECHO 2026-10-26**
+- **Migración `2026-10-26d_ecommerce_pagos.sql`:** `ec_payment_transaction` (operaciones de pasarela, unique por
+  `payment_id` = idempotencia del webhook) y `ec_order` gana `invoice_id` / `pagado_at` / `facturado_at`.
+- **Pedido→CFDI→póliza** (`ec-fulfillment.service`): `facturarPedido(companyId, orderId)` resuelve el cliente
+  **«Público en general»** (XAXX010101000, 616, S01), crea la factura (tipo I, PUE) con los productos del pedido
+  (`invoicesService.createInvoice`) y la **timbra** (`pacService.stampInvoice` → que YA indexa en la bóveda y genera la
+  póliza de venta vía postTimbradoEmitido), consume las reservas y liga la factura al pedido. **Idempotente** por pedido;
+  si no timbra (PRUEBAS/sin CSD en vault) la factura queda en DRAFT ligada.
+- **Mercado Pago** (`ec-mercadopago.service`, gated por **`MP_ACCESS_TOKEN`**): checkout **alojado** (preferencia →
+  init_point; NEXO nunca ve tarjeta/CVV). El **webhook** `/api/v1/storefront/webhook/mercadopago` responde 200 y en
+  segundo plano **consulta el pago a MP** (no confía sólo en la notificación); si fue `approved`, registra el pago
+  (idempotente) y dispara `marcarPagadoYFacturar`. Si no hay token, el storefront cae al flujo sin línea (R4).
+- **Storefront:** el checkout, con MP configurado, crea la preferencia y **redirige** al pago; sin MP, confirma el pedido.
+- **Cockpit:** tarjeta **Pedidos** activa → `pages/ecommerce/Pedidos.tsx` (lista + botón **«Pagar y facturar»** para
+  cobros fuera de línea); rutas `/ecommerce/pedidos` (lista) y `/ecommerce/pedidos/:id/pagar-y-facturar`.
+- **Pendiente operativo:** credenciales **sandbox de Mercado Pago** (`MP_ACCESS_TOKEN`) para probar el pago en línea; el
+  flujo manual «Pagar y facturar» ya es probable sin pasarela. `STOREFRONT_PUBLIC_URL` para los back_urls.
+- **Estado:** typecheck (back+front) OK; migración corre sola en Render.

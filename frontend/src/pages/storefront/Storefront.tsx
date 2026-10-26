@@ -109,6 +109,8 @@ export function StorefrontPage() {
       });
       const j = await res.json();
       if (!res.ok || !j?.success) throw new Error(j?.message || 'No se pudo crear el pedido.');
+      // Si hay pasarela (Mercado Pago), se redirige al checkout alojado.
+      if (j.data?.checkoutUrl) { window.location.href = j.data.checkoutUrl; return; }
       setConfirmado(j.data);
       setCarrito({}); setCheckout(false); setAbierto(false);
     } catch (e: any) {

@@ -7,9 +7,16 @@
  */
 import { Router } from 'express';
 import { asyncHandler } from '../../middleware/errorHandler';
+import { query } from '../../config/database';
+import logger from '../../middleware/logger';
 import * as sf from './ecommerce-storefront.service';
+import { mpConfigurado, crearPreferencia } from './ec-mercadopago.service';
+import { procesarPagoMP } from './ec-fulfillment.service';
 
 const router = Router();
+
+/** Base pública del storefront para los back_urls de la pasarela. */
+const STOREFRONT_PUBLIC = (process.env.STOREFRONT_PUBLIC_URL || 'https://hcgm.com.mx/erp').replace(/\/+$/, '');
 
 /** GET /storefront/:slug — datos públicos de la tienda (branding + políticas). */
 router.get('/:slug', asyncHandler(async (req, res) => {
@@ -36,11 +43,47 @@ router.get('/:slug/productos', asyncHandler(async (req, res) => {
   res.json({ success: true, data: { productos } });
 }));
 
-/** POST /storefront/:slug/pedido — crea el pedido y reserva el stock. */
+/** POST /storefront/:slug/pedido — crea el pedido y reserva el stock. Si Mercado
+ *  Pago está configurado, además crea la preferencia y devuelve la URL de pago. */
 router.post('/:slug/pedido', asyncHandler(async (req, res) => {
   const t = await sf.tiendaPorSlug(req.params.slug);
   const r = await sf.crearPedido(t, req.body || {});
-  res.status(201).json({ success: true, data: r, message: `Pedido ${r.numero} recibido.` });
+
+  let checkoutUrl: string | null = null;
+  if (mpConfigurado()) {
+    const tienda = `${STOREFRONT_PUBLIC}/t/${encodeURIComponent(t.slug)}`;
+    const webhook = `${req.protocol}://${req.get('host')}/api/v1/storefront/webhook/mercadopago`;
+    const pref = await crearPreferencia({
+      orderId: r.orderId, numero: r.numero, moneda: r.moneda, items: r.lineas,
+      backUrls: { success: tienda, failure: tienda, pending: tienda },
+      notificationUrl: webhook,
+    });
+    if (pref) {
+      checkoutUrl = pref.initPoint;
+      await query(
+        `INSERT INTO ec_payment_transaction (company_id, store_id, order_id, proveedor, estado, monto, moneda, preference_id)
+         VALUES ($1,$2,$3,'mercadopago','PENDIENTE',$4,$5,$6)`,
+        [t.company_id, t.id, r.orderId, r.total, r.moneda, pref.preferenceId]).catch(() => { /* best-effort */ });
+    }
+  }
+
+  res.status(201).json({
+    success: true,
+    data: { numero: r.numero, estado: r.estado, total: r.total, moneda: r.moneda, checkoutUrl },
+    message: `Pedido ${r.numero} recibido.`,
+  });
 }));
+
+/** Webhook de Mercado Pago. Se responde 200 de inmediato y se procesa en segundo
+ *  plano (confirmando el pago contra MP). GET sirve para la validación de MP. */
+router.get('/webhook/mercadopago', (_req, res) => res.status(200).json({ ok: true }));
+router.post('/webhook/mercadopago', (req, res) => {
+  const paymentId = String((req.query['data.id'] as string) || req.body?.data?.id || req.query.id || '');
+  const tipo = String(req.query.type || req.body?.type || req.body?.action || '');
+  res.status(200).json({ ok: true });
+  if (/payment/i.test(tipo) && paymentId) {
+    procesarPagoMP(paymentId).catch((e) => logger.warn(`[webhook mp] ${e.message}`));
+  }
+});
 
 export default router;

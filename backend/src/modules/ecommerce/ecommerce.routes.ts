@@ -14,6 +14,7 @@ import { query } from '../../config/database';
 import * as tiendas from './ecommerce-tiendas.service';
 import * as catalogo from './ecommerce-catalogo.service';
 import * as productsService from '../products/products.service';
+import * as fulfillment from './ec-fulfillment.service';
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.get('/estado', asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: {
-      modulo: 'ecommerce', etapa: 'rebanada-4 (storefront público + pedidos)',
+      modulo: 'ecommerce', etapa: 'rebanada-5 (pagos Mercado Pago + pedido→CFDI→póliza)',
       companyId: cid,
       tiendas: cid ? await tiendas.contarTiendas(cid) : 0,
       publicados: cid ? await catalogo.contarPublicados(cid) : 0,
@@ -109,6 +110,21 @@ router.put('/catalogo/:productId', asyncHandler(async (req, res) => {
 router.post('/catalogo/:productId/publicar', asyncHandler(async (req, res) => {
   const d = await catalogo.togglePublicado(companyId(req), req.params.productId, req.body?.publicado !== false);
   res.json({ success: true, data: d });
+}));
+
+/* ────────────────────────  PEDIDOS  ──────────────────────── */
+router.get('/pedidos', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: { pedidos: await fulfillment.listarPedidos(companyId(req)) } });
+}));
+/** Marca el pedido pagado y lo factura (pedido→CFDI→póliza). Para cobros fuera de
+ *  línea o para cerrar a mano; con Mercado Pago lo hace el webhook al aprobarse. */
+router.post('/pedidos/:id/pagar-y-facturar', asyncHandler(async (req, res) => {
+  const r = await fulfillment.marcarPagadoYFacturar(companyId(req), req.params.id);
+  res.json({
+    success: true, data: r,
+    message: r.timbrada ? `Pedido facturado y timbrado (UUID ${r.uuid}).`
+      : 'Pedido facturado; la factura quedó en borrador (revisa CSD/ambiente para timbrar).',
+  });
 }));
 
 export default router;

@@ -3450,6 +3450,13 @@ class APIClient {
   async publicarProductoEc(productId: string, publicado: boolean) {
     return (await this.client.post(`/ecommerce/catalogo/${productId}/publicar`, { publicado })).data;
   }
+  // Pedidos de la tienda (rebanada 5)
+  async getPedidosEc() {
+    return (await this.client.get('/ecommerce/pedidos')).data;
+  }
+  async pagarYFacturarPedidoEc(id: string) {
+    return (await this.client.post(`/ecommerce/pedidos/${id}/pagar-y-facturar`)).data;
+  }
   /** Activa el cumplimiento (SAT/CSF/IMSS) en automático para TODAS las empresas,
    *  para que el barrido de los lunes 5:30 las incluya. */
   async adminActivarCumplimientoTodas() {

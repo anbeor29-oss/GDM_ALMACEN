@@ -164,6 +164,9 @@ export async function crearPedido(
       }
     }
 
-    return { numero, estado: ped.rows[0].estado, total: Number(ped.rows[0].total), moneda: store.moneda };
+    return {
+      orderId, numero, estado: ped.rows[0].estado, total: Number(ped.rows[0].total), moneda: store.moneda,
+      lineas: renglones.map((l) => ({ nombre: l.nombre, cantidad: l.cantidad, precioConIva: r2(l.precioUnit * (1 + l.tasa)) })),
+    };
   });
 }
