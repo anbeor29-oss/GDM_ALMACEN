@@ -193,10 +193,18 @@ export function InvoicesPage() {
                 // Saldo real (total − pagos − NC). Si llega como 0 la factura ya está liquidada.
                 const saldoReal = Number((invoice as any).balance ?? invoice.total);
                 const liquidada = saldoReal <= 0.01;
-                // Pago aplica solo si: está timbrada, no cancelada, no DRAFT y TIENE SALDO PENDIENTE.
-                // Si una PARTIAL_PAYMENT quedó en saldo 0 por combinación pagos+NC, no debe
-                // permitir más complementos (no hay nada que cobrar).
-                const canPay = invoice.is_stamped &&
+                // COMPLEMENTO DE PAGO = SÓLO PPD (Anexo 20). Diferencia clave:
+                //   · PUE (Pago en Una sola Exhibición): se paga al emitir con su forma
+                //     de pago REAL (01 efectivo, 03 transferencia…); YA está pagada y NO
+                //     lleva complemento. Por eso no debe salir el ícono de cartera.
+                //   · PPD (Pago en Parcialidades o Diferido): forma de pago "99 Por
+                //     definir"; por CADA pago recibido se timbra un complemento (CFDI P).
+                const esPPD = String((invoice as any).payment_method || '').toUpperCase() === 'PPD';
+                // Pago aplica solo si: es PPD, está timbrada, no cancelada/DRAFT y TIENE
+                // SALDO PENDIENTE. Si una PARTIAL_PAYMENT quedó en saldo 0 por pagos+NC, no
+                // debe permitir más complementos (no hay nada que cobrar).
+                const canPay = esPPD &&
+                  invoice.is_stamped &&
                   !['PAID', 'CANCELLED', 'DRAFT'].includes(invoice.status) &&
                   !liquidada;
                 return (
