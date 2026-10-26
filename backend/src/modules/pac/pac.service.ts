@@ -158,6 +158,55 @@ async function stampFromJsonConAutoRegistroCsd(
 }
 
 /**
+ * Tras timbrar un comprobante EMITIDO: lo indexa en la bóveda unificada
+ * (cfdi_recibidos, direccion='emitidos') y dispara su póliza según el tipo.
+ *
+ * POR QUÉ
+ * Las pólizas de venta/cobro se arman DESDE la bóveda, no desde la tabla
+ * invoices; y la vista «Emitidos» también lee de ahí. Antes el emitido sólo
+ * aparecía cuando la descarga del SAT lo traía de vuelta horas/días después, así
+ * que ni se veía ni se contabilizaba al momento. Aquí se adelanta.
+ *
+ * TODO best-effort: el timbre YA se consumió, así que NADA de esto debe tumbar el
+ * timbrado. La descarga del SAT y «Generar pólizas» son la red de seguridad.
+ * El indexado se ESPERA (para que aparezca de inmediato); la póliza va
+ * fire-and-forget (idempotente por origen_uuid; omite lo que no cuadra o lo que
+ * no tiene cuenta asignada).
+ */
+async function postTimbradoEmitido(
+  companyId: string, result: StampResult, tipo?: string,
+): Promise<void> {
+  if (!result.success || !result.xml_stamped) return;
+
+  // 1) Bóveda — se espera: que aparezca YA en «Emitidos» y habilite la póliza.
+  try {
+    const rfcR = await query<{ rfc: string }>(`SELECT rfc FROM companies WHERE id = $1`, [companyId]);
+    const rfcEmisor = (rfcR.rows[0]?.rfc || '').toUpperCase().trim();
+    if (rfcEmisor) {
+      const { indexarCfdi } = await import('../sat-descarga/descarga.service');
+      await indexarCfdi(companyId, rfcEmisor, 'emitidos', result.xml_stamped);
+    }
+  } catch (e: any) {
+    logger.warn(`[post-timbrado] no se indexó el XML emitido en la bóveda: ${e.message}`);
+  }
+
+  // 2) Póliza según el tipo (fire-and-forget). I → ventas, P → cobros/pagos.
+  //    E (nota de crédito) y T (traslado) por ahora sólo se indexan: no hay
+  //    generador dedicado, así que la póliza queda al proceso mensual/manual.
+  const f = new Date(result.fecha_timbrado || Date.now());
+  const anio = f.getFullYear(), mes = f.getMonth() + 1;
+  const t = (tipo || '').toUpperCase();
+  if (t !== 'I' && t !== 'P') return;
+  import('../accounting/polizas.service')
+    .then((m) =>
+      t === 'I'
+        ? m.generarVentasDelMes(companyId, anio, mes)
+        : m.generarCobrosPagosDelMes(companyId, anio, mes))
+    .then((r: any) => { if (r?.creadas) logger.info(`[post-timbrado] pólizas generadas (${t}): ${r.creadas}`); })
+    .catch((e) => logger.warn(`[post-timbrado] generación de póliza (${t}) falló: ${e.message}`));
+}
+
+/**
  * Timbra un XML ya armado con el PAC activo.
  *
  * Existe para que OTROS comprobantes —hoy el Complemento de Pago— usen el mismo
@@ -267,10 +316,15 @@ export async function timbrarJson(
      * el diagnóstico del siguiente error real, porque el mensaje que se reporta
      * al usuario sería el de la primera forma y no el de la verdadera.
      */
-    return stampFromJsonConAutoRegistroCsd(companyId, payload, credentials);
+    const resultadoJson = await stampFromJsonConAutoRegistroCsd(companyId, payload, credentials);
+    // Bóveda + póliza al vuelo (pagos → cobros/pagos; NC → sólo bóveda). Best-effort.
+    await postTimbradoEmitido(companyId, resultadoJson, payload?.TipoDeComprobante);
+    return resultadoJson;
   }
 
-  return provider.stamp(xmlFallback, credentials);
+  const resultadoXml = await provider.stamp(xmlFallback, credentials);
+  await postTimbradoEmitido(companyId, resultadoXml, payload?.TipoDeComprobante);
+  return resultadoXml;
 }
 
 /** Nombre del PAC activo, para que quien llame sepa si fue real o simulado. */
@@ -573,6 +627,9 @@ export async function stampInvoice(companyId: string, invoiceId: string): Promis
   import('../billing/billing-alerts.service')
     .then((m) => m.checkPrepaidAlerts(companyId))
     .catch((e) => logger.warn(`Alerta prepago post-timbrado falló: ${e.message}`));
+
+  // Bóveda + contabilidad automáticas (al vuelo, tras timbrar). Best-effort.
+  await postTimbradoEmitido(companyId, result, invoice.cfdi_type);
 
   logger.info(`Factura ${invoice.serie}-${invoice.folio} timbrada. UUID: ${result.uuid}`);
 
