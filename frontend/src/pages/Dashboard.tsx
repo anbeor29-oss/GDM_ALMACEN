@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { canAccess } from '@/utils/permissions';
+import { conBase } from '@/utils/ruta-base';
 import { FileText, Wallet, TrendingDown, AlertCircle, Stamp, Boxes, ShieldCheck, ArrowRight, Search, DownloadCloud } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -147,8 +148,10 @@ export function DashboardPage() {
        * otra. */
       qc.clear();
       /* Con destino: navegación completa a esa ruta (recarga con el token nuevo);
-       * sin destino: simple recarga de la misma pantalla. */
-      if (destino) window.location.href = destino;
+       * sin destino: simple recarga de la misma pantalla. `conBase` antepone la
+       * base del despliegue (/erp/ en hcgm.com.mx): sin ella, '/contabilidad/
+       * panel-fiscal' iba a la RAÍZ del dominio y el servidor respondía 404. */
+      if (destino) window.location.href = conBase(destino);
       else window.location.reload();
     } catch (e: any) {
       alert(`No se pudo cambiar de empresa.\n\n${e.response?.data?.message || e.message}`);

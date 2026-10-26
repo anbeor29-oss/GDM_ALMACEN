@@ -6,6 +6,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { APIResponse, Invoice, Customer, Product } from '@/types';
 import { getToken, getRefreshToken, setToken, clearSession } from '@/utils/authStorage';
+import { conBase } from '@/utils/ruta-base';
 
 // En dev, Vite hace proxy de /api → localhost:3000 (ver vite.config.ts).
 // En prod (Render), VITE_API_BASE apunta al servicio backend.
@@ -64,8 +65,12 @@ class APIClient {
             } catch { /* el refresh falló → se cierra sesión abajo */ }
           }
           clearSession();
-          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-            window.location.href = '/login';
+          // conBase: en hcgm.com.mx la app vive en /erp/, así que el login es
+          // /erp/login. Sin la base, se iba a la raíz (/login → 404) y además la
+          // comparación con '/login' nunca casaba (el pathname real trae /erp/).
+          const rutaLogin = conBase('/login');
+          if (typeof window !== 'undefined' && window.location.pathname !== rutaLogin) {
+            window.location.href = rutaLogin;
           }
         }
         const r: any = error.response;
