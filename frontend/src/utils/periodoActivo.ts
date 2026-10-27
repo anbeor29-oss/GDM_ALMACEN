@@ -1,12 +1,15 @@
 /**
- * Periodo de TRABAJO — el mes en el que hay que estar parado en todas las
- * pantallas de contabilidad: el SIGUIENTE al último mes cerrado. Con el cierre a
- * diciembre 2025, todo arranca en enero 2026; al cerrar enero, en febrero. Así el
- * usuario no anda cambiando el mes a mano de una pantalla a otra.
+ * Periodo por DEFAULT de las pantallas de contabilidad/reportes/tesorería.
  *
- * `usePeriodoTrabajo` deja el selector en ese mes al cargar, pero respeta al
- * usuario: en cuanto cambia el mes/año (o si venía fijado por la URL), ya no lo
- * vuelve a mover.
+ * Por decisión del usuario (2026-10-27) **arrancan en el MES ACTUAL** (hoy), no en
+ * el mes siguiente al cerrado: parado en octubre, todas muestran octubre. Antes
+ * saltaban al «periodo activo» (mes siguiente al último cierre), que con el cierre
+ * a diciembre-2025 dejaba todo en enero-2026 aunque ya fuera otro mes.
+ *
+ * `usePeriodoTrabajo` deja el selector en el mes actual al cargar y respeta al
+ * usuario: en cuanto cambia el mes/año (o si venía fijado por la URL), no lo mueve.
+ * Si alguna pantalla quisiera el viejo comportamiento (saltar al periodo activo),
+ * puede pasar `preferirActual=false`.
  */
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -21,14 +24,14 @@ export function usePeriodoActivo(): { anio: number; mes: number } | undefined {
   return q.data?.data;
 }
 
-export function usePeriodoTrabajo(inicialAnio?: number, inicialMes?: number, preferirActual = false) {
+export function usePeriodoTrabajo(inicialAnio?: number, inicialMes?: number, preferirActual = true) {
   const hoy = new Date();
   const activo = usePeriodoActivo();
   const [anio, setAnioRaw] = useState(inicialAnio ?? hoy.getFullYear());
   const [mes, setMesRaw] = useState(inicialMes ?? hoy.getMonth() + 1);
-  // No se auto-mueve al periodo activo si: venía fijado (URL), el usuario ya tocó el
-  // selector, o la pantalla PREFIERE el mes/año ACTUAL (reportes NIF y estados
-  // financieros: arrancan en el mes y año de hoy). URL manda sobre «preferir actual».
+  // Por default arranca en el MES ACTUAL y ahí se queda. Sólo se auto-movería al
+  // «periodo activo» (mes siguiente al cerrado) si una pantalla pasa
+  // preferirActual=false y además no venía fijado por URL ni lo tocó el usuario.
   const [tocado, setTocado] = useState(inicialAnio != null || inicialMes != null || preferirActual);
 
   useEffect(() => {
