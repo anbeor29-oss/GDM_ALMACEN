@@ -203,29 +203,45 @@ async function descargarInpcBanxico(): Promise<FilasInpc | { error: string } | n
  * Baja la serie del INPC y la guarda en `fiscal_inpc`. Fuentes oficiales, en orden:
  * INEGI y, de respaldo, **Banxico** (SIE, reusa `BANXICO_TOKEN`). Con `INPC_VIA=banxico`
  * se prueba Banxico primero. Si una fuente no está configurada se salta a la siguiente.
+ *
+ * `fuenteForzada` limita a UNA sola fuente (el botón «Desde Banxico» pasa 'banxico'
+ * para no depender del INEGI, que a veces responde vacío o lento). Sin ella, auto.
  */
-export async function actualizarInpc(): Promise<{ actualizados: number; desde?: string; hasta?: string; fuente?: string; mensaje?: string }> {
-  const fuentes: Array<{ nombre: string; etiqueta: string; fn: () => Promise<FilasInpc | { error: string } | null> }> = [
-    { nombre: 'INEGI', etiqueta: 'INEGI API', fn: descargarInpcInegi },
-    { nombre: 'Banxico', etiqueta: 'Banxico SIE', fn: descargarInpcBanxico },
-  ];
-  if (String(process.env.INPC_VIA || '').toLowerCase() === 'banxico') fuentes.reverse();
+export async function actualizarInpc(
+  fuenteForzada?: 'inegi' | 'banxico',
+): Promise<{ actualizados: number; desde?: string; hasta?: string; fuente?: string; mensaje?: string }> {
+  const INEGI = { nombre: 'INEGI', etiqueta: 'INEGI API', fn: descargarInpcInegi };
+  const BANXICO = { nombre: 'Banxico', etiqueta: 'Banxico SIE', fn: descargarInpcBanxico };
+  let fuentes: Array<{ nombre: string; etiqueta: string; fn: () => Promise<FilasInpc | { error: string } | null> }>;
+  if (fuenteForzada === 'banxico') fuentes = [BANXICO];
+  else if (fuenteForzada === 'inegi') fuentes = [INEGI];
+  else {
+    fuentes = [INEGI, BANXICO];
+    if (String(process.env.INPC_VIA || '').toLowerCase() === 'banxico') fuentes.reverse();
+  }
 
   let filas: FilasInpc | null = null;
-  let etiqueta = 'INEGI API';
+  let etiqueta = fuentes[0].etiqueta;
   let fuenteOk = '';
   const fallos: string[] = [];
+  let noConfig = false;
   for (const f of fuentes) {
     const r = await f.fn();
     if (Array.isArray(r) && r.length) { filas = r; etiqueta = f.etiqueta; fuenteOk = f.nombre; break; }
     if (r && 'error' in r) fallos.push(`${f.nombre}: ${r.error}`);
+    else if (r === null) noConfig = true;   // fuente no configurada (sin token/URL)
     // null → fuente no configurada; se intenta la siguiente.
   }
 
   if (!filas || !filas.length) {
+    // Mensaje a la medida de lo que se pidió: si se forzó Banxico y no hay token,
+    // apunta a BANXICO_TOKEN (no al INEGI), que es lo que el usuario puede arreglar.
+    const quien = fuenteForzada === 'banxico' ? 'Banxico' : fuenteForzada === 'inegi' ? 'el INEGI' : 'ninguna fuente (INEGI/Banxico)';
+    const envVar = fuenteForzada === 'banxico' ? 'BANXICO_TOKEN' : fuenteForzada === 'inegi' ? 'INEGI_TOKEN' : 'INEGI_TOKEN o BANXICO_TOKEN';
     throw new Error(
-      'No se pudo obtener el INPC de ninguna fuente (INEGI/Banxico). ' +
-      (fallos.length ? `Detalle: ${fallos.join(' · ')}. ` : 'Revisa INEGI_TOKEN o BANXICO_TOKEN en Render. ') +
+      `No se pudo obtener el INPC de ${quien}. ` +
+      (fallos.length ? `Detalle: ${fallos.join(' · ')}. `
+        : noConfig ? `Falta ${envVar} en Render. ` : `Revisa ${envVar} en Render. `) +
       'Como respaldo manual, sube el «Índice general» del INPC (CSV/XLSX) con el botón de importar.');
   }
 

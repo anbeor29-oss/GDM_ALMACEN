@@ -1770,8 +1770,9 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/indicadores/inpc', { params: { limite } });
     return r.data;
   }
-  async actualizarInpc() {
-    const r = await this.client.post<APIResponse<any>>('/accounting/indicadores/inpc/actualizar', {});
+  /** Baja el INPC. `fuente` opcional ('inegi'|'banxico') fuerza una sola fuente. */
+  async actualizarInpc(fuente?: 'inegi' | 'banxico') {
+    const r = await this.client.post<APIResponse<any>>('/accounting/indicadores/inpc/actualizar', fuente ? { fuente } : {});
     return r.data;
   }
   /** Importa el INPC desde un archivo del INEGI (CSV/XLSX), sin token. */

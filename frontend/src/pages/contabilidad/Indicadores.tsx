@@ -20,28 +20,29 @@ const num = (n: any) => n === null || n === undefined ? '—' : Number(n).toLoca
 export function IndicadoresPage() {
   const qc = useQueryClient();
   const [msg, setMsg] = useState('');
-  const [busy, setBusy] = useState(false);
+  // Cuál acción está corriendo, para el spinner/etiqueta del botón correcto.
+  const [busy, setBusy] = useState<'' | 'auto' | 'banxico' | 'archivo'>('');
 
   const q = useQuery({ queryKey: ['indicadores'], queryFn: () => api.getIndicadores() });
   const d: any = q.data?.data || {};
   const inpcQ = useQuery({ queryKey: ['inpc-serie'], queryFn: () => api.getInpcSerie(240) });
   const serie: any[] = inpcQ.data?.data || [];
 
-  const actualizar = async () => {
-    setBusy(true); setMsg('');
+  const actualizar = async (fuente?: 'banxico') => {
+    setBusy(fuente === 'banxico' ? 'banxico' : 'auto'); setMsg('');
     try {
-      const r: any = await api.actualizarInpc();
+      const r: any = await api.actualizarInpc(fuente);
       const x = r?.data || {};
       setMsg(`INPC actualizado${x.fuente ? ` desde ${x.fuente}` : ''}: ${x.actualizados} periodo(s) (${x.desde} → ${x.hasta}).`);
       qc.invalidateQueries({ queryKey: ['indicadores'] });
       qc.invalidateQueries({ queryKey: ['inpc-serie'] });
     } catch (e: any) {
       setMsg(e?.response?.data?.message || e?.message || 'No se pudo actualizar el INPC.');
-    } finally { setBusy(false); }
+    } finally { setBusy(''); }
   };
 
   const importarArchivo = async (file: File) => {
-    setBusy(true); setMsg('');
+    setBusy('archivo'); setMsg('');
     try {
       const r: any = await api.importarInpcArchivo(file);
       const x = r?.data || {};
@@ -50,7 +51,7 @@ export function IndicadoresPage() {
       qc.invalidateQueries({ queryKey: ['inpc-serie'] });
     } catch (e: any) {
       setMsg(e?.response?.data?.message || e?.message || 'No se pudo importar el archivo.');
-    } finally { setBusy(false); }
+    } finally { setBusy(''); }
   };
 
   return (
@@ -83,9 +84,15 @@ export function IndicadoresPage() {
               <input type="file" accept=".csv,.xlsx,.xls,.txt" className="hidden"
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) importarArchivo(f); e.currentTarget.value = ''; }} />
             </label>
-            <button onClick={actualizar} disabled={busy}
+            <button onClick={() => actualizar()} disabled={!!busy}
+              title="Baja el INPC automáticamente: intenta primero el INEGI y, si falla, Banxico."
               className="flex items-center gap-1.5 bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm">
-              <RefreshCw size={15} className={busy ? 'animate-spin' : ''} /> {busy ? 'Actualizando…' : 'Actualizar INPC'}
+              <RefreshCw size={15} className={busy === 'auto' ? 'animate-spin' : ''} /> {busy === 'auto' ? 'Actualizando…' : 'Actualizar INPC'}
+            </button>
+            <button onClick={() => actualizar('banxico')} disabled={!!busy}
+              title="Baja el INPC directo de Banxico (SIE), sin pasar por el INEGI. Útil cuando el INEGI responde vacío o lento. Usa BANXICO_TOKEN (el mismo del tipo de cambio)."
+              className="flex items-center gap-1.5 border border-primary text-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 disabled:opacity-50 text-sm">
+              <Landmark size={15} className={busy === 'banxico' ? 'animate-spin' : ''} /> {busy === 'banxico' ? 'Bajando…' : 'Desde Banxico'}
             </button>
           </div>
         </div>

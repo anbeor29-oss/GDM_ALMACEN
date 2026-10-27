@@ -143,12 +143,15 @@ router.get(
   })
 );
 
-/** POST /accounting/indicadores/inpc/actualizar — baja el INPC del INEGI (ADMIN). */
+/** POST /accounting/indicadores/inpc/actualizar — baja el INPC (ADMIN).
+ *  `fuente` opcional ('inegi'|'banxico') fuerza una sola fuente; sin ella, auto. */
 router.post(
   '/indicadores/inpc/actualizar',
   authorize('ADMIN', 'SUPER_ADMIN'),
-  asyncHandler(async (_req: Request, res: Response) => {
-    res.json({ success: true, data: await indicadores.actualizarInpc() });
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = String((req.body?.fuente ?? req.query?.fuente) || '').toLowerCase();
+    const fuente = f === 'banxico' ? 'banxico' : f === 'inegi' ? 'inegi' : undefined;
+    res.json({ success: true, data: await indicadores.actualizarInpc(fuente) });
   })
 );
 

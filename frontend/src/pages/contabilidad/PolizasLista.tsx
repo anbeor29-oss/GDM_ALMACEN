@@ -301,10 +301,6 @@ export function PolizasListaPage() {
             className="inline-flex items-center gap-1 border border-emerald-300 bg-emerald-50 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-40">
             <Wand2 size={14} /> {generando === 'auto' ? 'Asignando…' : 'Auto-asignar todo'}
           </button>
-          <button onClick={() => navigate('/invoices/polizas-venta')}
-            className="border border-gray-200 bg-white px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:bg-gray-50">Ventas</button>
-          <button onClick={() => navigate('/compras/polizas')}
-            className="border border-gray-200 bg-white px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:bg-gray-50">Compras</button>
           <label
             title="Importa las pólizas históricas desde el TXT de CPQ. Casa cada renglón por código de cuenta, así que importa el catálogo primero. No duplica: se salta las que ya tengan el mismo UUID."
             className={`ml-auto inline-flex items-center gap-1 border border-violet-300 bg-violet-50 text-violet-700 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer hover:bg-violet-100 ${generando ? 'opacity-40 pointer-events-none' : ''}`}>
