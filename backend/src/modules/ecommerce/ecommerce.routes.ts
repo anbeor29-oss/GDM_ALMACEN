@@ -15,6 +15,7 @@ import { query } from '../../config/database';
 import * as tiendas from './ecommerce-tiendas.service';
 import * as catalogo from './ecommerce-catalogo.service';
 import * as categorias from './ecommerce-categorias.service';
+import * as envios from './ecommerce-envios.service';
 import * as productsService from '../products/products.service';
 import * as fulfillment from './ec-fulfillment.service';
 import * as media from './ecommerce-media.service';
@@ -35,7 +36,7 @@ router.get('/estado', asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: {
-      modulo: 'ecommerce', etapa: 'rebanada-7 (categorías del catálogo)',
+      modulo: 'ecommerce', etapa: 'rebanada-8 (envíos: método y costo)',
       companyId: cid,
       tiendas: cid ? await tiendas.contarTiendas(cid) : 0,
       publicados: cid ? await catalogo.contarPublicados(cid) : 0,
@@ -147,6 +148,22 @@ router.get('/catalogo/:productId/imagenes', asyncHandler(async (req, res) => {
 }));
 router.delete('/catalogo/imagen/:mediaId', asyncHandler(async (req, res) => {
   res.json({ success: true, data: await media.eliminarImagen(companyId(req), req.params.mediaId) });
+}));
+
+/* ──────────  ENVÍOS: métodos por tienda (rebanada 8)  ────────── */
+router.get('/tiendas/:storeId/envios', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: { metodos: await envios.listarMetodos(companyId(req), req.params.storeId) } });
+}));
+router.post('/tiendas/:storeId/envios', asyncHandler(async (req, res) => {
+  const m = await envios.crearMetodo(companyId(req), req.params.storeId, req.body);
+  res.status(201).json({ success: true, data: m, message: `Método «${m.nombre}» creado.` });
+}));
+router.put('/envios/:id', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await envios.actualizarMetodo(companyId(req), req.params.id, req.body) });
+}));
+router.delete('/envios/:id', asyncHandler(async (req, res) => {
+  const m = await envios.borrarMetodo(companyId(req), req.params.id);
+  res.json({ success: true, message: `Método «${m.nombre}» eliminado.` });
 }));
 
 /* ────────────────────────  PEDIDOS  ──────────────────────── */

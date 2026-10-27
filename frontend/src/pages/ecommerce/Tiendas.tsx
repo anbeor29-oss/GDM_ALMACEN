@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Store, Plus, Pencil, Trash2, Loader2, Save, X, ArrowLeft, ExternalLink } from 'lucide-react';
+import { Store, Plus, Pencil, Trash2, Loader2, Save, X, ArrowLeft, ExternalLink, Truck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '@/services/api';
 
@@ -18,6 +18,7 @@ export function TiendasPage() {
   const [msg, setMsg] = useState('');
   const [editar, setEditar] = useState<any | null>(null);
   const [crear, setCrear] = useState(false);
+  const [envios, setEnvios] = useState<any | null>(null);   // tienda cuyos envíos se editan
 
   const q = useQuery({ queryKey: ['ec-tiendas'], queryFn: () => api.listTiendas() });
   const tiendas: any[] = (q.data as any)?.data?.tiendas || [];
@@ -76,6 +77,7 @@ export function TiendasPage() {
                   </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
+                  <button onClick={() => setEnvios(t)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded" title="Métodos de envío"><Truck size={15} /></button>
                   <button onClick={() => setEditar(t)} className="p-1.5 text-sky-600 hover:bg-sky-50 rounded" title="Editar"><Pencil size={15} /></button>
                   <button onClick={() => eliminar(t)} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded" title="Dar de baja"><Trash2 size={15} /></button>
                 </div>
@@ -96,6 +98,111 @@ export function TiendasPage() {
         <TiendaModal tienda={editar} onClose={() => { setCrear(false); setEditar(null); }}
           onDone={(t: string) => { setCrear(false); setEditar(null); flash(t); refrescar(); }} />
       )}
+
+      {envios && <EnviosModal tienda={envios} onClose={() => setEnvios(null)} />}
+    </div>
+  );
+}
+
+/* ─────────────── Modal: métodos de envío de una tienda ─────────────── */
+function EnviosModal({ tienda, onClose }: { tienda: any; onClose: () => void }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['ec-envios', tienda.id], queryFn: () => api.getEnviosEc(tienda.id) });
+  const metodos: any[] = (q.data as any)?.data?.metodos || [];
+  const [nombre, setNombre] = useState('');
+  const [costo, setCosto] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const refetch = () => qc.invalidateQueries({ queryKey: ['ec-envios', tienda.id] });
+  const agregar = async () => {
+    const n = nombre.trim();
+    if (!n) return;
+    setErr(''); setBusy(true);
+    try { await api.crearEnvioEc(tienda.id, { nombre: n, costo: costo === '' ? 0 : Number(costo) }); setNombre(''); setCosto(''); refetch(); }
+    catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo crear el método.'); }
+    finally { setBusy(false); }
+  };
+  const guardar = async (id: string, cambios: any) => {
+    try { await api.actualizarEnvioEc(id, cambios); refetch(); }
+    catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo guardar.'); }
+  };
+  const borrar = async (m: any) => {
+    if (!window.confirm(`¿Eliminar el método de envío «${m.nombre}»?`)) return;
+    try { await api.eliminarEnvioEc(m.id); refetch(); }
+    catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo eliminar.'); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center"><Truck className="text-amber-700" size={20} /></div>
+            <div><h2 className="font-bold text-gray-900">Envíos — {tienda.nombre}</h2><p className="text-xs text-gray-500">El costo es SIN IVA (se le suma 16% al facturar). «Gratis desde» es opcional.</p></div>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          {err && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">{err}</div>}
+          <div className="flex gap-2">
+            <input value={nombre} onChange={(e) => setNombre(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') agregar(); }}
+              placeholder="Método (p. ej. Estándar, Express, Local)…"
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            <input value={costo} onChange={(e) => setCosto(e.target.value)} type="number" step="any" min="0"
+              placeholder="Costo" title="Costo sin IVA"
+              className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm text-right" />
+            <button onClick={agregar} disabled={busy || !nombre.trim()}
+              className="inline-flex items-center gap-1.5 bg-amber-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-amber-700 disabled:opacity-50">
+              {busy ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Agregar
+            </button>
+          </div>
+
+          {q.isLoading ? (
+            <p className="text-sm text-gray-400 text-center py-6">Cargando…</p>
+          ) : metodos.length === 0 ? (
+            <p className="text-sm text-gray-400 italic text-center py-6">Sin métodos de envío. Crea el primero arriba (o deja la tienda sin envío).</p>
+          ) : (
+            <div className="divide-y border rounded-lg">
+              {metodos.map((m) => <FilaEnvio key={m.id} metodo={m} onGuardar={guardar} onBorrar={() => borrar(m)} />)}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Un renglón editable de método de envío: nombre, costo (sin IVA), «gratis desde»,
+ * activo y baja. Los campos de texto guardan al salir del campo. */
+function FilaEnvio({ metodo, onGuardar, onBorrar }: {
+  metodo: any; onGuardar: (id: string, cambios: any) => void; onBorrar: () => void;
+}) {
+  const [nombre, setNombre] = useState(metodo.nombre);
+  const [costo, setCosto] = useState(String(metodo.costo ?? 0));
+  const [gratis, setGratis] = useState(metodo.gratis_desde != null ? String(metodo.gratis_desde) : '');
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2">
+      <input value={nombre} onChange={(e) => setNombre(e.target.value)}
+        onBlur={() => { const n = nombre.trim(); if (n && n !== metodo.nombre) onGuardar(metodo.id, { nombre: n }); else setNombre(metodo.nombre); }}
+        className="flex-1 min-w-0 border border-transparent hover:border-gray-200 focus:border-amber-300 rounded px-2 py-1 text-sm font-medium" />
+      <label className="text-[11px] text-gray-400 flex items-center gap-1" title="Costo sin IVA">$
+        <input value={costo} onChange={(e) => setCosto(e.target.value)} type="number" step="any" min="0"
+          onBlur={() => { const c = Number(costo) || 0; if (c !== Number(metodo.costo)) onGuardar(metodo.id, { costo: c }); }}
+          className="w-16 border border-gray-200 rounded px-1 py-1 text-xs text-right text-gray-700" />
+      </label>
+      <label className="text-[11px] text-gray-400 flex items-center gap-1" title="Envío gratis a partir de este total (con IVA). Vacío = sin envío gratis.">free≥
+        <input value={gratis} onChange={(e) => setGratis(e.target.value)} type="number" step="any" min="0" placeholder="—"
+          onBlur={() => { const g = gratis === '' ? null : (Number(gratis) || 0); const actual = metodo.gratis_desde != null ? Number(metodo.gratis_desde) : null; if (g !== actual) onGuardar(metodo.id, { gratisDesde: g }); }}
+          className="w-16 border border-gray-200 rounded px-1 py-1 text-xs text-right text-gray-700" />
+      </label>
+      <button onClick={() => onGuardar(metodo.id, { activo: !metodo.activo })} title={metodo.activo ? 'Activo — clic para ocultar' : 'Oculto — clic para activar'}
+        className={`w-9 h-5 rounded-full relative transition-colors shrink-0 ${metodo.activo ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+        <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${metodo.activo ? 'left-4' : 'left-0.5'}`} />
+      </button>
+      <button onClick={onBorrar} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded shrink-0" title="Eliminar método"><Trash2 size={15} /></button>
     </div>
   );
 }

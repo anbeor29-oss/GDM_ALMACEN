@@ -22,6 +22,7 @@ type Producto = {
   categoriaId: string | null; categoriaSlug: string | null; categoriaNombre: string | null;
 };
 type Categoria = { id: string; nombre: string; slug: string; productos: number };
+type Metodo = { id: string; nombre: string; costo: number; costoConIva: number; gratisDesde: number | null };
 type Tienda = {
   nombre: string; slug: string; moneda: string; logoUrl: string | null;
   colorPrimario: string; colorSecundario: string;
@@ -35,6 +36,8 @@ export function StorefrontPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [catSel, setCatSel] = useState<string | null>(null);  // slug de la categoría filtrada
+  const [metodos, setMetodos] = useState<Metodo[]>([]);
+  const [envioSel, setEnvioSel] = useState<string>('');       // id del método de envío elegido
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState('');
 
@@ -51,17 +54,20 @@ export function StorefrontPage() {
     (async () => {
       setCargando(true); setErrorCarga('');
       try {
-        const [tRes, pRes, cRes] = await Promise.all([
+        const [tRes, pRes, cRes, eRes] = await Promise.all([
           fetch(`${SF_BASE}/${encodeURIComponent(slug)}`),
           fetch(`${SF_BASE}/${encodeURIComponent(slug)}/productos`),
           fetch(`${SF_BASE}/${encodeURIComponent(slug)}/categorias`),
+          fetch(`${SF_BASE}/${encodeURIComponent(slug)}/envios`),
         ]);
         if (!tRes.ok) throw new Error('Tienda no encontrada.');
         const t = (await tRes.json())?.data;
         const p = (await pRes.json())?.data?.productos || [];
         const c = cRes.ok ? ((await cRes.json())?.data?.categorias || []) : [];
+        const e = eRes.ok ? ((await eRes.json())?.data?.metodos || []) : [];
         if (!vivo) return;
-        setTienda(t); setProductos(p); setCategorias(c);
+        setTienda(t); setProductos(p); setCategorias(c); setMetodos(e);
+        if (e.length) setEnvioSel(e[0].id);   // preselecciona el primer método
       } catch (e: any) {
         if (vivo) setErrorCarga(e?.message || 'No se pudo cargar la tienda.');
       } finally {
@@ -83,6 +89,11 @@ export function StorefrontPage() {
   const subtotal = lineas.reduce((a, x) => a + x.p.precio * x.q, 0);
   const iva = lineas.reduce((a, x) => a + x.p.precio * x.q * x.p.tasaIva, 0);
   const total = subtotal + iva;
+  // Envío: el método elegido, con IVA; gratis si el total de productos alcanza su umbral.
+  const envioMetodo = metodos.find((m) => m.id === envioSel) || null;
+  const envioGratis = !!(envioMetodo && envioMetodo.gratisDesde != null && total >= envioMetodo.gratisDesde);
+  const envioCosto = envioMetodo ? (envioGratis ? 0 : envioMetodo.costoConIva) : 0;
+  const totalFinal = total + envioCosto;
   const nItems = lineas.reduce((a, x) => a + x.q, 0);
   // Filtro por categoría del lado del cliente (el catálogo ya viene con su categoría).
   const productosVisibles = catSel ? productos.filter((p) => p.categoriaSlug === catSel) : productos;
@@ -114,6 +125,7 @@ export function StorefrontPage() {
         body: JSON.stringify({
           cliente,
           items: lineas.map((x) => ({ productId: x.p.productId, cantidad: x.q })),
+          envioMetodoId: envioSel || undefined,
         }),
       });
       const j = await res.json();
@@ -284,6 +296,24 @@ export function StorefrontPage() {
                         style={{ outlineColor: marca }} />
                     </label>
                   ))}
+                  {metodos.length > 0 && (
+                    <div>
+                      <span className="text-xs font-medium text-gray-600">Método de envío</span>
+                      <div className="mt-1 space-y-1.5">
+                        {metodos.map((m) => {
+                          const gratis = m.gratisDesde != null && total >= m.gratisDesde;
+                          return (
+                            <label key={m.id} className="flex items-center gap-2 border rounded-lg px-3 py-2 text-sm cursor-pointer"
+                              style={{ borderColor: envioSel === m.id ? marca : '#e5e7eb' }}>
+                              <input type="radio" name="envio" checked={envioSel === m.id} onChange={() => setEnvioSel(m.id)} />
+                              <span className="flex-1">{m.nombre}</span>
+                              <span className="font-medium">{gratis ? 'Gratis' : `$${fmt(m.costoConIva)}`}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {errorPedido && <p className="text-sm text-rose-600">{errorPedido}</p>}
                 </div>
               )}
@@ -293,7 +323,12 @@ export function StorefrontPage() {
               <div className="border-t border-gray-200 p-4 space-y-2">
                 <div className="flex justify-between text-sm text-gray-600"><span>Subtotal</span><span>${fmt(subtotal)}</span></div>
                 <div className="flex justify-between text-sm text-gray-600"><span>IVA</span><span>${fmt(iva)}</span></div>
-                <div className="flex justify-between text-base font-bold text-gray-900"><span>Total</span><span>${fmt(total)} {tienda.moneda}</span></div>
+                {envioMetodo && (
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Envío{envioGratis ? ' (gratis)' : ''}</span><span>${fmt(envioCosto)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-base font-bold text-gray-900"><span>Total</span><span>${fmt(totalFinal)} {tienda.moneda}</span></div>
                 {!checkout ? (
                   <button onClick={() => setCheckout(true)} className="w-full py-2.5 rounded-lg text-white font-medium" style={{ backgroundColor: marca }}>
                     Continuar

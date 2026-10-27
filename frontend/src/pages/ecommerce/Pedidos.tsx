@@ -77,7 +77,12 @@ export function PedidosEcPage() {
                   <td className="px-4 py-2.5 font-mono font-medium text-gray-900">{p.numero}</td>
                   <td className="px-4 py-2.5 text-gray-600">{aTextoMx(p.created_at) || '—'}</td>
                   <td className="px-4 py-2.5 text-gray-700">{p.cliente_nombre}{p.cliente_email ? <span className="text-xs text-gray-400"> · {p.cliente_email}</span> : null}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-gray-900">${fmt(p.total)} {p.moneda}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-gray-900">
+                    ${fmt(p.total)} {p.moneda}
+                    {Number(p.envio_total) > 0 && (
+                      <div className="text-[10px] font-normal text-gray-400">incl. envío ${fmt(p.envio_total)}{p.envio_metodo ? ` · ${p.envio_metodo}` : ''}</div>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TONO[p.estado] || 'bg-gray-100 text-gray-600'}`}>{p.estado}</span>
                   </td>

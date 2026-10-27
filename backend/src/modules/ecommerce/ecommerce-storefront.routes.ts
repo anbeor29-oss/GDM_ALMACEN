@@ -10,6 +10,7 @@ import { asyncHandler } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import logger from '../../middleware/logger';
 import * as sf from './ecommerce-storefront.service';
+import { metodosPublicos } from './ecommerce-envios.service';
 import { obtenerImagen } from './ecommerce-media.service';
 import { mpConfigurado, crearPreferencia } from './ec-mercadopago.service';
 import { procesarPagoMP } from './ec-fulfillment.service';
@@ -48,6 +49,12 @@ router.get('/:slug', asyncHandler(async (req, res) => {
 router.get('/:slug/categorias', asyncHandler(async (req, res) => {
   const t = await sf.tiendaPorSlug(req.params.slug);
   res.json({ success: true, data: { categorias: await sf.categoriasPublicas(t) } });
+}));
+
+/** GET /storefront/:slug/envios — métodos de envío activos de la tienda. */
+router.get('/:slug/envios', asyncHandler(async (req, res) => {
+  const t = await sf.tiendaPorSlug(req.params.slug);
+  res.json({ success: true, data: { metodos: await metodosPublicos(t.id) } });
 }));
 
 /** GET /storefront/:slug/productos — catálogo publicado (con precio y disponible).

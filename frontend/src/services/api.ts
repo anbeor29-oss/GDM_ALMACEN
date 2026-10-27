@@ -3467,6 +3467,19 @@ class APIClient {
   async asignarCategoriaProductoEc(productId: string, categoryId: string | null) {
     return (await this.client.post(`/ecommerce/catalogo/${productId}/categoria`, { categoryId })).data;
   }
+  // Métodos de envío por tienda (rebanada 8)
+  async getEnviosEc(storeId: string) {
+    return (await this.client.get(`/ecommerce/tiendas/${storeId}/envios`)).data;
+  }
+  async crearEnvioEc(storeId: string, d: { nombre: string; costo?: number; gratisDesde?: number | null; orden?: number }) {
+    return (await this.client.post(`/ecommerce/tiendas/${storeId}/envios`, d)).data;
+  }
+  async actualizarEnvioEc(id: string, d: { nombre?: string; costo?: number; gratisDesde?: number | null; activo?: boolean; orden?: number }) {
+    return (await this.client.put(`/ecommerce/envios/${id}`, d)).data;
+  }
+  async eliminarEnvioEc(id: string) {
+    return (await this.client.delete(`/ecommerce/envios/${id}`)).data;
+  }
   // Pedidos de la tienda (rebanada 5)
   async getPedidosEc() {
     return (await this.client.get('/ecommerce/pedidos')).data;

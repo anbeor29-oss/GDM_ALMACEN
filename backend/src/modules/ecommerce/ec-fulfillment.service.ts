@@ -52,13 +52,26 @@ export async function facturarPedido(
   const compR = await query<any>(`SELECT postal_code FROM companies WHERE id=$1`, [companyId]);
   const customerId = await clientePublicoGeneral(companyId, compR.rows[0]?.postal_code);
 
+  // Renglones del CFDI: los productos del pedido y, si hubo envío cobrado, un
+  // renglón de FLETE (texto libre, IVA 16%). ClaveProdServ/Unidad configurables.
+  const items: any[] = itemsR.rows.map((r: any) => ({
+    productId: r.product_id, quantity: Number(r.cantidad), unitPrice: Number(r.precio_unit),
+  }));
+  const envioBase = Number(order.envio_base) || 0;
+  if (envioBase > 0) {
+    items.push({
+      quantity: 1, unitPrice: envioBase, taxPresetId: 'iva16',
+      claveSat: process.env.EC_CLAVE_ENVIO || '78102200',   // servicios de transporte/paquetería
+      unitCode: process.env.EC_UNIDAD_ENVIO || 'E48',        // unidad de servicio
+      description: `Envío${order.envio_metodo ? ` — ${order.envio_metodo}` : ''}`,
+    });
+  }
+
   // Venta web ya cobrada → PUE. Forma de pago genérica (03 transferencia); el
   // merchant puede ajustar antes de timbrar si quedó en DRAFT.
   const factura = await invoicesService.createInvoice(companyId, {
     customerId, cfdiType: 'I', paymentForm: '03', paymentMethod: 'PUE', cfdiUse: 'S01',
-    items: itemsR.rows.map((r: any) => ({
-      productId: r.product_id, quantity: Number(r.cantidad), unitPrice: Number(r.precio_unit),
-    })),
+    items,
     notes: `Pedido web ${order.numero}`,
   });
 
@@ -125,6 +138,7 @@ export async function listarPedidos(companyId: string) {
   const r = await query<any>(
     `SELECT o.id, o.numero, o.estado, o.cliente_nombre, o.cliente_email, o.total, o.moneda,
             o.created_at, o.pagado_at, o.facturado_at, o.invoice_id,
+            o.envio_metodo, (o.envio_base + o.envio_iva)::float AS envio_total,
             i.cfdi_uuid, i.serie, i.folio,
             s.nombre AS tienda
        FROM ec_order o

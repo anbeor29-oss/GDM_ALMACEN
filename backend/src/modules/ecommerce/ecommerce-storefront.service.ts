@@ -9,6 +9,7 @@
  */
 import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
+import { calcularCostoEnvio } from './ecommerce-envios.service';
 
 const IVA_DEFAULT = 0.16;
 const MIN_RESERVA = 60; // minutos que vive la reserva sin pago
@@ -105,7 +106,7 @@ export async function crearPedido(
   store: TiendaPublica,
   datos: {
     cliente: { nombre: string; email?: string; telefono?: string; direccion?: string; cp?: string };
-    items: ItemPedido[]; notas?: string;
+    items: ItemPedido[]; notas?: string; envioMetodoId?: string;
   },
 ) {
   const nombre = String(datos?.cliente?.nombre || '').trim();
@@ -155,7 +156,22 @@ export async function crearPedido(
       renglones.push({ productId: p.id, sku: p.sku, nombre: p.nombre, cantidad, precioUnit: r2(p.precio), tasa, importe, iva, rastreado });
     }
 
-    const total = r2(subtotal + ivaTotal);
+    // Envío: si el comprador eligió un método, se cobra (o es gratis si el total de
+    // productos alcanza el umbral «gratis desde»). El costo se congela en el pedido
+    // y, al facturar, entra como renglón de flete (IVA 16%).
+    let envioBase = 0, envioIva = 0;
+    let envioMetodoNombre: string | null = null, envioMetodoId: string | null = null;
+    if (datos.envioMetodoId) {
+      const em = await transactionQuery<any>(client,
+        `SELECT id, nombre, costo::float AS costo, gratis_desde::float AS gratis_desde
+           FROM ec_shipping_method WHERE id=$1 AND store_id=$2 AND activo=TRUE`,
+        [datos.envioMetodoId, store.id]);
+      const m = em.rows[0];
+      if (!m) throw new ValidationError('El método de envío ya no está disponible.');
+      const calc = calcularCostoEnvio({ costo: m.costo, gratis_desde: m.gratis_desde }, subtotal + ivaTotal);
+      envioBase = calc.base; envioIva = calc.iva; envioMetodoNombre = m.nombre; envioMetodoId = m.id;
+    }
+    const total = r2(subtotal + ivaTotal + envioBase + envioIva);
 
     // Folio por tienda (WEB-000001). La unicidad la garantiza ux_ec_order_numero.
     const cnt = await transactionQuery<any>(client,
@@ -165,13 +181,15 @@ export async function crearPedido(
     const ped = await transactionQuery<any>(client,
       `INSERT INTO ec_order
          (company_id, store_id, numero, estado, cliente_nombre, cliente_email, cliente_telefono,
-          envio_direccion, envio_cp, notas, moneda, subtotal, iva, total)
-       VALUES ($1,$2,$3,'PENDIENTE_PAGO',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          envio_direccion, envio_cp, notas, moneda, subtotal, iva, total,
+          envio_metodo_id, envio_metodo, envio_base, envio_iva)
+       VALUES ($1,$2,$3,'PENDIENTE_PAGO',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        RETURNING id, numero, estado, total`,
       [store.company_id, store.id, numero, nombre,
        datos.cliente.email || null, datos.cliente.telefono || null,
        datos.cliente.direccion || null, datos.cliente.cp || null, datos.notas || null,
-       store.moneda, subtotal, ivaTotal, total]);
+       store.moneda, subtotal, ivaTotal, total,
+       envioMetodoId, envioMetodoNombre, envioBase, envioIva]);
     const orderId = ped.rows[0].id;
 
     const expira = new Date(Date.now() + MIN_RESERVA * 60_000);
@@ -188,9 +206,12 @@ export async function crearPedido(
       }
     }
 
+    const lineas = renglones.map((l) => ({ nombre: l.nombre, cantidad: l.cantidad, precioConIva: r2(l.precioUnit * (1 + l.tasa)) }));
+    // El envío va como una «línea» más para que la pasarela (Mercado Pago) cobre el total exacto.
+    if (envioBase > 0) lineas.push({ nombre: `Envío${envioMetodoNombre ? ` — ${envioMetodoNombre}` : ''}`, cantidad: 1, precioConIva: r2(envioBase + envioIva) });
+
     return {
-      orderId, numero, estado: ped.rows[0].estado, total: Number(ped.rows[0].total), moneda: store.moneda,
-      lineas: renglones.map((l) => ({ nombre: l.nombre, cantidad: l.cantidad, precioConIva: r2(l.precioUnit * (1 + l.tasa)) })),
+      orderId, numero, estado: ped.rows[0].estado, total: Number(ped.rows[0].total), moneda: store.moneda, lineas,
     };
   });
 }
