@@ -56,7 +56,8 @@ export async function catalogoPublico(store: TiendaPublica, opts: { search?: str
             COALESCE((SELECT SUM(ws.quantity) FROM warehouse_stock ws WHERE ws.product_id=p.id),0)::float AS fisico,
             COALESCE((SELECT SUM(rv.cantidad) FROM ec_inventory_reservation rv
                        WHERE rv.product_id=p.id AND rv.estado='ACTIVA'
-                         AND (rv.expira_at IS NULL OR rv.expira_at > NOW())),0)::float AS reservado
+                         AND (rv.expira_at IS NULL OR rv.expira_at > NOW())),0)::float AS reservado,
+            (SELECT m.id FROM ec_product_media m WHERE m.product_id=p.id ORDER BY m.orden, m.created_at LIMIT 1) AS media_id
        FROM products p
        JOIN ec_product_channel c ON c.product_id = p.id
       WHERE ${filtros.join(' AND ')}
@@ -70,6 +71,7 @@ export async function catalogoPublico(store: TiendaPublica, opts: { search?: str
       productId: x.product_id, sku: x.sku, nombre: x.nombre, descripcion: x.descripcion_web,
       precio: r2(x.precio), tasaIva: tasa, precioConIva: r2(x.precio * (1 + tasa)),
       destacado: !!x.destacado, rastreado, disponible,
+      imagenId: x.media_id || null,
     };
   });
 }

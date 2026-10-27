@@ -23,7 +23,8 @@ export async function listarCatalogo(
     `SELECT p.id AS product_id, p.sku, p.name, p.base_price::float AS base_price, p.barcode, p.is_active,
             COALESCE(c.publicado,false) AS publicado, COALESCE(c.destacado,false) AS destacado,
             c.precio_web::float AS precio_web, c.titulo_web, c.descripcion_web,
-            c.seo_title, c.seo_description
+            c.seo_title, c.seo_description,
+            (SELECT COUNT(*)::int FROM ec_product_media m WHERE m.product_id=p.id) AS num_imagenes
        FROM products p
        LEFT JOIN ec_product_channel c ON c.product_id = p.id
       WHERE ${filtros.join(' AND ')}

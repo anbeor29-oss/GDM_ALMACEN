@@ -299,3 +299,16 @@ conseguir la **cuenta de Mercado Pago + credenciales sandbox** del piloto.
 - **Pendiente operativo:** credenciales **sandbox de Mercado Pago** (`MP_ACCESS_TOKEN`) para probar el pago en línea; el
   flujo manual «Pagar y facturar» ya es probable sin pasarela. `STOREFRONT_PUBLIC_URL` para los back_urls.
 - **Estado:** typecheck (back+front) OK; migración corre sola en Render.
+
+### Rebanada 6 — Fotos de producto · **HECHO 2026-10-26**
+- **Migración `2026-10-26e_ecommerce_media.sql`:** `ec_product_media` (imagen **BYTEA**, content_type, orden) — persistente
+  en Render como el logo de la empresa.
+- **`ecommerce-media.service`:** al subir, OPTIMIZA con `sharp` (máx 900px, JPEG q80) y guarda el BYTEA (hasta 6 por
+  producto). `obtenerImagen(id)` devuelve los bytes para servir.
+- **Rutas:** cockpit (gated, `multer` memoryStorage) `POST /ecommerce/catalogo/:productId/imagen`, `GET .../imagenes`,
+  `DELETE /ecommerce/catalogo/imagen/:mediaId`; **pública** `GET /api/v1/storefront/img/:mediaId` (sirve la imagen por id
+  UUID no adivinable, con cache). El catálogo público expone `imagenId` (primera foto) y el del cockpit el conteo.
+- **Frontend:** storefront muestra la **foto** del producto (en vez del placeholder); cockpit Catálogo web → modal de
+  contenido web con **subida/miniaturas/borrado** de fotos (`ImagenesProducto`).
+- **Estado:** typecheck (back+front) OK; migración corre sola en Render.
+- **Siguiente:** envíos (método/costo), categorías, cupones/promos, cuentas de comprador, reportes; subdominio real.

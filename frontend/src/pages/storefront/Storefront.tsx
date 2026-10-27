@@ -18,6 +18,7 @@ type Producto = {
   productId: string; sku: string | null; nombre: string; descripcion: string | null;
   precio: number; tasaIva: number; precioConIva: number;
   destacado: boolean; rastreado: boolean; disponible: number | null;
+  imagenId: string | null;
 };
 type Tienda = {
   nombre: string; slug: string; moneda: string; logoUrl: string | null;
@@ -171,8 +172,10 @@ export function StorefrontPage() {
               const agotado = p.rastreado && (p.disponible || 0) <= 0;
               return (
                 <div key={p.productId} className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
-                  <div className="aspect-square bg-gray-100 flex items-center justify-center text-gray-300">
-                    <Store size={34} />
+                  <div className="aspect-square bg-gray-100 flex items-center justify-center text-gray-300 overflow-hidden">
+                    {p.imagenId
+                      ? <img src={`${SF_BASE}/img/${p.imagenId}`} alt={p.nombre} loading="lazy" className="w-full h-full object-cover" />
+                      : <Store size={34} />}
                   </div>
                   <div className="p-3 flex flex-col flex-1">
                     <p className="text-sm font-medium text-gray-900 leading-tight line-clamp-2">{p.nombre}</p>

@@ -10,6 +10,7 @@ import { asyncHandler } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import logger from '../../middleware/logger';
 import * as sf from './ecommerce-storefront.service';
+import { obtenerImagen } from './ecommerce-media.service';
 import { mpConfigurado, crearPreferencia } from './ec-mercadopago.service';
 import { procesarPagoMP } from './ec-fulfillment.service';
 
@@ -17,6 +18,15 @@ const router = Router();
 
 /** Base pública del storefront para los back_urls de la pasarela. */
 const STOREFRONT_PUBLIC = (process.env.STOREFRONT_PUBLIC_URL || 'https://hcgm.com.mx/erp').replace(/\/+$/, '');
+
+/** GET /storefront/img/:mediaId — imagen pública de un producto (para <img src>). */
+router.get('/img/:mediaId', asyncHandler(async (req, res) => {
+  const img = await obtenerImagen(req.params.mediaId);
+  if (!img) { res.status(404).end(); return; }
+  res.set('Content-Type', img.contentType);
+  res.set('Cache-Control', 'public, max-age=86400, immutable');
+  res.send(img.buffer);
+}));
 
 /** GET /storefront/:slug — datos públicos de la tienda (branding + políticas). */
 router.get('/:slug', asyncHandler(async (req, res) => {

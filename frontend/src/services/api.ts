@@ -3457,6 +3457,25 @@ class APIClient {
   async pagarYFacturarPedidoEc(id: string) {
     return (await this.client.post(`/ecommerce/pedidos/${id}/pagar-y-facturar`)).data;
   }
+  // Fotos de producto (rebanada 6)
+  async subirImagenProductoEc(productId: string, file: File) {
+    const fd = new FormData();
+    fd.append('imagen', file);
+    return (await this.client.post(`/ecommerce/catalogo/${productId}/imagen`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
+  }
+  async listarImagenesProductoEc(productId: string) {
+    return (await this.client.get(`/ecommerce/catalogo/${productId}/imagenes`)).data;
+  }
+  async eliminarImagenProductoEc(mediaId: string) {
+    return (await this.client.delete(`/ecommerce/catalogo/imagen/${mediaId}`)).data;
+  }
+  /** URL pública de una imagen de producto (sirve también en el cockpit). */
+  imagenProductoUrl(mediaId: string) {
+    const base = import.meta.env.VITE_API_BASE
+      ? `${String(import.meta.env.VITE_API_BASE).replace(/\/+$/, '')}/api/v1`
+      : '/api/v1';
+    return `${base}/storefront/img/${mediaId}`;
+  }
   /** Activa el cumplimiento (SAT/CSF/IMSS) en automático para TODAS las empresas,
    *  para que el barrido de los lunes 5:30 las incluya. */
   async adminActivarCumplimientoTodas() {

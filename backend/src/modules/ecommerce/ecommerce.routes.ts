@@ -9,14 +9,17 @@
  * del ERP) + CATÁLOGO WEB.
  */
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import * as tiendas from './ecommerce-tiendas.service';
 import * as catalogo from './ecommerce-catalogo.service';
 import * as productsService from '../products/products.service';
 import * as fulfillment from './ec-fulfillment.service';
+import * as media from './ecommerce-media.service';
 
 const router = Router();
+const imgUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 
 /** La empresa activa del usuario (el módulo es por empresa). */
 function companyId(req: Request): string {
@@ -110,6 +113,18 @@ router.put('/catalogo/:productId', asyncHandler(async (req, res) => {
 router.post('/catalogo/:productId/publicar', asyncHandler(async (req, res) => {
   const d = await catalogo.togglePublicado(companyId(req), req.params.productId, req.body?.publicado !== false);
   res.json({ success: true, data: d });
+}));
+
+/* ──────────  FOTOS de producto (rebanada 6)  ────────── */
+router.post('/catalogo/:productId/imagen', imgUpload.single('imagen'), asyncHandler(async (req, res) => {
+  const r = await media.subirImagen(companyId(req), req.params.productId, (req.file as any)?.buffer);
+  res.status(201).json({ success: true, data: r });
+}));
+router.get('/catalogo/:productId/imagenes', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: { imagenes: await media.listarImagenes(companyId(req), req.params.productId) } });
+}));
+router.delete('/catalogo/imagen/:mediaId', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await media.eliminarImagen(companyId(req), req.params.mediaId) });
 }));
 
 /* ────────────────────────  PEDIDOS  ──────────────────────── */

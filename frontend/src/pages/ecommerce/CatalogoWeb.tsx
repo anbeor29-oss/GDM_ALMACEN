@@ -5,9 +5,9 @@
  * real del ERP (no lo copia): `ec_product_channel` liga por product_id y, si un campo
  * web va vacío, el storefront usa el dato del maestro (nombre/precio base).
  */
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Globe, ArrowLeft, Search, Star, Save, X, Loader2, Pencil } from 'lucide-react';
+import { Globe, ArrowLeft, Search, Star, Save, X, Loader2, Pencil, ImagePlus, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '@/services/api';
 
@@ -154,6 +154,7 @@ function WebModal({ item, onClose, onDone }: { item: any; onClose: () => void; o
             <span className="text-xs font-medium text-gray-600 block mb-1">Descripción web</span>
             <textarea rows={3} value={form.descripcionWeb} onChange={(e) => setForm({ ...form, descripcionWeb: e.target.value })} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
           </label>
+          <ImagenesProducto productId={item.product_id} />
           <details className="rounded-lg border border-gray-200">
             <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-gray-700">SEO (opcional)</summary>
             <div className="p-3 space-y-3 border-t">
@@ -171,6 +172,55 @@ function WebModal({ item, onClose, onDone }: { item: any; onClose: () => void; o
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/* Fotos del producto: subida (se optimiza en el backend), miniaturas y borrado. */
+function ImagenesProducto({ productId }: { productId: string }) {
+  const qc = useQueryClient();
+  const [subiendo, setSubiendo] = useState(false);
+  const [err, setErr] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+  const q = useQuery({ queryKey: ['ec-img', productId], queryFn: () => api.listarImagenesProductoEc(productId) });
+  const imgs: any[] = (q.data as any)?.data?.imagenes || [];
+  const refetch = () => {
+    qc.invalidateQueries({ queryKey: ['ec-img', productId] });
+    qc.invalidateQueries({ queryKey: ['ec-catalogo'] });
+  };
+
+  const subir = async (file?: File) => {
+    if (!file) return;
+    setErr(''); setSubiendo(true);
+    try { await api.subirImagenProductoEc(productId, file); refetch(); }
+    catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo subir la imagen.'); }
+    finally { setSubiendo(false); if (fileRef.current) fileRef.current.value = ''; }
+  };
+  const borrar = async (id: string) => {
+    try { await api.eliminarImagenProductoEc(id); refetch(); } catch { /* noop */ }
+  };
+
+  return (
+    <div>
+      <span className="text-xs font-medium text-gray-600 block mb-1">Fotos del producto <span className="text-gray-400">(hasta 6; se muestran en la tienda)</span></span>
+      <div className="flex flex-wrap gap-2">
+        {imgs.map((im) => (
+          <div key={im.id} className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 group">
+            <img src={api.imagenProductoUrl(im.id)} alt="" className="w-full h-full object-cover" />
+            <button type="button" onClick={() => borrar(im.id)} title="Quitar"
+              className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition">
+              <Trash2 size={12} />
+            </button>
+          </div>
+        ))}
+        {imgs.length < 6 && (
+          <label className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 cursor-pointer hover:bg-gray-50">
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => subir(e.target.files?.[0])} />
+            {subiendo ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
+          </label>
+        )}
+      </div>
+      {err && <p className="text-xs text-rose-600 mt-1">{err}</p>}
     </div>
   );
 }
