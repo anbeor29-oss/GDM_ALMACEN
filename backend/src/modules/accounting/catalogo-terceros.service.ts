@@ -312,12 +312,20 @@ export async function generarSubcuentasDeComprobantes(
  */
 export async function listarSubcuentasTercero(companyId: string, tipo: 'cliente' | 'proveedor') {
   const agrups = tipo === 'cliente' ? ['105.01', '105.02'] : ['201.01', '201.02'];
+  // El RFC sale de la cuenta si lo trae amarrado (tercero_rfc); si no —muchas del
+  // respaldo lo tienen NULL—, se rellena por NOMBRE desde el catálogo de terceros,
+  // que es donde ya existe. Así la pantalla deja de salir con el RFC vacío.
   const r = await query<any>(
-    `SELECT id, codigo, nombre, tercero_rfc, codigo_agrupador
-       FROM accounting_accounts
-      WHERE company_id=$1 AND codigo_agrupador = ANY($2)
-        AND permite_movimientos = true
-      ORDER BY codigo`, [companyId, agrups]);
+    `SELECT a.id, a.codigo, a.nombre, a.codigo_agrupador,
+            COALESCE(a.tercero_rfc,
+              (SELECT cu.rfc FROM customers cu
+                 WHERE cu.company_id = a.company_id AND cu.deleted_at IS NULL
+                   AND UPPER(TRIM(cu.business_name)) = UPPER(TRIM(a.nombre))
+                 ORDER BY cu.rfc LIMIT 1)) AS tercero_rfc
+       FROM accounting_accounts a
+      WHERE a.company_id=$1 AND a.codigo_agrupador = ANY($2)
+        AND a.permite_movimientos = true
+      ORDER BY a.codigo`, [companyId, agrups]);
   return r.rows;
 }
 

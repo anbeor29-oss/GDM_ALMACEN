@@ -392,7 +392,19 @@ export async function listCustomers(
      * El alias es `saldo_calculado` y NO `balance`: `c.*` ya trae la columna de
      * la tabla, y dos columnas con el mismo nombre dejan al driver decidir cuál
      * gana. Eso no lo puede decidir un driver. Abajo se pisa explícitamente. */
-    `SELECT c.*, ${SALDO_SQL} AS saldo_calculado
+    /* `cuenta_contable`: la subcuenta contable del cliente (105.01/105.02). Se liga
+     * por RFC cuando la cuenta lo trae amarrado; si no (muchas del respaldo tienen
+     * tercero_rfc NULL), por NOMBRE. Subconsulta con LIMIT 1 para no multiplicar
+     * renglones si hay homónimos. Así la pantalla de Clientes muestra el código que
+     * ya existe en el catálogo (antes salía «—»). */
+    `SELECT c.*, ${SALDO_SQL} AS saldo_calculado,
+            (SELECT a.codigo FROM accounting_accounts a
+               WHERE a.company_id = c.company_id
+                 AND a.codigo_agrupador IN ('105.01','105.02')
+                 AND a.permite_movimientos = true
+                 AND (UPPER(a.tercero_rfc) = UPPER(c.rfc)
+                      OR (a.tercero_rfc IS NULL AND UPPER(TRIM(a.nombre)) = UPPER(TRIM(c.business_name))))
+               ORDER BY a.codigo LIMIT 1) AS cuenta_contable
        FROM customers c ${whereClause}
       ORDER BY ${sortField === 'balance' ? SALDO_SQL : sortField} ${sortOrder}
       LIMIT $${paramCount} OFFSET $${paramCount + 1}`,
