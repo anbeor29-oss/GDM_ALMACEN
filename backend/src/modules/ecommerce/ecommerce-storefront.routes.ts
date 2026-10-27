@@ -44,11 +44,19 @@ router.get('/:slug', asyncHandler(async (req, res) => {
   });
 }));
 
-/** GET /storefront/:slug/productos — catálogo publicado (con precio y disponible). */
+/** GET /storefront/:slug/categorias — secciones activas con productos publicados. */
+router.get('/:slug/categorias', asyncHandler(async (req, res) => {
+  const t = await sf.tiendaPorSlug(req.params.slug);
+  res.json({ success: true, data: { categorias: await sf.categoriasPublicas(t) } });
+}));
+
+/** GET /storefront/:slug/productos — catálogo publicado (con precio y disponible).
+ *  `?categoria=<slug>` filtra a esa sección. */
 router.get('/:slug/productos', asyncHandler(async (req, res) => {
   const t = await sf.tiendaPorSlug(req.params.slug);
   const productos = await sf.catalogoPublico(t, {
     search: req.query.search ? String(req.query.search) : undefined,
+    categoria: req.query.categoria ? String(req.query.categoria) : undefined,
   });
   res.json({ success: true, data: { productos } });
 }));

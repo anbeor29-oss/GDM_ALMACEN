@@ -19,7 +19,9 @@ type Producto = {
   precio: number; tasaIva: number; precioConIva: number;
   destacado: boolean; rastreado: boolean; disponible: number | null;
   imagenId: string | null;
+  categoriaId: string | null; categoriaSlug: string | null; categoriaNombre: string | null;
 };
+type Categoria = { id: string; nombre: string; slug: string; productos: number };
 type Tienda = {
   nombre: string; slug: string; moneda: string; logoUrl: string | null;
   colorPrimario: string; colorSecundario: string;
@@ -31,6 +33,8 @@ export function StorefrontPage() {
   const { slug = '' } = useParams();
   const [tienda, setTienda] = useState<Tienda | null>(null);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [catSel, setCatSel] = useState<string | null>(null);  // slug de la categoría filtrada
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState('');
 
@@ -47,15 +51,17 @@ export function StorefrontPage() {
     (async () => {
       setCargando(true); setErrorCarga('');
       try {
-        const [tRes, pRes] = await Promise.all([
+        const [tRes, pRes, cRes] = await Promise.all([
           fetch(`${SF_BASE}/${encodeURIComponent(slug)}`),
           fetch(`${SF_BASE}/${encodeURIComponent(slug)}/productos`),
+          fetch(`${SF_BASE}/${encodeURIComponent(slug)}/categorias`),
         ]);
         if (!tRes.ok) throw new Error('Tienda no encontrada.');
         const t = (await tRes.json())?.data;
         const p = (await pRes.json())?.data?.productos || [];
+        const c = cRes.ok ? ((await cRes.json())?.data?.categorias || []) : [];
         if (!vivo) return;
-        setTienda(t); setProductos(p);
+        setTienda(t); setProductos(p); setCategorias(c);
       } catch (e: any) {
         if (vivo) setErrorCarga(e?.message || 'No se pudo cargar la tienda.');
       } finally {
@@ -78,6 +84,8 @@ export function StorefrontPage() {
   const iva = lineas.reduce((a, x) => a + x.p.precio * x.q * x.p.tasaIva, 0);
   const total = subtotal + iva;
   const nItems = lineas.reduce((a, x) => a + x.q, 0);
+  // Filtro por categoría del lado del cliente (el catálogo ya viene con su categoría).
+  const productosVisibles = catSel ? productos.filter((p) => p.categoriaSlug === catSel) : productos;
 
   const topeDe = (p: Producto) => (p.rastreado && p.disponible != null ? p.disponible : Infinity);
   const agregar = (p: Producto) =>
@@ -160,14 +168,32 @@ export function StorefrontPage() {
 
       {/* Catálogo */}
       <main className="max-w-5xl mx-auto px-4 py-5">
+        {/* Filtro por categoría (secciones de la tienda) */}
+        {categorias.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-3 mb-1 -mx-1 px-1">
+            <button onClick={() => setCatSel(null)}
+              className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${catSel === null ? 'text-white' : 'bg-white text-gray-600 border-gray-200'}`}
+              style={catSel === null ? { backgroundColor: marca, borderColor: marca } : undefined}>Todo</button>
+            {categorias.map((c) => (
+              <button key={c.id} onClick={() => setCatSel(c.slug)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${catSel === c.slug ? 'text-white' : 'bg-white text-gray-600 border-gray-200'}`}
+                style={catSel === c.slug ? { backgroundColor: marca, borderColor: marca } : undefined}>{c.nombre}</button>
+            ))}
+          </div>
+        )}
         {productos.length === 0 ? (
           <div className="text-center py-20 text-gray-500">
             <PackageX size={36} className="mx-auto mb-2 text-gray-300" />
             Esta tienda aún no tiene productos publicados.
           </div>
+        ) : productosVisibles.length === 0 ? (
+          <div className="text-center py-16 text-gray-500">
+            <PackageX size={32} className="mx-auto mb-2 text-gray-300" />
+            No hay productos en esta categoría.
+          </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {productos.map((p) => {
+            {productosVisibles.map((p) => {
               const enCarrito = carrito[p.productId] || 0;
               const agotado = p.rastreado && (p.disponible || 0) <= 0;
               return (

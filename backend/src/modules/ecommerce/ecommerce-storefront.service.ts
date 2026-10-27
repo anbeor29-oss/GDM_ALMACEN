@@ -39,19 +39,25 @@ function tasaDe(p: { is_exempt?: boolean; tax_rate?: any }): number {
   return Number.isFinite(t) && t >= 0 ? t : IVA_DEFAULT;
 }
 
-/** Catálogo publicado de la tienda, con precio efectivo y stock disponible. */
-export async function catalogoPublico(store: TiendaPublica, opts: { search?: string } = {}) {
+/** Catálogo publicado de la tienda, con precio efectivo y stock disponible.
+ *  `opts.categoria` = slug de categoría para filtrar esa sección. */
+export async function catalogoPublico(store: TiendaPublica, opts: { search?: string; categoria?: string } = {}) {
   const params: any[] = [store.company_id];
   const filtros = ['p.company_id = $1', 'p.deleted_at IS NULL', 'p.is_active = TRUE', 'c.publicado = TRUE'];
   if (opts.search) {
     params.push(`%${opts.search}%`);
     filtros.push(`(COALESCE(c.titulo_web,p.name) ILIKE $${params.length} OR p.sku ILIKE $${params.length})`);
   }
+  if (opts.categoria) {
+    params.push(String(opts.categoria).toLowerCase());
+    filtros.push(`lower(cat.slug) = $${params.length} AND cat.activa = TRUE`);
+  }
   const r = await query<any>(
     `SELECT p.id AS product_id, p.sku,
             COALESCE(c.titulo_web, p.name) AS nombre, c.descripcion_web, c.destacado,
             COALESCE(c.precio_web, p.base_price)::float AS precio,
             COALESCE(p.tax_rate,0)::float AS tax_rate, COALESCE(p.is_exempt,false) AS is_exempt,
+            c.category_id, cat.slug AS categoria_slug, cat.nombre AS categoria_nombre,
             (SELECT COUNT(*) FROM warehouse_stock ws WHERE ws.product_id=p.id)::int AS filas_stock,
             COALESCE((SELECT SUM(ws.quantity) FROM warehouse_stock ws WHERE ws.product_id=p.id),0)::float AS fisico,
             COALESCE((SELECT SUM(rv.cantidad) FROM ec_inventory_reservation rv
@@ -60,6 +66,7 @@ export async function catalogoPublico(store: TiendaPublica, opts: { search?: str
             (SELECT m.id FROM ec_product_media m WHERE m.product_id=p.id ORDER BY m.orden, m.created_at LIMIT 1) AS media_id
        FROM products p
        JOIN ec_product_channel c ON c.product_id = p.id
+       LEFT JOIN ec_category cat ON cat.id = c.category_id
       WHERE ${filtros.join(' AND ')}
       ORDER BY c.destacado DESC, c.orden, COALESCE(c.titulo_web, p.name)`, params);
   return r.rows.map((x: any) => {
@@ -72,8 +79,23 @@ export async function catalogoPublico(store: TiendaPublica, opts: { search?: str
       precio: r2(x.precio), tasaIva: tasa, precioConIva: r2(x.precio * (1 + tasa)),
       destacado: !!x.destacado, rastreado, disponible,
       imagenId: x.media_id || null,
+      categoriaId: x.category_id || null, categoriaSlug: x.categoria_slug || null, categoriaNombre: x.categoria_nombre || null,
     };
   });
+}
+
+/** Categorías ACTIVAS de la tienda que tienen al menos un producto PUBLICADO y a la
+ *  venta (para pintar el filtro del storefront). Ordenadas como en el cockpit. */
+export async function categoriasPublicas(store: TiendaPublica) {
+  const r = await query<any>(
+    `SELECT cat.id, cat.nombre, cat.slug, COUNT(*)::int AS productos
+       FROM ec_category cat
+       JOIN ec_product_channel c ON c.category_id = cat.id AND c.publicado = TRUE
+       JOIN products p ON p.id = c.product_id AND p.deleted_at IS NULL AND p.is_active = TRUE
+      WHERE cat.company_id = $1 AND cat.activa = TRUE
+      GROUP BY cat.id
+      ORDER BY cat.orden, cat.nombre`, [store.company_id]);
+  return r.rows.map((x: any) => ({ id: x.id, nombre: x.nombre, slug: x.slug, productos: Number(x.productos) }));
 }
 
 interface ItemPedido { productId: string; cantidad: number; }

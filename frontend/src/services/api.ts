@@ -3451,6 +3451,22 @@ class APIClient {
   async publicarProductoEc(productId: string, publicado: boolean) {
     return (await this.client.post(`/ecommerce/catalogo/${productId}/publicar`, { publicado })).data;
   }
+  // Categorías del catálogo (rebanada 7)
+  async getCategoriasEc() {
+    return (await this.client.get('/ecommerce/categorias')).data;
+  }
+  async crearCategoriaEc(d: { nombre: string; orden?: number }) {
+    return (await this.client.post('/ecommerce/categorias', d)).data;
+  }
+  async actualizarCategoriaEc(id: string, d: { nombre?: string; orden?: number; activa?: boolean }) {
+    return (await this.client.put(`/ecommerce/categorias/${id}`, d)).data;
+  }
+  async eliminarCategoriaEc(id: string) {
+    return (await this.client.delete(`/ecommerce/categorias/${id}`)).data;
+  }
+  async asignarCategoriaProductoEc(productId: string, categoryId: string | null) {
+    return (await this.client.post(`/ecommerce/catalogo/${productId}/categoria`, { categoryId })).data;
+  }
   // Pedidos de la tienda (rebanada 5)
   async getPedidosEc() {
     return (await this.client.get('/ecommerce/pedidos')).data;

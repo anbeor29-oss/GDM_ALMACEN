@@ -14,6 +14,7 @@ import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import * as tiendas from './ecommerce-tiendas.service';
 import * as catalogo from './ecommerce-catalogo.service';
+import * as categorias from './ecommerce-categorias.service';
 import * as productsService from '../products/products.service';
 import * as fulfillment from './ec-fulfillment.service';
 import * as media from './ecommerce-media.service';
@@ -34,7 +35,7 @@ router.get('/estado', asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: {
-      modulo: 'ecommerce', etapa: 'rebanada-5 (pagos Mercado Pago + pedido→CFDI→póliza)',
+      modulo: 'ecommerce', etapa: 'rebanada-7 (categorías del catálogo)',
       companyId: cid,
       tiendas: cid ? await tiendas.contarTiendas(cid) : 0,
       publicados: cid ? await catalogo.contarPublicados(cid) : 0,
@@ -112,6 +113,27 @@ router.put('/catalogo/:productId', asyncHandler(async (req, res) => {
 }));
 router.post('/catalogo/:productId/publicar', asyncHandler(async (req, res) => {
   const d = await catalogo.togglePublicado(companyId(req), req.params.productId, req.body?.publicado !== false);
+  res.json({ success: true, data: d });
+}));
+
+/* ──────────  CATEGORÍAS (rebanada 7)  ────────── */
+router.get('/categorias', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: { categorias: await categorias.listarCategorias(companyId(req)) } });
+}));
+router.post('/categorias', asyncHandler(async (req, res) => {
+  const c = await categorias.crearCategoria(companyId(req), req.body);
+  res.status(201).json({ success: true, data: c, message: `Categoría «${c.nombre}» creada.` });
+}));
+router.put('/categorias/:id', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await categorias.actualizarCategoria(companyId(req), req.params.id, req.body) });
+}));
+router.delete('/categorias/:id', asyncHandler(async (req, res) => {
+  const c = await categorias.borrarCategoria(companyId(req), req.params.id);
+  res.json({ success: true, message: `Categoría «${c.nombre}» eliminada.` });
+}));
+/** Asigna (o quita con categoryId:null) la categoría de un producto. */
+router.post('/catalogo/:productId/categoria', asyncHandler(async (req, res) => {
+  const d = await categorias.asignarCategoriaProducto(companyId(req), req.params.productId, req.body?.categoryId || null);
   res.json({ success: true, data: d });
 }));
 
