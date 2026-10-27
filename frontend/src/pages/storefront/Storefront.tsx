@@ -8,7 +8,7 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { ShoppingCart, Plus, Minus, X, Loader2, CheckCircle, Store, PackageX } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, X, Loader2, CheckCircle, Store, PackageX, User, LogOut, Receipt } from 'lucide-react';
 
 const SF_BASE = (import.meta.env.VITE_API_BASE
   ? String(import.meta.env.VITE_API_BASE).replace(/\/+$/, '') + '/api/v1'
@@ -42,6 +42,17 @@ export function StorefrontPage() {
   const [cuponAplicado, setCuponAplicado] = useState<{ codigo: string; descuento: number } | null>(null);
   const [cuponMsg, setCuponMsg] = useState('');
   const [aplicandoCupon, setAplicandoCupon] = useState(false);
+  // Cuenta del comprador (opcional): token en localStorage por tienda.
+  const [token, setToken] = useState<string | null>(null);
+  const [buyer, setBuyer] = useState<{ id: string; email: string; nombre: string; telefono: string; direccion: string; cp: string } | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'registro'>('login');
+  const [authForm, setAuthForm] = useState({ email: '', password: '', nombre: '', telefono: '', direccion: '', cp: '' });
+  const [authErr, setAuthErr] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [cuentaOpen, setCuentaOpen] = useState(false);        // panel de cuenta (con sesión)
+  const [misPedidos, setMisPedidos] = useState<any[]>([]);
+  const [pedidosLoading, setPedidosLoading] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState('');
 
@@ -141,6 +152,66 @@ export function StorefrontPage() {
     finally { setAplicandoCupon(false); }
   };
   const quitarCupon = () => { setCuponAplicado(null); setCuponMsg(''); setCupon(''); };
+
+  // ── Cuenta del comprador ──────────────────────────────────────────────────
+  const tokenKey = `ec_buyer_${slug}`;
+  const prefill = (b: { nombre: string; email: string; telefono: string; direccion: string; cp: string }) =>
+    setCliente((c) => ({
+      nombre: b.nombre || c.nombre, email: b.email || c.email, telefono: b.telefono || c.telefono,
+      direccion: b.direccion || c.direccion, cp: b.cp || c.cp,
+    }));
+
+  // Restaura la sesión guardada si el token sigue siendo válido.
+  useEffect(() => {
+    let vivo = true, tk: string | null = null;
+    try { tk = localStorage.getItem(tokenKey); } catch { /* sin storage */ }
+    if (!tk) return;
+    (async () => {
+      try {
+        const r = await fetch(`${SF_BASE}/${encodeURIComponent(slug)}/cuenta/perfil`, { headers: { Authorization: `Bearer ${tk}` } });
+        const j = await r.json();
+        if (!vivo) return;
+        if (r.ok && j?.data?.comprador) { setToken(tk); setBuyer(j.data.comprador); prefill(j.data.comprador); }
+        else { try { localStorage.removeItem(tokenKey); } catch { /* */ } }
+      } catch { /* red: se reintenta al interactuar */ }
+    })();
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
+
+  const guardarSesion = (tk: string, b: any) => {
+    setToken(tk); setBuyer(b);
+    try { localStorage.setItem(tokenKey, tk); } catch { /* */ }
+    prefill(b);
+  };
+  const cerrarSesion = () => {
+    setToken(null); setBuyer(null); setCuentaOpen(false); setMisPedidos([]);
+    try { localStorage.removeItem(tokenKey); } catch { /* */ }
+  };
+  const enviarAuth = async () => {
+    setAuthErr('');
+    if (!authForm.email.trim() || !authForm.password) { setAuthErr('Captura tu correo y contraseña.'); return; }
+    if (authMode === 'registro' && !authForm.nombre.trim()) { setAuthErr('Captura tu nombre.'); return; }
+    setAuthBusy(true);
+    try {
+      const url = `${SF_BASE}/${encodeURIComponent(slug)}/cuenta/${authMode === 'registro' ? 'registro' : 'login'}`;
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(authForm) });
+      const j = await r.json();
+      if (!r.ok || !j?.success) throw new Error(j?.message || 'No se pudo continuar.');
+      guardarSesion(j.data.token, j.data.comprador);
+      setAuthOpen(false);
+      setAuthForm({ email: '', password: '', nombre: '', telefono: '', direccion: '', cp: '' });
+    } catch (e: any) { setAuthErr(e?.message || 'No se pudo continuar.'); }
+    finally { setAuthBusy(false); }
+  };
+  const abrirCuenta = async () => {
+    setCuentaOpen(true); setPedidosLoading(true);
+    try {
+      const r = await fetch(`${SF_BASE}/${encodeURIComponent(slug)}/cuenta/pedidos`, { headers: { Authorization: `Bearer ${token}` } });
+      const j = await r.json();
+      setMisPedidos(j?.data?.pedidos || []);
+    } catch { /* */ } finally { setPedidosLoading(false); }
+  };
   // Filtro por categoría del lado del cliente (el catálogo ya viene con su categoría).
   const productosVisibles = catSel ? productos.filter((p) => p.categoriaSlug === catSel) : productos;
 
@@ -167,7 +238,9 @@ export function StorefrontPage() {
     try {
       const res = await fetch(`${SF_BASE}/${encodeURIComponent(slug)}/pedido`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: token
+          ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+          : { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cliente,
           items: lineas.map((x) => ({ productId: x.p.productId, cantidad: x.q })),
@@ -215,6 +288,11 @@ export function StorefrontPage() {
             ? <img src={tienda.logoUrl} alt={tienda.nombre} className="w-9 h-9 rounded-lg object-cover bg-white/20" />
             : <div className="w-9 h-9 rounded-lg bg-white/20 flex items-center justify-center"><Store size={18} /></div>}
           <h1 className="font-semibold text-lg flex-1 truncate">{tienda.nombre}</h1>
+          <button onClick={() => (buyer ? abrirCuenta() : (setAuthMode('login'), setAuthErr(''), setAuthOpen(true)))}
+            className="flex items-center gap-1.5 p-2 rounded-lg hover:bg-white/15 text-sm" aria-label="Mi cuenta">
+            <User size={20} />
+            {buyer && <span className="hidden sm:inline max-w-[8rem] truncate">{buyer.nombre.split(' ')[0]}</span>}
+          </button>
           <button onClick={() => setAbierto(true)} className="relative p-2 rounded-lg hover:bg-white/15" aria-label="Carrito">
             <ShoppingCart size={22} />
             {nItems > 0 && (
@@ -432,6 +510,86 @@ export function StorefrontPage() {
             <button onClick={() => setConfirmado(null)} className="mt-4 w-full py-2.5 rounded-lg text-white font-medium" style={{ backgroundColor: marca }}>
               Seguir comprando
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Entrar / Crear cuenta */}
+      {authOpen && (
+        <div className="fixed inset-0 z-40 bg-black/50 flex items-center justify-center p-4" onClick={() => setAuthOpen(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-bold text-gray-900">{authMode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}</h3>
+              <button onClick={() => setAuthOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={18} /></button>
+            </div>
+            <div className="space-y-2.5">
+              {authMode === 'registro' && (
+                <input value={authForm.nombre} onChange={(e) => setAuthForm((f) => ({ ...f, nombre: e.target.value }))} placeholder="Nombre completo" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              )}
+              <input type="email" value={authForm.email} onChange={(e) => setAuthForm((f) => ({ ...f, email: e.target.value }))} placeholder="Correo" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              <input type="password" value={authForm.password} onChange={(e) => setAuthForm((f) => ({ ...f, password: e.target.value }))} placeholder="Contraseña" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              {authMode === 'registro' && (<>
+                <input value={authForm.telefono} onChange={(e) => setAuthForm((f) => ({ ...f, telefono: e.target.value }))} placeholder="Teléfono (opcional)" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                <input value={authForm.direccion} onChange={(e) => setAuthForm((f) => ({ ...f, direccion: e.target.value }))} placeholder="Dirección (opcional)" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                <input value={authForm.cp} onChange={(e) => setAuthForm((f) => ({ ...f, cp: e.target.value }))} placeholder="Código postal (opcional)" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </>)}
+              {authErr && <p className="text-xs text-rose-600">{authErr}</p>}
+              <button onClick={enviarAuth} disabled={authBusy} className="w-full py-2.5 rounded-lg text-white font-medium disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: marca }}>
+                {authBusy && <Loader2 size={18} className="animate-spin" />}
+                {authMode === 'login' ? 'Entrar' : 'Crear cuenta'}
+              </button>
+              <p className="text-center text-xs text-gray-500">
+                {authMode === 'login' ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
+                <button onClick={() => { setAuthMode(authMode === 'login' ? 'registro' : 'login'); setAuthErr(''); }} className="font-medium" style={{ color: marca }}>
+                  {authMode === 'login' ? 'Regístrate' : 'Inicia sesión'}
+                </button>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Panel de cuenta (con sesión) */}
+      {cuentaOpen && buyer && (
+        <div className="fixed inset-0 z-40 flex">
+          <div className="flex-1 bg-black/40" onClick={() => setCuentaOpen(false)} />
+          <div className="w-full max-w-md bg-white h-full flex flex-col shadow-xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <h2 className="font-semibold text-gray-900">Mi cuenta</h2>
+              <button onClick={() => setCuentaOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={20} /></button>
+            </div>
+            <div className="p-4 border-b border-gray-100">
+              <p className="font-medium text-gray-900">{buyer.nombre}</p>
+              <p className="text-sm text-gray-500">{buyer.email}</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5"><Receipt size={15} /> Mis pedidos</h3>
+              {pedidosLoading ? (
+                <p className="text-sm text-gray-400 py-6 text-center"><Loader2 size={18} className="animate-spin inline" /></p>
+              ) : misPedidos.length === 0 ? (
+                <p className="text-sm text-gray-400 italic py-6 text-center">Aún no tienes pedidos.</p>
+              ) : (
+                <div className="space-y-2">
+                  {misPedidos.map((p) => (
+                    <div key={p.id} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-medium">{p.numero}</span>
+                        <span className="font-semibold">${fmt(Number(p.total))} {p.moneda}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-gray-500 mt-0.5">
+                        <span>{new Date(p.created_at).toLocaleDateString('es-MX')}</span>
+                        <span>{p.estado}{p.cfdi_uuid ? ' · facturado' : ''}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="border-t border-gray-200 p-4">
+              <button onClick={cerrarSesion} className="w-full py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium flex items-center justify-center gap-2 hover:bg-gray-50">
+                <LogOut size={16} /> Cerrar sesión
+              </button>
+            </div>
           </div>
         </div>
       )}

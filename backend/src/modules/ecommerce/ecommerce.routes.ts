@@ -17,6 +17,7 @@ import * as catalogo from './ecommerce-catalogo.service';
 import * as categorias from './ecommerce-categorias.service';
 import * as envios from './ecommerce-envios.service';
 import * as cupones from './ecommerce-cupones.service';
+import * as compradores from './ecommerce-compradores.service';
 import * as productsService from '../products/products.service';
 import * as fulfillment from './ec-fulfillment.service';
 import * as media from './ecommerce-media.service';
@@ -37,7 +38,7 @@ router.get('/estado', asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: {
-      modulo: 'ecommerce', etapa: 'rebanada-9 (cupones / promociones)',
+      modulo: 'ecommerce', etapa: 'rebanada-10 (cuentas de comprador)',
       companyId: cid,
       tiendas: cid ? await tiendas.contarTiendas(cid) : 0,
       publicados: cid ? await catalogo.contarPublicados(cid) : 0,
@@ -181,6 +182,11 @@ router.put('/cupones/:id', asyncHandler(async (req, res) => {
 router.delete('/cupones/:id', asyncHandler(async (req, res) => {
   const c = await cupones.borrarCupon(companyId(req), req.params.id);
   res.json({ success: true, message: `Cupón «${c.codigo}» eliminado.` });
+}));
+
+/* ──────────  CLIENTES WEB: compradores registrados (rebanada 10)  ────────── */
+router.get('/compradores', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: { compradores: await compradores.listarCompradores(companyId(req)) } });
 }));
 
 /* ────────────────────────  PEDIDOS  ──────────────────────── */

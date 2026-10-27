@@ -107,7 +107,7 @@ export async function crearPedido(
   store: TiendaPublica,
   datos: {
     cliente: { nombre: string; email?: string; telefono?: string; direccion?: string; cp?: string };
-    items: ItemPedido[]; notas?: string; envioMetodoId?: string; cuponCodigo?: string;
+    items: ItemPedido[]; notas?: string; envioMetodoId?: string; cuponCodigo?: string; buyerId?: string;
   },
 ) {
   const nombre = String(datos?.cliente?.nombre || '').trim();
@@ -212,14 +212,15 @@ export async function crearPedido(
       `INSERT INTO ec_order
          (company_id, store_id, numero, estado, cliente_nombre, cliente_email, cliente_telefono,
           envio_direccion, envio_cp, notas, moneda, subtotal, iva, total,
-          envio_metodo_id, envio_metodo, envio_base, envio_iva, cupon_codigo, descuento)
-       VALUES ($1,$2,$3,'PENDIENTE_PAGO',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+          envio_metodo_id, envio_metodo, envio_base, envio_iva, cupon_codigo, descuento, buyer_id)
+       VALUES ($1,$2,$3,'PENDIENTE_PAGO',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
        RETURNING id, numero, estado, total`,
       [store.company_id, store.id, numero, nombre,
        datos.cliente.email || null, datos.cliente.telefono || null,
        datos.cliente.direccion || null, datos.cliente.cp || null, datos.notas || null,
        store.moneda, subtotal, ivaTotal, total,
-       envioMetodoId, envioMetodoNombre, envioBase, envioIva, cuponCodigo, descuentoConIva]);
+       envioMetodoId, envioMetodoNombre, envioBase, envioIva, cuponCodigo, descuentoConIva,
+       datos.buyerId || null]);
     const orderId = ped.rows[0].id;
 
     const expira = new Date(Date.now() + MIN_RESERVA * 60_000);

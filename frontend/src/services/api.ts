@@ -3493,6 +3493,10 @@ class APIClient {
   async eliminarCuponEc(id: string) {
     return (await this.client.delete(`/ecommerce/cupones/${id}`)).data;
   }
+  // Clientes web / compradores (rebanada 10)
+  async getCompradoresEc() {
+    return (await this.client.get('/ecommerce/compradores')).data;
+  }
   // Pedidos de la tienda (rebanada 5)
   async getPedidosEc() {
     return (await this.client.get('/ecommerce/pedidos')).data;

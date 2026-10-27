@@ -5,18 +5,37 @@
  * va aparte en /ecommerce (gated con requireModule('ecommerce')). Aquí NO hay
  * auth: cualquiera puede ver el catálogo y hacer un pedido de una tienda activa.
  */
-import { Router } from 'express';
-import { asyncHandler } from '../../middleware/errorHandler';
+import { Router, Request } from 'express';
+import { asyncHandler, UnauthorizedError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import logger from '../../middleware/logger';
 import * as sf from './ecommerce-storefront.service';
+import type { TiendaPublica } from './ecommerce-storefront.service';
 import { metodosPublicos } from './ecommerce-envios.service';
 import { buscarCupon, validarCupon } from './ecommerce-cupones.service';
+import * as compradores from './ecommerce-compradores.service';
 import { obtenerImagen } from './ecommerce-media.service';
 import { mpConfigurado, crearPreferencia } from './ec-mercadopago.service';
 import { procesarPagoMP } from './ec-fulfillment.service';
 
 const router = Router();
+
+/** Lee el token de comprador del header Authorization y devuelve su id si es válido
+ *  PARA ESTA tienda (un token de otra tienda no cuenta). null si no hay sesión. */
+function compradorDeReq(req: Request, store: TiendaPublica): string | null {
+  const m = String(req.headers.authorization || '').match(/^Bearer\s+(.+)$/i);
+  if (!m) return null;
+  try {
+    const t = compradores.verificarTokenComprador(m[1]);
+    return t.storeId === store.id ? t.buyerId : null;
+  } catch { return null; }
+}
+/** Exige sesión de comprador (perfil/pedidos). */
+function requiereComprador(req: Request, store: TiendaPublica): string {
+  const id = compradorDeReq(req, store);
+  if (!id) throw new UnauthorizedError('Inicia sesión para ver tu cuenta.');
+  return id;
+}
 
 /** Base pública del storefront para los back_urls de la pasarela. */
 const STOREFRONT_PUBLIC = (process.env.STOREFRONT_PUBLIC_URL || 'https://hcgm.com.mx/erp').replace(/\/+$/, '');
@@ -85,11 +104,40 @@ router.get('/:slug/productos', asyncHandler(async (req, res) => {
   res.json({ success: true, data: { productos } });
 }));
 
+/* ──────────  CUENTAS DE COMPRADOR (rebanada 10)  ────────── */
+/** POST /storefront/:slug/cuenta/registro — crea la cuenta y devuelve su token. */
+router.post('/:slug/cuenta/registro', asyncHandler(async (req, res) => {
+  const t = await sf.tiendaPorSlug(req.params.slug);
+  res.status(201).json({ success: true, data: await compradores.registrar(t, req.body || {}) });
+}));
+/** POST /storefront/:slug/cuenta/login — inicia sesión y devuelve su token. */
+router.post('/:slug/cuenta/login', asyncHandler(async (req, res) => {
+  const t = await sf.tiendaPorSlug(req.params.slug);
+  res.json({ success: true, data: await compradores.login(t, req.body || {}) });
+}));
+/** GET /storefront/:slug/cuenta/perfil — datos del comprador (requiere sesión). */
+router.get('/:slug/cuenta/perfil', asyncHandler(async (req, res) => {
+  const t = await sf.tiendaPorSlug(req.params.slug);
+  res.json({ success: true, data: { comprador: await compradores.perfil(requiereComprador(req, t)) } });
+}));
+/** PUT /storefront/:slug/cuenta/perfil — actualiza sus datos (requiere sesión). */
+router.put('/:slug/cuenta/perfil', asyncHandler(async (req, res) => {
+  const t = await sf.tiendaPorSlug(req.params.slug);
+  res.json({ success: true, data: { comprador: await compradores.actualizarPerfil(requiereComprador(req, t), req.body || {}) } });
+}));
+/** GET /storefront/:slug/cuenta/pedidos — historial del comprador (requiere sesión). */
+router.get('/:slug/cuenta/pedidos', asyncHandler(async (req, res) => {
+  const t = await sf.tiendaPorSlug(req.params.slug);
+  res.json({ success: true, data: { pedidos: await compradores.misPedidos(requiereComprador(req, t)) } });
+}));
+
 /** POST /storefront/:slug/pedido — crea el pedido y reserva el stock. Si Mercado
  *  Pago está configurado, además crea la preferencia y devuelve la URL de pago. */
 router.post('/:slug/pedido', asyncHandler(async (req, res) => {
   const t = await sf.tiendaPorSlug(req.params.slug);
-  const r = await sf.crearPedido(t, req.body || {});
+  // Si el comprador tiene sesión, se liga el pedido a su cuenta (historial).
+  const buyerId = compradorDeReq(req, t);
+  const r = await sf.crearPedido(t, { ...(req.body || {}), buyerId: buyerId || undefined });
 
   let checkoutUrl: string | null = null;
   if (mpConfigurado()) {
