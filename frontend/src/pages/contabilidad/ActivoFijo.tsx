@@ -443,7 +443,8 @@ function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number
             {!q.isLoading && visibles.length === 0 && (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500 italic">
                 Sin {soloIntangibles ? 'intangibles' : 'activos fijos'} por registrar en {MESES[mes]} {anio}.
-                (Recuerda: la partida debe caer en una cuenta {soloIntangibles ? '17x' : '15x'}, y el recibido tener XML.)
+                (Se detectan por su cuenta {soloIntangibles ? '17x' : '15x'} o leyendo la descripción y la
+                ClaveProdServ del XML —vehículo, pick up, cómputo…—; el recibido debe tener XML.)
               </td></tr>
             )}
             {visibles.map(({ d, i }) => (
@@ -453,7 +454,15 @@ function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number
                 </td>
                 <td className="px-3 py-2">
                   <p className="truncate max-w-xs text-gray-800">{d.descripcion}</p>
-                  <p className="text-[11px] text-gray-400">{d.proveedor_nombre} · {d.origen_folio}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[11px] text-gray-400">{d.proveedor_nombre} · {d.origen_folio}</p>
+                    {d.deteccion === 'concepto' && (
+                      <span title="Reconocido por la descripción y la ClaveProdServ del SAT (no por la cuenta mapeada). Revisa la cuenta sugerida antes de registrar."
+                        className="inline-flex items-center gap-0.5 text-[10px] font-medium bg-amber-100 text-amber-800 border border-amber-200 rounded px-1 py-0.5 whitespace-nowrap">
+                        <Sparkles size={9} /> por concepto · revisa la cuenta
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-3 py-2">
                   <p className="text-xs text-gray-700">{d.etiqueta}</p>

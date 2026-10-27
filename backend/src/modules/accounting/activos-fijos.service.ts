@@ -14,7 +14,7 @@
 import { query, transaction } from '../../config/database';
 import { conceptosDeXml } from './ventas-cuentas.service';
 import { mapaProductoCuentaCompra } from './compras-cuentas.service';
-import { reglaDeCuentaActivo, agrupadorDeCodigo, ReglaDepreciacion } from './depreciacion.data';
+import { reglaDeCuentaActivo, agrupadorDeCodigo, ReglaDepreciacion, clasificarAgrupadorPorConcepto } from './depreciacion.data';
 import { descripcionDeClave } from '../products/clave-prodserv-index';
 
 const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
@@ -111,6 +111,10 @@ export interface ActivoDetectado {
   proveedor_rfc: string;
   proveedor_nombre: string;
   fundamento: string;
+  /** Cómo se detectó: 'cuenta' = el producto ya estaba mapeado a una cuenta de activo
+   *  (alta confianza); 'concepto' = se reconoció por la descripción/ClaveProdServ del
+   *  XML (revisar la cuenta sugerida antes de registrar). */
+  deteccion: 'cuenta' | 'concepto';
 }
 
 /**
@@ -119,12 +123,33 @@ export interface ActivoDetectado {
  * cuenta asignada sea de activo fijo, arma un candidato. Excluye los ya
  * registrados (mismo CFDI + cuenta). No asienta nada: sólo propone.
  */
+/**
+ * Una cuenta de activo (de movimientos) por cada AGRUPADOR del SAT presente en el
+ * catálogo de la empresa. Sirve para proponer DÓNDE registrar un activo detectado
+ * por concepto (p. ej. agrupador 154 → la primera cuenta 154.xx que exista). Si la
+ * empresa aún no tiene esa cuenta, el llamador sugiere `{agrupador}.01` para que el
+ * usuario la cree/ajuste al confirmar.
+ */
+async function mapaCuentasActivoPorAgrupador(companyId: string): Promise<Map<string, string>> {
+  const r = await query<any>(
+    `SELECT codigo FROM accounting_accounts
+      WHERE company_id=$1 AND activa=true AND permite_movimientos=true
+      ORDER BY codigo`, [companyId]);
+  const m = new Map<string, string>();
+  for (const row of r.rows) {
+    const agr = agrupadorDeCodigo(row.codigo);
+    if (!m.has(agr) && reglaDeCuentaActivo(row.codigo)) m.set(agr, row.codigo);
+  }
+  return m;
+}
+
 export async function detectarDesdeCompras(
   companyId: string, anio: number, mes: number, opts: { desde?: string; hasta?: string } = {}
 ): Promise<ActivoDetectado[]> {
   const desde = opts.desde || iniDeMes(anio, mes);
   const hasta = opts.hasta || finDeMes(anio, mes);
   const mapaProd = await mapaProductoCuentaCompra(companyId);
+  const cuentaPorAgr = await mapaCuentasActivoPorAgrupador(companyId);
   const r = await query<any>(
     `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision,'YYYY-MM-DD') AS fecha,
             c.nombre_emisor, c.rfc_emisor, c.xml
@@ -146,13 +171,23 @@ export async function detectarDesdeCompras(
   const out: ActivoDetectado[] = [];
   for (const c of r.rows) {
     // Un activo por (CFDI, cuenta de activo): se suman los conceptos que caen en la misma cuenta.
-    const porCuenta = new Map<string, { monto: number; desc: string; clave: string }>();
+    const porCuenta = new Map<string, { monto: number; desc: string; clave: string; deteccion: 'cuenta' | 'concepto' }>();
     for (const cn of conceptosDeXml(String(c.xml))) {
-      const cod = mapaProd.get(cn.clave);
-      if (!cod || !reglaDeCuentaActivo(cod)) continue;
-      const e = porCuenta.get(cod) || { monto: 0, desc: cn.descripcion || '', clave: cn.clave };
+      let cod = mapaProd.get(cn.clave);
+      let deteccion: 'cuenta' | 'concepto' = 'cuenta';
+      if (!cod || !reglaDeCuentaActivo(cod)) {
+        // El producto NO está mapeado a una cuenta de activo. Antes aquí se descartaba;
+        // ahora se LEE el XML: descripción del concepto + descripción oficial de su
+        // ClaveProdServ del SAT, por si es un vehículo, pick up, cómputo, etc.
+        const agr = clasificarAgrupadorPorConcepto(cn.clave, cn.descripcion, descripcionDeClave(cn.clave));
+        if (!agr) continue;
+        cod = cuentaPorAgr.get(agr) || `${agr}.01`;   // cuenta existente del rubro, o sugerida
+        deteccion = 'concepto';
+      }
+      const e = porCuenta.get(cod) || { monto: 0, desc: cn.descripcion || '', clave: cn.clave, deteccion };
       e.monto = round2(e.monto + cn.importe - cn.descuento);
       if (!e.desc) e.desc = cn.descripcion || '';
+      if (deteccion === 'cuenta') e.deteccion = 'cuenta';   // si alguna vino por cuenta mapeada, manda esa
       porCuenta.set(cod, e);
     }
     for (const [cod, e] of porCuenta) {
@@ -166,7 +201,7 @@ export async function detectarDesdeCompras(
         fecha_adquisicion: String(c.fecha).slice(0, 10),
         origen_uuid: c.uuid, origen_folio: [c.serie, c.folio].filter(Boolean).join('-') || '',
         clave_prod_serv: e.clave, proveedor_rfc: c.rfc_emisor || '', proveedor_nombre: c.nombre_emisor || '',
-        fundamento: regla.fundamento,
+        fundamento: regla.fundamento, deteccion: e.deteccion,
       });
     }
   }

@@ -25,6 +25,8 @@ export async function getCollectionsReport(companyId: string): Promise<any> {
        COALESCE(SUM(i.total) FILTER (WHERE i.status NOT IN ('PAID', 'CANCELLED', 'DRAFT')), 0) as pending_amount
      FROM customers c
      LEFT JOIN invoices i ON i.customer_id = c.id AND i.deleted_at IS NULL
+       -- PUE = pagada en una sola exhibición: ya cobrada, no cuenta por cobrar. Sólo PPD.
+       AND UPPER(COALESCE(i.payment_method, '')) NOT LIKE 'PUE%'
      WHERE c.company_id = $1 AND c.deleted_at IS NULL
      GROUP BY c.id
      HAVING COALESCE(SUM(i.total) FILTER (WHERE i.status NOT IN ('PAID', 'CANCELLED', 'DRAFT')), 0) > 0
@@ -47,6 +49,7 @@ export async function getCollectionsReport(companyId: string): Promise<any> {
      WHERE i.company_id = $1
        AND i.status NOT IN ('PAID', 'CANCELLED', 'DRAFT')
        AND i.deleted_at IS NULL
+       AND UPPER(COALESCE(i.payment_method, '')) NOT LIKE 'PUE%'
      GROUP BY bucket
      ORDER BY bucket`,
     [companyId]
@@ -323,6 +326,10 @@ export async function getReceivablesReport(
      WHERE i.company_id = $1
        AND i.status NOT IN ('CANCELLED', 'DRAFT')
        AND i.deleted_at IS NULL
+       -- PUE = pagada en una sola exhibición: fiscalmente YA está cobrada, no es cuenta
+       -- por cobrar. Sólo las PPD (pago diferido/parcialidades) son cobranza real; su
+       -- cobro se documenta en los complementos de pago (timbres de pago pendientes).
+       AND UPPER(COALESCE(i.payment_method, '')) NOT LIKE 'PUE%'
        ${custClause}
      ORDER BY c.business_name, i.date_issued`,
     params

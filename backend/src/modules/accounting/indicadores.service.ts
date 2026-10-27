@@ -70,10 +70,17 @@ export async function resumen() {
 /* ── Actualización automática del INPC desde el INEGI ─────────────────────── */
 
 /* El indicador del INPC general (base 2ª quincena de julio 2018) en el Banco de
- * Indicadores del INEGI, y la fuente. Se pueden sobreescribir por si el INEGI
- * reasigna la clave (consolidó el banco en dic-2025; los ejemplos ya usan BISE). */
+ * Indicadores del INEGI. Se puede sobreescribir por si el INEGI reasigna la clave. */
 const INDICADOR_INPC = process.env.INEGI_INDICADOR_INPC || '910417';
-const FUENTE_INEGI = process.env.INEGI_FUENTE || 'BISE';
+/* La FUENTE del API del INEGI. El INPC es una serie ECONÓMICA → vive en el BIE, no en
+ * BISE; pedirlo con `BISE` devuelve «No se encontraron resultados» (era el bug: el
+ * mismo indicador en BISE no existe). Se PRUEBAN varias porque el INEGI documenta
+ * `BISE` en sus ejemplos pero las series económicas responden con `BIE`/`BIE-BISE`.
+ * Se puede fijar una con INEGI_FUENTE. */
+const FUENTE_INEGI = process.env.INEGI_FUENTE || 'BIE';
+function fuentesCandidatas(): string[] {
+  return [...new Set([FUENTE_INEGI, 'BIE', 'BIE-BISE', 'BISE'])];
+}
 /* Área geográfica. Para el INPC (serie económica) el INEGI usa `0700` (nacional);
  * NO `00`. Con `00` el API responde 400 Bad Request (era el bug reportado). Se puede
  * sobreescribir con INEGI_AREA por si el INEGI cambia la clave (p. ej. `00000`). */
@@ -93,14 +100,14 @@ function areasCandidatas(): string[] {
   return [...new Set([AREA_INPC, '0700', '00000', '00'])];
 }
 
-/** Arma la URL para un área concreta (o la plantilla completa del Constructor). */
-function urlInpcPara(area: string): string | null {
+/** Arma la URL para un área y fuente concretas (o la plantilla completa del Constructor). */
+function urlInpcPara(area: string, fuente: string): string | null {
   const token = process.env.INEGI_TOKEN || '';
   const plantilla = process.env.INEGI_INPC_URL;
   if (plantilla) return plantilla.includes('{TOKEN}') ? plantilla.replace('{TOKEN}', token) : plantilla;
   if (!token) return null;
   return `https://www.inegi.org.mx/app/api/indicadores/desarrolladores/jsonxml/INDICATOR/` +
-    `${INDICADOR_INPC}/es/${area}/false/${FUENTE_INEGI}/2.0/${token}?type=json`;
+    `${INDICADOR_INPC}/es/${area}/false/${fuente}/2.0/${token}?type=json`;
 }
 
 type FilasInpc = Array<{ anio: number; mes: number; valor: number }>;
@@ -143,17 +150,29 @@ async function descargarInpcInegi(): Promise<FilasInpc | { error: string } | nul
   const plantilla = process.env.INEGI_INPC_URL;
   const token = process.env.INEGI_TOKEN || '';
   if (!plantilla && !token) return null;   // INEGI no configurado → que intente otra fuente
-  const areas = plantilla ? ['(plantilla)'] : areasCandidatas();
+  // La plantilla del Constructor ya trae fuente y área: una sola llamada. Sin plantilla,
+  // se prueban combinaciones de FUENTE (BIE/BIE-BISE/BISE) y ÁREA hasta que una traiga datos.
+  if (plantilla) {
+    const url = urlInpcPara('', '');
+    if (url) {
+      const r = await descargarSerieInpc(url);
+      if (Array.isArray(r) && r.length) return r;
+      if (r && 'error' in r) return { error: `indicador=${INDICADOR_INPC} (plantilla) · ${r.error}` };
+    }
+    return null;
+  }
   const fallos: string[] = [];
-  for (const area of areas) {
-    const url = plantilla ? urlInpcPara('') : urlInpcPara(area);
-    if (!url) continue;
-    const r = await descargarSerieInpc(url);
-    if (Array.isArray(r) && r.length) return r;
-    if (r && 'error' in r) fallos.push(`área ${area}: ${r.error}`);
+  for (const fuente of fuentesCandidatas()) {
+    for (const area of areasCandidatas()) {
+      const url = urlInpcPara(area, fuente);
+      if (!url) continue;
+      const r = await descargarSerieInpc(url);
+      if (Array.isArray(r) && r.length) return r;
+      if (r && 'error' in r) fallos.push(`${fuente}/${area}: ${r.error}`);
+    }
   }
   return fallos.length
-    ? { error: `indicador=${INDICADOR_INPC} fuente=${FUENTE_INEGI} · ${fallos.join(' · ')}` }
+    ? { error: `indicador=${INDICADOR_INPC} · ${fallos.slice(0, 4).join(' · ')}${fallos.length > 4 ? ' · …' : ''}` }
     : null;
 }
 
@@ -170,8 +189,12 @@ async function descargarInpcBanxico(): Promise<FilasInpc | { error: string } | n
   const serie = process.env.INPC_SERIE_BANXICO || 'SP1';
   const hoy = new Date();
   const dd = (n: number) => String(n).padStart(2, '0');
-  const desde = `01/01/${hoy.getFullYear() - 8}`;                                   // ~8 años de histórico
-  const hasta = `${dd(hoy.getDate())}/${dd(hoy.getMonth() + 1)}/${hoy.getFullYear()}`;
+  // OJO: el SIE de Banxico pide las fechas de la URL en `yyyy-MM-dd`. Antes se armaban
+  // como `dd/MM/yyyy`; las barras de «01/01/2018» metían segmentos de más en la ruta y
+  // Banxico devolvía 404 («resource removed») — ese era el bug. (La RESPUESTA sí trae la
+  // fecha en dd/MM/yyyy, que es lo que parsea abajo.)
+  const desde = `${hoy.getFullYear() - 8}-01-01`;                                  // ~8 años de histórico
+  const hasta = `${hoy.getFullYear()}-${dd(hoy.getMonth() + 1)}-${dd(hoy.getDate())}`;
   const url = `https://www.banxico.org.mx/SieAPIRest/service/v1/series/${encodeURIComponent(serie)}/datos/${desde}/${hasta}`;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 20000);
