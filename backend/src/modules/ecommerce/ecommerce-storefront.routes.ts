@@ -11,6 +11,7 @@ import { query } from '../../config/database';
 import logger from '../../middleware/logger';
 import * as sf from './ecommerce-storefront.service';
 import { metodosPublicos } from './ecommerce-envios.service';
+import { buscarCupon, validarCupon } from './ecommerce-cupones.service';
 import { obtenerImagen } from './ecommerce-media.service';
 import { mpConfigurado, crearPreferencia } from './ec-mercadopago.service';
 import { procesarPagoMP } from './ec-fulfillment.service';
@@ -55,6 +56,22 @@ router.get('/:slug/categorias', asyncHandler(async (req, res) => {
 router.get('/:slug/envios', asyncHandler(async (req, res) => {
   const t = await sf.tiendaPorSlug(req.params.slug);
   res.json({ success: true, data: { metodos: await metodosPublicos(t.id) } });
+}));
+
+/** POST /storefront/:slug/cupon — valida un cupón contra el total (con IVA) del carrito.
+ *  Es una vista previa: al crear el pedido se re-valida de forma autoritativa. */
+router.post('/:slug/cupon', asyncHandler(async (req, res) => {
+  const t = await sf.tiendaPorSlug(req.params.slug);
+  const codigo = String(req.body?.codigo || '').trim();
+  const total = Number(req.body?.total) || 0;
+  if (!codigo) { res.json({ success: true, data: { valido: false, mensaje: 'Captura el código del cupón.' } }); return; }
+  const cup = await buscarCupon(t.company_id, codigo);
+  if (!cup) { res.json({ success: true, data: { valido: false, mensaje: 'El cupón no existe.' } }); return; }
+  const v = validarCupon(cup, total);
+  res.json({
+    success: true,
+    data: v.ok ? { valido: true, codigo: cup.codigo, descuento: v.descuento } : { valido: false, mensaje: v.motivo },
+  });
 }));
 
 /** GET /storefront/:slug/productos — catálogo publicado (con precio y disponible).

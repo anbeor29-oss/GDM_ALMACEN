@@ -16,6 +16,7 @@ import * as tiendas from './ecommerce-tiendas.service';
 import * as catalogo from './ecommerce-catalogo.service';
 import * as categorias from './ecommerce-categorias.service';
 import * as envios from './ecommerce-envios.service';
+import * as cupones from './ecommerce-cupones.service';
 import * as productsService from '../products/products.service';
 import * as fulfillment from './ec-fulfillment.service';
 import * as media from './ecommerce-media.service';
@@ -36,7 +37,7 @@ router.get('/estado', asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: {
-      modulo: 'ecommerce', etapa: 'rebanada-8 (envíos: método y costo)',
+      modulo: 'ecommerce', etapa: 'rebanada-9 (cupones / promociones)',
       companyId: cid,
       tiendas: cid ? await tiendas.contarTiendas(cid) : 0,
       publicados: cid ? await catalogo.contarPublicados(cid) : 0,
@@ -164,6 +165,22 @@ router.put('/envios/:id', asyncHandler(async (req, res) => {
 router.delete('/envios/:id', asyncHandler(async (req, res) => {
   const m = await envios.borrarMetodo(companyId(req), req.params.id);
   res.json({ success: true, message: `Método «${m.nombre}» eliminado.` });
+}));
+
+/* ──────────  CUPONES / PROMOCIONES (rebanada 9)  ────────── */
+router.get('/cupones', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: { cupones: await cupones.listarCupones(companyId(req)) } });
+}));
+router.post('/cupones', asyncHandler(async (req, res) => {
+  const c = await cupones.crearCupon(companyId(req), req.body);
+  res.status(201).json({ success: true, data: c, message: `Cupón «${c.codigo}» creado.` });
+}));
+router.put('/cupones/:id', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await cupones.actualizarCupon(companyId(req), req.params.id, req.body) });
+}));
+router.delete('/cupones/:id', asyncHandler(async (req, res) => {
+  const c = await cupones.borrarCupon(companyId(req), req.params.id);
+  res.json({ success: true, message: `Cupón «${c.codigo}» eliminado.` });
 }));
 
 /* ────────────────────────  PEDIDOS  ──────────────────────── */

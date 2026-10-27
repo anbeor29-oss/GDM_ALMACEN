@@ -139,6 +139,7 @@ export async function listarPedidos(companyId: string) {
     `SELECT o.id, o.numero, o.estado, o.cliente_nombre, o.cliente_email, o.total, o.moneda,
             o.created_at, o.pagado_at, o.facturado_at, o.invoice_id,
             o.envio_metodo, (o.envio_base + o.envio_iva)::float AS envio_total,
+            o.cupon_codigo, o.descuento::float AS descuento,
             i.cfdi_uuid, i.serie, i.folio,
             s.nombre AS tienda
        FROM ec_order o

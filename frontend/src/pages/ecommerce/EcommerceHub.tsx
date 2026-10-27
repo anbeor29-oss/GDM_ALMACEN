@@ -28,7 +28,7 @@ const SECCIONES: Seccion[] = [
   { icon: Globe,         titulo: 'Catálogo web',  desc: 'Qué productos salen a la tienda, fotos, SEO y precio web.',           color: 'bg-cyan-100 text-cyan-700', listo: true, to: '/ecommerce/catalogo' },
   { icon: ClipboardList, titulo: 'Pedidos',       desc: 'Tablero de pedidos; «Pagar y facturar» genera el CFDI y su póliza.',  color: 'bg-amber-100 text-amber-700', listo: true, to: '/ecommerce/pedidos' },
   { icon: CreditCard,    titulo: 'Pagos',         desc: 'Mercado Pago: tarjeta, OXXO, SPEI y meses sin intereses.',           color: 'bg-rose-100 text-rose-700' },
-  { icon: Tag,           titulo: 'Promociones',   desc: 'Cupones, ofertas con vigencia y envío gratis.',                      color: 'bg-fuchsia-100 text-fuchsia-700' },
+  { icon: Tag,           titulo: 'Promociones',   desc: 'Cupones de descuento (% o monto), con mínimo, vigencia y límite de usos.', color: 'bg-fuchsia-100 text-fuchsia-700', listo: true, to: '/ecommerce/cupones' },
   { icon: Truck,         titulo: 'Envíos',        desc: 'Método y costo, captura de guía y recoger en sucursal.',             color: 'bg-orange-100 text-orange-700' },
   { icon: Users,         titulo: 'Clientes web',  desc: 'Cuentas de compradores, ligadas a los clientes del ERP.',            color: 'bg-teal-100 text-teal-700' },
   { icon: BarChart3,     titulo: 'Reportes',      desc: 'Ventas, conversión, carrito abandonado y stock bajo.',               color: 'bg-violet-100 text-violet-700' },

@@ -3480,6 +3480,19 @@ class APIClient {
   async eliminarEnvioEc(id: string) {
     return (await this.client.delete(`/ecommerce/envios/${id}`)).data;
   }
+  // Cupones / promociones (rebanada 9)
+  async getCuponesEc() {
+    return (await this.client.get('/ecommerce/cupones')).data;
+  }
+  async crearCuponEc(d: { codigo: string; tipo?: string; valor?: number; minCompra?: number | null; vence?: string | null; usosMax?: number | null }) {
+    return (await this.client.post('/ecommerce/cupones', d)).data;
+  }
+  async actualizarCuponEc(id: string, d: any) {
+    return (await this.client.put(`/ecommerce/cupones/${id}`, d)).data;
+  }
+  async eliminarCuponEc(id: string) {
+    return (await this.client.delete(`/ecommerce/cupones/${id}`)).data;
+  }
   // Pedidos de la tienda (rebanada 5)
   async getPedidosEc() {
     return (await this.client.get('/ecommerce/pedidos')).data;

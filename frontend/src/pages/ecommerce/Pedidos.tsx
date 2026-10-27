@@ -82,6 +82,9 @@ export function PedidosEcPage() {
                     {Number(p.envio_total) > 0 && (
                       <div className="text-[10px] font-normal text-gray-400">incl. envío ${fmt(p.envio_total)}{p.envio_metodo ? ` · ${p.envio_metodo}` : ''}</div>
                     )}
+                    {Number(p.descuento) > 0 && (
+                      <div className="text-[10px] font-normal text-emerald-600">cupón {p.cupon_codigo} −${fmt(p.descuento)}</div>
+                    )}
                   </td>
                   <td className="px-4 py-2.5">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TONO[p.estado] || 'bg-gray-100 text-gray-600'}`}>{p.estado}</span>

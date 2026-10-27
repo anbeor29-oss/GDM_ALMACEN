@@ -10,6 +10,7 @@
 import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import { calcularCostoEnvio } from './ecommerce-envios.service';
+import { validarCupon } from './ecommerce-cupones.service';
 
 const IVA_DEFAULT = 0.16;
 const MIN_RESERVA = 60; // minutos que vive la reserva sin pago
@@ -106,7 +107,7 @@ export async function crearPedido(
   store: TiendaPublica,
   datos: {
     cliente: { nombre: string; email?: string; telefono?: string; direccion?: string; cp?: string };
-    items: ItemPedido[]; notas?: string; envioMetodoId?: string;
+    items: ItemPedido[]; notas?: string; envioMetodoId?: string; cuponCodigo?: string;
   },
 ) {
   const nombre = String(datos?.cliente?.nombre || '').trim();
@@ -156,6 +157,35 @@ export async function crearPedido(
       renglones.push({ productId: p.id, sku: p.sku, nombre: p.nombre, cantidad, precioUnit: r2(p.precio), tasa, importe, iva, rastreado });
     }
 
+    // Cupón: si el comprador capturó un código válido, baja el PRECIO NETO de cada
+    // producto en la misma proporción (así el CFDI queda correcto: IVA sobre el neto,
+    // sin campo Descuento global). El envío NO se descuenta. Se bloquea la fila del
+    // cupón (FOR UPDATE) para contar bien los usos en checkouts simultáneos.
+    let cuponCodigo: string | null = null;
+    let descuentoConIva = 0;
+    if (datos.cuponCodigo && String(datos.cuponCodigo).trim()) {
+      const cr = await transactionQuery<any>(client,
+        `SELECT id, codigo, tipo, valor::float AS valor, min_compra::float AS min_compra,
+                TO_CHAR(vence,'YYYY-MM-DD') AS vence, usos_max, usos, activo
+           FROM ec_coupon WHERE company_id=$1 AND upper(codigo)=upper($2) FOR UPDATE`,
+        [store.company_id, String(datos.cuponCodigo).trim()]);
+      const cup = cr.rows[0];
+      if (!cup) throw new ValidationError('El cupón no existe.');
+      const v = validarCupon(cup, subtotal + ivaTotal);
+      if (!v.ok) throw new ValidationError(v.motivo);
+      let nSub = 0, nIva = 0;
+      for (const l of renglones) {
+        l.precioUnit = r2(l.precioUnit * (1 - v.frac));
+        l.importe = r2(l.precioUnit * l.cantidad);
+        l.iva = r2(l.importe * l.tasa);
+        nSub = r2(nSub + l.importe); nIva = r2(nIva + l.iva);
+      }
+      descuentoConIva = r2((subtotal + ivaTotal) - (nSub + nIva));
+      subtotal = nSub; ivaTotal = nIva;
+      cuponCodigo = cup.codigo;
+      await transactionQuery(client, `UPDATE ec_coupon SET usos=usos+1, updated_at=NOW() WHERE id=$1`, [cup.id]);
+    }
+
     // Envío: si el comprador eligió un método, se cobra (o es gratis si el total de
     // productos alcanza el umbral «gratis desde»). El costo se congela en el pedido
     // y, al facturar, entra como renglón de flete (IVA 16%).
@@ -182,14 +212,14 @@ export async function crearPedido(
       `INSERT INTO ec_order
          (company_id, store_id, numero, estado, cliente_nombre, cliente_email, cliente_telefono,
           envio_direccion, envio_cp, notas, moneda, subtotal, iva, total,
-          envio_metodo_id, envio_metodo, envio_base, envio_iva)
-       VALUES ($1,$2,$3,'PENDIENTE_PAGO',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+          envio_metodo_id, envio_metodo, envio_base, envio_iva, cupon_codigo, descuento)
+       VALUES ($1,$2,$3,'PENDIENTE_PAGO',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        RETURNING id, numero, estado, total`,
       [store.company_id, store.id, numero, nombre,
        datos.cliente.email || null, datos.cliente.telefono || null,
        datos.cliente.direccion || null, datos.cliente.cp || null, datos.notas || null,
        store.moneda, subtotal, ivaTotal, total,
-       envioMetodoId, envioMetodoNombre, envioBase, envioIva]);
+       envioMetodoId, envioMetodoNombre, envioBase, envioIva, cuponCodigo, descuentoConIva]);
     const orderId = ped.rows[0].id;
 
     const expira = new Date(Date.now() + MIN_RESERVA * 60_000);

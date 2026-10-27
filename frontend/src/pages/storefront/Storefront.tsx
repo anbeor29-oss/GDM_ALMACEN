@@ -38,6 +38,10 @@ export function StorefrontPage() {
   const [catSel, setCatSel] = useState<string | null>(null);  // slug de la categoría filtrada
   const [metodos, setMetodos] = useState<Metodo[]>([]);
   const [envioSel, setEnvioSel] = useState<string>('');       // id del método de envío elegido
+  const [cupon, setCupon] = useState('');                     // código que escribe el comprador
+  const [cuponAplicado, setCuponAplicado] = useState<{ codigo: string; descuento: number } | null>(null);
+  const [cuponMsg, setCuponMsg] = useState('');
+  const [aplicandoCupon, setAplicandoCupon] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState('');
 
@@ -88,13 +92,55 @@ export function StorefrontPage() {
     .filter((x) => x.p);
   const subtotal = lineas.reduce((a, x) => a + x.p.precio * x.q, 0);
   const iva = lineas.reduce((a, x) => a + x.p.precio * x.q * x.p.tasaIva, 0);
-  const total = subtotal + iva;
-  // Envío: el método elegido, con IVA; gratis si el total de productos alcanza su umbral.
+  const total = subtotal + iva;                         // productos con IVA (sin cupón)
+  const descuento = cuponAplicado ? Math.min(cuponAplicado.descuento, total) : 0;
+  const productosConDesc = Math.max(0, total - descuento);
+  // Envío: el método elegido, con IVA; gratis si el total de productos (YA con cupón,
+  // como lo calcula el backend) alcanza su umbral.
   const envioMetodo = metodos.find((m) => m.id === envioSel) || null;
-  const envioGratis = !!(envioMetodo && envioMetodo.gratisDesde != null && total >= envioMetodo.gratisDesde);
+  const envioGratis = !!(envioMetodo && envioMetodo.gratisDesde != null && productosConDesc >= envioMetodo.gratisDesde);
   const envioCosto = envioMetodo ? (envioGratis ? 0 : envioMetodo.costoConIva) : 0;
-  const totalFinal = total + envioCosto;
+  const totalFinal = productosConDesc + envioCosto;
   const nItems = lineas.reduce((a, x) => a + x.q, 0);
+
+  // Re-valida el cupón aplicado contra el total actual (si el carrito cambia, el
+  // descuento se recalcula o se retira si ya no aplica). El pedido lo re-valida al crearse.
+  useEffect(() => {
+    const codigo = cuponAplicado?.codigo;
+    if (!codigo) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const r = await fetch(`${SF_BASE}/${encodeURIComponent(slug)}/cupon`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codigo, total }),
+        });
+        const d = (await r.json())?.data;
+        if (!vivo) return;
+        if (d?.valido) { if (d.descuento !== cuponAplicado?.descuento) setCuponAplicado({ codigo: d.codigo, descuento: d.descuento }); }
+        else { setCuponAplicado(null); setCuponMsg(d?.mensaje || 'El cupón ya no aplica al carrito.'); }
+      } catch { /* se ignora: el pedido re-valida igual */ }
+    })();
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total, cuponAplicado?.codigo, slug]);
+
+  const aplicarCupon = async () => {
+    const codigo = cupon.trim().toUpperCase();
+    if (!codigo) return;
+    setCuponMsg(''); setAplicandoCupon(true);
+    try {
+      const r = await fetch(`${SF_BASE}/${encodeURIComponent(slug)}/cupon`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codigo, total }),
+      });
+      const d = (await r.json())?.data;
+      if (d?.valido) { setCuponAplicado({ codigo: d.codigo, descuento: d.descuento }); setCupon(''); setCuponMsg(''); }
+      else { setCuponAplicado(null); setCuponMsg(d?.mensaje || 'Cupón no válido.'); }
+    } catch { setCuponMsg('No se pudo validar el cupón.'); }
+    finally { setAplicandoCupon(false); }
+  };
+  const quitarCupon = () => { setCuponAplicado(null); setCuponMsg(''); setCupon(''); };
   // Filtro por categoría del lado del cliente (el catálogo ya viene con su categoría).
   const productosVisibles = catSel ? productos.filter((p) => p.categoriaSlug === catSel) : productos;
 
@@ -126,6 +172,7 @@ export function StorefrontPage() {
           cliente,
           items: lineas.map((x) => ({ productId: x.p.productId, cantidad: x.q })),
           envioMetodoId: envioSel || undefined,
+          cuponCodigo: cuponAplicado?.codigo || undefined,
         }),
       });
       const j = await res.json();
@@ -134,6 +181,7 @@ export function StorefrontPage() {
       if (j.data?.checkoutUrl) { window.location.href = j.data.checkoutUrl; return; }
       setConfirmado(j.data);
       setCarrito({}); setCheckout(false); setAbierto(false);
+      setCuponAplicado(null); setCupon(''); setCuponMsg('');
     } catch (e: any) {
       setErrorPedido(e?.message || 'No se pudo crear el pedido.');
     } finally {
@@ -314,6 +362,25 @@ export function StorefrontPage() {
                       </div>
                     </div>
                   )}
+                  <div>
+                    <span className="text-xs font-medium text-gray-600">Cupón de descuento</span>
+                    {cuponAplicado ? (
+                      <div className="mt-1 flex items-center justify-between border border-emerald-200 bg-emerald-50 rounded-lg px-3 py-2 text-sm">
+                        <span className="text-emerald-800">Cupón <b>{cuponAplicado.codigo}</b> aplicado · −${fmt(descuento)}</span>
+                        <button type="button" onClick={quitarCupon} className="text-emerald-700 hover:text-emerald-900" aria-label="Quitar cupón"><X size={16} /></button>
+                      </div>
+                    ) : (
+                      <div className="mt-1 flex gap-2">
+                        <input value={cupon} onChange={(e) => setCupon(e.target.value.toUpperCase())}
+                          placeholder="CÓDIGO" className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono uppercase" />
+                        <button type="button" onClick={aplicarCupon} disabled={aplicandoCupon || !cupon.trim()}
+                          className="px-3 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50" style={{ backgroundColor: marca }}>
+                          {aplicandoCupon ? '…' : 'Aplicar'}
+                        </button>
+                      </div>
+                    )}
+                    {cuponMsg && <p className="text-xs text-rose-600 mt-1">{cuponMsg}</p>}
+                  </div>
                   {errorPedido && <p className="text-sm text-rose-600">{errorPedido}</p>}
                 </div>
               )}
@@ -323,6 +390,11 @@ export function StorefrontPage() {
               <div className="border-t border-gray-200 p-4 space-y-2">
                 <div className="flex justify-between text-sm text-gray-600"><span>Subtotal</span><span>${fmt(subtotal)}</span></div>
                 <div className="flex justify-between text-sm text-gray-600"><span>IVA</span><span>${fmt(iva)}</span></div>
+                {descuento > 0 && (
+                  <div className="flex justify-between text-sm text-emerald-700">
+                    <span>Descuento{cuponAplicado ? ` (${cuponAplicado.codigo})` : ''}</span><span>−${fmt(descuento)}</span>
+                  </div>
+                )}
                 {envioMetodo && (
                   <div className="flex justify-between text-sm text-gray-600">
                     <span>Envío{envioGratis ? ' (gratis)' : ''}</span><span>${fmt(envioCosto)}</span>
