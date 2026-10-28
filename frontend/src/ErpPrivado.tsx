@@ -38,6 +38,7 @@ import { CatalogoWebPage } from '@/pages/ecommerce/CatalogoWeb';
 import { PedidosEcPage } from '@/pages/ecommerce/Pedidos';
 import { CuponesEcPage } from '@/pages/ecommerce/Cupones';
 import { CompradoresEcPage } from '@/pages/ecommerce/Compradores';
+import { ReportesEcPage } from '@/pages/ecommerce/ReportesEc';
 import { AdminSatgoPage } from '@/pages/AdminSatgo';
 import { AdminRendimientoPage } from '@/pages/AdminRendimiento';
 import { AdminDemosPage } from '@/pages/AdminDemos';
@@ -142,6 +143,7 @@ export default function ErpPrivado() {
         <Route path="ecommerce/pedidos" element={<ModuleRoute module="ecommerce"><PedidosEcPage /></ModuleRoute>} />
         <Route path="ecommerce/cupones" element={<ModuleRoute module="ecommerce"><CuponesEcPage /></ModuleRoute>} />
         <Route path="ecommerce/compradores" element={<ModuleRoute module="ecommerce"><CompradoresEcPage /></ModuleRoute>} />
+        <Route path="ecommerce/reportes" element={<ModuleRoute module="ecommerce"><ReportesEcPage /></ModuleRoute>} />
         <Route path="team" element={<CompanyOnlyRoute><CompanyAdminRoute><TeamPage /></CompanyAdminRoute></CompanyOnlyRoute>} />
         <Route path="contract" element={<CompanyOnlyRoute><CompanyAdminRoute><ModuleRoute module="dashboard"><ContractPage /></ModuleRoute></CompanyAdminRoute></CompanyOnlyRoute>} />
         <Route path="carta-porte"                     element={<ModuleRoute module="carta_porte"><CartaPortePage /></ModuleRoute>} />

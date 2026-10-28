@@ -18,6 +18,7 @@ import * as categorias from './ecommerce-categorias.service';
 import * as envios from './ecommerce-envios.service';
 import * as cupones from './ecommerce-cupones.service';
 import * as compradores from './ecommerce-compradores.service';
+import * as reportes from './ecommerce-reportes.service';
 import * as productsService from '../products/products.service';
 import * as fulfillment from './ec-fulfillment.service';
 import * as media from './ecommerce-media.service';
@@ -38,7 +39,7 @@ router.get('/estado', asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: {
-      modulo: 'ecommerce', etapa: 'rebanada-10 (cuentas de comprador)',
+      modulo: 'ecommerce', etapa: 'rebanada-11 (reportes de ventas web)',
       companyId: cid,
       tiendas: cid ? await tiendas.contarTiendas(cid) : 0,
       publicados: cid ? await catalogo.contarPublicados(cid) : 0,
@@ -182,6 +183,15 @@ router.put('/cupones/:id', asyncHandler(async (req, res) => {
 router.delete('/cupones/:id', asyncHandler(async (req, res) => {
   const c = await cupones.borrarCupon(companyId(req), req.params.id);
   res.json({ success: true, message: `Cupón «${c.codigo}» eliminado.` });
+}));
+
+/* ──────────  REPORTES DE VENTAS WEB (rebanada 11)  ────────── */
+router.get('/reportes/ventas', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await reportes.reporteVentas(companyId(req), {
+    desde: req.query.desde ? String(req.query.desde) : undefined,
+    hasta: req.query.hasta ? String(req.query.hasta) : undefined,
+    storeId: req.query.storeId ? String(req.query.storeId) : undefined,
+  }) });
 }));
 
 /* ──────────  CLIENTES WEB: compradores registrados (rebanada 10)  ────────── */

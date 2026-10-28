@@ -3497,6 +3497,10 @@ class APIClient {
   async getCompradoresEc() {
     return (await this.client.get('/ecommerce/compradores')).data;
   }
+  // Reportes de ventas web (rebanada 11)
+  async getReporteVentasEc(params: { desde?: string; hasta?: string; storeId?: string } = {}) {
+    return (await this.client.get('/ecommerce/reportes/ventas', { params })).data;
+  }
   // Pedidos de la tienda (rebanada 5)
   async getPedidosEc() {
     return (await this.client.get('/ecommerce/pedidos')).data;

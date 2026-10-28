@@ -31,7 +31,7 @@ const SECCIONES: Seccion[] = [
   { icon: Tag,           titulo: 'Promociones',   desc: 'Cupones de descuento (% o monto), con mínimo, vigencia y límite de usos.', color: 'bg-fuchsia-100 text-fuchsia-700', listo: true, to: '/ecommerce/cupones' },
   { icon: Truck,         titulo: 'Envíos',        desc: 'Método y costo, captura de guía y recoger en sucursal.',             color: 'bg-orange-100 text-orange-700' },
   { icon: Users,         titulo: 'Clientes web',  desc: 'Compradores registrados en tus tiendas: pedidos y total comprado.',   color: 'bg-teal-100 text-teal-700', listo: true, to: '/ecommerce/compradores' },
-  { icon: BarChart3,     titulo: 'Reportes',      desc: 'Ventas, conversión, carrito abandonado y stock bajo.',               color: 'bg-violet-100 text-violet-700' },
+  { icon: BarChart3,     titulo: 'Reportes',      desc: 'Ventas por periodo, top productos y desglose por tienda.',           color: 'bg-violet-100 text-violet-700', listo: true, to: '/ecommerce/reportes' },
 ];
 
 export function EcommerceHubPage() {
@@ -67,9 +67,9 @@ export function EcommerceHubPage() {
       </div>
 
       {/* Aviso de etapa */}
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-        <b>En construcción</b> — esta es la base del módulo (rebanada 1). Las secciones se van
-        habilitando por fases; el plan completo está en <code>docs/ECOMMERCE_PLAN.md</code>.
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800">
+        El módulo ya opera: tiendas, catálogo, pedidos, envíos, cupones, cuentas de comprador y
+        reportes. Falta sólo conectar la <b>pasarela de pago</b> (Mercado Pago) para cobrar en línea.
       </div>
 
       {/* Secciones */}
