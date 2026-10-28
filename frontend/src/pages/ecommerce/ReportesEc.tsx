@@ -7,7 +7,7 @@
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, ArrowLeft, Package, Store, Receipt, ShoppingBag, Wallet } from 'lucide-react';
+import { BarChart3, ArrowLeft, Package, Store, Receipt, ShoppingBag, Wallet, FileSpreadsheet, FileDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '@/services/api';
 
@@ -30,6 +30,13 @@ export function ReportesEcPage() {
   const [desde, setDesde] = useState(primerDiaMes());
   const [hasta, setHasta] = useState(hoyYmd());
   const [storeId, setStoreId] = useState('');
+  const [bajando, setBajando] = useState('');
+
+  const descargar = async (formato: 'xlsx' | 'pdf') => {
+    setBajando(formato);
+    try { await api.descargarReporteVentasEc(formato, { desde, hasta, storeId: storeId || undefined }); }
+    catch { /* noop */ } finally { setBajando(''); }
+  };
 
   const tiendasQ = useQuery({ queryKey: ['ec-tiendas'], queryFn: () => api.listTiendas() });
   const tiendas: any[] = (tiendasQ.data as any)?.data?.tiendas || [];
@@ -63,6 +70,16 @@ export function ReportesEcPage() {
             <option value="">Todas</option>
             {tiendas.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
           </select></label>
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => descargar('xlsx')} disabled={!!bajando}
+            className="inline-flex items-center gap-1.5 border border-emerald-300 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-100 disabled:opacity-50">
+            <FileSpreadsheet size={15} /> {bajando === 'xlsx' ? 'Generando…' : 'Excel'}
+          </button>
+          <button onClick={() => descargar('pdf')} disabled={!!bajando}
+            className="inline-flex items-center gap-1.5 border border-rose-300 bg-rose-50 text-rose-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-rose-100 disabled:opacity-50">
+            <FileDown size={15} /> {bajando === 'pdf' ? 'Generando…' : 'PDF'}
+          </button>
+        </div>
       </div>
 
       {q.isLoading || !k ? (

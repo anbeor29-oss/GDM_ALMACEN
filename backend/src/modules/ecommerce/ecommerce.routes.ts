@@ -19,6 +19,7 @@ import * as envios from './ecommerce-envios.service';
 import * as cupones from './ecommerce-cupones.service';
 import * as compradores from './ecommerce-compradores.service';
 import * as reportes from './ecommerce-reportes.service';
+import * as reportesExport from './ecommerce-reportes-export.service';
 import * as productsService from '../products/products.service';
 import * as fulfillment from './ec-fulfillment.service';
 import * as media from './ecommerce-media.service';
@@ -39,7 +40,7 @@ router.get('/estado', asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: {
-      modulo: 'ecommerce', etapa: 'rebanada-11 (reportes de ventas web)',
+      modulo: 'ecommerce', etapa: 'fase envíos+reportes (fulfillment/guía/recoger + export Excel/PDF)',
       companyId: cid,
       tiendas: cid ? await tiendas.contarTiendas(cid) : 0,
       publicados: cid ? await catalogo.contarPublicados(cid) : 0,
@@ -193,6 +194,23 @@ router.get('/reportes/ventas', asyncHandler(async (req, res) => {
     storeId: req.query.storeId ? String(req.query.storeId) : undefined,
   }) });
 }));
+const paramsReporte = (req: Request) => ({
+  desde: req.query.desde ? String(req.query.desde) : undefined,
+  hasta: req.query.hasta ? String(req.query.hasta) : undefined,
+  storeId: req.query.storeId ? String(req.query.storeId) : undefined,
+});
+router.get('/reportes/ventas.xlsx', asyncHandler(async (req, res) => {
+  const { buffer, nombre } = await reportesExport.reporteVentasExcel(companyId(req), paramsReporte(req));
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+  res.send(buffer);
+}));
+router.get('/reportes/ventas.pdf', asyncHandler(async (req, res) => {
+  const { buffer, nombre } = await reportesExport.reporteVentasPdf(companyId(req), paramsReporte(req));
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+  res.send(buffer);
+}));
 
 /* ──────────  CLIENTES WEB: compradores registrados (rebanada 10)  ────────── */
 router.get('/compradores', asyncHandler(async (req, res) => {
@@ -205,6 +223,10 @@ router.get('/pedidos', asyncHandler(async (req, res) => {
 }));
 /** Marca el pedido pagado y lo factura (pedido→CFDI→póliza). Para cobros fuera de
  *  línea o para cerrar a mano; con Mercado Pago lo hace el webhook al aprobarse. */
+/** Avanza el surtido del pedido (surtido/enviado/entregado) y captura paquetería + guía. */
+router.put('/pedidos/:id/envio', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await fulfillment.actualizarEnvioPedido(companyId(req), req.params.id, req.body || {}) });
+}));
 router.post('/pedidos/:id/pagar-y-facturar', asyncHandler(async (req, res) => {
   const r = await fulfillment.marcarPagadoYFacturar(companyId(req), req.params.id);
   res.json({

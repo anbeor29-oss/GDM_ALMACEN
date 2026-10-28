@@ -30,12 +30,14 @@ const gratisDesde = (v: any): number | null => {
   if (!Number.isFinite(n) || n < 0) throw new ValidationError('«Envío gratis desde» no puede ser negativo.');
   return r2(n);
 };
+/** Tipo del método: ENVIO (a domicilio) o RECOGER (en tienda). */
+const tipoEnvio = (t: any): 'ENVIO' | 'RECOGER' => (String(t || '').toUpperCase() === 'RECOGER' ? 'RECOGER' : 'ENVIO');
 
 /** Métodos de una tienda (cockpit: incluye inactivos). */
 export async function listarMetodos(companyId: string, storeId: string) {
   await assertTiendaDeEmpresa(companyId, storeId);
   const r = await query<any>(
-    `SELECT id, nombre, costo::float AS costo, gratis_desde::float AS gratis_desde, activo, orden
+    `SELECT id, nombre, tipo, costo::float AS costo, gratis_desde::float AS gratis_desde, activo, orden
        FROM ec_shipping_method WHERE store_id=$1 ORDER BY orden, nombre`, [storeId]);
   return r.rows;
 }
@@ -45,10 +47,10 @@ export async function crearMetodo(companyId: string, storeId: string, d: any) {
   const nombre = String(d?.nombre || '').trim();
   if (!nombre) throw new ValidationError('Captura el nombre del método de envío.');
   const r = await query<any>(
-    `INSERT INTO ec_shipping_method (company_id, store_id, nombre, costo, gratis_desde, activo, orden)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
-     RETURNING id, nombre, costo::float AS costo, gratis_desde::float AS gratis_desde, activo, orden`,
-    [companyId, storeId, nombre.slice(0, 120), costoValido(d?.costo), gratisDesde(d?.gratisDesde),
+    `INSERT INTO ec_shipping_method (company_id, store_id, nombre, tipo, costo, gratis_desde, activo, orden)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     RETURNING id, nombre, tipo, costo::float AS costo, gratis_desde::float AS gratis_desde, activo, orden`,
+    [companyId, storeId, nombre.slice(0, 120), tipoEnvio(d?.tipo), costoValido(d?.costo), gratisDesde(d?.gratisDesde),
      d?.activo === false ? false : true, Number(d?.orden) || 0]);
   return r.rows[0];
 }
@@ -60,6 +62,7 @@ export async function actualizarMetodo(companyId: string, id: string, d: any) {
     if (!nombre) throw new ValidationError('El nombre no puede quedar vacío.');
     sets.push(`nombre=$${i++}`); vals.push(nombre.slice(0, 120));
   }
+  if (d?.tipo !== undefined) { sets.push(`tipo=$${i++}`); vals.push(tipoEnvio(d.tipo)); }
   if (d?.costo !== undefined) { sets.push(`costo=$${i++}`); vals.push(costoValido(d.costo)); }
   if (d?.gratisDesde !== undefined) { sets.push(`gratis_desde=$${i++}`); vals.push(gratisDesde(d.gratisDesde)); }
   if (d?.activo !== undefined) { sets.push(`activo=$${i++}`); vals.push(!!d.activo); }
@@ -68,7 +71,7 @@ export async function actualizarMetodo(companyId: string, id: string, d: any) {
   const r = await query<any>(
     `UPDATE ec_shipping_method SET ${sets.join(', ')}, updated_at=NOW()
       WHERE id=$1 AND company_id=$2
-      RETURNING id, nombre, costo::float AS costo, gratis_desde::float AS gratis_desde, activo, orden`, vals);
+      RETURNING id, nombre, tipo, costo::float AS costo, gratis_desde::float AS gratis_desde, activo, orden`, vals);
   if (!r.rows[0]) throw new NotFoundError('Método de envío no encontrado.');
   return r.rows[0];
 }
@@ -83,10 +86,10 @@ export async function borrarMetodo(companyId: string, id: string) {
 /** Métodos ACTIVOS de la tienda para el storefront (con su costo visible con IVA). */
 export async function metodosPublicos(storeId: string) {
   const r = await query<any>(
-    `SELECT id, nombre, costo::float AS costo, gratis_desde::float AS gratis_desde
+    `SELECT id, nombre, tipo, costo::float AS costo, gratis_desde::float AS gratis_desde
        FROM ec_shipping_method WHERE store_id=$1 AND activo=TRUE ORDER BY orden, nombre`, [storeId]);
   return r.rows.map((m: any) => ({
-    id: m.id, nombre: m.nombre,
+    id: m.id, nombre: m.nombre, tipo: m.tipo || 'ENVIO',
     costo: r2(m.costo), costoConIva: r2(Number(m.costo) * (1 + IVA_ENVIO)),
     gratisDesde: m.gratis_desde != null ? r2(m.gratis_desde) : null,
   }));

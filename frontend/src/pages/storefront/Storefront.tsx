@@ -8,7 +8,7 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { ShoppingCart, Plus, Minus, X, Loader2, CheckCircle, Store, PackageX, User, LogOut, Receipt } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, X, Loader2, CheckCircle, Store, PackageX, User, LogOut, Receipt, Package } from 'lucide-react';
 
 const SF_BASE = (import.meta.env.VITE_API_BASE
   ? String(import.meta.env.VITE_API_BASE).replace(/\/+$/, '') + '/api/v1'
@@ -22,7 +22,7 @@ type Producto = {
   categoriaId: string | null; categoriaSlug: string | null; categoriaNombre: string | null;
 };
 type Categoria = { id: string; nombre: string; slug: string; productos: number };
-type Metodo = { id: string; nombre: string; costo: number; costoConIva: number; gratisDesde: number | null };
+type Metodo = { id: string; nombre: string; tipo: string; costo: number; costoConIva: number; gratisDesde: number | null };
 type Tienda = {
   nombre: string; slug: string; moneda: string; logoUrl: string | null;
   colorPrimario: string; colorSecundario: string;
@@ -112,6 +112,7 @@ export function StorefrontPage() {
   const envioGratis = !!(envioMetodo && envioMetodo.gratisDesde != null && productosConDesc >= envioMetodo.gratisDesde);
   const envioCosto = envioMetodo ? (envioGratis ? 0 : envioMetodo.costoConIva) : 0;
   const totalFinal = productosConDesc + envioCosto;
+  const esRecoger = envioMetodo?.tipo === 'RECOGER';   // recoger en tienda → sin dirección
   const nItems = lineas.reduce((a, x) => a + x.q, 0);
 
   // Re-valida el cupón aplicado contra el total actual (si el carrito cambia, el
@@ -413,7 +414,7 @@ export function StorefrontPage() {
                     { k: 'telefono', l: 'Teléfono', t: 'tel' },
                     { k: 'direccion', l: 'Dirección de envío', t: 'text' },
                     { k: 'cp', l: 'Código postal', t: 'text' },
-                  ].map((f) => (
+                  ].filter((f) => !esRecoger || (f.k !== 'direccion' && f.k !== 'cp')).map((f) => (
                     <label key={f.k} className="block">
                       <span className="text-xs font-medium text-gray-600">{f.l}</span>
                       <input type={f.t} value={(cliente as any)[f.k]}
@@ -432,7 +433,7 @@ export function StorefrontPage() {
                             <label key={m.id} className="flex items-center gap-2 border rounded-lg px-3 py-2 text-sm cursor-pointer"
                               style={{ borderColor: envioSel === m.id ? marca : '#e5e7eb' }}>
                               <input type="radio" name="envio" checked={envioSel === m.id} onChange={() => setEnvioSel(m.id)} />
-                              <span className="flex-1">{m.nombre}</span>
+                              <span className="flex-1">{m.nombre}{m.tipo === 'RECOGER' && <span className="ml-1.5 text-[10px] bg-gray-100 text-gray-500 rounded px-1 py-0.5">Recoger en tienda</span>}</span>
                               <span className="font-medium">{gratis ? 'Gratis' : `$${fmt(m.costoConIva)}`}</span>
                             </label>
                           );
@@ -580,6 +581,7 @@ export function StorefrontPage() {
                         <span>{new Date(p.created_at).toLocaleDateString('es-MX')}</span>
                         <span>{p.estado}{p.cfdi_uuid ? ' · facturado' : ''}</span>
                       </div>
+                      {p.guia && <div className="text-[11px] text-gray-500 mt-1 flex items-center gap-1"><Package size={11} /> {p.paqueteria || 'Guía'} · {p.guia}</div>}
                     </div>
                   ))}
                 </div>

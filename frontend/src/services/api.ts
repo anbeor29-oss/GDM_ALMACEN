@@ -3471,7 +3471,7 @@ class APIClient {
   async getEnviosEc(storeId: string) {
     return (await this.client.get(`/ecommerce/tiendas/${storeId}/envios`)).data;
   }
-  async crearEnvioEc(storeId: string, d: { nombre: string; costo?: number; gratisDesde?: number | null; orden?: number }) {
+  async crearEnvioEc(storeId: string, d: { nombre: string; tipo?: string; costo?: number; gratisDesde?: number | null; orden?: number }) {
     return (await this.client.post(`/ecommerce/tiendas/${storeId}/envios`, d)).data;
   }
   async actualizarEnvioEc(id: string, d: { nombre?: string; costo?: number; gratisDesde?: number | null; activo?: boolean; orden?: number }) {
@@ -3501,12 +3501,26 @@ class APIClient {
   async getReporteVentasEc(params: { desde?: string; hasta?: string; storeId?: string } = {}) {
     return (await this.client.get('/ecommerce/reportes/ventas', { params })).data;
   }
+  async descargarReporteVentasEc(formato: 'xlsx' | 'pdf', params: { desde?: string; hasta?: string; storeId?: string } = {}) {
+    const r = await this.client.get(`/ecommerce/reportes/ventas.${formato}`, { params, responseType: 'blob' });
+    const blob = new Blob([r.data as BlobPart], {
+      type: formato === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `Ventas_web.${formato}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    window.URL.revokeObjectURL(url);
+  }
   // Pedidos de la tienda (rebanada 5)
   async getPedidosEc() {
     return (await this.client.get('/ecommerce/pedidos')).data;
   }
   async pagarYFacturarPedidoEc(id: string) {
     return (await this.client.post(`/ecommerce/pedidos/${id}/pagar-y-facturar`)).data;
+  }
+  async actualizarEnvioPedidoEc(id: string, d: { estado?: string; paqueteria?: string; guia?: string }) {
+    return (await this.client.put(`/ecommerce/pedidos/${id}/envio`, d)).data;
   }
   // Fotos de producto (rebanada 6)
   async subirImagenProductoEc(productId: string, file: File) {

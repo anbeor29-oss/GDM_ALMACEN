@@ -133,6 +133,37 @@ export async function procesarPagoMP(paymentId: string): Promise<void> {
     .catch((e) => logger.error(`[mercadopago] facturar pedido del pago ${paymentId} falló: ${e.message}`));
 }
 
+/**
+ * Avanza el surtido de un pedido: SURTIDO → ENVIADO (captura paquetería + guía) →
+ * ENTREGADO, con su fecha. También permite corregir la guía sin cambiar el estado.
+ * No toca pedidos cancelados. No altera el cobro ni la factura.
+ */
+const ESTADOS_ENVIO = ['SURTIDO', 'ENVIADO', 'ENTREGADO'];
+export async function actualizarEnvioPedido(
+  companyId: string, orderId: string, d: { estado?: string; paqueteria?: string; guia?: string },
+) {
+  const ordR = await query<any>(`SELECT id, estado FROM ec_order WHERE id=$1 AND company_id=$2`, [orderId, companyId]);
+  const o = ordR.rows[0];
+  if (!o) throw new ValidationError('Pedido no encontrado.');
+  if (o.estado === 'CANCELADO') throw new ValidationError('El pedido está cancelado.');
+
+  const sets: string[] = []; const vals: any[] = [orderId, companyId]; let i = 3;
+  const estado = String(d?.estado || '').toUpperCase();
+  if (estado) {
+    if (!ESTADOS_ENVIO.includes(estado)) throw new ValidationError('Estado de envío no válido (surtido, enviado o entregado).');
+    sets.push(`estado=$${i++}`); vals.push(estado);
+    const campo = estado === 'SURTIDO' ? 'surtido_at' : estado === 'ENVIADO' ? 'enviado_at' : 'entregado_at';
+    sets.push(`${campo}=COALESCE(${campo}, NOW())`);
+  }
+  if (d?.paqueteria !== undefined) { sets.push(`paqueteria=$${i++}`); vals.push(String(d.paqueteria || '').trim().slice(0, 80) || null); }
+  if (d?.guia !== undefined) { sets.push(`guia=$${i++}`); vals.push(String(d.guia || '').trim().slice(0, 120) || null); }
+  if (!sets.length) return { actualizado: false };
+  const r = await query<any>(
+    `UPDATE ec_order SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$1 AND company_id=$2
+     RETURNING id, estado, paqueteria, guia`, vals);
+  return r.rows[0];
+}
+
 /** Lista de pedidos de la empresa (cockpit). */
 export async function listarPedidos(companyId: string) {
   const r = await query<any>(
@@ -140,6 +171,7 @@ export async function listarPedidos(companyId: string) {
             o.created_at, o.pagado_at, o.facturado_at, o.invoice_id,
             o.envio_metodo, (o.envio_base + o.envio_iva)::float AS envio_total,
             o.cupon_codigo, o.descuento::float AS descuento,
+            o.paqueteria, o.guia, o.surtido_at, o.enviado_at, o.entregado_at,
             i.cfdi_uuid, i.serie, i.folio,
             s.nombre AS tienda
        FROM ec_order o

@@ -108,7 +108,8 @@ export async function actualizarPerfil(buyerId: string, d: any) {
 export async function misPedidos(buyerId: string) {
   const r = await query<any>(
     `SELECT o.id, o.numero, o.estado, o.total::float AS total, o.moneda, o.created_at,
-            o.facturado_at, i.cfdi_uuid, i.serie, i.folio
+            o.facturado_at, o.paqueteria, o.guia, o.enviado_at, o.entregado_at,
+            i.cfdi_uuid, i.serie, i.folio
        FROM ec_order o
        LEFT JOIN invoices i ON i.id = o.invoice_id
       WHERE o.buyer_id = $1

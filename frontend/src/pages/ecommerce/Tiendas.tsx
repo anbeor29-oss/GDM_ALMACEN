@@ -110,6 +110,7 @@ function EnviosModal({ tienda, onClose }: { tienda: any; onClose: () => void }) 
   const q = useQuery({ queryKey: ['ec-envios', tienda.id], queryFn: () => api.getEnviosEc(tienda.id) });
   const metodos: any[] = (q.data as any)?.data?.metodos || [];
   const [nombre, setNombre] = useState('');
+  const [tipo, setTipo] = useState('ENVIO');
   const [costo, setCosto] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -119,7 +120,7 @@ function EnviosModal({ tienda, onClose }: { tienda: any; onClose: () => void }) 
     const n = nombre.trim();
     if (!n) return;
     setErr(''); setBusy(true);
-    try { await api.crearEnvioEc(tienda.id, { nombre: n, costo: costo === '' ? 0 : Number(costo) }); setNombre(''); setCosto(''); refetch(); }
+    try { await api.crearEnvioEc(tienda.id, { nombre: n, tipo, costo: costo === '' ? 0 : Number(costo) }); setNombre(''); setCosto(''); setTipo('ENVIO'); refetch(); }
     catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo crear el método.'); }
     finally { setBusy(false); }
   };
@@ -150,6 +151,11 @@ function EnviosModal({ tienda, onClose }: { tienda: any; onClose: () => void }) 
               onKeyDown={(e) => { if (e.key === 'Enter') agregar(); }}
               placeholder="Método (p. ej. Estándar, Express, Local)…"
               className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            <select value={tipo} onChange={(e) => setTipo(e.target.value)} title="Tipo de entrega"
+              className="border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white">
+              <option value="ENVIO">A domicilio</option>
+              <option value="RECOGER">Recoger</option>
+            </select>
             <input value={costo} onChange={(e) => setCosto(e.target.value)} type="number" step="any" min="0"
               placeholder="Costo" title="Costo sin IVA"
               className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm text-right" />
@@ -188,6 +194,11 @@ function FilaEnvio({ metodo, onGuardar, onBorrar }: {
       <input value={nombre} onChange={(e) => setNombre(e.target.value)}
         onBlur={() => { const n = nombre.trim(); if (n && n !== metodo.nombre) onGuardar(metodo.id, { nombre: n }); else setNombre(metodo.nombre); }}
         className="flex-1 min-w-0 border border-transparent hover:border-gray-200 focus:border-amber-300 rounded px-2 py-1 text-sm font-medium" />
+      <select value={metodo.tipo || 'ENVIO'} onChange={(e) => onGuardar(metodo.id, { tipo: e.target.value })} title="Tipo de entrega"
+        className="border border-gray-200 rounded px-1 py-1 text-xs bg-white shrink-0">
+        <option value="ENVIO">Domicilio</option>
+        <option value="RECOGER">Recoger</option>
+      </select>
       <label className="text-[11px] text-gray-400 flex items-center gap-1" title="Costo sin IVA">$
         <input value={costo} onChange={(e) => setCosto(e.target.value)} type="number" step="any" min="0"
           onBlur={() => { const c = Number(costo) || 0; if (c !== Number(metodo.costo)) onGuardar(metodo.id, { costo: c }); }}
