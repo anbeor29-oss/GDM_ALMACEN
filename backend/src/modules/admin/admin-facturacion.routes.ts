@@ -84,4 +84,12 @@ router.post('/:id/emitir', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data, message: `Factura ${data.folio} emitida desde ${data.emisora}.` });
 }));
 
+/** Cobro del servicio IVA: monto libre + emisora elegida → crea el cargo y timbra. */
+router.post('/iva-cobro', asyncHandler(async (req: Request, res: Response) => {
+  const { companyId, monto, emisoraId, concepto } = req.body || {};
+  const data = await fact.cobrarIva(String(companyId || ''), Number(monto), String(emisoraId || ''), concepto);
+  await audit(req, { action: 'FACTURACION_IVA_COBRO', targetKind: 'facturacion_mensual', targetId: data.cargoId, payload: { companyId, monto, emisoraId, folio: data.folio } });
+  res.json({ success: true, data, message: `Factura ${data.folio} emitida desde ${data.emisora}.` });
+}));
+
 export default router;

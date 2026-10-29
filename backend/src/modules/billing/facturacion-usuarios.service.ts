@@ -260,7 +260,7 @@ export async function resumenConsolidado(periodoInput?: string) {
             COALESCE(c.producto,'NEXO') AS producto,
             (SELECT MIN(sc.signed_at) FROM service_contracts sc WHERE sc.company_id = c.id) AS signed_at,
             (SELECT COUNT(*) FROM service_contracts sc WHERE sc.company_id = c.id) > 0 AS firmado,
-            fm.id AS cargo_id, fm.status AS cargo_status
+            fm.id AS cargo_id, fm.status AS cargo_status, fm.factura_id AS cargo_factura_id, fm.total_mxn AS cargo_total
        FROM companies c
        LEFT JOIN facturacion_mensual fm ON fm.company_id = c.id AND fm.periodo = $1
       WHERE c.deleted_at IS NULL AND c.is_active = TRUE
@@ -305,6 +305,7 @@ export async function resumenConsolidado(periodoInput?: string) {
       renta_mxn: renta, extra_mxn: extra, total_mxn: r2(renta + extra),
       esPrueba, exenta, motivo, producto: e.producto || 'NEXO',
       cargo_id: e.cargo_id || null,
+      facturado: !!e.cargo_factura_id, cargo_total: e.cargo_total != null ? Number(e.cargo_total) : null,
       status: e.cargo_status || (sinCobro ? 'SIN_COBRO' : 'SIN_GENERAR'),
       servicio_suspendido: e.servicio_suspendido === true,
     };
@@ -365,7 +366,7 @@ export async function reactivar(id: string) {
  * timbrado real por el PAC). Guarda el `factura_id` en el cargo; no lo marca pagado
  * (el pago se registra aparte). Idempotente: si el cargo ya tiene factura, no re-emite.
  */
-export async function emitirFacturaMensual(cargoId: string, emisoraId?: string): Promise<{ folio: string; uuid?: string; emisora: string }> {
+export async function emitirFacturaMensual(cargoId: string, emisoraId?: string, descripcion?: string): Promise<{ folio: string; uuid?: string; emisora: string }> {
   const r = await query<any>(
     `SELECT fm.id, fm.company_id, fm.periodo, fm.total_mxn, fm.timbres_extra, fm.factura_id, fm.status,
             TO_CHAR(fm.periodo,'YYYY-MM') AS periodo_label,
@@ -391,7 +392,7 @@ export async function emitirFacturaMensual(cargoId: string, emisoraId?: string):
     fiscal_regime: fm.client_regime, postal_code: fm.client_cp, contact_email: fm.client_email,
   });
   const productId = await upsertPlatformProduct(platform.id);
-  const desc = `Servicio de facturación electrónica ${fm.periodo_label} (cobro por usuario)` +
+  const desc = descripcion || `Servicio de facturación electrónica ${fm.periodo_label} (cobro por usuario)` +
     (Number(fm.timbres_extra) > 0 ? ` — incluye ${fm.timbres_extra} timbres extra` : '');
   const invoice = await invoicesService.createInvoice(platform.id, {
     customerId, cfdiType: 'I', paymentForm: '99', paymentMethod: 'PPD', cfdiUse: 'G03',
@@ -403,4 +404,34 @@ export async function emitirFacturaMensual(cargoId: string, emisoraId?: string):
   await query(`UPDATE facturacion_mensual SET factura_id = $2 WHERE id = $1`, [cargoId, invoice.id]);
   logger.info(`[facturacion] CFDI de cobro emitido: ${folio} (${stamp.uuid}) desde ${platform.rfc} → ${fm.client_rfc} [${fm.periodo_label}]`);
   return { folio, uuid: stamp.uuid, emisora: platform.business_name };
+}
+
+/**
+ * COBRO del servicio IVA (IVA.HTML): no es por usuario, es un monto (anualidad o
+ * paquete de créditos). Crea —o ajusta, si aún no se facturó— el cargo del periodo
+ * con ese monto y lo emite desde la emisora ELEGIDA. Base sin IVA: el CFDI suma el 16 %.
+ */
+export async function cobrarIva(companyId: string, monto: number, emisoraId: string, concepto?: string) {
+  if (!(monto > 0)) throw new ValidationError('Captura el monto a cobrar (sin IVA).');
+  if (!emisoraId) throw new ValidationError('Elige la emisora.');
+  const hoy = new Date();
+  const periodo = iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+  const diasMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+  const ex = await query<any>(`SELECT id, factura_id FROM facturacion_mensual WHERE company_id = $1 AND periodo = $2`, [companyId, periodo]);
+  if (ex.rows[0]?.factura_id) throw new ConflictError('Este cliente ya tiene una factura emitida en el periodo.');
+  let cargoId: string;
+  if (ex.rows.length) {
+    cargoId = ex.rows[0].id;
+    await query(`UPDATE facturacion_mensual SET renta_mxn = $2, total_mxn = $2, extra_mxn = 0, status = 'PENDIENTE' WHERE id = $1`, [cargoId, r2(monto)]);
+  } else {
+    const r = await query<{ id: string }>(
+      `INSERT INTO facturacion_mensual
+         (company_id, periodo, usuarios, dias_cobrados, dias_mes, prorrateado, precio_usuario_mxn, renta_mxn,
+          timbres_usados, timbres_incluidos, timbres_extra, timbre_extra_mxn, extra_mxn, total_mxn)
+       VALUES ($1,$2,0,$3,$3,false,0,$4,0,0,0,0,0,$4) RETURNING id`, [companyId, periodo, diasMes, r2(monto)]);
+    cargoId = r.rows[0].id;
+  }
+  const desc = (concepto && concepto.trim()) || 'Servicio de consulta y cálculo de IVA mensual (IVA GDM)';
+  const data = await emitirFacturaMensual(cargoId, emisoraId, desc);
+  return { ...data, cargoId };
 }

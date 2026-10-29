@@ -46,6 +46,7 @@ import adminDespachosRoutes from './modules/admin/admin-despachos.routes';
 import satgoRoutes from './modules/satgo/satgo.routes';
 import satgoConsultasRoutes from './modules/satgo/satgo.consultas.routes';
 import onboardingRoutes from './modules/onboarding/onboarding.routes';
+import ivaIntegracionRoutes from './modules/integracion/iva-integracion.routes';
 import vigenciasRoutes from './modules/vigencias/vigencias.routes';
 import pldRoutes from './modules/pld/pld.routes';
 import adminPrepaidRoutes   from './modules/admin/admin-prepaid.routes';
@@ -185,6 +186,8 @@ export function createApp(): Express {
 
   app.use(`/api/${config.apiVersion}/auth`, authRoutes);
   app.use(`/api/${config.apiVersion}/onboarding`, onboardingRoutes);
+  // Puente servidor-a-servidor con IVA.HTML (auth por token propio, sin JWT).
+  app.use(`/api/${config.apiVersion}/integracion/iva`, ivaIntegracionRoutes);
   app.use(`/api/${config.apiVersion}/vigencias`, vigenciasRoutes);
   // Uploads de CSD + logo (montar ANTES de companiesRoutes para que /:id/csd
   // y /:id/logo se matcheen antes de /:id genérico).

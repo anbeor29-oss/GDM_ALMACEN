@@ -33,7 +33,8 @@ export function AdminFacturacionPage() {
   const cfg = cfgQ.data?.data;
   // Dos paneles por producto contratado: NEXO (ERP) e IVA (servicio IVA.HTML, su CFDI
   // lo emite NEXO). 'AMBOS' aparece en los dos. Las listas y los totales se filtran.
-  const [panel, setPanel] = useState<'NEXO' | 'IVA'>('NEXO');
+  const [panel, setPanel] = useState<'NEXO' | 'IVA'>(
+    () => (new URLSearchParams(window.location.search).get('panel') || '').toUpperCase() === 'IVA' ? 'IVA' : 'NEXO');
   const enPanel = (f: any) => {
     const p = String(f?.producto || 'NEXO').toUpperCase();
     return panel === 'NEXO' ? (p === 'NEXO' || p === 'AMBOS') : (p === 'IVA' || p === 'AMBOS');
@@ -170,7 +171,16 @@ export function AdminFacturacionPage() {
                 <td className="px-3 py-2"><span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700">{f.motivo}</span></td>
                 <td className="px-3 py-2 text-center">{f.usuarios}</td>
                 <td className="px-3 py-2 text-center text-xs">{f.timbres_usados}<span className="text-gray-400">/{f.timbres_incluidos}</span></td>
-                <td className="px-3 py-2 text-right text-gray-400 italic">sin cobro</td>
+                <td className="px-3 py-2 text-right">
+                  {/* Clientes del servicio IVA: se facturan desde aquí (monto + emisora). */}
+                  {panel === 'IVA' && (f.producto === 'IVA' || f.producto === 'AMBOS')
+                    ? (f.facturado
+                        ? <span className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">Facturado {money(f.cargo_total)}</span>
+                        : <button onClick={() => setEmitir([{ ...f, iva: true }])}
+                            className="px-2.5 py-1 text-xs rounded-lg bg-violet-600 text-white font-medium hover:bg-violet-700 inline-flex items-center gap-1">
+                            <FileText size={13} /> Facturar (elegir emisora)</button>)
+                    : <span className="text-gray-400 italic">sin cobro</span>}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -313,11 +323,19 @@ function ModalEmitir({ cargos, emisoras, onClose, onDone }: { cargos: any[]; emi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const uno = cargos.length === 1;
+  const esIva = uno && cargos[0].iva === true;
+  const [monto, setMonto] = useState<string>(String(cargos[0]?.cargo_total || 500));
+  const [concepto, setConcepto] = useState('Servicio de consulta y cálculo de IVA mensual (IVA GDM)');
   const totalGrupo = cargos.reduce((a, c) => a + Number(c.total_mxn || 0), 0);
   const emitir = async () => {
     if (!emisoraId) { setError('Elige la emisora.'); return; }
     setBusy(true); setError('');
     try {
+      if (esIva) {
+        const r: any = await api.cobrarIva(cargos[0].company_id, Number(monto), emisoraId, concepto);
+        onDone(r?.message || `Factura ${r?.data?.folio || ''} emitida.`);
+        return;
+      }
       if (uno) {
         const r: any = await api.emitirFacturaMensual(cargos[0].cargo_id, emisoraId);
         onDone(r?.message || `Factura ${r?.data?.folio || ''} emitida.`);
@@ -345,7 +363,23 @@ function ModalEmitir({ cargos, emisoras, onClose, onDone }: { cargos: any[]; emi
           {uno ? (
             <>
               <p className="text-gray-600">Cliente: <b>{cargos[0].business_name}</b> <span className="font-mono text-gray-400">{cargos[0].rfc}</span></p>
-              <p className="text-gray-600">Total: <b>{money(cargos[0].total_mxn)}</b> + IVA · periodo del cargo.</p>
+              {esIva ? (
+                <>
+                  <label className="block">
+                    <span className="text-xs font-semibold text-gray-600 block mb-1">Monto a cobrar (sin IVA)</span>
+                    <input type="number" min="1" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)}
+                      className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+                    <span className="text-[11px] text-gray-500">Anualidad $500 o el paquete de créditos que pagó. El CFDI suma el 16 %.</span>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold text-gray-600 block mb-1">Concepto</span>
+                    <input value={concepto} onChange={(e) => setConcepto(e.target.value)}
+                      className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+                  </label>
+                </>
+              ) : (
+                <p className="text-gray-600">Total: <b>{money(cargos[0].total_mxn)}</b> + IVA · periodo del cargo.</p>
+              )}
             </>
           ) : (
             <p className="text-gray-600">Se emitirán <b>{cargos.length}</b> factura(s) del despacho, total <b>{money(totalGrupo)}</b> + IVA, <b>todas desde la misma emisora</b>.</p>
@@ -364,7 +398,7 @@ function ModalEmitir({ cargos, emisoras, onClose, onDone }: { cargos: any[]; emi
         </div>
         <div className="flex justify-end gap-2 px-5 py-3 border-t bg-gray-50">
           <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border text-gray-700 hover:bg-gray-100">Cancelar</button>
-          <button onClick={emitir} disabled={busy || !emisoraId}
+          <button onClick={emitir} disabled={busy || !emisoraId || (esIva && !(Number(monto) > 0))}
             className="px-4 py-2 text-sm rounded-lg bg-violet-600 text-white font-medium hover:bg-violet-700 disabled:opacity-50 inline-flex items-center gap-1.5">
             <FileText size={15} /> {busy ? 'Emitiendo…' : 'Emitir CFDI'}
           </button>

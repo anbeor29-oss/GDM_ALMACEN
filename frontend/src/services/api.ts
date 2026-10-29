@@ -3346,6 +3346,11 @@ class APIClient {
     return (await this.client.post(`/admin/facturacion/${id}/emitir`, { emisoraId })).data;
   }
 
+  /** Cobro del servicio IVA: monto (sin IVA) + emisora elegida → crea el cargo y timbra. */
+  async cobrarIva(companyId: string, monto: number, emisoraId: string, concepto?: string) {
+    return (await this.client.post('/admin/facturacion/iva-cobro', { companyId, monto, emisoraId, concepto })).data;
+  }
+
   /* ── Emisor de facturas (SUPER_ADMIN): empresas emisoras, SMTP y depósito ── */
   async getEmisores() {
     return (await this.client.get('/admin/emisores')).data;
