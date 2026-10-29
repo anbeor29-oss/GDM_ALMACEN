@@ -123,6 +123,8 @@ export function NominaCalculoPage() {
     queryFn: () => api.getPeriodosNomina({ anio, tipo }),
   });
   const periodos: any[] = periodosQ.data?.data?.periodos || [];
+  const periodoSel = periodos.find((p: any) => p.id === periodoId);
+  const esPtu = periodoSel?.especial_clave === 'PTU';
 
   const prenominaQ = useQuery({
     queryKey: ['prenomina', periodoId],
@@ -512,8 +514,11 @@ export function NominaCalculoPage() {
         )}
       </div>
 
+      {/* ── 3 · PTU: su propio panel (no la rejilla, que pagaría sueldo base) ── */}
+      {periodoId && esPtu && <PanelPTU periodoId={periodoId} />}
+
       {/* ── 3 · La rejilla ── */}
-      {periodoId && (
+      {periodoId && !esPtu && (
         <div className="bg-white rounded-lg shadow border overflow-hidden">
           <div className="px-5 py-3 border-b flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
@@ -914,8 +919,8 @@ function FormaEspecial({ anio, onCancelar, onCreado }: any) {
   /* Los casos de siempre, para no teclear el concepto ni las fechas. Asimilados
    * es distinto: cambia el cálculo (ISR mensual, sin subsidio ni IMSS). */
   const plantillas = [
-    { label: 'Aguinaldo', concepto: `Aguinaldo ${anio}`, ini: `${anio}-01-01`, fin: `${anio}-12-31` },
-    { label: 'PTU',       concepto: `PTU ${anio - 1}`,   ini: `${anio - 1}-01-01`, fin: `${anio - 1}-12-31` },
+    { label: 'Aguinaldo', concepto: `Aguinaldo ${anio}`, ini: `${anio}-01-01`, fin: `${anio}-12-31`, clave: 'AGUINALDO' },
+    { label: 'PTU',       concepto: `PTU ${anio - 1}`,   ini: `${anio - 1}-01-01`, fin: `${anio - 1}-12-31`, clave: 'PTU' },
     { label: 'Finiquito', concepto: 'Finiquito de ',     ini: HOY, fin: HOY },
     { label: 'Asimilados', concepto: `Asimilados ${HOY.slice(0, 7)}`, ini: `${HOY.slice(0, 7)}-01`, fin: HOY, asimilados: true },
   ];
@@ -992,7 +997,7 @@ function FormaEspecial({ anio, onCancelar, onCreado }: any) {
           <div className="flex flex-wrap gap-2">
             {plantillas.map((p) => (
               <button key={p.label} type="button"
-                onClick={() => setF({ ...f, concepto: p.concepto, fecha_inicio: p.ini, fecha_fin: p.fin, esAsimilados: !!(p as any).asimilados })}
+                onClick={() => setF({ ...f, concepto: p.concepto, fecha_inicio: p.ini, fecha_fin: p.fin, esAsimilados: !!(p as any).asimilados, especialClave: (p as any).clave || null })}
                 className={`text-xs border rounded-lg px-3 py-1.5 bg-white hover:border-violet-400 ${
                   (p as any).asimilados && f.esAsimilados ? 'border-violet-500 ring-1 ring-violet-400' : ''}`}>
                 {p.label}
@@ -1113,6 +1118,175 @@ function FormaEspecial({ anio, onCancelar, onCreado }: any) {
         </>
       )}
     </div>
+  );
+}
+
+/* ═══════════════════ PTU · reparto de utilidades ═══════════════════
+ * Panel propio del periodo de PTU (no la rejilla, que pagaría sueldo base).
+ * Captura la cantidad a repartir y reparte 50% por días trabajados + 50% por
+ * salarios devengados (Art. 123 LFT), con la exención de 15×UMA y el ISR. */
+const mxn = (n: any) => `$${Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+function PanelPTU({ periodoId }: { periodoId: string }) {
+  const q = useQuery({ queryKey: ['ptu', periodoId], queryFn: () => api.getPtu(periodoId) });
+  const d: any = q.data?.data;
+  const [cant, setCant] = useState('');
+  const [msg, setMsg] = useState('');
+  const [bajando, setBajando] = useState(false);
+
+  useEffect(() => { if (d) setCant(String(d.cantidadRepartir ?? '')); }, [d?.cantidadRepartir]);
+
+  const guardarCantidad = async () => {
+    setMsg('');
+    try { await api.guardarPtu(periodoId, { cantidadRepartir: cant === '' ? 0 : Number(cant) }); q.refetch(); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo guardar.'); }
+  };
+  const guardarFila = async (empleadoId: string, cambios: any) => {
+    setMsg('');
+    try { await api.guardarPtu(periodoId, { detalle: [{ empleadoId, ...cambios }] }); q.refetch(); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo guardar.'); }
+  };
+  const excel = async () => {
+    setBajando(true);
+    try { await api.descargarPtuExcel(periodoId, `ptu-${d?.periodo?.anio || ''}.xlsx`); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo generar el Excel.'); }
+    finally { setBajando(false); }
+  };
+
+  if (q.isLoading || !d) return <div className="bg-white rounded-lg shadow border p-6 text-sm text-gray-500">Cargando PTU…</div>;
+  const t = d.totales;
+
+  return (
+    <div className="bg-white rounded-lg shadow border overflow-hidden">
+      <div className="px-5 py-3 border-b flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+          <Users size={16} className="text-violet-600" /> 3 · Reparto de utilidades (PTU)
+          <span className="font-normal text-gray-500">— {d.periodo.concepto} · {aTextoMx(d.periodo.fecha_inicio)} al {aTextoMx(d.periodo.fecha_fin)}</span>
+        </p>
+        <button onClick={excel} disabled={bajando} className="text-sm text-emerald-700 hover:underline flex items-center gap-1 disabled:opacity-50">
+          <FileSpreadsheet size={14} /> {bajando ? 'Generando…' : 'Excel'}
+        </button>
+      </div>
+
+      <div className="p-5 space-y-4">
+        {msg && <p className="text-sm bg-rose-50 border border-rose-200 text-rose-700 rounded px-3 py-2">{msg}</p>}
+
+        {/* a) Cantidad a repartir + resumen */}
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="block">
+            <span className="text-xs font-medium text-gray-600 block mb-1">a) Cantidad a repartir</span>
+            <input value={cant} onChange={(e) => setCant(e.target.value)} onBlur={guardarCantidad} type="number" step="any" min="0"
+              placeholder="0.00" className="w-44 border border-gray-300 rounded-lg px-3 py-2 text-sm text-right" />
+          </label>
+          <KpiPtu label="b) Con derecho" valor={`${t.con_derecho}`} sub={t.sin_derecho ? `${t.sin_derecho} sin derecho` : 'trabajadores'} />
+          <KpiPtu label="Mitad c/u (50%)" valor={mxn(d.mitad)} sub="días · salarios" />
+          <KpiPtu label="Exención" valor={mxn(d.exencion_tope)} sub={`15 × UMA (${mxn(d.uma_diaria)})`} />
+          <KpiPtu label="PTU repartido" valor={mxn(t.ptu)} sub={`ISR ${mxn(t.isr)}`} />
+          <KpiPtu label="Neto a pagar" valor={mxn(t.neto)} sub={`exento ${mxn(t.exento)}`} />
+        </div>
+
+        {d.avisos?.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 space-y-0.5">
+            {d.avisos.map((a: string, i: number) => (
+              <p key={i} className="flex items-start gap-1.5"><AlertTriangle size={12} className="mt-0.5 shrink-0" /> {a}</p>
+            ))}
+          </div>
+        )}
+
+        {/* c)+d) Reparto por trabajador */}
+        <div className="overflow-x-auto border rounded-lg">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 border-b text-gray-600">
+              <tr>
+                <th className="px-2 py-2 text-left">Trabajador</th>
+                <th className="px-2 py-2 text-center">Derecho</th>
+                <th className="px-2 py-2 text-right">Días trab.</th>
+                <th className="px-2 py-2 text-right">Salario diario</th>
+                <th className="px-2 py-2 text-right">Sal. devengado</th>
+                <th className="px-2 py-2 text-right">PTU días (50%)</th>
+                <th className="px-2 py-2 text-right">PTU salario (50%)</th>
+                <th className="px-2 py-2 text-right">PTU total</th>
+                <th className="px-2 py-2 text-right">Exento</th>
+                <th className="px-2 py-2 text-right">Gravado</th>
+                <th className="px-2 py-2 text-right">ISR</th>
+                <th className="px-2 py-2 text-right">Neto</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {d.filas.map((f: any) => <FilaPTU key={f.empleado_id} f={f} onGuardar={guardarFila} />)}
+            </tbody>
+            <tfoot className="bg-gray-100 font-semibold text-gray-800">
+              <tr>
+                <td className="px-2 py-2" colSpan={2}>Totales · {t.con_derecho} con derecho</td>
+                <td className="px-2 py-2 text-right tabular-nums">{t.dias}</td>
+                <td className="px-2 py-2" />
+                <td className="px-2 py-2 text-right tabular-nums">{mxn(t.salario_devengado)}</td>
+                <td className="px-2 py-2" colSpan={2} />
+                <td className="px-2 py-2 text-right tabular-nums">{mxn(t.ptu)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{mxn(t.exento)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{mxn(t.gravado)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{mxn(t.isr)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{mxn(t.neto)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <p className="text-[11px] text-gray-400 flex items-center gap-1">
+          <Info size={12} /> Los días y el salario salen automáticos del expediente pero son editables (faltas, incapacidades, sueldo variable). El reparto y el ISR se recalculan al guardar.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function KpiPtu({ label, valor, sub }: { label: string; valor: string; sub?: string }) {
+  return (
+    <div className="bg-gray-50 rounded-lg px-3 py-2 min-w-[7.5rem]">
+      <p className="text-[11px] text-gray-500">{label}</p>
+      <p className="text-base font-bold text-gray-900 tabular-nums">{valor}</p>
+      {sub && <p className="text-[10px] text-gray-400">{sub}</p>}
+    </div>
+  );
+}
+
+/* Un renglón del reparto: días y salario editables (guardan al salir del campo);
+ * el interruptor «derecho» excluye a los directivos a mano. */
+function FilaPTU({ f, onGuardar }: { f: any; onGuardar: (id: string, c: any) => void }) {
+  const [dias, setDias] = useState(String(f.dias ?? ''));
+  const [sal, setSal] = useState(String(f.salario_diario ?? ''));
+  useEffect(() => { setDias(String(f.dias ?? '')); setSal(String(f.salario_diario ?? '')); }, [f.dias, f.salario_diario]);
+
+  return (
+    <tr className={`hover:bg-gray-50 ${f.con_derecho ? '' : 'opacity-50'}`}>
+      <td className="px-2 py-1.5"><p className="truncate max-w-[14rem] text-gray-800">{f.nombre}</p><p className="text-[10px] text-gray-400 font-mono">{f.num_empleado}{f.puesto ? ` · ${f.puesto}` : ''}</p></td>
+      <td className="px-2 py-1.5 text-center">
+        <button onClick={() => onGuardar(f.empleado_id, { conDerecho: !f.con_derecho })}
+          title={f.menos_60
+            ? 'Menos de 60 días: sin derecho por default (Art. 127-IV, eventuales). Clic para incluir si es de planta.'
+            : (f.con_derecho ? 'Con derecho — clic para excluir (directivo)' : 'Excluido — clic para incluir')}
+          className={`w-9 h-5 rounded-full relative transition-colors ${f.con_derecho ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${f.con_derecho ? 'left-4' : 'left-0.5'}`} />
+        </button>
+      </td>
+      <td className="px-2 py-1.5 text-right">
+        <input value={dias} onChange={(e) => setDias(e.target.value)} type="number" step="any" min="0"
+          onBlur={() => { const v = dias === '' ? null : Number(dias); if (v !== Number(f.dias)) onGuardar(f.empleado_id, { dias: v }); }}
+          className="w-16 border border-gray-200 rounded px-1 py-1 text-xs text-right" />
+      </td>
+      <td className="px-2 py-1.5 text-right">
+        <input value={sal} onChange={(e) => setSal(e.target.value)} type="number" step="any" min="0"
+          onBlur={() => { const v = sal === '' ? null : Number(sal); if (v !== Number(f.salario_diario)) onGuardar(f.empleado_id, { salario: v }); }}
+          className="w-20 border border-gray-200 rounded px-1 py-1 text-xs text-right" />
+      </td>
+      <td className="px-2 py-1.5 text-right tabular-nums text-gray-600">{mxn(f.salario_devengado)}</td>
+      <td className="px-2 py-1.5 text-right tabular-nums">{mxn(f.ptu_dias)}</td>
+      <td className="px-2 py-1.5 text-right tabular-nums">{mxn(f.ptu_salario)}</td>
+      <td className="px-2 py-1.5 text-right tabular-nums font-medium text-gray-900">{mxn(f.ptu)}</td>
+      <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{mxn(f.exento)}</td>
+      <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{mxn(f.gravado)}</td>
+      <td className="px-2 py-1.5 text-right tabular-nums text-rose-700">{mxn(f.isr)}</td>
+      <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-emerald-700">{mxn(f.neto)}</td>
+    </tr>
   );
 }
 

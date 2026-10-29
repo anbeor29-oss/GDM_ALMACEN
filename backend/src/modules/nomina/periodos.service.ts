@@ -106,8 +106,12 @@ export async function crearEspecial(
     empleadoIds?: string[];
     /** Asimilados a salarios: ISR mensual sobre el ingreso, sin subsidio ni IMSS. */
     esAsimilados?: boolean;
+    /** Tipo del especial para enrutar su pantalla: 'PTU', 'AGUINALDO'… (o nada). */
+    especialClave?: string;
   }
 ) {
+  const especialClave = ['PTU', 'AGUINALDO'].includes(String(d.especialClave || '').toUpperCase())
+    ? String(d.especialClave).toUpperCase() : null;
   const concepto = String(d.concepto || '').trim().slice(0, 200);
   if (!concepto) {
     throw new ValidationError(
@@ -154,10 +158,10 @@ export async function crearEspecial(
     const r = await transactionQuery<{ id: string }>(
       client,
       `INSERT INTO nomina_periodos
-         (company_id, anio, tipo, numero, fecha_inicio, fecha_fin, fecha_pago, dias, concepto, es_asimilados)
-       VALUES ($1,$2,'ESPECIAL',$3,$4::date,$5::date,$6::date,$7,$8,$9)
+         (company_id, anio, tipo, numero, fecha_inicio, fecha_fin, fecha_pago, dias, concepto, es_asimilados, especial_clave)
+       VALUES ($1,$2,'ESPECIAL',$3,$4::date,$5::date,$6::date,$7,$8,$9,$10)
        RETURNING id`,
-      [companyId, anio, numero, ini, fin, pago, dias, concepto, !!d.esAsimilados]
+      [companyId, anio, numero, ini, fin, pago, dias, concepto, !!d.esAsimilados, especialClave]
     );
 
     /* Los participantes, si se eligieron.
@@ -202,7 +206,9 @@ const CAMPOS = `
    * para no traer a la plantilla completa. */
   p.empleado_id, p.finiquito_tipo, p.finiquito_datos,
   /* Asimilados a salarios: cambia el cálculo (ISR mensual, sin subsidio ni IMSS). */
-  p.es_asimilados
+  p.es_asimilados,
+  /* Tipo del especial (PTU/AGUINALDO…), para enrutar su pantalla propia. */
+  p.especial_clave
 `;
 
 export async function listar(

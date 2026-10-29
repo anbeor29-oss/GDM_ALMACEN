@@ -2499,6 +2499,21 @@ class APIClient {
     return r.data;
   }
 
+  /* ── PTU (reparto de utilidades sobre un periodo especial) ── */
+  async getPtu(periodoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/periodos/${periodoId}/ptu`);
+    return r.data;
+  }
+  async guardarPtu(periodoId: string, datos: { cantidadRepartir?: number; detalle?: any[] }) {
+    const r = await this.client.put<APIResponse<any>>(`/nomina/periodos/${periodoId}/ptu`, datos);
+    return r.data;
+  }
+  async descargarPtuExcel(periodoId: string, nombre: string) {
+    const r = await this.client.get(`/nomina/periodos/${periodoId}/ptu/excel`,
+      { responseType: 'blob', timeout: 120_000 });
+    await this.downloadFile(r.data as Blob, nombre);
+  }
+
   /** Baja la prenómina como Excel, con lo capturado en la rejilla. */
   async descargarPrenominaExcel(periodoId: string, captura: any[], nombre: string) {
     const r = await this.client.post(

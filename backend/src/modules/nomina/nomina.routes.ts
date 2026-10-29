@@ -34,6 +34,8 @@ import * as nominaImport from './nomina-import.service';
 import * as prenomina from './prenomina.service';
 import { generarExcel } from './prenomina-excel.service';
 import { generarListaDeRaya } from './lista-de-raya.service';
+import * as ptu from './ptu.service';
+import { generarExcel as generarPtuExcel } from './ptu-excel.service';
 import * as reportes from './reportes.service';
 import * as finiquito from './finiquito.service';
 import { generarReciboPDF } from './pdf-recibo.service';
@@ -839,6 +841,33 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const ids = await periodos.participantes(companyId(req), req.params.id);
     res.json({ success: true, data: { empleadoIds: ids, todos: ids.length === 0 } });
+  })
+);
+
+/* ── PTU: reparto de utilidades sobre un periodo especial ── */
+/** GET /periodos/:id/ptu — el reparto 50/50 con exención e ISR por trabajador. */
+router.get(
+  '/periodos/:id/ptu',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await ptu.obtener(companyId(req), req.params.id) });
+  })
+);
+/** PUT /periodos/:id/ptu — guarda la cantidad a repartir y los ajustes por trabajador. */
+router.put(
+  '/periodos/:id/ptu',
+  asyncHandler(async (req: Request, res: Response) => {
+    await ptu.guardar(companyId(req), req.params.id, req.body || {});
+    res.json({ success: true, data: await ptu.obtener(companyId(req), req.params.id) });
+  })
+);
+/** GET /periodos/:id/ptu/excel — el reparto como hoja de cálculo (estilo nómina). */
+router.get(
+  '/periodos/:id/ptu/excel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { buffer, nombre } = await generarPtuExcel(companyId(req), req.params.id);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
   })
 );
 
