@@ -16,12 +16,15 @@
  *     el Art. 96 (sobre el gravado, sin subsidio al empleo). El Art. 142 RLISR (opcional,
  *     más favorable) queda como mejora futura.
  */
-import { query } from '../../config/database';
-import { ValidationError } from '../../middleware/errorHandler';
+import { PoolClient } from 'pg';
+import { query, transaction, transactionQuery } from '../../config/database';
+import { ValidationError, ConflictError } from '../../middleware/errorHandler';
+import logger from '../../middleware/logger';
 import * as periodosSvc from './periodos.service';
 import * as ejercicios from './ejercicios.service';
 import { calcularIsr, pesos } from './motor';
 import { diasQueLeTocan } from './prenomina.service';
+import { construirXmlPretimbre } from './cierre.service';
 
 const DIAS_MIN_DERECHO = 60;       // eventuales con menos quedan sin derecho (Art. 127-IV)
 const EXENCION_UMA = 15;           // 15 × UMA diaria (LISR 93-XIV)
@@ -193,4 +196,110 @@ export async function guardar(
       [periodoId, row.empleadoId, companyId, dias, salario, conDerecho]);
   }
   return { ok: true };
+}
+
+/**
+ * Genera los recibos del reparto de PTU y cierra el periodo.
+ *
+ * El PTU se paga en una nómina EXTRAORDINARIA (CFDI 4.0 + nómina 1.2 con
+ * TipoNomina="E"): no lleva sueldo base ni IMSS, sólo la percepción 003 (PTU)
+ * con su exento/gravado y, si el excedente causa, la retención de ISR (002).
+ *
+ * Una vez generados, los recibos caen en la MISMA bandeja que el resto de la
+ * nómina —Nómina → CFDI— y de ahí se timbran, se marcan para correo y se bajan
+ * en PDF/XML, sin un camino aparte. Por eso esto NO manda correos ni timbra:
+ * sólo congela los recibos (reversible) y deja el paso que cuesta un timbre para
+ * la pantalla de CFDI, igual que el cierre normal.
+ *
+ * No toca préstamos, FONACOT ni entregas: el PTU es un pago aparte y esos saldos
+ * se mueven con la nómina ordinaria, no con éste.
+ */
+export async function generarRecibos(companyId: string, periodoId: string, userId?: string) {
+  const d = await obtener(companyId, periodoId);
+  if (d.periodo.estatus === 'CERRADO') {
+    throw new ConflictError('Ese periodo ya está cerrado; sus recibos ya se generaron.');
+  }
+  if (d.cantidadRepartir <= 0) {
+    throw new ValidationError('Captura la cantidad a repartir antes de generar los recibos.');
+  }
+  const conDerecho = d.filas.filter((f) => f.con_derecho && f.ptu > 0);
+  if (conDerecho.length === 0) {
+    throw new ValidationError('Ningún trabajador tiene PTU por repartir.');
+  }
+
+  const emp = await query<any>(
+    `SELECT rfc, business_name, fiscal_regime, postal_code, registro_patronal
+       FROM companies WHERE id = $1`, [companyId]);
+  const empresa = emp.rows[0];
+
+  /* Los datos del expediente que van en el CFDI y no están en el reparto. */
+  const det = await query<any>(
+    `SELECT id, curp, nss, codigo_postal, regimen_fiscal, tipo_contrato, tipo_regimen,
+            tipo_jornada, entidad_federativa, departamento, puesto, email,
+            salario_diario_integrado, rfc,
+            TO_CHAR(fecha_ingreso, 'YYYY-MM-DD') AS fecha_ingreso
+       FROM nomina_empleados
+      WHERE company_id = $1 AND id = ANY($2::uuid[])`,
+    [companyId, conDerecho.map((f) => f.empleado_id)]);
+  const porId = new Map(det.rows.map((e: any) => [e.id, e]));
+
+  return transaction(async (client: PoolClient) => {
+    let recibos = 0;
+    for (const f of conDerecho) {
+      const e = porId.get(f.empleado_id);
+      if (!e) continue;
+
+      const percepciones = [{
+        clave: '003',
+        concepto: 'Participación de los Trabajadores en las Utilidades (PTU)',
+        importe: f.ptu, gravado: f.gravado, exento: f.exento,
+      }];
+      const deducciones = f.isr > 0
+        ? [{ clave: '002', concepto: 'ISR', importe: f.isr }]
+        : [];
+
+      const fila = {
+        num_empleado: f.num_empleado, nombre: f.nombre,
+        rfc: e.rfc, curp: e.curp, nss: e.nss,
+        dias: f.dias, total_percepciones: f.ptu, total_deducciones: f.isr, neto: f.neto,
+        percepciones, deducciones,
+      };
+
+      const xml = construirXmlPretimbre({
+        empresa, periodo: d.periodo, recibo: fila, empleado: e, tipoNomina: 'E',
+      });
+
+      const ins = await transactionQuery<{ id: string }>(
+        client,
+        `INSERT INTO nomina_recibos
+           (company_id, periodo_id, empleado_id, num_empleado, nombre, rfc, curp, nss,
+            dias, total_percepciones, total_deducciones, total_otros_pagos,
+            total_gravado, total_exento, isr, imss, neto,
+            percepciones, deducciones, xml_pretimbre, correo)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+                 $18::jsonb,$19::jsonb,$20,$21)
+         ON CONFLICT (periodo_id, empleado_id) DO NOTHING
+         RETURNING id`,
+        [
+          companyId, periodoId, f.empleado_id, f.num_empleado, f.nombre,
+          e.rfc, e.curp, e.nss, f.dias,
+          f.ptu, f.isr, 0, f.gravado, f.exento, f.isr, 0, f.neto,
+          JSON.stringify(percepciones), JSON.stringify(deducciones),
+          xml, e.email || null,
+        ]);
+      if (ins.rows.length > 0) recibos++;
+    }
+
+    await transactionQuery(
+      client,
+      `UPDATE nomina_periodos
+          SET estatus = 'CERRADO', cerrado_at = NOW(), cerrado_por = $3
+        WHERE id = $1 AND company_id = $2`,
+      [periodoId, companyId, userId || null]);
+
+    logger.info(
+      `[nómina] PTU #${d.periodo.numero} ${d.periodo.anio}: ${recibos} recibo(s) generados`);
+
+    return { recibos, periodo: `PTU #${d.periodo.numero}`, neto: d.totales.neto };
+  });
 }

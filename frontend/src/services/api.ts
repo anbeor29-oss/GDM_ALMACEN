@@ -2513,6 +2513,12 @@ class APIClient {
       { responseType: 'blob', timeout: 120_000 });
     await this.downloadFile(r.data as Blob, nombre);
   }
+  /** Genera los recibos del reparto de PTU y cierra el periodo (luego se timbran en CFDI). */
+  async generarRecibosPtu(periodoId: string) {
+    const r = await this.client.post<APIResponse<any>>(
+      `/nomina/periodos/${periodoId}/ptu/recibos`, {}, { timeout: 120_000 });
+    return r.data;
+  }
 
   /** Baja la prenómina como Excel, con lo capturado en la rejilla. */
   async descargarPrenominaExcel(periodoId: string, captura: any[], nombre: string) {

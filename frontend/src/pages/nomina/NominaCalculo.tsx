@@ -21,7 +21,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   CalendarPlus, Users, AlertTriangle, RefreshCw, Plus, X, Info, FileSpreadsheet, Lock,
-  CalendarClock, CheckCircle2,
+  CalendarClock, CheckCircle2, FileDown, Download, Eye, Mail, Stamp, Check,
 } from 'lucide-react';
 import api from '@/services/api';
 import { CeldaDeConceptos } from './CeldaDeConceptos';
@@ -1136,12 +1136,16 @@ function PanelPTU({ periodoId }: { periodoId: string }) {
 
   useEffect(() => { if (d) setCant(String(d.cantidadRepartir ?? '')); }, [d?.cantidadRepartir]);
 
+  const cerrado = d?.periodo?.estatus === 'CERRADO';
+
   const guardarCantidad = async () => {
+    if (cerrado) return;
     setMsg('');
     try { await api.guardarPtu(periodoId, { cantidadRepartir: cant === '' ? 0 : Number(cant) }); q.refetch(); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo guardar.'); }
   };
   const guardarFila = async (empleadoId: string, cambios: any) => {
+    if (cerrado) return;
     setMsg('');
     try { await api.guardarPtu(periodoId, { detalle: [{ empleadoId, ...cambios }] }); q.refetch(); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo guardar.'); }
@@ -1176,7 +1180,8 @@ function PanelPTU({ periodoId }: { periodoId: string }) {
           <label className="block">
             <span className="text-xs font-medium text-gray-600 block mb-1">a) Cantidad a repartir</span>
             <input value={cant} onChange={(e) => setCant(e.target.value)} onBlur={guardarCantidad} type="number" step="any" min="0"
-              placeholder="0.00" className="w-44 border border-gray-300 rounded-lg px-3 py-2 text-sm text-right" />
+              disabled={cerrado} placeholder="0.00"
+              className="w-44 border border-gray-300 rounded-lg px-3 py-2 text-sm text-right disabled:bg-gray-100 disabled:text-gray-500" />
           </label>
           <KpiPtu label="b) Con derecho" valor={`${t.con_derecho}`} sub={t.sin_derecho ? `${t.sin_derecho} sin derecho` : 'trabajadores'} />
           <KpiPtu label="Mitad c/u (50%)" valor={mxn(d.mitad)} sub="días · salarios" />
@@ -1213,7 +1218,7 @@ function PanelPTU({ periodoId }: { periodoId: string }) {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {d.filas.map((f: any) => <FilaPTU key={f.empleado_id} f={f} onGuardar={guardarFila} />)}
+              {d.filas.map((f: any) => <FilaPTU key={f.empleado_id} f={f} onGuardar={guardarFila} bloqueado={cerrado} />)}
             </tbody>
             <tfoot className="bg-gray-100 font-semibold text-gray-800">
               <tr>
@@ -1234,7 +1239,225 @@ function PanelPTU({ periodoId }: { periodoId: string }) {
         <p className="text-[11px] text-gray-400 flex items-center gap-1">
           <Info size={12} /> Los días y el salario salen automáticos del expediente pero son editables (faltas, incapacidades, sueldo variable). El reparto y el ISR se recalculan al guardar.
         </p>
+
+        {/* e) Recibos: generar, timbrar, correo y bajar en PDF/XML (estándar de NEXO). */}
+        <RecibosPtu periodoId={periodoId} cerrado={cerrado} onCambio={() => q.refetch()} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * RecibosPtu — los recibos del reparto, en el estándar de la nómina.
+ *
+ * Generar congela un CFDI extraordinario por trabajador (percepción 003 + ISR) y
+ * cierra el periodo. De ahí los recibos son como cualquier otro: se timbran, se
+ * marcan para correo y se bajan en PDF/XML con los MISMOS tres iconos del panel
+ * de CFDI —PDF en rojo, XML en verde, vista previa en azul—. Los mismos recibos
+ * aparecen también en Nómina → CFDI.
+ */
+function RecibosPtu({ periodoId, cerrado, onCambio }:
+  { periodoId: string; cerrado: boolean; onCambio: () => void }) {
+  const { puede } = useCapacidades();
+  const esAdmin = puede(CAP.nomina);
+  const q = useQuery({
+    queryKey: ['ptu-recibos', periodoId],
+    queryFn: () => api.getRecibosNomina({ periodoId }),
+    enabled: cerrado,   // antes de cerrar no hay recibos que traer
+  });
+  const recibos: any[] = q.data?.data?.recibos || [];
+
+  const [msg, setMsg] = useState('');
+  const [generando, setGenerando] = useState(false);
+  const [timbrando, setTimbrando] = useState(false);
+  const [elegidos, setElegidos] = useState<Record<string, boolean>>({});
+  const [viendo, setViendo] = useState<any | null>(null);
+  const [pdfUrl, setPdfUrl] = useState('');
+  const [modoXml, setModoXml] = useState(false);
+
+  const generar = async () => {
+    if (!window.confirm(
+      'Se van a generar los recibos del reparto de PTU y se cerrará el periodo.\n\n' +
+      'Después podrás timbrarlos, marcarlos para correo y bajarlos en PDF/XML. ¿Sigo?'
+    )) return;
+    setMsg(''); setGenerando(true);
+    try {
+      const r: any = await api.generarRecibosPtu(periodoId);
+      setMsg(`${r.data.recibos} recibo(s) generado(s). Ya puedes timbrarlos y bajarlos aquí, o en Nómina → CFDI.`);
+      onCambio(); q.refetch();
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudieron generar los recibos.'); }
+    finally { setGenerando(false); }
+  };
+
+  const porTimbrar = Object.values(elegidos).filter(Boolean).length;
+  const timbrar = async () => {
+    const ids = Object.entries(elegidos).filter(([, v]) => v).map(([k]) => k);
+    if (ids.length === 0) { setMsg('No marcaste ningún recibo para timbrar.'); return; }
+    if (!window.confirm(
+      `Se van a timbrar ${ids.length} recibo(s) ante el PAC.\n\n` +
+      'Timbrar gasta timbres y deshacerlo exige una cancelación ante el SAT. ¿Sigo?'
+    )) return;
+    setMsg(''); setTimbrando(true);
+    try {
+      const r: any = await api.timbrarRecibosNomina(ids);
+      const dd = r.data;
+      setMsg(`${dd.timbrados} timbrado(s).` +
+        (dd.fallaron ? ` ${dd.fallaron} no pasaron: ${dd.fallidos.map((x: any) => `${x.nombre} (${x.motivo})`).join(' · ')}` : ''));
+      setElegidos({}); q.refetch();
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo timbrar.'); }
+    finally { setTimbrando(false); }
+  };
+
+  const marcarCorreo = async (ids: string[], enviar: boolean) => {
+    setMsg('');
+    try {
+      const r: any = await api.marcarEnvioPorCorreo(ids, enviar);
+      if (r.data.sinCorreo?.length) {
+        setMsg(`${r.data.marcados} marcado(s). OJO: ${r.data.sinCorreo.length} sin correo en su expediente ` +
+          `(${r.data.sinCorreo.slice(0, 3).map((x: any) => x.nombre).join(', ')}${r.data.sinCorreo.length > 3 ? '…' : ''}).`);
+      }
+      q.refetch();
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo marcar.'); }
+  };
+
+  const verRecibo = async (r: any) => {
+    setMsg(''); setModoXml(false); setPdfUrl('');
+    try {
+      const dx = await api.getXmlRecibo(r.id);
+      setViendo({ ...r, xml: dx.data.xml });
+      setPdfUrl(await api.getReciboPdfBlob(r.id));
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo abrir el recibo.'); }
+  };
+  const cerrarVista = () => {
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    setPdfUrl(''); setViendo(null); setModoXml(false);
+  };
+
+  const timbrados = recibos.filter((r) => r.uuid);
+  const marcados = recibos.filter((r) => r.enviar_por_correo);
+
+  return (
+    <div className="border-t pt-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+          <Stamp size={15} className="text-violet-600" /> e) Recibos de PTU
+          {cerrado && <span className="text-[11px] font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">periodo cerrado</span>}
+        </p>
+        {esAdmin && !cerrado && (
+          <button onClick={generar} disabled={generando}
+            className="bg-violet-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-violet-700 flex items-center gap-1.5 disabled:opacity-50">
+            <Stamp size={14} /> {generando ? 'Generando…' : 'Generar recibos'}
+          </button>
+        )}
+        {esAdmin && cerrado && porTimbrar > 0 && (
+          <button onClick={timbrar} disabled={timbrando}
+            className="bg-violet-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-violet-700 flex items-center gap-1.5 disabled:opacity-50">
+            <Stamp size={14} /> {timbrando ? 'Timbrando…' : `Timbrar ${porTimbrar}`}
+          </button>
+        )}
+      </div>
+
+      {msg && <p className="text-sm bg-sky-50 border border-sky-200 text-sky-900 rounded px-3 py-2">{msg}</p>}
+
+      {!cerrado ? (
+        <p className="text-[11px] text-gray-400 flex items-center gap-1">
+          <Info size={12} /> Primero ajusta el reparto; al <b className="mx-0.5">generar recibos</b> se congela un CFDI de nómina extraordinario por trabajador (sólo la PTU y su ISR, sin sueldo base) y el periodo queda cerrado. Timbrar es un paso aparte, igual que en la nómina normal.
+        </p>
+      ) : recibos.length === 0 ? (
+        <p className="text-sm text-gray-500 italic px-1">
+          {q.isLoading ? 'Cargando recibos…' : 'No hay recibos para este periodo.'}
+        </p>
+      ) : (
+        <div className="overflow-x-auto border rounded-lg">
+          <table className="w-full text-xs tabular-nums">
+            <thead className="bg-gray-50 border-b text-gray-600">
+              <tr>
+                <th className="px-2 py-2 text-center w-8" title="Timbrar"><Stamp size={12} className="inline" /></th>
+                <th className="px-2 py-2 text-center w-8" title="Enviar por correo"><Mail size={12} className="inline" /></th>
+                <th className="px-2 py-2 text-left">Trabajador</th>
+                <th className="px-2 py-2 text-left">Folio fiscal (UUID)</th>
+                <th className="px-2 py-2 text-right w-24">Neto</th>
+                <th className="px-2 py-2 text-center w-24"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {recibos.map((r) => (
+                <tr key={r.id} className="hover:bg-gray-50">
+                  <td className="px-2 py-1.5 text-center">
+                    {r.uuid
+                      ? <Check size={13} className="inline text-emerald-600" />
+                      : <input type="checkbox" checked={!!elegidos[r.id]}
+                          onChange={(e) => setElegidos({ ...elegidos, [r.id]: e.target.checked })} className="rounded" />}
+                  </td>
+                  <td className="px-2 py-1.5 text-center">
+                    {esAdmin && (
+                      <input type="checkbox" checked={!!r.enviar_por_correo} disabled={!r.uuid}
+                        title={!r.uuid ? 'Primero hay que timbrarlo' : (r.correo || 'Sin correo en el expediente')}
+                        onChange={(ev) => marcarCorreo([r.id], ev.target.checked)}
+                        className="rounded border-gray-300 disabled:opacity-30" />
+                    )}
+                    {r.enviado_at && <CheckCircle2 size={13} className="inline text-emerald-600" />}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <span className="text-gray-900">{r.nombre}</span>
+                    <span className="block text-[10px] text-gray-400 font-mono">{r.num_empleado} · {r.rfc}</span>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {r.uuid
+                      ? <span className="font-mono text-[10px] text-gray-700 select-all break-all">{r.uuid}</span>
+                      : <span className="text-[10px] text-amber-700 italic">sin timbrar</span>}
+                  </td>
+                  <td className="px-2 py-1.5 text-right font-semibold text-emerald-700">{mxn(r.neto)}</td>
+                  <td className="px-2 py-1.5 text-center whitespace-nowrap">
+                    {/* Los mismos tres del panel de facturas y de CFDI, en el mismo orden. */}
+                    <button onClick={() => api.descargarReciboPdf(r.id, `ptu-${r.num_empleado}.pdf`)}
+                      title="Descargar PDF" className="p-1 text-rose-600 hover:bg-rose-50 rounded"><FileDown size={15} /></button>
+                    <button onClick={() => api.descargarXmlRecibo(r.id, `ptu-${r.num_empleado}.xml`)}
+                      title="Descargar XML" className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"><Download size={15} /></button>
+                    <button onClick={() => verRecibo(r)}
+                      title="Vista previa" className="p-1 text-blue-600 hover:bg-blue-50 rounded"><Eye size={15} /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {cerrado && recibos.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500">
+          <span>{marcados.length} de {timbrados.length} timbrado(s) marcados para correo</span>
+          <button onClick={() => marcarCorreo(timbrados.map((r) => r.id), true)} disabled={timbrados.length === 0}
+            className="text-primary hover:underline disabled:text-gray-300">marcar todos</button>
+          <span className="text-gray-300">·</span>
+          <button onClick={() => marcarCorreo(recibos.map((r) => r.id), false)} className="hover:underline">ninguno</button>
+          <span className="ml-auto flex items-center gap-1"><Info size={12} /> También aparecen en Nómina → CFDI.</span>
+        </div>
+      )}
+
+      {viendo && (
+        <div className="fixed inset-0 bg-black/40 flex items-start justify-center z-50 p-4 overflow-y-auto" onClick={cerrarVista}>
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b px-5 py-3">
+              <div>
+                <h2 className="font-semibold">{viendo.nombre}</h2>
+                <p className="text-xs text-gray-500">{viendo.uuid ? 'Timbrado' : 'Sin timbrar — vista previa'} · PTU</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setModoXml(!modoXml)} className="text-sm text-primary hover:underline">{modoXml ? 'Ver el PDF' : 'Ver el XML'}</button>
+                <button onClick={cerrarVista} className="text-gray-400 hover:text-gray-600 ml-2"><X size={20} /></button>
+              </div>
+            </div>
+            {modoXml ? (
+              <pre className="p-4 text-[11px] font-mono overflow-x-auto max-h-[70vh] whitespace-pre-wrap break-all bg-slate-50">{viendo.xml}</pre>
+            ) : pdfUrl ? (
+              <iframe src={pdfUrl} title={`Recibo de ${viendo.nombre}`} className="w-full bg-slate-100" style={{ height: '75vh', border: 0 }} />
+            ) : (
+              <p className="p-8 text-center text-sm text-gray-500">Generando el PDF…</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1251,7 +1474,7 @@ function KpiPtu({ label, valor, sub }: { label: string; valor: string; sub?: str
 
 /* Un renglón del reparto: días y salario editables (guardan al salir del campo);
  * el interruptor «derecho» excluye a los directivos a mano. */
-function FilaPTU({ f, onGuardar }: { f: any; onGuardar: (id: string, c: any) => void }) {
+function FilaPTU({ f, onGuardar, bloqueado }: { f: any; onGuardar: (id: string, c: any) => void; bloqueado?: boolean }) {
   const [dias, setDias] = useState(String(f.dias ?? ''));
   const [sal, setSal] = useState(String(f.salario_diario ?? ''));
   useEffect(() => { setDias(String(f.dias ?? '')); setSal(String(f.salario_diario ?? '')); }, [f.dias, f.salario_diario]);
@@ -1260,23 +1483,25 @@ function FilaPTU({ f, onGuardar }: { f: any; onGuardar: (id: string, c: any) => 
     <tr className={`hover:bg-gray-50 ${f.con_derecho ? '' : 'opacity-50'}`}>
       <td className="px-2 py-1.5"><p className="truncate max-w-[14rem] text-gray-800">{f.nombre}</p><p className="text-[10px] text-gray-400 font-mono">{f.num_empleado}{f.puesto ? ` · ${f.puesto}` : ''}</p></td>
       <td className="px-2 py-1.5 text-center">
-        <button onClick={() => onGuardar(f.empleado_id, { conDerecho: !f.con_derecho })}
-          title={f.menos_60
-            ? 'Menos de 60 días: sin derecho por default (Art. 127-IV, eventuales). Clic para incluir si es de planta.'
-            : (f.con_derecho ? 'Con derecho — clic para excluir (directivo)' : 'Excluido — clic para incluir')}
-          className={`w-9 h-5 rounded-full relative transition-colors ${f.con_derecho ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+        <button onClick={() => !bloqueado && onGuardar(f.empleado_id, { conDerecho: !f.con_derecho })} disabled={bloqueado}
+          title={bloqueado
+            ? 'El periodo ya está cerrado'
+            : f.menos_60
+              ? 'Menos de 60 días: sin derecho por default (Art. 127-IV, eventuales). Clic para incluir si es de planta.'
+              : (f.con_derecho ? 'Con derecho — clic para excluir (directivo)' : 'Excluido — clic para incluir')}
+          className={`w-9 h-5 rounded-full relative transition-colors disabled:opacity-60 ${f.con_derecho ? 'bg-emerald-500' : 'bg-gray-300'}`}>
           <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${f.con_derecho ? 'left-4' : 'left-0.5'}`} />
         </button>
       </td>
       <td className="px-2 py-1.5 text-right">
-        <input value={dias} onChange={(e) => setDias(e.target.value)} type="number" step="any" min="0"
+        <input value={dias} onChange={(e) => setDias(e.target.value)} type="number" step="any" min="0" disabled={bloqueado}
           onBlur={() => { const v = dias === '' ? null : Number(dias); if (v !== Number(f.dias)) onGuardar(f.empleado_id, { dias: v }); }}
-          className="w-16 border border-gray-200 rounded px-1 py-1 text-xs text-right" />
+          className="w-16 border border-gray-200 rounded px-1 py-1 text-xs text-right disabled:bg-gray-100 disabled:text-gray-500" />
       </td>
       <td className="px-2 py-1.5 text-right">
-        <input value={sal} onChange={(e) => setSal(e.target.value)} type="number" step="any" min="0"
+        <input value={sal} onChange={(e) => setSal(e.target.value)} type="number" step="any" min="0" disabled={bloqueado}
           onBlur={() => { const v = sal === '' ? null : Number(sal); if (v !== Number(f.salario_diario)) onGuardar(f.empleado_id, { salario: v }); }}
-          className="w-20 border border-gray-200 rounded px-1 py-1 text-xs text-right" />
+          className="w-20 border border-gray-200 rounded px-1 py-1 text-xs text-right disabled:bg-gray-100 disabled:text-gray-500" />
       </td>
       <td className="px-2 py-1.5 text-right tabular-nums text-gray-600">{mxn(f.salario_devengado)}</td>
       <td className="px-2 py-1.5 text-right tabular-nums">{mxn(f.ptu_dias)}</td>

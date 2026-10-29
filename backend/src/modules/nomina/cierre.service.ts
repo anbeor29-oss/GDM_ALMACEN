@@ -54,8 +54,12 @@ export function construirXmlPretimbre(datos: {
   periodo: any;
   recibo: any;
   empleado: any;
+  /* "O" ordinaria (la nómina de siempre) o "E" extraordinaria (un pago fuera del
+   * periodo normal: finiquito, aguinaldo, PTU). Por omisión, ordinaria. */
+  tipoNomina?: 'O' | 'E';
 }): string {
   const { empresa, periodo, recibo, empleado } = datos;
+  const tipoNomina = datos.tipoNomina || 'O';
 
   const percepciones = recibo.percepciones || [];
   const deducciones = recibo.deducciones || [];
@@ -113,7 +117,7 @@ export function construirXmlPretimbre(datos: {
     `Importe="${n2(recibo.total_percepciones)}" Descuento="${n2(recibo.total_deducciones)}" ObjetoImp="01"/>
   </cfdi:Conceptos>
   <cfdi:Complemento>
-    <nomina12:Nomina Version="1.2" TipoNomina="O"
+    <nomina12:Nomina Version="1.2" TipoNomina="${tipoNomina}"
                      FechaPago="${x(fechaPago)}"
                      FechaInicialPago="${x(periodo.fecha_inicio)}"
                      FechaFinalPago="${x(periodo.fecha_fin)}"

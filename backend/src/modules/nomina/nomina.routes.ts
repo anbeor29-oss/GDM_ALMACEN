@@ -870,6 +870,22 @@ router.get(
     res.send(buffer);
   })
 );
+/**
+ * POST /periodos/:id/ptu/recibos — genera los recibos del reparto y cierra el periodo.
+ *
+ * Es lo único del PTU que escribe de verdad: congela un CFDI extraordinario por
+ * trabajador (percepción 003 + ISR), igual que el cierre de una nómina. Timbrar,
+ * marcar para correo y bajar en PDF/XML se hace después, en Nómina → CFDI, con
+ * los mismos recibos. Por eso es soloAdmin, como el cierre.
+ */
+router.post(
+  '/periodos/:id/ptu/recibos',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await ptu.generarRecibos(companyId(req), req.params.id, req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
 
 router.put(
   '/periodos/:id/participantes',
