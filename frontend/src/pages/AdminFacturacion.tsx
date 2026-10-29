@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { DollarSign, RefreshCw, Check, Ban, RotateCcw, Settings, Loader2, AlertTriangle, FlaskConical, Users, Stamp, ChevronRight, ChevronDown, FileText, X } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
+import { aTextoMx } from '@/components/CampoFecha';
 
 const money = (n: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
 const mesActual = () => new Date().toISOString().slice(0, 7);
@@ -233,13 +234,18 @@ export function AdminFacturacionPage() {
                     {f.exenta && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">{f.motivo || 'exenta'}</span>}
                   </p>
                   <p className="text-[11px] text-gray-500 font-mono">{f.rfc}</p>
+                  {f.iva_vigencia_fin && (
+                    <p className="text-[11px] text-emerald-700">Alta IVA {aTextoMx(f.iva_pagado_desde)} · Próximo cobro <b>{aTextoMx(f.iva_vigencia_fin)}</b></p>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-center">{f.usuarios}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{money(f.renta_mxn)}</td>
                 <td className="px-3 py-2 text-center text-xs">{f.timbres_usados}<span className="text-gray-400">/{f.timbres_incluidos}</span>{f.timbres_extra > 0 && <span className="block text-[10px] text-rose-600">+{f.timbres_extra} extra</span>}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-gray-600">{money(f.extra_mxn)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{money(f.total_mxn)}</td>
-                <td className="px-3 py-2 text-center">{f.exenta
+                <td className="px-3 py-2 text-center">{panel === 'IVA' && f.iva_vigencia_fin
+                  ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-700">anualidad al {aTextoMx(f.iva_vigencia_fin)}</span>
+                  : f.exenta
                   ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">sin cobro</span>
                   : f.usuarios === 0
                     ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-500">sin usuarios</span>
@@ -247,7 +253,11 @@ export function AdminFacturacionPage() {
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   {/* Sólo se factura a quien TIENE usuarios (cobro por usuario). Las
                       exentas y las de 0 usuarios no llevan cobro. */}
-                  {(f.exenta || f.usuarios === 0) && <span className="text-[11px] text-gray-400" title={f.usuarios === 0 ? 'Sin usuarios: no se factura' : 'Exenta'}>—</span>}
+                  {/* Servicio IVA (anualidad): se factura con monto + emisora elegida. */}
+                  {panel === 'IVA' && f.iva_vigencia_fin && (f.facturado
+                    ? <span className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">Facturado {money(f.cargo_total)}</span>
+                    : <button onClick={() => setEmitir([{ ...f, iva: true }])} className="p-1.5 text-violet-600 hover:bg-violet-50 rounded" title="Facturar anualidad IVA (elige la emisora)"><FileText size={15} /></button>)}
+                  {!(panel === 'IVA' && f.iva_vigencia_fin) && (f.exenta || f.usuarios === 0) && <span className="text-[11px] text-gray-400" title={f.usuarios === 0 ? 'Sin usuarios: no se factura' : 'Exenta'}>—</span>}
                   {!f.exenta && f.usuarios > 0 && !f.cargo_id && <span className="text-[11px] text-gray-400">genera la lista</span>}
                   {/* Emitir la factura del servicio: pregunta desde cuál emisora se timbra. */}
                   {f.cargo_id && f.status !== 'PAGADO' && !f.exenta && f.usuarios > 0 && (

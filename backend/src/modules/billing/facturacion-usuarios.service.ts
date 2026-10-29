@@ -258,6 +258,7 @@ export async function resumenConsolidado(periodoInput?: string) {
             c.despacho_id,
             (SELECT d.nombre FROM despachos_contables d WHERE d.id = c.despacho_id AND d.deleted_at IS NULL) AS despacho_nombre,
             COALESCE(c.producto,'NEXO') AS producto,
+            TO_CHAR(c.iva_pagado_desde,'YYYY-MM-DD') AS iva_pagado_desde, TO_CHAR(c.iva_vigencia_fin,'YYYY-MM-DD') AS iva_vigencia_fin,
             (SELECT MIN(sc.signed_at) FROM service_contracts sc WHERE sc.company_id = c.id) AS signed_at,
             (SELECT COUNT(*) FROM service_contracts sc WHERE sc.company_id = c.id) > 0 AS firmado,
             fm.id AS cargo_id, fm.status AS cargo_status, fm.factura_id AS cargo_factura_id, fm.total_mxn AS cargo_total
@@ -285,7 +286,8 @@ export async function resumenConsolidado(periodoInput?: string) {
     // «Ambiente de prueba» = SÓLO altas nuevas en su prueba de 72 h (solicitudes de
     // IVA/NEXO). Las SIN_COBRO/exentas NO son prueba: van a «Usuarios reales» como
     // EXENTAS ($0), para que la sección de prueba quede sólo con lo realmente nuevo.
-    const esPrueba = !!(e.prueba_inicio && !e.firmado);
+    // Cliente del servicio IVA con anualidad pagada (iva_vigencia_fin) = usuario real.
+    const esPrueba = !!(e.prueba_inicio && !e.firmado && !e.iva_vigencia_fin);
     let exenta = false, motivo = '';
     if (esPrueba) motivo = 'Prueba 72 h';
     else if (RFCS_SIN_COBRO.includes(rfc)) { exenta = true; motivo = 'Sin cobro'; }
@@ -304,6 +306,7 @@ export async function resumenConsolidado(periodoInput?: string) {
       usuarios, timbres_usados: timbresUsados, timbres_incluidos: incluidos, timbres_extra: timbresExtra,
       renta_mxn: renta, extra_mxn: extra, total_mxn: r2(renta + extra),
       esPrueba, exenta, motivo, producto: e.producto || 'NEXO',
+      iva_pagado_desde: e.iva_pagado_desde || null, iva_vigencia_fin: e.iva_vigencia_fin || null,
       cargo_id: e.cargo_id || null,
       facturado: !!e.cargo_factura_id, cargo_total: e.cargo_total != null ? Number(e.cargo_total) : null,
       status: e.cargo_status || (sinCobro ? 'SIN_COBRO' : 'SIN_GENERAR'),

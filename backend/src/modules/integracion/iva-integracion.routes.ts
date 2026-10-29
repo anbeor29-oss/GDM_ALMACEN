@@ -5,7 +5,11 @@
  * Súper Admin → Facturación → «IVA (servicio)» y se les pueda facturar, IVA avisa
  * aquí cada alta (autoregistro) y cada compra de créditos.
  *
- *  POST /integracion/iva/cliente   { rfc, nombre, correo, telefono?, cp?, regimen?, empresa?, motivo? }
+ *  POST /integracion/iva/cliente   { rfc, nombre, correo, telefono?, cp?, regimen?, empresa?, motivo?,
+ *                                    pagadoDesde?, vigenciaFin? }   (fechas YYYY-MM-DD)
+ *
+ * Con vigenciaFin (pagó la anualidad) la empresa pasa a «Usuarios reales» del panel
+ * IVA con su alta (pagadoDesde) y su próximo cobro (vigenciaFin).
  *
  * Auth: header `x-iva-token` = env IVA_INTEGRACION_TOKEN (el mismo valor va en el
  * servicio `iva` de Render como NEXO_IVA_TOKEN). Sin la variable, el puente está apagado.
@@ -42,6 +46,8 @@ router.post('/cliente', asyncHandler(async (req: Request, res: Response) => {
   const razon = String(d.empresa || d.nombre || '').trim().toUpperCase() || rfc;
   const correo = String(d.correo || '').toLowerCase().trim() || null;
   const cp = /^\d{5}$/.test(String(d.cp || '').trim()) ? String(d.cp).trim() : null;
+  const fecha = (v: any) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
+  const pagadoDesde = fecha(d.pagadoDesde), vigenciaFin = fecha(d.vigenciaFin);
   const regimen = /^\d{3}$/.test(String(d.regimen || '').trim()) ? String(d.regimen).trim() : null;
 
   const ex = await query<any>(
@@ -70,6 +76,11 @@ router.post('/cliente', asyncHandler(async (req: Request, res: Response) => {
       [rfc, razon, regimen || '612', cp, correo, d.telefono || null]);
     companyId = r.rows[0].id;
     creada = true;
+  }
+  if (vigenciaFin) {
+    await query(
+      `UPDATE companies SET iva_vigencia_fin = $2, iva_pagado_desde = COALESCE($3, iva_pagado_desde, CURRENT_DATE),
+              updated_at = NOW() WHERE id = $1`, [companyId, vigenciaFin, pagadoDesde]);
   }
   logger.info(`[integracion-iva] ${creada ? 'alta' : 'actualiza'} ${rfc} (${d.motivo || 'REGISTRO'}) → ${companyId}`);
   res.json({ success: true, data: { companyId, creada } });
