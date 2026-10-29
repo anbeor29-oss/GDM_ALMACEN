@@ -281,7 +281,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   // Producto contratado (separa los paneles NEXO / IVA del super admin).
   if (producto !== undefined) {
     const p = String(producto).toUpperCase();
-    if (!['NEXO', 'IVA', 'AMBOS'].includes(p)) throw new ValidationError('producto inválido (NEXO, IVA o AMBOS)');
+    if (!['NEXO', 'IVA', 'AMBOS', 'ECOMMERCE'].includes(p)) throw new ValidationError('producto inválido (NEXO, IVA, AMBOS o ECOMMERCE)');
     push('producto', p);
   }
   // Emisor de cobro (emite las facturas del servicio) y, por cliente, quién lo factura.

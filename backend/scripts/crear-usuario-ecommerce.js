@@ -141,6 +141,14 @@ async function main() {
     accion = 'creado';
   }
 
+  // 5. Si la empresa SÓLO opera la tienda (todas sus cuentas activas son ECOMMERCE),
+  //    sale en el panel E-COMMERCE de Súper Admin → Facturación.
+  await pool.query(
+    `UPDATE companies c SET producto = 'ECOMMERCE', updated_at = NOW()
+      WHERE c.id = $1 AND COALESCE(c.producto, 'NEXO') = 'NEXO'
+        AND NOT EXISTS (SELECT 1 FROM users u WHERE u.company_id = c.id AND u.is_active = TRUE
+                          AND COALESCE(u.work_group, '') <> 'ECOMMERCE')`, [companyId]);
+
   console.log('\n== Cuenta de Comercio Electrónico ==');
   console.log(`  Usuario:    ${email}`);
   console.log(`  Grupo/Rol:  ECOMMERCE / USER  (ve SÓLO la tienda)`);

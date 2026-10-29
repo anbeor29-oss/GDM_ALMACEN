@@ -261,6 +261,8 @@ export function App() {
         <Routes>
           {/* Rutas públicas */}
           <Route path="/login" element={<LoginPage />} />
+          {/* Puerta de Comercio electrónico (menú Herramientas de hcgm.com.mx). */}
+          <Route path="/comercio" element={<LoginPage variante="comercio" />} />
           {/* Acceso OCULTO del dueño/operación (no enlazado en ningún lado). Mismo
               login; su valor es la URL discreta, aparte del /login público. */}
           <Route path="/login/dos" element={<LoginPage />} />

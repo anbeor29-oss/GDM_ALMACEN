@@ -34,10 +34,14 @@ export function AdminFacturacionPage() {
   const cfg = cfgQ.data?.data;
   // Dos paneles por producto contratado: NEXO (ERP) e IVA (servicio IVA.HTML, su CFDI
   // lo emite NEXO). 'AMBOS' aparece en los dos. Las listas y los totales se filtran.
-  const [panel, setPanel] = useState<'NEXO' | 'IVA'>(
-    () => (new URLSearchParams(window.location.search).get('panel') || '').toUpperCase() === 'IVA' ? 'IVA' : 'NEXO');
+  // Tercer panel: E-COMMERCE (empresas de la tienda en línea, producto ECOMMERCE).
+  const [panel, setPanel] = useState<'NEXO' | 'IVA' | 'ECOMMERCE'>(() => {
+    const p = (new URLSearchParams(window.location.search).get('panel') || '').toUpperCase();
+    return p === 'IVA' || p === 'ECOMMERCE' ? p : 'NEXO';
+  });
   const enPanel = (f: any) => {
     const p = String(f?.producto || 'NEXO').toUpperCase();
+    if (panel === 'ECOMMERCE') return p === 'ECOMMERCE';
     return panel === 'NEXO' ? (p === 'NEXO' || p === 'AMBOS') : (p === 'IVA' || p === 'AMBOS');
   };
   const pruebaF = prueba.filter(enPanel);
@@ -128,6 +132,8 @@ export function AdminFacturacionPage() {
           className={`px-4 py-2 rounded-lg text-sm font-medium border ${panel === 'NEXO' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>NEXO (ERP)</button>
         <button onClick={() => setPanel('IVA')}
           className={`px-4 py-2 rounded-lg text-sm font-medium border ${panel === 'IVA' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>IVA (servicio)</button>
+        <button onClick={() => setPanel('ECOMMERCE')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium border ${panel === 'ECOMMERCE' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>E-COMMERCE</button>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 bg-white border rounded-lg p-3">
