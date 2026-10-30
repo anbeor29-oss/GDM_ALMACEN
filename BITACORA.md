@@ -7481,3 +7481,98 @@ y **sin importar el signo** (usa la que el usuario capturó); si la crea, la cue
 años heredando su naturaleza (ACREEDORA, la pérdida es un saldo negativo ahí); `siguienteCodigoHijo` respeta la máscara
 (3-2-00-04 → 3-2-00-05). El usuario **re-genera** el cierre (re-ejecutable) y reconstruye la balanza; la 305.02 vacía
 del cierre viejo se borra a mano. Backend-only. Ver [[cierre-y-traspaso-ejercicio]].
+
+---
+
+## 2026-10-20 → 2026-10-28 (índice) — Commits que no alcanzaron entrada propia
+
+Resumen por tema (detalle en cada commit; `git log --since=2026-10-20`). Se deja como índice para no perder el hilo.
+
+- **Despachos contables:** entidad propia + precio por despacho (`66c9db5`); doble clic en el grupo asigna emisora y
+  «Emitir facturas del grupo» (`4b9b474`). Ver [[despachos-contables]].
+- **Sesión/Auth:** sin auto-cierre por inactividad, `/auth/refresh` reparado y refresco en 401 (`fea34e2`, `0070386`).
+  Ver [[sesion-auto-cierre]].
+- **Contabilidad:** terceros con cuenta automática al alta (`50a171d`); Balanza XML en .zip (`2b65fbf`); candado por
+  UUID al contabilizar el timbrado (`aaad540`); póliza al vuelo del XML emitido (`b0d45dd`); pantallas arrancan en el
+  MES ACTUAL (`07830be`); INPC Banxico/INEGI (`6c707ed`, `28cfbac`); cobranza excluye PUE (`28cfbac`).
+- **Facturación/CFDI:** líneas de texto libre (`ed655ce`); complemento de pago multimoneda + TC del día del pago
+  (`be710dd`…`5c58942`); ícono de complemento sólo en PPD (`2e37011`); 4 formatos de PDF (`9c21d40`, `b71f92e`,
+  `c4c2530`); auto-registro del CSD en el PAC (`19769ed`, `fb68b25`).
+- **Clientes/Proveedores:** «Leer factura (XML)» (`9568a35`); cruce RFC ↔ cuenta (`94cf4df`).
+- **Comercio electrónico (rebanadas 1–11):** módulo + aislamiento grupo ECOMMERCE (`379aaae`, `1184beb`), tiendas,
+  productos/inventario embebidos, storefront público, Mercado Pago → CFDI → póliza, fotos, categorías, envíos, cupones,
+  cuentas de comprador, reportes y export (`50754c1`…`4676c06`). Plan en `docs/ECOMMERCE_PLAN.md`.
+- **Nómina:** PTU con panel, Excel y recibos CFDI (`7155d9f`, `69e5a2c`). Ver [[nomina-ptu]].
+- **Varios:** checador muestra lat/lng (`b824137`); crons `ENABLE_*` sin importar mayúsculas (`4dcabdb`); pestañas
+  tipo Excel verde/azul (`d4fa96a`); Panel fiscal respeta la base `/erp/` (`6e26c2f`); Validar CFDI legible (`6b16edd`).
+
+---
+
+## 2026-10-29 (facturación + IVA.HTML) — Puente IVA → NEXO: solicitudes, cobro con emisora y anualidad
+
+**Problema.** IVA.HTML (iva.hcgm.com.mx) es otra app con su propia BD: sus clientes NO aparecían en Súper Admin →
+Facturación → «IVA (servicio)», así que no había dónde facturarles.
+
+**Decisión — puente servidor a servidor (commits `193967b`, `a7c0ec4`):**
+- **`POST /api/v1/integracion/iva/cliente`** (`modules/integracion/iva-integracion.routes.ts`, montado ANTES del
+  wildcard con JWT). Auth por header `x-iva-token` = env **`IVA_INTEGRACION_TOKEN`** (comparación timing-safe; sin la
+  variable → 503, puente apagado). Crea una **empresa SIN usuarios** (`producto='IVA'`, `prueba_inicio=NOW()`) → sale en
+  «Solicitudes en prueba»; si el RFC ya es cliente NEXO lo marca **AMBOS**; sólo rellena datos vacíos (no pisa lo
+  fiscal capturado). Con `vigenciaFin` (pagó la anualidad) guarda **`companies.iva_pagado_desde` / `iva_vigencia_fin`**
+  (migración `2026-10-29b`) y la empresa pasa a **«Usuarios reales»** con «Alta IVA dd/mm/aaaa · Próximo cobro
+  dd/mm/aaaa» y estado «anualidad al…».
+- **Cobro IVA con emisora:** `POST /admin/facturacion/iva-cobro` (`cobrarIva`): monto libre (default $500 sin IVA) +
+  emisora elegida → crea/ajusta el cargo del periodo en `facturacion_mensual` y timbra con concepto «Servicio de
+  consulta y cálculo de IVA mensual (IVA GDM)». `emitirFacturaMensual` aceptó `descripcion` opcional. En la columna
+  «Cobro» del panel IVA: «Facturar (elegir emisora)» o «Facturado $X». `?panel=IVA` abre directo esa pestaña.
+- `generarLista` NO toma las empresas IVA (siguen con `prueba_inicio` sin contrato): IVA no es cobro por usuario.
+
+**Configuración (hecha por el usuario 2026-10-29):** mismo token en `gdm-almacen-backend` (`IVA_INTEGRACION_TOKEN`) y en
+el servicio `iva` (`NEXO_IVA_TOKEN`). RFCs PABJ7311218L8 y GOJR730617E8A pasados a anualidad 29/10/2026 → 29/10/2027
+con un one-liner en el Web Shell de `iva` (ojo: bash del Web Shell expande `!` dentro de comillas dobles → escribir
+`x.length===0` en vez de `!x.length`). Ver [[iva-html-satgo]].
+
+---
+
+## 2026-10-29 (facturación + e-commerce) — Pestaña E-COMMERCE y login propio de la tienda
+
+- **Tercer panel «E-COMMERCE»** en Súper Admin → Facturación (`producto='ECOMMERCE'`; validación y opción en Editar
+  empresa). Migración `2026-10-29c`: pasa a ECOMMERCE las empresas cuyas cuentas activas son **todas** del grupo
+  ECOMMERCE (p.ej. «Mi Tienda»); el script `crear-usuario-ecommerce.js` hace lo mismo con las altas nuevas. Las que usan
+  NEXO y además tienen tienda se quedan en NEXO (se cambian a mano).
+- **Login `/comercio`** (`hcgm.com.mx/erp/comercio`): `LoginPage variante="comercio"` con tema de tienda (naranja →
+  fucsia, bolsa de compras, panel de bienvenida «Vende en línea, factura sin esfuerzo»); mismas cuentas; entra a
+  `/ecommerce`. Verificado en navegador (móvil y escritorio).
+- **Menú Herramientas de hcgm.com.mx:** copia de la página viva con «🛒 Comercio electrónico» entre «Consulta de IVA» y
+  «NEXO» en `dist-uploads/landing-hcgm-comercio/index.html` (carpeta ignorada por git) → subir a la raíz de
+  `public_html`. Commit `2aec28e`.
+
+---
+
+## 2026-10-29 (nómina + facturación) — Aguinaldo Art. 87 LFT, timbrado de especiales y un solo grupo por despacho
+
+**1. Aguinaldo mal calculado.** El especial «Aguinaldo 2026» pagaba **sueldo por días** (SD × 168 = $52,926.72).
+**Fix (`5879da5`):** importe = **SD × (días de aguinaldo / 365) × días laborados en el año** (Art. 87 LFT: mínimo 15,
+o `companies.fi_aguinaldo_dias`; proporcional aunque no complete el año). Ej.: 315.04 × 15/365 × 168 = **$2,175.07**.
+- Motor: `EntradaCalculo.pagoExtraordinario { baseOrdinariaMensual }` → **sin sueldo 001, sin IMSS ni INFONAVIT** (el
+  aguinaldo ya integra el SDI). Exento **30 días de SMG** (Art. 93-XIV LISR, regla ya existente del motor); el gravado
+  paga **ISR marginal Art. 96** = ISR(mes ordinario + gravado) − ISR(mes ordinario), sin subsidio. Mes ordinario =
+  SD × 30.4. Dos pruebas nuevas en `motor.test.ts` (103 de nómina en verde).
+- Prenómina: detecta el aguinaldo por `especial_clave='AGUINALDO'` **o** concepto que contenga «aguinaldo»; agrega la
+  percepción **002** y un aviso con el fundamento. **Las bajas del año NO entran** (lo cobraron en su finiquito).
+- **Decisión pendiente de validar:** la exención usa SMG (letra del Art. 93-XIV); el SAT la interpreta en **UMA**
+  desde la desindexación. Hoy se conserva la regla del motor.
+
+**2. Timbrar especiales.** Al cerrar un especial (aguinaldo, bonos) aparece debajo el panel de recibos (el mismo de la
+PTU, `RecibosPtu` con `titulo`): marcar → **Timbrar**, correo, PDF/XML. **CFDI de especiales = `TipoNomina="E"`**
+(antes salían «O» desde `cierre.service`).
+
+**3. PTU:** fuera las letras de instrucción («e) Recibos de PTU», «a)», «b)»).
+
+**4. Dos grupos «GRUPO HCGM» en Usuarios reales.** Las altas posteriores a la siembra de despachos (CESSMART, Mi Tienda)
+no tenían `despacho_id` y se agrupaban por emisora. **Fix:** `DESPACHO_EFECTIVO` en `facturacion-usuarios.service`
+(asignado, o el despacho cuya emisora predeterminada les cobra) para agrupar y para el precio; migración
+`2026-10-29d` asigna el despacho faltante (o GRUPO HCGM).
+
+**Despliegue:** empujado a `gdmalmacen main` (el backend que usa `hcgm.com.mx/erp`); migraciones corren al arrancar.
+**Falta:** recompilar/subir `/erp` (`npm run build:hosting`). Lo de aguinaldo/IVA no se probó contra la BD real.

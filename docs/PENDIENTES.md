@@ -1,6 +1,6 @@
 # Pendientes — GDM NEXO
 
-> Lista viva de lo que falta. Actualizada 2026-10-13. Lo hecho se documenta en `BITACORA.md`.
+> Lista viva de lo que falta. Actualizada 2026-10-29. Lo hecho se documenta en `BITACORA.md`.
 
 ## 🔴 Bloqueado / requiere acción del usuario (no es código)
 
@@ -27,6 +27,13 @@
 - **NEXO ya está EN VIVO en `https://hcgm.com.mx/erp/`** (2026-10-06, vía gdm-almacen `main`, que el usuario usa como
   producción; super admin `admin@gdmalmacen.mx`). Pendiente OPCIONAL: separar un ambiente de **pruebas** del real con
   el esquema de 2 ramas (`produccion` aparte, ver `DESPLIEGUE.md`), si se quiere experimentar sin tocar lo vivo.
+
+- **(2026-10-29) Re-publicar `/erp`** — pestañas IVA/E-COMMERCE, login `/comercio`, recibos de aguinaldo y despachos
+  unificados son de PANTALLA: `npm run build:hosting` y subir `erp/` a `public_html/erp` (Ctrl+F5).
+- **(2026-10-29) Subir el menú nuevo de hcgm.com.mx** — `dist-uploads/landing-hcgm-comercio/index.html` a la raíz de
+  `public_html` («🛒 Comercio electrónico» en Herramientas).
+- **(2026-10-29) Aguinaldo 2026:** recalcular el especial #2 si sigue abierto; si ya se cerró con el cálculo viejo
+  (sueldo × días), reabrir/rehacer antes de timbrar.
 
 ## 🟡 Por construir
 
@@ -84,6 +91,13 @@
   natural). Plan detallado en `IVA.HTML/COMERCIALIZACION_IVA.md`. Ver [[iva-html-satgo]].
 
 ## 🔵 Por probar en vivo (requieren e.firma + plan de SatGo)
+
+- **Aguinaldo:** validar un recibo timbrado en PRUEBAS (TipoNomina E, percepción 002, exento/gravado) y decidir si la
+  exención del Art. 93-XIV va en **SMG** (como hoy) o en **UMA** (criterio del SAT).
+- **Puente IVA→NEXO:** que un autoregistro nuevo aparezca en «Solicitudes en prueba» y que «Facturar (elegir emisora)»
+  timbre el CFDI del servicio IVA (CFDI REAL si la emisora está en PRODUCCIÓN).
+- **Despachos:** confirmar que CESSMART y Mi Tienda quedaron en el único grupo GRUPO HCGM tras la migración 2026-10-29d.
+
 
 - **Descarga por SatGo** (bloqueada por el plan, ver arriba).
 - **Buzón de notificaciones** (`comunicadosfiel`/`notificacionesfiel`): puede estar **gated por el mismo plan**; si lo
