@@ -382,6 +382,25 @@ export async function calcular(
   const periodicidad = PERIODICIDAD_MOTOR[periodo.tipo];
   const renglones: RenglonPrenomina[] = [];
 
+  /* ── Aguinaldo (Art. 87 LFT) ──
+   *
+   * NO es sueldo por días: son (días de aguinaldo / 365) × días laborados en el
+   * año × salario diario. Mínimo 15 días (o los que dé la empresa), y proporcional
+   * para quien no completó el año, «independientemente de que se encuentren
+   * laborando o no» a la fecha de pago. Quien causó baja en el año ya lo cobró en
+   * su finiquito: no entra aquí. Exento hasta 30 días de salario mínimo
+   * (Art. 93-XIV LISR); el resto paga ISR marginal (Art. 96 LISR). Sin IMSS. */
+  const esAguinaldo = periodo.tipo === 'ESPECIAL' && !periodo.finiquito_tipo &&
+    (periodo.especial_clave === 'AGUINALDO' || /aguinaldo/i.test(String(periodo.concepto || '')));
+  const diasAguinaldo = Number(emp.fi_aguinaldo_dias) || 15;   // Art. 87: mínimo 15
+  if (esAguinaldo) {
+    avisosDelPeriodo.push(
+      `Aguinaldo (Art. 87 LFT): salario diario × ${diasAguinaldo}/365 × días laborados en el año. ` +
+      'Exento hasta 30 días de salario mínimo (Art. 93-XIV LISR); el excedente, ISR del Art. 96. ' +
+      'Las bajas del año no entran: lo cobraron en su finiquito.'
+    );
+  }
+
   for (const e of r.rows) {
     const cap = capturaDe.get(e.id);
     let dias = diasQueLeTocan(periodo, e);
@@ -397,6 +416,7 @@ export async function calcular(
     /* Cero días: estuvo de baja todo el periodo. No se calcula ni se enseña con
      * ceros, que se confundiría con "no se le pagó por error". */
     if (dias <= 0) continue;
+    if (esAguinaldo && e.fecha_baja && e.fecha_baja <= periodo.fecha_fin) continue;
 
     /* En asimilados no hay salario diario ni SDI: el ingreso se captura como un
      * pago, y sin salario el motor deja en cero el sueldo por días, el IMSS y el
@@ -476,9 +496,13 @@ export async function calcular(
       /* Horas extra, bonos, despensa: cada uno con su exención del Art. 93,
        * que la calcula el motor según el concepto. */
       otrosIngresos: [
+        ...(esAguinaldo && !esAsimilado
+          ? [{ clave: '002', importe: pesos(sd * (diasAguinaldo / 365) * dias) }] : []),
         ...(cap?.otrosIngresos || []).filter((x) => Number(x.importe) > 0),
         ...vacacionesDelPeriodo,
       ],
+      ...(esAguinaldo && !esAsimilado
+        ? { pagoExtraordinario: { baseOrdinariaMensual: pesos(sd * 30.4) } } : {}),
       otrasDeducciones,
       /* ── Desde cuándo aplica cada descuento ──
        *

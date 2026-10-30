@@ -446,3 +446,35 @@ describe('costoDeFaltas', () => {
     expect(costoDeFaltas(-2, 600).importe).toBe(0);
   });
 });
+
+describe('aguinaldo como pago extraordinario (Art. 87 LFT, Art. 96 LISR)', () => {
+  it('168 días laborados con salario mínimo: (15/365)×168×315.04, todo exento, sin IMSS', () => {
+    const importe = pesos(315.04 * (15 / 365) * 168);   // 2,175.07
+    const r = calcularRecibo({
+      salarioDiario: 315.04, sdi: 330, dias: 168, zona: 'general', periodicidad: 'MENSUAL',
+      otrosIngresos: [{ clave: '002', importe }],
+      pagoExtraordinario: { baseOrdinariaMensual: pesos(315.04 * 30.4) },
+    }, E2026);
+    expect(importe).toBe(2175.07);
+    expect(r.totalPercepciones).toBe(importe);
+    expect(r.percepciones.map((p) => p.clave)).toEqual(['002']);   // sin sueldo 001
+    expect(r.imss).toBe(0);
+    expect(r.isr).toBe(0);
+    expect(r.neto).toBe(importe);
+  });
+
+  it('el excedente de 30 SMG paga ISR marginal sobre el mes ordinario', () => {
+    const r = calcularRecibo({
+      salarioDiario: 1000, sdi: 1050, dias: 365, zona: 'general', periodicidad: 'MENSUAL',
+      otrosIngresos: [{ clave: '002', importe: 15000 }],
+      pagoExtraordinario: { baseOrdinariaMensual: 30400 },
+    }, E2026);
+    const gravado = pesos(15000 - 9451.20);
+    const esperado = pesos(
+      calcularIsr(30400 + gravado, 'MENSUAL', E2026, { sinSubsidio: true }).isr -
+      calcularIsr(30400, 'MENSUAL', E2026, { sinSubsidio: true }).isr);
+    expect(r.isr).toBe(esperado);
+    expect(r.isr).toBeGreaterThan(0);
+    expect(r.imss).toBe(0);
+  });
+});

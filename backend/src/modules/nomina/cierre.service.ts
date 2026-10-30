@@ -218,8 +218,12 @@ export async function cerrarPeriodo(
         deducciones: r.deducciones,
       };
 
+      /* Un especial (aguinaldo, finiquito, bono) es nómina EXTRAORDINARIA para el
+       * SAT (TipoNomina="E", PeriodicidadPago 99); sólo los periodos del
+       * calendario son ordinarios. */
       const xml = construirXmlPretimbre({
         empresa, periodo: pre.periodo, recibo: fila, empleado: e,
+        tipoNomina: pre.periodo.tipo === 'ESPECIAL' ? 'E' : 'O',
       });
 
       const ins = await transactionQuery<{ id: string }>(

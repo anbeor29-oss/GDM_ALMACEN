@@ -499,6 +499,11 @@ export interface EntradaCalculo {
   /** Asimilados a salarios: ISR mensual sobre el ingreso, SIN subsidio y sin
    *  IMSS. El ingreso va como "otros ingresos" y es totalmente gravable. */
   asimilado?: boolean;
+  /** Pago extraordinario (aguinaldo): NO hay sueldo por días ni cuotas IMSS /
+   *  INFONAVIT (el aguinaldo ya va integrado en el SDI, Art. 27 LSS). Lo pagado
+   *  va en `otrosIngresos`. El ISR es el MARGINAL del Art. 96 LISR: el impuesto
+   *  del mes con el pago menos el del mes sin él, sobre `baseOrdinariaMensual`. */
+  pagoExtraordinario?: { baseOrdinariaMensual: number };
 }
 
 export interface Percepcion {
@@ -561,12 +566,13 @@ export interface Recibo {
  */
 export function calcularRecibo(entrada: EntradaCalculo, e: Ejercicio): Recibo {
   const { salarioDiario, sdi, dias, zona, periodicidad, asimilado } = entrada;
-  if (dias <= 0) throw new Error('El periodo no puede tener cero días pagados');
+  const extra = entrada.pagoExtraordinario;
+  if (dias <= 0 && !extra) throw new Error('El periodo no puede tener cero días pagados');
 
   const ctx = { ejercicio: e, zona, salarioDiario, dias };
 
-  /* ── Sueldo del periodo (P001) ── */
-  const sueldo = pesos(salarioDiario * dias);
+  /* ── Sueldo del periodo (P001) — un pago extraordinario no lleva sueldo ── */
+  const sueldo = extra ? 0 : pesos(salarioDiario * dias);
 
   /* ── Otros ingresos, cada uno con su exención ── */
   const percepciones: Percepcion[] = [];
@@ -599,7 +605,7 @@ export function calcularRecibo(entrada: EntradaCalculo, e: Ejercicio): Recibo {
   const sueldoExento = ganaMinimo && gravadoOtros === 0;
   const sueldoGravable = sueldoExento ? 0 : sueldo;
 
-  percepciones.unshift({
+  if (!extra) percepciones.unshift({
     clave: '001',
     concepto: 'Sueldos, salarios, rayas y jornales',
     gravado: sueldoGravable,
@@ -612,9 +618,21 @@ export function calcularRecibo(entrada: EntradaCalculo, e: Ejercicio): Recibo {
   const totalPercepciones = pesos(sueldo + totalOtros);
 
   /* ── Impuestos y cuotas ── */
-  const { isr, subsidio, baseMensual, renglon } = calcularIsr(baseGravable, periodicidad, e, { sinSubsidio: !!asimilado });
-  const imss = calcularImssObrero(salarioDiario, sdi, dias, zona, e);
-  const infonavit = calcularInfonavit(entrada.infonavit || { tiene: false }, sdi, dias, zona, e);
+  let { isr, subsidio, baseMensual, renglon } = calcularIsr(baseGravable, periodicidad, e, { sinSubsidio: !!asimilado });
+  if (extra) {
+    /* Art. 96 LISR: el pago se suma al ingreso del mes y se retiene la
+     * diferencia que provoca. Sin subsidio: el subsidio ya se dio en la nómina
+     * ordinaria del mes. */
+    const ord = Math.max(0, Number(extra.baseOrdinariaMensual) || 0);
+    const conPago = calcularIsr(ord + baseGravable, 'MENSUAL', e, { sinSubsidio: true });
+    const sinPago = calcularIsr(ord, 'MENSUAL', e, { sinSubsidio: true });
+    isr = pesos(Math.max(0, conPago.isr - sinPago.isr));
+    subsidio = 0; baseMensual = ord + baseGravable; renglon = conPago.renglon;
+  }
+  const sinCuotas = { total: 0, excedente: 0, invalidezVida: 0, cesantiaVejez: 0 };
+  const imss = extra ? sinCuotas : calcularImssObrero(salarioDiario, sdi, dias, zona, e);
+  const infonavit = extra ? { total: 0, credito: 0, seguroDanos: 0 }
+    : calcularInfonavit(entrada.infonavit || { tiene: false }, sdi, dias, zona, e);
   const pension = calcularPension(entrada.pension || { tiene: false }, totalPercepciones, dias);
 
   /* ── Deducciones, en el orden en que se leen en un recibo ── */

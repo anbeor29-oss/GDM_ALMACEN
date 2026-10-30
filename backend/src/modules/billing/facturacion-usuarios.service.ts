@@ -143,7 +143,7 @@ export async function generarLista(periodoInput?: string, userId?: string) {
   const mapaDesp = await mapaPreciosDespacho(cfg);
 
   const empresas = await query<any>(
-    `SELECT c.id, c.rfc, c.business_name, c.created_at, c.prueba_inicio, c.despacho_id,
+    `SELECT c.id, c.rfc, c.business_name, c.created_at, c.prueba_inicio, ${DESPACHO_EFECTIVO} AS despacho_id,
             (SELECT MIN(sc.signed_at) FROM service_contracts sc WHERE sc.company_id = c.id) AS signed_at
        FROM companies c
       WHERE c.deleted_at IS NULL AND c.is_active = TRUE
@@ -210,6 +210,18 @@ export async function generarLista(periodoInput?: string, userId?: string) {
   return getLista(periodo);
 }
 
+/* Despacho EFECTIVO de una empresa: el que tiene asignado o, si aún no tiene
+ * (altas posteriores a la siembra de despachos: onboarding, IVA, e-commerce), el
+ * despacho cuya emisora predeterminada es la que le cobra (su empresa_cobro_id o
+ * la emisora predeterminada de la plataforma). Así no salen dos grupos
+ * «GRUPO HCGM» —uno por despacho y otro por emisora— y aplica el precio del despacho. */
+const DESPACHO_EFECTIVO = `COALESCE(c.despacho_id, (
+  SELECT d.id FROM despachos_contables d
+   WHERE d.deleted_at IS NULL AND d.activo = TRUE
+     AND d.emisora_predeterminada_id = COALESCE(c.empresa_cobro_id,
+           (SELECT p.id FROM companies p WHERE p.emisor_predeterminado = TRUE AND p.deleted_at IS NULL LIMIT 1))
+   ORDER BY d.created_at LIMIT 1))`;
+
 /** Lee la lista de un periodo (con totales). */
 export async function getLista(periodoInput?: string) {
   const { anio, mes } = primerDia(periodoInput);
@@ -255,8 +267,8 @@ export async function resumenConsolidado(periodoInput?: string) {
     `SELECT c.id, c.rfc, c.business_name, c.billing_exempt, c.prueba_inicio, c.servicio_suspendido,
             c.created_at, c.empresa_cobro_id, COALESCE(c.emisor_predeterminado,false) AS emisor_predeterminado,
             COALESCE(c.es_emisor_cobro,false) AS es_emisor_cobro,
-            c.despacho_id,
-            (SELECT d.nombre FROM despachos_contables d WHERE d.id = c.despacho_id AND d.deleted_at IS NULL) AS despacho_nombre,
+            ${DESPACHO_EFECTIVO} AS despacho_id,
+            (SELECT d2.nombre FROM despachos_contables d2 WHERE d2.id = ${DESPACHO_EFECTIVO} AND d2.deleted_at IS NULL) AS despacho_nombre,
             COALESCE(c.producto,'NEXO') AS producto,
             TO_CHAR(c.iva_pagado_desde,'YYYY-MM-DD') AS iva_pagado_desde, TO_CHAR(c.iva_vigencia_fin,'YYYY-MM-DD') AS iva_vigencia_fin,
             (SELECT MIN(sc.signed_at) FROM service_contracts sc WHERE sc.company_id = c.id) AS signed_at,

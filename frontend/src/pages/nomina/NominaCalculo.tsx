@@ -868,6 +868,15 @@ export function NominaCalculoPage() {
           </div>
         </div>
       )}
+
+      {/* Especiales (aguinaldo, bonos…) ya cerrados: timbrar aquí mismo los XML de
+          quienes tienen derecho, con el mismo panel de recibos que la PTU. */}
+      {periodoId && !esPtu && periodoSel?.tipo === 'ESPECIAL' && pre?.periodo?.estatus === 'CERRADO' && (
+        <div className="bg-white rounded-lg shadow border p-5">
+          <RecibosPtu periodoId={periodoId} cerrado onCambio={() => prenominaQ.refetch()}
+            titulo={/aguinaldo/i.test(String(pre?.periodo?.concepto || '')) ? 'Recibos de aguinaldo' : 'Recibos del periodo'} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1178,12 +1187,12 @@ function PanelPTU({ periodoId }: { periodoId: string }) {
         {/* a) Cantidad a repartir + resumen */}
         <div className="flex flex-wrap items-end gap-4">
           <label className="block">
-            <span className="text-xs font-medium text-gray-600 block mb-1">a) Cantidad a repartir</span>
+            <span className="text-xs font-medium text-gray-600 block mb-1">Cantidad a repartir</span>
             <input value={cant} onChange={(e) => setCant(e.target.value)} onBlur={guardarCantidad} type="number" step="any" min="0"
               disabled={cerrado} placeholder="0.00"
               className="w-44 border border-gray-300 rounded-lg px-3 py-2 text-sm text-right disabled:bg-gray-100 disabled:text-gray-500" />
           </label>
-          <KpiPtu label="b) Con derecho" valor={`${t.con_derecho}`} sub={t.sin_derecho ? `${t.sin_derecho} sin derecho` : 'trabajadores'} />
+          <KpiPtu label="Con derecho" valor={`${t.con_derecho}`} sub={t.sin_derecho ? `${t.sin_derecho} sin derecho` : 'trabajadores'} />
           <KpiPtu label="Mitad c/u (50%)" valor={mxn(d.mitad)} sub="días · salarios" />
           <KpiPtu label="Exención" valor={mxn(d.exencion_tope)} sub={`15 × UMA (${mxn(d.uma_diaria)})`} />
           <KpiPtu label="PTU repartido" valor={mxn(t.ptu)} sub={`ISR ${mxn(t.isr)}`} />
@@ -1240,7 +1249,7 @@ function PanelPTU({ periodoId }: { periodoId: string }) {
           <Info size={12} /> Los días y el salario salen automáticos del expediente pero son editables (faltas, incapacidades, sueldo variable). El reparto y el ISR se recalculan al guardar.
         </p>
 
-        {/* e) Recibos: generar, timbrar, correo y bajar en PDF/XML (estándar de NEXO). */}
+        {/* Recibos: generar, timbrar, correo y bajar en PDF/XML (estándar de NEXO). */}
         <RecibosPtu periodoId={periodoId} cerrado={cerrado} onCambio={() => q.refetch()} />
       </div>
     </div>
@@ -1256,8 +1265,8 @@ function PanelPTU({ periodoId }: { periodoId: string }) {
  * de CFDI —PDF en rojo, XML en verde, vista previa en azul—. Los mismos recibos
  * aparecen también en Nómina → CFDI.
  */
-function RecibosPtu({ periodoId, cerrado, onCambio }:
-  { periodoId: string; cerrado: boolean; onCambio: () => void }) {
+function RecibosPtu({ periodoId, cerrado, onCambio, titulo = 'Recibos de PTU' }:
+  { periodoId: string; cerrado: boolean; onCambio: () => void; titulo?: string }) {
   const { puede } = useCapacidades();
   const esAdmin = puede(CAP.nomina);
   const q = useQuery({
@@ -1340,7 +1349,7 @@ function RecibosPtu({ periodoId, cerrado, onCambio }:
     <div className="border-t pt-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-          <Stamp size={15} className="text-violet-600" /> e) Recibos de PTU
+          <Stamp size={15} className="text-violet-600" /> {titulo}
           {cerrado && <span className="text-[11px] font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">periodo cerrado</span>}
         </p>
         {esAdmin && !cerrado && (
