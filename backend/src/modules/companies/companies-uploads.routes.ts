@@ -89,8 +89,9 @@ router.post(
       priv = openPrivateKey(key.buffer, password);
     } catch {
       throw new ValidationError(
-        'La contraseña no abre la .key. Revisa que sea la contraseña del CSD ' +
-        '(NO la de la e.firma) y que la .key sea la del CSD, no la de la e.firma.'
+        'No se pudo abrir la .key. Revisa que: (1) la contraseña sea la del CSD (NO la de la ' +
+        'e.firma); (2) la .key sea la del CSD, no la de la e.firma; y (3) si el CSD es antiguo, ' +
+        'puede usar un cifrado que ya no se soporta — regenéralo en Certifica (SAT) y sube el nuevo.'
       );
     }
     const cert = parseCertificate(cer.buffer);

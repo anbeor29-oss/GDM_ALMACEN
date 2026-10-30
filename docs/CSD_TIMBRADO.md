@@ -37,6 +37,11 @@ Causas, de más a menos común:
 3. **Se subió la `.key` de la e.firma/FIEL** en vez de la del **CSD**. Son archivos
    y contraseñas distintos; la e.firma **no sirve** para sellar CFDI.
 4. **El `.cer` y la `.key` son de juegos de CSD distintos** (no corresponden).
+5. **El `.key` del CSD usa un cifrado antiguo (legado).** Si al probar la `.key` da
+   `DECODER routines::unsupported` (en vez de `bad decrypt`), el cifrado interno del
+   PKCS#8 (p. ej. 3DES/RC2) no lo soporta OpenSSL 3 (Node 18+), **sin importar la
+   contraseña**. La e.firma suele traer AES (abre) y un CSD viejo 3DES (no abre).
+   Solución: **regenerar el CSD en Certifica** (ver abajo), que sale con AES moderno.
 
 ## Cómo diagnosticar (Web Shell de Render, servicio del backend)
 
@@ -110,6 +115,30 @@ Si nadie la tiene, lo más rápido es **regenerar el CSD en Certifica** con una
 contraseña conocida y subir ese.
 
 Después de corregir, **vuelve a correr el diagnóstico**: debe decir `… · N abren · 0 fallan`.
+
+### Regenerar un CSD en Certifica (cuando no hay contraseña o es cifrado viejo)
+
+Es gratis y toma ~5 min. Un CSD nuevo sale con **cifrado AES (moderno)** y la
+**contraseña que tú eliges** → abre en NEXO y en el PAC sin problemas.
+
+**A. Generar el requerimiento — app de escritorio `Certifica` del SAT:**
+1. Descarga **Certifica** (portal del SAT, "Certifica"). Es una app Java.
+2. Abre → **«Solicitud de Certificados de Sello Digital (CSD)»**.
+3. Carga tu **e.firma (FIEL)**: `.cer` + `.key` + contraseña de la e.firma.
+4. Captura una **sucursal/unidad** (nombre libre, p. ej. "Matriz") y define una
+   **contraseña NUEVA para el CSD** (anótala; será la del sello).
+5. Genera → crea un **`.req`** (requerimiento) y un **`.key`** (llave del CSD). Guárdalos.
+
+**B. Enviar y descargar el certificado — `CertiSAT Web` (con e.firma):**
+6. Entra a **CertiSAT Web** (SAT → trámites de CSD) con tu e.firma.
+7. **«Envío de solicitud de CSD»** → sube el `.req`. SAT lo procesa casi al instante.
+8. **«Recuperación de certificados»** → descarga el **`.cer`** nuevo (serie de 20 dígitos).
+
+**C. Subir a NEXO:**
+9. Ya tienes el trío: **`.cer`** (paso 8) + **`.key`** (paso 5) + **contraseña nueva** (paso 4).
+10. Pantalla **Emisor** de la empresa → sube `.cer` y `.key`, escribe la contraseña **a
+    mano** (ojo con el autocompletado) → **Guardar CSD** (valida al instante).
+11. **«Registrar CSD en el PAC (SW)»** y timbra una factura de prueba.
 
 ## Prevención implementada (para que no pase en vivo con usuarios nuevos)
 
