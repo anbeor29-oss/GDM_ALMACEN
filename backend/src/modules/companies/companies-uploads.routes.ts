@@ -77,6 +77,29 @@ router.post(
       throw new ValidationError('El archivo de llave debe terminar en .key');
     }
 
+    /* La contraseña DEBE abrir la .key y el .cer DEBE corresponder a la .key —
+     * se verifica ANTES de guardar. Antes se guardaba sin probar nada y una
+     * contraseña equivocada (o la .key de la e.firma en vez del CSD) pasaba en
+     * silencio; el error salía hasta timbrar ("No se pudo cargar la llave
+     * privada"). Reusa openPrivateKey/parseCertificate del módulo manifest, la
+     * misma lectura de certificados del SAT que usa el inspector del súper admin. */
+    const { parseCertificate, openPrivateKey } = await import('../manifest/manifest.service');
+    let priv: crypto.KeyObject;
+    try {
+      priv = openPrivateKey(key.buffer, password);
+    } catch {
+      throw new ValidationError(
+        'La contraseña no abre la .key. Revisa que sea la contraseña del CSD ' +
+        '(NO la de la e.firma) y que la .key sea la del CSD, no la de la e.firma.'
+      );
+    }
+    const cert = parseCertificate(cer.buffer);
+    const pubKey = crypto.createPublicKey(priv).export({ format: 'der', type: 'spki' });
+    const pubCer = cert.x509.publicKey.export({ format: 'der', type: 'spki' });
+    if (!pubKey.equals(pubCer)) {
+      throw new ValidationError('El .cer y la .key no corresponden — ¿son del mismo juego de CSD?');
+    }
+
     const dir = ensureCompanyDir(id);
     const cerPath = path.join(dir, 'csd.cer');
     const keyPath = path.join(dir, 'csd.key');
