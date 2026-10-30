@@ -25,6 +25,10 @@ import { query } from '../../config/database';
 import { requireSuperAdmin, audit } from './admin.middleware';
 import { invalidarModulosEmpresa } from '../../middleware/authentication';
 import * as promo from '../billing/prueba-y-prorrateo.service';
+// El timbrado lee el CSD de csd_cer_data/csd_key_data/csd_password_encrypted
+// (cifrado AES-256-GCM, utils/csd-crypto). Esta pantalla DEBE escribir ahí
+// también, o el CSD que suba el súper admin queda invisible para el timbrado.
+import { encryptCsdPassword } from '../../utils/csd-crypto';
 
 const router = Router();
 router.use(authenticateToken);
@@ -448,13 +452,25 @@ router.post('/:id/csd', asyncHandler(async (req: Request, res: Response) => {
   const cerPath = path.join(dir, `${noCertificado}.cer`);
   fs.writeFileSync(cerPath, cerBuf);
 
-  // Cifra .key + password con pgp_sym_encrypt (pgcrypto)
+  /* Se escribe en DOS formatos a la vez, a propósito:
+   *   · csd_cer_data / csd_key_data / csd_password_encrypted (AES-256-GCM,
+   *     utils/csd-crypto) — ES LO QUE LEE EL TIMBRADO (csd-loader). Sin esto, el
+   *     CSD subido aquí quedaba invisible para timbrar/cancelar: se guardaba en
+   *     columnas que nada descifra.
+   *   · csd_key_encrypted / csd_key_password_enc (pgcrypto) — se conservan para
+   *     no romper los chequeos de "tiene CSD" que ya miran esas columnas. */
+  const cerDataEnc = encryptCsdPassword(cerBase64);
+  const keyDataEnc = encryptCsdPassword(keyBase64);
+  const passDataEnc = encryptCsdPassword(keyPassword);
   const r = await query<any>(
     `UPDATE companies SET
        csd_no_certificado       = $1,
        csd_cer_path             = $2,
        csd_key_encrypted        = pgp_sym_encrypt($3::text, $4),
        csd_key_password_enc     = pgp_sym_encrypt($5::text, $4),
+       csd_cer_data             = $10,
+       csd_key_data             = $11,
+       csd_password_encrypted   = $12,
        csd_valid_from           = $6,
        csd_valid_to             = $7,
        csd_uploaded_at          = NOW(),
@@ -468,6 +484,7 @@ router.post('/:id/csd', asyncHandler(async (req: Request, res: Response) => {
       keyPassword,
       validFrom || null, validTo || null,
       req.user!.userId, req.params.id,
+      cerDataEnc, keyDataEnc, passDataEnc,
     ]
   );
   if (r.rows.length === 0) throw new NotFoundError('Empresa no encontrada');
@@ -481,8 +498,9 @@ router.post('/:id/csd', asyncHandler(async (req: Request, res: Response) => {
 /* ────────────────────────  DELETE CSD  ──────────────────────── */
 router.delete('/:id/csd', asyncHandler(async (req: Request, res: Response) => {
   const r = await query<any>(
-    `UPDATE companies SET csd_no_certificado=NULL, csd_cer_path=NULL,
+    `UPDATE companies SET csd_no_certificado=NULL, csd_cer_path=NULL, csd_key_path=NULL,
             csd_key_encrypted=NULL, csd_key_password_enc=NULL,
+            csd_cer_data=NULL, csd_key_data=NULL, csd_password_encrypted=NULL,
             csd_valid_from=NULL, csd_valid_to=NULL,
             csd_uploaded_at=NULL, csd_uploaded_by_user_id=NULL,
             updated_at=NOW()
