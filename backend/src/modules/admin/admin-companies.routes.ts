@@ -446,6 +446,29 @@ router.post('/:id/csd', asyncHandler(async (req: Request, res: Response) => {
     throw new ValidationError('Archivos CSD parecen vacíos o inválidos');
   }
 
+  /* La contraseña DEBE abrir la .key y el .cer DEBE corresponder a la .key —
+   * se verifica ANTES de guardar (igual que la pantalla Emisor). Un CSD cuya
+   * contraseña no abre no debe quedar guardado: el error saldría hasta timbrar,
+   * con un cliente esperando. (El inspector de la UI ya lo valida, pero el
+   * endpoint se protege solo para que no dependa de que la UI llame al inspector.) */
+  {
+    const { parseCertificate, openPrivateKey } = await import('../manifest/manifest.service');
+    let priv: crypto.KeyObject;
+    try { priv = openPrivateKey(keyBuf, String(keyPassword)); }
+    catch {
+      throw new ValidationError(
+        'La contraseña no abre la .key. Revisa que sea la contraseña del CSD ' +
+        '(NO la de la e.firma) y que la .key sea la del CSD, no la de la e.firma.'
+      );
+    }
+    const cert = parseCertificate(cerBuf);
+    const pk = crypto.createPublicKey(priv).export({ format: 'der', type: 'spki' });
+    const pc = cert.x509.publicKey.export({ format: 'der', type: 'spki' });
+    if (!pk.equals(pc)) {
+      throw new ValidationError('El .cer y la .key no corresponden — ¿son del mismo juego de CSD?');
+    }
+  }
+
   // Guardamos el .cer (público) en disco — el .key NO toca el filesystem
   const dir = path.join(process.cwd(), 'uploads', 'csd', req.params.id);
   fs.mkdirSync(dir, { recursive: true });

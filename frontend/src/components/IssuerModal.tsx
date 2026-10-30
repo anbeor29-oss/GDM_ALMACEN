@@ -532,6 +532,12 @@ function CSDUploader({ companyId }: { companyId: string }) {
           ✓ CSD cargado — última actualización: {s.csd_uploaded_at?.slice(0, 19).replace('T',' ')}
         </div>
       )}
+      {/* Los dos errores más comunes al cargar el CSD: subir la e.firma en vez del
+          sello, y que el navegador autocomplete la contraseña con una guardada. */}
+      <div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded px-3 py-2 space-y-0.5">
+        <div>⚠️ Sube el <b>CSD (Certificado de Sello Digital)</b>, <b>no</b> la e.firma/FIEL — son archivos y contraseñas distintos.</div>
+        <div>🔒 La contraseña es la del <b>CSD</b>. Si el navegador autocompletó el campo, bórralo y escríbela a mano (usa <b>«Ver»</b> para confirmar).</div>
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <FileBox
           label="Archivo .cer"
