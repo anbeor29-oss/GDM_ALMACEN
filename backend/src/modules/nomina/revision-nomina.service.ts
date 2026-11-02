@@ -14,7 +14,7 @@
  */
 import { query } from '../../config/database';
 import * as ejercicios from './ejercicios.service';
-import { calcularIsr } from './motor';
+import { calcularIsr, calcularImssObrero } from './motor';
 
 const attr = (s: string, n: string) => {
   const m = new RegExp(`\\b${n}\\s*=\\s*"([^"]*)"`).exec(s);
@@ -46,6 +46,7 @@ export interface ReciboRevision {
   rfcTrabajador: string; nombreTrabajador: string; curp: string; nss: string;
   regimen: string;
   tipoNomina: string; diasPagados: number;
+  sdi: number; sbc: number; sueldoBase: number;
   percepciones: number; gravado: number; exento: number;
   deducciones: number; isr: number; imss: number; infonavit: number; otrasDed: number;
   subsidio: number; otrosPagos: number; neto: number;
@@ -78,6 +79,14 @@ function parseRecibo(xml: string): Omit<ReciboRevision, 'uuid' | 'fecha' | 'seri
   const curp = attr(nomRec, 'Curp');
   const nss = attr(nomRec, 'NumSeguridadSocial');
   const regimen = attr(nomRec, 'TipoRegimen');
+  const sdi = num(attr(nomRec, 'SalarioDiarioIntegrado'));   // SDI (base IMSS/Infonavit)
+  const sbc = num(attr(nomRec, 'SalarioBaseCotApor'));       // SBC cotizado
+
+  // Sueldo base del periodo: percepción 001 (gravado+exento) → salario diario aprox.
+  let sueldoBase = 0;
+  for (const p of xml.match(/<(?:\w+:)?Percepcion\b[^>]*>/g) || []) {
+    if (attr(p, 'TipoPercepcion') === '001') sueldoBase += num(attr(p, 'ImporteGravado')) + num(attr(p, 'ImporteExento'));
+  }
 
   // Deducciones por tipo: 002 = ISR, 001 = IMSS, 009 = Infonavit, resto = otras.
   let isr = 0, imss = 0, infonavit = 0, otras = 0;
@@ -95,6 +104,7 @@ function parseRecibo(xml: string): Omit<ReciboRevision, 'uuid' | 'fecha' | 'seri
   const neto = r2(percepciones - deducciones + otrosPagos);
   return {
     fechaPago, tipoNomina, diasPagados, rfcTrabajador, nombreTrabajador, curp, nss, regimen,
+    sdi: r2(sdi), sbc: r2(sbc), sueldoBase: r2(sueldoBase),
     percepciones: r2(percepciones), gravado: r2(gravado), exento: r2(exento),
     deducciones: r2(deducciones), isr: r2(isr), imss: r2(imss), infonavit: r2(infonavit), otrasDed: r2(otras),
     subsidio: r2(subsidio), otrosPagos: r2(otrosPagos), neto,
@@ -298,4 +308,95 @@ export async function revisionCalculosIsr(companyId: string, anio: number) {
 
 function vacioIsr(anio: number, aviso: string) {
   return { anio, anioParametros: anio, aviso, filas: [] as any[], resumen: { meses: 0, conDiferencia: 0, totalDiferencia: 0 } };
+}
+
+/**
+ * Revisión de cálculos — IMSS (cuota obrera) e Infonavit.
+ *
+ * IMSS: por recibo recalcula la cuota obrera (LSS Art. 106/147/168) con el SDI y
+ * los días del propio CFDI (`motor.calcularImssObrero`, topes y exención de salario
+ * mínimo incluidos) y la coteja, acumulada por mes, contra el IMSS retenido
+ * (deducción 001). El SDI sale del complemento (`SalarioDiarioIntegrado`); el
+ * salario diario para la exención del Art. 36 se aproxima con el sueldo (percepción
+ * 001) entre los días.
+ *
+ * Infonavit: el CFDI NO trae las condiciones del crédito (tipo/factor), así que no
+ * se recalcula desde cero; se hace una REVISIÓN DE CONSISTENCIA — se muestra el
+ * descuento (deducción 009) y se marca «posible omisión» cuando el trabajador trae
+ * crédito en otros meses pero $0 en éste.
+ */
+export async function revisionCalculosImss(companyId: string, anio: number) {
+  const recibos = await cargarRecibos(companyId, anio);
+
+  let e;
+  try { e = await ejercicios.cargar(anio); }
+  catch { return vacioSs(anio, `No hay parámetros de nómina cargados para ${anio}. Captúralos en Nómina → Parámetros.`); }
+  if (!e.umaDiaria || !e.smgGeneral) {
+    return vacioSs(anio, `Faltan la UMA y/o el salario mínimo de ${anio}. Captúralos en Nómina → Parámetros para recalcular el IMSS.`);
+  }
+
+  type G = {
+    rfc: string; nombre: string; mes: number; dias: number; sdi: number;
+    imssRetenido: number; imssRecalc: number; infonavit: number; recibos: number;
+  };
+  const grupos = new Map<string, G>();
+  const mesesInfonavit = new Map<string, Set<number>>();   // rfc → meses con descuento (para huecos)
+
+  for (const x of recibos) {
+    const dias = x.diasPagados || 0;
+    const sdi = x.sdi || x.sbc || 0;
+    const salarioDiario = dias > 0 && x.sueldoBase > 0 ? r2(x.sueldoBase / dias) : sdi;
+    const imss = sdi > 0 && dias > 0 ? calcularImssObrero(salarioDiario, sdi, dias, 'general', e!).total : 0;
+
+    const k = `${x.rfcTrabajador}|${x.mes}`;
+    if (!grupos.has(k)) grupos.set(k, {
+      rfc: x.rfcTrabajador, nombre: x.nombreTrabajador, mes: x.mes,
+      dias: 0, sdi: 0, imssRetenido: 0, imssRecalc: 0, infonavit: 0, recibos: 0,
+    });
+    const g = grupos.get(k)!;
+    g.dias += dias; g.sdi = sdi || g.sdi; g.imssRetenido += x.imss; g.imssRecalc += imss;
+    g.infonavit += x.infonavit; g.recibos++;
+
+    if (x.infonavit > 0) {
+      if (!mesesInfonavit.has(x.rfcTrabajador)) mesesInfonavit.set(x.rfcTrabajador, new Set());
+      mesesInfonavit.get(x.rfcTrabajador)!.add(x.mes);
+    }
+  }
+
+  const filas = Array.from(grupos.values()).map((g) => {
+    const imssRetenido = r2(g.imssRetenido);
+    const imssRecalc = r2(g.imssRecalc);
+    const difImss = r2(imssRecalc - imssRetenido);          // + = se retuvo de menos; − = de más
+    const rel = imssRecalc > 0 ? Math.abs(difImss) / imssRecalc : (Math.abs(difImss) > 1 ? 1 : 0);
+    const mesesConInf = mesesInfonavit.get(g.rfc);
+    const tieneCreditoHabitual = !!mesesConInf && mesesConInf.size >= 2;
+    return {
+      rfc: g.rfc, nombre: g.nombre, mes: g.mes, nombreMes: MESES[g.mes - 1] || String(g.mes),
+      recibos: g.recibos, dias: g.dias, sdi: r2(g.sdi),
+      imssRetenido, imssRecalc, difImss,
+      marcaImss: Math.abs(difImss) > 5 && rel > 0.02,        // IMSS tolera un poco más (redondeos de topes)
+      infonavit: r2(g.infonavit),
+      posibleOmisionInf: tieneCreditoHabitual && g.infonavit <= 0,
+    };
+  }).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es') || a.mes - b.mes);
+
+  const conDifImss = filas.filter((f) => f.marcaImss);
+  const omisionesInf = filas.filter((f) => f.posibleOmisionInf);
+  return {
+    anio, anioParametros: e.anio, aviso: '',
+    filas,
+    resumen: {
+      meses: filas.length,
+      imssConDiferencia: conDifImss.length,
+      imssTotalDiferencia: r2(conDifImss.reduce((s, f) => s + f.difImss, 0)),
+      infonavitPosiblesOmisiones: omisionesInf.length,
+    },
+  };
+}
+
+function vacioSs(anio: number, aviso: string) {
+  return {
+    anio, anioParametros: anio, aviso, filas: [] as any[],
+    resumen: { meses: 0, imssConDiferencia: 0, imssTotalDiferencia: 0, infonavitPosiblesOmisiones: 0 },
+  };
 }

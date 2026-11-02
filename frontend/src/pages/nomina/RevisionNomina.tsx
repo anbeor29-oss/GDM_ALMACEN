@@ -23,6 +23,7 @@ const SUBTABS: Array<[string, string]> = [
   ['semana', 'Por semana'],
   ['recibos', 'Recibos'],
   ['isr', 'Revisión ISR'],
+  ['imss', 'Revisión IMSS'],
 ];
 
 export function RevisionNominaPage() {
@@ -47,6 +48,13 @@ export function RevisionNominaPage() {
     enabled: !!anio && sub === 'isr',
   });
   const isr: any = isrQ.data?.data;
+
+  const imssQ = useQuery({
+    queryKey: ['revision-nom-imss', anio],
+    queryFn: () => api.getRevisionNominaImss(anio as number),
+    enabled: !!anio && sub === 'imss',
+  });
+  const imss: any = imssQ.data?.data;
 
   const t = d?.totales;
   const sinAnios = !aniosQ.isLoading && anios.length === 0;
@@ -124,7 +132,7 @@ export function RevisionNominaPage() {
             ))}
           </div>
 
-          {sub !== 'isr' && (
+          {sub !== 'isr' && sub !== 'imss' && (
             <>
               <div className="bg-white rounded-lg shadow border overflow-x-auto">
                 {sub === 'trabajador' && <TablaTrabajadores filas={d.trabajadores} />}
@@ -163,6 +171,42 @@ export function RevisionNominaPage() {
                     es contra la más cercana (+ faltó retener · − se retuvo de más). Como la retención por periodo
                     (quincenal/semanal) no coincide exacto con la mensual, se <b>resaltan</b> sólo las relevantes
                     (&gt; $1 y &gt; 1 %). Los asimilados se recalculan sin subsidio.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+          {sub === 'imss' && (
+            <div className="space-y-3">
+              {imssQ.isLoading && <p className="text-center text-gray-500 py-8">Recalculando el IMSS…</p>}
+              {imss?.aviso && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 flex items-start gap-2">
+                  <Info size={16} className="mt-0.5 shrink-0" /><span>{imss.aviso}</span>
+                </div>
+              )}
+              {imss && !imss.aviso && (
+                <>
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                    <span className="text-gray-600">Meses-trabajador: <b className="text-gray-900">{imss.resumen.meses}</b></span>
+                    <span className={imss.resumen.imssConDiferencia ? 'text-rose-700' : 'text-emerald-700'}>
+                      IMSS con diferencia: <b>{imss.resumen.imssConDiferencia}</b>
+                    </span>
+                    <span className="text-gray-600">Dif. IMSS: <b className={imss.resumen.imssTotalDiferencia ? 'text-rose-700' : 'text-emerald-700'}>{money(imss.resumen.imssTotalDiferencia)}</b></span>
+                    <span className={imss.resumen.infonavitPosiblesOmisiones ? 'text-amber-700' : 'text-gray-600'}>
+                      Infonavit · posibles omisiones: <b>{imss.resumen.infonavitPosiblesOmisiones}</b>
+                    </span>
+                    <span className="ml-auto text-[11px] text-gray-400">Parámetros · {imss.anioParametros}</span>
+                  </div>
+                  <div className="bg-white rounded-lg shadow border overflow-x-auto">
+                    <TablaImss filas={imss.filas} />
+                  </div>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    IMSS: cuota obrera recalculada con el SDI y los días del CFDI (LSS Art. 106/147/168, topes y
+                    exención de salario mínimo); se <b>resaltan</b> diferencias &gt; $5 y &gt; 2 %. Infonavit: el CFDI no
+                    trae las condiciones del crédito, así que no se recalcula; se muestra el descuento y se marca
+                    «<span className="text-amber-700">posible omisión</span>» cuando el trabajador trae crédito en otros
+                    meses pero $0 en éste.
                   </p>
                 </>
               )}
@@ -318,6 +362,40 @@ function TablaIsr({ filas }: { filas: any[] }) {
             <td className={`px-3 py-1.5 text-sm text-right tabular-nums font-semibold ${
               f.marca ? 'text-rose-700' : Math.abs(f.diferencia) < 0.01 ? 'text-emerald-700' : 'text-gray-500'}`}>
               {money(f.diferencia)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function TablaImss({ filas }: { filas: any[] }) {
+  if (!filas?.length) return <Vacia />;
+  return (
+    <table className="w-full min-w-[920px]">
+      <thead className="bg-emerald-50/60 border-b border-emerald-200">
+        <tr>
+          <Th>Trabajador</Th><Th>Mes</Th><Th right>Días</Th><Th right>SDI</Th>
+          <Th right>IMSS retenido</Th><Th right>IMSS recalc.</Th><Th right>Dif. IMSS</Th><Th right>Infonavit</Th>
+        </tr>
+      </thead>
+      <tbody className="divide-y">
+        {filas.map((f, i) => (
+          <tr key={`${f.rfc}-${f.mes}-${i}`} className={f.marcaImss ? 'bg-rose-50' : f.posibleOmisionInf ? 'bg-amber-50' : 'hover:bg-gray-50'}>
+            <Td>{f.nombre || f.rfc || '—'}</Td>
+            <Td>{f.nombreMes}</Td>
+            <Td right>{f.dias}</Td>
+            <Td right>{money(f.sdi)}</Td>
+            <Td right>{money(f.imssRetenido)}</Td>
+            <Td right>{money(f.imssRecalc)}</Td>
+            <td className={`px-3 py-1.5 text-sm text-right tabular-nums font-semibold ${
+              f.marcaImss ? 'text-rose-700' : Math.abs(f.difImss) < 0.01 ? 'text-emerald-700' : 'text-gray-500'}`}>
+              {money(f.difImss)}
+            </td>
+            <td className="px-3 py-1.5 text-sm text-right tabular-nums">
+              {money(f.infonavit)}
+              {f.posibleOmisionInf && <span className="ml-1.5 text-[9px] font-semibold uppercase bg-amber-100 text-amber-700 px-1 py-0.5 rounded">omisión?</span>}
             </td>
           </tr>
         ))}

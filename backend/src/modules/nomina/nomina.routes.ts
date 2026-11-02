@@ -404,6 +404,13 @@ router.get('/revision/:anio/isr', asyncHandler(async (req: Request, res: Respons
   res.json({ success: true, data: await revisionNomina.revisionCalculosIsr(companyId(req), anio) });
 }));
 
+/** Revisión de cálculos — IMSS (cuota obrera) recalculado + consistencia de Infonavit. */
+router.get('/revision/:anio/imss', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.params.anio);
+  if (!Number.isInteger(anio) || anio < 2000 || anio > 2100) throw new ValidationError('Año inválido.');
+  res.json({ success: true, data: await revisionNomina.revisionCalculosImss(companyId(req), anio) });
+}));
+
 /* ── CFDI de nómina RECUPERADOS (histórico timbrado en la bóveda) ──
  * Timbrados de periodos anteriores rescatados del respaldo: se listan, se descarga
  * su XML (para dar de alta con el otro menú) y de un clic se pasa al trabajador a activo. */

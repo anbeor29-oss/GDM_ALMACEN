@@ -2877,6 +2877,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/nomina/revision/${anio}/isr`);
     return r.data;
   }
+  /** Revisión de cálculos — IMSS (cuota obrera) recalculado + consistencia de Infonavit. */
+  async getRevisionNominaImss(anio: number) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/revision/${anio}/imss`);
+    return r.data;
+  }
 
   /** CFDI de nómina recuperados del respaldo (histórico timbrado en la bóveda). */
   async getCfdiNominaRecuperados(anio?: number) {
