@@ -25,6 +25,7 @@ import {
 import api from '@/services/api';
 import { aTextoMx } from '@/components/CampoFecha';
 import { useCapacidades, CAP } from '@/utils/capacidades';
+import { claseOpcion } from '@/utils/coloresOpciones';
 
 const money = (n: any) =>
   Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
@@ -182,17 +183,14 @@ export function NominaCFDIPage() {
       {aviso && <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-lg text-sm">{aviso}</div>}
 
       <div className="bg-white rounded-lg shadow border p-3 flex flex-wrap items-center gap-3">
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-2">
           {[
             { id: 'PENDIENTE', label: 'Sin timbrar' },
             { id: 'TIMBRADO', label: 'Timbrados' },
             { id: '', label: 'Todos' },
             { id: 'RECUPERADOS', label: 'Recuperados' },
-          ].map((f) => (
-            <button key={f.id} onClick={() => setEstatus(f.id)}
-              className={`px-3 py-1.5 text-sm rounded-lg ${
-                estatus === f.id ? 'bg-violet-100 text-violet-800 font-medium' : 'text-gray-600 hover:bg-gray-100'
-              }`}>
+          ].map((f, i) => (
+            <button key={f.id} onClick={() => setEstatus(f.id)} className={claseOpcion(i, estatus === f.id)}>
               {f.label}
             </button>
           ))}

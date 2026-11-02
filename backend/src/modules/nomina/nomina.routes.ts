@@ -45,6 +45,7 @@ import * as nominaPoliza from './nomina-poliza.service';
 import * as docBaja from './documento-baja.service';
 import * as plantillaEmp from './plantilla-empleados.service';
 import * as nominaRecuperados from './nomina-recuperados.service';
+import * as revisionNomina from './revision-nomina.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -383,6 +384,18 @@ router.get(
     res.json({ success: true, data: r });
   })
 );
+
+/* ── REVISIÓN ANUAL de la nómina ──
+ * Arma desde la bóveda (emitidos tipo N) la base del año organizada por trabajador,
+ * mes y semana, para revisar los recibos (etapa 1: datos; el recálculo legal sigue). */
+router.get('/revision/anios', asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await revisionNomina.aniosConNomina(companyId(req)) })));
+
+router.get('/revision/:anio', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.params.anio);
+  if (!Number.isInteger(anio) || anio < 2000 || anio > 2100) throw new ValidationError('Año inválido.');
+  res.json({ success: true, data: await revisionNomina.revisionAnual(companyId(req), anio) });
+}));
 
 /* ── CFDI de nómina RECUPERADOS (histórico timbrado en la bóveda) ──
  * Timbrados de periodos anteriores rescatados del respaldo: se listan, se descarga

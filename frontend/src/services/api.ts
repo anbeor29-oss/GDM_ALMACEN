@@ -2861,6 +2861,18 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/nomina/recibos', { params });
     return r.data;
   }
+  /* ── Revisión anual de nómina ── */
+  /** Años con recibos de nómina EMITIDOS en la bóveda (para el selector). */
+  async getRevisionNominaAnios() {
+    const r = await this.client.get<APIResponse<number[]>>('/nomina/revision/anios');
+    return r.data;
+  }
+  /** Base del año: acumulados por trabajador, mes y semana + los recibos. */
+  async getRevisionNominaAnual(anio: number) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/revision/${anio}`);
+    return r.data;
+  }
+
   /** CFDI de nómina recuperados del respaldo (histórico timbrado en la bóveda). */
   async getCfdiNominaRecuperados(anio?: number) {
     const r = await this.client.get<APIResponse<any[]>>('/nomina/cfdi-recuperados', { params: anio ? { anio } : {} });

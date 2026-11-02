@@ -73,6 +73,7 @@ import { NominaParametrosPage }       from '@/pages/nomina/NominaParametros';
 import { NominaGuard }                from '@/pages/nomina/NominaGuard';
 import { NominaCalculoPage } from '@/pages/nomina/NominaCalculo';
 import { NominaCFDIPage } from '@/pages/nomina/NominaCFDI';
+import { RevisionNominaPage } from '@/pages/nomina/RevisionNomina';
 import { NominaReportesPage } from '@/pages/nomina/NominaReportes';
 import { NominaImportarPage } from '@/pages/nomina/NominaImportar';
 import { ImportarRespaldoNominaPage } from '@/pages/nomina/ImportarRespaldoNomina';
@@ -180,6 +181,7 @@ export default function ErpPrivado() {
         <Route path="nomina/empleados"                element={<ModuleRoute module="nomina"><NominaGuard><EmpleadosPage /></NominaGuard></ModuleRoute>} />
         <Route path="nomina/calculo"                  element={<ModuleRoute module="nomina"><NominaGuard><NominaCalculoPage /></NominaGuard></ModuleRoute>} />
         <Route path="nomina/cfdi"                     element={<ModuleRoute module="nomina"><NominaGuard><NominaCFDIPage /></NominaGuard></ModuleRoute>} />
+        <Route path="nomina/revision"                 element={<ModuleRoute module="nomina"><NominaGuard><RevisionNominaPage /></NominaGuard></ModuleRoute>} />
         <Route path="nomina/imss"                     element={<ModuleRoute module="nomina"><NominaGuard><MotorImssIdsePage /></NominaGuard></ModuleRoute>} />
         <Route path="nomina/parametros"               element={<ModuleRoute module="nomina"><NominaParametrosPage /></ModuleRoute>} />
         <Route path="nomina/reportes"                 element={<ModuleRoute module="nomina"><NominaGuard><NominaReportesPage /></NominaGuard></ModuleRoute>} />
