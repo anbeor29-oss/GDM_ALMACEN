@@ -316,6 +316,28 @@ export function Layout() {
   // ajenos a una tienda en línea. No bloquean al inquilino de sólo-ecommerce.
   const bloquearVigencia = !soloEcommerce && nivelVig === 'BLOQUEO' && !location.pathname.startsWith('/xml-sat');
 
+  /* Atajo de teclado: F8 abre la Póliza manual (captura contable rápida), como en
+     la contabilidad de escritorio. Sólo si el usuario tiene Contabilidad y el
+     contenido no está bloqueado (prueba vencida / vigencia). No aplica al
+     inquilino de sólo-comercio. */
+  useEffect(() => {
+    if (soloEcommerce) return;
+    const extra = (user?.extraModules || []) as ModuleKey[];
+    const tieneContab = user?.role === 'SUPER_ADMIN'
+      || ((canAccess(user?.workGroup, 'contabilidad') || extra.includes('contabilidad'))
+        && (!empresaModulos || empresaModulos.includes('contabilidad')));
+    if (!tieneContab) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'F8' || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (bloquearContenido || bloquearVigencia) return;
+      e.preventDefault();
+      navigate('/contabilidad/poliza-manual');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [soloEcommerce, user?.role, user?.workGroup, user?.extraModules, empresaModulos,
+    bloquearContenido, bloquearVigencia, navigate]);
+
   const doLogout = useCallback(async (reason?: 'idle') => {
     try {
       await api.logout();
@@ -603,7 +625,7 @@ export function Layout() {
                       {
                         icon: emoji3D('📔'), label: 'Pólizas',
                         children: [
-                          { to: '/contabilidad/poliza-manual', icon: emoji3D('✍️'), label: 'Póliza manual' },
+                          { to: '/contabilidad/poliza-manual', icon: emoji3D('✍️'), label: 'Póliza manual (F8)' },
                           { to: '/contabilidad/polizas',   icon: emoji3D('📔'), label: 'Todas las pólizas' },
                         ],
                       },
