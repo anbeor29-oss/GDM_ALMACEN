@@ -9,8 +9,8 @@
  * Los XML se descargan en «XML del SAT»; aquí se LEEN los ya respaldados.
  */
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ClipboardCheck, Scale, Info, FileSpreadsheet, FileText } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ClipboardCheck, Scale, Info, FileSpreadsheet, FileText, DownloadCloud } from 'lucide-react';
 import api from '@/services/api';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import { aTextoMx } from '@/components/CampoFecha';
@@ -27,10 +27,57 @@ const SUBTABS: Array<[string, string]> = [
 ];
 
 export function RevisionNominaPage() {
+  const qc = useQueryClient();
   const aniosQ = useQuery({ queryKey: ['revision-nom-anios'], queryFn: () => api.getRevisionNominaAnios() });
   const anios: number[] = aniosQ.data?.data || [];
   const [anioSel, setAnioSel] = useState<number | null>(null);
-  const anio = anioSel ?? anios[0] ?? null;
+
+  /* REVISIÓN INTEGRAL: primero descarga del SAT todos los XML de nómina del año
+   * (emitidos, tipo N) y luego arma la revisión. En este modo se puede capturar
+   * CUALQUIER año (incluso uno sin nada en la bóveda todavía), por eso usa un
+   * campo de año propio y no el combo (que sólo lista los años que ya tienen datos). */
+  const [integral, setIntegral] = useState(false);
+  const [anioIntegral, setAnioIntegral] = useState<number>(new Date().getFullYear());
+  const [descargando, setDescargando] = useState(false);
+  const [msgDesc, setMsgDesc] = useState('');
+
+  const anio = integral ? anioIntegral : (anioSel ?? anios[0] ?? null);
+
+  const recargarRevision = () => {
+    qc.invalidateQueries({ queryKey: ['revision-nom-anios'] });
+    qc.invalidateQueries({ queryKey: ['revision-nom'] });
+    qc.invalidateQueries({ queryKey: ['revision-nom-isr'] });
+    qc.invalidateQueries({ queryKey: ['revision-nom-imss'] });
+  };
+
+  const descargarIntegral = async () => {
+    const y = Number(anioIntegral);
+    if (!Number.isInteger(y) || y < 2000 || y > 2100) { setMsgDesc('Captura un año válido.'); return; }
+    setDescargando(true); setMsgDesc('');
+    try {
+      // Pide al SAT SÓLO los CFDI de nómina (tipo N) EMITIDOS del año y avanza un paso.
+      await api.crearSatTrabajo({
+        desde: `${y}-01-01`, hasta: `${y}-12-31`, direccion: 'emitidos', tipo: 'CFDI',
+        filtros: { tipoComprobante: 'N' },
+      });
+      await api.avanzarSatDescarga();
+      recargarRevision();
+      setMsgDesc(`Descarga de nómina ${y} iniciada/avanzada. Dale «Seguir descargando» hasta que el número de recibos deje de aumentar; luego revisa las pestañas.`);
+    } catch (e: any) {
+      setMsgDesc(e?.response?.data?.message || 'No se pudo iniciar la descarga. Verifica que tu e.firma esté cargada en «XML del SAT».');
+    } finally { setDescargando(false); }
+  };
+
+  const seguirDescargando = async () => {
+    setDescargando(true); setMsgDesc('');
+    try {
+      await api.avanzarSatDescarga();
+      recargarRevision();
+      setMsgDesc('Descarga avanzada. Revisa el número de recibos en la bóveda.');
+    } catch (e: any) {
+      setMsgDesc(e?.response?.data?.message || 'No se pudo avanzar la descarga.');
+    } finally { setDescargando(false); }
+  };
 
   const q = useQuery({
     queryKey: ['revision-nom', anio],
@@ -84,40 +131,86 @@ export function RevisionNominaPage() {
         </p>
       </div>
 
-      {/* Año a revisar */}
-      <div className="bg-white rounded-lg shadow border p-4 flex flex-wrap items-end gap-4">
-        <label className="block">
-          <span className="block text-xs text-gray-600 mb-1">Año a revisar</span>
-          <select value={anio ?? ''} onChange={(e) => setAnioSel(Number(e.target.value))}
-            disabled={sinAnios}
-            className="border rounded-lg px-3 py-2 text-sm min-w-[8rem]">
-            {anios.length === 0 && <option value="">—</option>}
-            {anios.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
+      {/* Año a revisar + modo integral */}
+      <div className="bg-white rounded-lg shadow border p-4 space-y-3">
+        <div className="flex flex-wrap items-end gap-4">
+          {!integral ? (
+            <label className="block">
+              <span className="block text-xs text-gray-600 mb-1">Año a revisar</span>
+              <select value={anio ?? ''} onChange={(e) => setAnioSel(Number(e.target.value))}
+                disabled={sinAnios}
+                className="border rounded-lg px-3 py-2 text-sm min-w-[8rem]">
+                {anios.length === 0 && <option value="">—</option>}
+                {anios.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </label>
+          ) : (
+            <label className="block">
+              <span className="block text-xs text-gray-600 mb-1">Año a revisar (integral)</span>
+              <input type="number" min={2000} max={2100} value={anioIntegral}
+                onChange={(e) => setAnioIntegral(Number(e.target.value))}
+                className="border rounded-lg px-3 py-2 text-sm w-28 tabular-nums" />
+            </label>
+          )}
+          {d && (
+            <p className="text-xs text-gray-500">
+              <b className="text-gray-800">{d.totalRecibos}</b> recibos ·{' '}
+              <b className="text-gray-800">{t?.trabajadores}</b> trabajadores en {d.anio}
+            </p>
+          )}
+          {d && d.totalRecibos > 0 && (
+            <div className="ml-auto flex items-center gap-2">
+              <button onClick={() => exportar('excel')} disabled={!!bajando}
+                title="Descarga la revisión del año en Excel (base, ISR e IMSS/Infonavit en varias hojas)"
+                className="flex items-center gap-1.5 text-sm text-emerald-700 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-3 py-1.5 disabled:opacity-50">
+                <FileSpreadsheet size={15} /> {bajando === 'excel' ? 'Generando…' : 'Excel'}
+              </button>
+              <button onClick={() => exportar('pdf')} disabled={!!bajando}
+                title="Descarga el PDF de diferencias (original vs recalculado)"
+                className="flex items-center gap-1.5 text-sm text-rose-700 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg px-3 py-1.5 disabled:opacity-50">
+                <FileText size={15} /> {bajando === 'pdf' ? 'Generando…' : 'PDF'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Check: Revisión integral (descarga del SAT primero) */}
+        <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer select-none">
+          <input type="checkbox" checked={integral} onChange={(e) => setIntegral(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-indigo-600" />
+          <span>
+            <b>Revisión integral</b> — primero descarga del SAT <b>todos los XML de nómina</b> del año (emitidos),
+            arma la tabla y luego recalcula ISR, IMSS e Infonavit. Úsalo para revisar <b>años anteriores</b> que aún
+            no tengas descargados.
+          </span>
         </label>
-        {d && (
-          <p className="text-xs text-gray-500">
-            <b className="text-gray-800">{d.totalRecibos}</b> recibos ·{' '}
-            <b className="text-gray-800">{t?.trabajadores}</b> trabajadores en {d.anio}
-          </p>
-        )}
-        {d && d.totalRecibos > 0 && (
-          <div className="ml-auto flex items-center gap-2">
-            <button onClick={() => exportar('excel')} disabled={!!bajando}
-              title="Descarga la revisión del año en Excel (base, ISR e IMSS/Infonavit en varias hojas)"
-              className="flex items-center gap-1.5 text-sm text-emerald-700 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-3 py-1.5 disabled:opacity-50">
-              <FileSpreadsheet size={15} /> {bajando === 'excel' ? 'Generando…' : 'Excel'}
-            </button>
-            <button onClick={() => exportar('pdf')} disabled={!!bajando}
-              title="Descarga el PDF de diferencias (original vs recalculado)"
-              className="flex items-center gap-1.5 text-sm text-rose-700 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg px-3 py-1.5 disabled:opacity-50">
-              <FileText size={15} /> {bajando === 'pdf' ? 'Generando…' : 'PDF'}
-            </button>
+
+        {integral && (
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3 space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <button onClick={descargarIntegral} disabled={descargando}
+                className="flex items-center gap-1.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg px-3 py-2 hover:bg-indigo-700 disabled:opacity-50">
+                <DownloadCloud size={15} className={descargando ? 'animate-pulse' : ''} />
+                {descargando ? 'Descargando…' : `Descargar nómina del SAT ${anioIntegral}`}
+              </button>
+              <button onClick={seguirDescargando} disabled={descargando}
+                className="flex items-center gap-1.5 text-sm text-indigo-700 border border-indigo-300 bg-white rounded-lg px-3 py-2 hover:bg-indigo-50 disabled:opacity-50">
+                <DownloadCloud size={15} /> Seguir descargando
+              </button>
+              <span className="text-xs text-gray-600">
+                Recibos en la bóveda ({anioIntegral}): <b className="text-gray-900">{d?.totalRecibos ?? 0}</b>
+              </span>
+            </div>
+            {msgDesc && <p className="text-xs text-indigo-900">{msgDesc}</p>}
+            <p className="text-[11px] text-gray-500">
+              La descarga del SAT es <b>por pasos</b> y necesita tu <b>e.firma</b> cargada (en «XML del SAT»). Dale
+              «Seguir descargando» hasta que el número de recibos deje de aumentar; luego revisa las pestañas de abajo.
+            </p>
           </div>
         )}
       </div>
 
-      {sinAnios && (
+      {sinAnios && !integral && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 flex items-start gap-2">
           <Info size={16} className="mt-0.5 shrink-0" />
           <span>
