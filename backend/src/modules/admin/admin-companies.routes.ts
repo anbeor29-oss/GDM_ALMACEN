@@ -15,6 +15,7 @@
  *   · Validación RFC, vigencia CSD, plan permitido
  */
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -47,6 +48,50 @@ const CSD_MASTER_KEY = process.env.CSD_MASTER_KEY || 'change-me-in-prod-' + cryp
 if (CSD_MASTER_KEY.startsWith('change-me-in-prod-')) {
   console.warn('[admin-companies] ⚠ CSD_MASTER_KEY no está en env — usando fallback efímero. NO usar en producción.');
 }
+
+// e.firma en memoria (para bajar la CIF por SatGo). NUNCA toca disco ni se guarda.
+const efirmaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+/* ──────────────────  CIF por e.firma (SatGo)  ──────────────────
+ * POST /:? no aplica: es alta, aún no hay empresa. Ruta propia:
+ *   POST /admin/companies/cif-por-efirma   multipart: cer, key, body.password
+ *
+ * Sube la e.firma (FIEL) del cliente, saca su RFC del .cer, baja su Constancia de
+ * Situación Fiscal del SAT vía SatGo (POST /Consultar/csffiel) y la devuelve YA
+ * parseada —el mismo shape que /csf/extract— para autollenar el alta.
+ *
+ * La e.firma se usa SÓLO para esta consulta y se queda en memoria: no se guarda
+ * en disco ni en base. Para el CSD (timbrado) hay otra pantalla aparte. */
+router.post(
+  '/cif-por-efirma',
+  efirmaUpload.fields([{ name: 'cer', maxCount: 1 }, { name: 'key', maxCount: 1 }]),
+  asyncHandler(async (req: Request, res: Response) => {
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const cer = files?.cer?.[0];
+    const key = files?.key?.[0];
+    const password = String(req.body?.password || '');
+    if (!cer || !key) throw new ValidationError('Sube el .cer y el .key de la e.firma.');
+    if (!password) throw new ValidationError('Falta la contraseña de la e.firma.');
+
+    const { parseCertificate, openPrivateKey } = await import('../manifest/manifest.service');
+    // La e.firma debe abrir con la contraseña (si no, SatGo la rechazaría igual,
+    // pero aquí el mensaje es más claro) y de su .cer sale el RFC.
+    try { openPrivateKey(key.buffer, password); }
+    catch { throw new ValidationError('La contraseña no abre la e.firma, o el .key no es el de la e.firma (FIEL).'); }
+    const cert = parseCertificate(cer.buffer);
+    const rfc = (cert.rfc || '').toUpperCase().trim();
+    if (!rfc) throw new ValidationError('No se pudo leer el RFC de la e.firma (.cer).');
+
+    // Baja la CSF del SAT autenticando con la e.firma (SatGo), y parséala.
+    const { consultarPdfFiel } = await import('../satgo/satgo.service');
+    const { extractCSFRaw, mapCSFToCustomer } = await import('../csf/csf.service');
+    const pdf = await consultarPdfFiel('csffiel', rfc, { cer: cer.buffer, key: key.buffer, password });
+    const raw = await extractCSFRaw(pdf);
+    const mapped = await mapCSFToCustomer(raw);
+    logger.info(`[admin-companies] CIF bajada por e.firma para RFC=${rfc}`);
+    res.json({ success: true, message: 'CIF descargada del SAT con la e.firma', data: mapped });
+  })
+);
 
 const VALID_PLANS = ['iguala', 'renta'] as const;
 const RFC_REGEX = /^[A-ZÑ&]{3,4}\d{6}([A-Z0-9]{3})?$/i;

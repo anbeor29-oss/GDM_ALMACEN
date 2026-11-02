@@ -935,24 +935,47 @@ function CreateCompanyModal({ onClose, onDone }: any) {
     finally { setCpLoading(false); }
   };
 
-  // Lector de CIF: autollena RFC + razón + régimen + CP, y dispara el autollenado por CP.
+  // Aplica al formulario los datos de una CSF (venga de un PDF o de la e.firma).
+  const aplicarCsf = (d: any) => {
+    const cp = d.postalCode || d.cp || form.postalCode;
+    setForm((f) => ({
+      ...f,
+      rfc: (d.rfc || f.rfc).toUpperCase(),
+      businessName: (d.businessName || d.razonSocial || f.businessName).toUpperCase(),
+      fiscalRegime: d.fiscalRegime || d.regimenFiscal || f.fiscalRegime,
+      postalCode: cp,
+    }));
+    if (cp) resolverCp(cp);
+  };
+
+  // Lector de CIF por PDF: autollena RFC + razón + régimen + CP, y dispara el autollenado por CP.
   const handleReadCIF = async (file: File) => {
     setError(''); setCsfLoading(true);
     try {
       const r = await api.extractCSF(file);
-      const d = r.data || {};
-      const cp = d.postalCode || d.cp || form.postalCode;
-      setForm((f) => ({
-        ...f,
-        rfc: (d.rfc || f.rfc).toUpperCase(),
-        businessName: (d.businessName || d.razonSocial || f.businessName).toUpperCase(),
-        fiscalRegime: d.fiscalRegime || d.regimenFiscal || f.fiscalRegime,
-        postalCode: cp,
-      }));
-      if (cp) resolverCp(cp);
+      aplicarCsf(r.data || {});
     } catch (e: any) {
       setError(e.response?.data?.message || 'No se pudo leer el CIF. Verifica que sea un PDF de Constancia de Situación Fiscal SAT.');
     } finally { setCsfLoading(false); }
+  };
+
+  // Alta por e.firma: NEXO baja la CIF del SAT (vía SatGo) con la e.firma del cliente y autollena.
+  const [efCer, setEfCer] = useState<File | null>(null);
+  const [efKey, setEfKey] = useState<File | null>(null);
+  const [efPwd, setEfPwd] = useState('');
+  const [efLoading, setEfLoading] = useState(false);
+  const handleCifPorEfirma = async () => {
+    if (!efCer || !efKey || !efPwd) {
+      setError('Para bajar la CIF con e.firma sube el .cer, el .key y la contraseña.');
+      return;
+    }
+    setError(''); setEfLoading(true);
+    try {
+      const r = await api.adminCifPorEfirma(efCer, efKey, efPwd);
+      aplicarCsf(r.data || {});
+    } catch (e: any) {
+      setError(e.response?.data?.message || 'No se pudo bajar la CIF con la e.firma. Revisa los archivos y la contraseña, y que SatGo esté configurado.');
+    } finally { setEfLoading(false); }
   };
 
   /* Queda en true cuando la empresa SÍ se creó pero hay algo que decir: el
@@ -997,20 +1020,51 @@ function CreateCompanyModal({ onClose, onDone }: any) {
         <div className="p-5 space-y-4">
           {error && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">{error}</div>}
 
-          {/* ─── Botón lector de CIF (CSF SAT) ─── */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm font-semibold text-blue-900 mb-1 flex items-center gap-2">
-              <ScanText size={16}/> Leer Constancia de Situación Fiscal (CIF)
-            </p>
-            <p className="text-xs text-blue-700 mb-2">
-              Sube el PDF de la CSF del SAT y autollenamos RFC, razón social, régimen, CP y domicilio.
-            </p>
-            <label className="inline-flex items-center gap-2 cursor-pointer bg-white border border-blue-300 rounded px-3 py-1.5 hover:bg-blue-100 text-sm">
-              <Upload size={14}/> {csfLoading ? 'Leyendo PDF…' : 'Seleccionar PDF'}
-              <input type="file" accept="application/pdf,.pdf" className="hidden"
-                disabled={csfLoading}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleReadCIF(f); }}/>
-            </label>
+          {/* ─── Lector de CIF: por PDF o bajándola del SAT con la e.firma ─── */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-blue-900 mb-1 flex items-center gap-2">
+                <ScanText size={16}/> Leer Constancia de Situación Fiscal (CIF)
+              </p>
+              <p className="text-xs text-blue-700 mb-2">
+                Sube el PDF de la CSF del SAT y autollenamos RFC, razón social, régimen, CP y domicilio.
+              </p>
+              <label className="inline-flex items-center gap-2 cursor-pointer bg-white border border-blue-300 rounded px-3 py-1.5 hover:bg-blue-100 text-sm">
+                <Upload size={14}/> {csfLoading ? 'Leyendo PDF…' : 'Seleccionar PDF'}
+                <input type="file" accept="application/pdf,.pdf" className="hidden"
+                  disabled={csfLoading}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleReadCIF(f); }}/>
+              </label>
+            </div>
+
+            {/* …o que NEXO baje la CIF del SAT con la e.firma del cliente (vía SatGo) */}
+            <div className="border-t border-blue-200 pt-3">
+              <p className="text-sm font-semibold text-blue-900 mb-1 flex items-center gap-2">
+                <KeyRound size={16}/> …o bájala del SAT con la e.firma
+              </p>
+              <p className="text-xs text-blue-700 mb-2">
+                Sube la e.firma del cliente y NEXO descarga su CIF del SAT y autollena. La e.firma sólo se usa para esta consulta; <b>no se guarda</b>.
+              </p>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <label className="inline-flex items-center gap-2 cursor-pointer bg-white border border-blue-300 rounded px-3 py-1.5 hover:bg-blue-100 text-xs overflow-hidden">
+                  <Upload size={13} className="shrink-0"/> <span className="truncate">{efCer ? `✓ ${efCer.name}` : 'Archivo .cer'}</span>
+                  <input type="file" accept=".cer" className="hidden"
+                    onChange={(e) => setEfCer(e.target.files?.[0] || null)}/>
+                </label>
+                <label className="inline-flex items-center gap-2 cursor-pointer bg-white border border-blue-300 rounded px-3 py-1.5 hover:bg-blue-100 text-xs overflow-hidden">
+                  <Upload size={13} className="shrink-0"/> <span className="truncate">{efKey ? `✓ ${efKey.name}` : 'Archivo .key'}</span>
+                  <input type="file" accept=".key" className="hidden"
+                    onChange={(e) => setEfKey(e.target.files?.[0] || null)}/>
+                </label>
+              </div>
+              <input type="password" placeholder="Contraseña de la e.firma" value={efPwd}
+                onChange={(e) => setEfPwd(e.target.value)} autoComplete="off"
+                className="w-full border border-blue-300 rounded px-3 py-1.5 text-sm mb-2"/>
+              <button type="button" onClick={handleCifPorEfirma} disabled={efLoading}
+                className="inline-flex items-center gap-2 bg-blue-600 text-white rounded px-3 py-1.5 text-sm hover:bg-blue-700 disabled:opacity-50">
+                <KeyRound size={14}/> {efLoading ? 'Bajando CIF del SAT…' : 'Bajar CIF con e.firma'}
+              </button>
+            </div>
           </div>
 
           {/* ─── Datos fiscales (llenados a mano o por CIF) ─── */}

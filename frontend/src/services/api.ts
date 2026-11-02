@@ -3408,6 +3408,18 @@ class APIClient {
     const r = await this.client.put(`/admin/companies/${id}`, data);
     return r.data;
   }
+  /** Baja la CIF del SAT con la e.firma del cliente (vía SatGo) y la devuelve
+   *  parseada (mismo shape que extractCSF) para autollenar el alta. */
+  async adminCifPorEfirma(cer: File, key: File, password: string) {
+    const fd = new FormData();
+    fd.append('cer', cer);
+    fd.append('key', key);
+    fd.append('password', password);
+    const r = await this.client.post<APIResponse<any>>('/admin/companies/cif-por-efirma', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120_000,
+    });
+    return r.data;
+  }
   /** Asigna una emisora de cobro (despacho) a varias empresas de un tirón (agrupar). */
   async asignarEmisoraEmpresas(companyIds: string[], emisoraId: string | null) {
     const r = await this.client.post<APIResponse<{ asignadas: number }>>('/admin/companies/asignar-emisora', { companyIds, emisoraId });

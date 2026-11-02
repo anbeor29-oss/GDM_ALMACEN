@@ -384,7 +384,12 @@ export function Layout() {
               // Inquilino de sólo-ecommerce: ÚNICAMENTE la tienda. Ni el tablero ni
               // el XML del SAT (que normalmente van siempre): aquí estorban.
               soloEcommerce ? m === 'ecommerce' :
-              (canAccess(g, m) || extra.includes(m))
+              // Durante la prueba de 72 h ocultamos Comercio Electrónico: queremos
+              // que el prospecto explore las soluciones fiscales/contables de NEXO,
+              // no la tienda en línea. (Al inquilino de sólo-ecommerce no le aplica:
+              // su rama es la de arriba.)
+              !(enPruebaActiva && m === 'ecommerce')
+              && (canAccess(g, m) || extra.includes(m))
               && (!empresaModulos || m === 'dashboard' || m === 'xml_reader' || empresaModulos.includes(m));
             const esAdmin = user?.role === 'ADMIN';   // aquí ya se excluyó SUPER_ADMIN
             // Cada entrada se muestra solo si el grupo de trabajo la permite.
