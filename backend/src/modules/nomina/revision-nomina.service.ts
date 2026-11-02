@@ -13,6 +13,8 @@
  * sienta la base organizada por fecha → RFC que pide esa revisión.
  */
 import { query } from '../../config/database';
+import * as ejercicios from './ejercicios.service';
+import { calcularIsr } from './motor';
 
 const attr = (s: string, n: string) => {
   const m = new RegExp(`\\b${n}\\s*=\\s*"([^"]*)"`).exec(s);
@@ -36,9 +38,13 @@ function semanaISO(iso: string): number {
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
+/** c_TipoRegimen: 02 = sueldos; 05–11 = asimilados (sin subsidio al empleo). */
+const esAsimiladoRegimen = (r: string) => ['05', '06', '07', '08', '09', '10', '11'].includes(r);
+
 export interface ReciboRevision {
   uuid: string; fecha: string; fechaPago: string; serieFolio: string;
   rfcTrabajador: string; nombreTrabajador: string; curp: string; nss: string;
+  regimen: string;
   tipoNomina: string; diasPagados: number;
   percepciones: number; gravado: number; exento: number;
   deducciones: number; isr: number; imss: number; infonavit: number; otrasDed: number;
@@ -71,6 +77,7 @@ function parseRecibo(xml: string): Omit<ReciboRevision, 'uuid' | 'fecha' | 'seri
     || (xml.match(/<(?:\w+:)?Receptor\b[^>]*>/g) || []).find((r) => attr(r, 'Curp')) || '';
   const curp = attr(nomRec, 'Curp');
   const nss = attr(nomRec, 'NumSeguridadSocial');
+  const regimen = attr(nomRec, 'TipoRegimen');
 
   // Deducciones por tipo: 002 = ISR, 001 = IMSS, 009 = Infonavit, resto = otras.
   let isr = 0, imss = 0, infonavit = 0, otras = 0;
@@ -87,7 +94,7 @@ function parseRecibo(xml: string): Omit<ReciboRevision, 'uuid' | 'fecha' | 'seri
 
   const neto = r2(percepciones - deducciones + otrosPagos);
   return {
-    fechaPago, tipoNomina, diasPagados, rfcTrabajador, nombreTrabajador, curp, nss,
+    fechaPago, tipoNomina, diasPagados, rfcTrabajador, nombreTrabajador, curp, nss, regimen,
     percepciones: r2(percepciones), gravado: r2(gravado), exento: r2(exento),
     deducciones: r2(deducciones), isr: r2(isr), imss: r2(imss), infonavit: r2(infonavit), otrasDed: r2(otras),
     subsidio: r2(subsidio), otrosPagos: r2(otrosPagos), neto,
@@ -128,7 +135,8 @@ const redondear = (a: Acum): Acum => {
  * Revisión del año: recibos + acumulados por trabajador, mes y semana.
  * Base organizada por fecha → RFC, lista para la revisión de cálculos.
  */
-export async function revisionAnual(companyId: string, anio: number) {
+/** Lee y parsea los recibos de nómina EMITIDOS (tipo N) de un año desde la bóveda. */
+export async function cargarRecibos(companyId: string, anio: number): Promise<ReciboRevision[]> {
   const r = await query<any>(
     `SELECT uuid, TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha, serie, folio, xml
        FROM cfdi_recibidos
@@ -153,6 +161,11 @@ export async function revisionAnual(companyId: string, anio: number) {
       semana: semanaISO(fechaRef),
     });
   }
+  return recibos;
+}
+
+export async function revisionAnual(companyId: string, anio: number) {
+  const recibos = await cargarRecibos(companyId, anio);
 
   // Acumulado por TRABAJADOR
   const porRfc = new Map<string, Acum & { rfc: string; nombre: string }>();
@@ -198,4 +211,91 @@ export async function revisionAnual(companyId: string, anio: number) {
     porSemana,
     recibos,
   };
+}
+
+/**
+ * Revisión de cálculos — ISR mensual (LISR Art. 96 + subsidio al empleo).
+ *
+ * Por trabajador y mes coteja el ISR NETO efectivamente retenido en el mes
+ * (Σ ISR deducción 002 − Σ subsidio al empleo entregado) contra el ISR del mes
+ * según la tarifa MENSUAL del Art. 96 aplicada al gravado acumulado del mes —el
+ * MISMO motor y tarifa (cotejada contra el DOF) que usa la nómina—. La diferencia
+ * marca a quién se le retuvo de más o de menos. Los asimilados (régimen 05–11) se
+ * recalculan SIN subsidio.
+ *
+ * Es un cotejo MENSUAL: la retención por periodo (quincenal/semanal) difiere de
+ * forma natural del cálculo mensual, así que sólo se RESALTAN las diferencias
+ * relevantes (> $1 y > 0.5 % del ISR del mes), no los centavos.
+ */
+export async function revisionCalculosIsr(companyId: string, anio: number) {
+  const recibos = await cargarRecibos(companyId, anio);
+
+  let e;
+  try { e = await ejercicios.cargar(anio); }
+  catch {
+    return vacioIsr(anio, `No hay parámetros de nómina cargados para ${anio}. Captúralos en Nómina → Parámetros para recalcular el ISR.`);
+  }
+  if (!e.tarifaIsr?.length) {
+    return vacioIsr(anio, `No hay tarifa del Art. 96 cargada para ${anio}. Captúrala en Nómina → Parámetros para recalcular el ISR.`);
+  }
+
+  // Agrupar por trabajador + mes
+  type Grupo = {
+    rfc: string; nombre: string; mes: number; asimilado: boolean;
+    gravado: number; isrRetenido: number; subsidio: number; recibos: number;
+  };
+  const grupos = new Map<string, Grupo>();
+  for (const x of recibos) {
+    const k = `${x.rfcTrabajador}|${x.mes}`;
+    if (!grupos.has(k)) grupos.set(k, {
+      rfc: x.rfcTrabajador, nombre: x.nombreTrabajador, mes: x.mes,
+      asimilado: esAsimiladoRegimen(x.regimen),
+      gravado: 0, isrRetenido: 0, subsidio: 0, recibos: 0,
+    });
+    const g = grupos.get(k)!;
+    g.gravado += x.gravado; g.isrRetenido += x.isr; g.subsidio += x.subsidio; g.recibos++;
+    if (esAsimiladoRegimen(x.regimen)) g.asimilado = true;
+  }
+
+  const filas = Array.from(grupos.values()).map((g) => {
+    const gravadoMes = r2(g.gravado);
+    /* El ISR retenido (deducción 002) de un recibo puede venir BRUTO (tarifa) o
+     * NETO (tarifa − subsidio) según el timbrador. Para no marcar falsos positivos
+     * en quien trae subsidio, se recalcula el Art. 96 de las DOS formas y la
+     * diferencia es contra la MÁS CERCANA: la retención válida debe coincidir con
+     * una de las dos. Los asimilados no tienen subsidio (bruto = neto). */
+    const neto = calcularIsr(gravadoMes, 'MENSUAL', e!, { sinSubsidio: g.asimilado });
+    const bruto = calcularIsr(gravadoMes, 'MENSUAL', e!, { sinSubsidio: true });
+    const isrNetoTabla = r2(neto.isr);
+    const isrBrutoTabla = r2(bruto.isr);
+    const isrRetenido = r2(g.isrRetenido);
+    const difNeto = r2(isrNetoTabla - isrRetenido);
+    const difBruto = r2(isrBrutoTabla - isrRetenido);
+    // + = la tabla pide más que lo retenido (faltó retener); − = se retuvo de más.
+    const diferencia = Math.abs(difBruto) <= Math.abs(difNeto) ? difBruto : difNeto;
+    const base = Math.abs(difBruto) <= Math.abs(difNeto) ? isrBrutoTabla : isrNetoTabla;
+    const rel = base > 0 ? Math.abs(diferencia) / base : (Math.abs(diferencia) > 1 ? 1 : 0);
+    return {
+      rfc: g.rfc, nombre: g.nombre, mes: g.mes, nombreMes: MESES[g.mes - 1] || String(g.mes),
+      asimilado: g.asimilado, recibos: g.recibos, gravado: gravadoMes,
+      isrRetenido, subsidio: r2(g.subsidio),
+      isrBrutoTabla, isrNetoTabla, subsidioTabla: r2(neto.subsidio), diferencia,
+      marca: Math.abs(diferencia) > 1 && rel > 0.01,           // se resalta sólo lo relevante (>$1 y >1%)
+    };
+  }).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es') || a.mes - b.mes);
+
+  const conDif = filas.filter((f) => f.marca);
+  return {
+    anio, anioParametros: e.anio, aviso: '',
+    filas,
+    resumen: {
+      meses: filas.length,
+      conDiferencia: conDif.length,
+      totalDiferencia: r2(conDif.reduce((s, f) => s + f.diferencia, 0)),
+    },
+  };
+}
+
+function vacioIsr(anio: number, aviso: string) {
+  return { anio, anioParametros: anio, aviso, filas: [] as any[], resumen: { meses: 0, conDiferencia: 0, totalDiferencia: 0 } };
 }

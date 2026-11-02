@@ -2872,6 +2872,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/nomina/revision/${anio}`);
     return r.data;
   }
+  /** Revisión de cálculos — ISR mensual recalculado (Art. 96) vs. lo timbrado. */
+  async getRevisionNominaIsr(anio: number) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/revision/${anio}/isr`);
+    return r.data;
+  }
 
   /** CFDI de nómina recuperados del respaldo (histórico timbrado en la bóveda). */
   async getCfdiNominaRecuperados(anio?: number) {

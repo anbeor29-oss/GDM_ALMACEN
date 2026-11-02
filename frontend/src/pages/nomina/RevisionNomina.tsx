@@ -22,6 +22,7 @@ const SUBTABS: Array<[string, string]> = [
   ['mes', 'Por mes'],
   ['semana', 'Por semana'],
   ['recibos', 'Recibos'],
+  ['isr', 'Revisión ISR'],
 ];
 
 export function RevisionNominaPage() {
@@ -37,6 +38,15 @@ export function RevisionNominaPage() {
   });
   const d: any = q.data?.data;
   const [sub, setSub] = useState('trabajador');
+
+  /* El recálculo del ISR se pide aparte y sólo cuando se abre su pestaña: es un
+   * cotejo más pesado (recalcula con la tarifa del Art. 96) y no todos lo miran. */
+  const isrQ = useQuery({
+    queryKey: ['revision-nom-isr', anio],
+    queryFn: () => api.getRevisionNominaIsr(anio as number),
+    enabled: !!anio && sub === 'isr',
+  });
+  const isr: any = isrQ.data?.data;
 
   const t = d?.totales;
   const sinAnios = !aniosQ.isLoading && anios.length === 0;
@@ -114,13 +124,50 @@ export function RevisionNominaPage() {
             ))}
           </div>
 
-          <div className="bg-white rounded-lg shadow border overflow-x-auto">
-            {sub === 'trabajador' && <TablaTrabajadores filas={d.trabajadores} />}
-            {sub === 'mes' && <TablaMeses filas={d.porMes} />}
-            {sub === 'semana' && <TablaSemanas filas={d.porSemana} />}
-            {sub === 'recibos' && <TablaRecibos filas={d.recibos} />}
-          </div>
-          <p className="text-[11px] text-gray-400">{tituloSub} · {d.anio}</p>
+          {sub !== 'isr' && (
+            <>
+              <div className="bg-white rounded-lg shadow border overflow-x-auto">
+                {sub === 'trabajador' && <TablaTrabajadores filas={d.trabajadores} />}
+                {sub === 'mes' && <TablaMeses filas={d.porMes} />}
+                {sub === 'semana' && <TablaSemanas filas={d.porSemana} />}
+                {sub === 'recibos' && <TablaRecibos filas={d.recibos} />}
+              </div>
+              <p className="text-[11px] text-gray-400">{tituloSub} · {d.anio}</p>
+            </>
+          )}
+
+          {sub === 'isr' && (
+            <div className="space-y-3">
+              {isrQ.isLoading && <p className="text-center text-gray-500 py-8">Recalculando el ISR mensual…</p>}
+              {isr?.aviso && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 flex items-start gap-2">
+                  <Info size={16} className="mt-0.5 shrink-0" /><span>{isr.aviso}</span>
+                </div>
+              )}
+              {isr && !isr.aviso && (
+                <>
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                    <span className="text-gray-600">Meses-trabajador: <b className="text-gray-900">{isr.resumen.meses}</b></span>
+                    <span className={isr.resumen.conDiferencia ? 'text-rose-700' : 'text-emerald-700'}>
+                      Con diferencia relevante: <b>{isr.resumen.conDiferencia}</b>
+                    </span>
+                    <span className="text-gray-600">Diferencia neta: <b className={isr.resumen.totalDiferencia ? 'text-rose-700' : 'text-emerald-700'}>{money(isr.resumen.totalDiferencia)}</b></span>
+                    <span className="ml-auto text-[11px] text-gray-400">Tarifa Art. 96 · {isr.anioParametros}</span>
+                  </div>
+                  <div className="bg-white rounded-lg shadow border overflow-x-auto">
+                    <TablaIsr filas={isr.filas} />
+                  </div>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    «Art. 96 bruto» = tarifa mensual sobre el gravado del mes; «Art. 96 neto» = ya con el subsidio
+                    al empleo. El ISR retenido (deducción 002) debe coincidir con una de las dos; la <b>diferencia</b>
+                    es contra la más cercana (+ faltó retener · − se retuvo de más). Como la retención por periodo
+                    (quincenal/semanal) no coincide exacto con la mensual, se <b>resaltan</b> sólo las relevantes
+                    (&gt; $1 y &gt; 1 %). Los asimilados se recalculan sin subsidio.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -237,6 +284,41 @@ function TablaRecibos({ filas }: { filas: any[] }) {
             <Td right>{money(f.imss)}</Td>
             <Td right>{money(f.infonavit)}</Td>
             <Td right>{money(f.neto)}</Td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function TablaIsr({ filas }: { filas: any[] }) {
+  if (!filas?.length) return <Vacia />;
+  return (
+    <table className="w-full min-w-[920px]">
+      <thead className="bg-emerald-50/60 border-b border-emerald-200">
+        <tr>
+          <Th>Trabajador</Th><Th>Mes</Th><Th right>Gravado mes</Th>
+          <Th right>ISR retenido</Th><Th right>Subsidio</Th>
+          <Th right>Art. 96 bruto</Th><Th right>Art. 96 neto</Th><Th right>Diferencia</Th>
+        </tr>
+      </thead>
+      <tbody className="divide-y">
+        {filas.map((f, i) => (
+          <tr key={`${f.rfc}-${f.mes}-${i}`} className={f.marca ? 'bg-rose-50' : 'hover:bg-gray-50'}>
+            <Td>
+              {f.nombre || f.rfc || '—'}
+              {f.asimilado && <span className="ml-1.5 text-[9px] font-semibold uppercase bg-slate-100 text-slate-600 px-1 py-0.5 rounded">asimilado</span>}
+            </Td>
+            <Td>{f.nombreMes}</Td>
+            <Td right>{money(f.gravado)}</Td>
+            <Td right>{money(f.isrRetenido)}</Td>
+            <Td right>{money(f.subsidio)}</Td>
+            <Td right>{money(f.isrBrutoTabla)}</Td>
+            <Td right>{money(f.isrNetoTabla)}</Td>
+            <td className={`px-3 py-1.5 text-sm text-right tabular-nums font-semibold ${
+              f.marca ? 'text-rose-700' : Math.abs(f.diferencia) < 0.01 ? 'text-emerald-700' : 'text-gray-500'}`}>
+              {money(f.diferencia)}
+            </td>
           </tr>
         ))}
       </tbody>

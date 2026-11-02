@@ -397,6 +397,13 @@ router.get('/revision/:anio', asyncHandler(async (req: Request, res: Response) =
   res.json({ success: true, data: await revisionNomina.revisionAnual(companyId(req), anio) });
 }));
 
+/** Revisión de cálculos — ISR mensual (Art. 96 + subsidio) recalculado vs. lo timbrado. */
+router.get('/revision/:anio/isr', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.params.anio);
+  if (!Number.isInteger(anio) || anio < 2000 || anio > 2100) throw new ValidationError('Año inválido.');
+  res.json({ success: true, data: await revisionNomina.revisionCalculosIsr(companyId(req), anio) });
+}));
+
 /* ── CFDI de nómina RECUPERADOS (histórico timbrado en la bóveda) ──
  * Timbrados de periodos anteriores rescatados del respaldo: se listan, se descarga
  * su XML (para dar de alta con el otro menú) y de un clic se pasa al trabajador a activo. */
