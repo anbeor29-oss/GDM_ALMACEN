@@ -2882,6 +2882,16 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/nomina/revision/${anio}/imss`);
     return r.data;
   }
+  /** Descarga la Revisión del año en Excel (base + ISR + IMSS/Infonavit, varias hojas). */
+  async descargarRevisionNominaExcel(anio: number) {
+    const r = await this.client.get(`/nomina/revision/${anio}/excel`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Revision_nomina_${anio}.xlsx`);
+  }
+  /** Descarga el PDF formal de diferencias (original vs recalculado). */
+  async descargarRevisionNominaPdf(anio: number) {
+    const r = await this.client.get(`/nomina/revision/${anio}/pdf`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Revision_nomina_diferencias_${anio}.pdf`);
+  }
 
   /** CFDI de nómina recuperados del respaldo (histórico timbrado en la bóveda). */
   async getCfdiNominaRecuperados(anio?: number) {

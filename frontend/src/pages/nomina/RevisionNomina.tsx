@@ -10,7 +10,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardCheck, Scale, Info } from 'lucide-react';
+import { ClipboardCheck, Scale, Info, FileSpreadsheet, FileText } from 'lucide-react';
 import api from '@/services/api';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import { aTextoMx } from '@/components/CampoFecha';
@@ -39,6 +39,17 @@ export function RevisionNominaPage() {
   });
   const d: any = q.data?.data;
   const [sub, setSub] = useState('trabajador');
+  const [bajando, setBajando] = useState<'' | 'excel' | 'pdf'>('');
+
+  const exportar = async (fmt: 'excel' | 'pdf') => {
+    if (!anio) return;
+    setBajando(fmt);
+    try {
+      if (fmt === 'excel') await api.descargarRevisionNominaExcel(anio);
+      else await api.descargarRevisionNominaPdf(anio);
+    } catch { /* el error de descarga no necesita más que no quedarse "generando" */ }
+    finally { setBajando(''); }
+  };
 
   /* El recálculo del ISR se pide aparte y sólo cuando se abre su pestaña: es un
    * cotejo más pesado (recalcula con la tarifa del Art. 96) y no todos lo miran. */
@@ -89,6 +100,20 @@ export function RevisionNominaPage() {
             <b className="text-gray-800">{d.totalRecibos}</b> recibos ·{' '}
             <b className="text-gray-800">{t?.trabajadores}</b> trabajadores en {d.anio}
           </p>
+        )}
+        {d && d.totalRecibos > 0 && (
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={() => exportar('excel')} disabled={!!bajando}
+              title="Descarga la revisión del año en Excel (base, ISR e IMSS/Infonavit en varias hojas)"
+              className="flex items-center gap-1.5 text-sm text-emerald-700 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-3 py-1.5 disabled:opacity-50">
+              <FileSpreadsheet size={15} /> {bajando === 'excel' ? 'Generando…' : 'Excel'}
+            </button>
+            <button onClick={() => exportar('pdf')} disabled={!!bajando}
+              title="Descarga el PDF de diferencias (original vs recalculado)"
+              className="flex items-center gap-1.5 text-sm text-rose-700 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg px-3 py-1.5 disabled:opacity-50">
+              <FileText size={15} /> {bajando === 'pdf' ? 'Generando…' : 'PDF'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -187,14 +212,22 @@ export function RevisionNominaPage() {
               )}
               {imss && !imss.aviso && (
                 <>
-                  <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                  {imss.nota && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 flex items-start gap-2">
+                      <Info size={14} className="mt-0.5 shrink-0" /><span>{imss.nota}</span>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
                     <span className="text-gray-600">Meses-trabajador: <b className="text-gray-900">{imss.resumen.meses}</b></span>
                     <span className={imss.resumen.imssConDiferencia ? 'text-rose-700' : 'text-emerald-700'}>
-                      IMSS con diferencia: <b>{imss.resumen.imssConDiferencia}</b>
+                      IMSS con dif.: <b>{imss.resumen.imssConDiferencia}</b>
                     </span>
                     <span className="text-gray-600">Dif. IMSS: <b className={imss.resumen.imssTotalDiferencia ? 'text-rose-700' : 'text-emerald-700'}>{money(imss.resumen.imssTotalDiferencia)}</b></span>
+                    <span className={imss.resumen.infonavitConDiferencia ? 'text-rose-700' : 'text-emerald-700'}>
+                      Infonavit con dif.: <b>{imss.resumen.infonavitConDiferencia}</b>
+                    </span>
                     <span className={imss.resumen.infonavitPosiblesOmisiones ? 'text-amber-700' : 'text-gray-600'}>
-                      Infonavit · posibles omisiones: <b>{imss.resumen.infonavitPosiblesOmisiones}</b>
+                      Posibles omisiones: <b>{imss.resumen.infonavitPosiblesOmisiones}</b>
                     </span>
                     <span className="ml-auto text-[11px] text-gray-400">Parámetros · {imss.anioParametros}</span>
                   </div>
@@ -202,11 +235,11 @@ export function RevisionNominaPage() {
                     <TablaImss filas={imss.filas} />
                   </div>
                   <p className="text-[11px] text-gray-400 leading-relaxed">
-                    IMSS: cuota obrera recalculada con el SDI y los días del CFDI (LSS Art. 106/147/168, topes y
-                    exención de salario mínimo); se <b>resaltan</b> diferencias &gt; $5 y &gt; 2 %. Infonavit: el CFDI no
-                    trae las condiciones del crédito, así que no se recalcula; se muestra el descuento y se marca
-                    «<span className="text-amber-700">posible omisión</span>» cuando el trabajador trae crédito en otros
-                    meses pero $0 en éste.
+                    IMSS: cuota obrera recalculada con el SDI y los días del CFDI (LSS Art. 106/147/168, topes y exención
+                    de salario mínimo); se <b>resaltan</b> diferencias &gt; $5 y &gt; 2 %. Infonavit: cuando el trabajador
+                    existe en el expediente con crédito, se <b>recalcula</b> (Ley Infonavit Art. 29 Fr. III) y se coteja
+                    contra la deducción 009; si no hay crédito en el expediente, sólo se marca
+                    «<span className="text-amber-700">posible omisión</span>» (crédito en otros meses pero $0 en éste).
                   </p>
                 </>
               )}
@@ -373,16 +406,18 @@ function TablaIsr({ filas }: { filas: any[] }) {
 function TablaImss({ filas }: { filas: any[] }) {
   if (!filas?.length) return <Vacia />;
   return (
-    <table className="w-full min-w-[920px]">
+    <table className="w-full min-w-[1040px]">
       <thead className="bg-emerald-50/60 border-b border-emerald-200">
         <tr>
           <Th>Trabajador</Th><Th>Mes</Th><Th right>Días</Th><Th right>SDI</Th>
-          <Th right>IMSS retenido</Th><Th right>IMSS recalc.</Th><Th right>Dif. IMSS</Th><Th right>Infonavit</Th>
+          <Th right>IMSS ret.</Th><Th right>IMSS recalc.</Th><Th right>Dif. IMSS</Th>
+          <Th right>Infonavit desc.</Th><Th right>Inf. recalc.</Th><Th right>Dif. Inf.</Th>
         </tr>
       </thead>
       <tbody className="divide-y">
         {filas.map((f, i) => (
-          <tr key={`${f.rfc}-${f.mes}-${i}`} className={f.marcaImss ? 'bg-rose-50' : f.posibleOmisionInf ? 'bg-amber-50' : 'hover:bg-gray-50'}>
+          <tr key={`${f.rfc}-${f.mes}-${i}`} className={
+            f.marcaImss || f.marcaInf ? 'bg-rose-50' : f.posibleOmisionInf ? 'bg-amber-50' : 'hover:bg-gray-50'}>
             <Td>{f.nombre || f.rfc || '—'}</Td>
             <Td>{f.nombreMes}</Td>
             <Td right>{f.dias}</Td>
@@ -396,6 +431,11 @@ function TablaImss({ filas }: { filas: any[] }) {
             <td className="px-3 py-1.5 text-sm text-right tabular-nums">
               {money(f.infonavit)}
               {f.posibleOmisionInf && <span className="ml-1.5 text-[9px] font-semibold uppercase bg-amber-100 text-amber-700 px-1 py-0.5 rounded">omisión?</span>}
+            </td>
+            <Td right>{f.conCredito ? money(f.infRecalc) : <span className="text-gray-300">—</span>}</Td>
+            <td className={`px-3 py-1.5 text-sm text-right tabular-nums font-semibold ${
+              !f.conCredito ? 'text-gray-300' : f.marcaInf ? 'text-rose-700' : Math.abs(f.difInf) < 0.01 ? 'text-emerald-700' : 'text-gray-500'}`}>
+              {f.conCredito ? money(f.difInf) : '—'}
             </td>
           </tr>
         ))}

@@ -46,6 +46,7 @@ import * as docBaja from './documento-baja.service';
 import * as plantillaEmp from './plantilla-empleados.service';
 import * as nominaRecuperados from './nomina-recuperados.service';
 import * as revisionNomina from './revision-nomina.service';
+import { generarExcelRevision, generarPdfRevision } from './revision-excel.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -409,6 +410,26 @@ router.get('/revision/:anio/imss', asyncHandler(async (req: Request, res: Respon
   const anio = Number(req.params.anio);
   if (!Number.isInteger(anio) || anio < 2000 || anio > 2100) throw new ValidationError('Año inválido.');
   res.json({ success: true, data: await revisionNomina.revisionCalculosImss(companyId(req), anio) });
+}));
+
+/** Revisión del año en Excel (varias hojas: base + ISR + IMSS/Infonavit). */
+router.get('/revision/:anio/excel', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.params.anio);
+  if (!Number.isInteger(anio) || anio < 2000 || anio > 2100) throw new ValidationError('Año inválido.');
+  const { buffer, nombre } = await generarExcelRevision(companyId(req), anio);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+  res.send(buffer);
+}));
+
+/** PDF formal de diferencias de la revisión (ISR / IMSS / Infonavit: original vs recalculado). */
+router.get('/revision/:anio/pdf', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.params.anio);
+  if (!Number.isInteger(anio) || anio < 2000 || anio > 2100) throw new ValidationError('Año inválido.');
+  const { buffer, nombre } = await generarPdfRevision(companyId(req), anio);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+  res.send(buffer);
 }));
 
 /* ── CFDI de nómina RECUPERADOS (histórico timbrado en la bóveda) ──

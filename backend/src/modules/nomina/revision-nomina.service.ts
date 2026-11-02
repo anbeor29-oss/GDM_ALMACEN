@@ -14,7 +14,41 @@
  */
 import { query } from '../../config/database';
 import * as ejercicios from './ejercicios.service';
-import { calcularIsr, calcularImssObrero } from './motor';
+import { calcularIsr, calcularImssObrero, calcularInfonavit, type DatosInfonavit, type Zona } from './motor';
+
+/** Datos del trabajador en el expediente que hacen falta para recalcular. */
+interface EmpInfonavit {
+  zona: Zona;
+  tiene: boolean; tipo: string | null; valor: number | null; seguro: number | null; desde: string | null;
+}
+const zonaDe = (z?: string): Zona =>
+  String(z || '').toLowerCase().includes('frontera') ? 'frontera_norte' : 'general';
+
+/** Carga el Infonavit y la zona de los empleados, indexados por RFC/NSS/CURP. */
+async function cargarEmpleados(companyId: string) {
+  const r = await query<any>(
+    `SELECT rfc, curp, nss, zona_geografica,
+            tiene_infonavit, infonavit_tipo_descuento, infonavit_descuento, infonavit_seguro_danos,
+            TO_CHAR(infonavit_desde,'YYYY-MM-DD') AS infonavit_desde
+       FROM nomina_empleados WHERE company_id=$1`,
+    [companyId]);
+  const porRfc = new Map<string, EmpInfonavit>();
+  const porNss = new Map<string, EmpInfonavit>();
+  const porCurp = new Map<string, EmpInfonavit>();
+  for (const e of r.rows) {
+    const d: EmpInfonavit = {
+      zona: zonaDe(e.zona_geografica),
+      tiene: !!e.tiene_infonavit, tipo: e.infonavit_tipo_descuento || null,
+      valor: e.infonavit_descuento == null ? null : Number(e.infonavit_descuento),
+      seguro: e.infonavit_seguro_danos == null ? null : Number(e.infonavit_seguro_danos),
+      desde: e.infonavit_desde || null,
+    };
+    if (e.rfc) porRfc.set(String(e.rfc).toUpperCase(), d);
+    if (e.nss) porNss.set(String(e.nss), d);
+    if (e.curp) porCurp.set(String(e.curp).toUpperCase(), d);
+  }
+  return { porRfc, porNss, porCurp };
+}
 
 const attr = (s: string, n: string) => {
   const m = new RegExp(`\\b${n}\\s*=\\s*"([^"]*)"`).exec(s);
@@ -318,12 +352,15 @@ function vacioIsr(anio: number, aviso: string) {
  * mínimo incluidos) y la coteja, acumulada por mes, contra el IMSS retenido
  * (deducción 001). El SDI sale del complemento (`SalarioDiarioIntegrado`); el
  * salario diario para la exención del Art. 36 se aproxima con el sueldo (percepción
- * 001) entre los días.
+ * 001) entre los días. La ZONA sale del expediente cuando el trabajador existe.
  *
- * Infonavit: el CFDI NO trae las condiciones del crédito (tipo/factor), así que no
- * se recalcula desde cero; se hace una REVISIÓN DE CONSISTENCIA — se muestra el
- * descuento (deducción 009) y se marca «posible omisión» cuando el trabajador trae
- * crédito en otros meses pero $0 en éste.
+ * Infonavit: el CFDI NO trae las condiciones del crédito (tipo/factor). Cuando el
+ * trabajador EXISTE en el expediente con crédito, se RECALCULA con sus datos
+ * (`motor.calcularInfonavit`, Ley Infonavit Art. 29 Fr. III) y se coteja contra el
+ * descuento (deducción 009), contra la más cercana entre crédito y crédito+seguro.
+ * Si NO hay crédito en el expediente, se hace sólo una revisión de CONSISTENCIA:
+ * se marca «posible omisión» cuando el trabajador trae crédito en otros meses pero
+ * $0 en éste.
  */
 export async function revisionCalculosImss(companyId: string, anio: number) {
   const recibos = await cargarRecibos(companyId, anio);
@@ -335,27 +372,56 @@ export async function revisionCalculosImss(companyId: string, anio: number) {
     return vacioSs(anio, `Faltan la UMA y/o el salario mínimo de ${anio}. Captúralos en Nómina → Parámetros para recalcular el IMSS.`);
   }
 
+  const emps = await cargarEmpleados(companyId);
+  const buscaEmp = (x: ReciboRevision): EmpInfonavit | null =>
+    emps.porRfc.get((x.rfcTrabajador || '').toUpperCase())
+    || (x.nss ? emps.porNss.get(x.nss) : undefined)
+    || (x.curp ? emps.porCurp.get((x.curp || '').toUpperCase()) : undefined)
+    || null;
+
   type G = {
     rfc: string; nombre: string; mes: number; dias: number; sdi: number;
-    imssRetenido: number; imssRecalc: number; infonavit: number; recibos: number;
+    imssRetenido: number; imssRecalc: number;
+    infonavit: number; infCredito: number; infTotal: number; conCredito: boolean; recibos: number;
   };
   const grupos = new Map<string, G>();
   const mesesInfonavit = new Map<string, Set<number>>();   // rfc → meses con descuento (para huecos)
+  let faltaUmi = false;
 
   for (const x of recibos) {
     const dias = x.diasPagados || 0;
     const sdi = x.sdi || x.sbc || 0;
     const salarioDiario = dias > 0 && x.sueldoBase > 0 ? r2(x.sueldoBase / dias) : sdi;
-    const imss = sdi > 0 && dias > 0 ? calcularImssObrero(salarioDiario, sdi, dias, 'general', e!).total : 0;
+    const emp = buscaEmp(x);
+    const zona: Zona = emp?.zona || 'general';
+    const imss = sdi > 0 && dias > 0 ? calcularImssObrero(salarioDiario, sdi, dias, zona, e!).total : 0;
+
+    // Infonavit recalculado desde el crédito del expediente (si aplica a la fecha).
+    let infCredito = 0, infTotal = 0, conCredito = false;
+    if (emp?.tiene && emp.tipo && emp.valor != null && sdi > 0 && dias > 0) {
+      const fechaRef = /^\d{4}-\d{2}-\d{2}/.test(x.fechaPago) ? x.fechaPago.slice(0, 10) : x.fecha;
+      if (!emp.desde || fechaRef >= emp.desde) {
+        const datos: DatosInfonavit = {
+          tiene: true, tipo: emp.tipo as DatosInfonavit['tipo'], valor: emp.valor, seguroDanosDiario: emp.seguro,
+        };
+        try {
+          const inf = calcularInfonavit(datos, sdi, dias, zona, e!);
+          infCredito = inf.credito; infTotal = inf.total; conCredito = true;
+        } catch { faltaUmi = true; }   // crédito en VSM sin UMI cargada: no se recalcula ése
+      }
+    }
 
     const k = `${x.rfcTrabajador}|${x.mes}`;
     if (!grupos.has(k)) grupos.set(k, {
       rfc: x.rfcTrabajador, nombre: x.nombreTrabajador, mes: x.mes,
-      dias: 0, sdi: 0, imssRetenido: 0, imssRecalc: 0, infonavit: 0, recibos: 0,
+      dias: 0, sdi: 0, imssRetenido: 0, imssRecalc: 0,
+      infonavit: 0, infCredito: 0, infTotal: 0, conCredito: false, recibos: 0,
     });
     const g = grupos.get(k)!;
     g.dias += dias; g.sdi = sdi || g.sdi; g.imssRetenido += x.imss; g.imssRecalc += imss;
-    g.infonavit += x.infonavit; g.recibos++;
+    g.infonavit += x.infonavit; g.infCredito += infCredito; g.infTotal += infTotal;
+    if (conCredito) g.conCredito = true;
+    g.recibos++;
 
     if (x.infonavit > 0) {
       if (!mesesInfonavit.has(x.rfcTrabajador)) mesesInfonavit.set(x.rfcTrabajador, new Set());
@@ -367,28 +433,42 @@ export async function revisionCalculosImss(companyId: string, anio: number) {
     const imssRetenido = r2(g.imssRetenido);
     const imssRecalc = r2(g.imssRecalc);
     const difImss = r2(imssRecalc - imssRetenido);          // + = se retuvo de menos; − = de más
-    const rel = imssRecalc > 0 ? Math.abs(difImss) / imssRecalc : (Math.abs(difImss) > 1 ? 1 : 0);
+    const relI = imssRecalc > 0 ? Math.abs(difImss) / imssRecalc : (Math.abs(difImss) > 1 ? 1 : 0);
+
+    const infonavit = r2(g.infonavit);                       // descontado (deducción 009)
+    const infCredito = r2(g.infCredito);
+    const infTotal = r2(g.infTotal);
+    // Diferencia contra la más cercana (crédito solo o crédito+seguro), como en ISR/IMSS.
+    const infRecalc = Math.abs(infonavit - infCredito) <= Math.abs(infonavit - infTotal) ? infCredito : infTotal;
+    const difInf = g.conCredito ? r2(infRecalc - infonavit) : 0;
+    const relInf = infRecalc > 0 ? Math.abs(difInf) / infRecalc : (Math.abs(difInf) > 1 ? 1 : 0);
+
     const mesesConInf = mesesInfonavit.get(g.rfc);
     const tieneCreditoHabitual = !!mesesConInf && mesesConInf.size >= 2;
     return {
       rfc: g.rfc, nombre: g.nombre, mes: g.mes, nombreMes: MESES[g.mes - 1] || String(g.mes),
       recibos: g.recibos, dias: g.dias, sdi: r2(g.sdi),
       imssRetenido, imssRecalc, difImss,
-      marcaImss: Math.abs(difImss) > 5 && rel > 0.02,        // IMSS tolera un poco más (redondeos de topes)
-      infonavit: r2(g.infonavit),
-      posibleOmisionInf: tieneCreditoHabitual && g.infonavit <= 0,
+      marcaImss: Math.abs(difImss) > 5 && relI > 0.02,        // IMSS tolera un poco más (redondeos de topes)
+      infonavit, conCredito: g.conCredito, infRecalc: r2(infRecalc), difInf,
+      marcaInf: g.conCredito && Math.abs(difInf) > 5 && relInf > 0.02,
+      posibleOmisionInf: !g.conCredito && tieneCreditoHabitual && g.infonavit <= 0,
     };
   }).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es') || a.mes - b.mes);
 
   const conDifImss = filas.filter((f) => f.marcaImss);
+  const conDifInf = filas.filter((f) => f.marcaInf);
   const omisionesInf = filas.filter((f) => f.posibleOmisionInf);
   return {
     anio, anioParametros: e.anio, aviso: '',
+    nota: faltaUmi ? `Algún crédito de Infonavit es en VSM y no hay UMI cargada para ${anio}; ése no se recalculó. Captúrala en Nómina → Parámetros.` : '',
     filas,
     resumen: {
       meses: filas.length,
       imssConDiferencia: conDifImss.length,
       imssTotalDiferencia: r2(conDifImss.reduce((s, f) => s + f.difImss, 0)),
+      infonavitConDiferencia: conDifInf.length,
+      infonavitTotalDiferencia: r2(conDifInf.reduce((s, f) => s + f.difInf, 0)),
       infonavitPosiblesOmisiones: omisionesInf.length,
     },
   };
@@ -396,7 +476,10 @@ export async function revisionCalculosImss(companyId: string, anio: number) {
 
 function vacioSs(anio: number, aviso: string) {
   return {
-    anio, anioParametros: anio, aviso, filas: [] as any[],
-    resumen: { meses: 0, imssConDiferencia: 0, imssTotalDiferencia: 0, infonavitPosiblesOmisiones: 0 },
+    anio, anioParametros: anio, aviso, nota: '', filas: [] as any[],
+    resumen: {
+      meses: 0, imssConDiferencia: 0, imssTotalDiferencia: 0,
+      infonavitConDiferencia: 0, infonavitTotalDiferencia: 0, infonavitPosiblesOmisiones: 0,
+    },
   };
 }
