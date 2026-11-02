@@ -86,6 +86,81 @@ export async function empresasDelUsuario(userId: string): Promise<EmpresaDelUsua
   return legado.rows;
 }
 
+/* ── Resumen de DESPACHO para el Dashboard ───────────────────────────────────
+ * Cuando las empresas del usuario pertenecen a un despacho contable, el tablero
+ * muestra una vista agregada de la cartera: total de empresas, cuántas morales y
+ * cuántas físicas (por el largo del RFC: 12 = moral, 13 = física), y el resumen
+ * de las opiniones 32-D del SAT y del IMSS (la vigente por empresa y tipo). */
+
+type Bucket = { positiva: number; negativa: number; sinOpinion: number };
+export interface ResumenDespacho {
+  nombre: string;
+  total: number;
+  morales: number;
+  fisicas: number;
+  otras: number;
+  sat: Bucket;
+  imss: Bucket;
+}
+
+/* Sentidos que cuentan como «al corriente» para la opinión de cumplimiento. */
+const SENTIDO_POSITIVO = new Set(['POSITIVA', 'SIN_ADEUDOS', 'VIGENTE']);
+
+/** La opinión vigente (más reciente) de un tipo, por empresa, en una subconsulta. */
+const opinionVigente = (tipo: string) => `
+  LEFT JOIN LATERAL (
+    SELECT sentido FROM opinion_cumplimiento o
+     WHERE o.company_id = c.id AND o.tipo = '${tipo}'
+     ORDER BY o.fecha_opinion DESC, o.created_at DESC
+     LIMIT 1
+  ) ${tipo.toLowerCase()} ON TRUE`;
+
+export async function resumenDespacho(userId: string): Promise<ResumenDespacho | null> {
+  const sql = (fuente: 'puente' | 'legado') => `
+    SELECT c.rfc, d.nombre AS despacho_nombre,
+           sat.sentido AS sat_sentido, imss.sentido AS imss_sentido
+      FROM ${fuente === 'puente'
+        ? 'user_companies uc JOIN companies c ON c.id = uc.company_id'
+        : 'users u JOIN companies c ON c.id = u.company_id'}
+      JOIN despachos_contables d ON d.id = c.despacho_id AND d.deleted_at IS NULL
+      ${opinionVigente('SAT')}
+      ${opinionVigente('IMSS')}
+     WHERE ${fuente === 'puente' ? 'uc.user_id' : 'u.id'} = $1
+       AND c.deleted_at IS NULL`;
+
+  let rows = (await query<any>(sql('puente'), [userId])).rows;
+  if (!rows.length) rows = (await query<any>(sql('legado'), [userId])).rows;
+  if (!rows.length) return null;   // ninguna empresa del usuario tiene despacho
+
+  const despachos = Array.from(new Set(rows.map((r) => r.despacho_nombre).filter(Boolean)));
+  const nombre = despachos.length === 1 ? despachos[0] : `${despachos.length} despachos`;
+
+  const bucket = (campo: 'sat_sentido' | 'imss_sentido'): Bucket => {
+    const b: Bucket = { positiva: 0, negativa: 0, sinOpinion: 0 };
+    for (const r of rows) {
+      const s = String(r[campo] || '').toUpperCase();
+      if (SENTIDO_POSITIVO.has(s)) b.positiva++;
+      else if (s === 'NEGATIVA') b.negativa++;
+      else b.sinOpinion++;       // SUSPENDIDA/OTRO/sin registro → sin dato al corriente
+    }
+    return b;
+  };
+
+  const largo = (rfc: string) => String(rfc || '').replace(/\s/g, '').length;
+  const morales = rows.filter((r) => largo(r.rfc) === 12).length;
+  const fisicas = rows.filter((r) => largo(r.rfc) === 13).length;
+
+  return {
+    nombre,
+    total: rows.length,
+    morales,
+    fisicas,
+    otras: rows.length - morales - fisicas,
+    sat: bucket('sat_sentido'),
+    imss: bucket('imss_sentido'),
+  };
+}
+
 /**
  * Emite un token nuevo con la empresa elegida.
  *

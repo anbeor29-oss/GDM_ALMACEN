@@ -88,6 +88,7 @@ router.get(
 );
 
 router.get('/companies', authenticateToken, errorAsyncHandler(authController.misEmpresas));
+router.get('/despacho-resumen', authenticateToken, errorAsyncHandler(authController.despachoResumen));
 router.post('/switch-company', authenticateToken, errorAsyncHandler(authController.cambiarEmpresa));
 
 export default router;

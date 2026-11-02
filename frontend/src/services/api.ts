@@ -170,6 +170,19 @@ class APIClient {
     return r.data;
   }
 
+  /** Resumen de DESPACHO para el Dashboard: cartera agregada (físicas/morales y
+   *  opiniones 32-D SAT e IMSS) cuando las empresas pertenecen a un despacho. */
+  async getDespachoResumen() {
+    const r = await this.client.get<APIResponse<{
+      despacho: null | {
+        nombre: string; total: number; morales: number; fisicas: number; otras: number;
+        sat: { positiva: number; negativa: number; sinOpinion: number };
+        imss: { positiva: number; negativa: number; sinOpinion: number };
+      };
+    }>>('/auth/despacho-resumen');
+    return r.data;
+  }
+
   /** Cambia la empresa activa. Devuelve un token NUEVO que hay que guardar. */
   async cambiarEmpresa(companyId: string) {
     const r = await this.client.post<APIResponse<{

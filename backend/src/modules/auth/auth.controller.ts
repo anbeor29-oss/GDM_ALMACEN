@@ -4,7 +4,7 @@
  */
 
 import { Request, Response } from 'express';
-import { empresasDelUsuario, cambiarDeEmpresa } from './companies-de-usuario.service';
+import { empresasDelUsuario, cambiarDeEmpresa, resumenDespacho } from './companies-de-usuario.service';
 import * as authService from './auth.service';
 import { ValidationError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
@@ -129,6 +129,14 @@ export async function misEmpresas(req: Request, res: Response) {
   const userId = (req as any).user?.userId;
   const empresas = await empresasDelUsuario(userId);
   res.status(200).json({ success: true, data: empresas });
+}
+
+/** GET /auth/despacho-resumen — vista agregada de la cartera cuando las empresas
+ *  del usuario pertenecen a un despacho contable (null si no hay despacho). */
+export async function despachoResumen(req: Request, res: Response) {
+  const userId = (req as any).user?.userId;
+  const despacho = await resumenDespacho(userId);
+  res.status(200).json({ success: true, data: { despacho } });
 }
 
 /**

@@ -12,7 +12,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { canAccess } from '@/utils/permissions';
 import { conBase } from '@/utils/ruta-base';
-import { FileText, Wallet, TrendingDown, AlertCircle, Stamp, Boxes, ShieldCheck, ArrowRight, Search, DownloadCloud } from 'lucide-react';
+import {
+  FileText, Wallet, TrendingDown, AlertCircle, Stamp, Boxes, ShieldCheck, ArrowRight,
+  Search, DownloadCloud, Building2, Users, User, Landmark,
+} from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
@@ -62,6 +65,16 @@ export function DashboardPage() {
     queryFn: () => api.getMonthlyUsage(),
     refetchOnWindowFocus: true,
   });
+
+  /* Vista de DESPACHO: si las empresas del usuario pertenecen a un despacho
+   * contable, el tablero suma la cartera (físicas/morales + 32-D SAT e IMSS).
+   * Si no hay despacho, `despacho` es null y el tablero queda como el normal. */
+  const { data: despResp } = useQuery({
+    queryKey: ['despacho-resumen'],
+    queryFn: () => api.getDespachoResumen(),
+    refetchOnWindowFocus: true,
+  });
+  const despacho = despResp?.data?.despacho || null;
 
   const { data: invValue } = useQuery({
     queryKey: ['inventory-value'],
@@ -201,6 +214,11 @@ export function DashboardPage() {
           </label>
         )}
       </div>
+
+      {/* VISTA DE DESPACHO — sólo cuando la cartera pertenece a un despacho
+          contable (más de una empresa). Separa el total en morales/físicas y
+          resume las opiniones 32-D del SAT y del IMSS de toda la cartera. */}
+      {despacho && despacho.total > 1 && <DespachoPanel d={despacho} />}
 
       {/* KPIs reales (Ingresos timbrados, no borradores ni cancelados) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -517,6 +535,113 @@ function MetricCard({ icon, title, value, color, hint }: MetricCardProps) {
         </div>
         {hint && <p className="text-xs text-gray-500 mt-3">{hint}</p>}
       </div>
+    </div>
+  );
+}
+
+/* ── Vista de despacho contable ──────────────────────────────────────────────
+ * Aparece sólo cuando las empresas del usuario pertenecen a un despacho: separa
+ * la cartera en personas morales y físicas y resume las opiniones 32-D (SAT e
+ * IMSS). Los datos vienen de /auth/despacho-resumen. */
+
+interface OpinionBucket { positiva: number; negativa: number; sinOpinion: number }
+interface DespachoResumen {
+  nombre: string; total: number; morales: number; fisicas: number; otras: number;
+  sat: OpinionBucket; imss: OpinionBucket;
+}
+
+function DespachoPanel({ d }: { d: DespachoResumen }) {
+  return (
+    <div className="bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200 rounded-xl p-5 space-y-4">
+      <div className="flex items-center gap-2.5">
+        <div className="bg-indigo-600 text-white p-2 rounded-lg shrink-0"><Building2 size={20} /></div>
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold text-indigo-900 leading-tight">Resumen del despacho</h2>
+          <p className="text-sm text-indigo-700/80 truncate">
+            <b className="text-indigo-900">{d.nombre}</b> · {d.total} empresas en tu cartera
+          </p>
+        </div>
+      </div>
+
+      {/* Conteo de la cartera por tipo de persona */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <TileDespacho label="Total de empresas" value={d.total} icon={<Building2 size={18} />} />
+        <TileDespacho label="Personas morales" value={d.morales} icon={<Users size={18} />} hint="RFC de 12 posiciones" />
+        <TileDespacho label="Personas físicas" value={d.fisicas} icon={<User size={18} />} hint="RFC de 13 posiciones" />
+        {d.otras > 0 && (
+          <TileDespacho label="Otras / genérico" value={d.otras} icon={<AlertCircle size={18} />} />
+        )}
+      </div>
+
+      {/* Opiniones 32-D de toda la cartera */}
+      <div className="grid sm:grid-cols-2 gap-3">
+        <OpinionCard titulo="Opinión 32-D · SAT" icon={<ShieldCheck size={16} />} data={d.sat} />
+        <OpinionCard titulo="Opinión 32-D · IMSS" icon={<Landmark size={16} />} data={d.imss} />
+      </div>
+    </div>
+  );
+}
+
+function TileDespacho({ label, value, icon, hint }: {
+  label: string; value: number; icon: React.ReactNode; hint?: string;
+}) {
+  return (
+    <div className="bg-white rounded-lg border border-indigo-100 p-3 flex items-center gap-3">
+      <div className="bg-indigo-50 text-indigo-600 p-2 rounded-lg ring-1 ring-indigo-100 shrink-0">{icon}</div>
+      <div className="min-w-0">
+        <p className="text-2xl font-bold text-gray-900 tabular-nums leading-none">{value}</p>
+        <p className="text-xs text-gray-500 mt-1 leading-tight">{label}</p>
+        {hint && <p className="text-[10px] text-gray-400 leading-tight">{hint}</p>}
+      </div>
+    </div>
+  );
+}
+
+/* Resumen de una opinión 32-D: barra proporcional + conteo por sentido. */
+function OpinionCard({ titulo, icon, data }: {
+  titulo: string; icon: React.ReactNode; data: OpinionBucket;
+}) {
+  const total = data.positiva + data.negativa + data.sinOpinion;
+  const pct = (n: number) => (total ? `${(n / total) * 100}%` : '0%');
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="bg-indigo-50 text-indigo-600 p-1.5 rounded-lg ring-1 ring-indigo-100">{icon}</div>
+        <h4 className="text-sm font-semibold text-gray-800">{titulo}</h4>
+        <span className="ml-auto text-xs text-gray-400">{total} empresas</span>
+      </div>
+      {total > 0 ? (
+        <>
+          <div className="flex h-2.5 rounded-full overflow-hidden bg-gray-100 mb-3">
+            {data.positiva > 0 && <div className="bg-emerald-500" style={{ width: pct(data.positiva) }} />}
+            {data.negativa > 0 && <div className="bg-rose-500" style={{ width: pct(data.negativa) }} />}
+            {data.sinOpinion > 0 && <div className="bg-gray-300" style={{ width: pct(data.sinOpinion) }} />}
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <OpinionChip tono="emerald" label="Positiva" value={data.positiva} />
+            <OpinionChip tono="rose" label="Negativa" value={data.negativa} />
+            <OpinionChip tono="gray" label="Sin opinión" value={data.sinOpinion} />
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-gray-400 italic py-2">Sin opiniones registradas. Captúralas en el Panel fiscal.</p>
+      )}
+    </div>
+  );
+}
+
+function OpinionChip({ tono, label, value }: {
+  tono: 'emerald' | 'rose' | 'gray'; label: string; value: number;
+}) {
+  const clase = {
+    emerald: 'text-emerald-700 bg-emerald-50',
+    rose: 'text-rose-700 bg-rose-50',
+    gray: 'text-gray-600 bg-gray-100',
+  }[tono];
+  return (
+    <div className={`rounded-lg py-1.5 ${clase}`}>
+      <p className="text-lg font-bold leading-none tabular-nums">{value}</p>
+      <p className="text-[10px] mt-0.5 leading-tight">{label}</p>
     </div>
   );
 }

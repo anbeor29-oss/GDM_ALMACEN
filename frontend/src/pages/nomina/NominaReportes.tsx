@@ -171,18 +171,23 @@ export function NominaReportesPage() {
               ))}
             </select>
           </div>
+          {/* Del periodo N al M: ambos números en una sola fila, con «al» como
+              separador y el rango en línea — así los combos quedan alineados y el
+              número de semana/quincena se lee centrado. */}
           <div>
             <label className="block text-xs text-gray-600 mb-1">Del periodo</label>
-            <input type="number" min={1} max={maxDelTipo} value={desde}
-              onChange={(e) => setDesde(Number(e.target.value))}
-              className="border rounded-lg px-3 py-2 text-sm w-20" />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">al</label>
-            <input type="number" min={1} max={maxDelTipo} value={hasta}
-              onChange={(e) => setHasta(Number(e.target.value))}
-              className="border rounded-lg px-3 py-2 text-sm w-20" />
-            <p className="text-[10px] text-gray-400 mt-0.5">de 1 a {maxDelTipo}</p>
+            <div className="flex items-center gap-2">
+              <input type="number" min={1} max={maxDelTipo} value={desde}
+                onChange={(e) => setDesde(Number(e.target.value))}
+                aria-label="Periodo inicial"
+                className="border rounded-lg px-3 py-2 text-sm w-20 text-center tabular-nums" />
+              <span className="text-sm text-gray-500">al</span>
+              <input type="number" min={1} max={maxDelTipo} value={hasta}
+                onChange={(e) => setHasta(Number(e.target.value))}
+                aria-label="Periodo final"
+                className="border rounded-lg px-3 py-2 text-sm w-20 text-center tabular-nums" />
+              <span className="text-[11px] text-gray-400 whitespace-nowrap ml-1">de 1 a {maxDelTipo}</span>
+            </div>
           </div>
 
           {/* ── Acumulado o detalle ──
