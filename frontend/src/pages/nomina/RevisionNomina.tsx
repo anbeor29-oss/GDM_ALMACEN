@@ -8,9 +8,11 @@
  *
  * Los XML se descargan en «XML del SAT»; aquí se LEEN los ya respaldados.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardCheck, Scale, Info, FileSpreadsheet, FileText, DownloadCloud } from 'lucide-react';
+import {
+  ClipboardCheck, Scale, Info, FileSpreadsheet, FileText, DownloadCloud, ArrowRight, CheckCircle2,
+} from 'lucide-react';
 import api from '@/services/api';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import { aTextoMx } from '@/components/CampoFecha';
@@ -78,6 +80,40 @@ export function RevisionNominaPage() {
       setMsgDesc(e?.response?.data?.message || 'No se pudo avanzar la descarga.');
     } finally { setDescargando(false); }
   };
+
+  /* Progreso de la descarga: lee los trabajos del SAT y calcula el avance del año
+   * (solicitudes listas / totales). Sólo mientras el modo integral está activo. */
+  const trabajosQ = useQuery({
+    queryKey: ['sat-trabajos'],
+    queryFn: () => api.getSatTrabajos(),
+    enabled: integral,
+    refetchInterval: integral ? 5000 : false,
+  });
+  const trabajosAnio: any[] = ((trabajosQ.data as any)?.data || [])
+    .filter((x: any) => x?.direccion === 'emitidos' && String(x?.fecha_desde || '').slice(0, 4) === String(anioIntegral));
+  const hayDescargaActiva = trabajosAnio.some((x) => x.estado === 'CREADO' || x.estado === 'EN_PROCESO');
+  const partsTotal = trabajosAnio.reduce((s, x) => s + (Number(x.particiones_total) || 0), 0);
+  const partsListas = trabajosAnio.reduce((s, x) => s + (Number(x.particiones_listas) || 0), 0);
+  const paquetes = trabajosAnio.reduce((s, x) => s + (Number(x.paquetes) || 0), 0);
+  const pctDescarga = partsTotal ? Math.round((100 * partsListas) / partsTotal) : 0;
+  const hayTrabajos = trabajosAnio.length > 0;
+
+  /* Auto-avanza la descarga mientras haya trabajos activos: sin el cron, no
+   * progresa solo, así que la pantalla lo empuja cada pocos segundos y el círculo
+   * se va llenando sin que el usuario tenga que dar clic. */
+  const avanzandoRef = useRef(false);
+  useEffect(() => {
+    if (!integral || !hayDescargaActiva) return;
+    const id = setInterval(async () => {
+      if (avanzandoRef.current) return;
+      avanzandoRef.current = true;
+      try { await api.avanzarSatDescarga(); trabajosQ.refetch(); recargarRevision(); }
+      catch { /* e.firma faltante u otro: no repetir el aviso en cada vuelta */ }
+      finally { avanzandoRef.current = false; }
+    }, 9000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [integral, hayDescargaActiva]);
 
   const q = useQuery({
     queryKey: ['revision-nom', anio],
@@ -152,6 +188,16 @@ export function RevisionNominaPage() {
                 className="border rounded-lg px-3 py-2 text-sm w-28 tabular-nums" />
             </label>
           )}
+
+          {/* Check «Revisión integral» — prominente, junto al año */}
+          <label title="Descarga del SAT todos los XML de nómina del año y luego revisa los cálculos"
+            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer select-none transition-colors ${
+              integral ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-300 bg-white text-gray-600 hover:bg-gray-50'}`}>
+            <input type="checkbox" checked={integral} onChange={(e) => setIntegral(e.target.checked)}
+              className="h-4 w-4 accent-indigo-600" />
+            <ClipboardCheck size={15} /> <b>Revisión integral</b>
+          </label>
+
           {d && (
             <p className="text-xs text-gray-500">
               <b className="text-gray-800">{d.totalRecibos}</b> recibos ·{' '}
@@ -174,39 +220,58 @@ export function RevisionNominaPage() {
           )}
         </div>
 
-        {/* Check: Revisión integral (descarga del SAT primero) */}
-        <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer select-none">
-          <input type="checkbox" checked={integral} onChange={(e) => setIntegral(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-indigo-600" />
-          <span>
-            <b>Revisión integral</b> — primero descarga del SAT <b>todos los XML de nómina</b> del año (emitidos),
-            arma la tabla y luego recalcula ISR, IMSS e Infonavit. Úsalo para revisar <b>años anteriores</b> que aún
-            no tengas descargados.
-          </span>
-        </label>
-
         {integral && (
-          <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3 space-y-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <button onClick={descargarIntegral} disabled={descargando}
-                className="flex items-center gap-1.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg px-3 py-2 hover:bg-indigo-700 disabled:opacity-50">
-                <DownloadCloud size={15} className={descargando ? 'animate-pulse' : ''} />
-                {descargando ? 'Descargando…' : `Descargar nómina del SAT ${anioIntegral}`}
-              </button>
-              <button onClick={seguirDescargando} disabled={descargando}
-                className="flex items-center gap-1.5 text-sm text-indigo-700 border border-indigo-300 bg-white rounded-lg px-3 py-2 hover:bg-indigo-50 disabled:opacity-50">
-                <DownloadCloud size={15} /> Seguir descargando
-              </button>
-              <span className="text-xs text-gray-600">
-                Recibos en la bóveda ({anioIntegral}): <b className="text-gray-900">{d?.totalRecibos ?? 0}</b>
-              </span>
-            </div>
-            {msgDesc && <p className="text-xs text-indigo-900">{msgDesc}</p>}
-            <p className="text-[11px] text-gray-500">
-              La descarga del SAT es <b>por pasos</b> y necesita tu <b>e.firma</b> cargada (en «XML del SAT»). Dale
-              «Seguir descargando» hasta que el número de recibos deje de aumentar; luego revisa las pestañas de abajo.
+          <>
+            <p className="text-xs text-gray-500">
+              Primero descarga del SAT <b>todos los XML de nómina</b> del año (emitidos), arma la tabla y luego
+              recalcula ISR, IMSS e Infonavit. Úsalo para revisar <b>años anteriores</b> que aún no tengas descargados.
             </p>
-          </div>
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3">
+              <div className="flex flex-wrap items-center gap-4">
+                {hayTrabajos && <CirculoProgreso pct={pctDescarga} activo={hayDescargaActiva} />}
+                <div className="min-w-0 space-y-1.5">
+                  {hayTrabajos ? (
+                    <p className="text-sm flex flex-wrap items-center gap-x-2">
+                      {hayDescargaActiva
+                        ? <span className="text-sky-700 font-medium flex items-center gap-1"><DownloadCloud size={14} className="animate-pulse" /> Descargando del SAT…</span>
+                        : <span className="text-emerald-700 font-medium flex items-center gap-1"><CheckCircle2 size={14} /> Descarga completa</span>}
+                      <span className="text-gray-500 text-xs">{partsListas}/{partsTotal} solicitudes · {paquetes} paquete(s)</span>
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-600">Aún no has iniciado la descarga de {anioIntegral}.</p>
+                  )}
+                  <p className="text-xs text-gray-600">
+                    Recibos en la bóveda ({anioIntegral}): <b className="text-gray-900">{d?.totalRecibos ?? 0}</b>
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    <button onClick={descargarIntegral} disabled={descargando}
+                      className="flex items-center gap-1.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg px-3 py-2 hover:bg-indigo-700 disabled:opacity-50">
+                      <DownloadCloud size={15} className={descargando ? 'animate-pulse' : ''} />
+                      {descargando ? 'Iniciando…' : hayTrabajos ? `Reintentar ${anioIntegral}` : `Descargar nómina del SAT ${anioIntegral}`}
+                    </button>
+                    {hayDescargaActiva && (
+                      <button onClick={seguirDescargando} disabled={descargando}
+                        className="flex items-center gap-1.5 text-sm text-indigo-700 border border-indigo-300 bg-white rounded-lg px-3 py-2 hover:bg-indigo-50 disabled:opacity-50">
+                        <DownloadCloud size={15} /> Empujar ahora
+                      </button>
+                    )}
+                    {(d?.totalRecibos ?? 0) > 0 && (
+                      <button onClick={() => setSub('isr')}
+                        className="ml-auto flex items-center gap-1.5 text-sm font-semibold bg-emerald-600 text-white rounded-lg px-3 py-2 hover:bg-emerald-700">
+                        Comenzar revisión de cálculos <ArrowRight size={15} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {msgDesc && <p className="text-xs text-indigo-900 mt-2">{msgDesc}</p>}
+              <p className="text-[11px] text-gray-500 mt-1.5">
+                La descarga del SAT es por pasos y necesita tu <b>e.firma</b> cargada (en «XML del SAT»); avanza
+                <b> sola</b> cada pocos segundos. Cuando el círculo llegue a <b>100%</b> y los recibos dejen de
+                aumentar, dale «Comenzar revisión de cálculos».
+              </p>
+            </div>
+          </>
         )}
       </div>
 
@@ -341,6 +406,24 @@ export function RevisionNominaPage() {
         </>
       )}
     </div>
+  );
+}
+
+/* Círculo de progreso de la descarga: anillo que se llena con el % de solicitudes
+ * listas. Inline SVG para no cargar librerías. */
+function CirculoProgreso({ pct, activo }: { pct: number; activo: boolean }) {
+  const p = Math.min(100, Math.max(0, pct));
+  const r = 26, c = 2 * Math.PI * r;
+  const off = c - (p / 100) * c;
+  const color = p >= 100 ? '#059669' : '#4f46e5';
+  return (
+    <svg width="64" height="64" viewBox="0 0 64 64" className="shrink-0" role="img" aria-label={`${p}% descargado`}>
+      <circle cx="32" cy="32" r={r} fill="none" stroke="#e0e7ff" strokeWidth="6" />
+      <circle cx="32" cy="32" r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={off} transform="rotate(-90 32 32)"
+        style={{ transition: 'stroke-dashoffset .6s ease' }} className={activo && p < 100 ? 'animate-pulse' : ''} />
+      <text x="32" y="36" textAnchor="middle" fontSize="15" fontWeight="700" fill={color}>{p}%</text>
+    </svg>
   );
 }
 
