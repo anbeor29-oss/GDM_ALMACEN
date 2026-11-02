@@ -9,7 +9,7 @@
  * - Formato es-MX: miles `,`, decimales `.`, 2 decimales en montos y cantidades.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { ArrowLeft, Trash2, Search, Save, Building2, User, X } from 'lucide-react';
@@ -202,6 +202,12 @@ export function NewInvoicePage() {
     enabled: isEditing,
   });
   const [hydratedEditing, setHydratedEditing] = useState(false);
+  /* Al CARGAR una factura para editar, el cliente se fija desde lo guardado y eso
+   * dispara el efecto de «adoptar el preset del cliente» (abajo), que pisaría los
+   * impuestos ORIGINALES de la factura (p. ej. un IVA 16% simple se volvería
+   * honorarios con retenciones). Esta bandera omite ESA primera adopción; si el
+   * usuario cambia el cliente a mano después, sí se vuelve a aplicar. */
+  const omitirAdopcionPreset = useRef(false);
   useEffect(() => {
     if (!isEditing || hydratedEditing) return;
     const inv = (editingInvoiceResp as any)?.data;
@@ -211,6 +217,7 @@ export function NewInvoicePage() {
       navigate('/invoices', { replace: true });
       return;
     }
+    omitirAdopcionPreset.current = true;   // no re-pisar los impuestos guardados al cargar
     setCustomerId(inv.customer_id || '');
     setPaymentForm(inv.payment_form || '99');
     setPaymentMethod(inv.payment_method || 'PPD');
@@ -247,6 +254,10 @@ export function NewInvoicePage() {
   // o las que tengan productos sin preset propio. Si el producto trae taxPresetId
   // persistido, ese gana siempre (decisión explícita del usuario en el catálogo).
   useEffect(() => {
+    // Al cargar una factura para editar, se respeta su impuesto guardado: se omite
+    // esta adopción UNA vez (la que dispara la hidratación). Un cambio de cliente
+    // hecho a mano por el usuario después sí la aplica.
+    if (omitirAdopcionPreset.current) { omitirAdopcionPreset.current = false; return; }
     const fromCust = inferPresetFromCustomer(customer);
     if (!fromCust) return;
     setLines((prev) =>
