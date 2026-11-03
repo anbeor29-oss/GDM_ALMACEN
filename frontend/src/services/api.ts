@@ -4069,6 +4069,10 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/nomina/tiempo-extra/${periodoId}/autorizar-todos`, {});
     return r.data;
   }
+  async enviarTiempoExtraANomina(periodoId: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/tiempo-extra/${periodoId}/a-nomina`, {});
+    return r.data;
+  }
 
   async getCheckadorTurnos() {
     const r = await this.client.get<APIResponse<any[]>>('/checador/turnos');

@@ -456,6 +456,10 @@ router.post('/tiempo-extra/:periodoId/detectar', soloAdmin, asyncHandler(async (
 router.post('/tiempo-extra/:periodoId/autorizar-todos', soloAdmin, asyncHandler(async (req: Request, res: Response) =>
   res.json({ success: true, data: await tiempoExtra.autorizarTodos(companyId(req), req.params.periodoId, req.user?.userId) })));
 
+/** Manda el TE autorizado a la prenómina (percepción 019 Horas extra). */
+router.post('/tiempo-extra/:periodoId/a-nomina', soloAdmin, asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await tiempoExtra.aNomina(companyId(req), req.params.periodoId, req.user?.userId) })));
+
 /** Lista el TE del periodo. */
 router.get('/tiempo-extra/:periodoId', asyncHandler(async (req: Request, res: Response) =>
   res.json({ success: true, data: await tiempoExtra.listar(companyId(req), req.params.periodoId) })));

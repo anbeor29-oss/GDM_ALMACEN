@@ -334,6 +334,42 @@ export async function rechazar(companyId: string, id: string, motivo: string, us
   return { ok: true };
 }
 
+/**
+ * Manda el TE AUTORIZADO a la prenómina: lo suma por trabajador y lo escribe como
+ * percepción «Horas extra» (SAT 019) en `nomina_captura` (con su parte gravada vía
+ * `gravadoManual`, para que el ISR respete lo exento). No pisa lo demás que el
+ * trabajador tuviera capturado: sólo reemplaza su línea 019. Marca el TE ENVIADO.
+ */
+export async function aNomina(companyId: string, periodoId: string, userId?: string) {
+  const p = await periodosSvc.obtener(companyId, periodoId);
+  if (p.estatus === 'CERRADO') throw new ValidationError('Ese periodo ya está cerrado: sus importes no se mueven.');
+
+  const r = await query<any>(
+    `SELECT empleado_id, SUM(total_bruto)::float AS bruto, SUM(gravado_isr)::float AS gravado
+       FROM nomina_tiempo_extra
+      WHERE company_id=$1 AND periodo_id=$2 AND estatus='AUTORIZADO' AND minutos_pagables>0
+      GROUP BY empleado_id`, [companyId, periodoId]);
+  if (!r.rows.length) return { aplicados: 0, aviso: 'No hay tiempo extra autorizado por pagar.' };
+
+  for (const x of r.rows) {
+    const cap = (await query<any>(
+      `SELECT dias, otros_ingresos, otras_deducciones FROM nomina_captura
+        WHERE company_id=$1 AND periodo_id=$2 AND empleado_id=$3`, [companyId, periodoId, x.empleado_id])).rows[0];
+    const otros = (Array.isArray(cap?.otros_ingresos) ? cap.otros_ingresos : [])
+      .filter((l: any) => String(l.clave) !== '019');          // quita el 019 previo para no duplicar
+    otros.push({ clave: '019', concepto: 'Horas extra', importe: r2(x.bruto), gravadoManual: r2(x.gravado) });
+    await query(
+      `INSERT INTO nomina_captura (company_id, periodo_id, empleado_id, dias, otros_ingresos, otras_deducciones, capturado_por)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7)
+       ON CONFLICT (periodo_id, empleado_id) DO UPDATE SET otros_ingresos=EXCLUDED.otros_ingresos, capturado_por=EXCLUDED.capturado_por, updated_at=NOW()`,
+      [companyId, periodoId, x.empleado_id, cap?.dias ?? null, JSON.stringify(otros), JSON.stringify(cap?.otras_deducciones || []), userId || null]);
+  }
+  await query(
+    `UPDATE nomina_tiempo_extra SET estatus='ENVIADO', updated_at=NOW()
+      WHERE company_id=$1 AND periodo_id=$2 AND estatus='AUTORIZADO' AND minutos_pagables>0`, [companyId, periodoId]);
+  return { aplicados: r.rows.length };
+}
+
 /** Autoriza TODO lo pendiente del periodo con el detectado (atajo). */
 export async function autorizarTodos(companyId: string, periodoId: string, userId?: string) {
   await query(

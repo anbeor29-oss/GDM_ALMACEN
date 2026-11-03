@@ -709,6 +709,12 @@ function TabTiempoExtra() {
   const autorizar = useMutation({ mutationFn: (id: string) => api.autorizarTiempoExtra(id, null), onSuccess: invalidar });
   const rechazar = useMutation({ mutationFn: (id: string) => api.rechazarTiempoExtra(id, 'Rechazado por el responsable'), onSuccess: invalidar });
   const autorizarTodos = useMutation({ mutationFn: () => api.autorizarTodosTiempoExtra(periodoId), onSuccess: invalidar });
+  const enviarNomina = useMutation({
+    mutationFn: () => api.enviarTiempoExtraANomina(periodoId),
+    onSuccess: (r: any) => { setMsg(r?.data?.aviso || `Tiempo extra enviado a nómina para ${r?.data?.aplicados ?? 0} trabajador(es) (percepción Horas extra 019).`); invalidar(); },
+    onError: (e: any) => setMsg(e?.response?.data?.message || 'No se pudo enviar a nómina.'),
+  });
+  const autorizadas = filas.filter((f) => f.estatus === 'AUTORIZADO').length;
 
   const badge = (s: string) => ({
     DETECTADO: 'bg-amber-100 text-amber-800', AUTORIZADO: 'bg-emerald-100 text-emerald-800',
@@ -761,11 +767,17 @@ function TabTiempoExtra() {
             ))}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {data.pendientes > 0 && (
               <button onClick={() => autorizarTodos.mutate()} disabled={autorizarTodos.isPending}
                 className="text-sm text-emerald-700 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-3 py-1.5 inline-flex items-center gap-1.5">
                 <CheckCircle2 size={15} /> Autorizar lo pendiente ({data.pendientes})
+              </button>
+            )}
+            {autorizadas > 0 && (
+              <button onClick={() => enviarNomina.mutate()} disabled={enviarNomina.isPending}
+                className="text-sm font-semibold bg-indigo-600 text-white rounded-lg px-3 py-1.5 inline-flex items-center gap-1.5 hover:bg-indigo-700 disabled:opacity-50">
+                <Timer size={15} /> {enviarNomina.isPending ? 'Enviando…' : `Enviar a nómina (${autorizadas})`}
               </button>
             )}
           </div>
