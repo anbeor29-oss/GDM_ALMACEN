@@ -376,6 +376,12 @@ export async function revisionCalculosImss(companyId: string, anio: number) {
   }
 
   const emps = await cargarEmpleados(companyId);
+  // Zona por omisión de la EMPRESA para trabajadores que no estén en el expediente:
+  // la predominante entre los empleados (si la mayoría son frontera, se asume
+  // frontera; si no, general). Antes siempre era 'general'.
+  const zonasEmp = Array.from(emps.porRfc.values()).map((e) => e.zona);
+  const nFrontera = zonasEmp.filter((z) => z === 'frontera_norte').length;
+  const zonaDefault: Zona = zonasEmp.length > 0 && nFrontera > zonasEmp.length / 2 ? 'frontera_norte' : 'general';
   const buscaEmp = (x: ReciboRevision): EmpInfonavit | null =>
     emps.porRfc.get((x.rfcTrabajador || '').toUpperCase())
     || (x.nss ? emps.porNss.get(x.nss) : undefined)
@@ -396,7 +402,7 @@ export async function revisionCalculosImss(companyId: string, anio: number) {
     const sdi = x.sdi || x.sbc || 0;
     const salarioDiario = dias > 0 && x.sueldoBase > 0 ? r2(x.sueldoBase / dias) : sdi;
     const emp = buscaEmp(x);
-    const zona: Zona = emp?.zona || 'general';
+    const zona: Zona = emp?.zona || zonaDefault;
     const imss = sdi > 0 && dias > 0 ? calcularImssObrero(salarioDiario, sdi, dias, zona, e!).total : 0;
 
     // Infonavit recalculado desde el crédito del expediente (si aplica a la fecha).
