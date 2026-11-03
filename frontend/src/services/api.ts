@@ -4081,6 +4081,19 @@ class APIClient {
     const r = await this.client.get(`/nomina/tiempo-extra/${periodoId}/pdf`, { responseType: 'blob' });
     await this.downloadFile(r.data as Blob, `Tiempo_extra_${periodoId}.pdf`);
   }
+  /* ── SBC bimestral / salario variable (Checador etapa 4) ── */
+  async getSbcIntegracion() {
+    const r = await this.client.get<APIResponse<any[]>>('/nomina/sbc/integracion');
+    return r.data;
+  }
+  async guardarSbcIntegracion(clave: string, integra: boolean, confirmado?: boolean) {
+    const r = await this.client.put<APIResponse<any>>('/nomina/sbc/integracion', { clave, integra, confirmado });
+    return r.data;
+  }
+  async calcularSbcBimestral(anio: number, bimestre: number) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/sbc/${anio}/${bimestre}/calcular`, {});
+    return r.data;
+  }
 
   async getCheckadorTurnos() {
     const r = await this.client.get<APIResponse<any[]>>('/checador/turnos');

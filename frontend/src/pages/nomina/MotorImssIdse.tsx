@@ -71,7 +71,7 @@ export function MotorImssIdsePage() {
   const { puede } = useCapacidades();
   const esAdmin = puede(CAP.nomina);
 
-  const [modo, setModo] = useState<'movimientos' | 'validar'>('movimientos');
+  const [modo, setModo] = useState<'movimientos' | 'validar' | 'sbc'>('movimientos');
   const [modal, setModal] = useState<{ id: string; nombre: string; nss: string; tipo: Tipo; emp: any } | null>(null);
   const [buscar, setBuscar] = useState('');
   const [incluirBajas, setIncluirBajas] = useState(false);
@@ -228,14 +228,14 @@ export function MotorImssIdsePage() {
 
       {/* Pestañas */}
       <div className="flex gap-1.5 flex-wrap">
-        {([['movimientos', 'Movimientos'], ['validar', 'Validar archivo']] as const).map(([k, label], i) => (
+        {([['movimientos', 'Movimientos'], ['sbc', 'SBC variable'], ['validar', 'Validar archivo']] as const).map(([k, label], i) => (
           <button key={k} onClick={() => setModo(k)} className={claseOpcion(i, modo === k)}>
             {label}
           </button>
         ))}
       </div>
 
-      {modo === 'validar' ? <ValidadorIdse /> : <>
+      {modo === 'validar' ? <ValidadorIdse /> : modo === 'sbc' ? <SbcBimestral /> : <>
 
       <div className="grid lg:grid-cols-2 gap-4">
         {/* ── Padrón: agregar movimientos ── */}
@@ -771,6 +771,129 @@ function Cifra({ rotulo, valor, color = 'text-gray-900' }: { rotulo: string; val
     <div>
       <p className="text-[10px] uppercase tracking-wide text-gray-500">{rotulo}</p>
       <p className={`text-xl font-bold tabular-nums ${color}`}>{valor}</p>
+    </div>
+  );
+}
+
+/* ── SBC variable / bimestral (etapa 4) ──
+ * Calcula el componente VARIABLE del SBC desde el bimestre anterior (CFDI de
+ * nómina), con la clasificación integrable/excluido configurable. Deja el cálculo
+ * para revisar; el movimiento IDSE se genera en «Movimientos». */
+function SbcBimestral() {
+  const [anio, setAnio] = useState(new Date().getFullYear());
+  const [bim, setBim] = useState(Math.max(1, Math.ceil((new Date().getMonth() + 1) / 2)));
+  const [data, setData] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [verConceptos, setVerConceptos] = useState(false);
+
+  const intQ = useQuery({ queryKey: ['sbc-integracion'], queryFn: () => api.getSbcIntegracion() });
+  const conceptos: any[] = intQ.data?.data || [];
+
+  const money = (n: any) => Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+  const money4 = (n: any) => `$${(Number(n) || 0).toLocaleString('es-MX', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
+  const MESES = ['Ene-Feb', 'Mar-Abr', 'May-Jun', 'Jul-Ago', 'Sep-Oct', 'Nov-Dic'];
+
+  const calcular = async () => {
+    setBusy(true); setMsg('');
+    try { const r: any = await api.calcularSbcBimestral(anio, bim); setData(r.data); setMsg(r.data?.aviso || ''); }
+    catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo calcular.'); }
+    finally { setBusy(false); }
+  };
+  const toggleIntegra = async (clave: string, integra: boolean) => {
+    try { await api.guardarSbcIntegracion(clave, integra); intQ.refetch(); } catch { /* noop */ }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-violet-200 bg-violet-50/70 px-3 py-2 text-xs text-violet-900">
+        Calcula el <b>componente VARIABLE del SBC</b> con las percepciones integrables del <b>bimestre anterior</b>
+        (de los CFDI de nómina timbrados) ÷ días devengados. SBC propuesto = SDI fijo actual + promedio variable
+        (tope 25 UMA). <b>Es un cálculo para REVISAR</b>: valida la clasificación de conceptos y, si procede, genera la
+        <b> Modificación</b> en «Movimientos». Límites finos (ahorro/despensa/alimentación) y formato IDSE se validan aparte.
+      </div>
+
+      <div className="bg-white rounded-lg shadow border p-4 flex flex-wrap items-end gap-3">
+        <label className="block"><span className="block text-xs text-gray-600 mb-1">Año</span>
+          <input type="number" className="input w-24" value={anio} onChange={(e) => setAnio(Number(e.target.value))} /></label>
+        <label className="block"><span className="block text-xs text-gray-600 mb-1">Bimestre analizado</span>
+          <select className="input" value={bim} onChange={(e) => setBim(Number(e.target.value))}>
+            {[1, 2, 3, 4, 5, 6].map((b) => <option key={b} value={b}>{b}º ({MESES[b - 1]})</option>)}
+          </select></label>
+        <button onClick={calcular} disabled={busy} className="btn-primary inline-flex items-center gap-2">
+          <HeartPulse size={16} /> {busy ? 'Calculando…' : 'Calcular SBC'}
+        </button>
+        <button onClick={() => setVerConceptos((v) => !v)} className="text-sm text-indigo-700 underline">
+          {verConceptos ? 'Ocultar' : 'Ver'} clasificación de conceptos ({conceptos.length})
+        </button>
+      </div>
+
+      {verConceptos && (
+        <div className="bg-white rounded-lg shadow border p-3">
+          <p className="text-xs text-gray-500 mb-2">¿Qué conceptos INTEGRAN la parte variable del SBC? (criterio Art. 27 — valídalo). Toca para cambiar.</p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+            {conceptos.map((c) => (
+              <label key={c.clave} className="flex items-start gap-2 text-sm border rounded px-2 py-1.5">
+                <input type="checkbox" checked={!!c.integra} onChange={(e) => toggleIntegra(c.clave, e.target.checked)} className="mt-0.5 h-4 w-4 accent-violet-600" />
+                <span><b className="font-mono text-xs">{c.clave}</b> {c.nombre}{c.nota ? <span className="block text-[10px] text-gray-400">{c.nota}</span> : null}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {msg && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{msg}</p>}
+
+      {data && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[['Trabajadores', data.totales.trabajadores], ['Con cambio de SBC', data.totales.conCambio],
+              ['Sin expediente', data.totales.sinExpediente], ['Aplica desde', aTextoMx(data.fechaAplicacion)]].map(([l, v]) => (
+              <div key={l as string} className="bg-white rounded-lg border p-3">
+                <p className="text-[11px] text-gray-500 uppercase tracking-wide">{l}</p>
+                <p className="text-lg font-bold text-gray-900 tabular-nums">{v}</p>
+              </div>
+            ))}
+          </div>
+          <div className="bg-white rounded-lg shadow border overflow-x-auto">
+            {data.filas.length === 0 ? (
+              <p className="text-sm text-gray-500 italic p-6 text-center">
+                Nadie tuvo percepciones variables integrables en ese bimestre (o no hay CFDI de nómina descargados). No hay modificación de SBC.
+              </p>
+            ) : (
+              <table className="w-full text-sm min-w-[920px]">
+                <thead className="bg-emerald-50/60 border-b border-emerald-200">
+                  <tr className="text-xs text-gray-600">
+                    <th className="px-3 py-2 text-left">Trabajador</th><th className="px-3 py-2">NSS</th>
+                    <th className="px-3 py-2 text-right">Días</th><th className="px-3 py-2 text-right">Variable integrable</th>
+                    <th className="px-3 py-2 text-right">Prom. diario</th><th className="px-3 py-2 text-right">SBC anterior</th>
+                    <th className="px-3 py-2 text-right">SBC propuesto</th><th className="px-3 py-2 text-right">Diferencia</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {data.filas.map((f: any) => (
+                    <tr key={f.rfc} className={Math.abs(f.diferencia) >= 0.01 ? 'bg-amber-50/40' : 'hover:bg-gray-50'}>
+                      <td className="px-3 py-1.5">{f.nombre}{!f.enExpediente && <span className="ml-1 text-[9px] uppercase bg-rose-100 text-rose-700 px-1 rounded">sin exp.</span>}</td>
+                      <td className="px-3 py-1.5 text-center font-mono text-xs">{f.nss || '—'}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{f.dias}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{money(f.variableIntegrable)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{money4(f.promedioVariable)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{money4(f.sbcAnterior)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{money4(f.sbcPropuesto)}</td>
+                      <td className={`px-3 py-1.5 text-right tabular-nums font-semibold ${f.diferencia > 0 ? 'text-emerald-700' : f.diferencia < 0 ? 'text-rose-700' : 'text-gray-500'}`}>{money4(f.diferencia)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            Aplica desde {aTextoMx(data.fechaAplicacion)} · límite de presentación {aTextoMx(data.fechaLimite)} (primeros
+            días hábiles del mes; afinar). El SBC propuesto toma el SDI fijo del expediente + el promedio variable; para
+            trabajadores <b>mixtos</b> que ya cargaban un promedio, revisa el componente fijo antes de presentar.
+          </p>
+        </>
+      )}
     </div>
   );
 }

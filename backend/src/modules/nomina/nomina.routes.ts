@@ -49,6 +49,7 @@ import * as revisionNomina from './revision-nomina.service';
 import { generarExcelRevision, generarPdfRevision } from './revision-excel.service';
 import * as tiempoExtra from './tiempo-extra.service';
 import { generarExcelTe, generarPdfTe } from './tiempo-extra-excel.service';
+import * as sbcBimestral from './sbc-bimestral.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -473,6 +474,20 @@ router.get('/tiempo-extra/:periodoId/pdf', asyncHandler(async (req: Request, res
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
   res.send(buffer);
+}));
+
+/* ── SBC bimestral / salario variable (Checador etapa 4) ── */
+router.get('/sbc/integracion', asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await sbcBimestral.listarIntegracion() })));
+
+router.put('/sbc/integracion', soloAdmin, asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await sbcBimestral.guardarIntegracion(String(req.body?.clave || ''), !!req.body?.integra, req.body?.confirmado) })));
+
+/** Calcula (y guarda) el SBC variable del bimestre. */
+router.post('/sbc/:anio/:bimestre/calcular', soloAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.params.anio), bim = Number(req.params.bimestre);
+  if (!Number.isInteger(anio) || anio < 2000 || anio > 2100) throw new ValidationError('Año inválido.');
+  res.json({ success: true, data: await sbcBimestral.calcular(companyId(req), anio, bim) });
 }));
 
 /** Lista el TE del periodo. */
