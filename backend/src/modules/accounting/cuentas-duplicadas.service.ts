@@ -95,10 +95,14 @@ export async function fusionar(companyId: string): Promise<{ fusionadas: number;
       `UPDATE journal_lines l SET account_id = f.canon FROM _fusion f WHERE l.account_id = f.dupe`);
 
     // 2) Saldos por periodo: SUMAR a la canónica (misma cuenta, un solo saldo por periodo), luego borrar los de la copia.
+    //    Se PRE-AGREGA por (periodo, canónica) para que, si un código tiene 3+ copias con saldo en el mismo
+    //    periodo, no se intente tocar la misma fila dos veces en el mismo INSERT (ON CONFLICT lo rechazaría).
     await transactionQuery(client, `
       INSERT INTO accounting_period_balances (company_id, periodo_id, account_id, saldo_inicial, cargos, abonos, saldo_final)
-        SELECT b.company_id, b.periodo_id, f.canon, b.saldo_inicial, b.cargos, b.abonos, b.saldo_final
+        SELECT b.company_id, b.periodo_id, f.canon,
+               SUM(b.saldo_inicial), SUM(b.cargos), SUM(b.abonos), SUM(b.saldo_final)
           FROM accounting_period_balances b JOIN _fusion f ON f.dupe = b.account_id
+         GROUP BY b.company_id, b.periodo_id, f.canon
       ON CONFLICT (periodo_id, account_id) DO UPDATE SET
         saldo_inicial = accounting_period_balances.saldo_inicial + EXCLUDED.saldo_inicial,
         cargos        = accounting_period_balances.cargos        + EXCLUDED.cargos,
