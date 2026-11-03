@@ -38,6 +38,18 @@ function parseNum(s: string): number {
 
 /* ─────────────── presets de impuesto (espejo del modal de productos) ─────────────── */
 
+// Catálogo c_Meses del SAT para la factura global: 01-12 por mes, 13-18 por bimestre.
+const MESES_SAT: Array<{ k: string; n: string }> = [
+  { k: '01', n: 'Enero' }, { k: '02', n: 'Febrero' }, { k: '03', n: 'Marzo' },
+  { k: '04', n: 'Abril' }, { k: '05', n: 'Mayo' }, { k: '06', n: 'Junio' },
+  { k: '07', n: 'Julio' }, { k: '08', n: 'Agosto' }, { k: '09', n: 'Septiembre' },
+  { k: '10', n: 'Octubre' }, { k: '11', n: 'Noviembre' }, { k: '12', n: 'Diciembre' },
+];
+const BIMESTRES_SAT: Array<{ k: string; n: string }> = [
+  { k: '13', n: 'Enero-Febrero' }, { k: '14', n: 'Marzo-Abril' }, { k: '15', n: 'Mayo-Junio' },
+  { k: '16', n: 'Julio-Agosto' }, { k: '17', n: 'Septiembre-Octubre' }, { k: '18', n: 'Noviembre-Diciembre' },
+];
+
 interface TaxPreset {
   id: string;
   short: string;     // etiqueta corta para el select de cada línea
@@ -157,6 +169,12 @@ export function NewInvoicePage() {
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
 
+  // Factura GLOBAL al público en general (RFC XAXX010101000). El SAT obliga el
+  // periodo (nodo InformacionGlobal): por defecto Mensual + mes/año actuales.
+  const [globalPeriodicidad, setGlobalPeriodicidad] = useState('04');
+  const [globalMeses, setGlobalMeses] = useState(() => String(new Date().getMonth() + 1).padStart(2, '0'));
+  const [globalAnio, setGlobalAnio] = useState(() => new Date().getFullYear());
+
   // Moneda y su tipo de cambio. Se consulta al servicio central en cuanto se
   // elige moneda extranjera, para que el usuario vea contra qué va a facturar
   // ANTES de timbrar y no se entere después.
@@ -186,6 +204,8 @@ export function NewInvoicePage() {
     queryFn: () => api.getCustomers(1, 200, { sortBy: 'name', sortOrder: 'ASC' }),
   });
   const customer = (customers?.data?.customers || []).find((c: any) => c.id === customerId);
+  // ¿Factura al público en general? Dispara el panel de factura global.
+  const esGlobal = (customer?.rfc || '').toUpperCase() === 'XAXX010101000';
 
   const { data: usosCFDI } = useQuery({
     queryKey: ['catalog', 'usoCfdi'],
@@ -223,6 +243,9 @@ export function NewInvoicePage() {
     setPaymentMethod(inv.payment_method || 'PPD');
     setCfdiUse(inv.cfdi_use || 'G03');
     setNotes(inv.notes || '');
+    if (inv.global_periodicidad) setGlobalPeriodicidad(inv.global_periodicidad);
+    if (inv.global_meses) setGlobalMeses(inv.global_meses);
+    if (inv.global_anio) setGlobalAnio(Number(inv.global_anio));
     const items = Array.isArray(inv.items) ? inv.items : [];
     if (items.length > 0) {
       setLines(
@@ -333,6 +356,8 @@ export function NewInvoicePage() {
         paymentMethod,
         cfdiUse,
         currency,
+        // Factura global: sólo cuando el receptor es el genérico (público en general).
+        ...(esGlobal ? { globalPeriodicidad, globalMeses, globalAnio } : {}),
         // No se manda exchangeRate: lo resuelve el servicio central al guardar,
         // así el valor guardado es el mismo que consultó el backend y no el que
         // el navegador tenía en pantalla hace diez minutos.
@@ -450,6 +475,64 @@ export function NewInvoicePage() {
               <p className="text-sm text-gray-600">RFC: <span className="font-mono">{customer.rfc}</span></p>
               <p className="text-sm text-gray-600">Régimen: <span className="font-mono">{customer.fiscal_regime || '—'}</span></p>
               <p className="text-sm text-gray-600">CP: <span className="font-mono">{customer.postal_code || '—'}</span></p>
+            </div>
+          )}
+
+          {esGlobal && (
+            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+              <p className="text-xs font-semibold text-amber-800 mb-2">
+                Factura global — periodo (obligatorio para público en general)
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-wide text-amber-700">Periodicidad</span>
+                  <select
+                    value={globalPeriodicidad}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setGlobalPeriodicidad(v);
+                      // El c_Meses cambia de rango según la periodicidad: coerción
+                      // al valor válido más cercano para no mandar un mes fuera de rango.
+                      if (v === '05' && Number(globalMeses) < 13) setGlobalMeses('13');
+                      if (v !== '05' && Number(globalMeses) > 12) {
+                        setGlobalMeses(String(new Date().getMonth() + 1).padStart(2, '0'));
+                      }
+                    }}
+                    className="input mt-1"
+                  >
+                    <option value="01">01 — Diario</option>
+                    <option value="02">02 — Semanal</option>
+                    <option value="03">03 — Quincenal</option>
+                    <option value="04">04 — Mensual</option>
+                    <option value="05">05 — Bimestral</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-wide text-amber-700">
+                    {globalPeriodicidad === '05' ? 'Bimestre' : 'Mes'}
+                  </span>
+                  <select value={globalMeses} onChange={(e) => setGlobalMeses(e.target.value)} className="input mt-1">
+                    {(globalPeriodicidad === '05' ? BIMESTRES_SAT : MESES_SAT).map((m) => (
+                      <option key={m.k} value={m.k}>{m.k} — {m.n}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-wide text-amber-700">Año</span>
+                  <input
+                    type="number"
+                    value={globalAnio}
+                    min={2021}
+                    max={new Date().getFullYear()}
+                    onChange={(e) => setGlobalAnio(Number(e.target.value))}
+                    className="input mt-1"
+                  />
+                </label>
+              </div>
+              <p className="text-[11px] text-amber-700 mt-2">
+                Ampara las ventas sin requerimiento de factura del periodo. El SAT lo exige
+                cuando el receptor es «PÚBLICO EN GENERAL» (XAXX010101000) y el comprobante es de ingreso.
+              </p>
             </div>
           )}
         </div>

@@ -30,6 +30,9 @@ export async function createInvoice(req: Request, res: Response) {
     discount,
     paymentTerms,
     notes,
+    globalPeriodicidad,
+    globalMeses,
+    globalAnio,
   } = req.body;
 
   // Validate required fields
@@ -56,6 +59,9 @@ export async function createInvoice(req: Request, res: Response) {
     discount,
     paymentTerms,
     notes,
+    globalPeriodicidad,
+    globalMeses,
+    globalAnio,
   });
 
   res.status(201).json({

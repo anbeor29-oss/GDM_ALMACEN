@@ -58,6 +58,24 @@ interface CFDIJson {
     Retenciones?: Array<RetencionTotal>;
   };
   /**
+   * Factura GLOBAL al público en general (RFC genérico XAXX010101000).
+   *
+   * El SAT obliga este nodo (CFDI 4.0) cuando TipoDeComprobante='I', el Rfc del
+   * receptor es el genérico nacional y su Nombre es "PÚBLICO EN GENERAL". Ampara
+   * el PERIODO al que corresponden las ventas sin requerimiento de factura:
+   *   · Periodicidad (c_Periodicidad): 01 Diario · 02 Semanal · 03 Quincenal ·
+   *     04 Mensual · 05 Bimestral.
+   *   · Meses (c_Meses): 01-12 por mes; 13-18 por bimestre (13=Ene-Feb … 18=Nov-Dic).
+   *   · Año: 4 dígitos, NO mayor al año en curso.
+   * Sin este nodo el PAC rechaza con "Este Nodo debe existir siempre que el
+   * atributo TipoDeComprobante sea 'I' … 'XAXX010101000' … 'PUBLICO EN GENERAL'".
+   */
+  InformacionGlobal?: {
+    Periodicidad: string;
+    Meses: string;
+    'Año': string;
+  };
+  /**
    * Relación con otros CFDI. Obligatoria en una nota de crédito (tipo E):
    * TipoRelacion '01' = nota de crédito de los documentos relacionados.
    *
@@ -151,6 +169,9 @@ interface RetencionTotal {
 }
 
 const IMPUESTO_CODE: Record<string, string> = { IVA: '002', IEPS: '003', ISR: '001' };
+
+/** RFC genérico nacional: receptor de las facturas globales (público en general). */
+const RFC_GENERICO_NACIONAL = 'XAXX010101000';
 
 function money(n: number | string | null | undefined, decimals = 2): string {
   const v = Number(n) || 0;
@@ -393,6 +414,41 @@ export async function buildCFDIJson(companyId: string, invoiceId: string): Promi
 
   const disc = Number(inv.discount) || 0;
   if (disc > 0) doc.Descuento = money(disc, 2);
+
+  // 7) Factura global al público en general (RFC genérico nacional).
+  //    El SAT valida cuatro reglas EN CONJUNTO para el receptor genérico; se
+  //    rompen fácil por separado, así que las forzamos aquí en vez de confiar
+  //    en lo que traiga el expediente del cliente:
+  //      · RegimenFiscalReceptor = 616 (único que admite el genérico)
+  //      · DomicilioFiscalReceptor = CP del emisor (= LugarExpedicion; al
+  //        público no se le conoce domicilio)
+  //      · UsoCFDI = S01 "Sin efectos fiscales" (sólo para el ingreso tipo I)
+  //      · InformacionGlobal obligatorio (sólo tipo I)
+  if (doc.Receptor.Rfc === RFC_GENERICO_NACIONAL) {
+    doc.Receptor.RegimenFiscalReceptor = '616';
+    doc.Receptor.DomicilioFiscalReceptor = comp.postal_code;
+
+    if (doc.TipoDeComprobante === 'I') {
+      doc.Receptor.UsoCFDI = 'S01';
+
+      // Periodo que ampara la global. Se toma de la factura si viene capturado;
+      // si no, se deriva de la fecha de emisión como MENSUAL (lo más común),
+      // con el mes y año de la propia factura. El año nunca puede ser mayor al
+      // año en curso, de ahí el tope contra "ahora".
+      const base = inv.date_issued ? new Date(inv.date_issued) : new Date();
+      const valida = !Number.isNaN(base.getTime());
+      const ahora = new Date();
+      const mesBase = String((valida ? base.getMonth() : ahora.getMonth()) + 1).padStart(2, '0');
+      let anioBase = valida ? base.getFullYear() : ahora.getFullYear();
+      if (anioBase > ahora.getFullYear()) anioBase = ahora.getFullYear();
+
+      doc.InformacionGlobal = {
+        Periodicidad: inv.global_periodicidad || '04',  // 04 = Mensual
+        Meses: inv.global_meses || mesBase,
+        'Año': String(inv.global_anio || anioBase),
+      };
+    }
+  }
 
   return doc;
 }

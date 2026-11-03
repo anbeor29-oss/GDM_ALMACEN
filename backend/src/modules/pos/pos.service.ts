@@ -346,6 +346,10 @@ export async function closeDay(
     description: `Venta POS #${s.folio} del ${day}`,
   }));
 
+  // Periodo de la factura global: el cierre del día es DIARIO (c_Periodicidad 01),
+  // con el mes y año de la fecha facturada (day = 'YYYY-MM-DD').
+  const [gAnio, gMes] = day.split('-');
+
   const invoice = await invoicesService.createInvoice(companyId, {
     customerId: publicCustomerId,
     cfdiType: 'I',
@@ -354,6 +358,9 @@ export async function closeDay(
     cfdiUse: 'S01',               // Sin efectos fiscales — estándar para global
     items,
     notes: `Factura global del día ${day} — ${salesR.rows.length} venta(s) de mostrador`,
+    globalPeriodicidad: '01',     // Diario
+    globalMeses: gMes,            // 01-12
+    globalAnio: Number(gAnio),
   } as any);
 
   // 4) Timbrar por el flujo normal (MOCK/SW según env). El producto global no

@@ -7576,3 +7576,35 @@ no tenían `despacho_id` y se agrupaban por emisora. **Fix:** `DESPACHO_EFECTIVO
 
 **Despliegue:** empujado a `gdmalmacen main` (el backend que usa `hcgm.com.mx/erp`); migraciones corren al arrancar.
 **Falta:** recompilar/subir `/erp` (`npm run build:hosting`). Lo de aguinaldo/IVA no se probó contra la BD real.
+
+---
+
+## 2026-11-03 (facturación) — Timbrado al público en general: nodo InformacionGlobal (factura global)
+
+**Síntoma.** Al timbrar al público en general el PAC rechazaba: *«Este Nodo debe existir
+siempre que el atributo TipoDeComprobante sea 'I', y el atributo Rfc del nodo receptor
+contiene 'XAXX010101000' y el Nombre del Receptor contiene 'PUBLICO EN GENERAL'».* El
+serializador `build-cfdi-json.service` nunca emitía el nodo `cfdi:InformacionGlobal`,
+obligatorio en CFDI 4.0 para la **factura global** al receptor genérico.
+
+**Fix.** En `buildCFDIJson`, cuando el receptor es el genérico nacional (`XAXX010101000`)
+se fuerzan las cuatro reglas que el SAT valida en conjunto y se rompen por separado:
+`RegimenFiscalReceptor=616`, `DomicilioFiscalReceptor = CP del emisor` (= LugarExpedicion),
+y —sólo para tipo **I**— `UsoCFDI=S01` + el nodo **InformacionGlobal** `{ Periodicidad,
+Meses, Año }`. El nodo se gatea a tipo I (no aplica a E ni al complemento de pago tipo P,
+que conserva su `UsoCFDI=CP01`).
+
+**De dónde sale el periodo.** Nuevas columnas `invoices.global_periodicidad / global_meses /
+global_anio` (migración `2026-11-03d`). Si vienen capturadas se usan; si no, el serializador
+deriva un valor **MENSUAL** del mes/año de la fecha de emisión (año topado al año en curso),
+así las facturas globales viejas (columnas en NULL) también timbran al reintentar.
+
+**Captura.** En `NewInvoice` aparece un panel ámbar *«Factura global — periodo»* **sólo**
+cuando el cliente seleccionado es el genérico: Periodicidad (01 Diario … 05 Bimestral), Mes
+(01-12) o Bimestre (13-18) según la periodicidad, y Año. `create/updateInvoice` persisten los
+tres campos (modo ligero y pleno). El **cierre del día POS** marca Periodicidad **01 (Diario)**
+con el mes/año de la fecha facturada.
+
+**Despliegue:** commit en `erp-unificado`; se empuja a `gdmalmacen main` y se hace **Manual
+Deploy** en Render (backend primero; Auto-Deploy OFF). La migración corre al arrancar. No se
+probó contra el PAC real (requiere timbrar una global de verdad).

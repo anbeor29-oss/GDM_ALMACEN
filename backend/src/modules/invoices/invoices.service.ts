@@ -180,6 +180,10 @@ export async function createInvoice(
     discount?: number;
     paymentTerms?: string;
     notes?: string;
+    // Factura global (sólo aplica al público en general, RFC XAXX010101000)
+    globalPeriodicidad?: string;   // c_Periodicidad: 01/02/03/04/05
+    globalMeses?: string;          // c_Meses: 01-12 (mes) | 13-18 (bimestre)
+    globalAnio?: number;           // año de 4 dígitos
   }
 ): Promise<any> {
   return transaction(async (client) => {
@@ -236,12 +240,14 @@ export async function createInvoice(
         subtotal, tax_transferred, tax_retained,
         tax_retained_iva, tax_retained_isr, tax_ieps, total,
         discount, payment_form, payment_method, cfdi_use,
-        payment_terms, notes, status, is_active)
+        payment_terms, notes,
+        global_periodicidad, global_meses, global_anio, status, is_active)
        VALUES ($1, $2, $3, $4, $5, NOW(),
                $6, $7, $21, $22, $23,
                $8, $9, $10,
                $11, $12, $13, $14,
-               $15, $16, $17, $18, $19, $20, 'DRAFT', true)
+               $15, $16, $17, $18, $19, $20,
+               $24, $25, $26, 'DRAFT', true)
        RETURNING *`,
       [
         companyId,
@@ -267,6 +273,9 @@ export async function createInvoice(
         tc.fecha,                       // $21 exchange_rate_date
         redondea(total * tc.valor),     // $22 total_mxn
         redondea(subtotal * tc.valor),  // $23 subtotal_mxn
+        data.globalPeriodicidad || null, // $24 global_periodicidad
+        data.globalMeses || null,        // $25 global_meses
+        data.globalAnio || null,         // $26 global_anio
       ]
     );
 
@@ -460,6 +469,9 @@ export async function updateInvoice(
     discount?: number;
     paymentTerms?: string;
     notes?: string;
+    globalPeriodicidad?: string;
+    globalMeses?: string;
+    globalAnio?: number;
   } & Partial<Invoice>
 ): Promise<any> {
   const existing = await getInvoiceById(companyId, invoiceId);
@@ -490,6 +502,19 @@ export async function updateInvoice(
     if (data.notes !== undefined) {
       fields.push(`notes = $${p++}`);
       values.push(data.notes);
+    }
+    // Periodo de la factura global (público en general), editable sin reemplazar items.
+    if (data.globalPeriodicidad !== undefined) {
+      fields.push(`global_periodicidad = $${p++}`);
+      values.push(data.globalPeriodicidad || null);
+    }
+    if (data.globalMeses !== undefined) {
+      fields.push(`global_meses = $${p++}`);
+      values.push(data.globalMeses || null);
+    }
+    if (data.globalAnio !== undefined) {
+      fields.push(`global_anio = $${p++}`);
+      values.push(data.globalAnio || null);
     }
     if (fields.length === 0) return existing;
     fields.push(`updated_at = NOW()`);
@@ -565,6 +590,9 @@ export async function updateInvoice(
          cfdi_use = $15,
          payment_terms = $16,
          notes = $17,
+         global_periodicidad = $23,
+         global_meses = $24,
+         global_anio = $25,
          updated_at = NOW()
        WHERE id = $18 AND company_id = $19`,
       [
@@ -590,6 +618,10 @@ export async function updateInvoice(
         tcUpd.fecha,                        // $20 exchange_rate_date
         redondea(total * tcUpd.valor),      // $21 total_mxn
         redondea(subtotal * tcUpd.valor),   // $22 subtotal_mxn
+        // $23-$25 periodo de la factura global (null si no aplica / no cambió)
+        data.globalPeriodicidad !== undefined ? (data.globalPeriodicidad || null) : (existing.global_periodicidad ?? null),
+        data.globalMeses !== undefined ? (data.globalMeses || null) : (existing.global_meses ?? null),
+        data.globalAnio !== undefined ? (data.globalAnio || null) : (existing.global_anio ?? null),
       ]
     );
 
