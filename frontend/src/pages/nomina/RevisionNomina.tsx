@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ClipboardCheck, Scale, Info, FileSpreadsheet, FileText, DownloadCloud, ArrowRight, CheckCircle2,
+  ClipboardCheck, Scale, Info, FileSpreadsheet, FileText, DownloadCloud, ArrowRight, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 import api from '@/services/api';
 import { claseOpcion } from '@/utils/coloresOpciones';
@@ -150,7 +150,7 @@ export function RevisionNominaPage() {
   });
   const imss: any = imssQ.data?.data;
 
-  const t = d?.totales;
+  const t = d?.totales || {};   // defensivo: si la respuesta no trae totales, no reventar el render
   const sinAnios = !aniosQ.isLoading && anios.length === 0;
 
   const tituloSub = useMemo(() => SUBTABS.find((s) => s[0] === sub)?.[1] || '', [sub]);
@@ -287,7 +287,30 @@ export function RevisionNominaPage() {
 
       {q.isLoading && <p className="text-center text-gray-500 py-10">Armando la base del año…</p>}
 
-      {d && (
+      {/* La consulta falló: se dice claramente (y no una pantalla en blanco). */}
+      {!q.isLoading && q.isError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 flex items-start gap-2">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          <span>
+            No se pudo cargar la revisión de <b>{anio}</b>.{' '}
+            {(q.error as any)?.response?.data?.message || (q.error as any)?.message || ''}{' '}
+            <button onClick={() => q.refetch()} className="underline font-medium">Reintentar</button>
+          </span>
+        </div>
+      )}
+
+      {/* La consulta trajo CERO recibos para ese año: se explica qué hacer. */}
+      {!q.isLoading && !q.isError && d && d.totalRecibos === 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 flex items-start gap-2">
+          <Info size={16} className="mt-0.5 shrink-0" />
+          <span>
+            No hay recibos de nómina de <b>{d.anio}</b> en la bóveda todavía. Activa <b>«Revisión integral»</b> (arriba)
+            para descargarlos del SAT, o bájalos en <b>XML del SAT</b> (emitidos, tipo Nómina).
+          </span>
+        </div>
+      )}
+
+      {d && d.totalRecibos > 0 && (
         <>
           {/* Totales del año */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
