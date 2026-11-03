@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save, UserPlus, ClipboardList, MapPin, Timer, CheckCircle2, XCircle } from 'lucide-react';
+import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save, UserPlus, ClipboardList, MapPin, Timer, CheckCircle2, XCircle, FileSpreadsheet, FileText } from 'lucide-react';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import { parseCoordenadas } from '@/utils/coords';
 import { RegistroAsistencia } from '@/pages/nomina/RegistroAsistencia';
@@ -779,6 +779,18 @@ function TabTiempoExtra() {
                 className="text-sm font-semibold bg-indigo-600 text-white rounded-lg px-3 py-1.5 inline-flex items-center gap-1.5 hover:bg-indigo-700 disabled:opacity-50">
                 <Timer size={15} /> {enviarNomina.isPending ? 'Enviando…' : `Enviar a nómina (${autorizadas})`}
               </button>
+            )}
+            {filas.length > 0 && (
+              <div className="ml-auto flex items-center gap-2">
+                <button onClick={() => api.descargarTiempoExtraExcel(periodoId)}
+                  className="text-sm text-emerald-700 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-3 py-1.5 inline-flex items-center gap-1.5">
+                  <FileSpreadsheet size={15} /> Excel
+                </button>
+                <button onClick={() => api.descargarTiempoExtraPdf(periodoId)}
+                  className="text-sm text-rose-700 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg px-3 py-1.5 inline-flex items-center gap-1.5">
+                  <FileText size={15} /> PDF
+                </button>
+              </div>
             )}
           </div>
 

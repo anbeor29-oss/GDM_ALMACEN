@@ -4073,6 +4073,14 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/nomina/tiempo-extra/${periodoId}/a-nomina`, {});
     return r.data;
   }
+  async descargarTiempoExtraExcel(periodoId: string) {
+    const r = await this.client.get(`/nomina/tiempo-extra/${periodoId}/excel`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Tiempo_extra_${periodoId}.xlsx`);
+  }
+  async descargarTiempoExtraPdf(periodoId: string) {
+    const r = await this.client.get(`/nomina/tiempo-extra/${periodoId}/pdf`, { responseType: 'blob' });
+    await this.downloadFile(r.data as Blob, `Tiempo_extra_${periodoId}.pdf`);
+  }
 
   async getCheckadorTurnos() {
     const r = await this.client.get<APIResponse<any[]>>('/checador/turnos');

@@ -48,6 +48,7 @@ import * as nominaRecuperados from './nomina-recuperados.service';
 import * as revisionNomina from './revision-nomina.service';
 import { generarExcelRevision, generarPdfRevision } from './revision-excel.service';
 import * as tiempoExtra from './tiempo-extra.service';
+import { generarExcelTe, generarPdfTe } from './tiempo-extra-excel.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -459,6 +460,20 @@ router.post('/tiempo-extra/:periodoId/autorizar-todos', soloAdmin, asyncHandler(
 /** Manda el TE autorizado a la prenómina (percepción 019 Horas extra). */
 router.post('/tiempo-extra/:periodoId/a-nomina', soloAdmin, asyncHandler(async (req: Request, res: Response) =>
   res.json({ success: true, data: await tiempoExtra.aNomina(companyId(req), req.params.periodoId, req.user?.userId) })));
+
+/** Reporte del TE del periodo en Excel / PDF. */
+router.get('/tiempo-extra/:periodoId/excel', asyncHandler(async (req: Request, res: Response) => {
+  const { buffer, nombre } = await generarExcelTe(companyId(req), req.params.periodoId);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+  res.send(buffer);
+}));
+router.get('/tiempo-extra/:periodoId/pdf', asyncHandler(async (req: Request, res: Response) => {
+  const { buffer, nombre } = await generarPdfTe(companyId(req), req.params.periodoId);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+  res.send(buffer);
+}));
 
 /** Lista el TE del periodo. */
 router.get('/tiempo-extra/:periodoId', asyncHandler(async (req: Request, res: Response) =>
