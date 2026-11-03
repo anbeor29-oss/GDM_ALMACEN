@@ -115,7 +115,23 @@ const opinionVigente = (tipo: string) => `
      LIMIT 1
   ) ${tipo.toLowerCase()} ON TRUE`;
 
-export async function resumenDespacho(userId: string): Promise<ResumenDespacho | null> {
+export async function resumenDespacho(userId: string, companyId?: string): Promise<ResumenDespacho | null> {
+  // El resumen agregado de la cartera (físicas/morales + 32-D) es una vista del
+  // DESPACHO, no de una empresa cliente: sólo tiene sentido en la empresa CABECERA
+  // (la que se llama como el despacho, p. ej. GRUPO HCGM, donde están todos los
+  // datos). Para cualquier otra empresa activa de la cartera se omite.
+  if (companyId) {
+    const act = (await query<any>(
+      `SELECT c.business_name, d.nombre AS despacho_nombre
+         FROM companies c
+         LEFT JOIN despachos_contables d ON d.id = c.despacho_id AND d.deleted_at IS NULL
+        WHERE c.id = $1 AND c.deleted_at IS NULL`, [companyId])).rows[0];
+    const norm = (s: any) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!act || !act.despacho_nombre || norm(act.business_name) !== norm(act.despacho_nombre)) {
+      return null;
+    }
+  }
+
   const sql = (fuente: 'puente' | 'legado') => `
     SELECT c.rfc, d.nombre AS despacho_nombre,
            sat.sentido AS sat_sentido, imss.sentido AS imss_sentido

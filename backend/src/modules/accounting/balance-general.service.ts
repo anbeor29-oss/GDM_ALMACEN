@@ -106,15 +106,32 @@ export async function balanceGeneral(companyId: string, anio: number, mes: numbe
       propio: 0, hijos: [] as any[],
     });
   }
-  for (const n of porId.values()) {
-    const sf = saldoPorCodigo.get(String(n.codigo));
-    if (sf !== undefined) n.propio = sf * signo(n.tipo, n.naturaleza);
-  }
   const raices: any[] = [];
   for (const n of porId.values()) {
     if (n.parent_id && porId.has(n.parent_id)) porId.get(n.parent_id).hijos.push(n);
     else raices.push(n);
   }
+
+  // El saldo de cada CÓDIGO entra UNA sola vez. Si el catálogo trae cuentas
+  // DUPLICADAS (el mismo código en dos ramas —típico de un catálogo importado dos
+  // veces en datos viejos, cuando aún no regía la restricción de unicidad), el saldo
+  // se tomaba por código en CADA copia y DOBLABA los totales (el capital salía
+  // repetido y «PASIVO + CAPITAL» inflado). Se recorren las ramas de la MÁS completa
+  // a la menos (por número de cuentas) y el primer nodo que reclama un código se
+  // queda con el saldo; las copias quedan en cero y `armar` las poda, dejando UN
+  // solo árbol cuyo total cuadra con la balanza.
+  const cuantas = (n: any): number => 1 + n.hijos.reduce((a: number, h: any) => a + cuantas(h), 0);
+  const codigoYaConSaldo = new Set<string>();
+  const asignarSaldos = (n: any) => {
+    const cod = String(n.codigo);
+    if (cod && !codigoYaConSaldo.has(cod)) {
+      const sf = saldoPorCodigo.get(cod);
+      if (sf !== undefined) n.propio = sf * signo(n.tipo, n.naturaleza);
+      codigoYaConSaldo.add(cod);
+    }
+    for (const h of n.hijos) asignarSaldos(h);
+  };
+  for (const r of [...raices].sort((a, b) => cuantas(b) - cuantas(a))) asignarSaldos(r);
 
   // Rollup + poda: un nodo se queda si tiene saldo propio o algún hijo que se quede.
   // Devuelve el NodoBalance ya podado, o null si toda su rama está en cero.

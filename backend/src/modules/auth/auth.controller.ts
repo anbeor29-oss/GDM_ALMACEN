@@ -135,7 +135,7 @@ export async function misEmpresas(req: Request, res: Response) {
  *  del usuario pertenecen a un despacho contable (null si no hay despacho). */
 export async function despachoResumen(req: Request, res: Response) {
   const userId = (req as any).user?.userId;
-  const despacho = await resumenDespacho(userId);
+  const despacho = await resumenDespacho(userId, (req as any).user?.companyId);
   res.status(200).json({ success: true, data: { despacho } });
 }
 
