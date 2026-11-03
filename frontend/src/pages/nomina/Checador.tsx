@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save, UserPlus, ClipboardList, MapPin } from 'lucide-react';
+import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save, UserPlus, ClipboardList, MapPin, Timer, CheckCircle2, XCircle } from 'lucide-react';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import { parseCoordenadas } from '@/utils/coords';
 import { RegistroAsistencia } from '@/pages/nomina/RegistroAsistencia';
@@ -21,7 +21,7 @@ import api from '@/services/api';
 
 const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-type Tab = 'config' | 'kioscos' | 'turnos' | 'empleados' | 'registro';
+type Tab = 'config' | 'kioscos' | 'turnos' | 'empleados' | 'registro' | 'tiempo-extra';
 
 export function ChecadorPage() {
   const [tab, setTab] = useState<Tab>('config');
@@ -43,6 +43,7 @@ export function ChecadorPage() {
     { kind: 'link', to: '/checador/kiosco',  label: 'Abrir kiosco',   icon: Camera },
     { kind: 'link', to: '/checador/campo',   label: 'Campo',          icon: MapPin },
     { kind: 'tab',  id: 'registro',          label: 'Registro',       icon: ClipboardList },
+    { kind: 'tab',  id: 'tiempo-extra',      label: 'Tiempo extra',   icon: Timer },
   ];
 
   return (
@@ -70,6 +71,7 @@ export function ChecadorPage() {
       {tab === 'turnos' && <TabTurnos />}
       {tab === 'empleados' && <TabEmpleados />}
       {tab === 'registro' && <RegistroAsistencia />}
+      {tab === 'tiempo-extra' && <TabTiempoExtra />}
     </div>
   );
 }
@@ -618,6 +620,212 @@ function EditorEmpleado({ empleado, turnos }: { empleado: any; turnos: any[] }) 
 }
 
 /* ── util ── */
+/* Parámetros LEGALES del tiempo extra por año (versionados; el usuario los valida
+ * contra el DOF). No se hardcodean en el motor: viven en nomina_te_parametros. */
+function ParametrosTE({ anio }: { anio: number }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['te-parametros'], queryFn: () => api.getTiempoExtraParametros() });
+  const todos: any[] = q.data?.data || [];
+  const vig = [...todos].filter((p) => p.anio <= anio).sort((a, b) => b.anio - a.anio)[0];
+  const [edit, setEdit] = useState<any | null>(null);
+  const [msg, setMsg] = useState('');
+  const base = edit || vig;
+
+  const guardar = useMutation({
+    mutationFn: () => api.guardarTiempoExtraParametros({ ...base, anio: Number(base.anio) }),
+    onSuccess: () => { setMsg('Parámetros guardados.'); setEdit(null); qc.invalidateQueries({ queryKey: ['te-parametros'] }); },
+    onError: (e: any) => setMsg(e?.response?.data?.message || 'No se pudo guardar.'),
+  });
+
+  if (!vig && !edit) {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 flex items-center justify-between gap-2">
+        <span>No hay parámetros de tiempo extra para {anio}.</span>
+        <button onClick={() => setEdit({ anio, topeHorasSemana: 9, horasDoblesSemana: 9, topeHorasDia: 3, horasJornadaDia: 8, confirmado: false })}
+          className="text-xs font-semibold text-amber-800 underline">Capturar</button>
+      </div>
+    );
+  }
+  const set = (k: string, v: any) => setEdit({ ...base, [k]: v });
+  return (
+    <div className={`rounded-lg border p-3 ${vig?.confirmado ? 'border-emerald-200 bg-emerald-50/50' : 'border-amber-200 bg-amber-50/60'}`}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <span className="font-semibold text-gray-700">Parámetros TE {base?.anio}</span>
+        {!edit ? (
+          <>
+            <span className="text-gray-600">Tope semanal <b>{vig.topeHorasSemana} h</b></span>
+            <span className="text-gray-600">Doble hasta <b>{vig.horasDoblesSemana} h</b>/sem, luego triple</span>
+            <span className="text-gray-600">Jornada <b>{vig.horasJornadaDia} h</b>/día</span>
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${vig.confirmado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+              {vig.confirmado ? 'Confirmado' : 'Por validar DOF'}
+            </span>
+            <button onClick={() => setEdit({ ...vig, anio })} className="ml-auto text-xs font-semibold text-indigo-700 underline">Editar</button>
+          </>
+        ) : (
+          <>
+            <label className="flex items-center gap-1">Año <input type="number" className="input w-20 py-1" value={base.anio} onChange={(e) => set('anio', Number(e.target.value))} /></label>
+            <label className="flex items-center gap-1">Tope sem. <input type="number" step="0.5" className="input w-20 py-1" value={base.topeHorasSemana} onChange={(e) => set('topeHorasSemana', Number(e.target.value))} /></label>
+            <label className="flex items-center gap-1">Doble hasta <input type="number" step="0.5" className="input w-20 py-1" value={base.horasDoblesSemana} onChange={(e) => set('horasDoblesSemana', Number(e.target.value))} /></label>
+            <label className="flex items-center gap-1">Jornada/día <input type="number" step="0.5" className="input w-20 py-1" value={base.horasJornadaDia} onChange={(e) => set('horasJornadaDia', Number(e.target.value))} /></label>
+            <label className="flex items-center gap-1 text-sm"><input type="checkbox" checked={!!base.confirmado} onChange={(e) => set('confirmado', e.target.checked)} className="h-4 w-4 accent-emerald-600" /> Confirmado (cotejado DOF)</label>
+            <button onClick={() => guardar.mutate()} disabled={guardar.isPending} className="btn-primary py-1 px-3 text-xs">{guardar.isPending ? 'Guardando…' : 'Guardar'}</button>
+            <button onClick={() => { setEdit(null); setMsg(''); }} className="text-xs text-gray-500 underline">Cancelar</button>
+          </>
+        )}
+      </div>
+      {msg && <p className="text-xs text-indigo-800 mt-1">{msg}</p>}
+    </div>
+  );
+}
+
+/* ── Tiempo extra ──
+ * Detecta el TE del periodo (salida real vs salida programada + tolerancia del
+ * turno), lo clasifica doble/triple con el valor-hora y lo autoriza antes de que
+ * pase a nómina. El cálculo legal sale de los parámetros versionados. */
+const teMoney = (n: any) => Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+const minAHoras = (m: any) => `${Math.floor((Number(m) || 0) / 60)}h ${(Number(m) || 0) % 60}m`;
+
+function TabTiempoExtra() {
+  const qc = useQueryClient();
+  const [anio, setAnio] = useState(new Date().getFullYear());
+  const [tipo, setTipo] = useState('QUINCENAL');
+  const [periodoId, setPeriodoId] = useState('');
+  const [msg, setMsg] = useState('');
+
+  const periodosQ = useQuery({ queryKey: ['te-periodos', anio, tipo], queryFn: () => api.getPeriodosNomina({ anio, tipo }) });
+  const periodos: any[] = periodosQ.data?.data?.periodos || periodosQ.data?.data || [];
+
+  const teQ = useQuery({ queryKey: ['tiempo-extra', periodoId], queryFn: () => api.getTiempoExtra(periodoId), enabled: !!periodoId });
+  const data: any = teQ.data?.data;
+  const filas: any[] = data?.filas || [];
+  const tot = data?.totales;
+
+  const invalidar = () => qc.invalidateQueries({ queryKey: ['tiempo-extra', periodoId] });
+  const detectar = useMutation({
+    mutationFn: () => api.detectarTiempoExtra(periodoId),
+    onSuccess: (r: any) => { setMsg(r?.data?.aviso || 'Detección y cálculo listos.'); invalidar(); },
+    onError: (e: any) => setMsg(e?.response?.data?.message || 'No se pudo detectar.'),
+  });
+  const autorizar = useMutation({ mutationFn: (id: string) => api.autorizarTiempoExtra(id, null), onSuccess: invalidar });
+  const rechazar = useMutation({ mutationFn: (id: string) => api.rechazarTiempoExtra(id, 'Rechazado por el responsable'), onSuccess: invalidar });
+  const autorizarTodos = useMutation({ mutationFn: () => api.autorizarTodosTiempoExtra(periodoId), onSuccess: invalidar });
+
+  const badge = (s: string) => ({
+    DETECTADO: 'bg-amber-100 text-amber-800', AUTORIZADO: 'bg-emerald-100 text-emerald-800',
+    RECHAZADO: 'bg-rose-100 text-rose-700', ENVIADO: 'bg-sky-100 text-sky-800',
+    PAGADO: 'bg-emerald-100 text-emerald-800', CANCELADO: 'bg-gray-100 text-gray-600',
+  }[s] || 'bg-gray-100 text-gray-600');
+
+  return (
+    <div className="space-y-4">
+      <ParametrosTE anio={anio} />
+      <div className="bg-white rounded-lg shadow border p-4 flex flex-wrap items-end gap-3">
+        <Campo label="Año"><input type="number" className="input w-24" value={anio} onChange={(e) => setAnio(Number(e.target.value))} /></Campo>
+        <Campo label="Periodicidad">
+          <select className="input" value={tipo} onChange={(e) => { setTipo(e.target.value); setPeriodoId(''); }}>
+            <option value="SEMANAL">Semanal</option><option value="QUINCENAL">Quincenal</option><option value="MENSUAL">Mensual</option>
+          </select>
+        </Campo>
+        <Campo label="Periodo">
+          <select className="input min-w-[12rem]" value={periodoId} onChange={(e) => setPeriodoId(e.target.value)}>
+            <option value="">— elige —</option>
+            {periodos.map((p) => (
+              <option key={p.id} value={p.id}>#{p.numero} · {String(p.fecha_inicio).slice(0, 10)} a {String(p.fecha_fin).slice(0, 10)}</option>
+            ))}
+          </select>
+        </Campo>
+        {periodoId && (
+          <button onClick={() => { setMsg(''); detectar.mutate(); }} disabled={detectar.isPending}
+            className="btn-primary inline-flex items-center gap-2">
+            <Timer size={16} /> {detectar.isPending ? 'Detectando…' : 'Detectar / recalcular'}
+          </button>
+        )}
+      </div>
+
+      {msg && <p className="text-sm text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">{msg}</p>}
+
+      {periodoId && data && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[
+              ['Horas pagables', `${tot?.horasPagables ?? 0} h`],
+              ['Total bruto', teMoney(tot?.bruto)],
+              ['Exento ISR', teMoney(tot?.exento)],
+              ['Gravado ISR', teMoney(tot?.gravado)],
+              ['Pendientes', String(data.pendientes ?? 0)],
+            ].map(([l, v]) => (
+              <div key={l} className="bg-white rounded-lg border p-3">
+                <p className="text-[11px] text-gray-500 uppercase tracking-wide">{l}</p>
+                <p className="text-lg font-bold text-gray-900 tabular-nums">{v}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3">
+            {data.pendientes > 0 && (
+              <button onClick={() => autorizarTodos.mutate()} disabled={autorizarTodos.isPending}
+                className="text-sm text-emerald-700 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-3 py-1.5 inline-flex items-center gap-1.5">
+                <CheckCircle2 size={15} /> Autorizar lo pendiente ({data.pendientes})
+              </button>
+            )}
+          </div>
+
+          <div className="bg-white rounded-lg shadow border overflow-x-auto">
+            {filas.length === 0 ? (
+              <p className="text-sm text-gray-500 italic p-6 text-center">
+                Sin tiempo extra detectado. Revisa que el turno tenga activado «Calcular tiempo extra» y que haya checadas de SALIDA.
+              </p>
+            ) : (
+              <table className="w-full text-sm min-w-[980px]">
+                <thead className="bg-emerald-50/60 border-b border-emerald-200">
+                  <tr className="text-xs text-gray-600">
+                    <th className="px-3 py-2 text-left">Trabajador</th><th className="px-3 py-2">Fecha</th>
+                    <th className="px-3 py-2">Salida prog/real</th><th className="px-3 py-2 text-right">Min.</th>
+                    <th className="px-3 py-2 text-right">Dobles</th><th className="px-3 py-2 text-right">Triples</th>
+                    <th className="px-3 py-2 text-right">Importe</th><th className="px-3 py-2 text-right">Exento</th>
+                    <th className="px-3 py-2 text-right">Gravado</th><th className="px-3 py-2">Estatus</th><th className="px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filas.map((f) => (
+                    <tr key={f.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-1.5">{f.nombre}</td>
+                      <td className="px-3 py-1.5 text-center text-xs">{f.fecha}</td>
+                      <td className="px-3 py-1.5 text-center font-mono text-xs">{f.hora_salida_prog}→{f.hora_salida_real}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{minAHoras(f.minutos_detectados)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{f.horas_dobles} h · {teMoney(f.importe_dobles)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{f.horas_triples} h · {teMoney(f.importe_triples)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{teMoney(f.total_bruto)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-emerald-700">{teMoney(f.exento_isr)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-rose-700">{teMoney(f.gravado_isr)}</td>
+                      <td className="px-3 py-1.5 text-center">
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${badge(f.estatus)}`}>{f.estatus}</span>
+                      </td>
+                      <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                        {f.estatus === 'DETECTADO' && (
+                          <>
+                            <button onClick={() => autorizar.mutate(f.id)} title="Autorizar" className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"><CheckCircle2 size={15} /></button>
+                            <button onClick={() => rechazar.mutate(f.id)} title="Rechazar" className="p-1 text-rose-600 hover:bg-rose-50 rounded"><XCircle size={15} /></button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            Dobles/triples y la parte exenta/gravada de ISR salen de los <b>parámetros versionados</b> (Nómina → Parámetros);
+            valídalos contra el DOF. La tolerancia sólo <b>detecta</b>: nunca desconoce trabajo prestado. Lo <b>autorizado</b>
+            es lo que pasará a nómina.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Campo({ label, hint, children }: { label: string; hint?: string; children: any }) {
   return (
     <label className="block">

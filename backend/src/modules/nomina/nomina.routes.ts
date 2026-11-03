@@ -47,6 +47,7 @@ import * as plantillaEmp from './plantilla-empleados.service';
 import * as nominaRecuperados from './nomina-recuperados.service';
 import * as revisionNomina from './revision-nomina.service';
 import { generarExcelRevision, generarPdfRevision } from './revision-excel.service';
+import * as tiempoExtra from './tiempo-extra.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -431,6 +432,33 @@ router.get('/revision/:anio/pdf', asyncHandler(async (req: Request, res: Respons
   res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
   res.send(buffer);
 }));
+
+/* ── TIEMPO EXTRAORDINARIO (Checador, etapas 2/3) ──
+ * Parámetros legales versionados (antes que :periodoId para no colisionar). */
+router.get('/tiempo-extra/parametros', asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await tiempoExtra.listarParametros() })));
+
+router.put('/tiempo-extra/parametros', soloAdmin, asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await tiempoExtra.guardarParametros(req.body || {}, req.user?.userId) })));
+
+/** Autoriza/rechaza un renglón (segmento extra: no colisiona con :periodoId). */
+router.post('/tiempo-extra/registro/:id/autorizar', soloAdmin, asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await tiempoExtra.autorizar(companyId(req), req.params.id, req.body?.minutos ?? null, req.user?.userId) })));
+
+router.post('/tiempo-extra/registro/:id/rechazar', soloAdmin, asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await tiempoExtra.rechazar(companyId(req), req.params.id, String(req.body?.motivo || ''), req.user?.userId) })));
+
+/** Detecta + calcula el TE del periodo. */
+router.post('/tiempo-extra/:periodoId/detectar', soloAdmin, asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await tiempoExtra.detectarYCalcular(companyId(req), req.params.periodoId, req.user?.userId) })));
+
+/** Autoriza TODO lo pendiente del periodo. */
+router.post('/tiempo-extra/:periodoId/autorizar-todos', soloAdmin, asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await tiempoExtra.autorizarTodos(companyId(req), req.params.periodoId, req.user?.userId) })));
+
+/** Lista el TE del periodo. */
+router.get('/tiempo-extra/:periodoId', asyncHandler(async (req: Request, res: Response) =>
+  res.json({ success: true, data: await tiempoExtra.listar(companyId(req), req.params.periodoId) })));
 
 /* ── CFDI de nómina RECUPERADOS (histórico timbrado en la bóveda) ──
  * Timbrados de periodos anteriores rescatados del respaldo: se listan, se descarga

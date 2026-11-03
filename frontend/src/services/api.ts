@@ -4040,6 +4040,36 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>('/checador/config', body);
     return r.data;
   }
+  /* ── Tiempo extraordinario (Checador etapas 2/3) ── */
+  async getTiempoExtraParametros() {
+    const r = await this.client.get<APIResponse<any[]>>('/nomina/tiempo-extra/parametros');
+    return r.data;
+  }
+  async guardarTiempoExtraParametros(body: any) {
+    const r = await this.client.put<APIResponse<any>>('/nomina/tiempo-extra/parametros', body);
+    return r.data;
+  }
+  async detectarTiempoExtra(periodoId: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/tiempo-extra/${periodoId}/detectar`, {});
+    return r.data;
+  }
+  async getTiempoExtra(periodoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/nomina/tiempo-extra/${periodoId}`);
+    return r.data;
+  }
+  async autorizarTiempoExtra(id: string, minutos: number | null) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/tiempo-extra/registro/${id}/autorizar`, { minutos });
+    return r.data;
+  }
+  async rechazarTiempoExtra(id: string, motivo: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/tiempo-extra/registro/${id}/rechazar`, { motivo });
+    return r.data;
+  }
+  async autorizarTodosTiempoExtra(periodoId: string) {
+    const r = await this.client.post<APIResponse<any>>(`/nomina/tiempo-extra/${periodoId}/autorizar-todos`, {});
+    return r.data;
+  }
+
   async getCheckadorTurnos() {
     const r = await this.client.get<APIResponse<any[]>>('/checador/turnos');
     return r.data;
