@@ -1613,6 +1613,16 @@ router.get(
   })
 );
 
+/** GET /accounting/facturas-sin-clasificar?anio&mes — ClaveProdServ (compras/ventas) SIN cuenta */
+router.get(
+  '/facturas-sin-clasificar',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await compras.facturasSinClasificar(
+      companyId(req), Number(req.query.anio), Number(req.query.mes) || 0);
+    res.json({ success: true, data });
+  })
+);
+
 /** PUT /accounting/compras/productos — asigna la cuenta (115/601) a una ClaveProdServ */
 router.put(
   '/compras/productos',

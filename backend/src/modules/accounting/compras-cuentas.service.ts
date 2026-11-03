@@ -7,7 +7,7 @@
  * los productos de los recibidos que SÍ tengan XML. Sin XML no hay conceptos.
  */
 import { query } from '../../config/database';
-import { conceptosDeXml } from './ventas-cuentas.service';
+import { conceptosDeXml, clavesProdServDeEmitidos } from './ventas-cuentas.service';
 
 // mes 0 (o fuera de 1..12) = TODO EL AÑO — mismo criterio que listarPolizas.
 const iniDeMes = (a: number, m: number) => (m >= 1 && m <= 12) ? `${a}-${String(m).padStart(2, '0')}-01` : `${a}-01-01`;
@@ -61,4 +61,31 @@ export async function mapaProductoCuentaCompra(companyId: string): Promise<Map<s
     `SELECT clave_prod_serv, cuenta_codigo FROM compra_producto_cuenta
       WHERE company_id=$1 AND cuenta_codigo IS NOT NULL`, [companyId]);
   return new Map<string, string>(r.rows.map((x: any) => [x.clave_prod_serv, x.cuenta_codigo]));
+}
+
+/**
+ * ¿Faltan facturas por clasificar en el mes/año? Son las ClaveProdServ SIN cuenta
+ * asignada —de compras (115/601) y de ventas (401)—: si una factura trae una de
+ * ellas, su póliza se OMITE (ver polizas.service). Se usa para avisar ANTES de
+ * reconstruir el mes, para que nada quede fuera de la balanza sin que nos demos
+ * cuenta. NO modifica nada: sólo cuenta y lista.
+ */
+export async function facturasSinClasificar(companyId: string, anio: number, mes: number) {
+  const [compras, ventas] = await Promise.all([
+    clavesProdServDeRecibidos(companyId, anio, mes),
+    clavesProdServDeEmitidos(companyId, anio, mes),
+  ]);
+  const resumen = (arr: any[]) => {
+    const faltan = arr.filter((p) => !p.cuenta);
+    return {
+      claves: faltan.length,
+      registros: faltan.reduce((a, p) => a + (p.veces || 0), 0),
+      importe: Math.round(faltan.reduce((a, p) => a + (p.importe || 0), 0) * 100) / 100,
+      items: faltan.slice(0, 50).map((p) => ({
+        clave: p.clave, descripcion: p.descripcion, veces: p.veces, importe: p.importe,
+      })),
+    };
+  };
+  const c = resumen(compras), v = resumen(ventas);
+  return { compras: c, ventas: v, total: c.claves + v.claves };
 }

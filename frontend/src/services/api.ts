@@ -1634,6 +1634,11 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>('/accounting/compras/productos', { clave, descripcion, cuenta });
     return r.data;
   }
+  /** Productos (ClaveProdServ) de compras/ventas SIN cuenta en el periodo — para avisar al reconstruir. */
+  async getFacturasSinClasificar(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/facturas-sin-clasificar', { params: { anio, mes } });
+    return r.data;
+  }
   async generarCompras(anio: number, mes: number, todoElAnio = false) {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-compras', { anio, mes, todoElAnio });
     return r.data;

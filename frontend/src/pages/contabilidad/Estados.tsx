@@ -41,7 +41,25 @@ export function BalanzaPage() {
   const { anio, mes, setAnio, setMes } = usePeriodoTrabajo(pAnio, pMes, true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [aviso, setAviso] = useState('');
   const [auxiliar, setAuxiliar] = useState<string | null>(null);
+
+  // ¿Quedan facturas sin clasificar en el periodo? (ClaveProdServ sin cuenta: su
+  // póliza se omite). Se consulta al reconstruir para no cerrar un mes incompleto.
+  const avisoSinClasificar = async (m: number): Promise<string> => {
+    try {
+      const r: any = await api.getFacturasSinClasificar(anio, m);
+      const d = r?.data || {};
+      if (!d.total) return '';
+      const partes: string[] = [];
+      if (d.compras?.claves) partes.push(`${d.compras.claves} de compra`);
+      if (d.ventas?.claves) partes.push(`${d.ventas.claves} de venta`);
+      const periodo = m >= 1 && m <= 12 ? `${MESES[m]} ${anio}` : `${anio}`;
+      return `Faltan ${partes.join(' y ')} producto(s) por clasificar en ${periodo}: ` +
+        `sus facturas NO entran en la póliza ni en esta balanza. ` +
+        `Asígnales cuenta en Contabilidad → Asignación de cuentas.`;
+    } catch { return ''; }
+  };
 
   const q = useQuery({
     queryKey: ['balanza-periodo', anio, mes],
@@ -50,10 +68,11 @@ export function BalanzaPage() {
   const d: any = q.data?.data;
 
   const actualizar = async () => {
-    setBusy(true); setMsg('');
+    setBusy(true); setMsg(''); setAviso('');
     try {
       const r: any = await api.actualizarBalanzaDesdePolizas(anio, mes);
       setMsg(r.message || 'Balanza actualizada.');
+      setAviso(await avisoSinClasificar(mes));
       qc.invalidateQueries({ queryKey: ['balanza-periodo', anio, mes] });
     } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo actualizar.'); }
     finally { setBusy(false); }
@@ -61,10 +80,11 @@ export function BalanzaPage() {
 
   const reconstruirAnio = async () => {
     if (!window.confirm(`¿Reconstruir la balanza de los 12 meses de ${anio} desde las pólizas?\n\nSe re-deriva cada mes EN ORDEN (cada mes arrastra del anterior). Los meses SIN pólizas —como la apertura cargada de un respaldo de balanza— se dejan intactos.`)) return;
-    setBusy(true); setMsg('');
+    setBusy(true); setMsg(''); setAviso('');
     try {
       const r: any = await api.actualizarBalanzaAnualDesdePolizas(anio);
       setMsg(r.message || 'Año reconstruido.');
+      setAviso(await avisoSinClasificar(0));   // 0 = todo el año
       qc.invalidateQueries({ queryKey: ['balanza-periodo', anio, mes] });
     } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo reconstruir el año.'); }
     finally { setBusy(false); }
@@ -119,6 +139,15 @@ export function BalanzaPage() {
       </div>
 
       {msg && <p className="text-sm text-emerald-700">{msg}</p>}
+      {aviso && (
+        <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          <span>
+            {aviso}{' '}
+            <a href="/contabilidad/asignacion" className="font-semibold underline hover:text-amber-900">Abrir asignación</a>
+          </span>
+        </div>
+      )}
       {q.isLoading && <p className="text-gray-500">Cargando…</p>}
 
       {(!d || d?.vacio) && !q.isLoading && (

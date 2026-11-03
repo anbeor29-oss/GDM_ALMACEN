@@ -202,7 +202,7 @@ function RenglonProducto({ p, nombreCta, onGuardar, onCrear, sugerencia }: {
       <td className="px-4 py-2 text-right text-sm">{money(p.importe)}</td>
       <td className="px-4 py-2">
         <CuentaPicker listId="ctas-compras" nombreCta={nombreCta} value={p.cuenta}
-          onSave={(codigo) => onGuardar(p, codigo)} onCrear={onCrear} placeholder="115/601…" ancho="w-64" />
+          onSave={(codigo) => onGuardar(p, codigo)} onCrear={onCrear} placeholder="115/601…" ancho="w-72" />
         {!p.cuenta && sugerencia && (
           <button onClick={() => onGuardar(p, sugerencia)}
             className="mt-1 text-[11px] text-emerald-700 hover:underline flex items-center gap-1"

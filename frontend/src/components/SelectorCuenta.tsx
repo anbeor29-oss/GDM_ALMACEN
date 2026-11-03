@@ -9,7 +9,8 @@
  *
  * Trabaja por CÓDIGO: `value` es el código y `onChange(codigo)` lo devuelve.
  */
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, PlusCircle, Check } from 'lucide-react';
 import { ModalCrearSubcuenta } from '@/components/ModalCrearSubcuenta';
@@ -38,6 +39,41 @@ export function SelectorCuenta({
   const [idx, setIdx] = useState(0);
   const [creando, setCreando] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // La lista se dibuja en un PORTAL con posición fija, anclada al input: así no la
+  // recorta el `overflow` de la tabla/tarjeta que la contiene (antes, al abrir en
+  // el último renglón, se cortaba y no se veían las cuentas). Se reposiciona al
+  // hacer scroll o cambiar el tamaño; si abajo no cabe, abre hacia arriba.
+  const [pos, setPos] = useState<{ left: number; width: number; top: number; bottom: number; maxH: number; arriba: boolean } | null>(null);
+  const medir = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const margen = 8;
+    const abajo = window.innerHeight - r.bottom - margen;
+    const arriba = r.top - margen;
+    const haciaArriba = abajo < 200 && arriba > abajo;
+    const maxH = Math.max(140, Math.min(288, haciaArriba ? arriba : abajo));
+    const width = Math.max(r.width, 300);
+    let left = r.left;
+    if (left + width > window.innerWidth - margen) left = Math.max(margen, window.innerWidth - margen - width);
+    setPos({ left, width, maxH, arriba: haciaArriba, top: r.bottom + 4, bottom: window.innerHeight - r.top + 4 });
+  };
+  useLayoutEffect(() => {
+    if (!abierto) { setPos(null); return; }
+    medir();
+    const onScroll = (e: Event) => {
+      if (panelRef.current && e.target instanceof Node && panelRef.current.contains(e.target)) return;
+      medir();
+    };
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', medir);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', medir);
+    };
+  }, [abierto]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const porCodigo = useMemo(() => new Map(cuentas.map((c) => [c.codigo, c])), [cuentas]);
   const sel = value ? porCodigo.get(value) : undefined;
@@ -89,8 +125,11 @@ export function SelectorCuenta({
         <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
       </div>
 
-      {abierto && (
-        <div className="absolute z-30 mt-1 w-full min-w-[16rem] max-h-64 overflow-y-auto bg-white border rounded-lg shadow-lg text-sm">
+      {abierto && pos && createPortal(
+        <div ref={panelRef}
+          style={{ position: 'fixed', left: pos.left, width: pos.width, maxHeight: pos.maxH,
+            ...(pos.arriba ? { bottom: pos.bottom } : { top: pos.top }) }}
+          className="z-[60] overflow-y-auto bg-white border rounded-lg shadow-lg text-sm">
           {filtradas.length === 0 && !permitirCrear && (
             <div className="px-3 py-2 text-gray-400">Sin coincidencias.</div>
           )}
@@ -111,8 +150,7 @@ export function SelectorCuenta({
               <PlusCircle size={14} /> Crear cuenta{busca.trim() ? ` «${busca.trim()}»` : ''}
             </button>
           )}
-        </div>
-      )}
+        </div>, document.body)}
 
       {creando !== null && (
         <ModalCrearSubcuenta
