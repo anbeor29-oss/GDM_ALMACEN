@@ -10,6 +10,7 @@ import { CatalogoCuentasPage } from './CatalogoCuentas';
 import { AsignacionCuentasPage } from './AsignacionCuentas';
 import { AuxiliarCuentasPage } from './AuxiliarCuentas';
 import { CambioCuentaPage } from './CambioCuenta';
+import { CuentasDuplicadasPage } from './CuentasDuplicadas';
 
 export function CuentasHubPage() {
   return (
@@ -21,6 +22,7 @@ export function CuentasHubPage() {
         ['asignacion', 'Asignación de cuentas', () => <AsignacionCuentasPage />],
         ['auxiliar', 'Auxiliar de cuentas', () => <AuxiliarCuentasPage />],
         ['cambio', 'Cambios de cuenta', () => <CambioCuentaPage />],
+        ['duplicadas', 'Cuentas duplicadas', () => <CuentasDuplicadasPage />],
       ]}
     />
   );

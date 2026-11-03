@@ -1639,6 +1639,21 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/facturas-sin-clasificar', { params: { anio, mes } });
     return r.data;
   }
+  /** Reconstruye la cartera de cobranza desde los XML (PPD menos complementos de pago). */
+  async reconstruirCobranza(rfc?: string) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/cobranza/reconstruir', { params: rfc ? { rfc } : {} });
+    return r.data;
+  }
+  /** Cuentas del catálogo con el MISMO código (duplicadas) — preview. */
+  async getCuentasDuplicadas() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/cuentas-duplicadas');
+    return r.data;
+  }
+  /** Fusiona las cuentas duplicadas en una sola por código (reapunta pólizas y saldos). */
+  async fusionarCuentasDuplicadas() {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas-duplicadas/fusionar', {});
+    return r.data;
+  }
   async generarCompras(anio: number, mes: number, todoElAnio = false) {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-compras', { anio, mes, todoElAnio });
     return r.data;

@@ -45,6 +45,8 @@ import * as cierre from './cierre-ejercicio.service';
 import * as diotSvc from './diot.service';
 import * as contabElec from './contabilidad-electronica.service';
 import * as recuperacionCpq from './recuperacion-cpq.service';
+import * as cuentasDup from './cuentas-duplicadas.service';
+import * as cobranzaRecon from './cobranza-reconstruccion.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
@@ -1610,6 +1612,33 @@ router.get(
     const data = await compras.clavesProdServDeRecibidos(
       companyId(req), Number(req.query.anio), Number(req.query.mes));
     res.json({ success: true, data: { productos: data } });
+  })
+);
+
+/** GET /accounting/cobranza/reconstruir?rfc= — cartera reconstruida desde XML (PPD − complementos de pago) */
+router.get(
+  '/cobranza/reconstruir',
+  asyncHandler(async (req: Request, res: Response) => {
+    const rfc = req.query.rfc ? String(req.query.rfc) : undefined;
+    res.json({ success: true, data: await cobranzaRecon.reconstruirCartera(companyId(req), rfc) });
+  })
+);
+
+/** GET /accounting/cuentas-duplicadas — cuentas del catálogo con el MISMO código (preview, solo lectura) */
+router.get(
+  '/cuentas-duplicadas',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await cuentasDup.detectar(companyId(req)) });
+  })
+);
+
+/** POST /accounting/cuentas-duplicadas/fusionar — consolida cada código en una sola cuenta */
+router.post(
+  '/cuentas-duplicadas/fusionar',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await cuentasDup.fusionar(companyId(req));
+    res.json({ success: true, data: r, message: r.mensaje });
   })
 );
 
