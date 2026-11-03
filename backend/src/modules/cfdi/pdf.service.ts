@@ -33,6 +33,7 @@ import { query } from '../../config/database';
 import { NotFoundError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import { getCompanyLogo } from './logo-cache';
+import { NEXO_LOGO_PNG } from './nexo-logo.data';
 import { getTema } from './pdf-temas';
 import { renderFacturaFarsystems } from './pdf-farsystems';
 import { renderFacturaGncys } from './pdf-gncys';
@@ -1033,6 +1034,19 @@ function generateFooter(doc: PDFDoc, invoice: any) {
     PAGE_LEFT, y + 6,
     { width: PAGE_RIGHT - PAGE_LEFT, align: 'center', lineBreak: false }
   );
+
+  // Pie de marca: logo de GDM NEXO + «Sistema de GDM NEXO», centrado bajo la leyenda.
+  try {
+    const lh = 10;                 // alto/ancho del logo en pt (es cuadrado 44×44)
+    const label = 'Sistema de GDM NEXO';
+    doc.font('Helvetica').fontSize(7.5);
+    const tw = doc.widthOfString(label);
+    const gap = 4;
+    const startX = PAGE_LEFT + ((PAGE_RIGHT - PAGE_LEFT) - (lh + gap + tw)) / 2;
+    const ly = y + 17;
+    doc.image(NEXO_LOGO_PNG, startX, ly, { width: lh, height: lh });
+    doc.fillColor('#64748b').text(label, startX + lh + gap, ly + 1.5, { lineBreak: false });
+  } catch { /* si el logo falla, no bloquea el PDF */ }
 
   doc.page.margins = origMargins;
   doc.fillColor('#000000');
