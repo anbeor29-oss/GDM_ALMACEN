@@ -218,9 +218,12 @@ export async function revisionAnual(companyId: string, anio: number) {
     if (!porRfc.has(key)) porRfc.set(key, { rfc: x.rfcTrabajador, nombre: x.nombreTrabajador, ...acumVacio() });
     sumar(porRfc.get(key)!, x);
   }
+  // OJO: `redondear` recorre TODAS las llaves; si se le pasa el objeto completo
+  // convierte rfc/nombre (texto) en 0 y luego `nombre.localeCompare` revienta.
+  // Por eso se redondea SÓLO el acumulado y se reatan rfc/nombre aparte.
   const trabajadores = Array.from(porRfc.values())
-    .map((t) => ({ ...t, ...redondear(t) }))
-    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    .map(({ rfc, nombre, ...acum }) => ({ rfc, nombre, ...redondear(acum) }))
+    .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
 
   // Acumulado por MES (1–12 con datos)
   const porMesMap = new Map<number, Acum>();
