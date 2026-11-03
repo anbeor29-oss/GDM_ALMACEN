@@ -75,10 +75,16 @@ export async function crearTurno(companyId: string, d: any) {
   }
   const r = await query<any>(
     `INSERT INTO checador_turnos
-       (company_id, nombre, hora_entrada, comida_inicio, comida_fin, hora_salida, dias)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+       (company_id, nombre, hora_entrada, comida_inicio, comida_fin, hora_salida, dias,
+        tolerancia_salida_min, calcula_tiempo_extra, requiere_autorizacion_te, responsable_autorizacion, redondeo_min)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
     [companyId, d.nombre, d.hora_entrada, d.comida_inicio || null, d.comida_fin || null,
-     d.hora_salida, d.dias || [1, 2, 3, 4, 5]]);
+     d.hora_salida, d.dias || [1, 2, 3, 4, 5],
+     d.tolerancia_salida_min != null && d.tolerancia_salida_min !== '' ? Number(d.tolerancia_salida_min) : null,
+     !!d.calcula_tiempo_extra,
+     d.requiere_autorizacion_te == null ? true : !!d.requiere_autorizacion_te,
+     d.responsable_autorizacion || null,
+     Number(d.redondeo_min) || 0]);
   return r.rows[0];
 }
 
@@ -89,10 +95,20 @@ export async function actualizarTurno(companyId: string, id: string, d: any) {
        hora_entrada = COALESCE($4, hora_entrada),
        comida_inicio = $5, comida_fin = $6,
        hora_salida = COALESCE($7, hora_salida),
-       dias = COALESCE($8, dias)
+       dias = COALESCE($8, dias),
+       tolerancia_salida_min = $9,
+       calcula_tiempo_extra = COALESCE($10, calcula_tiempo_extra),
+       requiere_autorizacion_te = COALESCE($11, requiere_autorizacion_te),
+       responsable_autorizacion = $12,
+       redondeo_min = COALESCE($13, redondeo_min)
      WHERE id = $1 AND company_id = $2 RETURNING *`,
     [id, companyId, d.nombre ?? null, d.hora_entrada ?? null, d.comida_inicio || null,
-     d.comida_fin || null, d.hora_salida ?? null, d.dias ?? null]);
+     d.comida_fin || null, d.hora_salida ?? null, d.dias ?? null,
+     d.tolerancia_salida_min != null && d.tolerancia_salida_min !== '' ? Number(d.tolerancia_salida_min) : null,
+     d.calcula_tiempo_extra == null ? null : !!d.calcula_tiempo_extra,
+     d.requiere_autorizacion_te == null ? null : !!d.requiere_autorizacion_te,
+     d.responsable_autorizacion ?? null,
+     d.redondeo_min != null && d.redondeo_min !== '' ? Number(d.redondeo_min) : null]);
   if (!r.rows.length) throw new NotFoundError('Turno no encontrado');
   return r.rows[0];
 }

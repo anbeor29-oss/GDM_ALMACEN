@@ -301,7 +301,11 @@ function TabTurnos() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['checador-turnos'], queryFn: () => api.getCheckadorTurnos() });
   const turnos: any[] = q.data?.data || [];
-  const vacio = { nombre: '', hora_entrada: '', comida_inicio: '', comida_fin: '', hora_salida: '', dias: [1, 2, 3, 4, 5] };
+  const vacio = {
+    nombre: '', hora_entrada: '', comida_inicio: '', comida_fin: '', hora_salida: '', dias: [1, 2, 3, 4, 5],
+    tolerancia_salida_min: '', calcula_tiempo_extra: false, requiere_autorizacion_te: true,
+    responsable_autorizacion: '', redondeo_min: 0,
+  };
   const [nuevo, setNuevo] = useState<any>(vacio);
   const [error, setError] = useState('');
 
@@ -339,12 +343,12 @@ function TabTurnos() {
             <tr>
               <th className="px-4 py-2 text-left">Turno</th><th className="px-4 py-2">Entrada</th>
               <th className="px-4 py-2">Comida</th><th className="px-4 py-2">Salida</th>
-              <th className="px-4 py-2">Días</th><th className="px-4 py-2"></th>
+              <th className="px-4 py-2">Días</th><th className="px-4 py-2">Tiempo extra</th><th className="px-4 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {turnos.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">Sin turnos. Crea el primero abajo.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-500">Sin turnos. Crea el primero abajo.</td></tr>
             ) : turnos.map((t) => (
               <tr key={t.id}>
                 <td className="px-4 py-2 font-medium">{t.nombre}</td>
@@ -354,6 +358,11 @@ function TabTurnos() {
                 </td>
                 <td className="px-4 py-2 text-center font-mono">{String(t.hora_salida).slice(0, 5)}</td>
                 <td className="px-4 py-2 text-center text-xs">{(t.dias || []).map((d: number) => DIAS[d]).join(' ')}</td>
+                <td className="px-4 py-2 text-center text-xs">
+                  {t.calcula_tiempo_extra
+                    ? <span className="text-emerald-700">Sí · tol. {t.tolerancia_salida_min ?? 0}′{t.requiere_autorizacion_te ? ' · autoriza' : ''}</span>
+                    : <span className="text-gray-400">—</span>}
+                </td>
                 <td className="px-4 py-2 text-right">
                   <button onClick={() => borrar.mutate(t.id)} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded" title="Eliminar">
                     <Trash2 size={16} />
@@ -375,6 +384,43 @@ function TabTurnos() {
           <Campo label="Comida fin"><input type="time" className="input" value={nuevo.comida_fin} onChange={(e) => setNuevo({ ...nuevo, comida_fin: e.target.value })} /></Campo>
         </div>
         <p className="text-[11px] text-gray-400 mt-1">Si un campo de hora muestra «-----», toca esa parte y elige AM/PM (o teclea la hora completa) para que se guarde.</p>
+
+        {/* Tiempo extraordinario — parámetros por turno (detección). El cálculo
+            legal (dobles/triples, parte exenta/gravada) es la etapa siguiente. */}
+        <div className="mt-4 border-t pt-3">
+          <p className="text-xs font-semibold text-gray-600 mb-2">Tiempo extraordinario</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <label className="flex items-center gap-2 text-sm md:col-span-1">
+              <input type="checkbox" checked={nuevo.calcula_tiempo_extra}
+                onChange={(e) => setNuevo({ ...nuevo, calcula_tiempo_extra: e.target.checked })}
+                className="h-4 w-4 accent-blue-600" />
+              Calcular tiempo extra
+            </label>
+            <Campo label="Tolerancia de salida (min)">
+              <input type="number" min={0} className="input" value={nuevo.tolerancia_salida_min}
+                onChange={(e) => setNuevo({ ...nuevo, tolerancia_salida_min: e.target.value })} placeholder="15" />
+            </Campo>
+            <Campo label="Redondeo (min)">
+              <input type="number" min={0} className="input" value={nuevo.redondeo_min}
+                onChange={(e) => setNuevo({ ...nuevo, redondeo_min: e.target.value })} placeholder="0 = no redondear" />
+            </Campo>
+            <Campo label="Responsable de autorización">
+              <input className="input" value={nuevo.responsable_autorizacion}
+                onChange={(e) => setNuevo({ ...nuevo, responsable_autorizacion: e.target.value })} placeholder="Nombre" />
+            </Campo>
+          </div>
+          <label className="flex items-center gap-2 text-sm mt-2">
+            <input type="checkbox" checked={nuevo.requiere_autorizacion_te}
+              onChange={(e) => setNuevo({ ...nuevo, requiere_autorizacion_te: e.target.checked })}
+              className="h-4 w-4 accent-blue-600" />
+            Requiere autorización de un responsable antes de mandarlo a nómina
+          </label>
+          <p className="text-[11px] text-gray-400 mt-1">
+            La tolerancia es sólo para <b>detectar</b>; nunca desconoce el trabajo efectivamente prestado. El cálculo y la
+            clasificación legal (dobles/triples, parte exenta/gravada de ISR) es la etapa siguiente.
+          </p>
+        </div>
+
         <div className="mt-3">
           <span className="text-xs text-gray-500">Días laborales:</span>
           <div className="flex gap-1 mt-1">
