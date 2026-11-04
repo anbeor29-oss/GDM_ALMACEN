@@ -47,8 +47,16 @@ router.delete('/comprobantes/:id', asyncHandler(async (req: Request, res: Respon
 }));
 /* Timbrado: gated (rol SAT de adquirente + PAC de adquirentes). Ver el servicio. */
 router.post('/comprobantes/:id/timbrar', asyncHandler(async (req: Request, res: Response) => {
-  await svc.timbrarComprobante(companyId(req), req.params.id);
-  res.json({ success: true });
+  const r = await svc.timbrarComprobante(companyId(req), req.params.id);
+  res.json({ success: true, data: r });
+}));
+
+/** Configuración de autofacturación (rol de adquirente ante el SAT). */
+router.get('/config', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await svc.obtenerConfig(companyId(req)) });
+}));
+router.put('/config', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await svc.guardarRol(companyId(req), String(req.body?.rol || '')) });
 }));
 
 export default router;

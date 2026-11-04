@@ -46,16 +46,7 @@ export function AutofacturacionPage() {
         </p>
       </div>
 
-      {/* Aviso de timbrado gated. */}
-      <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
-        <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-        <p>
-          <b>Timbrado pendiente de activar.</b> Emitir por cuenta del adquirente requiere el
-          <b> «rol de facturación a través del adquirente»</b> ante el SAT y un <b>PAC con servicio de
-          adquirentes</b> (el sellado no usa el CSD del emisor). Por ahora se <b>captura y previsualiza</b>
-          {' '}el CFDI (BORRADOR). Cuando tengas el rol y el PAC, se conecta el timbrado.
-        </p>
-      </div>
+      <ConfigAutofactura />
 
       <div className="flex gap-1.5 flex-wrap">
         {([['comprobantes', 'Comprobantes'], ['enajenantes', 'Enajenantes']] as const).map(([k, label], i) => (
@@ -67,6 +58,71 @@ export function AutofacturacionPage() {
       </div>
 
       {tab === 'enajenantes' ? <TabEnajenantes /> : <TabComprobantes />}
+    </div>
+  );
+}
+
+/* ───────────────── CONFIGURACIÓN (rol de adquirente ante el SAT) ───────────────── */
+function ConfigAutofactura() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['autofact-config'], queryFn: () => api.getAutofacturaConfig() });
+  const cfg: any = q.data?.data || {};
+  const [rol, setRol] = useState('');
+  const [editando, setEditando] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const guardar = async () => {
+    setBusy(true); setMsg('');
+    try {
+      await api.setAutofacturaRol(rol);
+      setMsg('Rol guardado.'); setEditando(false);
+      qc.invalidateQueries({ queryKey: ['autofact-config'] });
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo guardar.'); }
+    finally { setBusy(false); }
+  };
+
+  const habilitado = !!cfg.habilitado;
+  const enVivo = cfg.ambiente === 'PRODUCCION';
+
+  return (
+    <div className={`rounded-lg border px-3 py-2.5 text-xs ${habilitado ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+      <div className="flex items-start gap-2">
+        {habilitado ? <Info size={15} className="mt-0.5 shrink-0 text-emerald-700" />
+                    : <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-700" />}
+        <div className="flex-1">
+          {habilitado ? (
+            <p className="text-emerald-800">
+              <b>Rol de adquirente capturado.</b> El timbrado está conectado al PAC en ambiente{' '}
+              <b>{enVivo ? 'PRODUCCIÓN (en vivo)' : 'PRUEBAS'}</b>. {!enVivo &&
+                <>Para emitir real, marca la empresa como <b>PRODUCCIÓN</b> (Súper Admin) y configura el servicio de adquirentes del PAC. </>}
+              Si un comprobante no está correcto, <b>no se emite</b>.
+            </p>
+          ) : (
+            <p className="text-amber-800">
+              <b>Falta el rol ante el SAT para timbrar.</b> Emitir por cuenta del adquirente (RMF 2.7.3) requiere el
+              <b> «rol de facturación por cuenta del adquirente»</b>. Captúralo aquí; sin él, se captura/previsualiza pero <b>no se timbra</b>.
+            </p>
+          )}
+
+          {(editando || !habilitado) ? (
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <input value={rol} onChange={(e) => setRol(e.target.value)}
+                placeholder="Referencia / autorización del rol ante el SAT"
+                className="input py-1 text-xs w-72" />
+              <button onClick={guardar} disabled={busy || !rol.trim()}
+                className="inline-flex items-center gap-1 bg-primary text-white px-2.5 py-1 rounded-lg disabled:opacity-50">
+                <Save size={13} /> {busy ? 'Guardando…' : 'Guardar rol'}
+              </button>
+              {editando && <button onClick={() => setEditando(false)} className="text-gray-500">Cancelar</button>}
+            </div>
+          ) : (
+            <button onClick={() => { setRol(cfg.rol || ''); setEditando(true); }}
+              className="mt-1 text-emerald-700 underline hover:text-emerald-900">Editar rol ({cfg.rol})</button>
+          )}
+          {msg && <p className="mt-1 text-gray-600">{msg}</p>}
+        </div>
+      </div>
     </div>
   );
 }

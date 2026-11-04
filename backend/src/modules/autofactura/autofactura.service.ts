@@ -19,6 +19,7 @@
 import { query } from '../../config/database';
 import { NotFoundError, ValidationError } from '../../middleware/errorHandler';
 import { fmtFechaSAT } from '../cfdi/build-cfdi-json.service';
+import * as pac from '../pac/pac.service';
 
 /** RFC genérico nacional para enajenantes sin RFC (RMF 2.7.3 / c_RFC). */
 export const RFC_GENERICO = 'XAXX010101000';
@@ -307,17 +308,73 @@ export async function borrarComprobante(companyId: string, id: string) {
   return { borrado: true };
 }
 
+/** Configuración de autofacturación de la empresa (el rol ante el SAT + ambiente). */
+export async function obtenerConfig(companyId: string) {
+  const r = await query<any>(
+    `SELECT autofactura_rol_sat, timbrado_ambiente FROM companies WHERE id=$1`, [companyId]);
+  const c = r.rows[0] || {};
+  return {
+    rol: c.autofactura_rol_sat || '',
+    ambiente: c.timbrado_ambiente || 'PRUEBAS',
+    habilitado: !!c.autofactura_rol_sat,   // con rol capturado ya se puede intentar timbrar
+  };
+}
+
+/** Captura/actualiza el «rol de facturación por cuenta del adquirente» ante el SAT. */
+export async function guardarRol(companyId: string, rol: string) {
+  await query(
+    `UPDATE companies SET autofactura_rol_sat=$2, updated_at=NOW() WHERE id=$1`,
+    [companyId, (rol || '').trim() || null]);
+  return obtenerConfig(companyId);
+}
+
+/** Valida que el CFDI armado esté COMPLETO antes de mandarlo al PAC: si algo falta,
+ *  no se emite (evita mandar un comprobante mal armado al SAT). */
+function validarParaTimbrar(json: any): string[] {
+  const faltan: string[] = [];
+  if (!json?.Emisor?.Rfc) faltan.push('RFC del enajenante (emisor)');
+  if (!json?.Receptor?.Rfc) faltan.push('RFC del adquirente (receptor)');
+  if (!json?.LugarExpedicion) faltan.push('lugar de expedición (CP)');
+  if (!Array.isArray(json?.Conceptos) || json.Conceptos.length === 0) faltan.push('conceptos');
+  if (!(Number(json?.Total) > 0)) faltan.push('total mayor a cero');
+  return faltan;
+}
+
 /**
- * TIMBRAR — gated. La emisión por cuenta del adquirente NO usa el CSD del emisor
- * (el enajenante no tiene): requiere el «rol de facturación a través del
- * adquirente» ante el SAT y un PAC con servicio de adquirentes. Hasta activarlo,
- * no se emite nada (evita mandar un CFDI mal armado ante el SAT).
+ * TIMBRAR autofacturación. Dos candados ANTES de mandar nada al PAC:
+ *   1. La empresa debe tener capturado el ROL de adquirente ante el SAT (RMF 2.7.3).
+ *   2. El comprobante debe estar correcto (si no, no se emite).
+ * Si ambos pasan, se manda al PAC con el ambiente/credenciales de la empresa. En
+ * PRUEBAS el SW sólo acepta su RFC de prueba, así que no sale un CFDI real por
+ * accidente: para timbrar en vivo la empresa debe estar en PRODUCCIÓN (Súper Admin)
+ * y el PAC con el servicio de adquirentes configurado.
  */
-export async function timbrarComprobante(_companyId: string, _id: string): Promise<never> {
-  throw new ValidationError(
-    'El timbrado de autofacturación está pendiente de activación. Requiere: (1) el ' +
-    '«rol de facturación a través del adquirente» ante el SAT, y (2) un PAC con ' +
-    'servicio de adquirentes (el sellado no usa el CSD del emisor). Por ahora se ' +
-    'captura y previsualiza el CFDI (BORRADOR); avísame cuando tengas el rol y el PAC ' +
-    'para conectar el timbrado.');
+export async function timbrarComprobante(companyId: string, id: string) {
+  const comp = await obtenerComprobante(companyId, id);
+  if (comp.estado === 'TIMBRADO') throw new ValidationError('Este comprobante ya está timbrado.');
+
+  // Candado 1: rol ante el SAT.
+  const { rol } = await obtenerConfig(companyId);
+  if (!rol) {
+    throw new ValidationError(
+      'No se timbra: falta capturar el «rol de facturación por cuenta del adquirente» ante el SAT ' +
+      '(Autofacturación → Configuración). Sin ese rol el SAT no autoriza la emisión.');
+  }
+
+  // Candado 2: el código de autofacturación debe estar correcto.
+  const json = comp.json_cfdi || {};
+  const faltan = validarParaTimbrar(json);
+  if (faltan.length) {
+    throw new ValidationError(`No se timbra: el comprobante de autofacturación no está correcto — falta ${faltan.join(', ')}.`);
+  }
+
+  const r = await pac.stampJsonPayload(companyId, json);
+  if (!r.success) throw new ValidationError(`Timbrado fallido: ${(r.errors || []).join('; ')}`);
+
+  await query(
+    `UPDATE autofactura_comprobantes
+        SET estado='TIMBRADO', uuid=$3, xml=$4, fecha_timbrado=NOW()
+      WHERE id=$1 AND company_id=$2`,
+    [id, companyId, r.uuid || null, r.xml_stamped || null]);
+  return { timbrado: true, uuid: r.uuid };
 }

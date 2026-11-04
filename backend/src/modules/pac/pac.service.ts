@@ -878,12 +878,38 @@ export function listProviders(): { active: string; available: string[] } {
   };
 }
 
+/**
+ * Timbra un CFDI ya armado (payload JSON Anexo 20) por una vía distinta a la
+ * factura normal — hoy la AUTOFACTURACIÓN (emisor = enajenante, receptor = la
+ * empresa adquirente). Usa el ambiente/credenciales de la empresa y la misma
+ * guarda de sandbox que `stampInvoice`: en PRUEBAS el SW sólo acepta el RFC de
+ * prueba, así que NO se emite un CFDI real por accidente. La empresa decide salir
+ * a PRODUCCIÓN (Súper Admin); aquí sólo se timbra con lo que ya está configurado.
+ */
+export async function stampJsonPayload(companyId: string, payload: any): Promise<StampResult> {
+  const provider = getProvider();
+  if (typeof provider.stampFromJson !== 'function') {
+    return { success: false, errors: ['El PAC configurado no soporta timbrado por JSON.'] } as StampResult;
+  }
+  const credentials = await getCredentials(companyId);
+  const isSwSandbox = provider.name === 'SW_SAPIEN' && credentials.env !== 'production';
+  if (isSwSandbox && payload?.Emisor?.Rfc !== 'EKU9003173C9') {
+    return {
+      success: false,
+      errors: [`SW Sapien PRUEBAS sólo acepta el RFC de prueba EKU9003173C9 (emisor ${payload?.Emisor?.Rfc || '—'}). ` +
+               `Para timbrar real, marca la empresa como PRODUCCIÓN (Súper Admin) y configura el servicio de adquirentes del PAC.`],
+    } as StampResult;
+  }
+  return stampFromJsonConAutoRegistroCsd(companyId, payload, credentials);
+}
+
 export default {
   stampInvoice,
   cancelInvoice,
   getAccountStatus,
   testConnection,
   listProviders,
+  stampJsonPayload,
 };
 
 /**

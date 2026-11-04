@@ -1614,6 +1614,14 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/autofactura/comprobantes/${id}/timbrar`);
     return r.data;
   }
+  async getAutofacturaConfig() {
+    const r = await this.client.get<APIResponse<any>>('/autofactura/config');
+    return r.data;
+  }
+  async setAutofacturaRol(rol: string) {
+    const r = await this.client.put<APIResponse<any>>('/autofactura/config', { rol });
+    return r.data;
+  }
 
   /* ── Ingresos por producto (ClaveProdServ → 401) ── */
   async getVentasProductos(anio: number, mes: number) {
