@@ -19,8 +19,8 @@
   campo GPS; afinar límites SBC; casos TE sin cubrir (cruce de medianoche, festivo/descanso). Ver [[checador-nomina-plan]].
 - **Factura global (público en general) — probar timbrado.** Ya sale el nodo `InformacionGlobal`; falta timbrar una
   global real en PRUEBAS. Ver [[factura-global-publico-general]].
-- **Filtro de metadatos en XML del SAT (opcional).** Ofrecido: vista «sólo metadato (falta su XML)» y «cancelados
-  detectados por metadato», para que el valor del metadato (índice + cancelaciones) se note. Ver [[respaldo-xml-fuente-verdad]].
+- **(HECHO 2026-11-04)** ~~Filtro de metadatos en XML del SAT~~ → chips Todos / Con XML / Sólo metadato / Cancelados
+  en `TablaComprobantesSat` (commit `42e79a5`).
 - **Costo vs gasto en Compras (a conversar).** El usuario aceptó la sugerencia actual ClaveProdServ→115/601; si se
   afina costo/gasto, tabla por empresa marcada «sugerido», nunca como regla del SAT. Ver [[contabilidad-asignacion-centralizada]].
 
