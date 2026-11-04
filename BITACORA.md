@@ -7608,3 +7608,50 @@ con el mes/año de la fecha facturada.
 **Despliegue:** commit en `erp-unificado`; se empuja a `gdmalmacen main` y se hace **Manual
 Deploy** en Render (backend primero; Auto-Deploy OFF). La migración corre al arrancar. No se
 probó contra el PAC real (requiere timbrar una global de verdad).
+
+---
+
+## 2026-11-03 (contabilidad/dashboard) — Lote: cuentas duplicadas, cobranza desde XML, reinicio contable y arreglos de balance
+
+**1. Resumen del despacho sólo en la cabecera** (commit `9db323d`). El panel agregado de la cartera (total de
+empresas, físicas/morales, 32-D SAT/IMSS) del Dashboard es una vista del DESPACHO; `resumenDespacho(userId, companyId)`
+ahora sólo lo devuelve cuando la empresa activa es la **cabecera** (su `business_name` = el `nombre` del despacho, p. ej.
+GRUPO HCGM). Para las demás empresas de la cartera no se pinta.
+
+**2. Balance general: capital duplicado** (commit `9db323d`). En catálogos con cuentas DUPLICADAS el saldo se tomaba
+por código en cada copia y DOBLABA el capital. `balanceGeneral` ahora asigna el saldo de cada código UNA vez
+(recorriendo primero la rama más completa); las copias quedan en cero y se podan. Arregla el reporte; los datos se
+limpian aparte (ver punto 4).
+
+**3. Asignación de cuentas: aviso + selector sin recorte** (commit `e79a62e`). (a) Al **reconstruir** la balanza
+(«Actualizar desde pólizas»/«Reconstruir año») se avisa en banner ámbar si quedan **ClaveProdServ sin cuenta**
+(compras 115/601 y ventas 401): sus facturas se OMITEN de la póliza. `GET /accounting/facturas-sin-clasificar`.
+(b) `SelectorCuenta` dibuja la lista en un **portal** (`position:fixed`), así el `overflow` de la tabla ya no la recorta
+al abrir en el último renglón.
+
+**4. Cuentas DUPLICADAS: detectar + fusionar** (commits `e446822`, `8e372c9`, `9c50d64`). Catálogos viejos (GRUPO HCGM)
+tienen la **misma** cuenta dos veces con el código escrito distinto —dígitos puros `31080000` (que la máscara pinta
+`3-10-80-000`) vs ya con guiones `3-10-80-000`—: strings distintos que se ven iguales, por eso la unicidad no los frena.
+Pestaña **Contabilidad → Catálogo → «Cuentas duplicadas»**: detecta por código **normalizado** (sin separadores),
+previsualiza (muestra el código raw de cada copia) y **fusiona** en una sola (canónica = más hijos→más movimientos→más
+antigua): reapunta `journal_lines`, **re-arma** los saldos por periodo (la **apertura** repetida se toma UNA vez —no se
+suma, sumarla doblaba—; los **cargos/abonos** de pólizas distintas sí se suman), recuelga hijos, reapunta FK por
+`information_schema` y borra las copias, todo en UNA transacción. Después: Balanza → «Reconstruir año».
+
+**5. Reconstruir cartera de cobranza desde XML** (commit `e446822`). Botón en **Cobranza detallada**: acumula las
+facturas **PPD** emitidas y descuenta los **complementos de pago** (tipo P, por `DoctoRelacionado@ImpPagado` reusando
+`cfdi_pago_relacion`) → saldo por cobrar por cliente con antigüedad (0-30/31-60/61-90/+90). No espera a las pólizas.
+`GET /accounting/cobranza/reconstruir?rfc=`.
+
+**6. Reiniciar contabilidad conservando XML** (commit `00952d2`). Súper Admin → Empresas → botón **«Reiniciar
+contabilidad»** (exige el RFC exacto): borra catálogo + pólizas + saldos, **conserva los XML** (cfdi_recibidos),
+periodos, máscara y asignaciones por ClaveProdServ. `reset-contabilidad.service` descubre TODAS las FK a
+`journal_entries`/`accounting_accounts` por `information_schema` (NOT NULL se borra, nullable se anula) en UNA
+transacción. Para re-importar catálogo + libro diario limpios cuando los saldos no cuadran (caso GRUPO HCGM).
+`POST /admin/companies/:id/reiniciar-contabilidad`, auditado.
+
+**7. PDF «Horas extra 2026 vs 2027»** (entregable, no va al repo). Resumen de la reforma de 40 horas (jornada
+48→46→44→42→40 de 2026 a 2030; dobles/triples; ISR 50% exento 5 UMA; IMSS) con la advertencia de cotejar el
+escalonamiento 2027 contra el DOF. Los parámetros de `nomina_te_parametros` siguen en `confirmado=FALSE`.
+
+**Despliegue:** todo en `gdmalmacen main` + Manual Deploy (backend y frontend). Migraciones corren al arrancar.

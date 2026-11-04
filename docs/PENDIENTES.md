@@ -1,6 +1,28 @@
 # Pendientes — GDM NEXO
 
-> Lista viva de lo que falta. Actualizada 2026-10-29. Lo hecho se documenta en `BITACORA.md`.
+> Lista viva de lo que falta. Actualizada 2026-11-03. Lo hecho se documenta en `BITACORA.md`.
+
+## 🟢 En curso / arrancar enseguida (2026-11-03)
+
+- **Comercio electrónico — ERRORES REPORTADOS (prioridad).** El usuario reporta que la tienda ya tiene errores por
+  corregir. **Falta que pase los detalles** (pantallas/mensajes) para diagnosticar. Módulo: `ecommerce` (back
+  `modules/ecommerce`, front `pages/ecommerce`, grupo aislado `ECOMMERCE`). Ver [[ecommerce-modulo-plan]],
+  [[ecommerce-aislamiento-grupo-y-alta]].
+- **GRUPO HCGM — reconstruir su contabilidad.** Los saldos no cuadran por el catálogo duplicado. DOS caminos ya listos:
+  (a) **Fusionar** cuentas duplicadas (Catálogo → «Cuentas duplicadas» → Fusionar → Balanza «Reconstruir año»), o
+  (b) **Reiniciar contabilidad** (Súper Admin → Empresas → «Reiniciar contabilidad», conserva XML) y re-importar
+  catálogo + libro diario limpios. El usuario eligió **(b)** para HCGM. Probar y confirmar que cuadra.
+- **Parámetros de horas extra 2027 — cotejar contra el DOF.** La reforma de 40 h está publicada (jornada
+  48→46→44→42→40 de 2026 a 2030), pero el escalonamiento del tope de dobles (9→12 h) viene de despachos. Actualizar
+  `nomina_te_parametros` con los valores confirmados y marcar `confirmado=TRUE` sólo tras validar el texto oficial.
+  Ver el PDF «Horas extra 2026 vs 2027». Pendientes del checador: token de dispositivo, asistencia→prenómina, modo
+  campo GPS; afinar límites SBC; casos TE sin cubrir (cruce de medianoche, festivo/descanso). Ver [[checador-nomina-plan]].
+- **Factura global (público en general) — probar timbrado.** Ya sale el nodo `InformacionGlobal`; falta timbrar una
+  global real en PRUEBAS. Ver [[factura-global-publico-general]].
+- **Filtro de metadatos en XML del SAT (opcional).** Ofrecido: vista «sólo metadato (falta su XML)» y «cancelados
+  detectados por metadato», para que el valor del metadato (índice + cancelaciones) se note. Ver [[respaldo-xml-fuente-verdad]].
+- **Costo vs gasto en Compras (a conversar).** El usuario aceptó la sugerencia actual ClaveProdServ→115/601; si se
+  afina costo/gasto, tabla por empresa marcada «sugerido», nunca como regla del SAT. Ver [[contabilidad-asignacion-centralizada]].
 
 ## 🔴 Bloqueado / requiere acción del usuario (no es código)
 
@@ -105,6 +127,14 @@
 - **IVA.HTML por SatGo** (al desplegar).
 
 ## ✅ Terminado recientemente (resumen; detalle en BITACORA)
+
+**2026-11-03 — Lote contable + factura global + horas extra.** (1) **Factura global al público en general**: el nodo
+`InformacionGlobal` ya sale (RFC XAXX010101000, tipo I) con periodo capturable; POS = Diario. (2) **Cuentas
+duplicadas**: pestaña Catálogo → «Cuentas duplicadas» detecta por código normalizado y **fusiona** (sin doblar la
+apertura). (3) **Reiniciar contabilidad** (Súper Admin, conserva XML) para re-importar limpio. (4) **Reconstruir
+cartera de cobranza** desde XML (PPD − complementos de pago). (5) **Balance** sin duplicar el capital + aviso de
+facturas sin clasificar al reconstruir + selector de cuenta en portal (no se recorta). (6) **Dashboard**: resumen del
+despacho sólo en la cabecera (GRUPO HCGM). (7) **PDF** «Horas extra 2026 vs 2027». Detalle en BITACORA.
 
 **2026-10-14 — SatGo por e.firma + cierre por agrupador.** (1) **Información fiscal** y **Declaraciones** ya NO piden
 CIEC: usan la **e.firma** (FIEL: `informacionfiscalfiel`/`decfiel`), con CIEC solo de respaldo; el buzón ya usaba
