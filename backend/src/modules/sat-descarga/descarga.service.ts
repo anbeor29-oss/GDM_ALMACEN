@@ -1123,7 +1123,8 @@ export async function detalleTrabajo(companyId: string, trabajoId: string): Prom
 /** Los comprobantes ya indexados — la pantalla de XML recibidos. */
 export async function listarComprobantes(
   companyId: string,
-  f: { anio?: number; mes?: number; direccion?: string; rfc?: string; buscar?: string } = {}
+  f: { anio?: number; mes?: number; direccion?: string; rfc?: string; buscar?: string;
+       fuente?: 'xml' | 'metadato'; cancelados?: boolean } = {}
 ): Promise<any[]> {
   const params: any[] = [companyId];
   const where = ['company_id = $1'];
@@ -1139,11 +1140,18 @@ export async function listarComprobantes(
     params.push('%' + f.buscar.toLowerCase() + '%');
     where.push(`(LOWER(nombre_emisor) LIKE $${params.length} OR LOWER(uuid) LIKE $${params.length})`);
   }
+  // Fuente: 'xml' = los que ya traen su CFDI; 'metadato' = los que SÓLO tienen la
+  // ficha del SAT (xml NULL, falta bajar el documento). 'cancelados' = detectados
+  // por el metadato (estado_sat), que es la única forma de saber que se cancelaron.
+  if (f.fuente === 'metadato') where.push(`xml IS NULL`);
+  else if (f.fuente === 'xml') where.push(`xml IS NOT NULL`);
+  if (f.cancelados) where.push(`estado_sat = 'Cancelado'`);
 
   const r = await query<any>(
     `SELECT id, uuid, direccion, tipo_comprobante, serie, folio, fecha_emision,
             rfc_emisor, nombre_emisor, rfc_receptor, nombre_receptor,
-            subtotal, total, moneda, forma_pago, metodo_pago, estado_sat
+            subtotal, total, moneda, forma_pago, metodo_pago, estado_sat,
+            (xml IS NOT NULL) AS tiene_xml
        FROM cfdi_recibidos
       WHERE ${where.join(' AND ')}
       ORDER BY fecha_emision DESC NULLS LAST

@@ -98,6 +98,38 @@ async function porMesFlujo(companyId: string, direccion: 'emitidos' | 'recibidos
     a.isrRet += isrRetenidoDeXml(String(row.xml));
   }
 
+  // INGRESOS por póliza MANUAL (no vienen de un CFDI). El contador puede capturar
+  // ventas que no se facturaron en NEXO —p. ej. ingresos a tasa 0%— con una póliza
+  // manual; la cédula debe reflejarlas. Sólo `regla='manual'` SIN CFDI ligado (para
+  // no duplicar lo que ya cuenta la bóveda), y sólo del lado de INGRESOS (emitidos).
+  // La tasa se deduce del IVA trasladado (208/209) de la propia póliza: ~16 %, ~8 %
+  // o 0 % (tasa cero). Es papel de trabajo: el contador lo verifica.
+  if (direccion === 'emitidos') {
+    const man = await query<any>(
+      `SELECT EXTRACT(MONTH FROM e.fecha)::int AS mes,
+              SUM(CASE WHEN a.tipo='INGRESO' THEN (l.abono - l.cargo) ELSE 0 END)::float AS ingreso,
+              SUM(CASE WHEN a.codigo_agrupador LIKE '208%' OR a.codigo_agrupador LIKE '209%'
+                       THEN (l.abono - l.cargo) ELSE 0 END)::float AS iva
+         FROM journal_entries e
+         JOIN journal_lines l ON l.entry_id = e.id
+         JOIN accounting_accounts a ON a.id = l.account_id
+        WHERE e.company_id=$1 AND e.regla='manual' AND e.origen_uuid IS NULL
+          AND EXTRACT(YEAR FROM e.fecha) = $2
+        GROUP BY mes`,
+      [companyId, anio]);
+    for (const row of man.rows) {
+      const m = Number(row.mes); if (m < 1 || m > 12) continue;
+      const ingreso = r2(row.ingreso); const iva = r2(row.iva);
+      if (ingreso <= 0) continue;
+      const a = meses[m - 1];
+      const tasa = ingreso > 0 ? iva / ingreso : 0;
+      if (tasa >= 0.15) { a.base16 += ingreso; a.iva16 += iva; }
+      else if (tasa >= 0.07) { a.base8 += ingreso; a.iva8 += iva; }
+      else { a.base0 += ingreso; }           // tasa 0 % (o exento si no hay IVA)
+      a.subtotal += ingreso;
+    }
+  }
+
   return meses.map(redondearMes);
 }
 

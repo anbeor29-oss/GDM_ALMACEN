@@ -55,6 +55,9 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
   const [mes, setMes] = useState<number | undefined>(hoy.getMonth() + 1);
   const [tab, setTab] = useState<TabTipo>('I');
   const [buscar, setBuscar] = useState('');
+  // Fuente: con XML (el documento), sólo metadato (falta su XML) o cancelados
+  // (detectados por el metadato). Ayuda a ver para qué sirve el metadato.
+  const [fuente, setFuente] = useState<'todos' | 'xml' | 'metadato' | 'cancelados'>('todos');
   const [detalle, setDetalle] = useState<{ id: string; modo: Modo } | null>(null);
   const [asiento, setAsiento] = useState<string | null>(null);   // UUID para ver su póliza
   const [verifBusy, setVerifBusy] = useState(false);
@@ -75,11 +78,21 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
   const cuentaTab = (k: TabTipo) => filas.filter((c) => clasifica(c) === k).length;
   const porTab = filas.filter((c) => clasifica(c) === tab);
   const t = buscar.toLowerCase();
+  const esCancelado = (c: any) => String(c.estado_sat || '').toLowerCase() === 'cancelado';
+  const pasaFuente = (c: any) =>
+    fuente === 'xml' ? !!c.tiene_xml
+    : fuente === 'metadato' ? !c.tiene_xml
+    : fuente === 'cancelados' ? esCancelado(c)
+    : true;
+  const porFuente = porTab.filter(pasaFuente);
   const visibles = t
-    ? porTab.filter((c) =>
+    ? porFuente.filter((c) =>
         [c.contraparte_nombre, c.contraparte_rfc, c.folio, c.uuid, c.cuenta_contable]
           .some((v) => String(v || '').toLowerCase().includes(t)))
-    : porTab;
+    : porFuente;
+  // Conteos para los chips (sobre la pestaña de tipo actual).
+  const nMeta = porTab.filter((c) => !c.tiene_xml).length;
+  const nCancel = porTab.filter(esCancelado).length;
 
   const emitidos = direccion === 'emitidos';
   // Rango CONTINUO 2018→año actual (aniosContables), UNIDO a los ejercicios
@@ -124,6 +137,29 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
           </button>
         </div>
         {verifMsg && <p className="text-xs text-gray-600 mt-1">{verifMsg}</p>}
+
+        {/* Filtro por FUENTE: el metadato es la guía/índice (cubre cancelados y lo que
+            aún no tiene su XML); el XML es el documento. */}
+        <div className="w-full flex flex-wrap items-center gap-1.5 mt-1">
+          {([
+            ['todos', 'Todos'],
+            ['xml', 'Con XML'],
+            ['metadato', `Sólo metadato${nMeta ? ` (${nMeta})` : ''}`],
+            ['cancelados', `Cancelados${nCancel ? ` (${nCancel})` : ''}`],
+          ] as const).map(([k, lbl]) => (
+            <button key={k} onClick={() => setFuente(k)}
+              className={`px-2.5 py-1 rounded-full text-xs border ${fuente === k
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+              {lbl}
+            </button>
+          ))}
+          {fuente === 'metadato' && (
+            <span className="text-[11px] text-gray-500 ml-1">
+              Son CFDI que el SAT ya reportó (ficha) pero cuyo <b>XML aún no se baja</b>; sirve de guía de qué falta.
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Tabs por tipo (Anexo 20). Facturas siempre; los demás si tienen algo. */}

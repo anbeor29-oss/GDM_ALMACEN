@@ -3142,6 +3142,7 @@ class APIClient {
   }
   async getSatComprobantes(params: {
     anio?: number; mes?: number; direccion?: string; rfc?: string; buscar?: string;
+    fuente?: 'xml' | 'metadato'; cancelados?: boolean;
   } = {}) {
     const r = await this.client.get<APIResponse<any>>('/sat-descarga/comprobantes', { params });
     return r.data;

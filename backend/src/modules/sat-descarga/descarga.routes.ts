@@ -498,6 +498,8 @@ router.get(
       direccion: req.query.direccion as string | undefined,
       rfc:       req.query.rfc as string | undefined,
       buscar:    req.query.buscar as string | undefined,
+      fuente:    req.query.fuente === 'xml' || req.query.fuente === 'metadato' ? req.query.fuente : undefined,
+      cancelados: req.query.cancelados === 'true' || req.query.cancelados === '1',
     });
     res.json({ success: true, data: { comprobantes } });
   })
