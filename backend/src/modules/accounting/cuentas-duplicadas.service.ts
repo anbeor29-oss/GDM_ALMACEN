@@ -29,42 +29,53 @@ export interface GrupoDuplicado {
   nombre: string;
   tipo: string;
   copias: number;
-  canonica: { id: string; movimientos: number; hijos: number; saldo: number };
-  duplicadas: Array<{ id: string; movimientos: number; hijos: number; saldo: number }>;
+  canonica: { id: string; codigoRaw: string; movimientos: number; hijos: number; saldo: number };
+  duplicadas: Array<{ id: string; codigoRaw: string; movimientos: number; hijos: number; saldo: number }>;
 }
 
-/** Los grupos de cuentas con el MISMO código en la empresa (vacío si no hay). */
+/**
+ * Los grupos de cuentas que son la MISMA cuenta aunque el código esté escrito
+ * distinto (vacío si no hay). Se agrupan por el código NORMALIZADO —sin separadores
+ * ni espacios—, porque el catálogo las guarda de dos formas que se ven iguales en
+ * pantalla: unas en dígitos puros (`31080000`, que la máscara pinta como
+ * `3-10-80-000`) y otras ya con guiones (`3-10-80-000`, que se muestra tal cual).
+ * Son strings distintos —por eso la restricción de unicidad no las frena y un
+ * match EXACTO no las encuentra— pero contablemente son la misma cuenta.
+ */
 export async function detectar(companyId: string): Promise<{
   grupos: GrupoDuplicado[]; totalCodigos: number; totalCuentasSobrantes: number;
 }> {
   const r = await query<any>(
-    `SELECT a.id, a.codigo, a.nombre, a.tipo, a.created_at,
-            (SELECT count(*)::int FROM journal_lines l WHERE l.account_id = a.id)                 AS movimientos,
-            (SELECT count(*)::int FROM accounting_accounts h WHERE h.parent_id = a.id)            AS hijos,
+    `WITH norm AS (
+       SELECT a.id, a.codigo, a.nombre, a.tipo, a.created_at,
+              regexp_replace(a.codigo, '[^0-9A-Za-z]', '', 'g') AS cod_norm
+         FROM accounting_accounts a
+        WHERE a.company_id = $1
+     )
+     SELECT n.id, n.codigo, n.cod_norm, n.nombre, n.tipo, n.created_at,
+            (SELECT count(*)::int FROM journal_lines l WHERE l.account_id = n.id)                 AS movimientos,
+            (SELECT count(*)::int FROM accounting_accounts h WHERE h.parent_id = n.id)            AS hijos,
             (SELECT COALESCE(SUM(b.saldo_final),0)::float FROM accounting_period_balances b
-               WHERE b.account_id = a.id)                                                         AS saldo
-       FROM accounting_accounts a
-      WHERE a.company_id = $1
-        AND a.codigo IN (
-          SELECT codigo FROM accounting_accounts WHERE company_id = $1
-           GROUP BY codigo HAVING count(*) > 1
-        )
+               WHERE b.account_id = n.id)                                                         AS saldo
+       FROM norm n
+      WHERE n.cod_norm <> ''
+        AND n.cod_norm IN (SELECT cod_norm FROM norm WHERE cod_norm <> '' GROUP BY cod_norm HAVING count(*) > 1)
       -- La PRIMERA de cada código (más hijos → más movimientos → más antigua) es la canónica.
-      ORDER BY a.codigo, hijos DESC, movimientos DESC, a.created_at ASC, a.id ASC`,
+      ORDER BY n.cod_norm, hijos DESC, movimientos DESC, n.created_at ASC, n.id ASC`,
     [companyId]);
 
-  const porCodigo = new Map<string, any[]>();
+  const porNorm = new Map<string, any[]>();
   for (const a of r.rows) {
-    if (!porCodigo.has(a.codigo)) porCodigo.set(a.codigo, []);
-    porCodigo.get(a.codigo)!.push(a);
+    if (!porNorm.has(a.cod_norm)) porNorm.set(a.cod_norm, []);
+    porNorm.get(a.cod_norm)!.push(a);
   }
   const grupos: GrupoDuplicado[] = [];
-  for (const [codigo, cuentas] of porCodigo) {
+  for (const cuentas of porNorm.values()) {
     const [canonica, ...duplicadas] = cuentas;
     grupos.push({
-      codigo, nombre: canonica.nombre, tipo: canonica.tipo, copias: cuentas.length,
-      canonica: { id: canonica.id, movimientos: canonica.movimientos, hijos: canonica.hijos, saldo: r2(canonica.saldo) },
-      duplicadas: duplicadas.map((d) => ({ id: d.id, movimientos: d.movimientos, hijos: d.hijos, saldo: r2(d.saldo) })),
+      codigo: canonica.codigo, nombre: canonica.nombre, tipo: canonica.tipo, copias: cuentas.length,
+      canonica: { id: canonica.id, codigoRaw: canonica.codigo, movimientos: canonica.movimientos, hijos: canonica.hijos, saldo: r2(canonica.saldo) },
+      duplicadas: duplicadas.map((d) => ({ id: d.id, codigoRaw: d.codigo, movimientos: d.movimientos, hijos: d.hijos, saldo: r2(d.saldo) })),
     });
   }
   grupos.sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), 'es', { numeric: true }));
@@ -94,20 +105,30 @@ export async function fusionar(companyId: string): Promise<{ fusionadas: number;
     await transactionQuery(client,
       `UPDATE journal_lines l SET account_id = f.canon FROM _fusion f WHERE l.account_id = f.dupe`);
 
-    // 2) Saldos por periodo: SUMAR a la canónica (misma cuenta, un solo saldo por periodo), luego borrar los de la copia.
-    //    Se PRE-AGREGA por (periodo, canónica) para que, si un código tiene 3+ copias con saldo en el mismo
-    //    periodo, no se intente tocar la misma fila dos veces en el mismo INSERT (ON CONFLICT lo rechazaría).
+    // 2) Saldos por periodo → a la canónica (un solo saldo por periodo).
+    //    OJO: las copias son la MISMA cuenta, así que su SALDO INICIAL (la apertura
+    //    importada) está REPETIDO, no es dinero distinto: sumarlo lo DOBLARÍA (y
+    //    «Reconstruir» no lo arregla porque salta los meses de apertura). Por eso el
+    //    saldo inicial/final se toma UNA vez (el de mayor magnitud —las copias lo
+    //    comparten; si una no lo tenía, gana la que sí). En cambio los CARGOS y
+    //    ABONOS vienen de pólizas DISTINTAS repartidas entre las copias: ésos SÍ se
+    //    suman. Se pre-agrega por (periodo, canónica) para no tocar la misma fila dos
+    //    veces cuando un código tiene 3+ copias.
     await transactionQuery(client, `
       INSERT INTO accounting_period_balances (company_id, periodo_id, account_id, saldo_inicial, cargos, abonos, saldo_final)
         SELECT b.company_id, b.periodo_id, f.canon,
-               SUM(b.saldo_inicial), SUM(b.cargos), SUM(b.abonos), SUM(b.saldo_final)
+               (array_agg(b.saldo_inicial ORDER BY ABS(b.saldo_inicial) DESC, b.account_id))[1],
+               SUM(b.cargos), SUM(b.abonos),
+               (array_agg(b.saldo_final   ORDER BY ABS(b.saldo_final)   DESC, b.account_id))[1]
           FROM accounting_period_balances b JOIN _fusion f ON f.dupe = b.account_id
          GROUP BY b.company_id, b.periodo_id, f.canon
       ON CONFLICT (periodo_id, account_id) DO UPDATE SET
-        saldo_inicial = accounting_period_balances.saldo_inicial + EXCLUDED.saldo_inicial,
-        cargos        = accounting_period_balances.cargos        + EXCLUDED.cargos,
-        abonos        = accounting_period_balances.abonos        + EXCLUDED.abonos,
-        saldo_final   = accounting_period_balances.saldo_final   + EXCLUDED.saldo_final,
+        saldo_inicial = CASE WHEN ABS(EXCLUDED.saldo_inicial) > ABS(accounting_period_balances.saldo_inicial)
+                             THEN EXCLUDED.saldo_inicial ELSE accounting_period_balances.saldo_inicial END,
+        cargos        = accounting_period_balances.cargos + EXCLUDED.cargos,
+        abonos        = accounting_period_balances.abonos + EXCLUDED.abonos,
+        saldo_final   = CASE WHEN ABS(EXCLUDED.saldo_final) > ABS(accounting_period_balances.saldo_final)
+                             THEN EXCLUDED.saldo_final ELSE accounting_period_balances.saldo_final END,
         updated_at    = NOW()`);
     await transactionQuery(client,
       `DELETE FROM accounting_period_balances b USING _fusion f WHERE b.account_id = f.dupe`);

@@ -48,8 +48,9 @@ export function CuentasDuplicadasPage() {
           <Copy size={22} className="text-primary" /> Cuentas duplicadas
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Cuentas del catálogo con el <b>mismo código</b> (dos registros para una misma cuenta). Se consolidan en
-          una sola: las pólizas y los saldos de las copias se mueven a la cuenta que conserva más historia.
+          Cuentas que son la <b>misma</b> aunque el código esté escrito distinto (p. ej. <span className="font-mono">«31080000»</span> y
+          <span className="font-mono"> «3-10-80-000»</span> se ven iguales en pantalla). Se consolidan en una sola:
+          las pólizas y los saldos de las copias se mueven a la cuenta que conserva más historia (entre «comillas», el código tal cual está guardado).
         </p>
       </div>
 
@@ -98,12 +99,15 @@ export function CuentasDuplicadasPage() {
                       <span className="inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">{g.copias}</span>
                     </td>
                     <td className="px-4 py-2 text-center text-xs text-gray-600">
+                      <div className="font-mono text-gray-400">«{g.canonica.codigoRaw}»</div>
                       {g.canonica.movimientos} mov · {g.canonica.hijos} hijo(s)
                       <div className="text-gray-400">{money(g.canonica.saldo)}</div>
                     </td>
                     <td className="px-4 py-2 text-center text-xs text-gray-500">
                       {g.duplicadas.map((x: any, i: number) => (
-                        <div key={i}>{x.movimientos} mov · {money(x.saldo)}</div>
+                        <div key={i}>
+                          <span className="font-mono text-gray-400">«{x.codigoRaw}»</span> · {x.movimientos} mov · {money(x.saldo)}
+                        </div>
                       ))}
                     </td>
                   </tr>
