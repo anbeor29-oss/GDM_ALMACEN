@@ -7655,3 +7655,37 @@ transacción. Para re-importar catálogo + libro diario limpios cuando los saldo
 escalonamiento 2027 contra el DOF. Los parámetros de `nomina_te_parametros` siguen en `confirmado=FALSE`.
 
 **Despliegue:** todo en `gdmalmacen main` + Manual Deploy (backend y frontend). Migraciones corren al arrancar.
+
+---
+
+## 2026-11-04 (contabilidad/facturación/autofactura) — Lote: subcuentas agrupadoras, pagos PUE, cédula, metadatos, autofactura y alertas
+
+**1. Subcuenta de cuenta AGRUPADORA** (`11707dd`). `cuelgaDe` (catalogo.service) ya no bloquea una subcuenta de una
+mayor de nivel 3+ (p. ej. 3-10-91 «Resultado 2025» bajo «3-10-30 RESULTADO EJERCICIOS ANTERIOR», cuyos hijos son
+3-10-38…3-10-90) si comparte la FAMILIA del padre (segmentos menos el último). El árbol lo sostiene parent_id.
+
+**2. Borrar facturas DRAFT** (`11707dd`). Botón papelera en Facturas para las no timbradas (reusa DELETE /invoices/:id).
+
+**3. Pagos de compras PUE con ruteo caja/banco** (`e911bb4`). Pólizas → Cobros/Pagos: `generarPagosPueMasivo(modo)`
+rutea el EFECTIVO (forma 01) a CAJA (101) y tarjetas/transferencias a BANCO (102), o todo a banco. Asiento Cargo
+proveedor + 118.01 / Abono caja|banco + 119.01. Idempotente PAGOPUE:uuid.
+
+**4. Cédula incluye ingresos manuales** (`42e79a5`). `porMesFlujo` (emitidos) suma ingresos de pólizas `regla='manual'`
+sin CFDI ligado, por su IVA (16/8/0%). Un ingreso a tasa 0% capturado a mano ya sale en la cédula de IVA (base 0).
+
+**5. Filtro de metadatos en XML del SAT** (`42e79a5`). Chips Todos / Con XML / Sólo metadato (falta su XML) /
+Cancelados en `TablaComprobantesSat` (la vista ya traía tiene_xml/estado_sat).
+
+**6. Autofacturación: timbrado conectado** (`b9b8c23`). Se captura el ROL de adquirente ante el SAT
+(`companies.autofactura_rol_sat`, migración `2026-11-04_autofactura_rol`); `timbrarComprobante` valida rol + que el
+comprobante esté correcto (si no, NO emite) y manda al PAC (`pac.stampJsonPayload`, guarda de sandbox). Salir en vivo
+= empresa en PRODUCCIÓN (Súper Admin) + servicio de adquirentes del PAC; Claude no lo activa.
+
+**7. Alerta de registro NEXO/IVA** (`8bdcecb`). Al dar de alta en NEXO (onboarding) o IVA (puente, sólo alta nueva) se
+envía un correo desde GRUPO HCGM a `anbeor@hotmail.com` (`notificarRegistro`, env `ALERTA_REGISTRO_EMAIL`/`_RFC`). No
+bloquea el alta.
+
+**8. 32-D del IMSS:** el usuario pasó una muestra; se documentó el formato (RFC/Folio/sentido/vigencia/trabajadores)
+para calibrar el lector del IMSS (parser pendiente). **IVA asiento 119/118:** el usuario lo está analizando (sin cambio).
+
+**Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend); migraciones al arrancar.
