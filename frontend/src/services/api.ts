@@ -3706,6 +3706,14 @@ class APIClient {
     const r = await this.client.delete(`/admin/companies/${id}/full-delete`, { data: body });
     return r.data;
   }
+  /**
+   * Reinicia la contabilidad (catálogo + pólizas + saldos) CONSERVANDO los XML,
+   * para re-importar un respaldo limpio. Requiere el RFC EXACTO. Irreversible.
+   */
+  async adminReiniciarContabilidad(id: string, confirmarRfc: string) {
+    const r = await this.client.post<APIResponse<any>>(`/admin/companies/${id}/reiniciar-contabilidad`, { confirmarRfc });
+    return r.data;
+  }
 
   /* ────── Facturación y consumo (SUPER_ADMIN) ────── */
 

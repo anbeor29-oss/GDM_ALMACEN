@@ -6,7 +6,7 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload, AlertTriangle, Loader2, Pencil, Save, LogIn, UserPlus, KeyRound, ChevronRight, ChevronDown } from 'lucide-react';
+import { Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload, AlertTriangle, Loader2, Pencil, Save, LogIn, UserPlus, KeyRound, ChevronRight, ChevronDown, Eraser } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -38,6 +38,7 @@ export function AdminCompaniesPage() {
   const [csdTarget, setCsdTarget] = useState<any>(null);
   const [resetTarget, setResetTarget] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [contabTarget, setContabTarget] = useState<any>(null);
   const [userTarget, setUserTarget] = useState<any>(null);
   const [editTarget, setEditTarget] = useState<any>(null);
   const [activandoCump, setActivandoCump] = useState(false);
@@ -235,6 +236,13 @@ export function AdminCompaniesPage() {
                         className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
                     )}
                     <button
+                      title="Reiniciar contabilidad (borra catálogo y pólizas, conserva los XML)"
+                      onClick={() => setContabTarget(c)}
+                      className="p-1.5 text-amber-700 hover:bg-amber-100 rounded border border-transparent hover:border-amber-300"
+                    >
+                      <Eraser size={16}/>
+                    </button>
+                    <button
                       title="Eliminar empresa completa (2 pasos)"
                       onClick={() => setDeleteTarget(c)}
                       className="p-1.5 text-rose-700 hover:bg-rose-100 rounded border border-transparent hover:border-rose-300"
@@ -277,6 +285,13 @@ export function AdminCompaniesPage() {
           company={deleteTarget}
           onClose={()=>setDeleteTarget(null)}
           onDone={()=>{ setDeleteTarget(null); qc.invalidateQueries({ queryKey: ['admin-companies'] }); }}
+        />
+      )}
+      {contabTarget && (
+        <ResetContabModal
+          company={contabTarget}
+          onClose={()=>setContabTarget(null)}
+          onDone={()=>{ setContabTarget(null); qc.invalidateQueries({ queryKey: ['admin-companies'] }); }}
         />
       )}
       {editTarget && (
@@ -578,6 +593,82 @@ function EditCompanyModal({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/* ─────────────── Modal: reiniciar contabilidad (conserva XML) ─────────────── */
+
+function ResetContabModal({ company, onClose, onDone }: {
+  company: any; onClose: () => void; onDone: () => void;
+}) {
+  const [rfcInput, setRfcInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [resultado, setResultado] = useState('');
+  const rfcOk = rfcInput.trim().toUpperCase() === String(company.rfc).toUpperCase();
+
+  const ejecutar = async () => {
+    setError('');
+    if (!rfcOk) { setError(`El RFC no coincide. Debe ser exactamente "${company.rfc}".`); return; }
+    setBusy(true);
+    try {
+      const r: any = await api.adminReiniciarContabilidad(company.id, company.rfc);
+      setResultado(r.message || 'Contabilidad reiniciada.');
+    } catch (e: any) { setError(e.response?.data?.message || e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg">
+        <div className="flex items-center justify-between p-5 border-b bg-amber-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-200 rounded-lg flex items-center justify-center"><Eraser className="text-amber-700" size={20}/></div>
+            <div>
+              <h2 className="font-bold text-amber-900">Reiniciar contabilidad</h2>
+              <p className="text-xs text-amber-700">{company.business_name} — {company.rfc}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-amber-100 rounded"><X size={20}/></button>
+        </div>
+        <div className="p-5 space-y-3">
+          {resultado ? (
+            <>
+              <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-3">{resultado}</p>
+              <p className="text-sm text-gray-600">
+                Ya puedes importar el <b>catálogo</b> y luego el <b>libro diario</b> en
+                Contabilidad → Importar respaldo.
+              </p>
+              <div className="flex justify-end"><button onClick={onDone} className="bg-primary text-white px-4 py-2 rounded-lg">Cerrar</button></div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-gray-700">
+                Esto <b>borra</b> el catálogo de cuentas, las pólizas y los saldos de esta empresa, pero
+                <b> conserva los XML</b> (el respaldo del SAT) y las asignaciones por ClaveProdServ. Sirve para
+                re-importar un catálogo y un libro diario limpios cuando los saldos no cuadran.
+              </p>
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                Es <b>irreversible</b>. Ten a la mano tus respaldos de catálogo y libro diario.
+              </p>
+              <label className="block text-sm">
+                <span className="text-gray-600">Escribe el RFC <b className="font-mono">{company.rfc}</b> para confirmar:</span>
+                <input value={rfcInput} onChange={(e)=>setRfcInput(e.target.value.toUpperCase())}
+                  className="input mt-1 font-mono" placeholder={company.rfc} />
+              </label>
+              {error && <p className="text-sm text-rose-700">{error}</p>}
+              <div className="flex justify-end gap-2">
+                <button onClick={onClose} className="px-4 py-2 rounded-lg border text-gray-600">Cancelar</button>
+                <button onClick={ejecutar} disabled={!rfcOk || busy}
+                  className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 disabled:opacity-50 flex items-center gap-1.5">
+                  {busy ? <Loader2 size={15} className="animate-spin"/> : <Eraser size={15}/>} {busy ? 'Reiniciando…' : 'Reiniciar contabilidad'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

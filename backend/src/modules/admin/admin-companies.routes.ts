@@ -26,6 +26,7 @@ import { query } from '../../config/database';
 import { requireSuperAdmin, audit } from './admin.middleware';
 import { invalidarModulosEmpresa } from '../../middleware/authentication';
 import * as promo from '../billing/prueba-y-prorrateo.service';
+import * as resetContab from '../accounting/reset-contabilidad.service';
 // El timbrado lee el CSD de csd_cer_data/csd_key_data/csd_password_encrypted
 // (cifrado AES-256-GCM, utils/csd-crypto). Esta pantalla DEBE escribir ahí
 // también, o el CSD que suba el súper admin queda invisible para el timbrado.
@@ -579,6 +580,26 @@ router.delete('/:id/csd', asyncHandler(async (req: Request, res: Response) => {
   if (r.rows.length === 0) throw new NotFoundError('Empresa no encontrada');
   await audit(req, { action: 'CSD_REVOKED', targetKind: 'csd', targetId: req.params.id });
   res.json({ success: true, message: 'CSD eliminado' });
+}));
+
+/* ──────────  Reiniciar contabilidad (conserva los XML)  ──────────
+ * Deja la contabilidad en blanco (catálogo + pólizas + saldos) para re-importar
+ * un respaldo limpio. IRREVERSIBLE: exige escribir el RFC EXACTO como confirmación. */
+router.post('/:id/reiniciar-contabilidad', asyncHandler(async (req: Request, res: Response) => {
+  const comp = await query<any>(`SELECT id, rfc, business_name FROM companies WHERE id = $1`, [req.params.id]);
+  if (comp.rows.length === 0) throw new NotFoundError('Empresa no encontrada');
+  const c = comp.rows[0];
+  const confirmar = String(req.body?.confirmarRfc || '').trim().toUpperCase();
+  if (!confirmar || confirmar !== String(c.rfc || '').toUpperCase()) {
+    throw new ValidationError('Para confirmar, escribe el RFC EXACTO de la empresa.');
+  }
+  const r = await resetContab.reiniciarContabilidad(c.id);
+  await audit(req, { action: 'CONTAB_RESET', targetKind: 'company', targetId: c.id, payload: r });
+  res.json({
+    success: true, data: r,
+    message: `Contabilidad reiniciada en ${c.business_name}: ${r.polizas} póliza(s), ${r.saldos} saldo(s) y ` +
+      `${r.cuentas} cuenta(s) borradas. Los XML se conservaron. Ya puedes importar el catálogo y el libro diario.`,
+  });
 }));
 
 /* ────────────────────────  USAGE  ──────────────────────── */
