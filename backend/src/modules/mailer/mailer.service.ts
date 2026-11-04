@@ -153,13 +153,34 @@ export async function sendTestMail(companyId: string, to: string): Promise<void>
             deposito_referencia, deposito_notas FROM companies WHERE id = $1`, [companyId]);
   const dep = bloqueDeposito(depR.rows[0], { clienteRfc: 'XAXX010101000', folio: 'FAC-000123' });
   const base = 'Este correo confirma que la configuración SMTP de tu empresa quedó lista para enviar facturas.';
-  await t.sendMail({
-    from: from || process.env.MAIL_FROM || process.env.MAIL_USER!,
-    to,
-    subject: 'Prueba SMTP · GDM NEXO',
-    text: `${base}${dep ? `\n${dep.text}\n\n(Así se verán los datos de depósito en tus facturas.)` : ''}\n\n— GDM NEXO`,
-    html: `<p>${base}</p>${dep ? `${dep.html}<p style="font-size:12px;color:#64748b">Así se verán los datos de depósito en tus facturas.</p>` : ''}<p>— <b>GDM NEXO</b></p>`,
-  });
+  try {
+    await t.sendMail({
+      from: from || process.env.MAIL_FROM || process.env.MAIL_USER!,
+      to,
+      subject: 'Prueba SMTP · GDM NEXO',
+      text: `${base}${dep ? `\n${dep.text}\n\n(Así se verán los datos de depósito en tus facturas.)` : ''}\n\n— GDM NEXO`,
+      html: `<p>${base}</p>${dep ? `${dep.html}<p style="font-size:12px;color:#64748b">Así se verán los datos de depósito en tus facturas.</p>` : ''}<p>— <b>GDM NEXO</b></p>`,
+    });
+  } catch (e: any) {
+    throw new ValidationError(explicarErrorSmtp(e));
+  }
+}
+
+/** Traduce los errores crudos de SMTP a una pista accionable (host mal escrito,
+ *  puerto, credenciales…), en vez de mostrar «getaddrinfo ENOTFOUND …» a secas. */
+function explicarErrorSmtp(e: any): string {
+  const code = String(e?.code || '').toUpperCase();
+  const host = e?.hostname || e?.address || '';
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return `El servidor SMTP «${host || 'host'}» no existe (DNS no lo resuelve). Revisa el host: para un dominio propio ` +
+      `suele ser «mail.tudominio.com» (no «smtp.»). Ej.: para hcgm.com.mx usa «mail.hcgm.com.mx».`;
+  }
+  if (code === 'ECONNREFUSED') return `El servidor SMTP rechazó la conexión. Revisa el PUERTO (465 con SSL o 587 con STARTTLS) y que no lo bloquee un firewall.`;
+  if (code === 'ETIMEDOUT' || code === 'ESOCKET') return `No se pudo conectar al SMTP (tiempo agotado). Revisa host/puerto/SSL; algunos hosts bloquean el puerto 25.`;
+  if (code === 'EAUTH' || /invalid login|authentication failed/i.test(String(e?.message))) {
+    return `El SMTP rechazó el usuario/contraseña. En Gmail/Outlook/Hotmail usa una «app password», no tu contraseña normal.`;
+  }
+  return `No se pudo enviar: ${e?.message || 'error de SMTP'}.`;
 }
 
 /**

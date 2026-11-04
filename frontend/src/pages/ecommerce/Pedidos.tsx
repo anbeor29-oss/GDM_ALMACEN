@@ -7,7 +7,8 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShoppingBag, Loader2, CheckCircle, Receipt, Truck, X, Save, Package } from 'lucide-react';
+import { ShoppingBag, Loader2, CheckCircle, Receipt, Truck, X, Save, Package, ArrowLeft } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '@/services/api';
 import { aTextoMx } from '@/components/CampoFecha';
 
@@ -45,11 +46,14 @@ export function PedidosEcPage() {
 
   return (
     <div className="p-6 max-w-6xl space-y-4">
-      <div className="flex items-center gap-2">
-        <ShoppingBag className="text-emerald-600" size={22} />
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Pedidos</h1>
-          <p className="text-sm text-gray-500">Pedidos de la tienda. «Pagar y facturar» genera el CFDI y su póliza.</p>
+      <div>
+        <Link to="/ecommerce" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800"><ArrowLeft size={15} /> Comercio Electrónico</Link>
+        <div className="flex items-center gap-2 mt-1">
+          <ShoppingBag className="text-emerald-600" size={22} />
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Pedidos</h1>
+            <p className="text-sm text-gray-500">Pedidos de la tienda. «Pagar y facturar» genera el CFDI y su póliza.</p>
+          </div>
         </div>
       </div>
 
