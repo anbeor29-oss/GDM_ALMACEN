@@ -65,39 +65,65 @@ export function encryptPass(plain: string): string {
  * Cada empresa se cachea en memoria — si cambia la config, invalida cache
  * borrando `companyTransporterCache.delete(companyId)`.
  */
-async function getTransporterForCompany(companyId: string): Promise<{ t: Transporter; user: string; from?: string }> {
-  const cached = companyTransporterCache.get(companyId);
-  if (cached) return cached;
-
-  // 1) SMTP propio de la empresa
+/** Construye el transportador SMTP a partir del buzón propio de UNA empresa, o null
+ *  si esa empresa no tiene SMTP configurado (o su contraseña no descifra). */
+async function smtpDeEmpresa(companyId: string): Promise<{ t: Transporter; user: string; from?: string } | null> {
   const r = await query<{ mail_host: string; mail_port: number; mail_secure: boolean; mail_user: string; mail_pass_enc: string; mail_from: string }>(
     `SELECT mail_host, mail_port, mail_secure, mail_user, mail_pass_enc, mail_from
        FROM companies WHERE id = $1
         AND mail_host IS NOT NULL AND mail_user IS NOT NULL AND mail_pass_enc IS NOT NULL`,
     [companyId],
   );
-  if (r.rows[0]) {
-    const row = r.rows[0];
-    let pass: string;
-    try { pass = decryptPass(row.mail_pass_enc); }
-    catch (e: any) {
-      logger.warn(`SMTP empresa ${companyId}: falla descifrado (${e.message}). Cayendo a SMTP central.`);
-      return getEnvTransporter();
+  if (!r.rows[0]) return null;
+  const row = r.rows[0];
+  let pass: string;
+  try { pass = decryptPass(row.mail_pass_enc); }
+  catch (e: any) { logger.warn(`SMTP empresa ${companyId}: falla descifrado (${e.message}).`); return null; }
+  const t = nodemailer.createTransport({
+    host: row.mail_host,
+    port: row.mail_port || 587,
+    secure: row.mail_secure === true || row.mail_port === 465,
+    auth: { user: row.mail_user, pass },
+    connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 30_000,
+  });
+  return { t, user: row.mail_user, from: row.mail_from || row.mail_user };
+}
+
+/** La emisora predeterminada del DESPACHO de la empresa (su buzón central, p. ej.
+ *  facturas@hcgm.com.mx). null si la empresa no está en un despacho o éste no fijó emisora. */
+async function emisoraDelDespacho(companyId: string): Promise<string | null> {
+  const r = await query<{ emisora: string | null }>(
+    `SELECT d.emisora_predeterminada_id AS emisora
+       FROM companies c
+       JOIN despachos_contables d ON d.id = c.despacho_id AND d.deleted_at IS NULL
+      WHERE c.id = $1`, [companyId]);
+  return r.rows[0]?.emisora || null;
+}
+
+async function getTransporterForCompany(companyId: string): Promise<{ t: Transporter; user: string; from?: string }> {
+  const cached = companyTransporterCache.get(companyId);
+  if (cached) return cached;
+
+  // 1) SMTP propio de la empresa.
+  let entry = await smtpDeEmpresa(companyId);
+
+  // 2) SMTP del DESPACHO (su emisora predeterminada, p. ej. facturas@hcgm.com.mx): el
+  //    canal central con el que el despacho manda a TODOS sus clientes. Lo usa cualquier
+  //    empresa del despacho que no tenga buzón propio.
+  if (!entry) {
+    const emisora = await emisoraDelDespacho(companyId);
+    if (emisora && emisora !== companyId) {
+      entry = await smtpDeEmpresa(emisora);
+      if (entry) logger.info(`SMTP empresa ${companyId}: usa el buzón del despacho (${entry.user}).`);
     }
-    const t = nodemailer.createTransport({
-      host: row.mail_host,
-      port: row.mail_port || 587,
-      secure: row.mail_secure === true || row.mail_port === 465,
-      auth: { user: row.mail_user, pass },
-      connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 30_000,
-    });
-    const entry = { t, user: row.mail_user, from: row.mail_from || row.mail_user };
+  }
+
+  if (entry) {
     companyTransporterCache.set(companyId, entry);
-    logger.info(`SMTP empresa ${companyId} configurado: ${row.mail_host}:${row.mail_port} (${row.mail_user})`);
     return entry;
   }
 
-  // 2) Fallback a SMTP central del env
+  // 3) Fallback a SMTP central del env.
   return getEnvTransporter();
 }
 
@@ -179,6 +205,9 @@ function explicarErrorSmtp(e: any): string {
   if (code === 'ETIMEDOUT' || code === 'ESOCKET') return `No se pudo conectar al SMTP (tiempo agotado). Revisa host/puerto/SSL; algunos hosts bloquean el puerto 25.`;
   if (code === 'EAUTH' || /invalid login|authentication failed/i.test(String(e?.message))) {
     return `El SMTP rechazó el usuario/contraseña. En Gmail/Outlook/Hotmail usa una «app password», no tu contraseña normal.`;
+  }
+  if (code === 'EENVELOPE' || /recipient|all recipients were rejected|550/i.test(String(e?.message))) {
+    return `La conexión al SMTP funcionó, pero el servidor RECHAZÓ al destinatario. Prueba con un correo REAL (un buzón que exista); si es tu propio dominio, revisa que la cuenta destino esté dada de alta.`;
   }
   return `No se pudo enviar: ${e?.message || 'error de SMTP'}.`;
 }
@@ -452,23 +481,30 @@ export async function sendPlainMail(input: {
 
   let fromName = 'Sistema de Facturación';
   let fromAddress = process.env.MAIL_FROM || process.env.MAIL_USER!;
+  let replyTo: string | undefined;
+  let tx: Transporter = getTransporter();
+
   if (input.companyId) {
     const r = await query<{ business_name: string; contact_email: string | null }>(
       `SELECT business_name, contact_email FROM companies WHERE id = $1`,
       [input.companyId]
     );
     if (r.rows[0]) {
-      fromName = r.rows[0].business_name;
+      fromName = r.rows[0].business_name || fromName;
       if (r.rows[0].contact_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.rows[0].contact_email)) {
-        fromAddress = r.rows[0].contact_email;
+        replyTo = r.rows[0].contact_email;   // las RESPUESTAS van a la empresa
       }
     }
+    // Sale por el buzón de la empresa; si no tiene, por el del DESPACHO
+    // (facturas@hcgm.com.mx). El From usa ESE buzón autenticado (SPF/deliverabilidad).
+    const tp = await getTransporterForCompany(input.companyId);
+    tx = tp.t;
+    if (tp.from) fromAddress = tp.from;
   }
 
-  const tx = getTransporter();
   const info = await tx.sendMail({
     from: `"${fromName}" <${fromAddress}>`,
-    replyTo: fromAddress,
+    replyTo: replyTo || fromAddress,
     to: input.to.trim(),
     subject: input.subject,
     text: buildPlainText(input.message, fromName),

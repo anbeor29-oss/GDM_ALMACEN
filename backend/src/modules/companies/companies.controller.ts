@@ -168,15 +168,30 @@ export async function updateSMTP(req: Request, res: Response) {
   res.json({ success: true });
 }
 
-/** POST /companies/:id/smtp/test — envía un email al ADMIN autenticado. */
+/** POST /companies/:id/smtp/test — manda un correo de prueba. Destino: el que venga
+ *  en el body, o el CORREO DE CONTACTO de la empresa (su propio buzón, p. ej.
+ *  facturas@hcgm.com.mx), y de último el email del admin — así la prueba no rebota
+ *  cuando el admin tiene un correo de acceso que no existe. */
 export async function testSMTP(req: Request, res: Response) {
   const { id } = req.params;
-  const email = (req as any).user?.email;
-  if (!email) throw new (require('../../middleware/errorHandler').ValidationError)('Sin email en el JWT');
+  const adminEmail = (req as any).user?.email || '';
+  const { query } = require('../../config/database');
   const { sendTestMail } = require('../mailer/mailer.service');
+  const valido = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim());
+
+  let destino = String(req.body?.to || '').trim();
+  if (!destino) {
+    const r = await query(`SELECT contact_email, email FROM companies WHERE id = $1`, [id]);
+    destino = String(r.rows[0]?.contact_email || r.rows[0]?.email || '').trim();
+  }
+  if (!valido(destino)) destino = adminEmail;
+  if (!valido(destino)) {
+    throw new (require('../../middleware/errorHandler').ValidationError)(
+      'No hay un correo de destino válido para la prueba. Captura el correo de contacto de la empresa o envíala a un correo real.');
+  }
   try {
-    await sendTestMail(id, email);
-    res.json({ success: true, message: `Correo de prueba enviado a ${email}` });
+    await sendTestMail(id, destino);
+    res.json({ success: true, message: `Correo de prueba enviado a ${destino}` });
   } catch (e: any) {
     res.status(400).json({ success: false, message: e?.message || 'Error al enviar prueba' });
   }
