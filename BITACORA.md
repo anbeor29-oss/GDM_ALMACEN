@@ -7688,4 +7688,17 @@ bloquea el alta.
 **8. 32-D del IMSS:** el usuario pasó una muestra; se documentó el formato (RFC/Folio/sentido/vigencia/trabajadores)
 para calibrar el lector del IMSS (parser pendiente). **IVA asiento 119/118:** el usuario lo está analizando (sin cambio).
 
+**9. Correo: buzón del despacho como canal central** (`7afa940`). `getTransporterForCompany` resuelve ahora: SMTP
+propio de la empresa → SMTP del **DESPACHO** (emisora predeterminada = GRUPO HCGM / `facturas@hcgm.com.mx`) → env.
+Así cualquier empresa del despacho sin buzón propio manda facturas/recibos/avisos por `facturas@hcgm.com.mx` (From =
+nombre de la empresa, address = el buzón autenticado, reply-to = correo de la empresa; SPF ok). `sendPlainMail` usa el
+transportador de la empresa/despacho. La prueba `/companies/:id/smtp/test` va al **correo de contacto** de la empresa
+(buzón real), no al email de acceso del admin (por eso rebotaba a `anbeor@123.com` con 550). `explicarErrorSmtp`:
+ENOTFOUND (host mal, `smtp.` vs `mail.`), destinatario rechazado (550), auth, puerto. **Host correcto de hcgm.com.mx =
+`mail.hcgm.com.mx`** (el `smtp.` no existe en DNS). Los campos de correo ya existían: empresas (`contact_email`) y
+empleados (`nomina_empleados.email`).
+
+**10. Comercio electrónico** (`a460348`): flecha «← Comercio Electrónico» en Pedidos (faltaba); la «tienda no
+disponible» = la tienda debe estar `activa` + slug correcto; inventario vacío = agregar productos primero.
+
 **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend); migraciones al arrancar.

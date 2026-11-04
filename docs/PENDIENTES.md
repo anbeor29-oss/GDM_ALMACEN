@@ -1,28 +1,34 @@
 # Pendientes — GDM NEXO
 
-> Lista viva de lo que falta. Actualizada 2026-11-03. Lo hecho se documenta en `BITACORA.md`.
+> Lista viva de lo que falta. Actualizada 2026-11-04. Lo hecho se documenta en `BITACORA.md`.
 
-## 🟢 En curso / arrancar enseguida (2026-11-03)
+## 🟢 En curso / arrancar enseguida (2026-11-04)
 
-- **Comercio electrónico — ERRORES REPORTADOS (prioridad).** El usuario reporta que la tienda ya tiene errores por
-  corregir. **Falta que pase los detalles** (pantallas/mensajes) para diagnosticar. Módulo: `ecommerce` (back
-  `modules/ecommerce`, front `pages/ecommerce`, grupo aislado `ECOMMERCE`). Ver [[ecommerce-modulo-plan]],
-  [[ecommerce-aislamiento-grupo-y-alta]].
-- **GRUPO HCGM — reconstruir su contabilidad.** Los saldos no cuadran por el catálogo duplicado. DOS caminos ya listos:
-  (a) **Fusionar** cuentas duplicadas (Catálogo → «Cuentas duplicadas» → Fusionar → Balanza «Reconstruir año»), o
-  (b) **Reiniciar contabilidad** (Súper Admin → Empresas → «Reiniciar contabilidad», conserva XML) y re-importar
-  catálogo + libro diario limpios. El usuario eligió **(b)** para HCGM. Probar y confirmar que cuadra.
-- **Parámetros de horas extra 2027 — cotejar contra el DOF.** La reforma de 40 h está publicada (jornada
-  48→46→44→42→40 de 2026 a 2030), pero el escalonamiento del tope de dobles (9→12 h) viene de despachos. Actualizar
-  `nomina_te_parametros` con los valores confirmados y marcar `confirmado=TRUE` sólo tras validar el texto oficial.
-  Ver el PDF «Horas extra 2026 vs 2027». Pendientes del checador: token de dispositivo, asistencia→prenómina, modo
-  campo GPS; afinar límites SBC; casos TE sin cubrir (cruce de medianoche, festivo/descanso). Ver [[checador-nomina-plan]].
-- **Factura global (público en general) — probar timbrado.** Ya sale el nodo `InformacionGlobal`; falta timbrar una
-  global real en PRUEBAS. Ver [[factura-global-publico-general]].
-- **(HECHO 2026-11-04)** ~~Filtro de metadatos en XML del SAT~~ → chips Todos / Con XML / Sólo metadato / Cancelados
-  en `TablaComprobantesSat` (commit `42e79a5`).
-- **Costo vs gasto en Compras (a conversar).** El usuario aceptó la sugerencia actual ClaveProdServ→115/601; si se
-  afina costo/gasto, tabla por empresa marcada «sugerido», nunca como regla del SAT. Ver [[contabilidad-asignacion-centralizada]].
+- **GRUPO HCGM — reconstruir su contabilidad y limpiar ejemplos.** Saldos no cuadran por catálogo duplicado. Caminos
+  listos: **Fusionar** duplicadas (Catálogo → «Cuentas duplicadas») o **Reiniciar contabilidad** (Súper Admin, conserva
+  XML) + re-importar. El usuario eligió reiniciar. Además se están **borrando por SQL** (Web Shell) facturas/pagos/
+  productos de ejemplo de HCGM (soft-delete por `deleted_at`). Probar que la facturación arranca limpia.
+- **Parámetros de horas extra 2027 — cotejar contra el DOF.** Reforma 40 h publicada (jornada 48→46→44→42→40, 2026-30);
+  el escalonamiento del tope de dobles (9→12 h) viene de despachos. Actualizar `nomina_te_parametros` y marcar
+  `confirmado=TRUE` sólo tras validar el DOF. Checador: token de dispositivo, asistencia→prenómina, modo campo GPS;
+  afinar límites SBC; casos TE sin cubrir. Ver [[checador-nomina-plan]].
+- **Lector del PDF 32-D del IMSS.** El usuario pasó una muestra; formato conocido (RFC/Folio/sentido/vigencia/
+  trabajadores). Falta escribir el `leerPdf` del IMSS (regex, como CSF/CIF) para autollenar `opinion_cumplimiento`.
+  Ver [[imss-32d-opinion-pendiente]].
+- **Autofacturación — salir en vivo (decisión del usuario).** Ya se captura el rol de adquirente + timbrado conectado
+  con salvaguarda (commit `b9b8c23`). Para emitir real: empresa en PRODUCCIÓN + PAC con servicio de adquirentes. Umbral
+  de ingresos (~40 UMA Art.74) por validar. Ver [[autofacturacion-anexo20-pendiente]].
+- **Factura global — probar timbrado** en PRUEBAS (nodo InformacionGlobal). Ver [[factura-global-publico-general]].
+- **Alerta de IVA — que la app de IVA llame al puente.** La alerta de registro NEXO ya funciona; la de IVA dispara si
+  la app de IVA llama `POST /integracion/iva/cliente` en cada autoregistro (si no, agregarlo en IVA — app aparte).
+- **Costo vs gasto en Compras (a conversar).** Usuario aceptó ClaveProdServ→115/601; si se afina, tabla por empresa
+  marcada «sugerido». Ver [[contabilidad-asignacion-centralizada]].
+- **(HECHO 2026-11-04)** ~~Filtro de metadatos en XML del SAT~~ (`42e79a5`); ~~correo del despacho como canal central
+  + SMTP arreglado~~ (`7afa940`, host = `mail.hcgm.com.mx`); ~~flecha de regreso en Pedidos~~ (`a460348`).
+
+**E-commerce (parcial):** flecha de regreso en Pedidos HECHA. «Tienda no disponible» = la tienda debe estar `activa`
+(check en Tiendas) + slug correcto; inventario vacío = agregar productos primero en «Productos» y publicarlos en
+«Catálogo web». Si persiste con la tienda activa, pasar la URL exacta. Ver [[ecommerce-modulo-plan]].
 
 ## 🔴 Bloqueado / requiere acción del usuario (no es código)
 
