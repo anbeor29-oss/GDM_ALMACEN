@@ -1669,7 +1669,7 @@ class APIClient {
   }
   /** Genera el pago de las PUE. asignaciones = {uuid: bancoCuentaId} por factura;
    *  bancoCuentaId es el banco por defecto (cuando la empresa tiene uno solo). */
-  async generarPagosPue(anio: number, mes: number, opts: { bancoCuentaId?: string; asignaciones?: Record<string, string> } = {}) {
+  async generarPagosPue(anio: number, mes: number, opts: { bancoCuentaId?: string; asignaciones?: Record<string, string>; modo?: 'todo-banco' | 'caja-y-banco' } = {}) {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-pagos-pue', { anio, mes, ...opts });
     return r.data;
   }

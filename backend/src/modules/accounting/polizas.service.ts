@@ -556,7 +556,7 @@ export async function generarCobrosPagosDelMes(
 export async function pagosPuePendientes(companyId: string, anio: number, mes: number) {
   const r = await query<any>(
     `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision,'YYYY-MM-DD') AS fecha_emision,
-            c.total, c.nombre_emisor, c.rfc_emisor, c.xml
+            c.total, c.nombre_emisor, c.rfc_emisor, c.forma_pago, c.xml
        FROM cfdi_recibidos c
       WHERE c.company_id=$1 AND c.direccion='recibidos' AND c.tipo_comprobante='I'
         AND c.metodo_pago='PUE' AND c.xml IS NOT NULL
@@ -578,7 +578,7 @@ export async function pagosPuePendientes(companyId: string, anio: number, mes: n
       uuid: c.uuid,
       folio: [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8),
       proveedor: c.nombre_emisor || c.rfc_emisor || '', rfc: c.rfc_emisor,
-      fecha: c.fecha_emision, total: round2(c.total),
+      fecha: c.fecha_emision, total: round2(c.total), formaPago: c.forma_pago || '',
       iva: round2(impuestosDeXml(String(c.xml)).trasladados),
     }))
     .filter((x) => x.total > 0);
@@ -614,6 +614,9 @@ export async function pagadaPorComplemento(companyId: string, uuidFactura: strin
  *  antes de asentarlo se verifica que no exista ya el pago por complemento. */
 export async function generarPagoPue(
   companyId: string, uuid: string, bancoCuentaId: string, userId?: string,
+  // Destino explícito del abono (p. ej. CAJA 101 para pagos en efectivo). Si viene,
+  // se usa en lugar de buscar la cuenta contable del banco elegido.
+  destino?: { accountId: string; etiqueta?: string },
 ): Promise<{ ok: true; folio: number } | { error: string }> {
   const c = (await query<any>(
     `SELECT uuid, serie, folio, TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha_emision,
@@ -638,10 +641,20 @@ export async function generarPagoPue(
     return { error: 'esta factura ya se pagó por su complemento (REP); no se duplica' };
   }
 
-  const bc = (await query<any>(
-    `SELECT cuenta_contable_id FROM bancos_cuentas WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL`,
-    [bancoCuentaId, companyId])).rows[0];
-  if (!bc?.cuenta_contable_id) return { error: 'la cuenta de banco elegida no tiene cuenta contable (102-xx) asignada' };
+  // Cuenta de abono: el banco elegido (102-xx) por defecto; o el destino explícito
+  // (CAJA 101 para efectivo) si viene.
+  let abonoCuentaId: string;
+  let destinoEtiqueta = 'Banco';
+  if (destino?.accountId) {
+    abonoCuentaId = destino.accountId;
+    destinoEtiqueta = destino.etiqueta || 'Caja';
+  } else {
+    const bc = (await query<any>(
+      `SELECT cuenta_contable_id FROM bancos_cuentas WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL`,
+      [bancoCuentaId, companyId])).rows[0];
+    if (!bc?.cuenta_contable_id) return { error: 'la cuenta de banco elegida no tiene cuenta contable (102-xx) asignada' };
+    abonoCuentaId = bc.cuenta_contable_id;
+  }
 
   const prov = await resolverOCrearSubcuentaTercero(companyId, 'proveedor', c.rfc_emisor, c.nombre_emisor);
   if ('error' in prov) return { error: `proveedores: ${prov.error}` };
@@ -651,7 +664,7 @@ export async function generarPagoPue(
   const etiqueta = esPpd ? 'pago PPD' : 'pago PUE';
   const lineas: LineaPoliza[] = [
     { account_id: prov.id, cargo: total, concepto: `Proveedores (${etiqueta})`, uuid_cfdi: c.uuid, party_rfc: c.rfc_emisor },
-    { account_id: bc.cuenta_contable_id, abono: total, concepto: `Banco (${etiqueta})`, uuid_cfdi: c.uuid },
+    { account_id: abonoCuentaId, abono: total, concepto: `${destinoEtiqueta} (${etiqueta})`, uuid_cfdi: c.uuid },
   ];
   if (iva > 0) {
     const c118 = await cuentaPorAgrupador(companyId, '118.01');
@@ -691,6 +704,46 @@ export async function generarPagosPueDelMes(
     if ('ok' in r) creadas++; else omitidas.push({ folio: p.folio, motivo: r.error });
   }
   return { creadas, omitidas };
+}
+
+/**
+ * Genera en BLOQUE las pólizas de pago de las compras PUE del mes, ruteando por la
+ * FORMA DE PAGO del CFDI para llevar control de bancos:
+ *   · modo 'todo-banco'   → todo al banco elegido (102-xx).
+ *   · modo 'caja-y-banco' → el EFECTIVO (forma 01) a CAJA (101) y el resto
+ *     (transferencia 03, tarjeta 04/28, etc.) al banco elegido.
+ * Asiento por factura (el mismo de `generarPagoPue`): Cargo proveedor + Cargo 118.01
+ * IVA acreditable pagado / Abono caja|banco + Abono 119.01 IVA por acreditar. Es la
+ * póliza de DIARIO que cancela el pasivo de la compra PUE. Idempotente (PAGOPUE:uuid).
+ */
+export async function generarPagosPueMasivo(
+  companyId: string, anio: number, mes: number,
+  opts: { modo: 'todo-banco' | 'caja-y-banco'; bancoCuentaId?: string; asignaciones?: Record<string, string> },
+  userId?: string,
+): Promise<{ creadas: number; enCaja: number; enBanco: number; omitidas: Array<{ folio: string; motivo: string }> }> {
+  const pend = await pagosPuePendientes(companyId, anio, mes);
+  let creadas = 0, enCaja = 0, enBanco = 0;
+  const omitidas: Array<{ folio: string; motivo: string }> = [];
+
+  // Cuenta de CAJA (101) una sola vez, sólo si se separa el efectivo.
+  const cajaCuenta = opts.modo === 'caja-y-banco'
+    ? await cuentaPorAgrupadores(companyId, ['101.01', '101.02', '101'])
+    : null;
+
+  for (const p of pend) {
+    const esEfectivo = String((p as any).formaPago || '') === '01';
+    if (opts.modo === 'caja-y-banco' && esEfectivo) {
+      if (!cajaCuenta) { omitidas.push({ folio: p.folio, motivo: 'falta la cuenta de CAJA (agrupador 101) para contabilizar el efectivo' }); continue; }
+      const r = await generarPagoPue(companyId, p.uuid, '', userId, { accountId: cajaCuenta.id, etiqueta: 'Caja' });
+      if ('ok' in r) { creadas++; enCaja++; } else omitidas.push({ folio: p.folio, motivo: r.error });
+    } else {
+      const bancoId = opts.asignaciones?.[p.uuid] || opts.bancoCuentaId;
+      if (!bancoId) { omitidas.push({ folio: p.folio, motivo: 'no se eligió el banco para transferencias/tarjetas' }); continue; }
+      const r = await generarPagoPue(companyId, p.uuid, bancoId, userId);
+      if ('ok' in r) { creadas++; enBanco++; } else omitidas.push({ folio: p.folio, motivo: r.error });
+    }
+  }
+  return { creadas, enCaja, enBanco, omitidas };
 }
 
 /**

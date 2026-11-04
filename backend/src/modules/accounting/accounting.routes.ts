@@ -1838,14 +1838,17 @@ router.get(
 );
 
 /** POST /accounting/polizas/generar-pagos-pue — genera el pago de las PUE del mes.
- *  body: { anio, mes, bancoCuentaId?, asignaciones?: {uuid: bancoCuentaId} }. */
+ *  body: { anio, mes, bancoCuentaId?, asignaciones?, modo? }. Con modo 'caja-y-banco'
+ *  rutea el efectivo (forma 01) a CAJA (101) y el resto al banco; 'todo-banco' = todo
+ *  al banco (equivale al comportamiento anterior). */
 router.post(
   '/polizas/generar-pagos-pue',
   requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
-    const r = await polizas.generarPagosPueDelMes(
+    const modo = req.body?.modo === 'caja-y-banco' ? 'caja-y-banco' : 'todo-banco';
+    const r = await polizas.generarPagosPueMasivo(
       companyId(req), Number(req.body?.anio), Number(req.body?.mes),
-      { bancoCuentaId: req.body?.bancoCuentaId || undefined, asignaciones: req.body?.asignaciones || undefined },
+      { modo, bancoCuentaId: req.body?.bancoCuentaId || undefined, asignaciones: req.body?.asignaciones || undefined },
       req.user?.userId);
     res.json({ success: true, data: r });
   })

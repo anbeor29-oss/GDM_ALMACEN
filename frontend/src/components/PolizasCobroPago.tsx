@@ -132,12 +132,20 @@ export function PolizasCobroPago() {
  * BANCO se pagó cada una (con un solo banco, se preselecciona) y se genera la
  * póliza de pago (201 proveedor / 102 banco + IVA 119→118).
  */
+/** c_FormaPago del SAT → etiqueta corta (para saber qué va a caja vs banco). */
+const FORMA_PAGO: Record<string, string> = {
+  '01': 'Efectivo', '02': 'Cheque', '03': 'Transferencia', '04': 'Tarjeta créd.',
+  '05': 'Monedero', '28': 'Tarjeta déb.', '99': 'Por definir',
+};
+
 function PagosPue({ anio, mes }: { anio: number; mes: number }) {
   const qc = useQueryClient();
   const [asig, setAsig] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [omitidas, setOmitidas] = useState<any[]>([]);
+  // Ruteo: el efectivo (forma 01) a CAJA y el resto al banco, o todo al banco.
+  const [modo, setModo] = useState<'caja-y-banco' | 'todo-banco'>('caja-y-banco');
 
   const pendQ = useQuery({ queryKey: ['pagos-pue', anio, mes], queryFn: () => api.getPagosPuePendientes(anio, mes) });
   const pend: any[] = pendQ.data?.data?.pendientes || [];
@@ -153,8 +161,10 @@ function PagosPue({ anio, mes }: { anio: number; mes: number }) {
     try {
       const asignaciones: Record<string, string> = {};
       for (const p of pend) { const b = bancoDe(p.uuid); if (b) asignaciones[p.uuid] = b; }
-      const r: any = await api.generarPagosPue(anio, mes, { asignaciones });
-      setMsg(`${r.data.creadas} pago(s) de contado generado(s).`);
+      const r: any = await api.generarPagosPue(anio, mes, { asignaciones, modo });
+      const d = r.data || {};
+      setMsg(`${d.creadas} pago(s) de contado generado(s)` +
+        (modo === 'caja-y-banco' ? ` — ${d.enCaja || 0} a caja, ${d.enBanco || 0} a banco.` : '.'));
       setOmitidas(r.data.omitidas || []);
       qc.invalidateQueries({ queryKey: ['pagos-pue', anio, mes] });
       qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
@@ -188,6 +198,17 @@ function PagosPue({ anio, mes }: { anio: number; mes: number }) {
         <p className="text-sm text-gray-500 italic">No hay facturas PUE pendientes de pago en el mes.</p>
       ) : (
         <>
+          <div className="flex flex-wrap items-center gap-2 bg-gray-50 border rounded-lg p-2">
+            <span className="text-xs font-semibold text-gray-600">¿A dónde va cada pago?</span>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input type="radio" checked={modo === 'caja-y-banco'} onChange={() => setModo('caja-y-banco')} />
+              Efectivo a <b>Caja (101)</b>, tarjetas y transferencias a <b>Banco (102)</b>
+            </label>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input type="radio" checked={modo === 'todo-banco'} onChange={() => setModo('todo-banco')} />
+              Todo a <b>Banco</b>
+            </label>
+          </div>
           {bancosOk.length > 1 && (
             <p className="text-[11px] text-gray-500">
               Tienes {bancosOk.length} bancos: elige el correcto en cada renglón (por defecto va el primero).
@@ -202,6 +223,7 @@ function PagosPue({ anio, mes }: { anio: number; mes: number }) {
                   <th className="px-2 py-1.5 text-left font-semibold">Proveedor</th>
                   <th className="px-2 py-1.5 text-right font-semibold">Total</th>
                   <th className="px-2 py-1.5 text-right font-semibold">IVA</th>
+                  <th className="px-2 py-1.5 text-left font-semibold">Forma</th>
                   <th className="px-2 py-1.5 text-left font-semibold">Banco con que se pagó</th>
                 </tr>
               </thead>
@@ -213,9 +235,16 @@ function PagosPue({ anio, mes }: { anio: number; mes: number }) {
                     <td className="px-2 py-1 max-w-[220px] truncate" title={p.proveedor}>{p.proveedor}</td>
                     <td className="px-2 py-1 text-right font-mono">{money(p.total)}</td>
                     <td className="px-2 py-1 text-right font-mono text-gray-500">{p.iva ? money(p.iva) : ''}</td>
+                    <td className="px-2 py-1 text-gray-600 whitespace-nowrap">
+                      {FORMA_PAGO[String(p.formaPago)] || p.formaPago || '—'}
+                      {modo === 'caja-y-banco' && String(p.formaPago) === '01' && (
+                        <span className="ml-1 text-[10px] text-emerald-700">→ Caja</span>
+                      )}
+                    </td>
                     <td className="px-2 py-1">
                       <select value={bancoDe(p.uuid)} onChange={(e) => setAsig((a) => ({ ...a, [p.uuid]: e.target.value }))}
-                        className="input py-1 text-xs" disabled={bancosOk.length === 1}>
+                        className="input py-1 text-xs"
+                        disabled={bancosOk.length === 1 || (modo === 'caja-y-banco' && String(p.formaPago) === '01')}>
                         {bancosTodos.map((b) => (
                           <option key={b.id} value={b.id} disabled={!b.cuenta_contable_id}>
                             {b.alias} · {b.banco_nombre}{b.cuenta_contable_id ? '' : ' — sin cuenta 102'}
