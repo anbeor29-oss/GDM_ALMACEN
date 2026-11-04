@@ -26,18 +26,10 @@
 
 ## 🔴 Bloqueado / requiere acción del usuario (no es código)
 
-- **Descarga automática de XML — falta `ENABLE_SAT_DESCARGA_CRON=true` en Render.** El motor avanza solo con el cron
-  `sat-descarga-cron` (cada 15 min + 6:00 CDMX: crea el trabajo del día, avanza, indexa a la bóveda → el XML aparece en
-  el calendario **sin pulsar «Avanzar»**). Está gated por esa variable (y necesita `SAT_VAULT_KEY`). **Acción:** poner
-  `ENABLE_SAT_DESCARGA_CRON=true` en el env del backend en Render y reiniciar. Sin esa variable, hay que avanzar a mano.
-  Ver [[sat-descarga-estado]].
-
-- **Descarga por SatGo — el plan NO incluye la descarga masiva.** Al activar `SAT_DESCARGA_VIA=satgo`, el SAT devuelve
-  `HTTP 403 · "Este plan no tiene acceso a esta funcionalidad" · featureCode "wssolicita" · dailyLimit 5 / monthlyLimit 5`.
-  Es un **candado del plan de SatGo**, no un bug. **Acción:** contratar/actualizar el plan de SatGo que incluya la
-  **descarga masiva** (feature `wssolicita`, y probablemente `comunicadosfiel`/`notificacionesfiel` para el buzón).
-  **Mientras tanto:** quitar `SAT_DESCARGA_VIA=satgo` en Render para volver al **WS oficial del SAT (gratis)**.
-  _(2026-10-06: el usuario reporta que SatGo ya se liberó y habilitará más RFC; falta confirmar en vivo que el plan ya trae `wssolicita`.)_
+- **(HECHO 2026-11-04)** ~~Descarga automática de XML — `ENABLE_SAT_DESCARGA_CRON=true`~~ → **ya puesto en Render**.
+- **(HECHO 2026-11-04)** ~~Plan de SatGo con descarga masiva (`wssolicita`)~~ → **ya contratado**.
+- **(DECISIÓN DEL USUARIO, no listar como pendiente)** PAC producción = marcar empresa PRODUCCIÓN +
+  `SW_SAPIEN_TOKEN_PROD` + CSD en SW. Es CFDI real; lo activa el usuario cuando quiera salir en vivo.
 - **IVA.HTML → desplegar.** El código **ya está listo** (motor SatGo, lee `SATGO_API_KEY`; ver `CAMBIO_SATGO.md`).
   Acción del usuario: **poner `SATGO_API_KEY`** en el `.env`/variables del hosting de IVA y **reiniciar** el server
   (Claude no tiene acceso a ese hosting). Mismo plan con descarga masiva aplica.

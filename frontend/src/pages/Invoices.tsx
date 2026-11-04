@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Download, FileDown, CheckCircle, Eye, Stamp, X, Ban, Loader2, Wallet, Coins, History,
-  Mail, Send, FileText, FileMinus2, Pencil, Ship,
+  Mail, Send, FileText, FileMinus2, Pencil, Ship, Trash2,
 } from 'lucide-react';
 import api from '@/services/api';
 import { BanderaMoneda } from '@/components/BanderaMoneda';
@@ -128,6 +128,19 @@ export function InvoicesPage() {
       alert(`No se pudo timbrar.\n\n${e.response?.data?.message || e.message}`);
     } finally {
       setStampingId(null);
+    }
+  };
+
+  /* ───────────── Borrar borrador ───────────── */
+  // Sólo para facturas NO timbradas (DRAFT/Capturada): quita los ejemplos o
+  // borradores que no se van a usar. Las timbradas se cancelan, no se borran.
+  const handleDelete = async (invoice: Invoice) => {
+    if (!window.confirm(`¿Borrar la factura ${(invoice as any).serie || 'FAC'}-${(invoice as any).folio}? Es un borrador no timbrado; no se puede deshacer.`)) return;
+    try {
+      await api.deleteInvoice(invoice.id);
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'No se pudo borrar la factura.');
     }
   };
 
@@ -281,6 +294,12 @@ export function InvoicesPage() {
                           <IconBtn color="sky" title="Editar factura (solo DRAFT)"
                             onClick={() => navigate(`/invoices/${invoice.id}/edit`)}>
                             <Pencil size={18} />
+                          </IconBtn>
+                        )}
+                        {canEdit && (
+                          <IconBtn color="red" title="Borrar borrador (no timbrado)"
+                            onClick={() => handleDelete(invoice)}>
+                            <Trash2 size={18} />
                           </IconBtn>
                         )}
                         {canStamp && (

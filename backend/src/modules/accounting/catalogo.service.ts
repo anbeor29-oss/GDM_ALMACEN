@@ -47,12 +47,22 @@ function cuelgaDe(hijo: string, padre: string): boolean {
     // Último segmento SIGNIFICATIVO del padre (se ignoran los «00» finales).
     let sig = pSeg.length;
     while (sig > 0 && /^0+$/.test(pSeg[sig - 1])) sig--;
-    if (hSeg.length < sig) return false;
-    for (let i = 0; i < sig; i++) {
-      // Por valor: «05» == «5», «01» == «1» (no debe pesar el relleno de ceros).
-      if (Number(hSeg[i]) !== Number(pSeg[i])) return false;
-    }
-    return true;
+    // Por valor: «05» == «5», «01» == «1» (no debe pesar el relleno de ceros).
+    const coincideHasta = (n: number): boolean => {
+      if (hSeg.length < n) return false;
+      for (let i = 0; i < n; i++) if (Number(hSeg[i]) !== Number(pSeg[i])) return false;
+      return true;
+    };
+    // Estricto: el hijo empieza EXACTO con el padre (todos sus segmentos significativos).
+    if (coincideHasta(sig)) return true;
+    // Relajado — cuentas AGRUPADORAS de nivel 3+ (p. ej. «3-10-30 RESULTADO EJERCICIOS
+    // ANTERIOR», cuyos hijos son 3-10-38, 3-10-39… 3-10-91, que NO repiten el «30»):
+    // basta compartir la FAMILIA del padre (sus segmentos menos el último). Así no se
+    // bloquean catálogos importados donde los hijos se renumeran en el último nivel; el
+    // árbol real lo sostiene el parent_id, no el prefijo. Sólo aplica a nivel 3+ para no
+    // aflojar cuentas de nivel 1/2 (p. ej. no deja colgar 1-05 de 1-02).
+    if (sig >= 3 && coincideHasta(sig - 1)) return true;
+    return false;
   }
   const soloDig = (s: string) => String(s).replace(/[.\-\s/]/g, '');
   return soloDig(hijo).startsWith(soloDig(padre));
