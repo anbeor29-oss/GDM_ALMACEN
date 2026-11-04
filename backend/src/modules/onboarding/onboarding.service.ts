@@ -13,6 +13,43 @@ import * as crypto from 'crypto';
 import { query, transaction } from '../../config/database';
 import { ValidationError, ConflictError } from '../../middleware/errorHandler';
 import { hashPassword, validateRFC } from '../auth/auth.service';
+import * as mailer from '../mailer/mailer.service';
+import logger from '../../middleware/logger';
+
+/** A quién se avisa de cada registro nuevo (NEXO o IVA). Configurable por env. */
+const ALERTA_REGISTRO_EMAIL = process.env.ALERTA_REGISTRO_EMAIL || 'anbeor@hotmail.com';
+/** Empresa cuyo correo/membrete firma la alerta (GRUPO HCGM). */
+const EMISOR_ALERTA_RFC = process.env.ALERTA_REGISTRO_RFC || 'GHC1707275Y0';
+
+/**
+ * Avisa por correo (desde GRUPO HCGM) de un registro nuevo. NO bloquea el alta:
+ * cualquier falla de correo se registra y se ignora. La usa el alta de NEXO y
+ * puede llamarla el puente de IVA para avisar de sus autoregistros.
+ */
+export async function notificarRegistro(d: {
+  fuente: 'NEXO' | 'IVA'; rfc?: string; razon?: string; correo?: string; telefono?: string | null;
+}): Promise<void> {
+  try {
+    const g = await query<any>(`SELECT id FROM companies WHERE UPPER(rfc) = $1 LIMIT 1`, [EMISOR_ALERTA_RFC.toUpperCase()]);
+    const companyId = g.rows[0]?.id as string | undefined;
+    const cuando = new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' });
+    const msg =
+      `Se registró una cuenta nueva en ${d.fuente}.\n\n` +
+      `Empresa / nombre: ${d.razon || '—'}\n` +
+      `RFC: ${d.rfc || '—'}\n` +
+      `Correo: ${d.correo || '—'}\n` +
+      (d.telefono ? `Teléfono: ${d.telefono}\n` : '') +
+      `Fecha: ${cuando} (hora del centro)`;
+    await mailer.sendPlainMail({
+      companyId,
+      to: ALERTA_REGISTRO_EMAIL,
+      subject: `Nuevo registro en ${d.fuente} · ${d.razon || d.rfc || ''}`.trim(),
+      message: msg,
+    });
+  } catch (e: any) {
+    logger.warn(`[alerta-registro] no se pudo enviar la alerta de ${d.fuente}: ${e?.message || e}`);
+  }
+}
 
 /** Contraseña temporal legible (sin caracteres ambiguos). Se resetea al entrar. */
 function contrasenaTemporal(): string {
@@ -128,6 +165,9 @@ export async function registrarPrueba(d: {
       [correo, hash, firstName, resto.join(' ') || null, d.telefono || null, id]);
     return id as string;
   });
+
+  // Alerta al equipo (no bloquea el alta si el correo falla).
+  void notificarRegistro({ fuente: 'NEXO', rfc, razon, correo, telefono: d.telefono });
 
   return { companyId, correo, passwordTemporal };
 }

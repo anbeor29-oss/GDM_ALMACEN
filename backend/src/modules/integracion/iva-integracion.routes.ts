@@ -23,6 +23,7 @@ import crypto from 'crypto';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import { validateRFC } from '../auth/auth.service';
+import { notificarRegistro } from '../onboarding/onboarding.service';
 import logger from '../../middleware/logger';
 
 const router = Router();
@@ -83,6 +84,8 @@ router.post('/cliente', asyncHandler(async (req: Request, res: Response) => {
               updated_at = NOW() WHERE id = $1`, [companyId, vigenciaFin, pagadoDesde]);
   }
   logger.info(`[integracion-iva] ${creada ? 'alta' : 'actualiza'} ${rfc} (${d.motivo || 'REGISTRO'}) → ${companyId}`);
+  // Alerta sólo en ALTA nueva (no en cada actualización), sin bloquear la respuesta.
+  if (creada) void notificarRegistro({ fuente: 'IVA', rfc, razon, correo: correo || undefined, telefono: d.telefono });
   res.json({ success: true, data: { companyId, creada } });
 }));
 
