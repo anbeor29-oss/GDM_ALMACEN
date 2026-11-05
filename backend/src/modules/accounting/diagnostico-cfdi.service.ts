@@ -21,9 +21,20 @@ const finDeMes = (a: number, m: number) => (m >= 1 && m <= 12) ? new Date(a, m, 
 
 const TOPE_CLASIFICA = 3000;   // cuántos pendientes se abren para clasificar por XML
 
+/** ¿La empresa usa «una sola cuenta» para esta dirección (rol *_CUENTA_UNICA)? Si
+ *  sí, no hace falta mapear cada producto: todo cae en esa cuenta. */
+async function usaCuentaUnica(companyId: string, rol: string): Promise<boolean> {
+  const r = await query<any>(
+    `SELECT 1 FROM accounting_cuentas_fijas f
+       JOIN accounting_accounts a ON a.id=f.account_id AND a.company_id=f.company_id
+      WHERE f.company_id=$1 AND f.agrupador=$2 AND a.activa=true AND a.permite_movimientos=true LIMIT 1`,
+    [companyId, rol]);
+  return (r.rowCount || 0) > 0;
+}
+
 async function diagnosticarDireccion(
   companyId: string, direccion: 'emitidos' | 'recibidos', desde: string, hasta: string,
-  mapaProd: Map<string, string>,
+  mapaProd: Map<string, string>, cuentaUnica: boolean,
 ) {
   const cont = await query<any>(
     `SELECT count(*)::int AS total,
@@ -61,8 +72,12 @@ async function diagnosticarDireccion(
       const conceptos = conceptosDeXml(String(c.xml));
       if (conceptos.length === 0) { otros++; cubeta = 'otros'; motivo = 'la factura no trae conceptos'; }
       else {
+        // En modo «una sola cuenta» no se revisa producto por producto: todo cae en
+        // la cuenta única, así que con tener conceptos ya está listo.
         let falta: string | null = null;
-        for (const cn of conceptos) { if (!mapaProd.get(cn.clave)) { falta = cn.clave; break; } }
+        if (!cuentaUnica) {
+          for (const cn of conceptos) { if (!mapaProd.get(cn.clave)) { falta = cn.clave; break; } }
+        }
         if (falta) { sinCuenta++; cubeta = 'sinCuenta'; clavesSinCuenta.add(falta); motivo = `producto ${falta} sin cuenta asignada`; }
         else { listos++; cubeta = 'listos'; motivo = 'listo para generar'; }
       }
@@ -84,10 +99,13 @@ async function diagnosticarDireccion(
 
 export async function diagnosticarContabilizacion(companyId: string, anio: number, mes: number) {
   const desde = iniDeMes(anio, mes), hasta = finDeMes(anio, mes);
-  const [mapaV, mapaC] = await Promise.all([mapaProductoCuenta(companyId), mapaProductoCuentaCompra(companyId)]);
+  const [mapaV, mapaC, ventaUnica, compraUnica] = await Promise.all([
+    mapaProductoCuenta(companyId), mapaProductoCuentaCompra(companyId),
+    usaCuentaUnica(companyId, 'VENTA_CUENTA_UNICA'), usaCuentaUnica(companyId, 'COMPRA_CUENTA_UNICA'),
+  ]);
   const [emitidos, recibidos] = await Promise.all([
-    diagnosticarDireccion(companyId, 'emitidos', desde, hasta, mapaV),
-    diagnosticarDireccion(companyId, 'recibidos', desde, hasta, mapaC),
+    diagnosticarDireccion(companyId, 'emitidos', desde, hasta, mapaV, ventaUnica),
+    diagnosticarDireccion(companyId, 'recibidos', desde, hasta, mapaC, compraUnica),
   ]);
 
   // Pólizas descuadradas del periodo (defensivo: el trigger DEFERRABLE las evita).

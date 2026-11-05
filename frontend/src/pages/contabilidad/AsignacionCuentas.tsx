@@ -14,7 +14,7 @@
 import { useMemo, useState } from 'react';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Tag, Truck, Users, Building2, HeartPulse, ArrowLeftRight, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Tag, Truck, Users, Building2, HeartPulse, ArrowLeftRight, CheckCircle2, AlertTriangle, Layers } from 'lucide-react';
 import api from '@/services/api';
 import { useMascara } from '@/utils/cuenta';
 import { SelectorCuentaId } from '@/components/SelectorCuenta';
@@ -90,9 +90,9 @@ export function AsignacionCuentasPage() {
         {cuentas.filter((c) => ['ACTIVO', 'GASTO', 'COSTO'].includes(c.tipo)).map((c) => <option key={c.id} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
       </datalist>
 
-      {pest === 'ventas' && <TabIngresos anio={anio} mes={mes} cuentas={cuentas} />}
+      {pest === 'ventas' && <><ModoContabilizacion tipo="ventas" cuentas={cuentas} /><TabIngresos anio={anio} mes={mes} cuentas={cuentas} /></>}
       {pest === 'clientes' && <TabClientes />}
-      {pest === 'compras' && <TabCargos anio={anio} mes={mes} cuentas={cuentas} />}
+      {pest === 'compras' && <><ModoContabilizacion tipo="compras" cuentas={cuentas} /><TabCargos anio={anio} mes={mes} cuentas={cuentas} /></>}
       {pest === 'proveedores' && <TabProveedores />}
       {pest === 'nomina' && <ConceptosCuentasNomina />}
       {pest === 'pagos' && <PagosInfo cuentas={cuentas} />}
@@ -157,6 +157,60 @@ function PagosInfo({ cuentas }: { cuentas: any[] }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/* ── «Una sola cuenta» vs «separar por producto» (por Ventas / Compras) ──
+ * El motor separa el XML por producto (cada ClaveProdServ a su cuenta). Aquí la
+ * empresa puede elegir UNA cuenta única: toda la factura (el ingreso en ventas, el
+ * gasto/compra en compras) se contabiliza ahí, sin separar. Se guarda como cuenta
+ * fija del rol VENTA_CUENTA_UNICA / COMPRA_CUENTA_UNICA; vaciarla vuelve a separar. */
+function ModoContabilizacion({ tipo, cuentas }: { tipo: 'ventas' | 'compras'; cuentas: any[] }) {
+  const qc = useQueryClient();
+  const mascara = useMascara();
+  const rol = tipo === 'ventas' ? 'VENTA_CUENTA_UNICA' : 'COMPRA_CUENTA_UNICA';
+  const fijasQ = useQuery({ queryKey: ['cuentas-fijas'], queryFn: () => api.getCuentasFijas() });
+  const fijas: Record<string, any> = fijasQ.data?.data || {};
+  const actualId: string = fijas[rol]?.account_id || '';
+  const unica = !!actualId;
+  const asignar = useMutation({
+    mutationFn: (id: string | null) => api.setCuentaFija(rol, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cuentas-fijas'] }),
+  });
+  // Elegibles: ingreso para ventas; activo/gasto/costo para compras.
+  const elegibles = tipo === 'ventas'
+    ? cuentas.filter((c) => c.tipo === 'INGRESO')
+    : cuentas.filter((c) => ['ACTIVO', 'GASTO', 'COSTO'].includes(c.tipo));
+  const queEs = tipo === 'ventas' ? 'el ingreso' : 'el gasto o la compra';
+
+  return (
+    <div className={`rounded-lg border p-3 mb-3 ${unica ? 'bg-indigo-50 border-indigo-200' : 'bg-gray-50 border-gray-200'}`}>
+      <div className="flex items-start gap-2">
+        <Layers size={16} className={`mt-0.5 shrink-0 ${unica ? 'text-indigo-600' : 'text-gray-400'}`} />
+        <div className="text-sm text-gray-700 flex-1">
+          <b>¿Separar por producto o a una sola cuenta?</b> Por omisión cada producto del XML va a su
+          propia cuenta (la tabla de abajo). Si prefieres, elige <b>una sola cuenta</b> y toda la factura
+          ({queEs}) se contabiliza ahí, sin separar por producto ni mapear cada clave.
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 mt-2 pl-6">
+        <div className="w-80">
+          <SelectorCuentaId cuentas={elegibles} value={actualId || null} mascara={mascara} permitirCrear={false}
+            placeholder="— Una sola cuenta (vacío = separar por producto) —"
+            onChange={(id) => asignar.mutate(id || null)} />
+        </div>
+        {unica ? (
+          <span className="text-xs text-indigo-700 flex items-center gap-1">
+            <CheckCircle2 size={13} /> A una sola cuenta — la tabla de abajo queda en pausa.
+          </span>
+        ) : (
+          <span className="text-xs text-gray-500 flex items-center gap-1">
+            <AlertTriangle size={13} className="text-gray-400" /> Separando por producto (tabla de abajo).
+          </span>
+        )}
+        {asignar.isPending && <span className="text-xs text-gray-400">guardando…</span>}
       </div>
     </div>
   );

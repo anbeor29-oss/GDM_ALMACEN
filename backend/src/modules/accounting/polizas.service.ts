@@ -243,6 +243,11 @@ export async function generarVentasDelMes(
   companyId: string, anio: number, mes: number, userId?: string, soloUuid?: string
 ): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
   const mapaProd = await mapaProductoCuenta(companyId);
+  // Modo «UNA SOLA CUENTA»: si la empresa asignó la cuenta única de ventas (rol
+  // VENTA_CUENTA_UNICA en Asignación → Ventas), TODA la factura va a ESA cuenta de
+  // ingreso, sin separar por producto —útil cuando no se quiere mapear cada
+  // ClaveProdServ—. Sin ella, se parte por producto como siempre.
+  const ctaVentaUnica = await cuentaPorAgrupador(companyId, 'VENTA_CUENTA_UNICA');
   // CANDADO por comprobante. El `NOT EXISTS` ya evita re-contabilizar un UUID que
   // YA tiene póliza. `soloUuid` acota a UNA factura (su folio fiscal): al timbrar
   // se contabiliza SÓLO esa, sin barrer el mes —así el timbrado no re-contabiliza
@@ -281,10 +286,11 @@ export async function generarVentasDelMes(
 
       // Partir el subtotal NETO (importe − descuento) por producto → su 401. El
       // IVA se causa sobre el neto, así que la cuenta de ingreso lleva el neto.
+      // En modo «una sola cuenta» todos los conceptos caen en la misma (ctaVentaUnica).
       const porCuenta = new Map<string, number>();
       let faltaProducto: string | null = null;
       for (const cn of conceptosDeXml(String(c.xml))) {
-        const cod = mapaProd.get(cn.clave);
+        const cod = ctaVentaUnica ? ctaVentaUnica.codigo : mapaProd.get(cn.clave);
         if (!cod) { faltaProducto = cn.clave; break; }
         porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + cn.importe - cn.descuento));
       }
@@ -378,6 +384,10 @@ export async function generarComprasDelMes(
   companyId: string, anio: number, mes: number, userId?: string
 ): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
   const mapaProd = await mapaProductoCuentaCompra(companyId);
+  // Modo «UNA SOLA CUENTA»: si la empresa asignó la cuenta única de compras (rol
+  // COMPRA_CUENTA_UNICA en Asignación → Compras), TODA la factura va a ESA cuenta de
+  // gasto/inventario, sin separar por producto. Sin ella, se parte como siempre.
+  const ctaCompraUnica = await cuentaPorAgrupador(companyId, 'COMPRA_CUENTA_UNICA');
   const r = await query<any>(
     `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.total, c.descuento,
             c.nombre_emisor, c.rfc_emisor, c.xml
@@ -401,10 +411,11 @@ export async function generarComprasDelMes(
       const ret = retencionesDeXml(String(c.xml));
 
       // Cada concepto va NETO (importe − descuento) a su 115/601.
+      // En modo «una sola cuenta» todos los conceptos caen en la misma (ctaCompraUnica).
       const porCuenta = new Map<string, number>();
       let faltaProducto: string | null = null;
       for (const cn of conceptosDeXml(String(c.xml))) {
-        const cod = mapaProd.get(cn.clave);
+        const cod = ctaCompraUnica ? ctaCompraUnica.codigo : mapaProd.get(cn.clave);
         if (!cod) { faltaProducto = cn.clave; break; }
         porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + cn.importe - cn.descuento));
       }

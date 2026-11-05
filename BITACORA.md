@@ -7742,3 +7742,30 @@ Sin migración. Tras descontabilizar, actualizar la balanza del mes («desde pó
 `E:\Banco\GDM_NEXO_Motor_Contable_CFDI_PPD_PUE.md`.
 
 **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).
+
+---
+
+## 2026-11-05 (contabilidad) — Opción «una sola cuenta» (no separar el XML por producto)
+
+El motor contabiliza cada XML **partido por producto** (cada ClaveProdServ a su 401 en ventas, o 115/601 en compras). El
+usuario pidió poder **NO separar**: contabilizar la factura completa a **una sola cuenta**, como entran los respaldos
+importados (una póliza por factura).
+
+**Config (sin migración):** se reusan las **cuentas fijas** (`accounting_cuentas_fijas`) con dos roles nuevos —
+`VENTA_CUENTA_UNICA` y `COMPRA_CUENTA_UNICA`—. Asignar la cuenta = activar el modo; vaciarla = volver a separar por
+producto. Es **por dirección** (ventas y compras independientes) y **por empresa**.
+
+**Motor (`polizas.service`):** `generarVentasDelMes`/`generarComprasDelMes` resuelven `cuentaPorAgrupador('*_CUENTA_UNICA')`
+una vez; si existe, en el loop de conceptos **todos** caen en esa cuenta (`cod = ctaUnica ? ctaUnica.codigo : mapaProd.get(clave)`),
+sumando el neto en una sola partida. El IVA (208/209 · 119.01) y las retenciones **no** cambian; el asiento cuadra igual.
+Beneficio: desaparecen los «producto sin cuenta asignada» (ya no hay que mapear cada clave).
+
+**Diagnóstico de cuadre (`diagnostico-cfdi.service`):** en modo cuenta única ya **no** marca «sin cuenta de producto»
+(todo lo que tenga conceptos queda «listo»); `usaCuentaUnica()` detecta el rol.
+
+**UI (`AsignacionCuentas.tsx`):** en las pestañas **Ventas** y **Compras**, arriba de la tabla producto→cuenta, un
+recuadro **«¿Separar por producto o a una sola cuenta?»** con un selector de cuenta (ingreso para ventas; activo/gasto/
+costo para compras). Vacío = separar; con cuenta = una sola (la tabla de abajo «queda en pausa»). Guarda con
+`api.setCuentaFija(rol, id)`.
+
+**Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).
