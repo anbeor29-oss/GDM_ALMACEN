@@ -1479,6 +1479,21 @@ router.put(
   })
 );
 
+/** POST /nomina/conceptos-cuenta/auto-respaldo — asigna las cuentas de los conceptos
+ *  tomándolas del respaldo importado (CPQ/CTLK): casa por agrupador y por nombre de la
+ *  cuenta. Sólo rellena vacíos; deja sin cuenta los conceptos sin coincidencia. */
+router.post(
+  '/conceptos-cuenta/auto-respaldo',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await conceptosCuenta.autoAsignarDesdeRespaldo(companyId(req));
+    res.json({
+      success: true, data: r,
+      message: `${r.asignadas} concepto(s) tomaron su cuenta del respaldo; ${r.sinCuenta} quedaron sin cuenta (no venían en el respaldo).`,
+    });
+  })
+);
+
 /* ── Póliza de pasivo de nómina (finiquitos timbrados) ── */
 router.get(
   '/poliza/finiquitos',

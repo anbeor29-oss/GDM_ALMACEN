@@ -7769,3 +7769,28 @@ costo para compras). Vacío = separar; con cuenta = una sola (la tabla de abajo 
 `api.setCuentaFija(rol, id)`.
 
 **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).
+
+---
+
+## 2026-11-05 (nómina) — «Asignar desde respaldo»: conceptos de nómina toman su cuenta del respaldo (CPQ/CTLK)
+
+Igual que en ventas/compras, pero para los ~34 conceptos de nómina. El usuario pidió **asignar solos** los conceptos
+tomando las cuentas que **ya vienen en el respaldo** importado (CPQ/Contalink) y **dejar sin cuenta** los que no vengan
+(los que no aparecen en los timbres del cliente).
+
+**Problema:** «Asignar sugeridas» sólo resuelve por **agrupador SAT** (la sugerida, p. ej. 601.01). Los catálogos de
+cliente de CPQ/CTLK **no** usan la numeración del SAT ni traen agrupador, así que casi todo quedaba sin cuenta.
+
+**`autoAsignarDesdeRespaldo` (`conceptos-cuenta.service`):** casa cada concepto contra el catálogo (que vino del
+respaldo) por: (1) **agrupador** == sugerida, y (2) **nombre de la cuenta** con un diccionario de palabras por concepto
+(SUELDO/RAYA, ISR, IMSS, INFONAVIT, AGUINALDO, PTU, DESPENSA, FONACOT, PENSION, SOBRE NOMINA, etc.), filtrando por el
+**lado** (percepción/provisión-gasto → GASTO/COSTO; deducción/provisión-pasivo/neto → PASIVO; subsidio → ACTIVO). Puntúa
+y **prefiere la cuenta que el respaldo realmente USÓ** en sus pólizas (hay movimiento). **Sólo rellena vacíos** (no pisa
+lo asignado a mano) y **deja sin cuenta** lo que no casa. Sirve igual para **CPQ y Contalink** porque ambos importan al
+mismo catálogo/journal. Ruta `POST /nomina/conceptos-cuenta/auto-respaldo`.
+
+**UI (`NominaReportes.tsx` → Conceptos y cuentas):** botón índigo **«Asignar desde respaldo»** junto a «Asignar
+sugeridas»; corre TODOS los grupos de un golpe y muestra «N tomaron su cuenta; M quedaron sin cuenta (no venían en el
+respaldo)». `api.autoAsignarConceptosDesdeRespaldo`.
+
+Sin migración. **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).

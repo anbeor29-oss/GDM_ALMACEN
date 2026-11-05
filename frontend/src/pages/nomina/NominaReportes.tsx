@@ -17,7 +17,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   FileBarChart, FileSpreadsheet, AlertTriangle, Users, Receipt, Landmark, HeartPulse,
-  Sigma, List, Tag, Check, PlayCircle, CheckCircle2, BookOpen, Download, FileDown, Sparkles, FileText,
+  Sigma, List, Tag, Check, PlayCircle, CheckCircle2, BookOpen, Download, FileDown, Sparkles, FileText, Archive,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { claseOpcion } from '@/utils/coloresOpciones';
@@ -698,6 +698,22 @@ export function ConceptosCuentasNomina() {
     } finally { setAsignando(false); }
   };
 
+  /* Asigna las cuentas desde el RESPALDO importado (CPQ/Contalink): casa cada concepto
+     con la cuenta del catálogo por NOMBRE + agrupador + lado, y deja sin cuenta los que
+     no vengan en el respaldo. Rellena TODOS los grupos de un golpe (no sólo la lista
+     visible); nunca pisa una cuenta ya puesta a mano. */
+  const [respaldoBusy, setRespaldoBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const asignarDesdeRespaldo = async () => {
+    setRespaldoBusy(true); setMsg('');
+    try {
+      const r: any = await api.autoAsignarConceptosDesdeRespaldo();
+      setMsg(r?.message || `Asignadas ${r?.data?.asignadas ?? 0} desde el respaldo.`);
+      qc.invalidateQueries({ queryKey: ['nomina-conceptos-cuenta'] });
+    } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo asignar desde el respaldo.'); }
+    finally { setRespaldoBusy(false); }
+  };
+
   return (
     <div className="space-y-3">
       <div className="bg-white rounded-lg shadow border p-4">
@@ -726,14 +742,28 @@ export function ConceptosCuentasNomina() {
               {label}
             </button>
           ))}
-        {sub !== 'poliza' && pendientesConSugerida.length > 0 && (
-          <button onClick={asignarSugeridas} disabled={asignando}
-            className="ml-auto inline-flex items-center gap-1.5 text-sm text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-3 py-1.5 disabled:opacity-50"
-            title="Coloca la cuenta sugerida en cada concepto de esta lista que aún no la tenga">
-            <Sparkles size={15} /> {asignando ? 'Asignando…' : `Asignar sugeridas (${pendientesConSugerida.length})`}
-          </button>
+        {sub !== 'poliza' && (
+          <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
+            {faltan > 0 && (
+              <button onClick={asignarDesdeRespaldo} disabled={respaldoBusy}
+                className="inline-flex items-center gap-1.5 text-sm text-indigo-700 border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 rounded-lg px-3 py-1.5 disabled:opacity-50"
+                title="Toma la cuenta de cada concepto del respaldo importado (CPQ/Contalink), casando por nombre de la cuenta y agrupador. Deja sin cuenta los conceptos que no vengan en el respaldo. Sólo rellena los vacíos.">
+                <Archive size={15} /> {respaldoBusy ? 'Asignando…' : 'Asignar desde respaldo'}
+              </button>
+            )}
+            {pendientesConSugerida.length > 0 && (
+              <button onClick={asignarSugeridas} disabled={asignando}
+                className="inline-flex items-center gap-1.5 text-sm text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-3 py-1.5 disabled:opacity-50"
+                title="Coloca la cuenta sugerida en cada concepto de esta lista que aún no la tenga">
+                <Sparkles size={15} /> {asignando ? 'Asignando…' : `Asignar sugeridas (${pendientesConSugerida.length})`}
+              </button>
+            )}
+          </div>
         )}
       </div>
+      {msg && sub !== 'poliza' && (
+        <p className="text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">{msg}</p>
+      )}
 
       {sub === 'poliza' ? (
         <PolizaNomina />

@@ -2433,6 +2433,12 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>('/nomina/conceptos-cuenta', { grupo, clave, cuenta });
     return r.data;
   }
+  /** Asigna las cuentas de los conceptos de nómina desde el respaldo importado (CPQ/CTLK),
+   *  casando por agrupador y por nombre de la cuenta. Sólo rellena vacíos. */
+  async autoAsignarConceptosDesdeRespaldo() {
+    const r = await this.client.post<APIResponse<any>>('/nomina/conceptos-cuenta/auto-respaldo', {});
+    return r.data;
+  }
   /* ── Póliza de pasivo de nómina (finiquitos timbrados) ── */
   async getFiniquitosParaPoliza() {
     const r = await this.client.get<APIResponse<any>>('/nomina/poliza/finiquitos');
