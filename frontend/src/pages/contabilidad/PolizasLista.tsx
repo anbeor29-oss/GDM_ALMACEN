@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown, Wand2, CheckCircle2, Stethoscope } from 'lucide-react';
+import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown, Wand2, CheckCircle2, Stethoscope, Undo2, Coins } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
@@ -77,6 +77,7 @@ export function PolizasListaPage() {
   const [msg, setMsg] = useState('');
   const [generando, setGenerando] = useState('');
   const [todoAnio, setTodoAnio] = useState(false);
+  const [descModal, setDescModal] = useState(false);   // modal «Descontabilizar mes»
   const [editar, setEditar] = useState<any>(null);
   const [previa, setPrevia] = useState<any>(null);   // póliza en previsualización/PDF
   /* Lista COMPACTA: cada póliza es un solo renglón (folio + concepto); con doble
@@ -130,7 +131,18 @@ export function PolizasListaPage() {
     setGenerando(tipo); setMsg('');
     try {
       const r: any = await fn();
-      setMsg(r?.message || r?.data?.message || 'Pólizas generadas.');
+      // El motor responde { creadas, omitidas[] }. Se muestran los conteos y las
+      // primeras omitidas (incluye los «posible duplicado» de la red día/importe),
+      // para que el usuario vea POR QUÉ no se generaron todas.
+      const d = r?.data || {};
+      if (typeof d.creadas === 'number') {
+        const om = (d.omitidas || []) as Array<{ folio: string; motivo: string }>;
+        let m = `${d.creadas} póliza(s) generada(s).`;
+        if (om.length) m += ` ${om.length} omitida(s): ${om.slice(0, 3).map((o) => `${o.folio} (${o.motivo})`).join(' · ')}${om.length > 3 ? '…' : ''}.`;
+        setMsg(m);
+      } else {
+        setMsg(r?.message || d?.message || 'Pólizas generadas.');
+      }
       await qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
     } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo generar.'); }
     finally { setGenerando(''); }
@@ -166,10 +178,14 @@ export function PolizasListaPage() {
     } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo auto-asignar.'); }
     finally { setGenerando(''); }
   };
+  /* Orden pedido: Ventas → Cobro/Venta → Compras → Pago/Compra → Depreciación → PUE.
+     Cobro/Venta y Pago/Compra son el mismo motor de complementos, separados por
+     dirección (emitidos vs recibidos) para que cada botón haga lo suyo. */
   const GENERADORES: Array<[string, string, () => Promise<any>]> = [
     ['ventas', 'Ventas', () => api.generarVentas(anio, mes, todoAnio || mes === 0)],
+    ['cobros', 'Cobro/Venta', () => api.generarCobrosPagos(anio, mes, todoAnio || mes === 0, 'cobros')],
     ['compras', 'Compras', () => api.generarCompras(anio, mes, todoAnio || mes === 0)],
-    ['cobros', 'Cobros/Pagos', () => api.generarCobrosPagos(anio, mes, todoAnio || mes === 0)],
+    ['pagos', 'Pago/Compra', () => api.generarCobrosPagos(anio, mes, todoAnio || mes === 0, 'pagos')],
     /* La depreciación es un cálculo MENSUAL (no acumula por año aquí): ignora el
        toggle y siempre corre el mes elegido. */
     ['deprec', 'Depreciación', () => api.generarDepreciacion(anio, mes)],
@@ -293,6 +309,20 @@ export function PolizasListaPage() {
               <PlayCircle size={14} /> {generando === k ? 'Generando…' : label}
             </button>
           ))}
+          {/* PUE (pago de contado): lleva a «Pago de compras», donde se elige el banco
+              por factura (el CFDI PUE no dice con qué cuenta se pagó). */}
+          <button onClick={() => setFiltro('ppdpue')} disabled={!!generando}
+            title="Pago de las facturas PUE (de contado): se eligen el/los bancos en «Pago de compras»."
+            className="inline-flex items-center gap-1 border border-teal-200 bg-teal-50 text-teal-700 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-100 disabled:opacity-40 transition-colors">
+            <Coins size={14} /> PUE
+          </button>
+          {/* Descontabilizar: deshace las pólizas AUTOMÁTICAS del mes (p. ej. si el
+              motor duplicó). Separado y en rojo para no confundir con «Generar». */}
+          <button onClick={() => setDescModal(true)} disabled={!!generando}
+            title="Deshace las pólizas automáticas del mes (CFDI, PUE y depreciación). Útil si se duplicaron."
+            className="ml-auto inline-flex items-center gap-1 border border-rose-200 bg-rose-50 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-rose-100 disabled:opacity-40 transition-colors">
+            <Undo2 size={14} /> Descontabilizar mes
+          </button>
         </div>
         <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-gray-100">
           <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">Asignar cuentas</span>
@@ -418,6 +448,17 @@ export function PolizasListaPage() {
       </div>
       )}
 
+      {descModal && (
+        <ModalDescontabilizar
+          anio={anio} mes={mes}
+          onCerrar={() => setDescModal(false)}
+          onHecho={(texto) => {
+            setDescModal(false); setMsg(texto);
+            qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
+            qc.invalidateQueries({ queryKey: ['polizas-cuadre', 'todas'] });
+          }}
+        />
+      )}
       {previa && <PreviaPoliza poliza={previa} mascara={mascara} onCerrar={() => setPrevia(null)} />}
       {editar && (
         <EditorPoliza
@@ -549,6 +590,77 @@ function PreviaPoliza({ poliza, mascara, onCerrar }: any) {
               </tr>
             </tfoot>
           </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Modal «Descontabilizar mes»: deshace las pólizas AUTOMÁTICAS por tipo ──
+ * Sólo motor (CFDI/PUE/depreciación). Para re-generar limpio cuando algo se duplicó
+ * (p. ej. correr «Compras» sobre CFDI que ya venían de un respaldo). */
+const TIPOS_DESCONTAB: Array<[string, string]> = [
+  ['ventas', 'Ventas'],
+  ['cobros', 'Cobros de venta'],
+  ['compras', 'Compras'],
+  ['pagos', 'Pagos de compra'],
+  ['pue', 'Pagos PUE (de contado)'],
+  ['depreciacion', 'Depreciación'],
+];
+function ModalDescontabilizar({ anio, mes, onCerrar, onHecho }:
+  { anio: number; mes: number; onCerrar: () => void; onHecho: (texto: string) => void }) {
+  const [sel, setSel] = useState<Set<string>>(new Set(TIPOS_DESCONTAB.map(([k]) => k)));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const alternar = (k: string) => setSel((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const mesConcreto = mes >= 1 && mes <= 12;
+  const periodo = mesConcreto ? `${MESES[mes]} ${anio}` : `${anio}`;
+
+  const correr = async () => {
+    if (!mesConcreto) { setError('Elige un MES concreto (no «Todo el año») para descontabilizar.'); return; }
+    if (sel.size === 0) { setError('Marca al menos un tipo.'); return; }
+    setBusy(true); setError('');
+    try {
+      const r: any = await api.descontabilizarMes(anio, mes, [...sel]);
+      const d = r?.data || {};
+      const detalle = Object.entries(d.porTipo || {}).filter(([, n]) => Number(n) > 0)
+        .map(([k, n]) => `${TIPOS_DESCONTAB.find(([t]) => t === k)?.[1] || k}: ${n}`).join(' · ');
+      onHecho(`${r?.message || 'Descontabilizado.'}${detalle ? ' (' + detalle + ')' : ''} Actualiza la balanza del mes («desde pólizas») antes de cerrar.`);
+    } catch (e: any) { setError(e?.response?.data?.message || e?.message || 'No se pudo descontabilizar.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b bg-rose-50">
+          <h3 className="font-semibold text-rose-800 flex items-center gap-2"><Undo2 size={18} /> Descontabilizar {periodo}</h3>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-sm text-gray-600">
+            Borra las pólizas <b>automáticas</b> del mes (las del motor). <b>No</b> toca las importadas
+            (CPQ/CTLK), las manuales, la apertura ni la conciliación bancaria.
+          </p>
+          <div className="space-y-1.5">
+            {TIPOS_DESCONTAB.map(([k, label]) => (
+              <label key={k} className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={sel.has(k)} onChange={() => alternar(k)} /> {label}
+              </label>
+            ))}
+          </div>
+          <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            Después vuelve a <b>Generar</b> lo que corresponda: con el candado nuevo ya no se duplica contra
+            lo importado.
+          </div>
+          {error && <p className="text-sm text-rose-700">{error}</p>}
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={onCerrar} className="px-3 py-1.5 rounded-lg text-sm text-gray-600 border hover:bg-gray-50">Cancelar</button>
+            <button onClick={correr} disabled={busy}
+              className="px-4 py-1.5 rounded-lg text-sm text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 flex items-center gap-1.5">
+              <Undo2 size={15} /> {busy ? 'Descontabilizando…' : 'Descontabilizar'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

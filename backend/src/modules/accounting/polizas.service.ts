@@ -144,6 +144,59 @@ async function cuentaPorCodigo(companyId: string, codigo: string) {
   return r.rows[0] || null;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   CANDADO ANTI-DUPLICIDAD — un CFDI = UNA póliza, venga de donde venga
+   ───────────────────────────────────────────────────────────────────────────
+   El motor sólo miraba `journal_entries.origen_uuid`, pero un CFDI puede estar ya
+   contabilizado por OTRA vía que no toca esa columna, y entonces se duplicaba:
+     · un respaldo de Contalink liga el CFDI en `journal_entry_cfdi` (su origen_uuid
+       es 'CTLK:<hash>', NUNCA el UUID del CFDI) — ésta era la fuga del caso de octubre;
+     · una póliza manual o importada etiqueta el renglón con `journal_lines.uuid_cfdi`.
+   Esta condición (CORRELADA al alias `c` del comprobante) cierra las tres vías: si
+   CUALQUIER póliza ya referencia el UUID, el motor lo salta. Se intercala en las
+   consultas de generación (ventas, compras, cobros/pagos) con el alias `c`.
+   OJO: la vía `uuid_cfdi` EXCLUYE las pólizas de banco (origen='BANCO'): un pago
+   conciliado etiqueta el CFDI pero NO asienta el pasivo/ingreso, así que si el pago
+   se concilió antes de generar la compra/venta, ésta SÍ debe generarse (lo asienta). */
+const CFDI_SIN_POLIZA = `
+  NOT EXISTS (SELECT 1 FROM journal_entries e
+               WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)
+  AND NOT EXISTS (SELECT 1 FROM journal_lines jl
+                    JOIN journal_entries je ON je.id=jl.entry_id
+                   WHERE je.company_id=c.company_id AND jl.uuid_cfdi=c.uuid
+                     AND je.origen <> 'BANCO')
+  AND NOT EXISTS (SELECT 1 FROM journal_entry_cfdi jec
+                   WHERE jec.company_id=c.company_id AND jec.uuid=c.uuid)`;
+
+/* Público en general: repetir importe el mismo día es normal (muchas facturas
+ * iguales), así que la red de "mismo día/importe" NO aplica a estos RFC. */
+const RFC_GENERICO = new Set(['XAXX010101000', 'XEXX010101000']);
+/**
+ * Red de seguridad (día + importe + tercero) para respaldos que NO ligaron el CFDI
+ * por ninguna vía: ¿ya hay OTRA póliza del MISMO día con un renglón del MISMO tercero
+ * (RFC) que lleva EXACTAMENTE este total (en cargo o abono)? El renglón del tercero
+ * carga/abona el total de la factura tanto en el motor (Clientes/Proveedores) como en
+ * los respaldos CTLK (que ponen el RFC en todos sus renglones), así que empata ambos.
+ * Si empata, el comprobante se OMITE con su motivo —no se pierde: el usuario lo revisa—.
+ * No aplica a XAXX/XEXX. Es "comparar el día" además del UUID, como se pidió.
+ */
+async function existeDuplicadoProbable(
+  companyId: string, fecha: string, total: number, rfc?: string | null,
+): Promise<boolean> {
+  const r = (rfc || '').toUpperCase().trim();
+  if (!r || RFC_GENERICO.has(r)) return false;
+  const hit = await query<any>(
+    `SELECT 1
+       FROM journal_entries e
+       JOIN journal_lines l ON l.entry_id=e.id
+      WHERE e.company_id=$1 AND e.fecha=$2::date
+        AND UPPER(l.party_rfc)=$3
+        AND $4::numeric IN (l.cargo, l.abono)
+      LIMIT 1`,
+    [companyId, fecha, r, round2(total)]);
+  return (hit.rowCount || 0) > 0;
+}
+
 /** Crea una póliza (encabezado + partidas). El cuadre lo valida la base al COMMIT. */
 export async function crearPoliza(companyId: string, p: NuevaPoliza, userId?: string) {
   return transaction(async (client) => {
@@ -199,7 +252,7 @@ export async function generarVentasDelMes(
   const conds: string[] = [
     `c.company_id=$1`, `c.direccion='emitidos'`, `c.tipo_comprobante='I'`,
     `c.xml IS NOT NULL`, `(c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')`,
-    `NOT EXISTS (SELECT 1 FROM journal_entries e WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)`,
+    CFDI_SIN_POLIZA,
   ];
   if (soloUuid) {
     params.push(soloUuid.toUpperCase());
@@ -290,6 +343,13 @@ export async function generarVentasDelMes(
       }
       if (faltaCuenta) { omitidas.push({ folio: folioTxt, motivo: `la cuenta ${faltaCuenta} no está en el catálogo o no admite movimientos` }); continue; }
 
+      // Red de día + importe + tercero (además del UUID): si ya hay una póliza del
+      // mismo día, mismo cliente y mismo total, se OMITE (posible duplicado por un
+      // respaldo que no ligó el CFDI). Se reporta; no se pierde.
+      if (await existeDuplicadoProbable(companyId, String(c.fecha_emision).slice(0, 10), total, c.rfc_receptor)) {
+        omitidas.push({ folio: folioTxt, motivo: 'posible duplicado: ya hay una póliza del mismo día, cliente e importe (revísala)' }); continue;
+      }
+
       await crearPoliza(companyId, {
         tipo: 'INGRESO', fecha: String(c.fecha_emision).slice(0, 10),
         concepto: `Venta ${folioTxt} · ${(c.nombre_receptor || c.rfc_receptor || '').toString().slice(0, 80)}`.trim(),
@@ -326,8 +386,7 @@ export async function generarComprasDelMes(
         AND (c.tipo_comprobante='I' OR c.tipo_comprobante IS NULL)
         AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
         AND c.fecha_emision::date BETWEEN $2 AND $3
-        AND NOT EXISTS (SELECT 1 FROM journal_entries e
-                         WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)
+        AND ${CFDI_SIN_POLIZA}
       ORDER BY c.fecha_emision`,
     [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
 
@@ -400,6 +459,13 @@ export async function generarComprasDelMes(
         lineas.push({ account_id: cta.id, abono: ret.iva, concepto: 'IVA retenido por enterar', uuid_cfdi: c.uuid });
       }
 
+      // Red de día + importe + tercero (además del UUID): si ya hay una póliza del
+      // mismo día, mismo proveedor y mismo total, se OMITE (posible duplicado por un
+      // respaldo que no ligó el CFDI). Se reporta; no se pierde.
+      if (await existeDuplicadoProbable(companyId, String(c.fecha_emision).slice(0, 10), total, c.rfc_emisor)) {
+        omitidas.push({ folio: folioTxt, motivo: 'posible duplicado: ya hay una póliza del mismo día, proveedor e importe (revísala)' }); continue;
+      }
+
       await crearPoliza(companyId, {
         tipo: 'EGRESO', fecha: String(c.fecha_emision).slice(0, 10),
         concepto: `Compra ${folioTxt} · ${(c.nombre_emisor || c.rfc_emisor || '').toString().slice(0, 80)}`.trim(),
@@ -428,7 +494,10 @@ export async function generarComprasDelMes(
  * primera). Idempotente por origen_uuid.
  */
 export async function generarCobrosPagosDelMes(
-  companyId: string, anio: number, mes: number, userId?: string, soloUuid?: string
+  companyId: string, anio: number, mes: number, userId?: string, soloUuid?: string,
+  // `direccion` separa los botones: 'cobros' = complementos EMITIDOS (cobros de venta),
+  // 'pagos' = complementos RECIBIDOS (pagos de compra). Sin él, hace ambos (compat.).
+  direccion?: 'cobros' | 'pagos',
 ): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
   let creadas = 0;
   const omitidas: Array<{ folio: string; motivo: string }> = [];
@@ -441,7 +510,7 @@ export async function generarCobrosPagosDelMes(
     const conds: string[] = [
       `c.company_id=$1`, `c.direccion=$2`, `c.tipo_comprobante='P'`, `c.xml IS NOT NULL`,
       `(c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')`,
-      `NOT EXISTS (SELECT 1 FROM journal_entries e WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)`,
+      CFDI_SIN_POLIZA,
     ];
     if (soloUuid) {
       params.push(soloUuid.toUpperCase());
@@ -460,8 +529,9 @@ export async function generarCobrosPagosDelMes(
       params);
   };
 
-  const cobros = await traer('emitidos');   // los que NOSOTROS timbramos = cobros a clientes
-  const pagos = await traer('recibidos');   // los que el proveedor timbró = pagos a proveedores
+  // Según el botón: 'cobros' sólo emitidos, 'pagos' sólo recibidos, sin él ambos.
+  const cobros = (!direccion || direccion === 'cobros') ? await traer('emitidos') : { rows: [] as any[] };   // los que NOSOTROS timbramos = cobros a clientes
+  const pagos = (!direccion || direccion === 'pagos') ? await traer('recibidos') : { rows: [] as any[] };   // los que el proveedor timbró = pagos a proveedores
 
   for (const c of cobros.rows) {
     const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
@@ -993,6 +1063,54 @@ export async function borrarVentasDelMes(companyId: string, anio: number, mes: n
   return r.rowCount || 0;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESCONTABILIZAR EL MES — deshacer SÓLO las pólizas que generó el motor
+   ───────────────────────────────────────────────────────────────────────────
+   Para cuando el motor duplicó (p. ej. octubre: se corrió "Compras" sobre CFDI que
+   ya venían de un respaldo). Borra las pólizas AUTOMÁTICAS del mes, por tipo, y NO
+   toca las importadas (CTLK/CPQ, origen MANUAL), las manuales, la apertura ni las de
+   conciliación bancaria (origen BANCO/regla conciliacion_*, que se deshacen desde su
+   pantalla por estar ligadas al movimiento). Tras descontabilizar hay que reconstruir
+   la balanza del mes (Pólizas → "desde pólizas") para que los saldos reflejen el borrado.
+*/
+const COND_DESCONTAB: Record<string, string> = {
+  // Motor de CFDI: ventas/compras y sus cobros/pagos por complemento.
+  ventas:  `origen='CFDI' AND regla LIKE 'ventas\\_%' ESCAPE '\\'`,
+  cobros:  `origen='CFDI' AND regla LIKE 'cobro\\_%' ESCAPE '\\'`,
+  compras: `origen='CFDI' AND regla LIKE 'compras\\_%' ESCAPE '\\'`,
+  pagos:   `origen='CFDI' AND regla LIKE 'pago\\_cfdi%' ESCAPE '\\'`,
+  // Pago de contado (PUE) y depreciación: generados por el motor, no por el banco.
+  pue:          `regla LIKE 'pago\\_pue%' ESCAPE '\\'`,
+  depreciacion: `origen='DEPRECIACION'`,
+};
+export type TipoDescontab = keyof typeof COND_DESCONTAB;
+
+export async function descontabilizarMes(
+  companyId: string, anio: number, mes: number, tipos?: TipoDescontab[],
+): Promise<{ borradas: number; porTipo: Record<string, number> }> {
+  const quiere = (tipos && tipos.length ? tipos : (Object.keys(COND_DESCONTAB) as TipoDescontab[]))
+    .filter((t) => COND_DESCONTAB[t]);
+  const desde = iniDeMes(anio, mes), hasta = finDeMes(anio, mes);
+  const porTipo: Record<string, number> = {};
+  let borradas = 0;
+  await transaction(async (client) => {
+    for (const t of quiere) {
+      const ids = (await client.query<any>(
+        `SELECT id FROM journal_entries
+          WHERE company_id=$1 AND fecha BETWEEN $2 AND $3 AND (${COND_DESCONTAB[t]})`,
+        [companyId, desde, hasta])).rows.map((r: any) => r.id);
+      porTipo[t] = ids.length;
+      if (!ids.length) continue;
+      // Partidas primero (el trigger de cuadre tolera la póliza sin renglones), luego
+      // el encabezado. El UNIQUE de origen_uuid queda libre para re-generar limpio.
+      await client.query(`DELETE FROM journal_lines WHERE entry_id = ANY($1::uuid[])`, [ids]);
+      await client.query(`DELETE FROM journal_entries WHERE id = ANY($1::uuid[]) AND company_id=$2`, [ids, companyId]);
+      borradas += ids.length;
+    }
+  });
+  return { borradas, porTipo };
+}
+
 /* ── "Todo el año" ──────────────────────────────────────────────────────────
  * Recorre los meses y suma. Del año EN CURSO sólo hasta el mes actual (los meses
  * que aún no pasan no traen comprobantes); de años pasados, los 12. No duplica:
@@ -1021,5 +1139,5 @@ export const generarVentasDelAnio = (companyId: string, anio: number, userId?: s
   porTodoElAnio(anio, (mes) => generarVentasDelMes(companyId, anio, mes, userId));
 export const generarComprasDelAnio = (companyId: string, anio: number, userId?: string) =>
   porTodoElAnio(anio, (mes) => generarComprasDelMes(companyId, anio, mes, userId));
-export const generarCobrosPagosDelAnio = (companyId: string, anio: number, userId?: string) =>
-  porTodoElAnio(anio, (mes) => generarCobrosPagosDelMes(companyId, anio, mes, userId));
+export const generarCobrosPagosDelAnio = (companyId: string, anio: number, userId?: string, direccion?: 'cobros' | 'pagos') =>
+  porTodoElAnio(anio, (mes) => generarCobrosPagosDelMes(companyId, anio, mes, userId, undefined, direccion));

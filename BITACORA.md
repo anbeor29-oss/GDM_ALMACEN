@@ -7702,3 +7702,43 @@ empleados (`nomina_empleados.email`).
 disponible» = la tienda debe estar `activa` + slug correcto; inventario vacío = agregar productos primero.
 
 **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend); migraciones al arrancar.
+
+---
+
+## 2026-11-04 (contabilidad) — Motor amarrado contra pólizas duplicadas + «Descontabilizar mes» + botones reorganizados
+
+El usuario detectó en **octubre** que el motor **duplicaba pólizas de compra**: un juego "Compra ( Egreso )" (importado) y
+otro "Compra · PROVEEDOR" (del motor) con el **mismo importe**. Causa raíz: el motor sólo comparaba
+`journal_entries.origen_uuid`, pero un **respaldo de Contalink** liga el CFDI en `journal_entry_cfdi` y su `origen_uuid`
+es `CTLK:<hash>` (NUNCA el UUID del CFDI) → el motor no lo "veía" y volvía a contabilizar.
+
+**Candado reforzado (`polizas.service`, constante `CFDI_SIN_POLIZA`, correlada al alias `c`).** Un CFDI está contabilizado
+si CUALQUIER póliza lo referencia por **las tres vías**: (1) `journal_entries.origen_uuid`, (2) una partida
+`journal_lines.uuid_cfdi` **excluyendo `origen='BANCO'`** (un pago conciliado etiqueta el CFDI pero NO asienta el
+pasivo/ingreso; la compra/venta SÍ debe generarse), y (3) la tabla `journal_entry_cfdi` (respaldos CTLK). Se intercala en
+`generarVentasDelMes`, `generarComprasDelMes` y `generarCobrosPagosDelMes`.
+
+**Red de seguridad día + importe + tercero** (`existeDuplicadoProbable`): si ya hay póliza del **mismo día**, **mismo RFC**
+y **mismo total** (en cargo o abono), el comprobante se **OMITE** como "posible duplicado" (reportado en `omitidas`, no se
+pierde). NO aplica a XAXX/XEXX (público en general repite importes). Es "comparar el día" además del UUID, como se pidió.
+
+**Botón «Descontabilizar mes»** (rojo, modal con checkboxes por tipo) → `descontabilizarMes` /
+`POST /accounting/polizas/descontabilizar`. Borra SÓLO las pólizas **automáticas** del mes: motor de CFDI
+(`ventas_%`/`compras_%`/`cobro_%`/`pago_cfdi%`), **PUE** (`pago_pue%`) y **depreciación** (`origen='DEPRECIACION'`). **No**
+toca importadas (CTLK/CPQ, origen MANUAL), manuales, apertura ni conciliación bancaria (origen BANCO; ésas se deshacen
+desde su pantalla). Es la salida al caso de octubre: descontabilizar y re-generar limpio (ahora el candado ya no duplica).
+
+**Botones reorganizados** en Pólizas, orden pedido: **Ventas · Cobro/Venta · Compras · Pago/Compra · Depreciación · PUE**
+(+ «Descontabilizar mes» a la derecha, en rojo). Cobros/pagos se separaron por `direccion` ('cobros' = complementos
+emitidos; 'pagos' = recibidos) en `generarCobrosPagos`/ruta; **PUE** lleva a la pestaña «Pago de compras» (ahí se elige el
+banco por factura). El mensaje de «Generar» ahora muestra **creadas + omitidas** (con motivo), para ver por qué no se
+generaron todas.
+
+**Robustez de movimientos bancarios** (`conciliacion-contable.contabilizar`): rechaza contabilizar un CFDI
+(cobro/pago/compra_tarjeta) que **ya se asentó desde OTRO movimiento del banco** (mismo `cfdi_uuid` con `poliza_id`) →
+"concílialo con «Cotejar con el libro»". Evita el doble movimiento bancario.
+
+Sin migración. Tras descontabilizar, actualizar la balanza del mes («desde pólizas») antes de cerrar. Spec de referencia:
+`E:\Banco\GDM_NEXO_Motor_Contable_CFDI_PPD_PUE.md`.
+
+**Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).

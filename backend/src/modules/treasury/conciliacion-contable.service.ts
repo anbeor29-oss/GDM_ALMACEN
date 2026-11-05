@@ -282,6 +282,16 @@ export async function contabilizar(
       WHERE bm.id=$1 AND bm.company_id=$2`, [movId, companyId])).rows[0];
   if (!m) return { error: 'no se encontró el movimiento' };
   if (m.poliza_id) return { yaContabilizado: true };
+  // Candado anti-duplicado de BANCO: si ESE MISMO CFDI ya se contabilizó desde OTRO
+  // movimiento del banco (su cobro/pago ya abonó/cargó la 102), no se vuelve a asentar
+  // —sería doble movimiento bancario—. El usuario lo concilia con «Cotejar con el libro».
+  if (m.cfdi_uuid && ['cobro', 'pago', 'compra_tarjeta'].includes(m.clasificacion)) {
+    const dup = (await query<any>(
+      `SELECT 1 FROM bancos_movimientos
+        WHERE company_id=$1 AND cfdi_uuid=$2 AND poliza_id IS NOT NULL AND id<>$3 LIMIT 1`,
+      [companyId, m.cfdi_uuid, movId])).rows[0];
+    if (dup) return { error: 'este CFDI ya se contabilizó desde otro movimiento del banco; no se duplica (concílialo con «Cotejar con el libro»)' };
+  }
   const esTarjeta = m.cuenta_tipo === 'TARJETA_CREDITO';
   if (!m.banco_cuenta_id) return { error: esTarjeta
     ? 'define la cuenta de PASIVO (201/205-xx) de la tarjeta antes de contabilizar'

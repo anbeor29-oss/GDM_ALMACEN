@@ -1815,16 +1815,41 @@ router.post(
   })
 );
 
-/** POST /accounting/polizas/generar-cobros-pagos — cobros y pagos (del complemento) del mes */
+/** POST /accounting/polizas/generar-cobros-pagos — cobros y pagos (del complemento) del mes.
+ *  body.direccion opcional: 'cobros' (sólo cobros de venta) | 'pagos' (sólo pagos de
+ *  compra); sin él, ambos (compat). Así los botones «Cobro/Venta» y «Pago/Compra» corren
+ *  por separado. */
 router.post(
   '/polizas/generar-cobros-pagos',
   requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
     const anio = Number(req.body?.anio);
+    const direccion = req.body?.direccion === 'cobros' ? 'cobros'
+      : req.body?.direccion === 'pagos' ? 'pagos' : undefined;
     const r = req.body?.todoElAnio
-      ? await polizas.generarCobrosPagosDelAnio(companyId(req), anio, req.user?.userId)
-      : await polizas.generarCobrosPagosDelMes(companyId(req), anio, Number(req.body?.mes), req.user?.userId);
+      ? await polizas.generarCobrosPagosDelAnio(companyId(req), anio, req.user?.userId, direccion)
+      : await polizas.generarCobrosPagosDelMes(companyId(req), anio, Number(req.body?.mes), req.user?.userId, undefined, direccion);
     res.json({ success: true, data: r });
+  })
+);
+
+/** POST /accounting/polizas/descontabilizar — deshace las pólizas AUTOMÁTICAS del mes
+ *  (motor de CFDI, PUE y depreciación), por tipo. body: { anio, mes, tipos? }. No toca
+ *  importadas, manuales, apertura ni conciliación bancaria. Para re-generar limpio tras
+ *  un duplicado. */
+router.post(
+  '/polizas/descontabilizar',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = Number(req.body?.anio); const mes = Number(req.body?.mes);
+    if (!anio || !mes) throw new ValidationError('Indica el año y el mes a descontabilizar.');
+    const tipos = Array.isArray(req.body?.tipos) ? req.body.tipos : undefined;
+    const r = await polizas.descontabilizarMes(companyId(req), anio, mes, tipos);
+    res.json({
+      success: true, data: r,
+      message: r.borradas ? `Se descontabilizaron ${r.borradas} póliza(s) automática(s) del mes.`
+        : 'No había pólizas automáticas que descontabilizar en el mes.',
+    });
   })
 );
 
