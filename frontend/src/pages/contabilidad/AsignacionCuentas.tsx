@@ -14,20 +14,21 @@
 import { useMemo, useState } from 'react';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Tag, Truck, Users, Building2, HeartPulse, ArrowLeftRight, CheckCircle2, AlertTriangle, Layers } from 'lucide-react';
+import { Tag, Truck, Users, Building2, HeartPulse, ArrowLeftRight, CheckCircle2, AlertTriangle, Layers, Brain } from 'lucide-react';
 import api from '@/services/api';
 import { useMascara } from '@/utils/cuenta';
 import { SelectorCuentaId } from '@/components/SelectorCuenta';
 import { TabIngresos, TabClientes } from './PolizasVenta';
 import { TabCargos, TabProveedores } from './PolizasCompra';
 import { ConceptosCuentasNomina } from '../nomina/NominaReportes';
+import { BandejaCompras, MemoriaRfc } from './CodificacionRfc';
 import { aniosContables } from '@/utils/anios';
 import { usePeriodoTrabajo } from '@/utils/periodoActivo';
 
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-type Pest = 'ventas' | 'clientes' | 'compras' | 'proveedores' | 'nomina' | 'pagos';
+type Pest = 'ventas' | 'clientes' | 'compras' | 'proveedores' | 'nomina' | 'pagos' | 'memoria';
 const PESTANAS: Array<{ id: Pest; nombre: string; icono: any }> = [
   { id: 'ventas', nombre: 'Ventas (401)', icono: Tag },
   { id: 'clientes', nombre: 'Clientes', icono: Users },
@@ -35,10 +36,14 @@ const PESTANAS: Array<{ id: Pest; nombre: string; icono: any }> = [
   { id: 'proveedores', nombre: 'Proveedores', icono: Building2 },
   { id: 'nomina', nombre: 'Nómina', icono: HeartPulse },
   { id: 'pagos', nombre: 'Cobros y pagos', icono: ArrowLeftRight },
+  { id: 'memoria', nombre: 'Memoria por RFC', icono: Brain },
 ];
 
 export function AsignacionCuentasPage() {
   const [pest, setPest] = useState<Pest>('ventas');
+  // Compras: la vista principal es FACTURA POR FACTURA (motor por RFC); la lista por
+  // producto queda como vista secundaria (sigue alimentando al motor).
+  const [vistaCompras, setVistaCompras] = useState<'facturas' | 'productos'>('facturas');
   const { anio, mes, setAnio, setMes } = usePeriodoTrabajo();
   const anios = aniosContables();
 
@@ -92,7 +97,26 @@ export function AsignacionCuentasPage() {
 
       {pest === 'ventas' && <><ModoContabilizacion tipo="ventas" cuentas={cuentas} /><TabIngresos anio={anio} mes={mes} cuentas={cuentas} /></>}
       {pest === 'clientes' && <TabClientes />}
-      {pest === 'compras' && <><ModoContabilizacion tipo="compras" cuentas={cuentas} /><TabCargos anio={anio} mes={mes} cuentas={cuentas} /></>}
+      {pest === 'compras' && (
+        <>
+          <ModoContabilizacion tipo="compras" cuentas={cuentas} />
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="text-xs text-gray-500 mr-1">Ver:</span>
+            <button onClick={() => setVistaCompras('facturas')}
+              className={`px-3 py-1 rounded-lg border ${vistaCompras === 'facturas' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-50'}`}>
+              Factura por factura (agente)
+            </button>
+            <button onClick={() => setVistaCompras('productos')}
+              className={`px-3 py-1 rounded-lg border ${vistaCompras === 'productos' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-50'}`}>
+              Por producto (ClaveProdServ)
+            </button>
+          </div>
+          {vistaCompras === 'facturas'
+            ? <BandejaCompras anio={anio} mes={mes} cuentas={cuentas} />
+            : <TabCargos anio={anio} mes={mes} cuentas={cuentas} />}
+        </>
+      )}
+      {pest === 'memoria' && <MemoriaRfc cuentas={cuentas} />}
       {pest === 'proveedores' && <TabProveedores />}
       {pest === 'nomina' && <ConceptosCuentasNomina />}
       {pest === 'pagos' && <PagosInfo cuentas={cuentas} />}

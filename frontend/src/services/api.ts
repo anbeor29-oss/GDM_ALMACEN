@@ -1634,6 +1634,51 @@ class APIClient {
   }
 
   /* ── Compras por producto (ClaveProdServ → 115/601) ── */
+  /* ── Motor inteligente de codificación por RFC ── */
+  async getCodificacionResumen() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/codificacion/resumen');
+    return r.data;
+  }
+  async aprenderCodificacion() {
+    const r = await this.client.post<APIResponse<any>>('/accounting/codificacion/aprender', {}, { timeout: 600000 });
+    return r.data;
+  }
+  async getBandejaCodificacion(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/codificacion/bandeja', { params: { anio, mes } });
+    return r.data;
+  }
+  async codificarFactura(uuid: string, conceptos: Array<{ idx: number; cuenta: string | null }>, guardarRegla = false, motivo?: string) {
+    const r = await this.client.put<APIResponse<any>>('/accounting/codificacion/factura', { uuid, conceptos, guardarRegla, motivo });
+    return r.data;
+  }
+  async aceptarSugerenciasCodificacion(anio: number, mes: number, minimo: 'ALTO' | 'MEDIO') {
+    const r = await this.client.post<APIResponse<any>>('/accounting/codificacion/aceptar', { anio, mes, minimo });
+    return r.data;
+  }
+  async getEvidenciaCodificacion(rfc: string, clave: string) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/codificacion/evidencia', { params: { rfc, clave } });
+    return r.data;
+  }
+  async getMemoriaCodificacion(q?: string) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/codificacion/memoria', { params: { q } });
+    return r.data;
+  }
+  async getReglasCodificacion(estado?: string) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/codificacion/reglas', { params: { estado } });
+    return r.data;
+  }
+  async crearReglaCodificacion(b: { rfc: string; nombre?: string; clave?: string; cuenta: string; motivo?: string }) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/codificacion/reglas', b);
+    return r.data;
+  }
+  async aprobarReglasCodificacion(ids: string[] | null) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/codificacion/reglas/aprobar', { ids });
+    return r.data;
+  }
+  async gobernarReglaCodificacion(id: string, b: { estado?: string; cuenta?: string; motivo?: string }) {
+    const r = await this.client.patch<APIResponse<any>>(`/accounting/codificacion/reglas/${id}`, b);
+    return r.data;
+  }
   async getComprasProductos(anio: number, mes: number) {
     const r = await this.client.get<APIResponse<any>>('/accounting/compras/productos', { params: { anio, mes } });
     return r.data;

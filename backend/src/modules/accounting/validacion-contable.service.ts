@@ -10,6 +10,7 @@
  *   3. Balance vs estado de resultados: activo = pasivo + capital, y la utilidad
  *      del estado de resultados = la que quedó en el capital (cuenta de resultado).
  */
+import { pendientesDeCodificar } from './codificacion-rfc.service';
 import { query } from '../../config/database';
 import { contextoDelPeriodo } from './periodos.service';
 import { situacionFinanciera, resultadoIntegral } from './estados-financieros.service';
@@ -152,5 +153,12 @@ export async function validarContabilidad(companyId: string, anio: number, mes: 
     && (!balance || (balance.cuadra && (balance.difResultado == null || Math.abs(balance.difResultado) < 0.5)
       && balance.cuentasSinRubro.length === 0 && localizadorLimpio));
 
-  return { anio, mes, hasta, todoBien, polizasDescuadradas, sumaDescuadres, balanza, balance };
+  /* ── 4. Codificación (motor por RFC): compras del periodo SIN cuenta → quedarían
+   * fuera de la póliza y de los estados financieros. Las partidas HISTÓRICAS no
+   * cuentan aquí: conservan la cuenta del respaldo (spec §6.5). */
+  let codificacion: any = null;
+  try { codificacion = await pendientesDeCodificar(companyId, anio, anioValido ? mes : 0); } catch { codificacion = null; }
+  const todoBienConCodif = todoBien && !(codificacion && codificacion.pendientes > 0);
+
+  return { anio, mes, hasta, todoBien: todoBienConCodif, polizasDescuadradas, sumaDescuadres, balanza, balance, codificacion };
 }

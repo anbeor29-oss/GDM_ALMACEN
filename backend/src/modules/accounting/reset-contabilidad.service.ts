@@ -64,6 +64,11 @@ export async function reiniciarContabilidad(companyId: string): Promise<{
     }
     const sal = await transactionQuery(client, `DELETE FROM accounting_period_balances WHERE company_id = $1`, [companyId]);
 
+    // 2b) Los PATRONES aprendidos salen de las pólizas que se acaban de borrar: ya no
+    //     tienen evidencia. Las REGLAS y decisiones del usuario se conservan (son suyas).
+    const pat = await transactionQuery<any>(client, `SELECT to_regclass('cod_patrones') AS r`);
+    if (pat.rows[0]?.r) await transactionQuery(client, `DELETE FROM cod_patrones WHERE company_id = $1`, [companyId]);
+
     // 3) Todo lo que cuelga del CATÁLOGO (equivalencias, cuentas fijas, conciliación → NULL,
     //    y el propio parent_id → NULL para soltar el árbol antes de borrar) y el catálogo.
     await limpiarReferencias(client, 'accounting_accounts', cuentasSub, companyId);

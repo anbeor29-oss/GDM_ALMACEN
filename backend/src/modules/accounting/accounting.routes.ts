@@ -47,6 +47,7 @@ import * as contabElec from './contabilidad-electronica.service';
 import * as recuperacionCpq from './recuperacion-cpq.service';
 import * as cuentasDup from './cuentas-duplicadas.service';
 import * as cobranzaRecon from './cobranza-reconstruccion.service';
+import * as codif from './codificacion-rfc.service';
 import { query } from '../../config/database';
 import { indexarCfdi } from '../sat-descarga/descarga.service';
 import multer from 'multer';
@@ -1614,6 +1615,87 @@ router.get(
     res.json({ success: true, data: { productos: data } });
   })
 );
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOTOR INTELIGENTE DE CODIFICACIÓN POR RFC — memoria, bandeja por factura, reglas
+   (spec E:\Banco\GDM_NEXO_Motor_Inteligente_Codificacion_RFC.md). Sólo LEE pólizas.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** GET /accounting/codificacion/resumen — recuperación y aprendizaje de la historia */
+router.get('/codificacion/resumen', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await codif.resumen(companyId(req)) });
+}));
+
+/** POST /accounting/codificacion/aprender — reconstruye la memoria por RFC desde las pólizas + XML */
+router.post('/codificacion/aprender', requireCapability('contabilidad:catalogo'), asyncHandler(async (req: Request, res: Response) => {
+  const r = await codif.aprender(companyId(req), req.user?.userId);
+  res.json({ success: true, data: r });
+}));
+
+/** GET /accounting/codificacion/bandeja?anio&mes — Compras 115/601 factura por factura */
+router.get('/codificacion/bandeja', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await codif.bandeja(companyId(req), Number(req.query.anio), Number(req.query.mes) || 0) });
+}));
+
+/** PUT /accounting/codificacion/factura — cuentas por concepto de UNA factura (+ guardar regla) */
+router.put('/codificacion/factura', requireCapability('contabilidad:catalogo'), asyncHandler(async (req: Request, res: Response) => {
+  const b = req.body || {};
+  if (!b.uuid || !Array.isArray(b.conceptos)) throw new ValidationError('Faltan uuid y conceptos.');
+  try {
+    const r = await codif.codificarFactura(companyId(req), String(b.uuid), b.conceptos,
+      { guardarRegla: !!b.guardarRegla, motivo: b.motivo || undefined }, req.user?.userId);
+    res.json({ success: true, data: r });
+  } catch (e: any) { throw new ValidationError(e?.message || 'No se pudo codificar.'); }
+}));
+
+/** POST /accounting/codificacion/aceptar — acepta sugerencias de confianza ≥ minimo (ALTO|MEDIO) */
+router.post('/codificacion/aceptar', requireCapability('contabilidad:catalogo'), asyncHandler(async (req: Request, res: Response) => {
+  const b = req.body || {};
+  try {
+    const r = await codif.aceptarSugerencias(companyId(req), Number(b.anio), Number(b.mes) || 0,
+      (String(b.minimo || 'ALTO').toUpperCase() as any), req.user?.userId);
+    res.json({ success: true, data: r });
+  } catch (e: any) { throw new ValidationError(e?.message || 'No se pudieron aceptar.'); }
+}));
+
+/** GET /accounting/codificacion/evidencia?rfc&clave — pólizas y XML que sostienen una sugerencia */
+router.get('/codificacion/evidencia', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await codif.evidencia(companyId(req), String(req.query.rfc || ''), String(req.query.clave || '')) });
+}));
+
+/** GET /accounting/codificacion/memoria?q= — memoria por proveedor (RFC) con detalle por producto */
+router.get('/codificacion/memoria', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await codif.memoria(companyId(req), req.query.q ? String(req.query.q) : undefined) });
+}));
+
+/** GET /accounting/codificacion/reglas?estado= — reglas (propuestas, aprobadas, historial) */
+router.get('/codificacion/reglas', asyncHandler(async (req: Request, res: Response) => {
+  const estado = req.query.estado ? String(req.query.estado).toUpperCase() : undefined;
+  res.json({ success: true, data: await codif.listarReglas(companyId(req), estado) });
+}));
+
+/** POST /accounting/codificacion/reglas — crea una regla aprobada a mano (proveedor [+ producto] → cuenta) */
+router.post('/codificacion/reglas', requireCapability('contabilidad:catalogo'), asyncHandler(async (req: Request, res: Response) => {
+  try { res.json({ success: true, data: { id: await codif.crearRegla(companyId(req), req.body || {}, req.user?.userId) } }); }
+  catch (e: any) { throw new ValidationError(e?.message || 'No se pudo crear la regla.'); }
+}));
+
+/** POST /accounting/codificacion/reglas/aprobar — aprueba propuestas (ids[] o todas) */
+router.post('/codificacion/reglas/aprobar', requireCapability('contabilidad:catalogo'), asyncHandler(async (req: Request, res: Response) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : null;
+  res.json({ success: true, data: await codif.aprobarPropuestas(companyId(req), ids, req.user?.userId) });
+}));
+
+/** PATCH /accounting/codificacion/reglas/:id — estado (APROBADA|RECHAZADA|SUSPENDIDA) o nueva cuenta (versión) */
+router.patch('/codificacion/reglas/:id', requireCapability('contabilidad:catalogo'), asyncHandler(async (req: Request, res: Response) => {
+  try { res.json({ success: true, data: await codif.gobernarRegla(companyId(req), String(req.params.id), req.body || {}, req.user?.userId) }); }
+  catch (e: any) { throw new ValidationError(e?.message || 'No se pudo actualizar la regla.'); }
+}));
+
+/** GET /accounting/codificacion/pendientes?anio&mes — compras sin codificar (validación previa a EF) */
+router.get('/codificacion/pendientes', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await codif.pendientesDeCodificar(companyId(req), Number(req.query.anio), Number(req.query.mes) || 0) });
+}));
 
 /** GET /accounting/cobranza/reconstruir?rfc= — cartera reconstruida desde XML (PPD − complementos de pago) */
 router.get(

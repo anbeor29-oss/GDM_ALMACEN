@@ -20,6 +20,7 @@ import { query, transaction } from '../../config/database';
 import { resolverOCrearSubcuentaTercero } from './catalogo-terceros.service';
 import { conceptosDeXml, complementoDeXml, docsRelacionadosDeXml, mapaProductoCuenta } from './ventas-cuentas.service';
 import { mapaProductoCuentaCompra } from './compras-cuentas.service';
+import { cargarContexto as cargarContextoCodificacion, cuentaEfectiva } from './codificacion-rfc.service';
 
 export interface LineaPoliza {
   account_id: string; cargo?: number; abono?: number; concepto?: string;
@@ -388,6 +389,10 @@ export async function generarComprasDelMes(
   // COMPRA_CUENTA_UNICA en Asignación → Compras), TODA la factura va a ESA cuenta de
   // gasto/inventario, sin separar por producto. Sin ella, se parte como siempre.
   const ctaCompraUnica = await cuentaPorAgrupador(companyId, 'COMPRA_CUENTA_UNICA');
+  // Motor inteligente por RFC: decisiones factura-por-factura del usuario y reglas
+  // APROBADAS (proveedor + producto). Orden: decisión › una sola cuenta › regla › producto.
+  const ctxCod = await cargarContextoCodificacion(companyId);
+  if (ctaCompraUnica) ctxCod.unica = ctaCompraUnica.codigo;
   const r = await query<any>(
     `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.total, c.descuento,
             c.nombre_emisor, c.rfc_emisor, c.xml
@@ -402,6 +407,14 @@ export async function generarComprasDelMes(
 
   let creadas = 0;
   const omitidas: Array<{ folio: string; motivo: string }> = [];
+  void mapaProd; // la asignación por producto ya va dentro de ctxCod.producto
+
+  const uuidsMes = r.rows.map((x: any) => x.uuid);
+  const decisiones = uuidsMes.length ? (await query<any>(
+    `SELECT uuid, idx, cuenta_codigo FROM cfdi_concepto_cuenta WHERE company_id=$1 AND uuid = ANY($2::text[])`,
+    [companyId, uuidsMes])).rows : [];
+  const decMap = new Map<string, string>(decisiones.map((d: any) => [`${d.uuid}#${d.idx}`, d.cuenta_codigo]));
+  const ETIQ: Record<string, string> = { DECISION: 'decisión', CUENTA_UNICA: 'cuenta única', REGLA: 'regla RFC', PRODUCTO: 'producto' };
 
   for (const c of r.rows) {
     const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
@@ -410,16 +423,20 @@ export async function generarComprasDelMes(
       const imp = impuestosDeXml(String(c.xml));
       const ret = retencionesDeXml(String(c.xml));
 
-      // Cada concepto va NETO (importe − descuento) a su 115/601.
-      // En modo «una sola cuenta» todos los conceptos caen en la misma (ctaCompraUnica).
+      // Cada concepto va NETO (importe − descuento) a su 115/601, según cuentaEfectiva:
+      // decisión del usuario en esa factura › una sola cuenta › regla aprobada › producto.
       const porCuenta = new Map<string, number>();
+      const fuentes = new Map<string, Set<string>>();
       let faltaProducto: string | null = null;
-      for (const cn of conceptosDeXml(String(c.xml))) {
-        const cod = ctaCompraUnica ? ctaCompraUnica.codigo : mapaProd.get(cn.clave);
-        if (!cod) { faltaProducto = cn.clave; break; }
-        porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + cn.importe - cn.descuento));
-      }
-      if (faltaProducto) { omitidas.push({ folio: folioTxt, motivo: `producto ${faltaProducto} sin cuenta (115/601) asignada` }); continue; }
+      const rfcProv = String(c.rfc_emisor || '').toUpperCase();
+      conceptosDeXml(String(c.xml)).forEach((cn, idx) => {
+        if (faltaProducto) return;
+        const ef = cuentaEfectiva(ctxCod, decMap.get(`${c.uuid}#${idx}`), rfcProv, cn.clave);
+        if (!ef.cuenta) { faltaProducto = cn.clave || `concepto ${idx + 1}`; return; }
+        porCuenta.set(ef.cuenta, round2((porCuenta.get(ef.cuenta) || 0) + cn.importe - cn.descuento));
+        const f = fuentes.get(ef.cuenta) || new Set<string>(); f.add(ETIQ[ef.fuente] || ef.fuente); fuentes.set(ef.cuenta, f);
+      });
+      if (faltaProducto) { omitidas.push({ folio: folioTxt, motivo: `producto ${faltaProducto} sin cuenta (115/601): codifícalo en Asignación → Compras (bandeja por factura)` }); continue; }
       if (porCuenta.size === 0) { omitidas.push({ folio: folioTxt, motivo: 'la factura no trae conceptos' }); continue; }
 
       const prov = await resolverOCrearSubcuentaTercero(companyId, 'proveedor', c.rfc_emisor, c.nombre_emisor);
@@ -448,7 +465,7 @@ export async function generarComprasDelMes(
       for (const [cod, monto] of porCuenta) {
         const cuenta = await cuentaPorCodigo(companyId, cod);
         if (!cuenta || !cuenta.permite_movimientos) { faltaCuenta = cod; break; }
-        lineas.push({ account_id: cuenta.id, cargo: monto, concepto: `Compra ${cod}`, uuid_cfdi: c.uuid });
+        lineas.push({ account_id: cuenta.id, cargo: monto, concepto: `Compra ${cod} (${[...(fuentes.get(cod) || [])].join(', ')})`, uuid_cfdi: c.uuid });
       }
       if (faltaCuenta) { omitidas.push({ folio: folioTxt, motivo: `la cuenta ${faltaCuenta} no está en el catálogo o no admite movimientos` }); continue; }
 

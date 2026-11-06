@@ -258,7 +258,7 @@ export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
  * Muestra las pólizas que tocan el comprobante (su compra y su pago). Si es una
  * factura PUE con compra pero sin pago, deja elegir el BANCO (de las cuentas
  * activas) y generar el pago aquí mismo. */
-function AsientoModal({ uuid, onClose, claveVista }: {
+export function AsientoModal({ uuid, onClose, claveVista }: {
   uuid: string; onClose: () => void; claveVista: any[];
 }) {
   const qc = useQueryClient();
@@ -488,7 +488,7 @@ function CeldaCuenta({ id, valor, claveVista }: {
 }
 
 /* ── El detalle en pantalla del sistema ───────────────────────────────────── */
-function ComprobanteModal({ id, modo, emitido, onClose }: {
+export function ComprobanteModal({ id, modo, emitido, onClose }: {
   id: string; modo: Modo; emitido: boolean; onClose: () => void;
 }) {
   const q = useQuery({ queryKey: ['sat-comprobante', id], queryFn: () => api.getSatComprobante(id) });

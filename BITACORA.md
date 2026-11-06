@@ -7794,3 +7794,58 @@ sugeridas»; corre TODOS los grupos de un golpe y muestra «N tomaron su cuenta;
 respaldo)». `api.autoAsignarConceptosDesdeRespaldo`.
 
 Sin migración. **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).
+
+---
+
+## 2026-11-05 (contabilidad) — Motor inteligente de codificación por RFC (v1: compras 115/601)
+
+Spec: `E:\Banco\GDM_NEXO_Motor_Inteligente_Codificacion_RFC.md`. Se construyeron las **Prioridades 3 y 4**
+(memoria/agente por RFC + rediseño de Compras 115/601 factura por factura) y el gancho de la **Prioridad 6**
+(validación previa). Las Prioridades 1-2 (recuperar respaldo y ligar XML) ya existían: importadores CPQ/CTLK
+y `journal_entry_cfdi`.
+
+**Principio:** el motor **sólo LEE** pólizas (importadas y del motor); nunca las modifica. Memoria aislada por
+empresa. No inventa: un concepto que no se puede atribuir a una cuenta queda «ambiguo» y no alimenta la memoria.
+
+**Modelo (migración `2026-11-05_motor_codificacion_rfc`):** `cod_patrones` (evidencia estadística, se reconstruye
+al aprender; niveles RFC_CLAVE / RFC_DESC / CLAVE / RFC con distribución de cuentas, consistencia, fechas y ejemplos),
+`cod_reglas` (PROPUESTA→APROBADA/RECHAZADA/SUSPENDIDA/SUSTITUIDA, versionadas, una viva por llave),
+`cfdi_concepto_cuenta` (decisión factura × concepto), `cod_auditoria`. Índice nuevo `journal_lines(uuid_cfdi)`.
+«Reiniciar contabilidad» borra `cod_patrones` (pierden su evidencia) y conserva reglas y decisiones.
+
+**Aprender (`codificacion-rfc.service.aprender`):** liga CFDI recibido ↔ póliza por las 3 vías del candado; toma los
+renglones de compra (GASTO/COSTO, o ACTIVO 115-116/151-178, sin IVA/impuestos/bancos); si la póliza fue a UNA cuenta,
+todos los conceptos la aprenden; si a varias, se casa concepto↔renglón por importe (±0.05) y lo demás queda ambiguo.
+Pólizas de resumen (varios CFDI) sólo cuentan los renglones con su UUID. Propone reglas donde n≥3 y ≥90%, con cuenta
+vigente; avisa (no toca) cuando una regla aprobada contradice la historia.
+
+**Sugerir (jerarquía §5.2):** regla aprobada (ALTO) › proveedor+producto › proveedor+descripción (clave genérica
+01010101) › producto con otros proveedores › proveedor › asignación por producto › sin evidencia. Confianza por evidencia
+real (MEDIO = n≥3 y ≥90%, o n≥2 y ≥75% en el nivel específico; si no, BAJO). Detecta contradicción (BAJO, muestra
+alternativas) y **cambio de política** (la cuenta reciente reemplazó a la vieja). Cuenta fuera del catálogo vigente o
+de mayor → incidencia de mapeo.
+
+**Motor de pólizas (`generarComprasDelMes`):** la cuenta de cada concepto sale de `cuentaEfectiva`: decisión del usuario ›
+«una sola cuenta» › regla APROBADA › asignación por producto. El renglón dice de dónde salió («Compra 601-01 (regla RFC)»).
+Una factura ya contabilizada no se recodifica (hay que descontabilizar).
+
+**UI:** Asignación de cuentas → **Compras (115/601)** abre por omisión la **bandeja factura por factura** (estado,
+sugerencia, confianza, ver XML/póliza, conceptos con cuenta por concepto, «usar» sugerencia, evidencia con pólizas de
+ejemplo, «guardar como regla», aceptar en bloque ALTA / ALTA+MEDIA); la vista por producto sigue como secundaria.
+Pestaña nueva **Memoria por RFC**: resumen de recuperación (pólizas, XML con/sin póliza, % relacionado, contradicciones),
+botón «Aprender de la historia», reglas propuestas (aprobar/rechazar/aprobar todas), proveedores aprendidos, reglas e
+historial (cambiar cuenta = nueva versión, suspender) y auditoría. **Validación contable** suma la tarjeta «Compras
+codificadas»: facturas sin cuenta en el periodo hacen que no salga «todo bien».
+
+**Rutas:** `/accounting/codificacion/{resumen,aprender,bandeja,factura,aceptar,evidencia,memoria,reglas,reglas/aprobar,reglas/:id,pendientes}`.
+
+**Pruebas:** 16 unitarias (`codificacion-rfc.test.ts`) de la jerarquía/confianza y de `cuentaEfectiva`; `tsc` back y
+front limpios. **NO se probó contra una base real** (la local no respondía): validar en dev con una empresa con respaldo
+(GRUPO HCGM): Aprender → revisar propuestas → bandeja de un mes → generar compras.
+
+**Pendiente (siguientes fases de la spec):** ventas/clientes en la memoria (el modelo ya trae `direccion`); nómina
+devengo/pago/entero (§8); tabla de equivalencias catálogo origen↔vigente (hoy el respaldo se importa al mismo catálogo);
+umbrales de confianza configurables por empresa.
+
+**Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend); la migración corre al arrancar. Front tocado ⇒
+`build:hosting` para hcgm.com.mx/erp.

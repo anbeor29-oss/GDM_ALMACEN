@@ -97,7 +97,7 @@ export function ValidacionContablePage() {
               <p className={`font-semibold ${d.todoBien ? 'text-emerald-800' : 'text-amber-800'}`}>
                 {d.todoBien
                   ? 'La contabilidad cuadra: pólizas, balanza y balance certifican.'
-                  : 'Hay descuadres que revisar. Cada tarjeta de abajo dice dónde.'}
+                  : 'Hay pendientes que revisar. Cada tarjeta de abajo dice dónde.'}
               </p>
               {!d.todoBien && (
                 <ul className="mt-1 text-amber-900/80 list-disc list-inside space-y-0.5">
@@ -108,10 +108,36 @@ export function ValidacionContablePage() {
                     <li>{bal.cuentasSinRubro.length} cuenta(s) con saldo fuera de todo rubro (sin agrupador SAT).</li>}
                   {bal && bal.difResultado != null && Math.abs(bal.difResultado) >= 0.5 &&
                     <li>La utilidad del estado de resultados no coincide con la cuenta 305 por {money(bal.difResultado)}.</li>}
+                  {d.codificacion?.pendientes > 0 &&
+                    <li>{d.codificacion.pendientes} factura(s) de compra sin codificar ({money(d.codificacion.importe)}): quedarían fuera de la póliza y de los estados financieros.</li>}
                 </ul>
               )}
             </div>
           </div>
+
+          {/* Codificación de compras (motor por RFC). Las partidas históricas no cuentan:
+              conservan la cuenta del respaldo. */}
+          {d.codificacion && (
+            <Prueba ok={!(d.codificacion.pendientes > 0)} titulo="Compras codificadas (motor por RFC)">
+              {d.codificacion.pendientes > 0 ? (
+                <div className="text-sm space-y-1">
+                  <p className="text-gray-700">
+                    {d.codificacion.pendientes} factura(s) recibida(s) sin cuenta, por {money(d.codificacion.importe)}.
+                    Codifícalas en <b>Asignación de cuentas → Compras (115/601)</b>: la bandeja trae la sugerencia
+                    del agente y su evidencia.
+                  </p>
+                  <ul className="text-xs text-gray-500 max-h-40 overflow-y-auto">
+                    {d.codificacion.items.map((f: any) => (
+                      <li key={f.uuid} className="font-mono">{f.fecha} · {f.folio} · {f.nombre || f.rfc} · {money(f.total)} · {f.confianza}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-600">Todas las compras con XML del periodo tienen cuenta o ya están contabilizadas.
+                  {d.codificacion.sinXml > 0 && <> ({d.codificacion.sinXml} sólo metadato, sin XML.)</>}</p>
+              )}
+            </Prueba>
+          )}
 
           {/* Pruebas 2 y 3 lado a lado */}
           <div className="grid gap-3 md:grid-cols-2">
