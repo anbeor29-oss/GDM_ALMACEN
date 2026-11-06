@@ -259,7 +259,7 @@ function DetalleFactura({ f, cuentas, onGuardado, onEvidencia }: {
                       <button onClick={() => setSel({ ...sel, [c.idx]: s.cuenta })} className="text-blue-700 hover:underline">usar</button>
                     )}
                   </div>
-                  <div className="text-gray-500 mt-0.5">{BASE_UI[s.base] ? `[${BASE_UI[s.base]}] ` : ''}{s.motivo}</div>
+                  <div className="text-gray-500 mt-0.5">{s.base && s.base !== 'NINGUNA' && BASE_UI[s.base] ? `[${BASE_UI[s.base]}] ` : ''}{s.motivo}</div>
                   {s.incidencia && <div className="text-rose-600 mt-0.5 flex items-center gap-1"><AlertTriangle size={11} /> {s.incidencia}</div>}
                   {s.alternativas?.length > 1 && (
                     <div className="text-gray-500 mt-0.5">Otras: {s.alternativas.slice(0, 4).map((a: any) => `${a.cuenta} (${a.n})`).join(' · ')}</div>
