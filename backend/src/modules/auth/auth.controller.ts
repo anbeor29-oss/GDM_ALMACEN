@@ -48,7 +48,11 @@ export async function refreshToken(req: Request, res: Response) {
   // El userId sale del propio refresh token (se verifica adentro), NO de req.user:
   // este endpoint se llama JUSTO cuando el access token ya expiró, así que exigir
   // req.user lo volvía inservible (y por eso el front hacía logout duro en cada 401).
-  const result = await authService.refreshAccessToken(refreshToken);
+  //
+  // El access token VENCIDO llega en el header (el front lo sigue mandando): de ahí se
+  // lee la empresa ACTIVA para no revertir al default al refrescar (§5.1/§5.5).
+  const accessPrevio = /^Bearer\s+(.+)$/i.exec(String(req.headers.authorization || ''))?.[1];
+  const result = await authService.refreshAccessToken(refreshToken, accessPrevio);
 
   res.status(200).json({
     success: true,

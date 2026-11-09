@@ -7907,3 +7907,29 @@ SMTP). `ENABLE_SAT_DESCARGA_CRON=TRUE` ✅ enciende el cron; falta confirmar `SA
 `SAT_DESCARGA_VIA=satgo` + API Key de SatGo (`SATGO_PORTAL_TOKEN`/portal). Sin migración.
 
 **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).
+
+---
+
+## 2026-11-09 (seguridad) — Aislamiento P0 §5: el refresco de token ya NO revierte la empresa activa
+
+Tercer requerimiento del documento (§5, el que el usuario reportó EN VIVO: «tras ~10 min abierto se mezclan XML de otro
+RFC»). **Auditoría — causa raíz encontrada:** la empresa activa viaja en el ACCESS token; «Cambiar empresa»
+(`switch-company`) emite un token nuevo con la empresa elegida y el front limpia caché + recarga (correcto; además el
+token vive en `sessionStorage` per-tab → dos pestañas aisladas). **PERO** al expirar el access token (~10 min) el front
+llama `/auth/refresh`, y `refreshAccessToken` armaba el token nuevo con **`users.company_id` (el DEFAULT)**, no con la
+empresa activa → la sesión revertía sola a la empresa por defecto y empezaba a mostrar datos de **otro RFC**. Es
+exactamente §5.1/§5.5 («una renovación de token no debe cambiar la empresa activa»).
+
+**Fix (backend, sin migración ni cambio de front):** el access token VENCIDO ya llega en el header de `/auth/refresh` (el
+front lo sigue mandando). `refreshAccessToken(refreshToken, accessTokenPrevio?)` lee la empresa activa de ese token con el
+nuevo helper **`verifyTokenIgnoreExpiration`** (verifica la FIRMA —la puso el servidor, es de fiar— pero ignora la
+expiración) y la conserva (empresa, grupo de trabajo, módulos extra); sólo cae a `users.company_id` si no hay token previo
+válido. El controlador lo pasa desde `req.headers.authorization`. Resultado: una sesión que cambió de empresa se mantiene
+en ESA empresa a través de los refrescos; no revierte ni mezcla RFC.
+
+**Auditoría — lo que YA estaba bien:** consultas de `cfdi_recibidos`/pólizas acotadas por `company_id` (del JWT);
+`switch-company` valida pertenencia contra `user_companies`; front `qc.clear()`+recarga al cambiar; token per-tab.
+**Pendiente del §5 (mayor):** barrido app-wide de TODA consulta/caché/proceso sin `company_id` (§5.4/§5.6) como auditoría
+aparte.
+
+**Despliegue:** `gdmalmacen main` + Manual Deploy (sólo backend).

@@ -5,7 +5,7 @@
 
 import bcryptjs from 'bcryptjs';
 import { query, transaction } from '../../config/database';
-import { generateToken, generateRefreshToken, verifyRefreshToken } from '../../middleware/authentication';
+import { generateToken, generateRefreshToken, verifyRefreshToken, verifyTokenIgnoreExpiration } from '../../middleware/authentication';
 import { UnauthorizedError, ConflictError, NotFoundError, ValidationError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
 import * as redis from '../../config/redis';
@@ -139,7 +139,7 @@ export async function login(email: string, password: string): Promise<AuthRespon
  * en la firma del refresh token. Sin esto el endpoint respondía siempre «Invalid
  * refresh token» (Redis null) o «User not authenticated» (req.user vacío).
  */
-export async function refreshAccessToken(refreshToken: string): Promise<AuthResponse> {
+export async function refreshAccessToken(refreshToken: string, accessTokenPrevio?: string): Promise<AuthResponse> {
   // Verifica la firma del refresh token → userId (sirve con el access token expirado).
   const payload = verifyRefreshToken(refreshToken);
   const userId = payload.userId;
@@ -167,17 +167,36 @@ export async function refreshAccessToken(refreshToken: string): Promise<AuthResp
 
   const user = result.rows[0];
 
+  /* La empresa ACTIVA viaja en el access token (la fija «Cambiar empresa»), NO en
+   * `users.company_id` (que es sólo el default). Al refrescar se PRESERVA leyéndola
+   * del access token vencido que el front todavía manda en el header (su firma la
+   * puso el servidor, así que es de fiar aunque haya expirado). Sin esto, una sesión
+   * que cambió de empresa revertía sola a la empresa por defecto al expirar el token
+   * (~10 min) y empezaba a mostrar datos de OTRO RFC — la fuga del documento §5.1/§5.5.
+   * Si no hay access token previo válido o no trae empresa, cae al default. */
+  let companyId = user.company_id;
+  let workGroup = (user as any).work_group || 'ADMIN_ALL';
+  let extraModules = (user as any).extra_modules || [];
+  if (accessTokenPrevio) {
+    const prev = verifyTokenIgnoreExpiration(accessTokenPrevio);
+    if (prev && prev.userId === userId && prev.companyId) {
+      companyId = prev.companyId;
+      if (prev.workGroup) workGroup = prev.workGroup;
+      if (Array.isArray(prev.extraModules)) extraModules = prev.extraModules;
+    }
+  }
+
   // Generate new token
   const newToken = generateToken({
     userId: user.id,
     email: user.email,
     role: user.role,
-    companyId: user.company_id,
-    workGroup: (user as any).work_group || 'ADMIN_ALL',
-    extraModules: (user as any).extra_modules || [],
+    companyId,
+    workGroup,
+    extraModules,
   });
 
-  logger.info(`Token refreshed for user: ${user.email}`);
+  logger.info(`Token refreshed for user: ${user.email} (empresa ${companyId || 'default'})`);
 
   return {
     success: true,

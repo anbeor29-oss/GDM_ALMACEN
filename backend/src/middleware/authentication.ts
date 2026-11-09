@@ -85,6 +85,24 @@ export function verifyToken(token: string): TokenPayload {
 }
 
 /**
+ * Verifica la FIRMA de un token pero IGNORA su expiración.
+ *
+ * Sirve para leer, al refrescar, la empresa ACTIVA del access token YA VENCIDO que
+ * el front todavía manda en el header: la firma la pone el servidor, así que su
+ * `companyId` es de fiar aunque el token haya expirado. Con esto, refrescar preserva
+ * la empresa a la que el usuario cambió, en vez de revertir a `users.company_id` (el
+ * default) y mezclar datos de otro RFC (documento §5.1/§5.5). Devuelve null si la
+ * firma no es válida.
+ */
+export function verifyTokenIgnoreExpiration(token: string): TokenPayload | null {
+  try {
+    return jwt.verify(token, config.jwt.secret, { ignoreExpiration: true }) as TokenPayload;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Generate JWT token
  */
 export function generateToken(payload: Omit<TokenPayload, 'iat' | 'exp'>): string {
