@@ -40,6 +40,14 @@ export function ProgramacionSat() {
   });
   const d: any = q.data?.data;
 
+  // Estado de la automatización: ¿corre sola la descarga? y si no, por qué (§6.6).
+  const qAuto = useQuery({
+    queryKey: ['sat-automatizacion'],
+    queryFn: () => api.getAutomatizacionSat(),
+    refetchInterval: 120_000,
+  });
+  const auto: any = qAuto.data?.data;
+
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ['sat-programacion'] });
     qc.invalidateQueries({ queryKey: ['sat-trabajos'] });
@@ -72,6 +80,35 @@ export function ProgramacionSat() {
 
   return (
     <div className="bg-white rounded-lg shadow border divide-y">
+      {/* ── Estado de la automatización: ¿corre sola? y si no, POR QUÉ ── */}
+      {auto && (
+        <div className={`p-4 ${auto.activa ? '' : 'bg-amber-50'}`}>
+          <div className="flex items-start gap-2">
+            {auto.activa
+              ? <CheckCircle2 size={17} className="text-emerald-600 mt-0.5 shrink-0" />
+              : <AlertTriangle size={17} className="text-amber-600 mt-0.5 shrink-0" />}
+            <div className="flex-1 text-sm min-w-0">
+              <p className="font-semibold text-gray-900">
+                {auto.activa ? 'Automatización activa' : 'La descarga automática NO está corriendo'}
+                <span className="ml-2 text-xs font-normal text-gray-500">
+                  vía {auto.via === 'satgo' ? 'SatGo' : 'e.firma (SAT directo)'}
+                  {auto.ultimoDiario && ` · último trabajo diario ${auto.ultimoDiario.cuando}`}
+                </span>
+              </p>
+              {auto.activa ? (
+                <p className="text-gray-600 mt-0.5">
+                  El servidor pide los CFDI del día solo (6:00 CDMX), sin que tengas la pantalla abierta.
+                </p>
+              ) : (
+                <ul className="mt-1 space-y-0.5 text-amber-900 list-disc list-inside">
+                  {auto.motivos.map((m: string, i: number) => <li key={i}>{m}</li>)}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Cómo va de verdad ── */}
       <div className="p-4">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-3">

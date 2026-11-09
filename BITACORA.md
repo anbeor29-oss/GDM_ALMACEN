@@ -7878,3 +7878,32 @@ sin clasificar (`compras-cuentas`/`ventas-cuentas` → `clavesProdServDe*`). Res
 Preguntas que bloquean producción en §10.
 
 **Despliegue:** `gdmalmacen main` + Manual Deploy (sólo backend esta vez).
+
+---
+
+## 2026-11-09 (descarga SAT) — Auditoría §6 + «Estado de la automatización» (por qué no baja solo)
+
+Segundo requerimiento del documento (el usuario eligió #4). **Auditoría:** el motor de descarga YA cumple casi todo §6:
+- Corre en el **servidor** (cron `node-cron`), **no** depende de la pantalla: diario 6:00 CDMX + red cada 15 min + al
+  arrancar (`jobs/sat-descarga-cron.ts`), encendido por `ENABLE_SAT_DESCARGA_CRON=true`.
+- **Por empresa/RFC** con e.firma vigente; ventana traslapada (`diasAtras=3`, configurable); **idempotente** (por día,
+  por traslape, dedupe por UUID); **parte solo** al 5003 del SAT (estado `DIVIDIDA`); estados ricos por partición
+  (PENDIENTE…TERMINADA/SIN_DATOS/DIVIDIDA/RECHAZADA/FALLIDA) con **`codigo_sat`/`mensaje_sat` reales** ya mostrados en la
+  UI (`ProgramacionSat.tsx`, no sólo «Con errores»); «Avanzar/ejercicio» **fragmenta mes por mes**; histórico no apaga lo
+  diario (presupuesto diario). Tope de 6 años del SAT contemplado.
+- **Transporte conmutable** (`transporte.ts`): por defecto **e.firma directa al SAT** (`soap.ts`); `SAT_DESCARGA_VIA=satgo`
+  lo manda por **SatGo** (`satgo-transport.ts`, SatWebService, mismos códigos del SAT, requiere API Key de SatGo).
+
+**Hueco real (§6.6 diagnóstico):** cuando el automático NO corría (faltaba la llave del almacén `SAT_VAULT_KEY`, o la
+bandera, o la e.firma vencida), el cron se frenaba **en silencio** (log del servidor) y la pantalla no decía nada. **Fix:**
+`estadoAutomatizacion(companyId)` + `GET /sat-descarga/automatizacion` + banner en `ProgramacionSat`: dice **«Automatización
+activa»** o **«NO está corriendo»** con los **motivos exactos** (bandera `ENABLE_SAT_DESCARGA_CRON`, **`SAT_VAULT_KEY`
+—que NO es `ENCRYPTION_KEY`—**, transporte e.firma/SatGo + su API key, e.firma vigente), el transporte en uso y el último
+trabajo diario. `api.getAutomatizacionSat`.
+
+**Config (aclaración al usuario):** las descargas de NEXO van por **e.firma propia** salvo `SAT_DESCARGA_VIA=satgo`. La
+e.firma se guarda cifrada con **`SAT_VAULT_KEY`** (llave del almacén de descarga), distinta de **`ENCRYPTION_KEY`** (CSD/
+SMTP). `ENABLE_SAT_DESCARGA_CRON=TRUE` ✅ enciende el cron; falta confirmar `SAT_VAULT_KEY`. Para ir por SatGo:
+`SAT_DESCARGA_VIA=satgo` + API Key de SatGo (`SATGO_PORTAL_TOKEN`/portal). Sin migración.
+
+**Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).

@@ -164,6 +164,16 @@ router.get(
   })
 );
 
+/** GET /sat-descarga/automatizacion — ¿corre el descargador solo? y si no, por qué
+ *  (bandera del cron, SAT_VAULT_KEY, transporte e.firma/SatGo, e.firma vigente). §6.6. */
+router.get(
+  '/automatizacion',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await programacion.estadoAutomatizacion(companyId(req));
+    res.json({ success: true, data });
+  })
+);
+
 /** GET /sat-descarga/cobertura?anio=&direccion= — estado por día para el calendario. */
 router.get(
   '/cobertura',

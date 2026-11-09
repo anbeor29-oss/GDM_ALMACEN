@@ -26,6 +26,8 @@
 import { query, transaction, transactionQuery } from '../../config/database';
 import logger from '../../middleware/logger';
 import { crearTrabajo } from './descarga.service';
+import { bovedaLista } from './boveda';
+import { banderaEncendida } from '../../utils/env-flag';
 
 export interface ConfigDescarga {
   companyId: string;
@@ -626,7 +628,52 @@ export async function llenarHuecos(
   return out;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   7. ESTADO DE LA AUTOMATIZACIÓN — ¿por qué (no) corre el descargador solo?
+   ───────────────────────────────────────────────────────────────────────────
+   El cron se autofrenaba en silencio (log del servidor) cuando faltaba la llave del
+   almacén o la bandera: la pantalla no decía nada y el usuario no sabía por qué no
+   bajaban XML. Esto lo pone a la vista (documento §6.6: diagnóstico claro). Distingue
+   las DOS llaves que se confunden: `SAT_VAULT_KEY` (la del almacén de la e.firma, la
+   que usa la descarga) NO es `ENCRYPTION_KEY` (la de contraseñas de CSD/SMTP). */
+export async function estadoAutomatizacion(companyId: string) {
+  const cronHabilitado = banderaEncendida(process.env.ENABLE_SAT_DESCARGA_CRON);
+  const boveda = bovedaLista();                                   // SAT_VAULT_KEY presente
+  const via: 'efirma' | 'satgo' = process.env.SAT_DESCARGA_VIA === 'satgo' ? 'satgo' : 'efirma';
+
+  const cred = (await query<any>(
+    `SELECT estado, rfc, TO_CHAR(vigencia_hasta,'YYYY-MM-DD') AS vigencia_hasta
+       FROM sat_credenciales WHERE company_id=$1 LIMIT 1`, [companyId])).rows[0] || null;
+  const hoy = new Date().toISOString().slice(0, 10);
+  const efirmaVigente = !!cred && cred.estado === 'ACTIVA'
+    && (!cred.vigencia_hasta || cred.vigencia_hasta >= hoy);
+
+  const ultimoDiario = (await query<any>(
+    `SELECT TO_CHAR(created_at,'YYYY-MM-DD HH24:MI') AS cuando, estado,
+            fecha_desde::date AS desde, fecha_hasta::date AS hasta
+       FROM sat_trabajos WHERE company_id=$1 AND origen='DIARIO'
+      ORDER BY created_at DESC LIMIT 1`, [companyId])).rows[0] || null;
+
+  // Por qué NO correría el automático (en orden; el primero es el que hay que resolver).
+  const motivos: string[] = [];
+  if (!cronHabilitado) motivos.push('La automatización está apagada en el servidor (falta ENABLE_SAT_DESCARGA_CRON=true en Render).');
+  if (!boveda) motivos.push('Falta la llave del almacén de la e.firma en el servidor (SAT_VAULT_KEY). Sin ella el motor no arranca — OJO: NO es ENCRYPTION_KEY.');
+  if (via === 'satgo') motivos.push('El transporte está en SatGo (SAT_DESCARGA_VIA=satgo): además de la e.firma necesita la API Key de SatGo (SATGO_PORTAL_TOKEN o configurada en el portal).');
+  if (!cred) motivos.push('Esta empresa no tiene e.firma cargada (Descargas → cargar e.firma).');
+  else if (!efirmaVigente) motivos.push(`La e.firma de esta empresa no está vigente (estado ${cred.estado}${cred.vigencia_hasta ? `, vence ${cred.vigencia_hasta}` : ''}).`);
+
+  // «Activa» = correría hoy por esta empresa. SatGo añade su propio requisito (la API
+  // key), que no se verifica aquí para no hacer una llamada de red en un estado; va como aviso.
+  const activa = cronHabilitado && boveda && efirmaVigente;
+  return {
+    activa, cronHabilitado, bovedaLista: boveda, via,
+    efirma: cred ? { rfc: cred.rfc, estado: cred.estado, vigenciaHasta: cred.vigencia_hasta, vigente: efirmaVigente } : null,
+    ultimoDiario, motivos,
+  };
+}
+
 export default {
   configDe, guardarConfig, presupuestoDeHoy, consumir,
   crearTrabajoDiario, crearTrabajoEjercicio, comoVa, coberturaDelAnio, llenarHuecos,
+  estadoAutomatizacion,
 };

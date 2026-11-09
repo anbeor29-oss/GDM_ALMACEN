@@ -2113,6 +2113,11 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/sat-descarga/programacion');
     return r.data;
   }
+  /** ¿Corre el descargador solo? y si no, por qué (cron, SAT_VAULT_KEY, transporte, e.firma). */
+  async getAutomatizacionSat() {
+    const r = await this.client.get<APIResponse<any>>('/sat-descarga/automatizacion');
+    return r.data;
+  }
 
   /* ── Vista fiscal de una persona física desde sus XML (nómina + ingresos/egresos) ── */
   async getNominaPF(anio: number, mes = 0) {
