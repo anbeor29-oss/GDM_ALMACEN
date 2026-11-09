@@ -23,11 +23,17 @@ export async function plantillaEstadoCuentaExcel(): Promise<{ buffer: Buffer; no
   wb.creator = 'GDM NEXO';
   const ws = wb.addWorksheet('Estado de cuenta');
 
+  // Formato CANÓNICO del documento §4.2: Fecha · Folio · Descripción · RFC · Depósito ·
+  // Retiros · UUID. Se agrega «Saldo» al final (opcional) para poder verificar el cuadre;
+  // no forma parte de las 7 columnas de intercambio y puede dejarse vacío.
   ws.columns = [
-    { header: 'Fecha', key: 'fecha', width: 14 },
-    { header: 'Concepto', key: 'concepto', width: 46 },
-    { header: 'Cargo (sale)', key: 'cargo', width: 16 },
-    { header: 'Abono (entra)', key: 'abono', width: 16 },
+    { header: 'Fecha', key: 'fecha', width: 13 },
+    { header: 'Folio', key: 'folio', width: 12 },
+    { header: 'Descripción', key: 'concepto', width: 44 },
+    { header: 'RFC', key: 'rfc', width: 15 },
+    { header: 'Depósito', key: 'abono', width: 15 },
+    { header: 'Retiros', key: 'cargo', width: 15 },
+    { header: 'UUID', key: 'uuid', width: 38 },
     { header: 'Saldo (opcional)', key: 'saldo', width: 16 },
   ];
 
@@ -40,11 +46,11 @@ export async function plantillaEstadoCuentaExcel(): Promise<{ buffer: Buffer; no
   ws.views = [{ state: 'frozen', ySplit: 1 }];
 
   // Ejemplos (el usuario los borra). Se ignoran al leer (concepto empieza con "EJEMPLO").
-  ws.addRow({ fecha: 'SALDO INICIAL', concepto: 'SALDO INICIAL', cargo: null, abono: null, saldo: 23500 });
-  ws.addRow({ fecha: '2025-12-06', concepto: 'EJEMPLO · SPEI ENVIADO A PROVEEDOR', cargo: 3500, abono: null, saldo: 20000 });
-  ws.addRow({ fecha: '2025-12-11', concepto: 'EJEMPLO · DEPOSITO RECIBIDO', cargo: null, abono: 6380, saldo: 26380 });
+  ws.addRow({ fecha: 'SALDO INICIAL', concepto: 'SALDO INICIAL', saldo: 23500 });
+  ws.addRow({ fecha: '2025-12-06', folio: '0012345', concepto: 'EJEMPLO · SPEI ENVIADO A PROVEEDOR', rfc: 'AAA010101AAA', abono: null, cargo: 3500, saldo: 20000 });
+  ws.addRow({ fecha: '2025-12-11', folio: '0012346', concepto: 'EJEMPLO · DEPOSITO RECIBIDO', rfc: '', abono: 6380, cargo: null, saldo: 26380 });
   for (let n = 2; n <= 4; n++) {
-    ['C', 'D', 'E'].forEach((col) => { ws.getCell(`${col}${n}`).numFmt = '#,##0.00'; });
+    ['E', 'F', 'H'].forEach((col) => { ws.getCell(`${col}${n}`).numFmt = '#,##0.00'; });
   }
 
   // Hoja de instrucciones aparte.
@@ -55,14 +61,20 @@ export async function plantillaEstadoCuentaExcel(): Promise<{ buffer: Buffer; no
     '',
     '1. Un renglón por movimiento del banco, en orden de fecha.',
     '2. Fecha: AAAA-MM-DD (2025-12-06) o DD/MM/AAAA (06/12/2025).',
-    '3. Cargo = lo que SALE de la cuenta (retiros, pagos, comisiones).',
-    '4. Abono = lo que ENTRA (depósitos, cobros, transferencias recibidas).',
-    '   Un movimiento usa Cargo O Abono, nunca los dos.',
-    '5. Saldo es opcional; si lo pones, el sistema verifica que cuadre.',
-    '6. La fila con concepto "SALDO INICIAL" fija el saldo con el que abre el mes',
+    '3. Folio: la referencia o folio del banco (opcional; déjalo vacío si no hay).',
+    '4. Descripción: el texto completo del movimiento (beneficiario, concepto, referencia).',
+    '5. RFC: el de la contraparte si se identifica con certeza; si no, déjalo vacío (no lo inventes).',
+    '6. Retiros = lo que SALE (pagos, comisiones). Depósito = lo que ENTRA (cobros).',
+    '   Un movimiento usa Depósito O Retiros, nunca los dos.',
+    '7. UUID: el folio fiscal del CFDI si aplica (opcional; normalmente vacío en banca).',
+    '8. Saldo es opcional; si lo pones, el sistema verifica que cuadre.',
+    '9. La fila con descripción "SALDO INICIAL" fija el saldo con el que abre el mes',
     '   (pon el importe en la columna Saldo). Es opcional pero recomendable.',
-    '7. Borra las filas de EJEMPLO antes de subir. No cambies los encabezados.',
-    '8. Montos sin signo de pesos ni texto: 3500 o 3,500.00 (no "$3,500").',
+    '10. Borra las filas de EJEMPLO antes de subir. No cambies los encabezados.',
+    '11. Montos sin signo de pesos ni texto: 3500 o 3,500.00 (no "$3,500").',
+    '',
+    'No pongas el saldo anterior como un movimiento, ni cuadros informativos',
+    '(inversiones, resumen de comisiones): sólo los movimientos de la cuenta.',
   ];
   filas.forEach((t, i) => {
     const r = ins.addRow([t]);
@@ -134,8 +146,10 @@ export async function movimientosDeExcel(
       avisos: ['El archivo no tiene ninguna hoja.'] };
   }
 
-  // Localiza la fila de encabezados y mapea columnas por nombre.
-  const col = { fecha: 0, concepto: 0, cargo: 0, abono: 0, saldo: 0 };
+  // Localiza la fila de encabezados y mapea columnas por nombre. Acepta el formato
+  // CANÓNICO del documento §4.2 (Fecha · Folio · Descripción · RFC · Depósito · Retiros ·
+  // UUID) y el histórico (Fecha · Concepto · Cargo · Abono · Saldo), por sinónimos.
+  const col = { fecha: 0, concepto: 0, cargo: 0, abono: 0, saldo: 0, folio: 0 };
   let filaEnc = 0;
   for (let n = 1; n <= Math.min(ws.rowCount, 10) && !filaEnc; n++) {
     const row = ws.getRow(n);
@@ -149,6 +163,7 @@ export async function movimientosDeExcel(
       col.cargo = idx(/cargo|retiro|salida/);
       col.abono = idx(/abono|dep[oó]sito|entrada/);
       col.saldo = idx(/saldo/);
+      col.folio = idx(/folio|referencia|rastreo/);   // §4.2: la columna Folio → referencia
       filaEnc = n;
     }
   }
@@ -189,7 +204,7 @@ export async function movimientosDeExcel(
       // La columna concepto es VARCHAR(200): se recorta (los conceptos de algunos
       // bancos —Bancrea— traen toda la referencia y pasan de 200).
       concepto: (concepto || '(sin concepto)').slice(0, 200),
-      referencia: '',
+      referencia: (col.folio ? celdaTexto(row.getCell(col.folio).value).trim() : '').slice(0, 120),
       retiro: cargo, deposito: abono,
       saldo,
       saldoCalculado: 0,       // se arrastra abajo

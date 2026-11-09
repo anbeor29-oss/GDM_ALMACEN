@@ -498,9 +498,13 @@ export async function detalleEstado(companyId: string, estadoId: string) {
   );
   if (e.rows.length === 0) throw new NotFoundError('Estado de cuenta no encontrado');
 
+  // El RFC de la contraparte sale del CFDI conciliado (si lo hay) — para la columna
+  // RFC del formato canónico §4.2; vacío si el movimiento no está ligado a un CFDI.
   const m = await query<any>(
-    `SELECT * FROM bancos_movimientos
-      WHERE estado_id = $1 ORDER BY orden`,
+    `SELECT bm.*, cf.rfc_emisor, cf.rfc_receptor
+       FROM bancos_movimientos bm
+       LEFT JOIN cfdi_recibidos cf ON cf.company_id = bm.company_id AND cf.uuid = bm.cfdi_uuid
+      WHERE bm.estado_id = $1 ORDER BY bm.orden`,
     [estadoId]
   );
   return { estado: e.rows[0], movimientos: m.rows };
@@ -604,18 +608,23 @@ export async function csvDeEstado(companyId: string, estadoId: string): Promise<
   };
 
   const filas: string[] = [];
+  /* Las 7 columnas CANÓNICAS del documento §4.2 (Fecha · Folio · Descripción · RFC ·
+   * Depósito · Retiros · UUID) PRIMERO y en ese orden; las columnas de control de NEXO
+   * (Saldo, SaldoCalculado, Inferido, Advertencia) van después, sin romper el formato. */
   filas.push([
-    'Fecha', 'Concepto', 'Referencia', 'Deposito', 'Retiro',
+    'Fecha', 'Folio', 'Descripción', 'RFC', 'Depósito', 'Retiros', 'UUID',
     'Saldo', 'SaldoCalculado', 'Inferido', 'Advertencia',
   ].join(','));
 
   for (const m of movimientos) {
     filas.push([
       escapar(fecha(m.fecha)),
-      escapar(m.concepto),
-      escapar(m.referencia),
-      dosDecimales(m.deposito),
-      dosDecimales(m.retiro),
+      escapar(m.referencia),                 // Folio
+      escapar(m.concepto),                   // Descripción
+      escapar(m.rfc_emisor || m.rfc_receptor || ''),   // RFC de la contraparte (si está conciliado)
+      dosDecimales(m.deposito),              // Depósito
+      dosDecimales(m.retiro),                // Retiros
+      escapar(m.cfdi_uuid || ''),            // UUID
       dosDecimales(m.saldo),
       dosDecimales(m.saldo_calculado),
       m.inferido ? 'SI' : '',
@@ -623,10 +632,11 @@ export async function csvDeEstado(companyId: string, estadoId: string): Promise<
     ].join(','));
   }
 
-  /* El resumen al pie: es lo que permite cuadrar el CSV sin volver al sistema. */
+  /* El resumen al pie: es lo que permite cuadrar el CSV sin volver al sistema.
+   * (Depósito=col5, Retiros=col6, Saldo=col8, como en el encabezado de arriba.) */
   filas.push('');
-  filas.push(['SALDO INICIAL', '', '', '', '', dosDecimales(estado.saldo_inicial)].join(','));
-  filas.push(['TOTALES', '', '',
+  filas.push(['SALDO INICIAL', '', '', '', '', '', '', dosDecimales(estado.saldo_inicial)].join(','));
+  filas.push(['TOTALES', '', '', '',
     dosDecimales(estado.total_depositos), dosDecimales(estado.total_retiros)].join(','));
   filas.push(['SALDO FINAL', '', '', '', '', dosDecimales(estado.saldo_final)].join(','));
   filas.push(['CUADRA', estado.cuadra ? 'SI' : 'NO'].join(','));
