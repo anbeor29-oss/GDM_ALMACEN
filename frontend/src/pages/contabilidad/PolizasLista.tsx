@@ -796,6 +796,7 @@ function DiagnosticoCuadre({ anio, mes }: { anio: number; mes: number }) {
       <span className="font-medium text-gray-700 w-20">{titulo}</span>
       <span className="text-gray-500">{x.total} en total</span>
       <span className="text-emerald-700">{x.contabilizados} contabilizados</span>
+      {x.desdeRespaldo > 0 && <span className="text-indigo-600" title="Ya traían póliza en el respaldo (CPQ/CTLK) — no las genera el motor">({x.desdeRespaldo} desde respaldo)</span>}
       {x.listos > 0 && <span className="text-sky-700">{x.listos} listos para generar</span>}
       {x.sinCuenta > 0 && <span className="text-amber-700">{x.sinCuenta} sin cuenta de producto</span>}
       {x.sinXml > 0 && <span className="text-gray-500">{x.sinXml} sin XML (metadato)</span>}

@@ -7933,3 +7933,32 @@ en ESA empresa a través de los refrescos; no revierte ni mezcla RFC.
 aparte.
 
 **Despliegue:** `gdmalmacen main` + Manual Deploy (sólo backend).
+
+---
+
+## 2026-11-09 (contabilidad) — Documento §4/§3/§2.6: estados de cuenta, memoria por RFC y «desde respaldo»
+
+Cierre de los requerimientos #6, #5 y #2b del documento, auditando primero (§7).
+
+**#6 — Estados de cuenta → Tesorería (§4):** el flujo de UNA sola carga YA existía (`POST /treasury/bancos/estados` toma
+el PDF directo con `textoDePdf` y carga a Tesorería; el CSV es respaldo OPCIONAL) y el dedupe es por reemplazo de
+(cuenta,año,mes). Se alineó el **formato canónico de 7 columnas** del §4.2: plantilla Excel `Fecha · Folio · Descripción ·
+RFC · Depósito · Retiros · UUID` (+ Saldo opcional), lector `movimientosDeExcel` capta Folio→referencia (Descripción/
+Depósito/Retiros ya mapeaban por sinónimo, retrocompatible), CSV `csvDeEstado` emite las 7 columnas primero y
+`detalleEstado` trae el RFC del CFDI conciliado. **Pendiente (necesita las muestras reales):** parsers de PDFs que fallan
+y OCR de escaneados (§4.4).
+
+**#5 — Memoria por RFC (§3): YA estaba implementada y conforme.** `codificacion-rfc.service` aprende de las pólizas del
+PROPIO cliente por las TRES vías de liga (incl. respaldos CTLK/CPQ), sugiere por concepto con niveles de confianza
+(ALTO/MEDIO/BAJO/SIN_EVIDENCIA), muestra EVIDENCIA (`/codificacion/evidencia`), no inventa sin evidencia, NO recodifica lo
+ya contabilizado (estado CONTABILIZADA) y distingue motor vs respaldo (`polizaDelMotor`). Rutas `/accounting/codificacion/*`
+(resumen/aprender/bandeja/factura/aceptar/evidencia/memoria/reglas) + página `CodificacionRfc.tsx`. La «memoria vacía» que
+veía el usuario = falta correr **«Aprender de la historia»** una vez. (Extensión pendiente, fuera de §3: ventas/nómina.)
+
+**#2b — «Contabilizada desde respaldo» (§2.6):** el diagnóstico de cuadre (`diagnostico-cfdi`) ahora separa
+`contabilizados` en **`desdeRespaldo`** (ya traían póliza del respaldo, no las generó el motor) vs motor; el panel «Cuadre
+de XML» (`PolizasLista.tsx`) lo muestra («N desde respaldo», índigo). Complementa el candado de #1 (una factura del
+respaldo no aparece como pendiente). **Pendiente de #2 (requiere decisiones §10 Q1/Q2):** pantalla final de restauración
+con validaciones completas (§2.5) y bandeja de conflicto por llave de origen estable (§2.4).
+
+Sin migración. **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).

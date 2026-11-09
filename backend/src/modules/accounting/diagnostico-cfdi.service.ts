@@ -39,7 +39,9 @@ async function diagnosticarDireccion(
 ) {
   const cont = await query<any>(
     `SELECT count(*)::int AS total,
-            count(*) FILTER (WHERE ${cfdiYaContabilizado('c')})::int AS contabilizados
+            count(*) FILTER (WHERE ${cfdiYaContabilizado('c')})::int AS contabilizados,
+            count(*) FILTER (WHERE EXISTS (SELECT 1 FROM journal_entries e
+                       WHERE e.company_id=c.company_id AND e.origen='CFDI' AND e.origen_uuid=c.uuid))::int AS contabilizados_motor
        FROM cfdi_recibidos c
       WHERE c.company_id=$1 AND c.direccion=$2 AND c.tipo_comprobante='I'
         AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
@@ -47,6 +49,9 @@ async function diagnosticarDireccion(
     [companyId, direccion, desde, hasta]);
   const total = cont.rows[0]?.total || 0;
   const contabilizados = cont.rows[0]?.contabilizados || 0;
+  // «Contabilizada desde respaldo» (§2.6) = ya tiene póliza pero NO la generó el motor
+  // de NEXO (vino de un respaldo CPQ/CTLK, o es una póliza manual que la liga).
+  const desdeRespaldo = Math.max(0, contabilizados - (cont.rows[0]?.contabilizados_motor || 0));
 
   const pend = await query<any>(
     `SELECT c.uuid, c.serie, c.folio, c.xml
@@ -89,7 +94,7 @@ async function diagnosticarDireccion(
 
   const pendientesTotal = total - contabilizados;
   return {
-    total, contabilizados, listos, sinCuenta, sinXml, otros,
+    total, contabilizados, desdeRespaldo, listos, sinCuenta, sinXml, otros,
     clavesSinCuenta: Array.from(clavesSinCuenta),
     // Si hubiera MÁS pendientes que el tope, se avisa (no se clasificaron todos).
     noClasificados: Math.max(0, pendientesTotal - pend.rows.length),
