@@ -27,6 +27,7 @@ import { requireSuperAdmin, audit } from './admin.middleware';
 import { invalidarModulosEmpresa } from '../../middleware/authentication';
 import * as promo from '../billing/prueba-y-prorrateo.service';
 import * as resetContab from '../accounting/reset-contabilidad.service';
+import * as cierre from '../accounting/cierre-ejercicio.service';
 // El timbrado lee el CSD de csd_cer_data/csd_key_data/csd_password_encrypted
 // (cifrado AES-256-GCM, utils/csd-crypto). Esta pantalla DEBE escribir ahí
 // también, o el CSD que suba el súper admin queda invisible para el timbrado.
@@ -599,6 +600,23 @@ router.post('/:id/reiniciar-contabilidad', asyncHandler(async (req: Request, res
     success: true, data: r,
     message: `Contabilidad reiniciada en ${c.business_name}: ${r.polizas} póliza(s), ${r.saldos} saldo(s) y ` +
       `${r.cuentas} cuenta(s) borradas. Los XML se conservaron. Ya puedes importar el catálogo y el libro diario.`,
+  });
+}));
+
+/* ────────  Resultado del ejercicio (305.03 «integral») en TODAS las empresas  ────────
+ * Pre-crea «Resultado del ejercicio {año}» con agrupador 305.03 (Resultado integral del
+ * ejercicio: aún no se sabe si habrá utilidad o pérdida), colgada DESPUÉS de las cuentas
+ * de resultado que ya existan. Idempotente. Body: { anios?: number[] } (def 2025-2027). */
+router.post('/resultado-integral', asyncHandler(async (req: Request, res: Response) => {
+  const anios = Array.isArray(req.body?.anios) && req.body.anios.length
+    ? req.body.anios.map((x: any) => Number(x)).filter((n: number) => n >= 2000 && n <= 2100)
+    : [2025, 2026, 2027];
+  const r = await cierre.crearResultadoIntegralTodas(anios);
+  await audit(req, { action: 'RESULTADO_INTEGRAL_BULK', targetKind: 'platform', payload: { anios, creadas: r.creadas, empresas: r.empresas } });
+  res.json({
+    success: true, data: r,
+    message: `Resultado del ejercicio ${anios.join(', ')} (agrupador 305.03): ${r.creadas} cuenta(s) creada(s) en ${r.empresas} empresa(s)` +
+      (r.sin305 ? ` · ${r.sin305} año(s)·empresa sin bloque 305 (crea el capital primero)` : '') + '.',
   });
 }));
 

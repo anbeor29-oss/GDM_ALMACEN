@@ -7987,3 +7987,28 @@ Respuestas §10 del usuario, aplicadas:
 
 Con esto quedan atendidos los 6 requerimientos del documento (los P0/P1 implementados o confirmados; pendientes acotados:
 OCR de PDFs escaneados y parsers de bancos sin muestra). Sin migración. **Despliegue:** `gdmalmacen main` + Manual Deploy.
+
+---
+
+## 2026-11-09 (contabilidad) — «Resultado del ejercicio 2025/2026/2027» (305.03 integral) en todas las empresas
+
+Pedido del usuario: agregar en el catálogo de TODAS las empresas la cuenta «Resultado del ejercicio» de 2025, 2026 y
+2027, DESPUÉS de las cuentas de resultado existentes, con el agrupador **«resultado integral»** (porque aún no se sabe si
+habrá utilidad o pérdida). Agrupador SAT encontrado (no asumido): **305.03 «Resultado integral del ejercicio»**
+(catalogo-sat.data.ts) — frente a 305.01 utilidad / 305.02 pérdida.
+
+- `cierre-ejercicio.service.crearResultadoIntegralEjercicio(companyId, anio)`: reusa la lógica del cierre (busca el padre
+  donde viven los resultados de otros años; si no hay, el control 305) y crea «Resultado del ejercicio {año}» con
+  agrupador 305.03, naturaleza heredada, vía `siguienteCodigoHijo` (queda DESPUÉS de las existentes). Idempotente.
+  `crearResultadoIntegralTodas(anios=[2025,2026,2027])` lo corre en todas las empresas con catálogo y reporta por empresa.
+- Ruta SUPER_ADMIN `POST /admin/companies/resultado-integral` (body {anios?}).
+- UI: botón **«Resultado 25-27 a todas»** en Súper Admin → Empresas (junto a «Activar cumplimiento a todas»);
+  `api.adminCrearResultadoIntegral`.
+
+**Restauración de respaldos (reafirmado con el libro diario real de CTLK, 8.4 MB .xls):** el parser lee el .xls viejo
+(OLE2) sin problema en 1.7 s → 4,255 pólizas · 28,933 movimientos · 2,396 CFDI ligados · ejercicios 2019–2025. **Las
+pólizas pasan TAL CUAL** (el importador conserva cargo/abono por partida; NO recodifica desde el XML). El aviso de
+«productos sin clasificar» ya EXCLUYE las facturas con póliza (fix §2.6, commit 2ae1fd8) — sólo queda para CFDI que NO
+tienen póliza en ningún respaldo. Ni el formato ni el tamaño del respaldo son el problema.
+
+Sin migración. **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).

@@ -3785,6 +3785,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/admin/companies/${id}/reiniciar-contabilidad`, { confirmarRfc });
     return r.data;
   }
+  /** Crea «Resultado del ejercicio {año}» (agrupador 305.03 integral) en TODAS las empresas. */
+  async adminCrearResultadoIntegral(anios?: number[]) {
+    const r = await this.client.post<APIResponse<any>>(`/admin/companies/resultado-integral`, { anios });
+    return r.data;
+  }
 
   /* ────── Facturación y consumo (SUPER_ADMIN) ────── */
 

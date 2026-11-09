@@ -6,7 +6,7 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload, AlertTriangle, Loader2, Pencil, Save, LogIn, UserPlus, KeyRound, ChevronRight, ChevronDown, Eraser } from 'lucide-react';
+import { Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload, AlertTriangle, Loader2, Pencil, Save, LogIn, UserPlus, KeyRound, ChevronRight, ChevronDown, Eraser, Calculator } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
@@ -50,6 +50,19 @@ export function AdminCompaniesPage() {
       alert(r?.message || 'Cumplimiento activado para todas las empresas.');
     } catch (e: any) { alert(e?.response?.data?.message || 'No se pudo activar.'); }
     finally { setActivandoCump(false); }
+  };
+
+  /* Pre-crea «Resultado del ejercicio 2025/2026/2027» (agrupador 305.03 «integral») en
+   * TODAS las empresas, después de las cuentas de resultado existentes. Idempotente. */
+  const [creandoResInt, setCreandoResInt] = useState(false);
+  const crearResultadoIntegral = async () => {
+    if (!confirm('¿Crear la cuenta «Resultado del ejercicio 2025, 2026 y 2027» con agrupador 305.03 («resultado integral», aún sin saber si habrá utilidad o pérdida) en TODAS las empresas?\n\nSe cuelga DESPUÉS de las cuentas de resultado que ya existen. No duplica si ya están y no toca lo contabilizado. Es repetible.')) return;
+    setCreandoResInt(true);
+    try {
+      const r: any = await api.adminCrearResultadoIntegral();
+      alert(r?.message || 'Cuentas de resultado del ejercicio creadas.');
+    } catch (e: any) { alert(e?.response?.data?.message || 'No se pudo crear.'); }
+    finally { setCreandoResInt(false); }
   };
 
   /* Guarda los módulos habilitados de una empresa (null = todos). Refresca la lista. */
@@ -139,6 +152,11 @@ export function AdminCompaniesPage() {
             title="Activa el cumplimiento (SAT 32-D, CSF/CIF, IMSS) en automático para TODAS las empresas, para que el barrido de los lunes 5:30 las incluya."
             className="flex items-center gap-2 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-2.5 rounded-lg disabled:opacity-50">
             <ShieldCheck size={16}/> {activandoCump ? 'Activando…' : 'Activar cumplimiento a todas'}
+          </button>
+          <button onClick={crearResultadoIntegral} disabled={creandoResInt}
+            title="Crea «Resultado del ejercicio 2025/2026/2027» con agrupador 305.03 (resultado integral) en TODAS las empresas, después de las cuentas de resultado existentes. No duplica."
+            className="flex items-center gap-2 border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-700 px-4 py-2.5 rounded-lg disabled:opacity-50">
+            <Calculator size={16}/> {creandoResInt ? 'Creando…' : 'Resultado 25-27 a todas'}
           </button>
           <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg shadow">
             <Plus size={18}/> Nueva empresa

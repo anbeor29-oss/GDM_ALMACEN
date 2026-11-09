@@ -206,6 +206,81 @@ async function resolverCuentaResultado(
  * si no hay hijos, pone «1» en el último segmento del padre. Para códigos SIN
  * separadores (p.ej. «305») cae a «305»+«01», «02»… como antes.
  */
+/**
+ * PRE-CREA «Resultado del ejercicio {anio}» en el catálogo con agrupador **305.03
+ * (Resultado integral del ejercicio)** — NEUTRO: no se compromete utilidad (305.01) ni
+ * pérdida (305.02) porque aún no se sabe el signo. Se cuelga DESPUÉS de las cuentas de
+ * resultado que ya existan (mismo padre que los otros años; si no hay, el control 305),
+ * heredando su naturaleza. Idempotente: si ya hay cuenta de resultado de ese año, no la
+ * duplica ni la toca. Es el pedido del usuario (2025/2026/2027, todas las empresas).
+ */
+export async function crearResultadoIntegralEjercicio(
+  companyId: string, anio: number,
+): Promise<{ anio: number; estado: 'creada' | 'existia' | 'sin_305'; codigo?: string }> {
+  const nombre = `Resultado del ejercicio ${anio}`;
+  const ya = (await query<any>(
+    `SELECT id, codigo FROM accounting_accounts
+      WHERE company_id=$1 AND permite_movimientos AND codigo_agrupador LIKE '305%'
+        AND lower(nombre) LIKE $2 ORDER BY codigo LIMIT 1`, [companyId, `%resultado%${anio}%`])).rows[0];
+  if (ya) return { anio, estado: 'existia', codigo: ya.codigo };
+
+  // Mismo padre donde viven los resultados de otros años (p.ej. «3-2-00-00 RESULTADO DE
+  // EJERCICIOS»); si no hay hermanos, el control 305.
+  const hermano = (await query<any>(
+    `SELECT parent_id FROM accounting_accounts
+      WHERE company_id=$1 AND permite_movimientos AND codigo_agrupador LIKE '305%'
+        AND lower(nombre) LIKE '%resultado%' AND parent_id IS NOT NULL
+      ORDER BY codigo DESC LIMIT 1`, [companyId])).rows[0];
+  let mayor: any = null;
+  if (hermano?.parent_id) {
+    mayor = (await query<any>(`SELECT id, codigo, nivel, naturaleza FROM accounting_accounts WHERE id=$1`, [hermano.parent_id])).rows[0];
+  }
+  if (!mayor) {
+    mayor = (await query<any>(
+      `SELECT id, codigo, nivel, naturaleza FROM accounting_accounts
+        WHERE company_id=$1 AND NOT permite_movimientos AND codigo_agrupador LIKE '305%'
+        ORDER BY nivel DESC, codigo LIMIT 1`, [companyId])).rows[0];
+  }
+  if (!mayor) return { anio, estado: 'sin_305' };
+
+  const natur = mayor.naturaleza || 'ACREEDORA';
+  const codigo = await siguienteCodigoHijo(companyId, String(mayor.codigo), mayor.id);
+  if (!codigo) return { anio, estado: 'sin_305' };
+  const ins = (await query<any>(
+    `INSERT INTO accounting_accounts
+       (company_id, parent_id, codigo, nombre, codigo_agrupador, tipo, naturaleza,
+        es_complementaria, nivel, permite_movimientos, requiere_tercero, moneda, activa)
+     VALUES ($1,$2,$3,$4,'305.03','CAPITAL',$5,false,$6,true,false,'MXN',true)
+     RETURNING codigo`,
+    [companyId, mayor.id, codigo, nombre, natur, (mayor.nivel || 1) + 1])).rows[0];
+  return { anio, estado: 'creada', codigo: ins.codigo };
+}
+
+/** Corre `crearResultadoIntegralEjercicio` para varios años en TODAS las empresas con
+ *  catálogo. Idempotente. Devuelve un reporte por empresa. */
+export async function crearResultadoIntegralTodas(
+  anios: number[] = [2025, 2026, 2027],
+): Promise<{ empresas: number; creadas: number; sin305: number; detalle: Array<{ rfc: string; empresa: string; resultados: Array<{ anio: number; estado: string; codigo?: string }> }> }> {
+  const empresas = (await query<any>(
+    `SELECT DISTINCT a.company_id, c.rfc, c.business_name
+       FROM accounting_accounts a JOIN companies c ON c.id=a.company_id
+      WHERE c.deleted_at IS NULL
+      ORDER BY c.business_name`, [])).rows;
+  let creadas = 0, sin305 = 0;
+  const detalle: any[] = [];
+  for (const e of empresas) {
+    const resultados = [];
+    for (const anio of anios) {
+      const r = await crearResultadoIntegralEjercicio(e.company_id, anio);
+      if (r.estado === 'creada') creadas++;
+      if (r.estado === 'sin_305') sin305++;
+      resultados.push(r);
+    }
+    detalle.push({ rfc: e.rfc, empresa: e.business_name, resultados });
+  }
+  return { empresas: empresas.length, creadas, sin305, detalle };
+}
+
 async function siguienteCodigoHijo(companyId: string, padreCodigo: string, padreId: string): Promise<string | null> {
   const hijos = (await query<any>(
     `SELECT codigo FROM accounting_accounts WHERE company_id=$1 AND parent_id=$2`, [companyId, padreId])).rows;
