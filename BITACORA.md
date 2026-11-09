@@ -7849,3 +7849,32 @@ umbrales de confianza configurables por empresa.
 
 **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend); la migración corre al arrancar. Front tocado ⇒
 `build:hosting` para hcgm.com.mx/erp.
+
+---
+
+## 2026-11-09 (contabilidad) — Restauración fiel P0 §1/§2: respetar las pólizas del respaldo
+
+Arranca el documento `E:\Banco\NEXO_Requerimientos_Recuperacion_Respaldos_Tesoreria_RFC_XML.md` por su prioridad #1:
+**una factura ya contabilizada en el respaldo NO se vuelve a codificar ni aparece como pendiente de clasificar.**
+
+**Auditoría (evidencia):**
+- `reconstruirIntegral`→`alimentarAnioDesdePolizas`→`alimentarDesdePolizas` (periodos.service) **sólo LEEN** `journal_lines`
+  y REEMPLAZAN la balanza derivada; **no tocan pólizas** → §2.3/§11 ya se cumplía.
+- Import CPQ (`contpaqi-txt`) idempotente por `origen_uuid=p.uuid`; Contalink (`contalink-import`) por
+  `origen_uuid='CTLK:'+hash` y liga el CFDI en `journal_entry_cfdi` → §2.4 (idempotencia) ya se cumplía.
+- **Hueco encontrado:** los DIAGNÓSTICOS sólo miraban `journal_entries.origen_uuid=uuid`, así que una factura restaurada
+  de Contalink (cuyo `origen_uuid` es `CTLK:hash`) se contaba como **pendiente / «producto sin clasificar»** (banner NIF),
+  justo lo que §2.1/§2.6 prohíbe.
+
+**Fix:** nuevo `cfdi-contabilizado.ts` con el predicado ÚNICO `cfdiYaContabilizado()` (las 3 vías de ligado:
+`origen_uuid`, `journal_lines.uuid_cfdi` salvo `origen='BANCO'`, `journal_entry_cfdi`). Lo reusan: el motor
+(`CFDI_SIN_POLIZA`), el diagnóstico de cuadre (`diagnostico-cfdi`: «contabilizados»/«pendientes») y el aviso de productos
+sin clasificar (`compras-cuentas`/`ventas-cuentas` → `clavesProdServDe*`). Resultado: una póliza restaurada queda como
+**contabilizada**, no como pendiente, y no dispara el aviso de clasificar. Sin migración.
+
+**Pendiente del documento (orden §8):** #2 pantalla final de restauración con validaciones (§2.5) + bandeja de conflicto
+(§2.4) + indicador «Contabilizada desde respaldo» (§2.6); #3 aislamiento por empresa/RFC (§5, P0); #4 descarga diaria SAT
+(§6, P0); #5 memoria por RFC desde pólizas (§3, P1); #6 lector universal de estados de cuenta + carga directa (§4, P1).
+Preguntas que bloquean producción en §10.
+
+**Despliegue:** `gdmalmacen main` + Manual Deploy (sólo backend esta vez).
