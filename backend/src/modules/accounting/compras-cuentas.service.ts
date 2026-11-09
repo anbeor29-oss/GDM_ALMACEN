@@ -8,6 +8,7 @@
  */
 import { query } from '../../config/database';
 import { conceptosDeXml, clavesProdServDeEmitidos } from './ventas-cuentas.service';
+import { cfdiYaContabilizado } from './cfdi-contabilizado';
 
 // mes 0 (o fuera de 1..12) = TODO EL AÑO — mismo criterio que listarPolizas.
 const iniDeMes = (a: number, m: number) => (m >= 1 && m <= 12) ? `${a}-${String(m).padStart(2, '0')}-01` : `${a}-01-01`;
@@ -15,10 +16,14 @@ const finDeMes = (a: number, m: number) => (m >= 1 && m <= 12) ? new Date(a, m, 
 
 /** Las ClaveProdServ de los recibidos del mes (con XML), con su cuenta asignada. */
 export async function clavesProdServDeRecibidos(companyId: string, anio: number, mes: number) {
+  // Sólo las facturas que AÚN no tienen póliza (por ninguna vía): una factura ya
+  // contabilizada en el respaldo NO debe contarse como «producto sin clasificar»
+  // (documento §2.6). Antes se listaban todas → avisaba de clasificar lo ya asentado.
   const r = await query<any>(
-    `SELECT xml FROM cfdi_recibidos
-      WHERE company_id=$1 AND direccion='recibidos'
-        AND xml IS NOT NULL AND fecha_emision::date BETWEEN $2 AND $3`,
+    `SELECT c.xml FROM cfdi_recibidos c
+      WHERE c.company_id=$1 AND c.direccion='recibidos'
+        AND c.xml IS NOT NULL AND c.fecha_emision::date BETWEEN $2 AND $3
+        AND NOT ${cfdiYaContabilizado('c')}`,
     [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
 
   const acc = new Map<string, { clave: string; descripcion: string; veces: number; importe: number }>();

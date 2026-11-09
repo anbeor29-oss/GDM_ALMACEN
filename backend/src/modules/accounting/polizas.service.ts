@@ -20,6 +20,7 @@ import { query, transaction } from '../../config/database';
 import { resolverOCrearSubcuentaTercero } from './catalogo-terceros.service';
 import { conceptosDeXml, complementoDeXml, docsRelacionadosDeXml, mapaProductoCuenta } from './ventas-cuentas.service';
 import { mapaProductoCuentaCompra } from './compras-cuentas.service';
+import { cfdiSinPoliza } from './cfdi-contabilizado';
 import { cargarContexto as cargarContextoCodificacion, cuentaEfectiva } from './codificacion-rfc.service';
 
 export interface LineaPoliza {
@@ -159,15 +160,7 @@ async function cuentaPorCodigo(companyId: string, codigo: string) {
    OJO: la vía `uuid_cfdi` EXCLUYE las pólizas de banco (origen='BANCO'): un pago
    conciliado etiqueta el CFDI pero NO asienta el pasivo/ingreso, así que si el pago
    se concilió antes de generar la compra/venta, ésta SÍ debe generarse (lo asienta). */
-const CFDI_SIN_POLIZA = `
-  NOT EXISTS (SELECT 1 FROM journal_entries e
-               WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)
-  AND NOT EXISTS (SELECT 1 FROM journal_lines jl
-                    JOIN journal_entries je ON je.id=jl.entry_id
-                   WHERE je.company_id=c.company_id AND jl.uuid_cfdi=c.uuid
-                     AND je.origen <> 'BANCO')
-  AND NOT EXISTS (SELECT 1 FROM journal_entry_cfdi jec
-                   WHERE jec.company_id=c.company_id AND jec.uuid=c.uuid)`;
+const CFDI_SIN_POLIZA = cfdiSinPoliza('c');   // misma definición única (cfdi-contabilizado.ts)
 
 /* Público en general: repetir importe el mismo día es normal (muchas facturas
  * iguales), así que la red de "mismo día/importe" NO aplica a estos RFC. */

@@ -15,6 +15,7 @@
 import { query } from '../../config/database';
 import { mapaProductoCuenta, conceptosDeXml } from './ventas-cuentas.service';
 import { mapaProductoCuentaCompra } from './compras-cuentas.service';
+import { cfdiYaContabilizado } from './cfdi-contabilizado';
 
 const iniDeMes = (a: number, m: number) => (m >= 1 && m <= 12) ? `${a}-${String(m).padStart(2, '0')}-01` : `${a}-01-01`;
 const finDeMes = (a: number, m: number) => (m >= 1 && m <= 12) ? new Date(a, m, 0).toISOString().slice(0, 10) : `${a}-12-31`;
@@ -38,8 +39,7 @@ async function diagnosticarDireccion(
 ) {
   const cont = await query<any>(
     `SELECT count(*)::int AS total,
-            count(*) FILTER (WHERE EXISTS (
-              SELECT 1 FROM journal_entries e WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid))::int AS contabilizados
+            count(*) FILTER (WHERE ${cfdiYaContabilizado('c')})::int AS contabilizados
        FROM cfdi_recibidos c
       WHERE c.company_id=$1 AND c.direccion=$2 AND c.tipo_comprobante='I'
         AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
@@ -54,7 +54,7 @@ async function diagnosticarDireccion(
       WHERE c.company_id=$1 AND c.direccion=$2 AND c.tipo_comprobante='I'
         AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
         AND c.fecha_emision::date BETWEEN $3 AND $4
-        AND NOT EXISTS (SELECT 1 FROM journal_entries e WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)
+        AND NOT ${cfdiYaContabilizado('c')}
       ORDER BY c.fecha_emision
       LIMIT ${TOPE_CLASIFICA}`,
     [companyId, direccion, desde, hasta]);

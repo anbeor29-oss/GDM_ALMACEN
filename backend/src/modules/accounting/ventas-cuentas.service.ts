@@ -6,6 +6,7 @@
  * venta parte cada factura por producto (una línea de abono por 401 distinto).
  */
 import { query } from '../../config/database';
+import { cfdiYaContabilizado } from './cfdi-contabilizado';
 
 // mes 0 (o fuera de 1..12) = TODO EL AÑO — mismo criterio que listarPolizas.
 const iniDeMes = (a: number, m: number) => (m >= 1 && m <= 12) ? `${a}-${String(m).padStart(2, '0')}-01` : `${a}-01-01`;
@@ -60,10 +61,13 @@ export function conceptosDeXml(
 
 /** Las ClaveProdServ de los emitidos del mes, con su cuenta asignada. */
 export async function clavesProdServDeEmitidos(companyId: string, anio: number, mes: number) {
+  // Sólo las que AÚN no tienen póliza (por ninguna vía): una venta ya contabilizada
+  // en el respaldo no es «producto sin clasificar» (documento §2.6).
   const r = await query<any>(
-    `SELECT xml FROM cfdi_recibidos
-      WHERE company_id=$1 AND direccion='emitidos' AND tipo_comprobante='I'
-        AND xml IS NOT NULL AND fecha_emision::date BETWEEN $2 AND $3`,
+    `SELECT c.xml FROM cfdi_recibidos c
+      WHERE c.company_id=$1 AND c.direccion='emitidos' AND c.tipo_comprobante='I'
+        AND c.xml IS NOT NULL AND c.fecha_emision::date BETWEEN $2 AND $3
+        AND NOT ${cfdiYaContabilizado('c')}`,
     [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
 
   const acc = new Map<string, { clave: string; descripcion: string; veces: number; importe: number }>();
