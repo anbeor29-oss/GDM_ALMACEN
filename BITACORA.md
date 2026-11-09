@@ -8012,3 +8012,20 @@ pólizas pasan TAL CUAL** (el importador conserva cargo/abono por partida; NO re
 tienen póliza en ningún respaldo. Ni el formato ni el tamaño del respaldo son el problema.
 
 Sin migración. **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).
+
+---
+
+## 2026-11-09 (varios) — Borrado masivo de respaldo, factura global OK, 32-D desde SatGo, PDF de autofacturación
+
+- **Factura global:** el usuario confirma que **YA FUNCIONA** (timbrado con nodo InformacionGlobal). Cerrado.
+- **Lector 32-D IMSS:** decisión del usuario — se **toma el documento que baja SatGo** (`imssoc`), NO se construye el
+  parser manual del PDF. El de SatGo se deja tal cual.
+- **Autofacturación:** se entregó un PDF breve de puesta en vivo (registrar enajenantes → capturar rol SAT → empresa en
+  PRODUCCIÓN → PAC con servicio de adquirentes → capturar/timbrar; probar antes en PRUEBAS).
+- **Reinicio de contabilidad MASIVO (prueba de respaldo):** botón en Súper Admin → Empresas, DESHABILITADO por defecto,
+  que se ARMA con **doble clic + contraseña de superadmin** (verificada en el servidor con bcrypt contra `password_hash`);
+  armado aparecen checkboxes por empresa + «Ejecutar reinicio (N)», reinicia catálogo/pólizas/saldos (CONSERVA XML) de las
+  marcadas y se **deshabilita solo** al terminar. Rutas `POST /admin/companies/verificar-password` y
+  `/reiniciar-contabilidad-masivo` (re-verifica la contraseña), reusa `resetContab.reiniciarContabilidad`; auditado.
+
+Sin migración. **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).
