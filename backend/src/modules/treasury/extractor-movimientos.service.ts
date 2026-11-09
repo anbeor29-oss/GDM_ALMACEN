@@ -1162,7 +1162,16 @@ function extraerHSBC(
    * el renglón anterior. */
   const RX_MOV = /^(.*?)\$ ?([\d,]+\.\d{2})\s+\$ ?([\d,]+\.\d{2})\s*$/;
   const RX_DESC = /^(\d{2})\d{0,2}.*[A-Za-z]/;   // día (2 díg) + tipo opcional + descripción
-  const descDe = (linea: string) => linea.replace(/^\d+/, '').replace(/\d{6,}\s*$/, '').replace(/\s{2,}/g, ' ').trim() || 'Movimiento';
+  /* La fuente de HSBC tiene COLISIONES (acentos y minúsculas comparten byte con
+   * dígitos y signos), así que los IMPORTES decodifican bien pero el texto deja
+   * símbolos sueltos del cifrado (control 0x80–0x9F y 0xA0–0xBF, p. ej. «¢£¤»). En el
+   * concepto —que no se usa para cuadrar— se quitan para que la descripción quede
+   * legible; no se inventan letras (lo que no se puede decodificar, se omite). */
+  const saneaConcepto = (s: string) => s
+    .replace(/[\u0080-\u009F -¿]/g, '')
+    .replace(/\s{2,}/g, ' ').trim();
+  const descDe = (linea: string) =>
+    saneaConcepto(linea.replace(/^\d+/, '').replace(/\d{6,}\s*$/, '')) || 'Movimiento';
   const movimientos: MovimientoExtraido[] = [];
   let prev = saldoInicial ?? 0, orden = 0, enDetalle = false;
 
