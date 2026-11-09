@@ -65,6 +65,38 @@ export function AdminCompaniesPage() {
     finally { setCreandoResInt(false); }
   };
 
+  /* Borrado masivo de contabilidad («borrar el respaldo») — para probar la lectura de un
+   * respaldo nuevo. DESHABILITADO por defecto; se ARMA con doble clic + contraseña del
+   * superadmin, y se DESHABILITA solo tras ejecutar (petición del usuario). Conserva XML. */
+  const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
+  const [armadoBorrado, setArmadoBorrado] = useState(false);
+  const [superPass, setSuperPass] = useState('');
+  const [pwModal, setPwModal] = useState(false);
+  const [pwInput, setPwInput] = useState('');
+  const [pwError, setPwError] = useState('');
+  const [borrando, setBorrando] = useState(false);
+  const alternarSel = (id: string) => setSeleccion((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const desarmarBorrado = () => { setArmadoBorrado(false); setSuperPass(''); setSeleccion(new Set()); };
+  const armarBorrado = async () => {
+    setPwError('');
+    try {
+      await api.adminVerificarPassword(pwInput);
+      setSuperPass(pwInput); setArmadoBorrado(true); setPwModal(false); setPwInput('');
+    } catch (e: any) { setPwError(e?.response?.data?.message || 'Contraseña incorrecta.'); }
+  };
+  const ejecutarBorrado = async () => {
+    const ids = [...seleccion];
+    if (!ids.length) { alert('Marca al menos una empresa.'); return; }
+    if (!confirm(`¿Reiniciar la contabilidad (borra catálogo, pólizas y saldos; CONSERVA los XML) de ${ids.length} empresa(s)?\n\nIrreversible. Es para importar un respaldo nuevo.`)) return;
+    setBorrando(true);
+    try {
+      const r: any = await api.adminReiniciarContabilidadMasivo(ids, superPass);
+      alert(r?.message || 'Contabilidad reiniciada.');
+      await qc.invalidateQueries({ queryKey: ['admin-companies'] });
+    } catch (e: any) { alert(e?.response?.data?.message || 'No se pudo reiniciar.'); }
+    finally { setBorrando(false); desarmarBorrado(); }   // se deshabilita tras ejecutar
+  };
+
   /* Guarda los módulos habilitados de una empresa (null = todos). Refresca la lista. */
   const [guardandoMods, setGuardandoMods] = useState<string>('');
   const guardarMods = async (companyId: string, arr: string[] | null) => {
@@ -158,11 +190,32 @@ export function AdminCompaniesPage() {
             className="flex items-center gap-2 border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-700 px-4 py-2.5 rounded-lg disabled:opacity-50">
             <Calculator size={16}/> {creandoResInt ? 'Creando…' : 'Resultado 25-27 a todas'}
           </button>
+          {!armadoBorrado && (
+            <button onDoubleClick={() => { setPwInput(''); setPwError(''); setPwModal(true); }}
+              title="Reiniciar contabilidad de VARIAS empresas (borra catálogo/pólizas/saldos, conserva XML) para importar un respaldo nuevo. DOBLE CLIC para habilitar; pide tu contraseña de superadmin. Se deshabilita solo al terminar."
+              className="flex items-center gap-2 border border-rose-200 bg-white text-rose-400 px-4 py-2.5 rounded-lg cursor-pointer select-none hover:bg-rose-50">
+              <Eraser size={16}/> Borrar respaldo (doble clic)
+            </button>
+          )}
           <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg shadow">
             <Plus size={18}/> Nueva empresa
           </button>
         </div>
       </div>
+
+      {armadoBorrado && (
+        <div className="bg-rose-50 border border-rose-300 rounded-lg p-3 flex flex-wrap items-center gap-3">
+          <AlertTriangle size={18} className="text-rose-600 shrink-0"/>
+          <span className="text-sm text-rose-800 flex-1 min-w-[12rem]">
+            <b>Borrado de respaldo ARMADO.</b> Marca las empresas a reiniciar (borra catálogo, pólizas y saldos; los XML se conservan) y pulsa Ejecutar. Al terminar se deshabilita solo.
+          </span>
+          <button onClick={ejecutarBorrado} disabled={borrando || seleccion.size === 0}
+            className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg disabled:opacity-50">
+            <Eraser size={16}/> {borrando ? 'Reiniciando…' : `Ejecutar reinicio (${seleccion.size})`}
+          </button>
+          <button onClick={desarmarBorrado} className="px-3 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="w-full">
@@ -179,6 +232,10 @@ export function AdminCompaniesPage() {
               <tr key={c.id} className={`hover:bg-gray-50 ${depth > 0 ? 'bg-gray-50/40' : ''}`}>
                 <td className="px-4 py-2 text-sm font-mono">
                   <div className="flex items-center gap-1" style={{ paddingLeft: depth * 18 }}>
+                    {armadoBorrado && (
+                      <input type="checkbox" className="mr-1 accent-rose-600" checked={seleccion.has(c.id)}
+                        onChange={() => alternarSel(c.id)} title="Marcar para reiniciar su contabilidad" />
+                    )}
                     {nHijos > 0 ? (
                       <button onClick={() => alternar(c.id)} className="text-gray-400 hover:text-gray-700 shrink-0" title={expandido.has(c.id) ? 'Contraer' : 'Desplegar'}>
                         {expandido.has(c.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -278,6 +335,22 @@ export function AdminCompaniesPage() {
         </table>
       </div>
 
+      {pwModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPwModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-1"><KeyRound size={18} className="text-rose-600"/> Habilitar borrado de respaldo</h3>
+            <p className="text-sm text-gray-600 mb-3">Escribe tu contraseña de <b>superadmin</b> para armar el reinicio de contabilidad de las empresas que marques. Se deshabilita solo al terminar.</p>
+            <input type="password" autoFocus value={pwInput} onChange={(e) => setPwInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && pwInput) armarBorrado(); }}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-2" placeholder="Contraseña de superadmin" />
+            {pwError && <p className="text-sm text-rose-700 mb-2">{pwError}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setPwModal(false)} className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
+              <button onClick={armarBorrado} disabled={!pwInput} className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-50">Habilitar</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showCreate && (
         <CreateCompanyModal onClose={()=>setShowCreate(false)}
           onDone={()=>{ setShowCreate(false); qc.invalidateQueries({ queryKey: ['admin-companies'] }); }}/>

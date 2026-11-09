@@ -28,6 +28,7 @@ import { invalidarModulosEmpresa } from '../../middleware/authentication';
 import * as promo from '../billing/prueba-y-prorrateo.service';
 import * as resetContab from '../accounting/reset-contabilidad.service';
 import * as cierre from '../accounting/cierre-ejercicio.service';
+import bcryptjs from 'bcryptjs';
 // El timbrado lee el CSD de csd_cer_data/csd_key_data/csd_password_encrypted
 // (cifrado AES-256-GCM, utils/csd-crypto). Esta pantalla DEBE escribir ahí
 // también, o el CSD que suba el súper admin queda invisible para el timbrado.
@@ -600,6 +601,46 @@ router.post('/:id/reiniciar-contabilidad', asyncHandler(async (req: Request, res
     success: true, data: r,
     message: `Contabilidad reiniciada en ${c.business_name}: ${r.polizas} póliza(s), ${r.saldos} saldo(s) y ` +
       `${r.cuentas} cuenta(s) borradas. Los XML se conservaron. Ya puedes importar el catálogo y el libro diario.`,
+  });
+}));
+
+/* ────────  Re-verificar la contraseña del SUPER_ADMIN (armar acciones peligrosas)  ────────
+ * El front la usa para «armar» el borrado masivo con doble clic + contraseña. */
+router.post('/verificar-password', asyncHandler(async (req: Request, res: Response) => {
+  const pass = String(req.body?.password || '');
+  if (!pass) throw new ValidationError('Escribe tu contraseña de superadmin.');
+  const u = (await query<any>(`SELECT password_hash FROM users WHERE id=$1 AND deleted_at IS NULL`, [req.user?.userId])).rows[0];
+  const ok = !!u?.password_hash && await bcryptjs.compare(pass, u.password_hash);
+  if (!ok) throw new ValidationError('Contraseña incorrecta.');
+  res.json({ success: true, data: { ok: true } });
+}));
+
+/* ────────  Reiniciar contabilidad de VARIAS empresas seleccionadas (prueba de respaldo)  ────────
+ * «Borrar el respaldo» (catálogo + pólizas + saldos; conserva los XML) de las empresas
+ * elegidas, para re-importar un respaldo limpio. Re-exige la contraseña del superadmin en
+ * el servidor (no basta el token). El front lo deja DESHABILITADO y sólo se arma con doble
+ * clic + contraseña; tras ejecutar, se vuelve a deshabilitar. IRREVERSIBLE. */
+router.post('/reiniciar-contabilidad-masivo', asyncHandler(async (req: Request, res: Response) => {
+  const pass = String(req.body?.password || '');
+  const ids: string[] = Array.isArray(req.body?.companyIds) ? req.body.companyIds.map(String) : [];
+  if (!pass) throw new ValidationError('Escribe tu contraseña de superadmin.');
+  if (!ids.length) throw new ValidationError('Selecciona al menos una empresa.');
+  const u = (await query<any>(`SELECT password_hash FROM users WHERE id=$1 AND deleted_at IS NULL`, [req.user?.userId])).rows[0];
+  const ok = !!u?.password_hash && await bcryptjs.compare(pass, u.password_hash);
+  if (!ok) throw new ValidationError('Contraseña incorrecta.');
+  const comps = (await query<any>(`SELECT id, rfc, business_name FROM companies WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`, [ids])).rows;
+  const resultados: any[] = [];
+  for (const c of comps) {
+    try {
+      const r = await resetContab.reiniciarContabilidad(c.id);
+      resultados.push({ rfc: c.rfc, empresa: c.business_name, ...r });
+    } catch (e: any) { resultados.push({ rfc: c.rfc, empresa: c.business_name, error: (e?.message || 'error').slice(0, 140) }); }
+  }
+  await audit(req, { action: 'CONTAB_RESET_MASIVO', targetKind: 'platform', payload: { ids, n: comps.length } });
+  const okN = resultados.filter((r) => !r.error).length;
+  res.json({
+    success: true, data: { resultados },
+    message: `Contabilidad reiniciada en ${okN} de ${comps.length} empresa(s). Los XML se conservaron. Ya puedes importar el respaldo nuevo.`,
   });
 }));
 

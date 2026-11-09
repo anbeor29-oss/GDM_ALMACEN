@@ -3790,6 +3790,16 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>(`/admin/companies/resultado-integral`, { anios });
     return r.data;
   }
+  /** Re-verifica la contraseña del superadmin (para armar acciones peligrosas). */
+  async adminVerificarPassword(password: string) {
+    const r = await this.client.post<APIResponse<any>>(`/admin/companies/verificar-password`, { password });
+    return r.data;
+  }
+  /** Reinicia la contabilidad (conserva XML) de varias empresas; re-exige la contraseña. */
+  async adminReiniciarContabilidadMasivo(companyIds: string[], password: string) {
+    const r = await this.client.post<APIResponse<any>>(`/admin/companies/reiniciar-contabilidad-masivo`, { companyIds, password });
+    return r.data;
+  }
 
   /* ────── Facturación y consumo (SUPER_ADMIN) ────── */
 
