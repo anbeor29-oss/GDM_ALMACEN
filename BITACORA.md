@@ -7962,3 +7962,28 @@ respaldo no aparece como pendiente). **Pendiente de #2 (requiere decisiones §10
 con validaciones completas (§2.5) y bandeja de conflicto por llave de origen estable (§2.4).
 
 Sin migración. **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).
+
+---
+
+## 2026-11-09 (documento §10) — Decisiones del usuario aplicadas: horario/ventana SAT + validaciones de restauración
+
+Verificación de los 2 PDF del usuario: **MercadoPago (CLAUDIA, oct) CUADRA** (361 movs, 986.44→750.55, dep 19,910.11 /
+ret 20,146.00). **HSBC RAMON (oct) es un PDF ESCANEADO** (sin capa de texto): no es bug del parser de HSBC (funciona con
+texto/mojibake) — es la vía OCR del §4.4, que el servidor no tiene. Salida hoy: PDF digital del portal HSBC, o plantilla
+de Excel (7 columnas). OCR de escaneados = pendiente de infraestructura.
+
+Respuestas §10 del usuario, aplicadas:
+- **§6.4 horario SAT → madrugada 3:00 CDMX** (antes 6:00): `jobs/sat-descarga-cron` (job diario + log). La ventana
+  traslapa, así que pedir de madrugada no deja huecos.
+- **§6.3 ventana → 4 días (día actual + 3 atrás)**: `crearTrabajoDiario` ahora incluye HOY (antes hasta ayer). El
+  «respaldo a 1 día» es automático: el motor parte la solicitud al 5003 del SAT (estado DIVIDIDA) por partición, hasta
+  por día. (`diasAtras` configurable por empresa.)
+- **§2.4 re-importar = «siempre omitir lo que ya existe»**: NO se necesita bandeja de conflicto; el dedupe que ya tienen
+  los importadores (CTLK por hash de contenido, CPQ por origen_uuid) ES «siempre omitir lo que ya existe». Sin código.
+- **§2.5 validaciones de la restauración (CPQ+CTLK)**: el reporte del importador Contalink ahora trae **total de cargos /
+  abonos** (del respaldo declarado) + **diferencia** y las **cuentas sin homologar** (las que no están en el catálogo y
+  omiten una póliza); el mensaje de la ruta los muestra. Demuestra que NEXO reprodujo la historia del respaldo.
+- **§3 (7 columnas) y §6 (selector de empresa):** ya implementados como recomienda el documento.
+
+Con esto quedan atendidos los 6 requerimientos del documento (los P0/P1 implementados o confirmados; pendientes acotados:
+OCR de PDFs escaneados y parsers de bancos sin muestra). Sin migración. **Despliegue:** `gdmalmacen main` + Manual Deploy.

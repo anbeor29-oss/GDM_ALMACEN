@@ -255,6 +255,11 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
     // Pólizas que NO cuadraban de origen: su diferencia se mandó a la cuenta de
     // cuadre (MIG-TEMPORAL) para no perderlas; hay que revisarlas y corregirlas.
     conCuadre: [] as Array<{ folio: string; diferencia: number }>,
+    // §2.5 — validaciones para la pantalla final: totales del respaldo IMPORTADO
+    // (para demostrar que NEXO reprodujo la historia) y las cuentas del respaldo que
+    // no están homologadas en el catálogo actual (las que hicieron omitir una póliza).
+    totalCargos: 0, totalAbonos: 0,
+    cuentasNoHomologadas: [] as string[],
   };
 
   for (const [i, p] of polizas.entries()) {
@@ -288,7 +293,10 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
           party_rfc: unicoCfdi?.rfc || undefined,
         });
       }
-      if (faltante) { rep.omitidas.push({ folio: etq, motivo: `la cuenta ${faltante} no está en el catálogo — importa el catálogo de CTLK primero` }); continue; }
+      if (faltante) {
+        if (!rep.cuentasNoHomologadas.includes(faltante)) rep.cuentasNoHomologadas.push(faltante);
+        rep.omitidas.push({ folio: etq, motivo: `la cuenta ${faltante} no está en el catálogo — importa el catálogo de CTLK primero` }); continue;
+      }
       if (lineas.length < 2) { rep.omitidas.push({ folio: etq, motivo: 'menos de 2 renglones con importe' }); continue; }
 
       // Si NO cuadra (descuadre del origen), se manda la diferencia a la CUENTA DE
@@ -310,6 +318,8 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
         origen: 'MANUAL', origen_uuid: origenUuid, regla: reglaDeTipo(p.tipoRaw), lineas,
       } as any, userId);
       rep.creadas++;
+      rep.totalCargos = round2(rep.totalCargos + sc);   // cargos/abonos DECLARADOS del respaldo
+      rep.totalAbonos = round2(rep.totalAbonos + sa);
       if (dif !== 0) rep.conCuadre.push({ folio: etq, diferencia: dif });
 
       // Guardar TODOS los CFDI asociados (sin pérdida), idempotente por (entry, uuid).

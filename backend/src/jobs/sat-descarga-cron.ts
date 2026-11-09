@@ -71,10 +71,11 @@ export function registerSatDescargaCron(): void {
    * pantalla y pulsara el botón. Los días que nadie entra no había CFDI, y ese
    * hueco se descubre meses después — cuando el mes ya se declaró.
    *
-   * A las 6:00, hora de México. No a medianoche: el SAT tarda en publicar lo
-   * del día que acaba de cerrar, y pedirlo a las 00:05 trae menos de lo que
-   * hay. */
-  cron.schedule('0 6 * * *', () => {
+   * A las 3:00, hora de México (madrugada, decisión del usuario §6.4): el SAT está
+   * menos saturado. Como la ventana diaria TRASLAPA (hoy + 3 días atrás) y el día de
+   * hoy se re-pide mañana, pedir de madrugada no deja huecos; lo de hoy que aún no
+   * publica el SAT entra en la corrida del día siguiente. */
+  cron.schedule('0 3 * * *', () => {
     crearDiarios().catch((e) =>
       logger.error(`[sat-descarga-cron] falló la creación diaria: ${e.message}`)
     );
@@ -89,7 +90,7 @@ export function registerSatDescargaCron(): void {
   }, 20_000);
 
   logger.info(
-    '[sat-descarga-cron] Registrado: trabajo diario a las 6:00 (CDMX), ' +
+    '[sat-descarga-cron] Registrado: trabajo diario a las 3:00 (CDMX), ' +
     'con red cada 15 minutos y al arrancar');
 }
 

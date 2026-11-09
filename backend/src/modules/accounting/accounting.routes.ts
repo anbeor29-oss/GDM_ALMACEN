@@ -565,7 +565,10 @@ router.post(
       message: `Pólizas CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya estaban` +
         (rep.omitidas.length ? `, ${rep.omitidas.length} omitida(s)` : '') +
         (rep.conCuadre.length ? `, ${rep.conCuadre.length} por codificar` : '') +
-        ` · ${rep.cfdiLigados} CFDI ligados.`,
+        ` · ${rep.cfdiLigados} CFDI ligados` +
+        ` · cargos ${rep.totalCargos.toFixed(2)} / abonos ${rep.totalAbonos.toFixed(2)}` +
+        (Math.abs(rep.totalCargos - rep.totalAbonos) > 0.005 ? ` (dif ${(rep.totalCargos - rep.totalAbonos).toFixed(2)})` : '') +
+        (rep.cuentasNoHomologadas.length ? ` · ${rep.cuentasNoHomologadas.length} cuenta(s) sin homologar` : '') + '.',
     });
   })
 );

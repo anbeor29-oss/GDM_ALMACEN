@@ -195,9 +195,13 @@ export async function crearTrabajoDiario(
     return out;
   }
 
+  // Ventana §6.3 (decisión del usuario): DÍA ACTUAL + `diasAtras` días atrás (por
+  // defecto 3 → 4 días). Traslapa a propósito para cerrar huecos de lo que el SAT
+  // publica tarde (el índice descarta lo repetido por UUID). El RESPALDO a «un día»
+  // es automático: el motor parte la solicitud al 5003 del SAT (estado DIVIDIDA) y
+  // cada partición se vuelve a pedir por su cuenta, hasta por día si hace falta.
   const hoy = new Date();
-  const hasta = new Date(hoy);
-  hasta.setDate(hasta.getDate() - 1);            // hasta ayer: hoy aún no cierra
+  const hasta = new Date(hoy);                   // incluye HOY
   const desde = new Date(hoy);
   desde.setDate(desde.getDate() - cfg.diasAtras);
 
