@@ -1648,10 +1648,31 @@ export async function textoDePdf(buffer: Buffer): Promise<{ texto: string; utili
   }
 
   if (!texto.trim()) {
+    // PDF escaneado (imagen, sin capa de texto). Si el OCR está encendido (ENABLE_OCR),
+    // se intenta reconocer el texto con el motor WASM (documento §4.4); si no, o si falla,
+    // se rechaza como antes. El texto OCR es REAL (no mojibake) → pasa por el extractor
+    // normal, marcado para REVISIÓN porque el OCR puede equivocarse.
+    let ocrOn = false;
+    try {
+      const ocr = await import('./ocr-estado.service');
+      ocrOn = ocr.ocrHabilitado();
+      if (ocrOn) {
+        const r = await ocr.ocrPdf(buffer);
+        if (r.texto.trim()) {
+          return {
+            texto: r.texto, utilizable: true,
+            motivo: `OCR: se reconocieron ${r.paginas} página(s) de un PDF escaneado. ` +
+                    'REVISA los importes contra el estado: el OCR puede equivocarse.',
+          };
+        }
+      }
+    } catch { /* OCR no disponible o falló: se cae al rechazo de abajo */ }
     return {
       texto: '', utilizable: false,
-      motivo: 'El PDF no trae texto: está escaneado. Este servidor no tiene OCR — ' +
-              'pega el texto del portal o sube el CSV.',
+      motivo: 'El PDF no trae texto: está escaneado. ' +
+        (ocrOn
+          ? 'El OCR no reconoció texto — sube el PDF digital del portal o el CSV.'
+          : 'Activa el OCR en el servidor (ENABLE_OCR) o sube el PDF digital del portal / CSV.'),
     };
   }
 
