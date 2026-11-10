@@ -75,7 +75,9 @@ export function AdminCompaniesPage() {
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState('');
   const [borrando, setBorrando] = useState(false);
+  const [progreso, setProgreso] = useState<{ hecho: number; total: number; actual: string } | null>(null);
   const alternarSel = (id: string) => setSeleccion((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const nombreDeEmpresa = (id: string) => (rows as any[]).find((c) => c.id === id)?.business_name || id;
   const desarmarBorrado = () => { setArmadoBorrado(false); setSuperPass(''); setSeleccion(new Set()); };
   const armarBorrado = async () => {
     setPwError('');
@@ -89,12 +91,19 @@ export function AdminCompaniesPage() {
     if (!ids.length) { alert('Marca al menos una empresa.'); return; }
     if (!confirm(`¿Reiniciar la contabilidad (borra catálogo, pólizas y saldos; CONSERVA los XML) de ${ids.length} empresa(s)?\n\nIrreversible. Es para importar un respaldo nuevo.`)) return;
     setBorrando(true);
+    const problemas: string[] = [];
+    let okN = 0;
     try {
-      const r: any = await api.adminReiniciarContabilidadMasivo(ids, superPass);
-      alert(r?.message || 'Contabilidad reiniciada.');
+      // Una por una para mostrar el AVANCE en %.
+      for (let i = 0; i < ids.length; i++) {
+        setProgreso({ hecho: i, total: ids.length, actual: nombreDeEmpresa(ids[i]) });
+        try { await api.adminReiniciarContabilidadMasivo([ids[i]], superPass); okN++; }
+        catch (e: any) { problemas.push(`${nombreDeEmpresa(ids[i])}: ${e?.response?.data?.message || 'error'}`); }
+      }
+      setProgreso({ hecho: ids.length, total: ids.length, actual: '' });
       await qc.invalidateQueries({ queryKey: ['admin-companies'] });
-    } catch (e: any) { alert(e?.response?.data?.message || 'No se pudo reiniciar.'); }
-    finally { setBorrando(false); desarmarBorrado(); }   // se deshabilita tras ejecutar
+      alert(`Contabilidad reiniciada en ${okN} de ${ids.length} empresa(s). Los XML se conservaron.` + (problemas.length ? `\n\nCon problema:\n${problemas.join('\n')}` : ''));
+    } finally { setBorrando(false); setProgreso(null); desarmarBorrado(); }
   };
 
   /* Guarda los módulos habilitados de una empresa (null = todos). Refresca la lista. */
@@ -213,7 +222,18 @@ export function AdminCompaniesPage() {
             className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg disabled:opacity-50">
             <Eraser size={16}/> {borrando ? 'Reiniciando…' : `Ejecutar reinicio (${seleccion.size})`}
           </button>
-          <button onClick={desarmarBorrado} className="px-3 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
+          <button onClick={desarmarBorrado} disabled={borrando} className="px-3 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-50">Cancelar</button>
+          {progreso && (
+            <div className="w-full mt-1">
+              <div className="flex justify-between text-xs text-rose-800 mb-0.5">
+                <span>{progreso.actual ? `Reiniciando: ${progreso.actual}` : 'Terminando…'}</span>
+                <span className="tabular-nums">{progreso.hecho} / {progreso.total} · {Math.round((progreso.hecho / Math.max(1, progreso.total)) * 100)}%</span>
+              </div>
+              <div className="h-2 w-full bg-rose-100 rounded-full overflow-hidden">
+                <div className="h-full bg-rose-600 transition-all duration-200" style={{ width: `${Math.round((progreso.hecho / Math.max(1, progreso.total)) * 100)}%` }} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
