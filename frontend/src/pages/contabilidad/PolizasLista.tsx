@@ -13,6 +13,7 @@ import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
 import { TablaComprobantesSat } from '@/components/TablaComprobantesSat';
+import { PagosPue } from '@/components/PolizasCobroPago';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { aniosContables } from '@/utils/anios';
 import { usePeriodoTrabajo } from '@/utils/periodoActivo';
@@ -74,6 +75,10 @@ export function PolizasListaPage() {
   const pMes = params.get('mes') != null && params.get('mes') !== '' ? Number(params.get('mes')) : undefined;
   const { anio, mes, setAnio, setMes } = usePeriodoTrabajo(pAnio, pMes);
   const [filtro, setFiltro] = useState<string>('');
+  // Periodo de la pestaña «Pago de compras»: lo COMPARTEN la lista de comprobantes y el
+  // panel de pago PUE que va debajo, para que ambos muestren el MISMO mes.
+  const [pagoAnio, setPagoAnio] = useState<number>(new Date().getFullYear());
+  const [pagoMes, setPagoMes] = useState<number | undefined>(new Date().getMonth() + 1);
   const [msg, setMsg] = useState('');
   const [generando, setGenerando] = useState('');
   const [todoAnio, setTodoAnio] = useState(false);
@@ -380,7 +385,14 @@ export function PolizasListaPage() {
           recibido abre su asiento y, si tiene compra sin pago, cancela su pasivo
           (PUE, o PPD cuyo complemento de pago aún no llega). */}
       {filtro === 'ppdpue' ? (
-        <TablaComprobantesSat direccion="recibidos" />
+        <div className="space-y-4">
+          <TablaComprobantesSat direccion="recibidos"
+            anio={pagoAnio} mes={pagoMes}
+            onPeriodo={(p) => { setPagoAnio(p.anio); setPagoMes(p.mes); }} />
+          {/* Pago de las facturas PUE del MISMO mes de la lista, aquí mismo: elegir el
+              banco y generar su póliza de pago sin ir a Tesorería → Cobros y pagos. */}
+          <PagosPue anio={pagoAnio} mes={pagoMes ?? 0} />
+        </div>
       ) : (
       <div className="space-y-2">
         {q.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}

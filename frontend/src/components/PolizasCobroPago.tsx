@@ -82,7 +82,8 @@ export function PolizasCobroPago() {
         )}
       </div>
 
-      <PagosPue anio={anio} mes={mes} />
+      {/* El pago de las facturas PUE (contado) se movió a Contabilidad → Pólizas →
+          pestaña «Pago de compras», junto a la lista de comprobantes recibidos. */}
 
       <div className="space-y-2">
         {!q.isLoading && polizas.length === 0 && (
@@ -138,7 +139,7 @@ const FORMA_PAGO: Record<string, string> = {
   '05': 'Monedero', '28': 'Tarjeta déb.', '99': 'Por definir',
 };
 
-function PagosPue({ anio, mes }: { anio: number; mes: number }) {
+export function PagosPue({ anio, mes }: { anio: number; mes: number }) {
   const qc = useQueryClient();
   const [asig, setAsig] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);

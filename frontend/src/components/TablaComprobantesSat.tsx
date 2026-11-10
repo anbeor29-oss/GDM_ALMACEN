@@ -49,10 +49,23 @@ const folioDe = (c: any) => [c.serie, c.folio].filter(Boolean).join('-');
 const MESES = ['Todo el año', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-export function TablaComprobantesSat({ direccion }: { direccion: Direccion }) {
+export function TablaComprobantesSat({ direccion, anio: anioProp, mes: mesProp, onPeriodo }: {
+  direccion: Direccion;
+  // Periodo opcional CONTROLADO por el padre (p. ej. «Pago de compras», para que el
+  // panel de pago PUE use el MISMO mes que la lista). Si no se pasan, el componente lo
+  // maneja solo, como siempre — retrocompatible con los demás usos.
+  anio?: number;
+  mes?: number;
+  onPeriodo?: (p: { anio: number; mes: number | undefined }) => void;
+}) {
   const hoy = new Date();
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState<number | undefined>(hoy.getMonth() + 1);
+  const controlado = onPeriodo !== undefined && anioProp !== undefined;
+  const [anioLocal, setAnioLocal] = useState(hoy.getFullYear());
+  const [mesLocal, setMesLocal] = useState<number | undefined>(hoy.getMonth() + 1);
+  const anio = controlado ? (anioProp as number) : anioLocal;
+  const mes = controlado ? mesProp : mesLocal;
+  const setAnio = (v: number) => { if (controlado) onPeriodo!({ anio: v, mes }); else setAnioLocal(v); };
+  const setMes = (v: number | undefined) => { if (controlado) onPeriodo!({ anio, mes: v }); else setMesLocal(v); };
   const [tab, setTab] = useState<TabTipo>('I');
   const [buscar, setBuscar] = useState('');
   // Fuente: con XML (el documento), sólo metadato (falta su XML) o cancelados
