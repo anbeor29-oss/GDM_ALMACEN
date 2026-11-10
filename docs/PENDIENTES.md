@@ -25,6 +25,14 @@
   marcada «sugerido». Ver [[contabilidad-asignacion-centralizada]].
 - **(HECHO 2026-11-04)** ~~Filtro de metadatos en XML del SAT~~ (`42e79a5`); ~~correo del despacho como canal central
   + SMTP arreglado~~ (`7afa940`, host = `mail.hcgm.com.mx`); ~~flecha de regreso en Pedidos~~ (`a460348`).
+- **(HECHO 2026-11-09)** ~~Reparar enlaces del respaldo (opción B)~~ (`d2804b7`): cuando un respaldo no trajo el
+  bloque «CFDI Asociados», el XML sale «por clasificar» aunque ya esté contabilizado (y el motor lo duplicaría).
+  Botón **«Reparar enlaces del respaldo»** en Asignación de cuentas → Memoria por RFC: empareja XML↔póliza por
+  importe exacto + RFC + fecha (unicidad 1:1, confianza Alta/Media/Baja), graba sólo `journal_entry_cfdi`.
+  Incluye diagnóstico por año. ~~Enlace «Abrir asignación» navegaba con recarga completa y fallaba~~ (`4d3cce0`,
+  ahora `useNavigate`). Detalle completo en `docs/RECUPERACION_ENLACES_RESPALDO.md`. Ver [[reparar-enlaces-respaldo]].
+  **Pendiente de usuario:** opción A = reexportar de Contalink el libro diario **con el bloque «CFDI Asociados»**
+  y reimportar (llena los enlaces solo). Y desplegar `4d3cce0` en el frontend de Render + subir el nuevo zip al hosting.
 
 **E-commerce (parcial):** flecha de regreso en Pedidos HECHA. «Tienda no disponible» = la tienda debe estar `activa`
 (check en Tiendas) + slug correcto; inventario vacío = agregar productos primero en «Productos» y publicarlos en
