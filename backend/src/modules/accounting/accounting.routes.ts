@@ -69,6 +69,13 @@ const subir = multer({ storage: multer.memoryStorage(),
 const subirRespaldo = multer({ storage: multer.memoryStorage(),
   limits: { fileSize: 300 * 1024 * 1024 } });
 
+/* Libro diario / catálogo de Contalink (.xls): un libro de un solo archivo con TODOS los
+ * años puede ser grande (≈8 MB por cada 6k pólizas). 120 MB cubre decenas de miles de
+ * pólizas sin partir por ejercicios. El parseo va en modo `dense` y hoja por hoja para no
+ * cargar todo doble en memoria. */
+const subirLibro = multer({ storage: multer.memoryStorage(),
+  limits: { fileSize: 120 * 1024 * 1024 } });
+
 function companyId(req: Request): string {
   if (!req.user?.companyId) throw new ValidationError('Company ID is required');
   return req.user.companyId;
@@ -532,7 +539,7 @@ router.post(
 router.post(
   '/contalink/catalogo',
   requireCapability('contabilidad:catalogo'),
-  subir.single('archivo'),
+  subirLibro.single('archivo'),
   asyncHandler(async (req: Request, res: Response) => {
     const f = (req as any).file;
     if (!f) throw new ValidationError('Falta el archivo de Excel del catálogo.');
@@ -554,7 +561,7 @@ router.post(
 router.post(
   '/contalink/polizas',
   requireCapability('contabilidad:capturar'),
-  subir.single('archivo'),
+  subirLibro.single('archivo'),
   asyncHandler(async (req: Request, res: Response) => {
     const f = (req as any).file;
     if (!f) throw new ValidationError('Falta el archivo de Excel del libro diario.');
@@ -570,6 +577,7 @@ router.post(
         ` · ${rep.cfdiLigados} CFDI ligados` +
         ` · cargos ${rep.totalCargos.toFixed(2)} / abonos ${rep.totalAbonos.toFixed(2)}` +
         (Math.abs(rep.totalCargos - rep.totalAbonos) > 0.005 ? ` (dif ${(rep.totalCargos - rep.totalAbonos).toFixed(2)})` : '') +
+        (rep.cuentasCreadas.length ? ` · ${rep.cuentasCreadas.length} cuenta(s) creada(s) al vuelo` : '') +
         (rep.cuentasNoHomologadas.length ? ` · ${rep.cuentasNoHomologadas.length} cuenta(s) sin homologar` : '') + '.',
     });
   })

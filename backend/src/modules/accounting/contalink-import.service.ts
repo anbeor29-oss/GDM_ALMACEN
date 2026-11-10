@@ -59,7 +59,7 @@ export interface CuentaCtlk {
 }
 
 export function parsearCatalogoXls(buffer: Buffer): CuentaCtlk[] {
-  const wb = XLSX.read(buffer, { type: 'buffer' });
+  const wb = XLSX.read(buffer, { type: 'buffer', dense: true });
   // Todas las hojas (por si el catálogo también desborda); raw:false → texto formateado:
   // conserva el agrupador exacto ("102.01", no 102.1). El encabezado «Num cuenta» de cada
   // hoja se salta más abajo.
@@ -177,81 +177,58 @@ function reglaDeTipo(tipoRaw: string): string {
 }
 
 export function parsearPolizasXls(buffer: Buffer): PolizaCtlk[] {
-  const wb = XLSX.read(buffer, { type: 'buffer' });
-  // Contalink DESBORDA a varias hojas cuando pasa de 65,536 filas (el límite del .xls
-  // viejo): «libro-diario», «libro-diario 2»… y una póliza puede quedar PARTIDA entre el
-  // final de una hoja y el inicio de la siguiente. Se CONCATENAN TODAS las hojas en un
-  // solo flujo y se parsean juntas; si sólo se leía la primera, se perdían miles de
-  // pólizas (y sus CFDI → XML «sin codificar»).
-  const rows: any[][] = [];
-  for (const nombre of wb.SheetNames) {
-    const ws = wb.Sheets[nombre];
-    if (!ws) continue;
-    const parte = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: true }) as any[][];
-    for (const r of parte) rows.push(r);
-  }
+  // Contalink DESBORDA a varias hojas al pasar de 65,536 filas (límite del .xls viejo):
+  // «libro-diario», «libro-diario 2»…, y una póliza puede quedar PARTIDA entre el final de
+  // una hoja y el inicio de la siguiente. Se leen TODAS las hojas con el MISMO estado de
+  // parseo (SIN concatenar todo en memoria: se procesa una hoja a la vez), y la máquina es
+  // FILA-POR-FILA (sin leer hacia adelante) para que un bloque que cruce el corte de hoja
+  // no se pierda. `dense` = almacenamiento compacto de SheetJS → menos memoria en libros
+  // grandes (10k+ pólizas en un solo archivo, sin partir por años).
+  const wb = XLSX.read(buffer, { type: 'buffer', dense: true });
   const out: PolizaCtlk[] = [];
   let cur: PolizaCtlk | null = null;
-  let inCfdi = false;
-  const N = rows.length;
-  let r = 0;
-  while (r < N) {
-    const row = rows[r] || [];
+  let inCfdi = false;      // dentro del bloque «CFDI Asociados a la póliza»
+  let cfdiTabla = false;   // ya pasó el encabezado Fecha|Documento|UUID|RFC|Tipo
+  const procesar = (row: any[]) => {
+    row = row || [];
     const c0 = norm(row[0]);
     const v1 = row[1];
     const c1 = norm(v1);
-
     if (c0 === 'tipo de poliza') {
       cur = { tipoRaw: String(v1 ?? '').trim(), tipo: tipoNexo(String(v1 ?? '')), fecha: '', consecutivo: '', concepto: '', movimientos: [], cfdis: [] };
-      out.push(cur);
-      inCfdi = false;
-      r++; continue;
+      out.push(cur); inCfdi = false; cfdiTabla = false; return;
     }
-    if (cur && c0 === 'fecha' && !inCfdi && typeof v1 === 'number') {
-      cur.fecha = fechaDeSerial(v1);
-      r++; continue;
-    }
-    if (cur && c0 === 'descripcion' && !inCfdi) {
-      cur.consecutivo = String(v1 ?? '').trim();
-      r++; continue;
-    }
-    if (c0 === 'notas adicionales' && cur) {
-      cur.concepto = String(v1 ?? '').trim();
-      r++; continue;
-    }
-    if (c0.startsWith('cfdi asociados')) { inCfdi = true; r++; continue; }
-    // Encabezado de la tabla de CFDI → consumir sus filas.
-    if (c0 === 'fecha' && c1 === 'documento') {
-      let rr = r + 1;
-      while (rr < N) {
-        const fr = rows[rr] || [];
-        const f0 = norm(fr[0]);
-        if (f0 === 'tipo de poliza') break;
-        const uuid = String(fr[2] ?? '').trim();
-        const vacia = !fr[0] && !fr[1] && !fr[2] && !fr[3] && !fr[4];
-        if (vacia) { rr++; continue; }
-        if (uuid && /-/.test(uuid)) {
-          const fser = fr[0];
-          cur?.cfdis.push({
-            fecha: typeof fser === 'number' ? fechaDeSerial(fser) : String(fser ?? '').trim(),
-            documento: String(fr[1] ?? '').trim(), uuid: uuid.toUpperCase(),
-            rfc: String(fr[3] ?? '').trim().toUpperCase(), tipo: String(fr[4] ?? '').trim(),
-          });
-        }
-        rr++;
+    if (cur && c0 === 'fecha' && !inCfdi && typeof v1 === 'number') { cur.fecha = fechaDeSerial(v1); return; }
+    if (cur && c0 === 'descripcion' && !inCfdi) { cur.consecutivo = String(v1 ?? '').trim(); return; }
+    if (c0 === 'notas adicionales' && cur) { cur.concepto = String(v1 ?? '').trim(); return; }
+    if (c0.startsWith('cfdi asociados')) { inCfdi = true; cfdiTabla = false; return; }
+    if (inCfdi && c0 === 'fecha' && c1 === 'documento') { cfdiTabla = true; return; }
+    if (inCfdi && cfdiTabla) {
+      const uuid = String(row[2] ?? '').trim();
+      if (uuid && /-/.test(uuid)) {
+        const fser = row[0];
+        cur?.cfdis.push({
+          fecha: typeof fser === 'number' ? fechaDeSerial(fser) : String(fser ?? '').trim(),
+          documento: String(row[1] ?? '').trim(), uuid: uuid.toUpperCase(),
+          rfc: String(row[3] ?? '').trim().toUpperCase(), tipo: String(row[4] ?? '').trim(),
+        });
       }
-      r = rr; continue;
+      return;
     }
-    // Renglón de movimiento.
+    // Renglón de movimiento: el código va al INICIO de la columna B (sólo el número; el
+    // nombre se ignora). «Totales» no trae código → no entra.
     if (cur && !inCfdi && typeof v1 === 'string') {
       const m = acctRe.exec(v1.trim());
       if (m && norm(v1) !== 'totales') {
-        const cargo = Number(row[3]) || 0;
-        const abono = Number(row[4]) || 0;
-        cur.movimientos.push({ cuenta: m[1], nombre: (m[2] || '').trim(), cargo, abono });
+        cur.movimientos.push({ cuenta: m[1], nombre: (m[2] || '').trim(), cargo: Number(row[3]) || 0, abono: Number(row[4]) || 0 });
       }
     }
-    r++;
+  };
+  for (const nombre of wb.SheetNames) {
+    const ws = wb.Sheets[nombre];
+    if (!ws) continue;
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: true }) as any[][];
+    for (const row of rows) procesar(row);
   }
   return out;
 }
