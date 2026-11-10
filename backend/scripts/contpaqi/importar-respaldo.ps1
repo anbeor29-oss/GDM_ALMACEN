@@ -72,10 +72,25 @@ function Invoke-Paquete {
 
     & $Log "2/4  Leyendo la contabilidad (cuentas, pólizas, movimientos, CFDI)..."
     & powershell -ExecutionPolicy Bypass -File (Join-Path $here 'extraer-contpaqi.ps1') -Db $db -Server $srv -Out $export | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "La extraccion de la base fallo (codigo $LASTEXITCODE). Revisa que el motor SQL siga disponible y reintenta." }
     $empresa = @(); $pol = @(); $mov = @()
     try { $empresa = (Get-Content (Join-Path $export 'empresa.json') -Raw).TrimStart([char]0xFEFF) | ConvertFrom-Json } catch {}
     try { $pol = (Get-Content (Join-Path $export 'polizas.json') -Raw).TrimStart([char]0xFEFF) | ConvertFrom-Json } catch {}
     try { $mov = (Get-Content (Join-Path $export 'movimientos.json') -Raw).TrimStart([char]0xFEFF) | ConvertFrom-Json } catch {}
+
+    # Si NADA salió, el .bak se restauró pero la extracción no trajo contabilidad. NO se
+    # empaqueta un .zip vacío (antes sí → el importador decía «no trae cuentas/polizas» sin
+    # explicar): se detiene con el porqué, para no perder tiempo subiendo un paquete inútil.
+    if (@($empresa).Count -eq 0 -and @($pol).Count -eq 0 -and @($mov).Count -eq 0) {
+      $tabs = ''
+      try { $tabs = (& $sc -S $srv -E -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.tables WHERE name IN ('Parametros','Cuentas','Polizas','MovimientosPoliza');" 2>&1 | Out-String).Trim() } catch {}
+      $porque = if ($tabs -match '^0$') {
+        'La base restaurada NO tiene las tablas de CONTPAQi Contabilidad (Parametros/Cuentas/Polizas): el .bak parece de OTRO programa o modulo (Comercial/ADD, Nominas), no de CONTPAQi CONTABILIDAD. Genera el respaldo desde CONTPAQi Contabilidad.'
+      } else {
+        'Las tablas existen pero la extraccion no leyo datos. Reintenta; si sigue: el motor SQL debe ser IGUAL o mas nuevo que el de CONTPAQi (instala SQL Server 2022 Express / LocalDB 2022+) y el .bak debe estar FUERA de OneDrive "solo en linea".'
+      }
+      throw ("El respaldo se restauro pero NO se extrajo contabilidad (0 cuentas, 0 polizas). " + $porque + " [tablas CONTPAQi encontradas: $tabs]")
+    }
 
     $rfc = ''; if ($empresa) { $rfc = "" + $empresa[0].rfc }
     if ($PreviewOnly) {
