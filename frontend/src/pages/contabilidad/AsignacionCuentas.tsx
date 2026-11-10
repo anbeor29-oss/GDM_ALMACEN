@@ -38,6 +38,10 @@ const PESTANAS: Array<{ id: Pest; nombre: string; icono: any }> = [
   { id: 'pagos', nombre: 'Cobros y pagos', icono: ArrowLeftRight },
   { id: 'memoria', nombre: 'Memoria por RFC', icono: Brain },
 ];
+// Pestañas OCULTAS temporalmente (2026-11-10) para medir qué tanto afectan: Clientes y
+// Proveedores. Es reversible — vaciar este Set las vuelve a mostrar (nada se borra; sus
+// tableros y datos siguen ahí). Se filtran al pintar las pestañas.
+const OCULTAS = new Set<Pest>(['clientes', 'proveedores']);
 
 export function AsignacionCuentasPage() {
   const [pest, setPest] = useState<Pest>('ventas');
@@ -63,7 +67,7 @@ export function AsignacionCuentasPage() {
 
       <div className="flex flex-wrap items-center gap-2 justify-between">
         <div className="flex flex-wrap gap-1.5 flex-1">
-          {PESTANAS.map((p, i) => {
+          {PESTANAS.filter((p) => !OCULTAS.has(p.id)).map((p, i) => {
             const Ico = p.icono;
             return (
               <button key={p.id} onClick={() => setPest(p.id)}
@@ -149,7 +153,7 @@ function PagosInfo({ cuentas }: { cuentas: any[] }) {
     ['208.01', 'IVA trasladado cobrado'],
     ['209.01', 'IVA trasladado no cobrado'],
     ['118.01', 'IVA acreditable pagado'],
-    ['119.01', 'IVA acreditable por pagar'],
+    ['119.01', 'IVA'],
   ];
   return (
     <div className="space-y-3">
