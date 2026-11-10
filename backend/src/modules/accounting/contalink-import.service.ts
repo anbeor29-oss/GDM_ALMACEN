@@ -42,7 +42,7 @@ const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 // cliente de Contalink numera distinto (1-00-00-000, 1-000-000, 10-100-0001…), así
 // que se toma cualquier código que empiece con dígito y lleve dígitos/guiones/puntos,
 // seguido de un espacio y el nombre. El importador valida el código contra el catálogo.
-const acctRe = /^(\d[\d.\-]*)\s+(\S.*)$/;
+const acctRe = /^(\d[\d.\-]*)(?:\s+(.*\S))?\s*$/;
 
 /** Serial de Excel (sistema 1900) → 'YYYY-MM-DD'. */
 function fechaDeSerial(n: number): string {
@@ -60,9 +60,15 @@ export interface CuentaCtlk {
 
 export function parsearCatalogoXls(buffer: Buffer): CuentaCtlk[] {
   const wb = XLSX.read(buffer, { type: 'buffer' });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  // raw:false → texto formateado: conserva el agrupador exacto ("102.01", no 102.1).
-  const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, blankrows: false });
+  // Todas las hojas (por si el catálogo también desborda); raw:false → texto formateado:
+  // conserva el agrupador exacto ("102.01", no 102.1). El encabezado «Num cuenta» de cada
+  // hoja se salta más abajo.
+  const rows: any[][] = [];
+  for (const nombre of wb.SheetNames) {
+    const ws = wb.Sheets[nombre];
+    if (!ws) continue;
+    for (const r of XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, blankrows: false }) as any[][]) rows.push(r);
+  }
   const out: CuentaCtlk[] = [];
   for (const r of rows) {
     const codigo = String(r?.[0] ?? '').trim();
@@ -172,8 +178,18 @@ function reglaDeTipo(tipoRaw: string): string {
 
 export function parsearPolizasXls(buffer: Buffer): PolizaCtlk[] {
   const wb = XLSX.read(buffer, { type: 'buffer' });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: true });
+  // Contalink DESBORDA a varias hojas cuando pasa de 65,536 filas (el límite del .xls
+  // viejo): «libro-diario», «libro-diario 2»… y una póliza puede quedar PARTIDA entre el
+  // final de una hoja y el inicio de la siguiente. Se CONCATENAN TODAS las hojas en un
+  // solo flujo y se parsean juntas; si sólo se leía la primera, se perdían miles de
+  // pólizas (y sus CFDI → XML «sin codificar»).
+  const rows: any[][] = [];
+  for (const nombre of wb.SheetNames) {
+    const ws = wb.Sheets[nombre];
+    if (!ws) continue;
+    const parte = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: true }) as any[][];
+    for (const r of parte) rows.push(r);
+  }
   const out: PolizaCtlk[] = [];
   let cur: PolizaCtlk | null = null;
   let inCfdi = false;
@@ -232,12 +248,47 @@ export function parsearPolizasXls(buffer: Buffer): PolizaCtlk[] {
       if (m && norm(v1) !== 'totales') {
         const cargo = Number(row[3]) || 0;
         const abono = Number(row[4]) || 0;
-        cur.movimientos.push({ cuenta: m[1], nombre: m[2].trim(), cargo, abono });
+        cur.movimientos.push({ cuenta: m[1], nombre: (m[2] || '').trim(), cargo, abono });
       }
     }
     r++;
   }
   return out;
+}
+
+/**
+ * Crea al vuelo una cuenta que aparece en una PÓLIZA pero NO en el catálogo (su código y
+ * su nombre vienen en la misma columna B del libro diario). Evita perder la póliza y su
+ * CFDI cuando el catálogo venía incompleto. tipo/naturaleza por el primer dígito; se cuelga
+ * de su mayor (mismo código con el último segmento en ceros) si existe. Idempotente.
+ */
+async function asegurarCuentaCtlk(
+  companyId: string, codigo: string, nombre: string, idPorCodigo: Map<string, string>,
+): Promise<string> {
+  const ya = idPorCodigo.get(codigo);
+  if (ya) return ya;
+  const dig = (codigo.match(/\d/)?.[0]) || '1';
+  const tipo = TIPO_POR_DIG[dig] || 'ORDEN';
+  const natur = natPorTipo(tipo);
+  const segs = codigo.split(/[.\-\s/]/);
+  let parentId: string | null = null;
+  if (segs.length > 1) {
+    const sep = (codigo.match(/[.\-\s/]/) || ['-'])[0];
+    const padreCod = [...segs.slice(0, -1), segs[segs.length - 1].replace(/\d/g, '0')].join(sep);
+    parentId = idPorCodigo.get(padreCod) || null;
+  }
+  const nivel = parentId ? segs.length : 1;
+  const r = await query<any>(
+    `INSERT INTO accounting_accounts
+       (company_id, parent_id, codigo, nombre, codigo_agrupador, tipo, naturaleza,
+        es_complementaria, nivel, permite_movimientos, requiere_tercero, moneda, activa)
+     VALUES ($1,$2,$3,$4,NULL,$5,$6,false,$7,true,false,'MXN',true)
+     ON CONFLICT (company_id, codigo) DO UPDATE SET nombre = EXCLUDED.nombre
+     RETURNING id`,
+    [companyId, parentId, codigo, (nombre || codigo).slice(0, 250), tipo, natur, nivel]);
+  const id = r.rows[0].id;
+  idPorCodigo.set(codigo, id);
+  return id;
 }
 
 export async function importarPolizasXls(companyId: string, buffer: Buffer, userId?: string) {
@@ -260,6 +311,9 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
     // no están homologadas en el catálogo actual (las que hicieron omitir una póliza).
     totalCargos: 0, totalAbonos: 0,
     cuentasNoHomologadas: [] as string[],
+    // Cuentas que venían en una póliza pero NO en el catálogo: se CREAN al vuelo (con su
+    // código y nombre de la columna B) para no perder la póliza ni su CFDI. Se reportan.
+    cuentasCreadas: [] as string[],
   };
 
   for (const [i, p] of polizas.entries()) {
@@ -276,7 +330,6 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
 
       const unicoCfdi = p.cfdis.length === 1 ? p.cfdis[0] : null;
       const lineas: any[] = [];
-      let faltante = '';
       for (const m of p.movimientos) {
         // Se conserva el importe en SU columna con SU signo (NEXO ya acepta negativos):
         // un ajuste con cargo −500 de Contalink queda como cargo −500, fiel al origen.
@@ -284,18 +337,20 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
         let cargo = round2(m.cargo || 0), abono = round2(m.abono || 0);
         if (cargo !== 0 && abono !== 0) { cargo = round2(cargo - abono); abono = 0; }
         if (cargo === 0 && abono === 0) continue;   // renglones en 0 no cambian el cuadre
-        const id = idPorCodigo.get(m.cuenta);
-        if (!id) { faltante = m.cuenta; break; }
+        // Si la cuenta de la póliza NO está en el catálogo, se CREA al vuelo con su código
+        // y su nombre (los trae la misma columna B): así NO se pierde la póliza ni su CFDI
+        // (antes se omitía toda la póliza → su XML quedaba «sin codificar»). Se reporta.
+        let id = idPorCodigo.get(m.cuenta);
+        if (!id) {
+          id = await asegurarCuentaCtlk(companyId, m.cuenta, m.nombre, idPorCodigo);
+          if (!rep.cuentasCreadas.includes(m.cuenta)) rep.cuentasCreadas.push(m.cuenta);
+        }
         lineas.push({
           account_id: id, cargo, abono,
           concepto: p.concepto || undefined,
           uuid_cfdi: unicoCfdi?.uuid || undefined,
           party_rfc: unicoCfdi?.rfc || undefined,
         });
-      }
-      if (faltante) {
-        if (!rep.cuentasNoHomologadas.includes(faltante)) rep.cuentasNoHomologadas.push(faltante);
-        rep.omitidas.push({ folio: etq, motivo: `la cuenta ${faltante} no está en el catálogo — importa el catálogo de CTLK primero` }); continue;
       }
       if (lineas.length < 2) { rep.omitidas.push({ folio: etq, motivo: 'menos de 2 renglones con importe' }); continue; }
 
