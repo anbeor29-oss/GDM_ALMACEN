@@ -55,6 +55,7 @@ import multer from 'multer';
 import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
+import { extraerBinarios } from '../sat-descarga/zip-seguro';
 
 const router = Router();
 router.use(authenticateToken);
@@ -2219,6 +2220,75 @@ router.post(
     // ejercicios (años) elegidos desde NEXO: lista separada por comas; vacío = todos.
     const ejercicios = String(req.body?.ejercicios || '')
       .split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0);
+    const rep = await contpaqi.importarContpaqi(companyId(req), paquete, req.user?.userId, { forzar, ejercicios, soloCatalogo, mascara });
+    res.json({ success: true, data: rep });
+  })
+);
+
+/* ── Importación CPQ desde el .zip, descomprimido en el SERVIDOR ──
+ * El navegador NO puede con respaldos grandes: `cfdi.json`/`movimientos.json` de
+ * varios años revientan el `JSON.parse` del navegador (o `Compress-Archive` deja un
+ * ZIP que fflate no abre) → el botón "no hacía nada". Aquí se sube el .zip comprimido
+ * (va chico) y el servidor lo abre con el lector seguro, casa los .json por nombre y
+ * arma el MISMO `paquete` que ya conoce el importador. `preview=true` sólo resume. */
+const ARCHIVOS_CPQ = ['empresa', 'cuentas', 'polizas', 'movimientos', 'poliza_cfdi', 'cfdi', 'saldos'];
+function leerPaqueteCpqZip(buf: Buffer): Record<string, any[]> {
+  const archivos = extraerBinarios(buf, ['json'], { maxArchivo: 220 * 1024 * 1024, maxPaquete: 600 * 1024 * 1024 });
+  const paquete: Record<string, any[]> = {};
+  for (const a of archivos) {
+    const base = a.nombre.replace(/^.*[\\/]/, '').replace(/\.json$/i, '').toLowerCase();
+    if (!ARCHIVOS_CPQ.includes(base)) continue;
+    const txt = a.contenido.toString('utf8').replace(/^﻿/, '');   // quita BOM de PowerShell
+    try { const j = JSON.parse(txt); paquete[base] = Array.isArray(j) ? j : []; }
+    catch { throw new ValidationError(`El archivo ${base}.json del paquete .zip no es JSON válido.`); }
+  }
+  return paquete;
+}
+
+router.post(
+  '/contpaqi/importar-zip',
+  requireCapability('contabilidad:capturar'),
+  subirRespaldo.single('paquete'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const f = (req as any).file;
+    if (!f) throw new ValidationError('Falta el paquete .zip de la herramienta.');
+    let paq: Record<string, any[]>;
+    try { paq = leerPaqueteCpqZip(f.buffer); }
+    catch (e: any) {
+      if (e?.name === 'ZipSospechoso') throw new ValidationError(e.message);
+      throw e;
+    }
+    const empresa = paq.empresa || [], cuentas = paq.cuentas || [];
+    const polizas = paq.polizas || [], movimientos = paq.movimientos || [];
+    if (!cuentas.length || !polizas.length) {
+      throw new ValidationError('El .zip no trae cuentas.json y polizas.json. ¿Lo generó la herramienta a partir del .bak de CPQ?');
+    }
+    // Simulacro (preview): resumen para la pantalla, sin importar.
+    if (req.body?.preview === 'true' || req.body?.preview === true) {
+      const car = movimientos.filter((m: any) => Number(m.tm) === 0).reduce((s: number, m: any) => s + Number(m.importe || 0), 0);
+      const ab = movimientos.filter((m: any) => Number(m.tm) === 1).reduce((s: number, m: any) => s + Number(m.importe || 0), 0);
+      const ejercicios = ([...new Set(polizas.map((p: any) => Number(p.ejercicio)))].filter(Boolean) as number[]).sort((a, b) => a - b);
+      res.json({
+        success: true,
+        data: {
+          empresa: empresa[0] || null,
+          cuentas: cuentas.length, polizas: polizas.length, movimientos: movimientos.length,
+          cfdi: (paq.cfdi || []).length, ligas: (paq.poliza_cfdi || []).length,
+          cargos: Math.round(car * 100) / 100, abonos: Math.round(ab * 100) / 100, ejercicios,
+        },
+      });
+      return;
+    }
+    // Importar de verdad (mismo motor que /contpaqi/importar).
+    const forzar = req.body?.forzar === 'true' || req.body?.forzar === true;
+    const soloCatalogo = req.body?.soloCatalogo === 'true' || req.body?.soloCatalogo === true;
+    const mascara = String(req.body?.mascara || '').trim().slice(0, 40) || undefined;
+    const ejercicios = String(req.body?.ejercicios || '')
+      .split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0);
+    const paquete = {
+      empresa, cuentas, polizas, movimientos,
+      poliza_cfdi: paq.poliza_cfdi || [], cfdi: paq.cfdi || [], saldos: paq.saldos || [],
+    };
     const rep = await contpaqi.importarContpaqi(companyId(req), paquete, req.user?.userId, { forzar, ejercicios, soloCatalogo, mascara });
     res.json({ success: true, data: rep });
   })

@@ -1924,6 +1924,22 @@ class APIClient {
       { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 600000 });
     return r.data;
   }
+  /** Lee el .zip del extractor en el SERVIDOR (robusto con respaldos grandes) y devuelve el
+   *  resumen SIN importar. El navegador no descomprime ni parsea el paquete. */
+  async previewRespaldoZip(file: File) {
+    const fd = new FormData();
+    fd.append('paquete', file);
+    fd.append('preview', 'true');
+    const r = await this.client.post<APIResponse<any>>('/accounting/contpaqi/importar-zip', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 600000 });
+    return r.data;
+  }
+  /** Importa el .zip del extractor descomprimiéndolo en el servidor. `fd` lleva `paquete` (el .zip) + opciones. */
+  async importarRespaldoZip(fd: FormData) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/contpaqi/importar-zip', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 600000 });
+    return r.data;
+  }
 
   /** Recupera los XML/CFDI de un .zip de respaldo CPQ a la bóveda (aparecen en el calendario). */
   async recuperarXmlRespaldo(file: File) {

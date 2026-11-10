@@ -152,7 +152,13 @@ export interface ArchivoBinario {
  * `extensiones` (sin punto, minúsculas) filtra por tipo; vacío = cualquiera con
  * nombre seguro.
  */
-export function extraerBinarios(zip: Buffer, extensiones: string[] = []): ArchivoBinario[] {
+export function extraerBinarios(
+  zip: Buffer,
+  extensiones: string[] = [],
+  opts: { maxArchivo?: number; maxPaquete?: number } = {},
+): ArchivoBinario[] {
+  const maxArchivo = opts.maxArchivo ?? MAX_ARCHIVO;
+  const maxPaquete = opts.maxPaquete ?? MAX_PAQUETE;
   if (zip.length < 22) throw new ZipSospechoso('El paquete está vacío o truncado.');
 
   let eocd = -1;
@@ -193,15 +199,15 @@ export function extraerBinarios(zip: Buffer, extensiones: string[] = []): Archiv
       if (!extensiones.includes(ext)) continue;
     }
 
-    if (original > MAX_ARCHIVO) {
+    if (original > maxArchivo) {
       throw new ZipSospechoso(
         `Un archivo del paquete declara ${(original / 1048576).toFixed(1)} MB descomprimidos; ` +
-        `el tope por archivo es ${MAX_ARCHIVO / 1048576} MB.`
+        `el tope por archivo es ${maxArchivo / 1048576} MB.`
       );
     }
     acumulado += original;
-    if (acumulado > MAX_PAQUETE) {
-      throw new ZipSospechoso(`El paquete pasa de ${MAX_PAQUETE / 1048576} MB descomprimidos. Se detiene por seguridad.`);
+    if (acumulado > maxPaquete) {
+      throw new ZipSospechoso(`El paquete pasa de ${maxPaquete / 1048576} MB descomprimidos. Se detiene por seguridad.`);
     }
 
     if (offsetLocal + 30 > zip.length || zip.readUInt32LE(offsetLocal) !== 0x04034b50) {
@@ -215,7 +221,7 @@ export function extraerBinarios(zip: Buffer, extensiones: string[] = []): Archiv
     if (metodo === 0) {
       contenido = Buffer.from(datos);
     } else if (metodo === 8) {
-      contenido = zlib.inflateRawSync(datos, { maxOutputLength: MAX_ARCHIVO });
+      contenido = zlib.inflateRawSync(datos, { maxOutputLength: maxArchivo });
     } else {
       throw new ZipSospechoso(`Método de compresión no soportado (${metodo}) en ${nombre.slice(0, 40)}.`);
     }

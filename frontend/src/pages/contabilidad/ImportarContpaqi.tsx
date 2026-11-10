@@ -8,7 +8,6 @@
  * es seguro. (Mismo flujo que el importador de nómina.)
  */
 import { useState, useEffect } from 'react';
-import { unzipSync, strFromU8 } from 'fflate';
 import { Database, Download, Upload, PlayCircle, CheckCircle2, FileArchive, ShieldAlert, RefreshCw } from 'lucide-react';
 import api from '@/services/api';
 import { formatCuenta } from '@/utils/cuenta';
@@ -20,6 +19,9 @@ const mx = (n: any) => new Intl.NumberFormat('es-MX', { style: 'currency', curre
 
 export function ImportarContpaqiPage() {
   const [datos, setDatos] = useState<Partial<Record<Archivo, any[]>>>({});
+  // El .zip de la herramienta se descomprime en el SERVIDOR (los respaldos grandes
+  // reventaban el navegador). Se guarda el File para reusarlo al importar.
+  const [zipFile, setZipFile] = useState<File | null>(null);
   const [empresa, setEmpresa] = useState<{ rfc?: string; nombre?: string } | null>(null);
   const [preview, setPreview] = useState<any>(null);
   const [ejerSel, setEjerSel] = useState<Set<number>>(new Set());
@@ -61,23 +63,46 @@ export function ImportarContpaqiPage() {
   const recibir = async (lista: FileList | null) => {
     if (!lista || !lista.length) return;
     setError(''); setRep(null); setRfcMismatch(false); setForzar(false);
+    const arr = Array.from(lista);
+    const zip = arr.find((f) => /\.zip$/i.test(f.name));
+
+    // .zip de la herramienta → se descomprime y resume en el SERVIDOR. Antes se hacía
+    // en el navegador y los respaldos grandes (cfdi.json/movimientos.json de varios
+    // años) reventaban el JSON.parse → el botón "no hacía nada".
+    if (zip) {
+      setZipFile(zip); setDatos({}); setEmpresa(null); setPreview(null);
+      try {
+        const r: any = await api.previewRespaldoZip(zip);
+        const d = r.data || {};
+        setEmpresa(d.empresa || null);
+        if (d.cuentas && d.polizas && d.movimientos) {
+          setPreview({
+            cuentas: d.cuentas, polizas: d.polizas, movimientos: d.movimientos,
+            cfdi: d.cfdi, ligas: d.ligas, cargos: d.cargos, abonos: d.abonos, ejercicios: d.ejercicios || [],
+          });
+          setEjerSel(new Set(d.ejercicios || []));
+        } else {
+          setError('El .zip no trae cuentas/pólizas/movimientos. ¿Lo generó la herramienta a partir del .bak de CPQ?');
+        }
+      } catch (e: any) {
+        setZipFile(null);
+        setError(e?.response?.data?.message || 'No se pudo leer el paquete .zip.');
+      }
+      return;
+    }
+
+    // Archivos .json sueltos (chicos) → se parsean en el navegador, como siempre.
+    setZipFile(null);
     const next: Partial<Record<Archivo, any[]>> = { ...datos };
     try {
-      for (const f of Array.from(lista)) {
-        if (/\.zip$/i.test(f.name)) {
-          const entradas = unzipSync(new Uint8Array(await f.arrayBuffer()));
-          for (const [nombre, bytes] of Object.entries(entradas)) {
-            const base = nombre.replace(/^.*[\\/]/, '').replace(/\.json$/i, '').toLowerCase();
-            const match = ARCHIVOS.find((a) => a === base);
-            if (match) next[match] = parseJson(strFromU8(bytes as Uint8Array));
-          }
-        } else if (/\.json$/i.test(f.name)) {
+      for (const f of arr) {
+        if (/\.json$/i.test(f.name)) {
           const base = f.name.replace(/\.json$/i, '').toLowerCase();
           const match = ARCHIVOS.find((a) => a === base);
           if (match) next[match] = parseJson(await f.text());
         }
       }
-    } catch { setError('No se pudo leer el paquete (.zip). Genera uno nuevo con la herramienta.'); return; }
+    } catch { setError('No se pudieron leer los archivos .json.'); return; }
 
     setDatos(next);
     setEmpresa(next.empresa?.[0] || null);
@@ -99,16 +124,20 @@ export function ImportarContpaqiPage() {
     setBusy(true); setError(''); setRep(null); setRfcMismatch(false);
     try {
       const fd = new FormData();
-      ARCHIVOS.forEach((a) => {
-        if (datos[a]) fd.append(a, new Blob([JSON.stringify(datos[a])], { type: 'application/json' }), `${a}.json`);
-      });
+      if (zipFile) {
+        fd.append('paquete', zipFile);   // el servidor lo descomprime y parsea
+      } else {
+        ARCHIVOS.forEach((a) => {
+          if (datos[a]) fd.append(a, new Blob([JSON.stringify(datos[a])], { type: 'application/json' }), `${a}.json`);
+        });
+      }
       if (forzar) fd.append('forzar', 'true');
       if (soloCatalogo) fd.append('soloCatalogo', 'true');
       if (mascara.trim().includes('#')) fd.append('mascara', mascara.trim());
       if (preview?.ejercicios?.length && ejerSel.size && ejerSel.size < preview.ejercicios.length) {
         fd.append('ejercicios', [...ejerSel].join(','));
       }
-      const r: any = await api.importarRespaldo(fd);
+      const r: any = zipFile ? await api.importarRespaldoZip(fd) : await api.importarRespaldo(fd);
       setRep(r.data);
     } catch (e: any) {
       const msg = e?.response?.data?.message || e?.message || 'No se pudo importar.';
