@@ -16,7 +16,7 @@ import { Fragment, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Brain, ChevronDown, ChevronRight, FileText, BookOpen, CheckCircle2, AlertTriangle, Search,
-  Sparkles, X, ThumbsUp, ThumbsDown, PauseCircle, History, RefreshCw,
+  Sparkles, X, ThumbsUp, ThumbsDown, PauseCircle, History, RefreshCw, Link2,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useMascara } from '@/utils/cuenta';
@@ -365,6 +365,165 @@ function EvidenciaModal({ rfc, clave, titulo, onClose, onPoliza }: {
    MEMORIA POR RFC — recuperación, aprendizaje, reglas y auditoría
    ═══════════════════════════════════════════════════════════════════════════ */
 
+const CONF_UI: Record<'ALTA' | 'MEDIA' | 'BAJA', { txt: string; cls: string }> = {
+  ALTA: { txt: 'Alta', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+  MEDIA: { txt: 'Media', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+  BAJA: { txt: 'Baja', cls: 'bg-rose-100 text-rose-700 border-rose-300' },
+};
+
+/**
+ * Reparar enlaces del respaldo — opción B. Busca la póliza de respaldo de cada XML que
+ * quedó «por clasificar» por falta del enlace UUID↔póliza, y graba sólo ese enlace.
+ * Primero SIMULACRO (no toca nada), luego el usuario aplica hasta el nivel de confianza
+ * que quiera. Reusa la base y la UX de confianza del agente de codificación.
+ */
+function RepararEnlaces() {
+  const qc = useQueryClient();
+  const [anio, setAnio] = useState<number>(0);   // 0 = todos los años
+  const [sim, setSim] = useState<any>(null);
+  const [msg, setMsg] = useState('');
+  const diagQ = useQuery({ queryKey: ['enlaces-diag'], queryFn: () => api.getDiagnosticoEnlaces() });
+  const porAnio: any[] = diagQ.data?.data?.porAnio || [];
+
+  const analizar = useMutation({
+    mutationFn: () => api.repararEnlacesRespaldo({ anio: anio || undefined, aplicar: false }),
+    onSuccess: (x: any) => { setSim(x.data); setMsg(''); },
+    onError: (e: any) => { setSim(null); setMsg(e?.response?.data?.message || 'No se pudo analizar.'); },
+  });
+  const aplicar = useMutation({
+    mutationFn: (conf: 'ALTA' | 'MEDIA' | 'BAJA') => api.repararEnlacesRespaldo({ anio: anio || undefined, aplicar: true, confianza: conf }),
+    onSuccess: (x: any) => {
+      setSim(x.data);
+      setMsg(`Se enlazaron ${x.data.aplicados} factura(s) a su póliza del respaldo.`);
+      ['enlaces-diag', 'codif-resumen', 'codif-bandeja'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    },
+    onError: (e: any) => setMsg(e?.response?.data?.message || 'No se pudo aplicar.'),
+  });
+  const trabajando = analizar.isPending || aplicar.isPending;
+
+  return (
+    <div className="bg-white rounded-lg shadow border p-4 space-y-3">
+      <div className="flex flex-wrap items-start gap-3">
+        <Link2 size={22} className="text-sky-600 mt-0.5" />
+        <div className="flex-1 min-w-[16rem]">
+          <p className="font-semibold text-gray-800">Reparar enlaces del respaldo</p>
+          <p className="text-xs text-gray-500">
+            Cuando el respaldo no trajo el enlace XML↔póliza, la factura aparece como «por clasificar» aunque YA esté
+            contabilizada. Esto busca su póliza del respaldo por <b>importe exacto + RFC + fecha</b> y graba sólo el
+            enlace que faltaba. <b>No cambia importes ni cuentas</b>, y ante la duda no enlaza.
+          </p>
+        </div>
+      </div>
+
+      {porAnio.length > 0 && (
+        <div className="overflow-x-auto border rounded-lg">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 text-gray-500"><tr>
+              <th className="text-left px-2 py-1.5">Año</th>
+              <th className="text-right px-2 py-1.5">Compras enlazadas</th>
+              <th className="text-right px-2 py-1.5">Ventas enlazadas</th>
+              <th className="text-right px-2 py-1.5">Pólizas de respaldo</th>
+            </tr></thead>
+            <tbody className="divide-y">
+              {porAnio.map((f) => {
+                const rp = f.recibidos.total ? Math.round(f.recibidos.enlazados / f.recibidos.total * 100) : null;
+                const vp = f.emitidos.total ? Math.round(f.emitidos.enlazados / f.emitidos.total * 100) : null;
+                return (
+                  <tr key={f.anio}>
+                    <td className="px-2 py-1 font-medium">{f.anio}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{f.recibidos.enlazados}/{f.recibidos.total}{rp != null && <span className="text-gray-400"> ({rp}%)</span>}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{f.emitidos.enlazados}/{f.emitidos.total}{vp != null && <span className="text-gray-400"> ({vp}%)</span>}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{f.polizasRespaldo}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-gray-500">Año:</span>
+        <select value={anio} onChange={(e) => { setAnio(Number(e.target.value)); setSim(null); setMsg(''); }} className="input py-1.5 text-sm w-32">
+          <option value={0}>Todos</option>
+          {porAnio.map((f) => <option key={f.anio} value={f.anio}>{f.anio}</option>)}
+        </select>
+        <button disabled={trabajando} onClick={() => analizar.mutate()}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 text-sm">
+          <Search size={14} /> {analizar.isPending ? 'Analizando…' : 'Analizar (simulacro)'}
+        </button>
+      </div>
+
+      {sim && (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm space-y-2">
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <span>Revisados sin enlace: <b>{sim.revisados}</b></span>
+            <span className="text-emerald-700">Alta: <b>{sim.porConfianza.ALTA}</b></span>
+            <span className="text-amber-700">Media: <b>{sim.porConfianza.MEDIA}</b></span>
+            <span className="text-rose-700">Baja: <b>{sim.porConfianza.BAJA}</b></span>
+            <span className="text-gray-500">Ambiguos: {sim.ambiguos}</span>
+            <span className="text-gray-500">Sin candidata: {sim.sinCandidata}</span>
+          </div>
+          {sim.aplicar
+            ? <p className="text-emerald-800 font-medium flex items-center gap-1.5"><CheckCircle2 size={15} /> {msg}</p>
+            : (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-gray-600">Enlazar hasta confianza:</span>
+                <button disabled={trabajando || !sim.porConfianza.ALTA} onClick={() => aplicar.mutate('ALTA')}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 text-sm">
+                  Sólo Alta ({sim.porConfianza.ALTA})
+                </button>
+                <button disabled={trabajando || !(sim.porConfianza.ALTA + sim.porConfianza.MEDIA)} onClick={() => aplicar.mutate('MEDIA')}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 text-sm">
+                  Alta + Media ({sim.porConfianza.ALTA + sim.porConfianza.MEDIA})
+                </button>
+                <button disabled={trabajando || !(sim.porConfianza.ALTA + sim.porConfianza.MEDIA + sim.porConfianza.BAJA)}
+                  onClick={() => { if (confirm('Enlazar TODAS las coincidencias, incluidas las de confianza BAJA (sólo importe exacto único, sin RFC ni nombre). Revisa la muestra antes. ¿Continuar?')) aplicar.mutate('BAJA'); }}
+                  className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-40 text-sm">
+                  Todas ({sim.porConfianza.ALTA + sim.porConfianza.MEDIA + sim.porConfianza.BAJA})
+                </button>
+              </div>
+            )}
+
+          {sim.muestra?.length > 0 && (
+            <div className="overflow-x-auto border rounded-lg bg-white mt-1">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 text-gray-500"><tr>
+                  <th className="text-left px-2 py-1">Tipo</th>
+                  <th className="text-left px-2 py-1">Folio</th>
+                  <th className="text-left px-2 py-1">RFC</th>
+                  <th className="text-right px-2 py-1">Importe</th>
+                  <th className="text-left px-2 py-1">Fecha XML → póliza</th>
+                  <th className="text-left px-2 py-1">Confianza</th>
+                  <th className="text-left px-2 py-1">Motivo</th>
+                </tr></thead>
+                <tbody className="divide-y">
+                  {sim.muestra.map((m: any, i: number) => (
+                    <tr key={i}>
+                      <td className="px-2 py-1">{m.direccion === 'recibidos' ? 'Compra' : 'Venta'}</td>
+                      <td className="px-2 py-1 font-mono">{m.folio}</td>
+                      <td className="px-2 py-1 font-mono">{m.rfc || '—'}</td>
+                      <td className="px-2 py-1 text-right tabular-nums">{money(m.total)}</td>
+                      <td className="px-2 py-1 whitespace-nowrap">{fechaMx(m.fecha)} → {fechaMx(m.entryFecha)}</td>
+                      <td className="px-2 py-1"><span className={`px-1.5 py-0.5 rounded border text-[11px] ${CONF_UI[m.confianza as 'ALTA' | 'MEDIA' | 'BAJA'].cls}`}>{CONF_UI[m.confianza as 'ALTA' | 'MEDIA' | 'BAJA'].txt}</span></td>
+                      <td className="px-2 py-1 text-gray-600">{m.motivo}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="text-[11px] text-gray-500">
+            Los <b>ambiguos</b> (varias pólizas con el mismo importe) y los <b>sin candidata</b> no se tocan: los primeros
+            porque no se puede saber cuál es; los segundos porque de verdad no vienen en el respaldo.
+          </p>
+        </div>
+      )}
+      {msg && !sim?.aplicar && <p className="text-xs text-rose-600">{msg}</p>}
+    </div>
+  );
+}
+
 export function MemoriaRfc({ cuentas }: { cuentas: any[] }) {
   const qc = useQueryClient();
   const [sec, setSec] = useState<'propuestas' | 'proveedores' | 'reglas' | 'auditoria'>('propuestas');
@@ -425,6 +584,8 @@ export function MemoriaRfc({ cuentas }: { cuentas: any[] }) {
         )}
         {err && <p className="text-xs text-rose-600 mt-2">{err}</p>}
       </div>
+
+      <RepararEnlaces />
 
       <div className="flex flex-wrap gap-1.5">
         {([['propuestas', 'Reglas propuestas'], ['proveedores', 'Proveedores aprendidos'], ['reglas', 'Reglas e historial'], ['auditoria', 'Auditoría']] as const).map(([k, t]) => (

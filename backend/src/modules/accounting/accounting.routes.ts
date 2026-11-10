@@ -42,6 +42,7 @@ import * as indicadores from './indicadores.service';
 import * as contpaqiTxt from './contpaqi-txt.service';
 import * as contalink from './contalink-import.service';
 import * as cierre from './cierre-ejercicio.service';
+import * as reparar from './reparar-enlaces.service';
 import * as diotSvc from './diot.service';
 import * as contabElec from './contabilidad-electronica.service';
 import * as recuperacionCpq from './recuperacion-cpq.service';
@@ -1724,6 +1725,29 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const r = await cuentasDup.fusionar(companyId(req));
     res.json({ success: true, data: r, message: r.mensaje });
+  })
+);
+
+/** GET /accounting/enlaces-respaldo/diagnostico?anio — por año: XML vs enlazados vs pólizas de respaldo (solo lectura) */
+router.get(
+  '/enlaces-respaldo/diagnostico',
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = Number(req.query.anio) || undefined;
+    res.json({ success: true, data: await reparar.diagnosticoEnlaces(companyId(req), anio) });
+  })
+);
+
+/** POST /accounting/enlaces-respaldo/reparar — empareja XML con su póliza de respaldo por importe+RFC+fecha.
+ *  body: { anio?, aplicar?, confianza? }. Sin `aplicar` es simulacro (dry-run). */
+router.post(
+  '/enlaces-respaldo/reparar',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const anio = Number(req.body?.anio) || undefined;
+    const aplicar = req.body?.aplicar === true;
+    const confianza = ['ALTA', 'MEDIA', 'BAJA'].includes(req.body?.confianza) ? req.body.confianza : 'ALTA';
+    const data = await reparar.repararEnlacesRespaldo(companyId(req), { anio, aplicar, confianza });
+    res.json({ success: true, data });
   })
 );
 

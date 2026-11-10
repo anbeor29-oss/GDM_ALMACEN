@@ -1643,6 +1643,15 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/codificacion/aprender', {}, { timeout: 600000 });
     return r.data;
   }
+  /* ── Reparar enlaces del respaldo (XML ↔ póliza por importe+RFC+fecha) ── */
+  async getDiagnosticoEnlaces(anio?: number) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/enlaces-respaldo/diagnostico', { params: anio ? { anio } : {} });
+    return r.data;
+  }
+  async repararEnlacesRespaldo(opts: { anio?: number; aplicar?: boolean; confianza?: 'ALTA' | 'MEDIA' | 'BAJA' } = {}) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/enlaces-respaldo/reparar', opts, { timeout: 600000 });
+    return r.data;
+  }
   async getBandejaCodificacion(anio: number, mes: number) {
     const r = await this.client.get<APIResponse<any>>('/accounting/codificacion/bandeja', { params: { anio, mes } });
     return r.data;
