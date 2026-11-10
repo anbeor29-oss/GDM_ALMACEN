@@ -29,6 +29,7 @@ import {
 
 export function BalanzaPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const mascara = useMascara();
   /* Se puede volver aquí desde el editor de una póliza (que se abrió por el
    * auxiliar): el mes/año llegan en la URL para reabrir en el mismo periodo. */
@@ -144,7 +145,8 @@ export function BalanzaPage() {
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
           <span>
             {aviso}{' '}
-            <a href="/contabilidad/asignacion" className="font-semibold underline hover:text-amber-900">Abrir asignación</a>
+            <button type="button" onClick={() => navigate('/contabilidad/asignacion')}
+              className="font-semibold underline hover:text-amber-900">Abrir asignación</button>
           </span>
         </div>
       )}
@@ -154,7 +156,7 @@ export function BalanzaPage() {
         <p className="text-sm text-gray-600 bg-gray-50 border rounded px-4 py-6 text-center">
           {MESES[mes]} {anio} no tiene saldos. Genera las pólizas del mes y dale
           <b> «Actualizar desde pólizas»</b> — o carga una balanza externa en{' '}
-          <a href="/contabilidad/periodos" className="text-primary hover:underline">Periodos</a>.
+          <button type="button" onClick={() => navigate('/contabilidad/periodos')} className="text-primary hover:underline">Periodos</button>.
         </p>
       )}
 
