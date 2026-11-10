@@ -191,6 +191,21 @@ export async function limpiarTrabajosTerminados(companyId: string): Promise<{ tr
 }
 
 /**
+ * Igual que `limpiarTrabajosTerminados` pero para TODAS las empresas — lo usa el cron
+ * diario de limpieza. Borra de toda la base los trabajos TERMINADO/CANCELADO/CON_ERRORES:
+ * su descarga ya acabó y los XML que bajaron están en `cfdi_recibidos`, así que no se
+ * pierde ningún comprobante (ON DELETE CASCADE quita particiones/paquetes y deja el
+ * paquete_id de los CFDI en NULL). Un periodo con error se puede volver a pedir por fechas.
+ */
+export async function limpiarTrabajosTerminadosTodas(): Promise<{ trabajos: number }> {
+  const r = await query(
+    `DELETE FROM sat_trabajos WHERE estado IN ('TERMINADO','CANCELADO','CON_ERRORES')`);
+  const trabajos = r.rowCount || 0;
+  logger.info(`[sat-descarga] limpieza global terminados/errores: ${trabajos} trabajo(s) borrados`);
+  return { trabajos };
+}
+
+/**
  * Borra las descargas que siguen PENDIENTES / EN CURSO (no terminadas): trabajos
  * en estado CREADO o EN_PROCESO, con sus particiones y paquetes (ON DELETE
  * CASCADE). Igual que al limpiar terminados, los XML que ya hubieran bajado se

@@ -97,6 +97,16 @@ async function bootstrap() {
       logger.warn(`No se pudo registrar sat-descarga-cron: ${e.message}`);
     }
 
+    // Limpieza de solicitudes de descarga: a diario 06:30 (México) borra las
+    // TERMINADAS/CANCELADAS/CON ERRORES — sólo registros de control, los XML se
+    // conservan. Encendido por omisión (ENABLE_SAT_LIMPIEZA_CRON=false lo apaga).
+    try {
+      const { registerSatLimpiezaCron } = await import('./jobs/sat-limpieza-cron');
+      registerSatLimpiezaCron();
+    } catch (e: any) {
+      logger.warn(`No se pudo registrar sat-limpieza-cron: ${e.message}`);
+    }
+
     // Depreciación/amortización: al cambio de mes genera la póliza del mes que
     // cerró y actualiza la balanza (solo si ENABLE_DEPRECIACION_CRON=true)
     try {
