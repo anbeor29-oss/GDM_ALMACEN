@@ -13,6 +13,7 @@ import { ChecadorRegistroPage } from '@/pages/nomina/RegistroAsistencia';
 import { ChecadorCampoPage } from '@/pages/nomina/ChecadorCampo';
 import { useAuthStore } from '@/store/auth';
 import { canAccess, type ModuleKey, homeDe } from '@/utils/permissions';
+import { AvisoGlobal } from '@/components/AvisoGlobal';
 import { leerKiosco, borrarKiosco, hayKiosco } from '@/utils/kioscoAuto';
 
 /**
@@ -257,6 +258,7 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <Router basename={import.meta.env.BASE_URL}>
         <AutoActualizar />
+        <AvisoGlobal />
         <Suspense fallback={<CargandoErp />}>
         <Routes>
           {/* Rutas públicas */}
