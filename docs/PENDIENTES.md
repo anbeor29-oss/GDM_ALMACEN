@@ -25,6 +25,12 @@
   marcada «sugerido». Ver [[contabilidad-asignacion-centralizada]].
 - **(HECHO 2026-11-04)** ~~Filtro de metadatos en XML del SAT~~ (`42e79a5`); ~~correo del despacho como canal central
   + SMTP arreglado~~ (`7afa940`, host = `mail.hcgm.com.mx`); ~~flecha de regreso en Pedidos~~ (`a460348`).
+- **(HECHO 2026-11-11)** ~~PUE genera los DOS asientos~~ (`2f801de`): en PUE (pago en una exhibición, sin
+  complemento) el motor de compras ahora genera, tras la compra (pasivo), **su pago** que lo CANCELA
+  (cargo proveedor / abono banco 102.01 o Caja 101 si efectivo + IVA 119→118). MetodoPago/FormaPago se leen
+  del XML (la columna puede venir vacía); el panel «Pago de compras» también detecta PUE por XML. Idempotente.
+  Para compras ya asentadas sin pago: «Descontabilizar mes» + regenerar. **Pendiente:** el pago de NÓMINA (su
+  pasivo/neto) es flujo aparte (`nomina-poliza`), no se auto-paga. Ver [[contabilidad-motor-polizas]].
 - **(HECHO 2026-11-09)** ~~Reparar enlaces del respaldo (opción B)~~ (`d2804b7`): cuando un respaldo no trajo el
   bloque «CFDI Asociados», el XML sale «por clasificar» aunque ya esté contabilizado (y el motor lo duplicaría).
   Botón **«Reparar enlaces del respaldo»** en Asignación de cuentas → Memoria por RFC: empareja XML↔póliza por
