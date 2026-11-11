@@ -6,15 +6,17 @@
  *   Fecha · Folio · Nombre (cliente/proveedor) · Cuenta · [2ª cuenta] ·
  *   Subtotal · IVA · Total · 👁 (ver póliza) · estado (codificada/pendiente).
  *
- * Asiento (lo arma el motor; aquí se captura la cuenta variable y se contabiliza):
- *   Ventas  → Cargo CLIENTE (la cuenta se captura en el combo; si no, se resuelve
- *             por RFC) · Abono Ingreso (fija) · Abono IVA por pagar (fija, de las
- *             asignaciones del catálogo).
- *   Compras → Cargo Gasto/Compra/Activo · Cargo IVA por acreditar (fija) · Abono
- *             PROVEEDOR  (su reconfiguración de dos combos va en su turno).
+ * Asiento (lo arma el motor; aquí se capturan las cuentas variables en combos del
+ * catálogo y se contabiliza):
+ *   Ventas  → Cargo CLIENTE (combo 105) · Abono Ingreso (fija) · Abono IVA por
+ *             pagar (fija, de las asignaciones).
+ *   Compras → Cargo GASTO/COMPRA/ACTIVO (combo, 2ª cuenta) · Cargo IVA por
+ *             acreditar (fija) · Abono PROVEEDOR (combo, 1ª cuenta).
  *
- * «Que se vayan contabilizando en automático»: al cargar el periodo se corre el
- * motor (idempotente) y deja PENDIENTES sólo las de cuenta desconocida.
+ * Las cuentas capturadas MANDAN: el motor prefiere la cuenta del combo sobre su
+ * resolución automática. «Que se vayan contabilizando en automático»: al cargar
+ * el periodo corre el motor (idempotente) y deja PENDIENTES sólo las de cuenta
+ * desconocida.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,7 +44,7 @@ function ivaDe(c: any): number | null {
 /* ── Íconos de estado, diseñados a juego con los de comprobantes (documento) ──
  * Codificada: documento con sello de verificación (verde). Pendiente: documento
  * con puntos suspensivos (ámbar) = «aún por asentar». */
-function IconoCodificada({ size = 17 }: { size?: number }) {
+export function IconoCodificada({ size = 17 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
@@ -52,7 +54,7 @@ function IconoCodificada({ size = 17 }: { size?: number }) {
     </svg>
   );
 }
-function IconoPendiente({ size = 17 }: { size?: number }) {
+export function IconoPendiente({ size = 17 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500">
@@ -86,12 +88,18 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
     queryFn: () => api.getSatComprobantesVista({ direccion, anio, mes }),
   });
 
-  // Catálogo de movimientos para el combo de cuenta del CLIENTE (agrupador 105).
+  // Catálogo de movimientos para los combos. El combo despliega el catálogo:
+  // clientes (agrupador 105), proveedores (201/205) y, para la 2ª cuenta de
+  // compras, TODO el catálogo (gasto/compra/activo/costo).
   const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
-  const cuentasCliente = useMemo(() => {
+  const ctas = useMemo(() => {
     const all: any[] = (ctasQ.data?.data?.cuentas || []).filter((c: any) => c.permite_movimientos);
-    const cli = all.filter((c: any) => String(c.codigo_agrupador || '').startsWith('105'));
-    return (cli.length ? cli : all).map((c: any) => ({ codigo: c.codigo, nombre: c.nombre }));
+    const opt = (c: any) => ({ codigo: c.codigo, nombre: c.nombre });
+    const fam = (prefs: string[]) => {
+      const f = all.filter((c: any) => prefs.some((p) => String(c.codigo_agrupador || '').startsWith(p)));
+      return (f.length ? f : all).map(opt);
+    };
+    return { cliente: fam(['105']), proveedor: fam(['201', '205']), gasto: all.map(opt) };
   }, [ctasQ.data]);
 
   // Sólo FACTURAS (tipo I). Orden pedido: por fecha y, dentro del día, por folio.
@@ -148,6 +156,8 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
   const chip = ventas ? 'text-emerald-700' : 'text-sky-700';
   const btn = ventas ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                      : 'border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100';
+  const nCols = ventas ? 9 : 10;   // columnas de la tabla (para el colSpan de vacío/carga)
+  const preSpan = ventas ? 4 : 5;  // columnas antes de «Subtotal» (para el pie de sumas)
 
   return (
     <div className="space-y-4">
@@ -197,7 +207,7 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
       </div>
       {msg && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{msg}</p>}
 
-      {/* Tabla — acomodo: Fecha · Folio · Nombre · Cuenta · Subtotal · IVA · Total · ojo · estado */}
+      {/* Tabla — acomodo: Fecha · Folio · Nombre · Cuenta · [2ª cuenta] · Subtotal · IVA · Total · ojo · estado */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
@@ -205,20 +215,21 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
               <th className="px-3 py-2 text-left">Fecha</th>
               <th className="px-3 py-2 text-left">Folio</th>
               <th className="px-3 py-2 text-left">{ventas ? 'Cliente' : 'Proveedor'}</th>
-              <th className="px-3 py-2 text-left">Cuenta{ventas ? ' (cliente)' : ''}</th>
+              <th className="px-3 py-2 text-left">{ventas ? 'Cuenta (cliente)' : 'Cuenta (proveedor)'}</th>
+              {!ventas && <th className="px-3 py-2 text-left">2ª cuenta (gasto/activo)</th>}
               <th className="px-3 py-2 text-right">Subtotal</th>
               <th className="px-3 py-2 text-right">IVA</th>
               <th className="px-3 py-2 text-right">Total</th>
-              <th className="px-3 py-2 text-center w-20">Póliza</th>
+              <th className="px-3 py-2 text-center w-16">Póliza</th>
               <th className="px-3 py-2 text-center w-12">Estado</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {q.isLoading && (
-              <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-500">Cargando…</td></tr>
+              <tr><td colSpan={nCols} className="px-3 py-6 text-center text-gray-500">Cargando…</td></tr>
             )}
             {!q.isLoading && filas.length === 0 && (
-              <tr><td colSpan={9} className="px-3 py-8 text-center text-gray-500 italic">
+              <tr><td colSpan={nCols} className="px-3 py-8 text-center text-gray-500 italic">
                 Sin facturas {ventas ? 'emitidas' : 'recibidas'} en {mes ? MESES[mes] : 'el año'} {anio}.
               </td></tr>
             )}
@@ -229,12 +240,17 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
                 <tr key={c.id} className={cancelado ? 'bg-rose-50/40' : 'hover:bg-gray-50'}>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-700">{fechaCorta(c.fecha_emision)}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-700">{folioDe(c)}</td>
-                  <td className="px-3 py-2"><p className="truncate max-w-[15rem]" title={c.contraparte_nombre}>{c.contraparte_nombre || '—'}</p></td>
+                  <td className="px-3 py-2"><p className="truncate max-w-[14rem]" title={c.contraparte_nombre}>{c.contraparte_nombre || '—'}</p></td>
                   <td className="px-3 py-2">
-                    {ventas
-                      ? <ComboCuenta id={c.id} valor={c.cuenta_contable} opciones={cuentasCliente} claveVista={claveVista} />
-                      : <CuentaTexto id={c.id} valor={c.cuenta_contable} claveVista={claveVista} />}
+                    <ComboCuenta id={c.id} valor={c.cuenta_contable} campo="cuenta"
+                      opciones={ventas ? ctas.cliente : ctas.proveedor} claveVista={claveVista} />
                   </td>
+                  {!ventas && (
+                    <td className="px-3 py-2">
+                      <ComboCuenta id={c.id} valor={c.cuenta_contable_2} campo="cuenta2"
+                        opciones={ctas.gasto} claveVista={claveVista} />
+                    </td>
+                  )}
                   <td className="px-3 py-2 text-right tabular-nums text-gray-700">{c.subtotal != null ? money(c.subtotal, c.moneda) : '—'}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-gray-700">{iva != null ? money(iva, c.moneda) : '—'}</td>
                   <td className="px-3 py-2 text-right tabular-nums font-semibold text-gray-900">{money(c.total, c.moneda)}</td>
@@ -256,7 +272,7 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
           {filas.length > 0 && (
             <tfoot>
               <tr className="border-t-2 bg-gray-50 font-semibold text-gray-800">
-                <td colSpan={4} className="px-3 py-2 text-right text-xs text-gray-500">Sumas del periodo</td>
+                <td colSpan={preSpan} className="px-3 py-2 text-right text-xs text-gray-500">Sumas del periodo</td>
                 <td className="px-3 py-2 text-right tabular-nums">{money(tot.sub)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{money(tot.iva)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{money(tot.total)}</td>
@@ -279,14 +295,17 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
   );
 }
 
-/* ── Combo de cuenta del cliente (datalist: se escribe o se elige del catálogo) ── */
-function ComboCuenta({ id, valor, opciones, claveVista }: {
-  id: string; valor?: string | null; opciones: Array<{ codigo: string; nombre: string }>; claveVista: any[];
+/* ── Combo de cuenta (datalist: despliega el catálogo; se escribe o se elige) ──
+ * campo='cuenta' guarda la cuenta_contable (cliente/proveedor); campo='cuenta2'
+ * guarda la cuenta_contable_2 (gasto/compra/activo de compras). */
+function ComboCuenta({ id, valor, opciones, campo, claveVista }: {
+  id: string; valor?: string | null; opciones: Array<{ codigo: string; nombre: string }>;
+  campo: 'cuenta' | 'cuenta2'; claveVista: any[];
 }) {
   const qc = useQueryClient();
   const [texto, setTexto] = useState(valor || '');
   const [guardando, setGuardando] = useState(false);
-  const listId = `ctas-cli-${id}`;
+  const listId = `ctas-${campo}-${id}`;
   useEffect(() => { setTexto(valor || ''); }, [valor]);
 
   const guardar = async () => {
@@ -294,7 +313,8 @@ function ComboCuenta({ id, valor, opciones, claveVista }: {
     if ((v || '') === (valor || '')) return;
     setGuardando(true);
     try {
-      await api.setSatCuentaContable(id, v || null);
+      if (campo === 'cuenta2') await api.setSatCuentaContable2(id, v || null);
+      else await api.setSatCuentaContable(id, v || null);
       qc.invalidateQueries({ queryKey: claveVista });
       qc.invalidateQueries({ queryKey: ['polizas'] });
     } finally { setGuardando(false); }
@@ -303,27 +323,11 @@ function ComboCuenta({ id, valor, opciones, claveVista }: {
     <div className="flex items-center gap-1">
       <input list={listId} value={texto} onChange={(e) => setTexto(e.target.value)} onBlur={guardar}
         onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-        placeholder="— asignar" className={`input py-1 text-xs w-36 font-mono ${guardando ? 'opacity-50' : ''}`} />
+        placeholder="— asignar" className={`input py-1 text-xs w-32 font-mono ${guardando ? 'opacity-50' : ''}`} />
       <datalist id={listId}>
-        {opciones.slice(0, 500).map((o) => <option key={o.codigo} value={o.codigo}>{o.codigo} — {o.nombre}</option>)}
+        {opciones.slice(0, 600).map((o) => <option key={o.codigo} value={o.codigo}>{o.codigo} — {o.nombre}</option>)}
       </datalist>
     </div>
-  );
-}
-
-/* ── Cuenta como texto simple (compras: su combo doble llega en su turno) ── */
-function CuentaTexto({ id, valor, claveVista }: { id: string; valor?: string | null; claveVista: any[] }) {
-  const qc = useQueryClient();
-  const [texto, setTexto] = useState(valor || '');
-  useEffect(() => { setTexto(valor || ''); }, [valor]);
-  const guardar = async () => {
-    if ((texto.trim() || '') === (valor || '')) return;
-    try { await api.setSatCuentaContable(id, texto.trim() || null); qc.invalidateQueries({ queryKey: claveVista }); } catch { /* */ }
-  };
-  return (
-    <input value={texto} onChange={(e) => setTexto(e.target.value)} onBlur={guardar}
-      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-      placeholder="— asignar" className="input py-1 text-xs w-28 font-mono" />
   );
 }
 

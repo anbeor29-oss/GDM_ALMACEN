@@ -1251,7 +1251,7 @@ export async function listarComprobantesVista(
   const r = await query<any>(
     `SELECT c.id, c.uuid, c.direccion, c.tipo_comprobante, c.serie, c.folio,
             c.fecha_emision, c.subtotal, c.descuento, c.total, c.moneda, c.metodo_pago, c.estado_sat,
-            c.fecha_cancelacion, c.cuenta_contable,
+            c.fecha_cancelacion, c.cuenta_contable, c.cuenta_contable_2,
             (c.xml IS NOT NULL) AS tiene_xml,
             ${cfdiYaContabilizado('c')} AS contabilizado,
             CASE WHEN c.direccion = 'emitidos' THEN c.nombre_receptor ELSE c.nombre_emisor END AS contraparte_nombre,
@@ -1307,11 +1307,29 @@ export async function detalleComprobante(companyId: string, id: string): Promise
 
 /** Asigna (o limpia) la cuenta contable —la columna CC— de un comprobante. */
 export async function asignarCuentaContable(
-  companyId: string, id: string, cuenta: string | null
+  companyId: string, id: string, cuenta: string | null, cuenta2?: string | null
+): Promise<boolean> {
+  // `cuenta` = cuenta_contable (cliente/proveedor). `cuenta2` = cuenta_contable_2
+  // (gasto/compra/activo en Compras); si viene `undefined` NO se toca esa columna,
+  // para poder guardar una u otra por separado desde la pantalla.
+  const sets = ['cuenta_contable = $3'];
+  const params: any[] = [id, companyId, cuenta ? cuenta.trim().slice(0, 40) : null];
+  if (cuenta2 !== undefined) {
+    params.push(cuenta2 ? cuenta2.trim().slice(0, 40) : null);
+    sets.push(`cuenta_contable_2 = $${params.length}`);
+  }
+  const r = await query(
+    `UPDATE cfdi_recibidos SET ${sets.join(', ')} WHERE id = $1 AND company_id = $2`, params);
+  return (r.rowCount || 0) > 0;
+}
+
+/** Asigna SÓLO la segunda cuenta (gasto/compra/activo) sin tocar la del proveedor. */
+export async function asignarCuentaContable2(
+  companyId: string, id: string, cuenta2: string | null
 ): Promise<boolean> {
   const r = await query(
-    `UPDATE cfdi_recibidos SET cuenta_contable = $3 WHERE id = $1 AND company_id = $2`,
-    [id, companyId, cuenta ? cuenta.trim().slice(0, 40) : null]);
+    `UPDATE cfdi_recibidos SET cuenta_contable_2 = $3 WHERE id = $1 AND company_id = $2`,
+    [id, companyId, cuenta2 ? cuenta2.trim().slice(0, 40) : null]);
   return (r.rowCount || 0) > 0;
 }
 

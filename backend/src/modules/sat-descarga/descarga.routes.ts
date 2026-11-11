@@ -613,13 +613,29 @@ router.get(
   })
 );
 
-/** PUT /sat-descarga/comprobantes/:id/cuenta — asigna la cuenta contable (CC) */
+/** PUT /sat-descarga/comprobantes/:id/cuenta — asigna la cuenta contable (CC).
+ *  Acepta `cuenta` (proveedor/cliente) y, opcional, `cuenta2` (gasto/compra/activo
+ *  en Compras); si `cuenta2` no viene, no se toca. */
 router.put(
   '/comprobantes/:id/cuenta',
   authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
+    const cuenta2 = ('cuenta2' in (req.body || {})) ? ((req.body?.cuenta2 ?? null) as string | null) : undefined;
     const ok = await service.asignarCuentaContable(
-      companyId(req), req.params.id, (req.body?.cuenta ?? null) as string | null);
+      companyId(req), req.params.id, (req.body?.cuenta ?? null) as string | null, cuenta2);
+    if (!ok) { res.status(404).json({ success: false, message: 'No se encontró el comprobante' }); return; }
+    res.json({ success: true });
+  })
+);
+
+/** PUT /sat-descarga/comprobantes/:id/cuenta2 — asigna SÓLO la segunda cuenta
+ *  (gasto/compra/activo) sin tocar la del proveedor. */
+router.put(
+  '/comprobantes/:id/cuenta2',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const ok = await service.asignarCuentaContable2(
+      companyId(req), req.params.id, (req.body?.cuenta2 ?? req.body?.cuenta ?? null) as string | null);
     if (!ok) { res.status(404).json({ success: false, message: 'No se encontró el comprobante' }); return; }
     res.json({ success: true });
   })

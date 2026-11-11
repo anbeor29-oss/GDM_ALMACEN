@@ -3265,6 +3265,11 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>(`/sat-descarga/comprobantes/${id}/cuenta`, { cuenta });
     return r.data;
   }
+  /** Segunda cuenta (gasto/compra/activo) de la pestaña Compras, sin tocar la del proveedor. */
+  async setSatCuentaContable2(id: string, cuenta2: string | null) {
+    const r = await this.client.put<APIResponse<any>>(`/sat-descarga/comprobantes/${id}/cuenta2`, { cuenta2 });
+    return r.data;
+  }
 
   /* ───────────── Mensajería interna ───────────── */
   async getMensajes(buzon: 'recibidos' | 'enviados' = 'recibidos') {

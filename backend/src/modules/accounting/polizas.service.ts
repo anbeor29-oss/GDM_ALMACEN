@@ -435,7 +435,7 @@ export async function generarComprasDelMes(
   if (ctaCompraUnica) ctxCod.unica = ctaCompraUnica.codigo;
   const r = await query<any>(
     `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.total, c.descuento,
-            c.nombre_emisor, c.rfc_emisor, c.xml, c.metodo_pago, c.forma_pago
+            c.nombre_emisor, c.rfc_emisor, c.cuenta_contable, c.cuenta_contable_2, c.xml, c.metodo_pago, c.forma_pago
        FROM cfdi_recibidos c
       WHERE c.company_id=$1 AND c.direccion='recibidos'
         AND (c.tipo_comprobante='I' OR c.tipo_comprobante IS NULL)
@@ -468,41 +468,68 @@ export async function generarComprasDelMes(
       const imp = impuestosDeXml(String(c.xml));
       const ret = retencionesDeXml(String(c.xml));
 
+      // Si en la pestaña Compras se CAPTURÓ la 2ª cuenta (gasto/compra/activo/costo)
+      // TODA la factura va a ESA cuenta (como «cuenta única» pero por factura), sin
+      // partir por producto. Si es inválida, la factura queda PENDIENTE.
+      let usarCuenta2: string | null = null;
+      if (c.cuenta_contable_2) {
+        const cc2 = await cuentaPorCodigo(companyId, String(c.cuenta_contable_2).trim());
+        if (cc2 && cc2.permite_movimientos) usarCuenta2 = cc2.codigo;
+        else { omitidas.push({ folio: folioTxt, motivo: `la cuenta de gasto/activo ${c.cuenta_contable_2} no está en el catálogo o no admite movimientos` }); continue; }
+      }
+
       // Cada concepto va NETO (importe − descuento) a su 115/601, según cuentaEfectiva:
       // decisión del usuario en esa factura › una sola cuenta › regla aprobada › producto.
       const porCuenta = new Map<string, number>();
       const fuentes = new Map<string, Set<string>>();
-      let faltaProducto: string | null = null;
       const rfcProv = String(c.rfc_emisor || '').toUpperCase();
-      conceptosDeXml(String(c.xml)).forEach((cn, idx) => {
-        if (faltaProducto) return;
-        const ef = cuentaEfectiva(ctxCod, decMap.get(`${c.uuid}#${idx}`), rfcProv, cn.clave);
-        if (!ef.cuenta) { faltaProducto = cn.clave || `concepto ${idx + 1}`; return; }
-        porCuenta.set(ef.cuenta, round2((porCuenta.get(ef.cuenta) || 0) + cn.importe - cn.descuento));
-        const f = fuentes.get(ef.cuenta) || new Set<string>(); f.add(ETIQ[ef.fuente] || ef.fuente); fuentes.set(ef.cuenta, f);
-      });
-      if (faltaProducto) { omitidas.push({ folio: folioTxt, motivo: `producto ${faltaProducto} sin cuenta (115/601): codifícalo en Asignación → Compras (bandeja por factura)` }); continue; }
-      if (porCuenta.size === 0) { omitidas.push({ folio: folioTxt, motivo: 'la factura no trae conceptos' }); continue; }
+      if (!usarCuenta2) {
+        let faltaProducto: string | null = null;
+        conceptosDeXml(String(c.xml)).forEach((cn, idx) => {
+          if (faltaProducto) return;
+          const ef = cuentaEfectiva(ctxCod, decMap.get(`${c.uuid}#${idx}`), rfcProv, cn.clave);
+          if (!ef.cuenta) { faltaProducto = cn.clave || `concepto ${idx + 1}`; return; }
+          porCuenta.set(ef.cuenta, round2((porCuenta.get(ef.cuenta) || 0) + cn.importe - cn.descuento));
+          const f = fuentes.get(ef.cuenta) || new Set<string>(); f.add(ETIQ[ef.fuente] || ef.fuente); fuentes.set(ef.cuenta, f);
+        });
+        if (faltaProducto) { omitidas.push({ folio: folioTxt, motivo: `producto ${faltaProducto} sin cuenta (115/601): codifícalo en Asignación → Compras (bandeja por factura)` }); continue; }
+        if (porCuenta.size === 0) { omitidas.push({ folio: folioTxt, motivo: 'la factura no trae conceptos' }); continue; }
+      }
 
-      const prov = await resolverOCrearSubcuentaTercero(companyId, 'proveedor', c.rfc_emisor, c.nombre_emisor);
-      if ('error' in prov) { omitidas.push({ folio: folioTxt, motivo: `proveedores: ${prov.error}` }); continue; }
+      // La cuenta del PROVEEDOR: si se capturó en la pestaña Compras (cuenta_contable)
+      // se USA ÉSA; si no, se resuelve por RFC (subcuenta creada al vuelo).
+      let prov: { id: string };
+      if (c.cuenta_contable) {
+        const ctaProv = await cuentaPorCodigo(companyId, String(c.cuenta_contable).trim());
+        if (ctaProv && ctaProv.permite_movimientos) prov = { id: ctaProv.id };
+        else { omitidas.push({ folio: folioTxt, motivo: `la cuenta del proveedor ${c.cuenta_contable} no está en el catálogo o no admite movimientos` }); continue; }
+      } else {
+        const r2 = await resolverOCrearSubcuentaTercero(companyId, 'proveedor', c.rfc_emisor, c.nombre_emisor);
+        if ('error' in r2) { omitidas.push({ folio: folioTxt, motivo: `proveedores: ${r2.error}` }); continue; }
+        prov = r2;
+      }
 
       const total = round2(c.total);
       const iva = round2(imp.trasladados);
-      let sumaCargos = round2(Array.from(porCuenta.values()).reduce((a, b) => a + b, 0));
-      // Los cargos deben sumar: total + retenciones − IVA. El residuo (centavos por
-      // el redondeo del propio CFDI) se absorbe en la cuenta de mayor importe; más
-      // de 5 centavos ya no es redondeo y se OMITE.
+      // Los cargos deben sumar: total + retenciones − IVA.
       const requerido = round2(total + ret.isr + ret.iva - iva);
-      const residuo = round2(requerido - sumaCargos);
-      if (Math.abs(residuo) > 0.05) {
-        omitidas.push({ folio: folioTxt, motivo: `no cuadra: compras ${sumaCargos} + IVA ${iva} − retención ${round2(ret.isr + ret.iva)} ≠ total ${total}` }); continue;
-      }
-      if (residuo !== 0) {
-        let cod = '', max = -1;
-        for (const [k, v] of porCuenta) if (v > max) { max = v; cod = k; }
-        porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + residuo));
-        sumaCargos = round2(sumaCargos + residuo);
+      if (usarCuenta2) {
+        // Toda la factura a la cuenta de gasto/activo capturada (cuadre exacto).
+        porCuenta.set(usarCuenta2, requerido);
+        fuentes.set(usarCuenta2, new Set<string>(['captura']));
+      } else {
+        // El residuo (centavos por el redondeo del propio CFDI) se absorbe en la
+        // cuenta de mayor importe; más de 5 centavos ya no es redondeo y se OMITE.
+        const sumaCargos = round2(Array.from(porCuenta.values()).reduce((a, b) => a + b, 0));
+        const residuo = round2(requerido - sumaCargos);
+        if (Math.abs(residuo) > 0.05) {
+          omitidas.push({ folio: folioTxt, motivo: `no cuadra: compras ${sumaCargos} + IVA ${iva} − retención ${round2(ret.isr + ret.iva)} ≠ total ${total}` }); continue;
+        }
+        if (residuo !== 0) {
+          let cod = '', max = -1;
+          for (const [k, v] of porCuenta) if (v > max) { max = v; cod = k; }
+          porCuenta.set(cod, round2((porCuenta.get(cod) || 0) + residuo));
+        }
       }
 
       const lineas: LineaPoliza[] = [];
