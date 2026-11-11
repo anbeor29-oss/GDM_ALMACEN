@@ -5,6 +5,7 @@
  * - Importación masiva desde XMLs CFDI 4.0
  */
 
+import { confirmar } from '@/utils/avisos';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -51,7 +52,7 @@ export function ProductsPage() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['products'] });
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`¿Eliminar "${name}"?`)) return;
+    if (!await confirmar(`¿Eliminar "${name}"?`)) return;
     try {
       // Usamos el cliente axios (respeta VITE_API_BASE en producción y el
       // interceptor de token). El fetch relativo `/api/products/...` NO

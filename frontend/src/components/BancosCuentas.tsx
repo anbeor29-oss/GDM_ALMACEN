@@ -13,6 +13,7 @@
  * permite afirmar que lo extraído está completo, y por eso los movimientos
  * siempre cuelgan de su estado.
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -130,7 +131,7 @@ export function BancosCuentas() {
               {puedeEditar && (
                 <button
                   onClick={async () => {
-                    if (!confirm(`¿Quitar la cuenta "${c.alias}"?\n\nSus estados de cuenta y movimientos se van con ella.`)) return;
+                    if (!await confirmar(`¿Quitar la cuenta "${c.alias}"?\n\nSus estados de cuenta y movimientos se van con ella.`)) return;
                     try { await api.borrarCuentaBancaria(c.id); refrescar(); }
                     catch (e: any) { setError(e?.response?.data?.message || 'No se pudo quitar'); }
                   }}

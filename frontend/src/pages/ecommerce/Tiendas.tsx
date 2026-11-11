@@ -4,6 +4,7 @@
  * Alta/edición/baja de tiendas: nombre, subdominio (slug), moneda, branding
  * (logo + colores) y políticas. Multi-empresa (el backend lo acota por company_id).
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Store, Plus, Pencil, Trash2, Loader2, Save, X, ArrowLeft, ExternalLink, Truck } from 'lucide-react';
@@ -27,7 +28,7 @@ export function TiendasPage() {
   const flash = (t: string) => { setMsg(t); if (t) setTimeout(() => setMsg(''), 4000); };
 
   const eliminar = async (t: any) => {
-    if (!confirm(`¿Dar de baja la tienda «${t.nombre}»?`)) return;
+    if (!await confirmar(`¿Dar de baja la tienda «${t.nombre}»?`)) return;
     try { const r = await api.eliminarTienda(t.id); flash(r?.message || 'Tienda dada de baja.'); refrescar(); }
     catch (e: any) { flash(e?.response?.data?.message || 'No se pudo dar de baja.'); }
   };

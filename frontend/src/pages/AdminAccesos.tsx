@@ -19,6 +19,7 @@
  * los crea: sólo los relaciona. Ofrecer aquí un tercer formulario de alta sería
  * un cuarto lugar donde equivocarse.
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, Building2, ShieldCheck, AlertCircle } from 'lucide-react';
@@ -184,7 +185,7 @@ function PanelDeUsuario({ usuario, onCambio }: { usuario: any; onCambio: () => v
   };
 
   const quitar = async (companyId: string, nombre: string) => {
-    if (!confirm(
+    if (!await confirmar(
       `¿Quitar el acceso de ${usuario.email} a ${nombre}?\n\n` +
       `Dejará de ver sus facturas, clientes y reportes. Los datos de la empresa no se tocan.`
     )) return;

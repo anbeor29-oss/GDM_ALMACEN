@@ -14,6 +14,7 @@
  * lectura que se le da al banco cuando se cuadra contra la contabilidad: cuánto
  * entró, cuánto salió, y con cuánto se quedó uno.
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -52,7 +53,7 @@ export function BancosAnio({ cuenta, onCargar }: {
   const ultimo   = meses.length ? meses[meses.length - 1] : null;
 
   const borrar = async (estadoId: string, etiqueta: string) => {
-    if (!confirm(`¿Quitar el estado de ${etiqueta}?\n\nSus movimientos se van con él.`)) return;
+    if (!await confirmar(`¿Quitar el estado de ${etiqueta}?\n\nSus movimientos se van con él.`)) return;
     await api.borrarEstadoDeCuenta(estadoId);
     qc.invalidateQueries({ queryKey: ['bancos-control', cuenta.id] });
     qc.invalidateQueries({ queryKey: ['bancos-cuentas'] });

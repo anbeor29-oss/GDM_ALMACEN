@@ -6,6 +6,7 @@
  * Listado ordenado alfabéticamente por nombre.
  */
 
+import { confirmar } from '@/utils/avisos';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { revisarRfcPersonaFisica } from '@/utils/rfc';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -27,7 +28,7 @@ export function CustomersPage() {
   });
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`¿Eliminar al cliente "${name}"?`)) return;
+    if (!await confirmar(`¿Eliminar al cliente "${name}"?`)) return;
     try {
       await api.deleteCustomer(id);
       queryClient.invalidateQueries({ queryKey: ['customers'] });

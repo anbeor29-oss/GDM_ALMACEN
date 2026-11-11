@@ -12,6 +12,7 @@
  *
  * Nada aquí modifica pólizas: la historia se LEE; las decisiones van a su propia tabla.
  */
+import { confirmar } from '@/utils/avisos';
 import { Fragment, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -134,8 +135,8 @@ export function BandejaCompras({ anio, mes, cuentas }: { anio: number; mes: numb
               className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50 text-xs">
               Aceptar las de confianza alta
             </button>
-            <button disabled={aceptar.isPending} onClick={() => {
-              if (confirm('Se aceptarán también las de confianza MEDIA (patrón consistente pero no regla aprobada). ¿Seguir?')) aceptar.mutate('MEDIO');
+            <button disabled={aceptar.isPending} onClick={async () => {
+              if (await confirmar('Se aceptarán también las de confianza MEDIA (patrón consistente pero no regla aprobada). ¿Seguir?')) aceptar.mutate('MEDIO');
             }} className="px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 text-xs">
               Aceptar alta y media
             </button>
@@ -478,7 +479,7 @@ function RepararEnlaces() {
                   Alta + Media ({sim.porConfianza.ALTA + sim.porConfianza.MEDIA})
                 </button>
                 <button disabled={trabajando || !(sim.porConfianza.ALTA + sim.porConfianza.MEDIA + sim.porConfianza.BAJA)}
-                  onClick={() => { if (confirm('Enlazar TODAS las coincidencias, incluidas las de confianza BAJA (sólo importe exacto único, sin RFC ni nombre). Revisa la muestra antes. ¿Continuar?')) aplicar.mutate('BAJA'); }}
+                  onClick={async () => { if (await confirmar('Enlazar TODAS las coincidencias, incluidas las de confianza BAJA (sólo importe exacto único, sin RFC ni nombre). Revisa la muestra antes. ¿Continuar?')) aplicar.mutate('BAJA'); }}
                   className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-40 text-sm">
                   Todas ({sim.porConfianza.ALTA + sim.porConfianza.MEDIA + sim.porConfianza.BAJA})
                 </button>
@@ -661,7 +662,7 @@ function TablaReglas({ estado, cuentas, onCambio }: { estado?: string; cuentas: 
             al aprobarla, el motor la usa para codificar las facturas nuevas de ese proveedor y producto.
           </p>
           {reglas.length > 0 && (
-            <button onClick={() => { if (confirm(`¿Aprobar las ${reglas.length} reglas propuestas?`)) aprobarTodas.mutate(); }}
+            <button onClick={async () => { if (await confirmar(`¿Aprobar las ${reglas.length} reglas propuestas?`)) aprobarTodas.mutate(); }}
               className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white hover:bg-emerald-800 text-xs">Aprobar todas</button>
           )}
         </div>

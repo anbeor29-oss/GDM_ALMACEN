@@ -3,6 +3,7 @@
  * Estilo idéntico a Productos: tabla + modal alta/edición + soft delete.
  * Referencia aseguradoras existentes vía selects.
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Truck, Plus, Pencil, Trash2, Search, X, Save } from 'lucide-react';
@@ -120,7 +121,7 @@ export function CartaPorteVehiculosPage() {
                       aseguradoraRespCivilId: v.aseguradora_resp_civil_id || '',
                       aseguradoraMedAmbId: '', aseguradoraCargaId: '',
                     } })} className="p-1.5 text-sky-600 hover:bg-sky-50 rounded"><Pencil size={14} /></button>
-                    <button onClick={() => { if (confirm(`¿Eliminar "${v.alias}"?`)) del.mutate(v.id); }} className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
+                    <button onClick={async () => { if (await confirmar(`¿Eliminar "${v.alias}"?`)) del.mutate(v.id); }} className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>

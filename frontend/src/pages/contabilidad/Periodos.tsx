@@ -11,6 +11,7 @@
  * signifique algo dentro de seis meses, y lo que impide que la balanza que se
  * envió al SAT deje de coincidir con la que el sistema muestra.
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -45,14 +46,14 @@ export function PeriodosPage() {
   };
 
   const cerrar = async (mes: number) => {
-    if (!confirm(`¿Cerrar ${MESES[mes]} ${anio}?\n\nSus saldos quedan congelados.`)) return;
+    if (!await confirmar(`¿Cerrar ${MESES[mes]} ${anio}?\n\nSus saldos quedan congelados.`)) return;
     setError('');
     try { await api.cerrarPeriodoContable(anio, mes); refrescar(); }
     catch (e: any) { setError(e?.response?.data?.message || e.message); }
   };
 
   const reabrir = async (mes: number) => {
-    if (!confirm(`¿Reabrir ${MESES[mes]} ${anio}?`)) return;
+    if (!await confirmar(`¿Reabrir ${MESES[mes]} ${anio}?`)) return;
     setError('');
     try { await api.reabrirPeriodoContable(anio, mes); refrescar(); }
     catch (e: any) { setError(e?.response?.data?.message || e.message); }

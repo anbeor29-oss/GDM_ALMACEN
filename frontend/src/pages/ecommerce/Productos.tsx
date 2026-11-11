@@ -5,6 +5,7 @@
  * servicio bajo el gate `ecommerce`). El merchant administra su catálogo sin ver el
  * módulo Productos del ERP; el despacho ve los mismos datos.
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Package, Plus, Pencil, Trash2, Loader2, Save, X, ArrowLeft, Search } from 'lucide-react';
@@ -27,7 +28,7 @@ export function ProductosEcPage() {
   const flash = (t: string) => { setMsg(t); if (t) setTimeout(() => setMsg(''), 4000); };
 
   const eliminar = async (p: any) => {
-    if (!confirm(`¿Dar de baja «${p.name}»?`)) return;
+    if (!await confirmar(`¿Dar de baja «${p.name}»?`)) return;
     try { await api.eliminarProductoEc(p.id); flash('Producto dado de baja.'); refrescar(); }
     catch (e: any) { flash(e?.response?.data?.message || 'No se pudo dar de baja.'); }
   };

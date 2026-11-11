@@ -8,6 +8,7 @@
  *   · emisora de cobro predeterminada.
  * La empresa se asigna a un despacho desde «Empresas → Editar empresa».
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus, Pencil, Trash2, Loader2, Save, X, DollarSign } from 'lucide-react';
@@ -26,7 +27,7 @@ export function AdminDespachosPage() {
   const flash = (t: string) => { setMsg(t); if (t) setTimeout(() => setMsg(''), 4000); };
 
   const eliminar = async (d: any) => {
-    if (!confirm(`¿Dar de baja el despacho «${d.nombre}»?\nSus ${d.empresas} empresa(s) quedarán «sin despacho» (no se borran).`)) return;
+    if (!await confirmar(`¿Dar de baja el despacho «${d.nombre}»?\nSus ${d.empresas} empresa(s) quedarán «sin despacho» (no se borran).`)) return;
     try { const r = await api.eliminarDespacho(d.id); flash(r?.message || 'Despacho dado de baja.'); refrescar(); }
     catch (e: any) { flash(e?.response?.data?.message || 'No se pudo dar de baja.'); }
   };

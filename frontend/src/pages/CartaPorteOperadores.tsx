@@ -2,6 +2,7 @@
  * CartaPorteOperadores — figuras de transporte por empresa.
  * Tipo 01=Operador exige NumLicencia (SAT); resto no.
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { UserCog, Plus, Pencil, Trash2, Search, X, Save } from 'lucide-react';
@@ -92,7 +93,7 @@ export function CartaPorteOperadoresPage() {
                 <td className="px-4 py-3 text-right">
                   <div className="inline-flex gap-1">
                     <button onClick={() => setModal({ open: true, editingId: o.id, form: { alias: o.alias, tipoFigura: o.tipo_figura, rfc: o.rfc, numLicencia: o.num_licencia || '', nombre: o.nombre, numRegIdTrib: '', residenciaFiscal: '' } })} className="p-1.5 text-sky-600 hover:bg-sky-50 rounded"><Pencil size={14} /></button>
-                    <button onClick={() => { if (confirm(`¿Eliminar "${o.alias}"?`)) del.mutate(o.id); }} className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
+                    <button onClick={async () => { if (await confirmar(`¿Eliminar "${o.alias}"?`)) del.mutate(o.id); }} className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>

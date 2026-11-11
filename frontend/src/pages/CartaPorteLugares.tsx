@@ -5,6 +5,7 @@
  * edición, borrado suave (activo=false). Ancho 1200px como el resto de CP.
  */
 
+import { confirmar } from '@/utils/avisos';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MapPin, Plus, Pencil, Trash2, Search, X, Save, Loader2 } from 'lucide-react';
@@ -181,7 +182,7 @@ export function CartaPorteLugaresPage() {
                     <div className="inline-flex gap-1">
                       <button onClick={() => openEdit(l)} className="p-1.5 text-sky-600 hover:bg-sky-50 rounded" title="Editar"><Pencil size={14} /></button>
                       <button
-                        onClick={() => { if (confirm(`¿Eliminar "${l.alias}"? (se desactiva)`)) del.mutate(l.id); }}
+                        onClick={async () => { if (await confirmar(`¿Eliminar "${l.alias}"? (se desactiva)`)) del.mutate(l.id); }}
                         className="p-1.5 text-red-600 hover:bg-red-50 rounded"
                         title="Eliminar (soft delete)"
                       ><Trash2 size={14} /></button>

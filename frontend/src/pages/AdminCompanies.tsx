@@ -4,6 +4,7 @@
  *   · Subir CSD (.cer + .key + password) — cifrado en BD
  *   · Ver consumo del mes + facturación estimada
  */
+import { confirmar } from '@/utils/avisos';
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus, FileKey, Trash2, X, ShieldCheck, ScanText, Upload, AlertTriangle, Loader2, Pencil, Save, LogIn, UserPlus, KeyRound, ChevronRight, ChevronDown, Eraser, Calculator } from 'lucide-react';
@@ -43,7 +44,7 @@ export function AdminCompaniesPage() {
   const [editTarget, setEditTarget] = useState<any>(null);
   const [activandoCump, setActivandoCump] = useState(false);
   const activarCumplimientoTodas = async () => {
-    if (!confirm('¿Activar el cumplimiento (SAT 32-D, CSF/CIF e IMSS) en automático para TODAS las empresas?\n\nEl barrido de los lunes 5:30 consultará a SatGo por cada RFC. Sólo activa; conserva credenciales. Es repetible.')) return;
+    if (!await confirmar('¿Activar el cumplimiento (SAT 32-D, CSF/CIF e IMSS) en automático para TODAS las empresas?\n\nEl barrido de los lunes 5:30 consultará a SatGo por cada RFC. Sólo activa; conserva credenciales. Es repetible.')) return;
     setActivandoCump(true);
     try {
       const r: any = await api.adminActivarCumplimientoTodas();
@@ -56,7 +57,7 @@ export function AdminCompaniesPage() {
    * TODAS las empresas, después de las cuentas de resultado existentes. Idempotente. */
   const [creandoResInt, setCreandoResInt] = useState(false);
   const crearResultadoIntegral = async () => {
-    if (!confirm('¿Crear la cuenta «Resultado del ejercicio 2025, 2026 y 2027» con agrupador 305.03 («resultado integral», aún sin saber si habrá utilidad o pérdida) en TODAS las empresas?\n\nSe cuelga DESPUÉS de las cuentas de resultado que ya existen. No duplica si ya están y no toca lo contabilizado. Es repetible.')) return;
+    if (!await confirmar('¿Crear la cuenta «Resultado del ejercicio 2025, 2026 y 2027» con agrupador 305.03 («resultado integral», aún sin saber si habrá utilidad o pérdida) en TODAS las empresas?\n\nSe cuelga DESPUÉS de las cuentas de resultado que ya existen. No duplica si ya están y no toca lo contabilizado. Es repetible.')) return;
     setCreandoResInt(true);
     try {
       const r: any = await api.adminCrearResultadoIntegral();
@@ -89,7 +90,7 @@ export function AdminCompaniesPage() {
   const ejecutarBorrado = async () => {
     const ids = [...seleccion];
     if (!ids.length) { alert('Marca al menos una empresa.'); return; }
-    if (!confirm(`¿Reiniciar la contabilidad (borra catálogo, pólizas y saldos; CONSERVA los XML) de ${ids.length} empresa(s)?\n\nIrreversible. Es para importar un respaldo nuevo.`)) return;
+    if (!await confirmar(`¿Reiniciar la contabilidad (borra catálogo, pólizas y saldos; CONSERVA los XML) de ${ids.length} empresa(s)?\n\nIrreversible. Es para importar un respaldo nuevo.`)) return;
     setBorrando(true);
     const problemas: string[] = [];
     let okN = 0;
@@ -327,7 +328,7 @@ export function AdminCompaniesPage() {
                       <UserPlus size={16}/>
                     </button>
                     {c.has_csd && (
-                      <button title="Revocar CSD" onClick={() => { if (confirm(`Revocar el CSD de ${c.rfc}?`)) delCsd.mutate(c.id); }}
+                      <button title="Revocar CSD" onClick={async () => { if (await confirmar(`Revocar el CSD de ${c.rfc}?`)) delCsd.mutate(c.id); }}
                         className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
                     )}
                     <button
@@ -1022,7 +1023,7 @@ function ResetAccessModal({ company, onClose }: { company: any; onClose: () => v
   const [error, setError] = useState('');
 
   const resetear = async (u: any) => {
-    if (!confirm(`¿Resetear la contraseña de ${u.email}?\n\nSe genera una contraseña temporal y se le pedirá cambiarla al iniciar sesión.`)) return;
+    if (!await confirmar(`¿Resetear la contraseña de ${u.email}?\n\nSe genera una contraseña temporal y se le pedirá cambiarla al iniciar sesión.`)) return;
     setBusyId(u.id); setError(''); setResult(null);
     try {
       const r: any = await api.adminResetPassword(u.id);

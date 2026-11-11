@@ -4,6 +4,7 @@
  *   · Asignar a empresa
  *   · Visible solo para role=SUPER_ADMIN
  */
+import { confirmar } from '@/utils/avisos';
 import { useEffect, useState, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -216,9 +217,9 @@ export function AdminUsersPage() {
                     {/* Resetear password. Para un SUPER_ADMIN exige CÓDIGO por correo
                         a anbeor@hotmail.com (protege el acceso a la administración). */}
                     <IconBtn title={u.role === 'SUPER_ADMIN' ? 'Resetear password (requiere código por correo)' : 'Resetear password'} color="amber"
-                      onClick={() => {
+                      onClick={async () => {
                         if (u.role === 'SUPER_ADMIN') { setResetSuper(u); return; }
-                        if (confirm(`Generar nueva contraseña temporal para ${u.email}?`)) reset.mutate(u.id);
+                        if (await confirmar(`Generar nueva contraseña temporal para ${u.email}?`)) reset.mutate(u.id);
                       }}>
                       <Key size={16} />
                     </IconBtn>
@@ -226,8 +227,8 @@ export function AdminUsersPage() {
                         y nunca a otro SUPER_ADMIN (el backend también lo bloquea). */}
                     {u.role !== 'SUPER_ADMIN' && u.is_active && u.id !== user?.userId && (
                       <IconBtn title="Suplantar (soporte)" color="indigo"
-                        onClick={() => {
-                          if (confirm(`¿Iniciar sesión como ${u.email}?\nLa acción quedará registrada en audit_log.`)) {
+                        onClick={async () => {
+                          if (await confirmar(`¿Iniciar sesión como ${u.email}?\nLa acción quedará registrada en audit_log.`)) {
                             impersonate.mutate(u.id);
                           }
                         }}>
@@ -240,7 +241,7 @@ export function AdminUsersPage() {
                       <span className="p-1.5 text-gray-300" title="Super admin protegido: no se puede deshabilitar ni eliminar"><Lock size={15} /></span>
                     ) : u.is_active ? (
                       <IconBtn title="Deshabilitar" color="red"
-                        onClick={() => { if (confirm(`Deshabilitar ${u.email}?`)) disable.mutate(u.id); }}>
+                        onClick={async () => { if (await confirmar(`Deshabilitar ${u.email}?`)) disable.mutate(u.id); }}>
                         <Ban size={16} />
                       </IconBtn>
                     ) : (
@@ -876,7 +877,7 @@ function EmpresasDeUsuarioModal({ usuario, onClose }: { usuario: any; onClose: (
   };
 
   const quitar = async (companyId: string, nombre: string) => {
-    if (!confirm(
+    if (!await confirmar(
       `Quitar el acceso de ${usuario.email} a ${nombre}?\n\n` +
       `Dejará de ver sus facturas, clientes y reportes. Los datos de la empresa no se tocan.`
     )) return;

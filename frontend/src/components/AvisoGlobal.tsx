@@ -1,47 +1,50 @@
 /**
- * AvisoGlobal — reemplaza el `window.alert` nativo del navegador (el que muestra el feo
- * encabezado «JavaScript de "https://…" dice») por un recuadro PROPIO centrado en la
- * página, con sólo el mensaje y un botón «Aceptar».
+ * AvisoGlobal — pinta el diálogo CENTRADO propio que reemplaza a los nativos del
+ * navegador (alert/confirm con «JavaScript de "https://…" dice»). Lee la cola de
+ * `utils/avisos` (el override de `window.alert` ya se instala al importar ese módulo;
+ * los «¿sí/no?» entran por `confirmar()`). Se monta UNA vez en App.
  *
- * Se monta UNA vez en la raíz de la app (App.tsx). Al montar, guarda el `alert` nativo y
- * lo sustituye; así TODOS los `alert(...)` del sistema (los avisos de «tarea terminada»,
- * etc.) salen con este estilo sin tocar cada pantalla. Encola si llegan varios y los
- * muestra de uno en uno. No toca `confirm()` (ese sí necesita respuesta inmediata).
+ * Sólo muestra el de enfrente de la cola: «Aceptar» para avisos, «Aceptar»/«Cancelar»
+ * para confirmaciones. Enter = Aceptar; Escape = Cancelar (confirm) o cerrar (aviso).
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { _suscribir, _frente, _cerrar } from '@/utils/avisos';
 
 export function AvisoGlobal() {
-  const [cola, setCola] = useState<string[]>([]);
-  const nativa = useRef<typeof window.alert | null>(null);
+  const [, forzar] = useState(0);
+  useEffect(() => _suscribir(() => forzar((n) => n + 1)), []);
 
+  const actual = _frente();
   useEffect(() => {
-    nativa.current = window.alert;
-    window.alert = (msg?: any) => setCola((c) => [...c, msg == null ? '' : String(msg)]);
-    return () => { if (nativa.current) window.alert = nativa.current; };
-  }, []);
-
-  const cerrar = () => setCola((c) => c.slice(1));
-
-  useEffect(() => {
-    if (!cola.length) return;
+    if (!actual) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); setCola((c) => c.slice(1)); }
+      if (e.key === 'Enter') { e.preventDefault(); _cerrar(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); _cerrar(actual.tipo === 'confirm' ? false : true); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cola.length]);
+  }, [actual]);
 
-  if (!cola.length) return null;
+  if (!actual) return null;
+  const esConfirm = actual.tipo === 'confirm';
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4">
       <div role="alertdialog" aria-modal="true"
         className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-center">
-        <p className="text-[15px] text-gray-800 whitespace-pre-line leading-relaxed">{cola[0]}</p>
-        <button autoFocus onClick={cerrar}
-          className="mt-5 inline-flex items-center justify-center px-7 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
-          Aceptar
-        </button>
+        <p className="text-[15px] text-gray-800 whitespace-pre-line leading-relaxed">{actual.msg}</p>
+        <div className="mt-5 flex items-center justify-center gap-2">
+          {esConfirm && (
+            <button onClick={() => _cerrar(false)}
+              className="px-6 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300">
+              Cancelar
+            </button>
+          )}
+          <button autoFocus onClick={() => _cerrar(true)}
+            className="px-7 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
+            Aceptar
+          </button>
+        </div>
       </div>
     </div>
   );

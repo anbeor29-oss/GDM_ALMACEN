@@ -6,6 +6,7 @@
  * (cobro $precio × usuarios + excedente de timbres), (3) consumo de timbres.
  * Prepago: generar la lista del día 30, marcar pagado / suspender por falta de pago.
  */
+import { confirmar } from '@/utils/avisos';
 import { useState, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DollarSign, RefreshCw, Check, Ban, RotateCcw, Settings, Loader2, AlertTriangle, FlaskConical, Users, Stamp, ChevronRight, ChevronDown, FileText, X } from 'lucide-react';
@@ -279,7 +280,7 @@ export function AdminFacturacionPage() {
                     </button>
                   )}
                   {f.cargo_id && f.status === 'PENDIENTE' && (
-                    <button onClick={() => { if (confirm(`¿Suspender el servicio de ${f.business_name} por falta de pago?`)) accion(() => api.suspenderFacturacion(f.cargo_id), f.cargo_id, 'Servicio suspendido.'); }}
+                    <button onClick={async () => { if (await confirmar(`¿Suspender el servicio de ${f.business_name} por falta de pago?`)) accion(() => api.suspenderFacturacion(f.cargo_id), f.cargo_id, 'Servicio suspendido.'); }}
                       disabled={busy === f.cargo_id} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded" title="Suspender servicio"><Ban size={15} /></button>
                   )}
                   {f.cargo_id && f.status === 'SUSPENDIDO' && (

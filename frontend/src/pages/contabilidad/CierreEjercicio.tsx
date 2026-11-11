@@ -10,6 +10,7 @@
  * La póliza de cierre salda los resultados contra la 305; es re-ejecutable y no
  * altera los reportes operativos.
  */
+import { confirmar as confirmarDlg } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -69,14 +70,14 @@ export function CierreEjercicioPage() {
     finally { setBusy(false); }
   };
   const reabrir = async (m: number) => {
-    if (!confirm(`¿Reabrir ${MESES[m]} ${anioSel} para corregir?\n\nSe borra su póliza de cierre; los movimientos del mes NO se tocan. Corrige lo que haga falta y vuelve a cerrarlo.`)) return;
+    if (!await confirmarDlg(`¿Reabrir${MESES[m]} ${anioSel} para corregir?\n\nSe borra su póliza de cierre; los movimientos del mes NO se tocan. Corrige lo que haga falta y vuelve a cerrarlo.`)) return;
     setBusy(true); setMsg(''); setError('');
     try { await api.revertirCierreMes(anioSel, m); setMsg(`${MESES[m]} ${anioSel} reabierto. Corrige y vuelve a cerrarlo.`); qCerrados.refetch(); }
     catch (e: any) { setError(e?.response?.data?.message || 'No se pudo reabrir.'); }
     finally { setBusy(false); }
   };
   const revertirAnual = async () => {
-    if (!confirm(`¿Deshacer el cierre anual de ${anioSel}? Se borra la póliza; los resultados no se tocan.`)) return;
+    if (!await confirmarDlg(`¿Deshacer el cierre anual de ${anioSel}? Se borra la póliza; los resultados no se tocan.`)) return;
     setBusy(true); setMsg(''); setError('');
     try { await api.revertirCierreEjercicio(anioSel); setMsg(`Cierre anual de ${anioSel} deshecho.`); qAnual.refetch(); }
     catch (e: any) { setError(e?.response?.data?.message || 'No se pudo deshacer.'); }

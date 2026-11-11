@@ -7,6 +7,7 @@
  * NEXO. La pantalla descomprime el `.zip` en el navegador. No duplica: repetirlo
  * es seguro. (Mismo flujo que el importador de nómina.)
  */
+import { confirmar } from '@/utils/avisos';
 import { useState, useEffect } from 'react';
 import { Database, Download, Upload, PlayCircle, CheckCircle2, FileArchive, ShieldAlert, RefreshCw } from 'lucide-react';
 import api from '@/services/api';
@@ -550,7 +551,7 @@ export function ReconstruirIntegral() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const reconstruir = async () => {
-    if (!confirm('¿Reconstruir la balanza de TODOS los ejercicios desde las pólizas?\n\nEs seguro y repetible: no borra nada, sólo vuelve a cuadrar la historia. Puede tardar un poco si hay muchos años.')) return;
+    if (!await confirmar('¿Reconstruir la balanza de TODOS los ejercicios desde las pólizas?\n\nEs seguro y repetible: no borra nada, sólo vuelve a cuadrar la historia. Puede tardar un poco si hay muchos años.')) return;
     setBusy(true); setMsg(''); setError('');
     try {
       const r: any = await api.reconstruirIntegral();

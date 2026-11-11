@@ -9,6 +9,7 @@
  * Las tasas son los máximos LISR (arts. 33-35); se pueden bajar por activo. Nada se
  * asienta sin el clic de «Generar».
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Sparkles, PlayCircle, FileText, RefreshCw, Check, Pencil, Trash2, X, CalendarClock, Split, Download } from 'lucide-react';
@@ -216,12 +217,12 @@ function RenglonActivo({ a, onCedula, onCambio }: { a: any; onCedula: () => void
     } finally { setBusy(false); }
   };
   const baja = async () => {
-    if (!confirm(`¿Dar de baja "${a.descripcion}"? Dejará de generar depreciación.`)) return;
+    if (!await confirmar(`¿Dar de baja "${a.descripcion}"? Dejará de generar depreciación.`)) return;
     await api.actualizarActivo(a.id, { estado: 'BAJA', fecha_baja: new Date().toISOString().slice(0, 10) });
     onCambio();
   };
   const borrar = async () => {
-    if (!confirm(`¿Borrar "${a.descripcion}" de la cédula?`)) return;
+    if (!await confirmar(`¿Borrar "${a.descripcion}" de la cédula?`)) return;
     const r: any = await api.borrarActivo(a.id);
     if (r?.success === false) alert(r.message || 'No se pudo borrar');
     onCambio();
@@ -640,7 +641,7 @@ function TabDepreciacion({ anio, mes }: { anio: number; mes: number }) {
   };
 
   const borrar = async (id: string) => {
-    if (!confirm('¿Borrar la póliza de depreciación del mes? Podrás regenerarla.')) return;
+    if (!await confirmar('¿Borrar la póliza de depreciación del mes? Podrás regenerarla.')) return;
     await api.borrarPoliza(id);
     qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
   };

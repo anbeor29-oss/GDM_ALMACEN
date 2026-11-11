@@ -9,6 +9,7 @@
  *
  * Tras cualquiera, el backend recalcula la balanza de los años afectados.
  */
+import { confirmar } from '@/utils/avisos';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/services/api';
@@ -197,7 +198,7 @@ export function CambioCuentaPage() {
   const fusionarManual = async () => {
     if (!origen || !destino) { setError('Elige la cuenta origen y la destino.'); return; }
     if (origen.id === destino.id) { setError('La origen y la destino no pueden ser la misma cuenta.'); return; }
-    if (!confirm(`¿Fusionar «${origen.nombre}» (${origen.codigo}) en «${destino.nombre}» (${destino.codigo})?\n\nSe mueven TODAS sus partidas a la destino y se BORRA la cuenta origen. No se puede deshacer.`)) return;
+    if (!await confirmar(`¿Fusionar «${origen.nombre}» (${origen.codigo}) en «${destino.nombre}» (${destino.codigo})?\n\nSe mueven TODAS sus partidas a la destino y se BORRA la cuenta origen. No se puede deshacer.`)) return;
     setBusy(true); setError(''); setMsg('');
     try {
       const r: any = await api.fusionarCuenta(origen.id, destino.id);
@@ -221,7 +222,7 @@ export function CambioCuentaPage() {
     finally { setCargando(false); }
   };
   const fusionar = async (origenId: string, destinoId: string) => {
-    if (!confirm('¿Fusionar esta cuenta en la otra? Se moverán sus partidas y se borrará la cuenta origen. No se puede deshacer.')) return;
+    if (!await confirmar('¿Fusionar esta cuenta en la otra? Se moverán sus partidas y se borrará la cuenta origen. No se puede deshacer.')) return;
     setBusy(true); setError(''); setMsg('');
     try {
       const r: any = await api.fusionarCuenta(origenId, destinoId);

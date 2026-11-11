@@ -9,6 +9,7 @@
  * pantalla ofreciera "INVENTARIOS" mientras el resto del sistema hablaba de
  * "ALMACEN", y el alta reventaba contra el CHECK de la base.
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Users, ShieldCheck, Lock, Check, Plus, Pencil, Trash2, X, Save } from 'lucide-react';
@@ -41,7 +42,7 @@ export function TeamPage() {
   const users: any[] = usersQ.data?.data?.users || [];
 
   const handleDelete = async (u: any) => {
-    if (!confirm(`¿Eliminar a ${u.first_name} ${u.last_name || ''}? Su acceso se desactiva.`)) return;
+    if (!await confirmar(`¿Eliminar a ${u.first_name} ${u.last_name || ''}? Su acceso se desactiva.`)) return;
     try {
       await api.deleteTeamUser(u.id);
       qc.invalidateQueries({ queryKey: ['team-users'] });

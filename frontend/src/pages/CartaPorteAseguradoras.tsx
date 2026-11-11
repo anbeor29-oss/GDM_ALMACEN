@@ -3,6 +3,7 @@
  * Tres tipos: RespCivil (obligatoria), MedAmbiente (materiales peligrosos),
  * Carga (si el cliente lo pide).
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Shield, Plus, Pencil, Trash2, Search, X, Save } from 'lucide-react';
@@ -102,7 +103,7 @@ export function CartaPorteAseguradorasPage() {
                 <td className="px-4 py-3 text-right">
                   <div className="inline-flex gap-1">
                     <button onClick={() => setModal({ open: true, editingId: a.id, form: { alias: a.alias, tipo: a.tipo, nombreAseguradora: a.nombre_aseguradora, numPoliza: a.num_poliza, primaSeguro: a.prima_seguro ? String(a.prima_seguro) : '' } })} className="p-1.5 text-sky-600 hover:bg-sky-50 rounded"><Pencil size={14} /></button>
-                    <button onClick={() => { if (confirm(`¿Eliminar "${a.alias}"?`)) del.mutate(a.id); }} className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
+                    <button onClick={async () => { if (await confirmar(`¿Eliminar "${a.alias}"?`)) del.mutate(a.id); }} className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>

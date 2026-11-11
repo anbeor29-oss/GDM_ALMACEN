@@ -7,6 +7,7 @@
  * NO es inventario propio (eso vive en Productos). Aquí se registra la
  * mercancía de clientes que la empresa transporta.
  */
+import { confirmar } from '@/utils/avisos';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, Search, Package, ClipboardList } from 'lucide-react';
@@ -112,7 +113,7 @@ export function CartaPorteMercanciasPage() {
                       <td className="px-4 py-2 text-right font-medium">{m.veces_transportada}</td>
                       <td className="px-4 py-2">
                         <button
-                          onClick={() => { if (confirm(`¿Eliminar "${m.descripcion}" del catálogo?`)) delMut.mutate(m.id); }}
+                          onClick={async () => { if (await confirmar(`¿Eliminar "${m.descripcion}" del catálogo?`)) delMut.mutate(m.id); }}
                           className="text-rose-500 hover:text-rose-700"
                           title="Eliminar del catálogo (no borra bitácora)"
                         >
