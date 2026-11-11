@@ -376,7 +376,7 @@ export async function generarVentasDelMes(
  */
 export async function generarComprasDelMes(
   companyId: string, anio: number, mes: number, userId?: string
-): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
+): Promise<{ creadas: number; pagosPue: number; omitidas: Array<{ folio: string; motivo: string }> }> {
   const mapaProd = await mapaProductoCuentaCompra(companyId);
   // Modo «UNA SOLA CUENTA»: si la empresa asignó la cuenta única de compras (rol
   // COMPRA_CUENTA_UNICA en Asignación → Compras), TODA la factura va a ESA cuenta de
@@ -388,7 +388,7 @@ export async function generarComprasDelMes(
   if (ctaCompraUnica) ctxCod.unica = ctaCompraUnica.codigo;
   const r = await query<any>(
     `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.total, c.descuento,
-            c.nombre_emisor, c.rfc_emisor, c.xml
+            c.nombre_emisor, c.rfc_emisor, c.xml, c.metodo_pago, c.forma_pago
        FROM cfdi_recibidos c
       WHERE c.company_id=$1 AND c.direccion='recibidos'
         AND (c.tipo_comprobante='I' OR c.tipo_comprobante IS NULL)
@@ -399,8 +399,13 @@ export async function generarComprasDelMes(
     [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
 
   let creadas = 0;
+  let pagosPue = 0;
   const omitidas: Array<{ folio: string; motivo: string }> = [];
   void mapaProd; // la asignación por producto ya va dentro de ctxCod.producto
+  // Para el PAGO AUTOMÁTICO de las facturas PUE (cancela el pasivo en el acto): el banco
+  // de cobros y pagos (102.01) y la Caja (101, para el efectivo). Se resuelven una vez.
+  const cta102Pago = await cuentaPorAgrupador(companyId, '102.01');
+  const ctaCajaPago = await cuentaPorAgrupadores(companyId, ['101.01', '101.02', '101']);
 
   const uuidsMes = r.rows.map((x: any) => x.uuid);
   const decisiones = uuidsMes.length ? (await query<any>(
@@ -493,11 +498,30 @@ export async function generarComprasDelMes(
         origen: 'CFDI', origen_uuid: c.uuid, regla: 'compras_cfdi_v1', lineas,
       }, userId);
       creadas++;
+
+      // PUE = pagada en una sola exhibición: además de la compra (el pasivo) se genera SU
+      // PAGO, que lo CANCELA (cargo proveedor / abono banco|caja + IVA 119→118). En PUE el
+      // pago es implícito (no hay complemento de pago), así que los DOS asientos van juntos.
+      // Efectivo (forma 01) → Caja (101) si existe; el resto → banco de cobros y pagos
+      // (102.01). Idempotente (PAGOPUE:uuid) y con guardas (si ya se pagó por banco, omite).
+      // El método de pago se lee del PROPIO XML (más confiable que la columna, que puede
+      // venir vacía en CFDI indexados antes de poblarla); la columna es respaldo.
+      const metodoPago = (String(c.xml).match(/MetodoPago\s*=\s*"([^"]+)"/)?.[1] || c.metodo_pago || '').toUpperCase();
+      const formaPago = String(c.xml).match(/FormaPago\s*=\s*"([^"]+)"/)?.[1] || c.forma_pago || '';
+      if (metodoPago === 'PUE') {
+        const efectivo = String(formaPago) === '01';
+        const dest = (efectivo && ctaCajaPago) ? ctaCajaPago : cta102Pago;
+        if (dest) {
+          const rp = await generarPagoPue(companyId, c.uuid, '', userId,
+            { accountId: dest.id, etiqueta: (efectivo && ctaCajaPago) ? 'Caja' : 'Banco' });
+          if ('ok' in rp) pagosPue++;
+        }
+      }
     } catch (e: any) {
       omitidas.push({ folio: folioTxt, motivo: (e?.message || 'error').toString().slice(0, 140) });
     }
   }
-  return { creadas, omitidas };
+  return { creadas, pagosPue, omitidas };
 }
 
 /**
@@ -647,10 +671,10 @@ export async function generarCobrosPagosDelMes(
 export async function pagosPuePendientes(companyId: string, anio: number, mes: number) {
   const r = await query<any>(
     `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision,'YYYY-MM-DD') AS fecha_emision,
-            c.total, c.nombre_emisor, c.rfc_emisor, c.forma_pago, c.xml
+            c.total, c.nombre_emisor, c.rfc_emisor, c.forma_pago, c.metodo_pago, c.xml
        FROM cfdi_recibidos c
       WHERE c.company_id=$1 AND c.direccion='recibidos' AND c.tipo_comprobante='I'
-        AND c.metodo_pago='PUE' AND c.xml IS NOT NULL
+        AND c.xml IS NOT NULL
         AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
         AND c.fecha_emision::date BETWEEN $2 AND $3
         AND EXISTS (SELECT 1 FROM journal_entries e
@@ -665,6 +689,9 @@ export async function pagosPuePendientes(companyId: string, anio: number, mes: n
       ORDER BY c.fecha_emision`,
     [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
   return r.rows
+    // PUE según el PROPIO XML (la columna metodo_pago puede venir vacía en CFDI indexados
+    // antes de poblarla); la columna es sólo respaldo. Así el panel SÍ las encuentra.
+    .filter((c) => (String(c.xml).match(/MetodoPago\s*=\s*"([^"]+)"/)?.[1] || c.metodo_pago || '').toUpperCase() === 'PUE')
     .map((c) => ({
       uuid: c.uuid,
       folio: [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8),
