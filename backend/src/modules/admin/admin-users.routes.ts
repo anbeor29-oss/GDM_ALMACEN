@@ -498,6 +498,11 @@ router.get('/:id/permissions', asyncHandler(async (req: Request, res: Response) 
   const granted = await query<{ capability: string }>(
     `SELECT capability FROM user_capabilities WHERE user_id = $1`, [u.id]
   );
+  // Módulos HABILITADOS de la empresa del usuario: el acceso REAL es la INTERSECCIÓN
+  // (grupo/extra del usuario) ∩ (módulos de la empresa). Se devuelven para que la UI
+  // muestre qué bloquea cada módulo y no parezca que «no se guardó».
+  const emp = u.company_id ? (await query<any>(
+    `SELECT business_name, modulos_habilitados FROM companies WHERE id = $1`, [u.company_id])).rows[0] : null;
 
   res.json({
     success: true,
@@ -509,6 +514,9 @@ router.get('/:id/permissions', asyncHandler(async (req: Request, res: Response) 
       /** Módulos EXTRA otorgados (además del grupo) y TODOS los módulos para elegir. */
       extra_modules: u.extra_modules || [],
       all_modules: (GROUP_MODULES as any).ADMIN_ALL || [],
+      /** Módulos HABILITADOS de la empresa (null = todos). El acceso real = intersección con los del usuario. */
+      empresa_nombre: emp?.business_name || null,
+      empresa_modulos: (Array.isArray(emp?.modulos_habilitados) && emp!.modulos_habilitados.length) ? emp!.modulos_habilitados : null,
       granted_capabilities: granted.rows.map((x) => x.capability),
       effective_capabilities: await getEffectiveCapabilities(u.id, u.role),
       /** El rol ya se las da todas: la UI desactiva el bloque. */

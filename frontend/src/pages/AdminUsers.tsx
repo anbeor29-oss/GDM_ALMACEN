@@ -606,14 +606,27 @@ function PermissionsModal({ user, onClose, onDone }: any) {
                   Además de los de su grupo, dale acceso a otros módulos (p.ej. Ventas <b>y</b> Nómina).
                   Los que ya trae el grupo salen en gris.
                 </p>
+                {data.empresa_modulos && (
+                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mb-2 leading-relaxed">
+                    El acceso REAL es la <b>intersección</b> con los módulos de la empresa
+                    {data.empresa_nombre ? <> <b>{data.empresa_nombre}</b></> : ''}: lo que esté marcado abajo pero
+                    diga <b className="text-rose-600">🔒 empresa</b> está otorgado al usuario pero la EMPRESA no lo tiene
+                    habilitado, por eso NO lo ve. Actívalo en <b>Empresas → Editar empresa → Módulos</b>.
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 border rounded-lg p-2">
                   {(data.all_modules || []).map((m: string) => {
                     const base = esDelGrupo(m);
+                    const otorgado = base || extraMods.has(m);
+                    // Gate de la empresa: null = todos; si restringe y no incluye el módulo, lo bloquea.
+                    const enEmpresa = !data.empresa_modulos || data.empresa_modulos.includes(m);
+                    const bloqueado = otorgado && !enEmpresa;
                     return (
                       <label key={m} className={`flex items-center gap-2 text-sm px-1 py-0.5 rounded ${base ? 'text-slate-400' : 'text-slate-700 hover:bg-slate-50 cursor-pointer'}`}>
-                        <input type="checkbox" disabled={base} checked={base || extraMods.has(m)} onChange={() => toggleMod(m)} />
+                        <input type="checkbox" disabled={base} checked={otorgado} onChange={() => toggleMod(m)} />
                         {MODULE_LABELS[m] || m}
                         {base && <span className="text-[10px] text-slate-400">· del grupo</span>}
+                        {bloqueado && <span className="text-[10px] text-rose-600 font-medium">· 🔒 empresa</span>}
                       </label>
                     );
                   })}
