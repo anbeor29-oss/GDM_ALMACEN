@@ -87,7 +87,7 @@ import { CierreCuadrePage } from '@/pages/contabilidad/CierreCuadre';
 import { ReportesEspecialesPage } from '@/pages/contabilidad/ReportesEspeciales';
 import { ReportesFiscalesPage } from '@/pages/contabilidad/ReportesFiscales';
 import { PolizaManualPage } from '@/pages/contabilidad/PolizaManual';
-import { PolizasListaPage } from '@/pages/contabilidad/PolizasLista';
+import { PolizasHubPage } from '@/pages/contabilidad/PolizasHub';
 import { ActivoFijoPage } from '@/pages/contabilidad/ActivoFijo';
 import { ImportarContpaqiPage } from '@/pages/contabilidad/ImportarContpaqi';
 import { CfdiContabilidadPage } from '@/pages/contabilidad/CfdiContabilidad';
@@ -126,7 +126,7 @@ export default function ErpPrivado() {
       >
         <Route path="dashboard"    element={<ModuleRoute module="dashboard"><DashboardPage /></ModuleRoute>} />
         <Route path="invoices"     element={<ModuleRoute module="invoices"><InvoicesPage /></ModuleRoute>} />
-        <Route path="contabilidad/polizas"   element={<ModuleRoute module="contabilidad"><PolizasListaPage /></ModuleRoute>} />
+        <Route path="contabilidad/polizas"   element={<ModuleRoute module="contabilidad"><PolizasHubPage /></ModuleRoute>} />
         <Route path="invoices/new"       element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
         <Route path="invoices/:id/edit"  element={<ModuleRoute module="invoices"><NewInvoicePage /></ModuleRoute>} />
         <Route path="credit-notes" element={<ModuleRoute module="credit_notes"><CreditNotesPage /></ModuleRoute>} />

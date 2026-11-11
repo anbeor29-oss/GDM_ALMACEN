@@ -37,6 +37,9 @@ import * as boveda from './boveda';
 import * as soap from './transporte';
 import { extraerXml, ZipSospechoso } from './zip-seguro';
 import { validarEfirma } from './efirma';
+// Predicado único de «¿este CFDI ya tiene póliza?» (las 3 vías). Se usa en la vista
+// para que las pestañas de Pólizas (Ventas/Compras) muestren el estado contable.
+import { cfdiYaContabilizado } from '../accounting/cfdi-contabilizado';
 
 /**
  * Tamaño del primer corte, según lo largo que sea el periodo pedido.
@@ -1247,9 +1250,10 @@ export async function listarComprobantesVista(
 
   const r = await query<any>(
     `SELECT c.id, c.uuid, c.direccion, c.tipo_comprobante, c.serie, c.folio,
-            c.fecha_emision, c.total, c.moneda, c.metodo_pago, c.estado_sat,
+            c.fecha_emision, c.subtotal, c.descuento, c.total, c.moneda, c.metodo_pago, c.estado_sat,
             c.fecha_cancelacion, c.cuenta_contable,
             (c.xml IS NOT NULL) AS tiene_xml,
+            ${cfdiYaContabilizado('c')} AS contabilizado,
             CASE WHEN c.direccion = 'emitidos' THEN c.nombre_receptor ELSE c.nombre_emisor END AS contraparte_nombre,
             CASE WHEN c.direccion = 'emitidos' THEN c.rfc_receptor    ELSE c.rfc_emisor    END AS contraparte_rfc,
             CASE
