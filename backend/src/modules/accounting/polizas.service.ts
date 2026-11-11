@@ -263,7 +263,7 @@ export async function generarVentasDelMes(
   }
   const r = await query<any>(
     `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.total, c.descuento, c.metodo_pago, c.forma_pago,
-            c.nombre_receptor, c.rfc_receptor, c.xml
+            c.nombre_receptor, c.rfc_receptor, c.cuenta_contable, c.xml
        FROM cfdi_recibidos c
       WHERE ${conds.join(' AND ')}
       ORDER BY c.fecha_emision`,
@@ -296,8 +296,24 @@ export async function generarVentasDelMes(
       if (faltaProducto) { omitidas.push({ folio: folioTxt, motivo: `producto ${faltaProducto} sin cuenta 401 asignada` }); continue; }
       if (porCuenta.size === 0) { omitidas.push({ folio: folioTxt, motivo: 'la factura no trae conceptos' }); continue; }
 
-      const cli = await resolverOCrearSubcuentaTercero(companyId, 'cliente', c.rfc_receptor, c.nombre_receptor);
-      if ('error' in cli) { omitidas.push({ folio: folioTxt, motivo: `clientes: ${cli.error}` }); continue; }
+      // La cuenta del CLIENTE: si el usuario la CAPTURÓ en la pestaña Ventas
+      // (cuenta_contable del CFDI) y es una cuenta de movimiento válida, se USA
+      // ÉSA —así el combo de la pantalla manda—. Si no, se resuelve por RFC como
+      // siempre (subcuenta de cliente creada al vuelo). Si tampoco se puede, la
+      // factura queda PENDIENTE (número de cuenta que no se conoce).
+      let cli: { id: string };
+      if (c.cuenta_contable) {
+        const ctaCap = await cuentaPorCodigo(companyId, String(c.cuenta_contable).trim());
+        if (ctaCap && ctaCap.permite_movimientos) {
+          cli = { id: ctaCap.id };
+        } else {
+          omitidas.push({ folio: folioTxt, motivo: `la cuenta del cliente ${c.cuenta_contable} no está en el catálogo o no admite movimientos` }); continue;
+        }
+      } else {
+        const r2 = await resolverOCrearSubcuentaTercero(companyId, 'cliente', c.rfc_receptor, c.nombre_receptor);
+        if ('error' in r2) { omitidas.push({ folio: folioTxt, motivo: `clientes: ${r2.error}` }); continue; }
+        cli = r2;
+      }
 
       const total = round2(c.total);
       const iva = round2(imp.trasladados);
