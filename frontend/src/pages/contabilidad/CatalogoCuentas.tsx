@@ -326,8 +326,9 @@ export function CatalogoCuentasPage() {
 
       {/* ── Dos paneles: el catálogo (colapsable a un solo renglón) y el análisis ──
           Al colapsar el catálogo, el panel de análisis ocupa toda la pantalla. */}
-      <div className={`grid gap-4 items-start ${
-        arbolColapsado ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-[1.15fr_0.85fr]'}`}>
+      {/* Catálogo a TODO el ancho: el panel «Respaldo de balanza / Catálogos» se ocultó
+          (la universalidad parte de un respaldo contable). Siempre 1 columna. */}
+      <div className="grid gap-4 items-start grid-cols-1">
         <div className="space-y-3 min-w-0">
           {/* Encabezado: colapsa/expande TODO el catálogo a un solo renglón. */}
           <button
@@ -438,8 +439,8 @@ export function CatalogoCuentasPage() {
           )}
         </div>
 
-        {/* ── El área de análisis (pestañas) ── */}
-        <PanelAnalisis />
+        {/* Panel «Respaldo de balanza / Catálogos» OCULTO (2026-11-11): reversible, quitar el `false &&`. */}
+        {false && <PanelAnalisis />}
       </div>
 
       {detalle && (
