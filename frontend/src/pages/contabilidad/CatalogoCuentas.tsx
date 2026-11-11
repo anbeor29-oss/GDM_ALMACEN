@@ -263,11 +263,15 @@ export function CatalogoCuentasPage() {
                 <input type="file" accept=".txt" className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />
               </label>
+              {/* «Reorganizar terceros» OCULTO (2026-11-11): la universalidad parte de un
+                  RESPALDO contable, no de reacomodar terceros. Reversible: quitar el `false &&`. */}
+              {false && (
               <button onClick={reorganizar} disabled={!!herr}
                 title="Mueve los terceros mezclados (bajo un control equivocado) a su control correcto: clientes a 105, proveedores a 201, renumerados. Las partidas los siguen."
                 className="border border-indigo-300 text-indigo-700 px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-50 disabled:opacity-50 flex items-center gap-1.5">
                 <Users size={14} /> {herr === 'reorg' ? 'Reorganizando…' : 'Reorganizar terceros'}
               </button>
+              )}
               <button onClick={asignarAgrupador} disabled={!!herr}
                 title="Rellena el agrupador del SAT de las cuentas que no lo tienen, heredándolo del padre"
                 className="border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg text-sm hover:bg-amber-50 disabled:opacity-50 flex items-center gap-1.5">

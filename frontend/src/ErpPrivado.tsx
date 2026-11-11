@@ -83,7 +83,7 @@ import { CatalogoCuentasPage } from '@/pages/contabilidad/CatalogoCuentas';
 import { AsignacionCuentasPage } from '@/pages/contabilidad/AsignacionCuentas';
 import { ConciliacionContablePage } from '@/pages/contabilidad/ConciliacionContable';
 import { AuxiliarCuentasPage } from '@/pages/contabilidad/AuxiliarCuentas';
-import { ValidacionContablePage } from '@/pages/contabilidad/ValidacionContable';
+import { CierreCuadrePage } from '@/pages/contabilidad/CierreCuadre';
 import { ReportesEspecialesPage } from '@/pages/contabilidad/ReportesEspeciales';
 import { ReportesFiscalesPage } from '@/pages/contabilidad/ReportesFiscales';
 import { PolizaManualPage } from '@/pages/contabilidad/PolizaManual';
@@ -107,7 +107,6 @@ import { NifReportesPage, EstadosFinancierosPage } from '@/pages/contabilidad/Re
 import { CuentasHubPage } from '@/pages/contabilidad/CuentasHub';
 import { IndicadoresPage } from '@/pages/contabilidad/Indicadores';
 import { PeriodosPage } from '@/pages/contabilidad/Periodos';
-import { CierreEjercicioPage } from '@/pages/contabilidad/CierreEjercicio';
 import { PhysicalCountPage }          from '@/pages/PhysicalCount';
 import { KardexPage }                 from '@/pages/Kardex';
 import { FaltantesPage }              from '@/pages/Faltantes';
@@ -209,11 +208,11 @@ export default function ErpPrivado() {
         <Route path="contabilidad/cambio-cuenta"      element={<ModuleRoute module="contabilidad"><CambioCuentaPage /></ModuleRoute>} />
         <Route path="contabilidad/conciliacion"       element={<ModuleRoute module="contabilidad"><ConciliacionContablePage /></ModuleRoute>} />
         <Route path="contabilidad/auxiliar"           element={<ModuleRoute module="contabilidad"><AuxiliarCuentasPage /></ModuleRoute>} />
-        <Route path="contabilidad/validacion"         element={<ModuleRoute module="contabilidad"><ValidacionContablePage /></ModuleRoute>} />
+        <Route path="contabilidad/validacion"         element={<Navigate to="/contabilidad/cierre" replace />} />
         <Route path="contabilidad/reportes-especiales" element={<ModuleRoute module="contabilidad"><ReportesEspecialesPage /></ModuleRoute>} />
         <Route path="contabilidad/reportes-fiscales"  element={<ModuleRoute module="contabilidad"><ReportesFiscalesPage /></ModuleRoute>} />
         <Route path="contabilidad/periodos"           element={<ModuleRoute module="contabilidad"><PeriodosPage /></ModuleRoute>} />
-        <Route path="contabilidad/cierre"             element={<ModuleRoute module="contabilidad"><CierreEjercicioPage /></ModuleRoute>} />
+        <Route path="contabilidad/cierre"             element={<ModuleRoute module="contabilidad"><CierreCuadrePage /></ModuleRoute>} />
         <Route path="contabilidad/nif"                element={<ModuleRoute module="contabilidad"><NifReportesPage /></ModuleRoute>} />
         <Route path="contabilidad/estados-financieros" element={<ModuleRoute module="contabilidad"><EstadosFinancierosPage /></ModuleRoute>} />
         <Route path="contabilidad/indicadores"        element={<ModuleRoute module="contabilidad"><IndicadoresPage /></ModuleRoute>} />

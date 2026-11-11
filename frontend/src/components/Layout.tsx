@@ -618,9 +618,11 @@ export function Layout() {
                          Auxiliar, Cambios de cuenta) — antes eran 4 entradas sueltas. */
                       { to: '/contabilidad/catalogo',       icon: emoji3D('📚'), label: 'Catálogo de cuentas' },
                       { to: '/contabilidad/conciliacion',  icon: emoji3D('🏦'), label: 'Conciliación bancaria' },
-                      { to: '/contabilidad/validacion',    icon: emoji3D('🧮'), label: 'Cuadre contable' },
                       { to: '/contabilidad/indicadores',   icon: emoji3D('📈'), label: 'Indicadores económicos' },
-                      ...(esAdmin ? [{ to: '/contabilidad/cierre', icon: emoji3D('🔒'), label: 'Cierre del ejercicio' }] : []),
+                      /* «Cierre del ejercicio» ahora contiene también «Cuadre contable» (pestañas),
+                         por eso se quitó el item aparte y queda visible para todos (el cierre en sí
+                         lo protege el backend). Acorta el submenú de Contabilidad. */
+                      { to: '/contabilidad/cierre',        icon: emoji3D('🔒'), label: 'Cierre del ejercicio' },
                       { to: '/contabilidad/importar-contpaqi', icon: emoji3D('📦'), label: 'Importar respaldo' },
                       { to: '/contabilidad/cfdi',              icon: emoji3D('🧾'), label: 'CFDI (XML del SAT)' },
                       {

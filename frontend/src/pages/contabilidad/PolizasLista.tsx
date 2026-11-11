@@ -8,12 +8,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown, Wand2, CheckCircle2, Stethoscope, Undo2, Coins } from 'lucide-react';
+import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown, Wand2, CheckCircle2, Stethoscope, Undo2 } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
 import { TablaComprobantesSat } from '@/components/TablaComprobantesSat';
-import { PagosPue } from '@/components/PolizasCobroPago';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { aniosContables } from '@/utils/anios';
 import { usePeriodoTrabajo } from '@/utils/periodoActivo';
@@ -314,13 +313,9 @@ export function PolizasListaPage() {
               <PlayCircle size={14} /> {generando === k ? 'Generando…' : label}
             </button>
           ))}
-          {/* PUE (pago de contado): lleva a «Pago de compras», donde se elige el banco
-              por factura (el CFDI PUE no dice con qué cuenta se pagó). */}
-          <button onClick={() => setFiltro('ppdpue')} disabled={!!generando}
-            title="Pago de las facturas PUE (de contado): se eligen el/los bancos en «Pago de compras»."
-            className="inline-flex items-center gap-1 border border-teal-200 bg-teal-50 text-teal-700 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-100 disabled:opacity-40 transition-colors">
-            <Coins size={14} /> PUE
-          </button>
+          {/* El PAGO de las compras PUE y el COBRO de las ventas PUE ya NO tienen botón:
+              se generan AUTOMÁTICO al «Generar Compras»/«Generar Ventas» (el motor detecta
+              MetodoPago=PUE y, tras el pasivo/activo, asienta su cancelación). */}
           {/* Descontabilizar: deshace las pólizas AUTOMÁTICAS del mes (p. ej. si el
               motor duplicó). Separado y en rojo para no confundir con «Generar». */}
           <button onClick={() => setDescModal(true)} disabled={!!generando}
@@ -389,9 +384,9 @@ export function PolizasListaPage() {
           <TablaComprobantesSat direccion="recibidos"
             anio={pagoAnio} mes={pagoMes}
             onPeriodo={(p) => { setPagoAnio(p.anio); setPagoMes(p.mes); }} />
-          {/* Pago de las facturas PUE del MISMO mes de la lista, aquí mismo: elegir el
-              banco y generar su póliza de pago sin ir a Tesorería → Cobros y pagos. */}
-          <PagosPue anio={pagoAnio} mes={pagoMes ?? 0} />
+          <p className="text-[11px] text-gray-400 text-center">
+            El pago de las facturas PUE se genera automático al «Generar Compras» (y el cobro de las ventas PUE al «Generar Ventas»). Doble clic en un renglón muestra su asiento.
+          </p>
         </div>
       ) : (
       <div className="space-y-2">
