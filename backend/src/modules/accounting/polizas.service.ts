@@ -235,7 +235,7 @@ export async function crearPoliza(companyId: string, p: NuevaPoliza, userId?: st
  */
 export async function generarVentasDelMes(
   companyId: string, anio: number, mes: number, userId?: string, soloUuid?: string
-): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
+): Promise<{ creadas: number; cobrosPue: number; omitidas: Array<{ folio: string; motivo: string }> }> {
   const mapaProd = await mapaProductoCuenta(companyId);
   // Modo «UNA SOLA CUENTA»: si la empresa asignó la cuenta única de ventas (rol
   // VENTA_CUENTA_UNICA en Asignación → Ventas), TODA la factura va a ESA cuenta de
@@ -262,7 +262,7 @@ export async function generarVentasDelMes(
     conds.push(`c.fecha_emision::date BETWEEN $${iIdx} AND $${fIdx}`);
   }
   const r = await query<any>(
-    `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.total, c.descuento, c.metodo_pago,
+    `SELECT c.uuid, c.serie, c.folio, TO_CHAR(c.fecha_emision, 'YYYY-MM-DD') AS fecha_emision, c.total, c.descuento, c.metodo_pago, c.forma_pago,
             c.nombre_receptor, c.rfc_receptor, c.xml
        FROM cfdi_recibidos c
       WHERE ${conds.join(' AND ')}
@@ -270,7 +270,12 @@ export async function generarVentasDelMes(
     params);
 
   let creadas = 0;
+  let cobrosPue = 0;
   const omitidas: Array<{ folio: string; motivo: string }> = [];
+  // Para el COBRO AUTOMÁTICO de las ventas PUE (cancela el activo/cuenta por cobrar en el
+  // acto): el banco de cobros y pagos (102.01) y la Caja (101, para el efectivo). Una vez.
+  const cta102Cobro = await cuentaPorAgrupador(companyId, '102.01');
+  const ctaCajaCobro = await cuentaPorAgrupadores(companyId, ['101.01', '101.02', '101']);
 
   for (const c of r.rows) {
     const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
@@ -356,11 +361,37 @@ export async function generarVentasDelMes(
         origen: 'CFDI', origen_uuid: c.uuid, regla: 'ventas_cfdi_v2', lineas,
       }, userId);
       creadas++;
+
+      // PUE = cobrada en una sola exhibición: además de la venta (el activo/cuenta por
+      // cobrar) se genera SU COBRO que la CANCELA (cargo banco|caja / abono cliente). El
+      // IVA ya quedó en 208 (cobrado) en la venta, así que el cobro sólo mueve banco↔cliente.
+      // Efectivo (forma 01) → Caja (101); el resto → banco 102.01. Idempotente (COBROPUE:uuid).
+      // Con retención se omite el auto-cobro (la venta ya quedó; es un caso raro en PUE).
+      const metodoPagoV = (String(c.xml).match(/MetodoPago\s*=\s*"([^"]+)"/)?.[1] || c.metodo_pago || '').toUpperCase();
+      const formaPagoV = String(c.xml).match(/FormaPago\s*=\s*"([^"]+)"/)?.[1] || c.forma_pago || '';
+      if (metodoPagoV === 'PUE' && ret.isr === 0 && ret.iva === 0) {
+        const efectivoV = String(formaPagoV) === '01';
+        const destV = (efectivoV && ctaCajaCobro) ? ctaCajaCobro : cta102Cobro;
+        if (destV) {
+          try {
+            await crearPoliza(companyId, {
+              tipo: 'INGRESO', fecha: String(c.fecha_emision).slice(0, 10),
+              concepto: `Cobro ${folioTxt} · ${(c.nombre_receptor || c.rfc_receptor || '').toString().slice(0, 80)}`.trim(),
+              origen: 'BANCO', origen_uuid: `COBROPUE:${c.uuid}`, regla: 'cobro_pue_v1',
+              lineas: [
+                { account_id: destV.id, cargo: total, concepto: `${(efectivoV && ctaCajaCobro) ? 'Caja' : 'Banco'} (cobro PUE)`, uuid_cfdi: c.uuid },
+                { account_id: cli.id, abono: total, concepto: 'Clientes (cobro PUE)', uuid_cfdi: c.uuid, party_rfc: c.rfc_receptor },
+              ],
+            }, userId);
+            cobrosPue++;
+          } catch { /* ya existe COBROPUE:uuid o es duplicado — la venta ya quedó */ }
+        }
+      }
     } catch (e: any) {
       omitidas.push({ folio: folioTxt, motivo: (e?.message || 'error').toString().slice(0, 140) });
     }
   }
-  return { creadas, omitidas };
+  return { creadas, cobrosPue, omitidas };
 }
 
 /**
@@ -1127,8 +1158,9 @@ const COND_DESCONTAB: Record<string, string> = {
   cobros:  `origen='CFDI' AND regla LIKE 'cobro\\_%' ESCAPE '\\'`,
   compras: `origen='CFDI' AND regla LIKE 'compras\\_%' ESCAPE '\\'`,
   pagos:   `origen='CFDI' AND regla LIKE 'pago\\_cfdi%' ESCAPE '\\'`,
-  // Pago de contado (PUE) y depreciación: generados por el motor, no por el banco.
-  pue:          `regla LIKE 'pago\\_pue%' ESCAPE '\\'`,
+  // Contado (PUE) y depreciación: generados por el motor, no por el banco. PUE abarca el
+  // PAGO de las compras PUE y el COBRO de las ventas PUE (ambos cancelan su pasivo/activo).
+  pue:          `(regla LIKE 'pago\\_pue%' OR regla LIKE 'cobro\\_pue%') ESCAPE '\\'`,
   depreciacion: `origen='DEPRECIACION'`,
 };
 export type TipoDescontab = keyof typeof COND_DESCONTAB;
