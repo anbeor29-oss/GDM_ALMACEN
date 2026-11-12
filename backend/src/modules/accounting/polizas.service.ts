@@ -20,7 +20,7 @@ import { query, transaction } from '../../config/database';
 import { resolverOCrearSubcuentaTercero } from './catalogo-terceros.service';
 import { conceptosDeXml, complementoDeXml, docsRelacionadosDeXml, mapaProductoCuenta } from './ventas-cuentas.service';
 import { mapaProductoCuentaCompra } from './compras-cuentas.service';
-import { cfdiSinPoliza } from './cfdi-contabilizado';
+import { cfdiSinPoliza, cfdiYaContabilizado } from './cfdi-contabilizado';
 import { cargarContexto as cargarContextoCodificacion, cuentaEfectiva } from './codificacion-rfc.service';
 
 export interface LineaPoliza {
@@ -894,6 +894,110 @@ export async function generarPagosPueDelMes(
     if (!bancoId) { omitidas.push({ folio: p.folio, motivo: 'no se eligió con qué banco se pagó' }); continue; }
     const r = await generarPagoPue(companyId, p.uuid, bancoId, userId);
     if ('ok' in r) creadas++; else omitidas.push({ folio: p.folio, motivo: r.error });
+  }
+  return { creadas, omitidas };
+}
+
+/**
+ * COBRO de una factura EMITIDA (el espejo de generarPagoPue, del lado ventas).
+ * Es el asiento de la pestaña «Pagos de ventas», DISTINTO de la venta (devengo):
+ *   Cargo  Banco (102.01, o el destino que se pase)   total
+ *   Abono  Cliente (cuenta capturada o por RFC)        total
+ *   Cargo  209.01 IVA por pagar (reclasifica)          iva
+ *   Abono  208.01 IVA pagado                           iva
+ * El banco y el IVA salen de las Asignaciones. Idempotente por COBROPUE:uuid (no
+ * choca con la venta, que usa el uuid a secas, ni con el cobro_pue automático).
+ */
+export async function generarCobroPue(
+  companyId: string, uuid: string, userId?: string,
+  destino?: { accountId: string; etiqueta?: string },
+): Promise<{ ok: true; folio: number } | { error: string }> {
+  const c = (await query<any>(
+    `SELECT uuid, serie, folio, TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha_emision,
+            subtotal, descuento, total, nombre_receptor, rfc_receptor, cuenta_contable, xml, tipo_comprobante
+       FROM cfdi_recibidos WHERE company_id=$1 AND uuid=$2 AND direccion='emitidos' LIMIT 1`,
+    [companyId, uuid])).rows[0];
+  if (!c) return { error: 'no se encontró el CFDI' };
+  if (c.tipo_comprobante && c.tipo_comprobante !== 'I') return { error: 'solo se cobra una factura de ingreso (I)' };
+  const total = round2(c.total);
+  if (total <= 0) return { error: 'el CFDI no tiene importe' };
+  // IVA: del XML si lo hay; si no (migrado), del subtotal/descuento/total.
+  const iva = c.xml ? round2(impuestosDeXml(String(c.xml)).trasladados)
+    : (c.subtotal != null ? round2(total - (Number(c.subtotal) - Number(c.descuento || 0))) : 0);
+
+  // Banco de cobro: destino explícito o la asignación 102.01.
+  let bancoId: string; const etiquetaBanco = destino?.etiqueta || 'Banco';
+  if (destino?.accountId) { bancoId = destino.accountId; }
+  else {
+    const b = await cuentaPorAgrupador(companyId, '102.01');
+    if (!b) return { error: 'falta la cuenta de banco (agrupador 102.01)' };
+    bancoId = b.id;
+  }
+  // Cliente: la cuenta capturada manda; si no, se resuelve por RFC.
+  let cliId: string;
+  if (c.cuenta_contable) {
+    const cc = await cuentaPorCodigo(companyId, String(c.cuenta_contable).trim());
+    if (!cc || !cc.permite_movimientos) return { error: `la cuenta del cliente ${c.cuenta_contable} no es válida` };
+    cliId = cc.id;
+  } else {
+    const cli = await resolverOCrearSubcuentaTercero(companyId, 'cliente', c.rfc_receptor, c.nombre_receptor);
+    if ('error' in cli) return { error: `clientes: ${cli.error}` };
+    cliId = cli.id;
+  }
+
+  const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
+  const lineas: LineaPoliza[] = [
+    { account_id: bancoId, cargo: total, concepto: `${etiquetaBanco} (cobro)`, uuid_cfdi: c.uuid },
+    { account_id: cliId, abono: total, concepto: 'Clientes (cobro)', uuid_cfdi: c.uuid, party_rfc: c.rfc_receptor },
+  ];
+  if (iva > 0) {
+    const c209 = await cuentaPorAgrupador(companyId, '209.01');
+    const c208 = await cuentaPorAgrupador(companyId, '208.01');
+    if (!c209 || !c208) return { error: 'falta cuenta de IVA (208.01 / 209.01)' };
+    lineas.push({ account_id: c209.id, cargo: iva, concepto: 'IVA por pagar (cobrado)', uuid_cfdi: c.uuid });
+    lineas.push({ account_id: c208.id, abono: iva, concepto: 'IVA pagado', uuid_cfdi: c.uuid });
+  }
+  try {
+    const pol = await crearPoliza(companyId, {
+      tipo: 'INGRESO', fecha: String(c.fecha_emision).slice(0, 10),
+      concepto: `Cobro ${folioTxt} · ${(c.nombre_receptor || c.rfc_receptor || '').toString().slice(0, 80)}`.trim(),
+      origen: 'BANCO', origen_uuid: `COBROPUE:${c.uuid}`, regla: 'cobro_pue_v1', lineas,
+    }, userId);
+    return { ok: true, folio: pol.folio };
+  } catch (e: any) {
+    if (e?.code === '23505' || /ya existe una p[oó]liza con ese UUID/i.test(e?.message || '')) return { error: 'esta factura ya tiene su cobro' };
+    return { error: (e?.message || 'no se pudo contabilizar el cobro').toString().slice(0, 140) };
+  }
+}
+
+/**
+ * Genera en BLOQUE los COBROS de las ventas PUE del mes que YA tienen su venta
+ * (devengo) pero aún NO su cobro. Sólo PUE: las PPD se cobran con su complemento
+ * (REP) en generarCobrosPagosDelMes, para no cobrar algo que aún no se paga.
+ */
+export async function generarCobrosPueDelMes(
+  companyId: string, anio: number, mes: number, userId?: string,
+): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
+  const r = await query<any>(
+    `SELECT c.uuid, c.serie, c.folio, c.metodo_pago, c.xml
+       FROM cfdi_recibidos c
+      WHERE c.company_id=$1 AND c.direccion='emitidos' AND c.tipo_comprobante='I'
+        AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
+        AND c.fecha_emision::date BETWEEN $2 AND $3
+        AND ${cfdiYaContabilizado('c')}
+        AND NOT EXISTS (SELECT 1 FROM journal_entries e
+                         WHERE e.company_id=c.company_id AND e.origen_uuid='COBROPUE:'||c.uuid)
+      ORDER BY c.fecha_emision`,
+    [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
+  let creadas = 0;
+  const omitidas: Array<{ folio: string; motivo: string }> = [];
+  for (const c of r.rows) {
+    const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
+    // PUE según el XML (la columna puede venir vacía); los PPD se dejan a su REP.
+    const metodo = (String(c.xml || '').match(/MetodoPago\s*=\s*"([^"]+)"/)?.[1] || c.metodo_pago || '').toUpperCase();
+    if (metodo && metodo !== 'PUE') { continue; }
+    const rr = await generarCobroPue(companyId, c.uuid, userId);
+    if ('ok' in rr) creadas++; else omitidas.push({ folio: folioTxt, motivo: rr.error });
   }
   return { creadas, omitidas };
 }

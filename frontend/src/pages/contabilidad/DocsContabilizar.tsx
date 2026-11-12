@@ -191,9 +191,9 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
 
       {/* Acción + resumen */}
       <div className="flex flex-wrap items-center gap-3">
-        <button onClick={() => contabilizar(false)} disabled={busy || tot.pend === 0}
+        <button onClick={() => contabilizar(false)} disabled={busy}
           className={`inline-flex items-center gap-1.5 border px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 ${btn}`}>
-          <PlayCircle size={15} /> {busy ? 'Contabilizando…' : `Contabilizar pendientes${tot.pend ? ` (${tot.pend})` : ''}`}
+          <PlayCircle size={15} /> {busy ? 'Generando pólizas…' : `Generar pólizas${tot.pend ? ` (${tot.pend} pend.)` : ''}`}
         </button>
         <label className="flex items-center gap-1 text-xs text-gray-500" title="Al abrir el periodo, contabiliza solo las que tengan cuenta conocida">
           <input type="checkbox" checked={autoOn} onChange={(e) => setAutoOn(e.target.checked)} /> automático

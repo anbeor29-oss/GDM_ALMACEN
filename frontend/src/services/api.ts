@@ -1725,6 +1725,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-cobros-pagos', { anio, mes, todoElAnio, direccion });
     return r.data;
   }
+  /** Cobro de las ventas PUE del mes (Cargo Banco/209 · Abono Cliente/208) — las que tienen venta pero no cobro. */
+  async generarCobrosPue(anio: number, mes: number) {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-cobros-pue', { anio, mes });
+    return r.data;
+  }
   /** Deshace las pólizas AUTOMÁTICAS del mes (motor de CFDI, PUE, depreciación), por tipo. */
   async descontabilizarMes(anio: number, mes: number, tipos?: string[]) {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/descontabilizar', { anio, mes, tipos });

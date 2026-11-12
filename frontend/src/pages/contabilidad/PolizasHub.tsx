@@ -145,12 +145,18 @@ const fechaMx = (s?: string) => s ? new Date(s + (String(s).length <= 10 ? 'T12:
 
 function NominaPanel() {
   const qc = useQueryClient();
+  const hoy = new Date();
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  const [mes, setMes] = useState<number>(hoy.getMonth() + 1);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState('');
+  const anios = aniosContables();
   const periodosQ = useQuery({ queryKey: ['nomina-poliza-periodos'], queryFn: () => api.getPeriodosOrdinariosPoliza() });
   const finiqQ = useQuery({ queryKey: ['nomina-poliza-finiquitos'], queryFn: () => api.getFiniquitosParaPoliza() });
-  const periodos: any[] = periodosQ.data?.data?.periodos || [];
-  const finiquitos: any[] = finiqQ.data?.data?.finiquitos || [];
+  const mesDe = (s?: string) => s ? new Date(s + (String(s).length <= 10 ? 'T12:00:00' : '')).getMonth() + 1 : 0;
+  const enPeriodo = (f?: string, a?: number) => Number(a) === anio && (mes === 0 || mesDe(f) === mes);
+  const periodos: any[] = (periodosQ.data?.data?.periodos || []).filter((p: any) => enPeriodo(p.fecha_pago || p.fecha_fin, p.anio));
+  const finiquitos: any[] = (finiqQ.data?.data?.finiquitos || []).filter((f: any) => mes === 0 || (mesDe(f.fecha_baja) === mes && new Date((f.fecha_baja || '') + 'T12:00:00').getFullYear() === anio));
 
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ['nomina-poliza-periodos'] });
@@ -199,6 +205,12 @@ function NominaPanel() {
           <p className="text-xs text-gray-500">Baja a contabilidad las pólizas que genera el módulo de Nómina: percepciones→gasto, deducciones→retenciones, neto→por pagar.</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 text-sm">
+            {MESES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+          </select>
+          <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
+            {anios.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
           <button onClick={bajarPendientes} disabled={!!busy || pendientes === 0}
             className="inline-flex items-center gap-1.5 border border-amber-300 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-100 disabled:opacity-40">
             <PlayCircle size={15} /> {busy === 'todas' ? 'Bajando…' : `Bajar pendientes${pendientes ? ` (${pendientes})` : ''}`}

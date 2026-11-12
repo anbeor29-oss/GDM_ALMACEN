@@ -78,12 +78,19 @@ export function PagosContabilizar({ modo }: { modo: 'cobros' | 'pagos' }) {
   const contabilizar = async (silencioso = false) => {
     setBusy(true); if (!silencioso) setMsg('');
     try {
-      const r: any = await api.generarCobrosPagos(anio, mes, false, modo);
-      const d = r?.data || {};
-      const om = (d.omitidas || []) as Array<{ folio: string; motivo: string }>;
-      let m = `${d.creadas ?? 0} ${cobros ? 'cobro(s)' : 'pago(s)'} contabilizado(s).`;
+      let creadas = 0;
+      const om: Array<{ folio: string; motivo: string }> = [];
+      // Cobros = complementos de pago emitidos (REP) + cobro DIRECTO de las ventas PUE
+      // que tienen venta pero no cobro (como las migradas). Pagos = complementos recibidos.
+      const r1: any = await api.generarCobrosPagos(anio, mes, false, modo);
+      creadas += r1?.data?.creadas ?? 0; om.push(...(r1?.data?.omitidas || []));
+      if (cobros) {
+        const r2: any = await api.generarCobrosPue(anio, mes);
+        creadas += r2?.data?.creadas ?? 0; om.push(...(r2?.data?.omitidas || []));
+      }
+      let m = `${creadas} ${cobros ? 'cobro(s)' : 'pago(s)'} contabilizado(s).`;
       if (om.length) m += ` ${om.length} sin procesar: ${om.slice(0, 3).map((o) => `${o.folio} (${o.motivo})`).join(' · ')}${om.length > 3 ? '…' : ''}.`;
-      if (!silencioso || (d.creadas ?? 0) > 0) setMsg(m);
+      if (!silencioso || creadas > 0) setMsg(m);
       qc.invalidateQueries({ queryKey: claveVista });
       qc.invalidateQueries({ queryKey: ['polizas'] });
     } catch (e: any) { if (!silencioso) setMsg(e?.response?.data?.message || e?.message || 'No se pudo contabilizar.'); }

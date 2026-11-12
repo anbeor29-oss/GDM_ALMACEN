@@ -1951,6 +1951,18 @@ router.post(
   })
 );
 
+/** POST /accounting/polizas/generar-cobros-pue — genera el COBRO de las ventas PUE del
+ *  mes que tienen venta pero aún no cobro (Cargo Banco/209 · Abono Cliente/208). */
+router.post(
+  '/polizas/generar-cobros-pue',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await polizas.generarCobrosPueDelMes(
+      companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
+
 /** POST /accounting/polizas/descontabilizar — deshace las pólizas AUTOMÁTICAS del mes
  *  (motor de CFDI, PUE y depreciación), por tipo. body: { anio, mes, tipos? }. No toca
  *  importadas, manuales, apertura ni conciliación bancaria. Para re-generar limpio tras

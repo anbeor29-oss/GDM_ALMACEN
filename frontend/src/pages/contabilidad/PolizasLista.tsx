@@ -208,8 +208,15 @@ export function PolizasListaPage() {
       setParams(params, { replace: true });
     }
   }, [editarId, todas]); // eslint-disable-line react-hooks/exhaustive-deps
+  // El libro diario se lee POR FECHA (como una hoja): orden ascendente por fecha
+  // y, dentro del día, por folio. (El formato de «hoja de Excel» se definirá luego.)
   const polizas = useMemo(
-    () => todas.filter((p) => !filtro || categoria(p) === filtro),
+    () => todas.filter((p) => !filtro || categoria(p) === filtro)
+      .slice()
+      .sort((a, b) => {
+        const fa = String(a.fecha || ''), fb = String(b.fecha || '');
+        return fa !== fb ? fa.localeCompare(fb) : (Number(a.folio || 0) - Number(b.folio || 0));
+      }),
     [todas, filtro]);
   /* Resumen del periodo para las tarjetas: cuántas pólizas, cargos totales y
    * cuántas quedaron descuadradas. */
