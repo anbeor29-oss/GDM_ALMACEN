@@ -24,6 +24,7 @@ import { TrendingUp, ShoppingCart, PlayCircle, RefreshCw, Search, Eye } from 'lu
 import api from '@/services/api';
 import { AsientoModal } from '@/components/TablaComprobantesSat';
 import { aniosContables } from '@/utils/anios';
+import { confirmar } from '@/utils/avisos';
 
 const money = (n: any, moneda = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: (moneda || 'MXN').trim() || 'MXN' })
@@ -140,7 +141,26 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
       if (!silencioso || (d.creadas ?? 0) > 0) setMsg(m);
       qc.invalidateQueries({ queryKey: claveVista });
       qc.invalidateQueries({ queryKey: ['polizas'] });
+      qc.invalidateQueries({ queryKey: ['asiento'] });
     } catch (e: any) { if (!silencioso) setMsg(e?.response?.data?.message || e?.message || 'No se pudo contabilizar.'); }
+    finally { setBusy(false); }
+  };
+
+  // Si una factura sale «codificada» pero su póliza no aparece (está ligada a un
+  // respaldo de OTRO periodo), esto DESLIGA ese respaldo y la recodifica en el mes.
+  const recodificar = async () => {
+    if (!(await confirmar('Esto DESLIGA el enlace de respaldo de las facturas del mes que NO tienen póliza propia y las recodifica en el periodo. No borra ninguna póliza existente. ¿Continuar?'))) return;
+    setBusy(true); setMsg('');
+    try {
+      const r: any = await api.recodificarPeriodo(anio, mes, modo);
+      const d = r?.data || {};
+      let m = `Recodificado: ${d.desligados ?? 0} desligada(s), ${d.creadas ?? 0} póliza(s) generada(s).`;
+      if (d.omitidas?.length) m += ` ${d.omitidas.length} pendiente(s): ${d.omitidas.slice(0, 2).map((o: any) => `${o.folio} (${o.motivo})`).join(' · ')}${d.omitidas.length > 2 ? '…' : ''}.`;
+      setMsg(m);
+      qc.invalidateQueries({ queryKey: claveVista });
+      qc.invalidateQueries({ queryKey: ['polizas'] });
+      qc.invalidateQueries({ queryKey: ['asiento'] });
+    } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo recodificar.'); }
     finally { setBusy(false); }
   };
 
@@ -198,6 +218,11 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
         <label className="flex items-center gap-1 text-xs text-gray-500" title="Al abrir el periodo, contabiliza solo las que tengan cuenta conocida">
           <input type="checkbox" checked={autoOn} onChange={(e) => setAutoOn(e.target.checked)} /> automático
         </label>
+        <button onClick={recodificar} disabled={busy}
+          title="¿La factura sale «codificada» pero el ojo no muestra su póliza? Está ligada a un respaldo de otro periodo. Esto la desliga y la recodifica en el mes."
+          className="text-xs border border-amber-300 bg-amber-50 text-amber-700 px-2.5 py-1.5 rounded-lg hover:bg-amber-100 disabled:opacity-40">
+          Recodificar respaldo
+        </button>
         <span className="text-xs text-gray-500">{tot.n} factura(s) · {tot.pend} pendiente(s) · {tot.n - tot.pend} codificada(s)</span>
         <div className="ml-auto text-xs text-gray-500 flex gap-4">
           <span>Subtotal <b className="text-gray-700 tabular-nums">{money(tot.sub)}</b></span>

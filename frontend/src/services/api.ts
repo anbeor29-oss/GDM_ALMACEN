@@ -1730,6 +1730,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-cobros-pue', { anio, mes });
     return r.data;
   }
+  /** Desliga enlaces de respaldo de los CFDI del mes SIN póliza real y recodifica (ventas/compras). */
+  async recodificarPeriodo(anio: number, mes: number, modo: 'ventas' | 'compras') {
+    const r = await this.client.post<APIResponse<any>>('/accounting/polizas/recodificar', { anio, mes, modo });
+    return r.data;
+  }
   /** Deshace las pólizas AUTOMÁTICAS del mes (motor de CFDI, PUE, depreciación), por tipo. */
   async descontabilizarMes(anio: number, mes: number, tipos?: string[]) {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/descontabilizar', { anio, mes, tipos });

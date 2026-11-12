@@ -93,6 +93,7 @@ export function PagosContabilizar({ modo }: { modo: 'cobros' | 'pagos' }) {
       if (!silencioso || creadas > 0) setMsg(m);
       qc.invalidateQueries({ queryKey: claveVista });
       qc.invalidateQueries({ queryKey: ['polizas'] });
+      qc.invalidateQueries({ queryKey: ['asiento'] });
     } catch (e: any) { if (!silencioso) setMsg(e?.response?.data?.message || e?.message || 'No se pudo contabilizar.'); }
     finally { setBusy(false); }
   };

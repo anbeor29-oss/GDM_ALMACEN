@@ -1963,6 +1963,19 @@ router.post(
   })
 );
 
+/** POST /accounting/polizas/recodificar — desliga los enlaces de respaldo de los CFDI
+ *  del mes que no tienen póliza real y recodifica (ventas o compras). body:{anio,mes,modo}. */
+router.post(
+  '/polizas/recodificar',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const modo = req.body?.modo === 'ventas' ? 'ventas' : 'compras';
+    const r = await polizas.recodificarPeriodo(
+      companyId(req), Number(req.body?.anio), Number(req.body?.mes), modo, req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
+
 /** POST /accounting/polizas/descontabilizar — deshace las pólizas AUTOMÁTICAS del mes
  *  (motor de CFDI, PUE y depreciación), por tipo. body: { anio, mes, tipos? }. No toca
  *  importadas, manuales, apertura ni conciliación bancaria. Para re-generar limpio tras

@@ -1082,12 +1082,17 @@ export async function asientoPorUuid(companyId: string, uuid: string) {
             TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha
        FROM cfdi_recibidos WHERE company_id=$1 AND uuid=$2 LIMIT 1`, [companyId, uuid])).rows[0];
 
+  // Busca la póliza por las MISMAS 3 vías que `cfdiYaContabilizado` (el que marca
+  // «codificada»): (1) origen_uuid, (2) renglón etiquetado uuid_cfdi, (3) enlace de
+  // respaldo journal_entry_cfdi. Antes faltaba la 3ª → la lista decía «codificada»
+  // pero el ojo decía «sin póliza» (desajuste en respaldos CPQ/CTLK).
   const ents = (await query<any>(
     `SELECT e.id, e.folio, TO_CHAR(e.fecha,'YYYY-MM-DD') AS fecha, e.concepto, e.regla, e.tipo, e.origen_uuid
        FROM journal_entries e
       WHERE e.company_id=$1
         AND (e.origen_uuid=$2
-             OR e.id IN (SELECT entry_id FROM journal_lines WHERE company_id=$1 AND uuid_cfdi=$2))
+             OR e.id IN (SELECT entry_id FROM journal_lines WHERE company_id=$1 AND uuid_cfdi=$2)
+             OR e.id IN (SELECT entry_id FROM journal_entry_cfdi WHERE company_id=$1 AND uuid=$2))
       ORDER BY e.fecha, e.folio`, [companyId, uuid])).rows;
 
   const ids = ents.map((e) => e.id);
@@ -1255,6 +1260,47 @@ export async function borrarPoliza(companyId: string, id: string): Promise<boole
 }
 
 /** Las pólizas del mes, con sus partidas, para revisarlas. */
+/**
+ * FORZAR RECODIFICACIÓN del mes (ignorar enlaces de respaldo).
+ *
+ * Caso real: un CFDI del periodo sale «codificado» porque tiene un enlace de
+ * respaldo (`journal_entry_cfdi`) a una póliza de OTRO periodo (p. ej. un respaldo
+ * viejo o un emparejamiento que no corresponde), pero NO tiene su propia póliza de
+ * devengo en el mes → el motor no lo re-genera y no aparece en el Libro diario del
+ * mes. Esto DESLIGA ese respaldo SÓLO para los CFDI del periodo que NO tienen
+ * póliza real (ni `origen_uuid`, ni renglón `uuid_cfdi` fuera de banco), y luego
+ * corre el motor para que se asienten en el mes. No borra ninguna póliza existente
+ * (sólo la fila de enlace); los respaldos legítimos del mismo mes no se tocan
+ * porque ésos SÍ tienen su póliza.
+ */
+export async function recodificarPeriodo(
+  companyId: string, anio: number, mes: number, modo: 'ventas' | 'compras', userId?: string,
+): Promise<{ desligados: number; creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
+  const direccion = modo === 'ventas' ? 'emitidos' : 'recibidos';
+  const soloBackup = await query<any>(
+    `SELECT c.uuid
+       FROM cfdi_recibidos c
+      WHERE c.company_id=$1 AND c.direccion=$2 AND c.tipo_comprobante='I'
+        AND c.fecha_emision::date BETWEEN $3 AND $4
+        AND EXISTS (SELECT 1 FROM journal_entry_cfdi jec WHERE jec.company_id=c.company_id AND jec.uuid=c.uuid)
+        AND NOT EXISTS (SELECT 1 FROM journal_entries e WHERE e.company_id=c.company_id AND e.origen_uuid=c.uuid)
+        AND NOT EXISTS (SELECT 1 FROM journal_lines jl JOIN journal_entries je ON je.id=jl.entry_id
+                         WHERE je.company_id=c.company_id AND jl.uuid_cfdi=c.uuid AND je.origen <> 'BANCO')`,
+    [companyId, direccion, iniDeMes(anio, mes), finDeMes(anio, mes)]);
+  const uuids = soloBackup.rows.map((r) => r.uuid);
+  let desligados = 0;
+  if (uuids.length) {
+    const del = await query(
+      `DELETE FROM journal_entry_cfdi WHERE company_id=$1 AND uuid = ANY($2::text[])`,
+      [companyId, uuids]);
+    desligados = del.rowCount || 0;
+  }
+  const r = modo === 'ventas'
+    ? await generarVentasDelMes(companyId, anio, mes, userId)
+    : await generarComprasDelMes(companyId, anio, mes, userId);
+  return { desligados, creadas: r.creadas, omitidas: r.omitidas };
+}
+
 export async function listarPolizas(companyId: string, anio: number, mes: number) {
   // mes 0 (o fuera de 1..12) = TODO EL AÑO: el usuario ve el libro diario completo.
   const anioValido = mes >= 1 && mes <= 12;

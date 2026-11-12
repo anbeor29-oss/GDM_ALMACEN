@@ -203,11 +203,15 @@ export async function generarPolizaNominaRecibida(
 
   const banco = await ctaPorAgrup(companyId, ['102.01']);
   if (!banco) return { error: 'falta la cuenta de banco (agrupador 102.01)' };
-  const ingreso = await ctaPorAgrup(companyId, n.clase === 'asimilados' ? ['700.02', '700', '401'] : ['700.01', '700', '401']);
-  if (!ingreso) return { error: 'asigna la cuenta de INGRESO por nómina recibida (agrupador 700 / 401)' };
+  // Lo ÚNICO obligatorio es la cuenta de INGRESO (el abono). El ISR a favor y otras
+  // retenciones son OPCIONALES: si no hay cuenta, no se separan (se quedan dentro del
+  // ingreso) para que el asiento SIEMPRE cuadre y se pueda contabilizar.
+  const ingreso = await ctaPorAgrup(companyId,
+    n.clase === 'asimilados' ? ['700.02', '700.01', '700', '401.02', '401.01', '401']
+                             : ['700.01', '700', '401.01', '401']);
+  if (!ingreso) return { error: 'asigna la cuenta de INGRESO por nómina recibida (agrupador 700 / 401) en el catálogo' };
   const neto = r2(n.neto), isr = r2(n.isr), otras = r2(n.imss + n.otrasDeducciones);
-  const isrCta = isr > 0 ? await ctaPorAgrup(companyId, ['113.01', '113', '118']) : null;
-  if (isr > 0 && !isrCta) return { error: 'asigna la cuenta de ISR retenido a FAVOR (agrupador 113)' };
+  const isrCta = isr > 0 ? await ctaPorAgrup(companyId, ['113.01', '113', '118.01', '118']) : null;
   const otrasCta = otras > 0 ? await ctaPorAgrup(companyId, ['216', '205', '113']) : null;
 
   const lineas: LineaPoliza[] = [
@@ -215,7 +219,9 @@ export async function generarPolizaNominaRecibida(
   ];
   if (isr > 0 && isrCta) lineas.push({ account_id: isrCta.id, cargo: isr, concepto: 'ISR retenido a favor', uuid_cfdi: c.uuid });
   if (otras > 0 && otrasCta) lineas.push({ account_id: otrasCta.id, cargo: otras, concepto: 'Otras retenciones', uuid_cfdi: c.uuid });
-  const abono = r2(neto + isr + (otrasCta ? otras : 0));   // el abono cuadra con la suma de los cargos
+  // El abono al ingreso cuadra EXACTO con la suma de los cargos (banco + lo que SÍ se
+  // separó). Si no hubo cuenta de ISR/otras, se quedan dentro del ingreso.
+  const abono = r2(neto + (isrCta ? isr : 0) + (otrasCta ? otras : 0));
   lineas.push({ account_id: ingreso.id, abono, concepto: `Ingreso nómina (${n.clase})`, uuid_cfdi: c.uuid });
 
   try {
