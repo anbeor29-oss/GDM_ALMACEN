@@ -1963,10 +1963,11 @@ router.post(
   })
 );
 
-/** POST /accounting/polizas/generar-pagos-pue — genera el PAGO de las compras PUE del
- *  mes que tienen compra pero aún no pago (Cargo Proveedor/118 · Abono Banco/119). */
+/** POST /accounting/polizas/generar-pagos-pue-directo — genera el PAGO de las compras
+ *  PUE del mes que tienen compra pero aún no pago (Cargo Proveedor/118 · Abono Banco/119).
+ *  Distinto del masivo con banco (/generar-pagos-pue): éste usa 102.01 y sirve a migradas. */
 router.post(
-  '/polizas/generar-pagos-pue',
+  '/polizas/generar-pagos-pue-directo',
   requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await polizas.generarPagosPueDirectoDelMes(
