@@ -24,7 +24,7 @@ import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 import { aniosContables } from '@/utils/anios';
 import { DocsContabilizar, IconoCodificada, IconoPendiente } from './DocsContabilizar';
-import { TablaComprobantesSat } from '@/components/TablaComprobantesSat';
+import { PagosContabilizar } from './PagosContabilizar';
 import { PolizasListaPage } from './PolizasLista';
 
 const MESES = ['Todo el año', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -75,26 +75,8 @@ export function PolizasHubPage() {
       {/* Contenido de la pestaña */}
       {tab === 'ventas' && <DocsContabilizar modo="ventas" />}
       {tab === 'compras' && <DocsContabilizar modo="compras" />}
-      {tab === 'cobros' && (
-        <div className="space-y-3">
-          <p className="text-xs text-gray-500 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2">
-            <b>Pagos de ventas</b> — el COBRO que cancela la cuenta por cobrar. Aquí están los comprobantes
-            emitidos: los <b>timbres de pago (REP)</b> y las ventas <b>PUE</b>. Doble clic en un renglón abre su
-            asiento; el cobro de las ventas PUE se asienta al «Contabilizar» en la pestaña Ventas.
-          </p>
-          <TablaComprobantesSat direccion="emitidos" />
-        </div>
-      )}
-      {tab === 'pagos' && (
-        <div className="space-y-3">
-          <p className="text-xs text-gray-500 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-            <b>Pago de compras</b> — el PAGO que cancela el pasivo (cargo al proveedor e IVA acreditable, abono a
-            bancos). Doble clic en una factura recibida abre su asiento y, si es PUE o PPD sin complemento, deja
-            generar el pago ahí mismo.
-          </p>
-          <TablaComprobantesSat direccion="recibidos" />
-        </div>
-      )}
+      {tab === 'cobros' && <PagosContabilizar modo="cobros" />}
+      {tab === 'pagos' && <PagosContabilizar modo="pagos" />}
       {tab === 'deprec' && <DeprecPanel />}
       {tab === 'nomina' && <NominaPanel />}
       {tab === 'libro' && <PolizasListaPage />}
