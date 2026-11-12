@@ -21,9 +21,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { TrendingUp, ShoppingCart, PlayCircle, RefreshCw, Search, Eye } from 'lucide-react';
+import { FolderPlus } from 'lucide-react';
 import api from '@/services/api';
 import { AsientoModal } from '@/components/TablaComprobantesSat';
+import { ModalCrearSubcuenta } from '@/components/ModalCrearSubcuenta';
 import { aniosContables } from '@/utils/anios';
+import { useMascara } from '@/utils/cuenta';
 import { confirmar } from '@/utils/avisos';
 
 const money = (n: any, moneda = 'MXN') =>
@@ -328,13 +331,15 @@ export function ComboCuenta({ id, valor, opciones, campo, claveVista }: {
   campo: 'cuenta' | 'cuenta2'; claveVista: any[];
 }) {
   const qc = useQueryClient();
+  const mascara = useMascara();
   const [texto, setTexto] = useState(valor || '');
   const [guardando, setGuardando] = useState(false);
+  const [crear, setCrear] = useState(false);
   const listId = `ctas-${campo}-${id}`;
   useEffect(() => { setTexto(valor || ''); }, [valor]);
 
-  const guardar = async () => {
-    const v = texto.trim();
+  const guardar = async (nuevo?: string) => {
+    const v = (nuevo ?? texto).trim();
     if ((v || '') === (valor || '')) return;
     setGuardando(true);
     try {
@@ -346,12 +351,19 @@ export function ComboCuenta({ id, valor, opciones, campo, claveVista }: {
   };
   return (
     <div className="flex items-center gap-1">
-      <input list={listId} value={texto} onChange={(e) => setTexto(e.target.value)} onBlur={guardar}
+      <input list={listId} value={texto} onChange={(e) => setTexto(e.target.value)} onBlur={() => guardar()}
         onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
         placeholder="— asignar" className={`input py-1 text-xs w-32 font-mono ${guardando ? 'opacity-50' : ''}`} />
       <datalist id={listId}>
         {opciones.slice(0, 600).map((o) => <option key={o.codigo} value={o.codigo}>{o.codigo} — {o.nombre}</option>)}
       </datalist>
+      <button type="button" onClick={() => setCrear(true)} title="Crear una cuenta nueva en el catálogo"
+        className="text-gray-300 hover:text-emerald-600 shrink-0"><FolderPlus size={15} /></button>
+      {crear && (
+        <ModalCrearSubcuenta codigo={texto.trim()} mascara={mascara}
+          onHecho={(cod) => { setTexto(cod); setCrear(false); guardar(cod); }}
+          onCerrar={() => setCrear(false)} />
+      )}
     </div>
   );
 }
