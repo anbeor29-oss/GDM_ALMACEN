@@ -143,14 +143,44 @@ function DeprecPanel() {
 const ETIQ_TIPO: Record<string, string> = { SEMANAL: 'Semana', QUINCENAL: 'Quincena', MENSUAL: 'Mes' };
 const fechaMx = (s?: string) => s ? new Date(s + (String(s).length <= 10 ? 'T12:00:00' : '')).toLocaleDateString('es-MX') : '—';
 
+/* ── Nómina: dos subpestañas (emitida = del módulo; recibida = la que te pagan) ── */
 function NominaPanel() {
-  const qc = useQueryClient();
   const hoy = new Date();
+  const [sub, setSub] = useState<'emitida' | 'recibida'>('emitida');
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mes, setMes] = useState<number>(hoy.getMonth() + 1);
+  const anios = aniosContables();
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap items-center gap-3">
+        <Users className="text-amber-600" size={22} />
+        <div>
+          <h2 className="font-semibold text-gray-900">Nómina</h2>
+          <p className="text-xs text-gray-500">Emitida: baja las pólizas del módulo de Nómina. Recibida: contabiliza la nómina/asimilados que te pagan.</p>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 text-sm">
+            {MESES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+          </select>
+          <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
+            {anios.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="flex gap-1.5">
+        {([['emitida', 'Nómina emitida'], ['recibida', 'Nómina recibida']] as const).map(([k, label], i) => (
+          <button key={k} onClick={() => setSub(k)} className={claseOpcion(i, sub === k)}>{label}</button>
+        ))}
+      </div>
+      {sub === 'emitida' ? <NominaEmitida anio={anio} mes={mes} /> : <NominaRecibida anio={anio} mes={mes} />}
+    </div>
+  );
+}
+
+function NominaEmitida({ anio, mes }: { anio: number; mes: number }) {
+  const qc = useQueryClient();
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState('');
-  const anios = aniosContables();
   const periodosQ = useQuery({ queryKey: ['nomina-poliza-periodos'], queryFn: () => api.getPeriodosOrdinariosPoliza() });
   const finiqQ = useQuery({ queryKey: ['nomina-poliza-finiquitos'], queryFn: () => api.getFiniquitosParaPoliza() });
   const mesDe = (s?: string) => s ? new Date(s + (String(s).length <= 10 ? 'T12:00:00' : '')).getMonth() + 1 : 0;
@@ -198,24 +228,12 @@ function NominaPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap items-center gap-3">
-        <Users className="text-amber-600" size={22} />
-        <div>
-          <h2 className="font-semibold text-gray-900">Nómina</h2>
-          <p className="text-xs text-gray-500">Baja a contabilidad las pólizas que genera el módulo de Nómina: percepciones→gasto, deducciones→retenciones, neto→por pagar.</p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 text-sm">
-            {MESES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-          </select>
-          <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
-            {anios.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-          <button onClick={bajarPendientes} disabled={!!busy || pendientes === 0}
-            className="inline-flex items-center gap-1.5 border border-amber-300 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-100 disabled:opacity-40">
-            <PlayCircle size={15} /> {busy === 'todas' ? 'Bajando…' : `Bajar pendientes${pendientes ? ` (${pendientes})` : ''}`}
-          </button>
-        </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-xs text-gray-500">Corridas del módulo de Nómina (provisión): percepciones→gasto, deducciones→retenciones, neto→por pagar.</span>
+        <button onClick={bajarPendientes} disabled={!!busy || pendientes === 0}
+          className="ml-auto inline-flex items-center gap-1.5 border border-amber-300 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-100 disabled:opacity-40">
+          <PlayCircle size={15} /> {busy === 'todas' ? 'Bajando…' : `Bajar pendientes${pendientes ? ` (${pendientes})` : ''}`}
+        </button>
       </div>
       {msg && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{msg}</p>}
 
@@ -309,6 +327,94 @@ function NominaPanel() {
         Las pólizas se generan en el módulo de <b>Nómina</b> (provisión por corrida); aquí se BAJAN a la
         contabilidad y aparecen también en el Libro diario. <IconoCodificada size={13} /> codificada ·
         <IconoPendiente size={13} /> pendiente.
+      </p>
+    </div>
+  );
+}
+
+/* ── Nómina RECIBIDA: la que te pagan (CFDI tipo N recibidos) ── */
+function NominaRecibida({ anio, mes }: { anio: number; mes: number }) {
+  const qc = useQueryClient();
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState('');
+  const q = useQuery({ queryKey: ['nomina-recibida', anio, mes], queryFn: () => api.getNominaRecibidaContabilizable(anio, mes) });
+  const filas: any[] = q.data?.data?.nominas || [];
+  const pend = filas.filter((f) => !f.contabilizado).length;
+  const mny = (n: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
+  const CLASE: Record<string, string> = { sueldos: 'Sueldos', asimilados: 'Asimilados', jubilacion: 'Jubilación', otro: 'Otro' };
+  const refrescar = () => { qc.invalidateQueries({ queryKey: ['nomina-recibida', anio, mes] }); qc.invalidateQueries({ queryKey: ['polizas'] }); };
+  const uno = async (uuid: string, nombre: string) => {
+    setBusy(uuid); setMsg('');
+    try { const r: any = await api.contabilizarNominaRecibida(uuid); setMsg(r?.data?.ok ? `${nombre}: contabilizada.` : `${nombre}: ${r?.data?.error || 'pendiente'}.`); refrescar(); }
+    catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo contabilizar.'); }
+    finally { setBusy(''); }
+  };
+  const todas = async () => {
+    setBusy('todas'); setMsg('');
+    try {
+      const r: any = await api.contabilizarNominaRecibidaMes(anio, mes); const d = r?.data || {};
+      let m = `${d.creadas ?? 0} contabilizada(s).`;
+      if (d.omitidas?.length) m += ` ${d.omitidas.length} pendiente(s): ${d.omitidas.slice(0, 2).map((o: any) => o.motivo).join(' · ')}${d.omitidas.length > 2 ? '…' : ''}.`;
+      setMsg(m); refrescar();
+    } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo contabilizar.'); }
+    finally { setBusy(''); }
+  };
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-xs text-gray-500">Nómina/asimilados que te pagan (CFDI tipo N recibidos): Cargo Banco (neto) + ISR a favor · Abono Ingreso. Cuentas de las Asignaciones.</span>
+        <button onClick={todas} disabled={!!busy || pend === 0}
+          className="ml-auto inline-flex items-center gap-1.5 border border-amber-300 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-100 disabled:opacity-40">
+          <PlayCircle size={15} /> {busy === 'todas' ? 'Contabilizando…' : `Contabilizar pendientes${pend ? ` (${pend})` : ''}`}
+        </button>
+      </div>
+      {msg && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{msg}</p>}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b">
+            <tr className="text-xs font-semibold text-gray-600">
+              <th className="px-3 py-2 text-left">Fecha</th>
+              <th className="px-3 py-2 text-left">Emisor</th>
+              <th className="px-3 py-2 text-left">Clase</th>
+              <th className="px-3 py-2 text-right">Percepciones</th>
+              <th className="px-3 py-2 text-right">ISR</th>
+              <th className="px-3 py-2 text-right">Neto</th>
+              <th className="px-3 py-2 text-center w-28">Contabilizar</th>
+              <th className="px-3 py-2 text-center w-12">Estado</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {q.isLoading && <tr><td colSpan={8} className="px-3 py-6 text-center text-gray-500">Cargando…</td></tr>}
+            {!q.isLoading && filas.length === 0 && (
+              <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-500 italic">Sin nómina recibida en el periodo (CFDI tipo N recibidos).</td></tr>
+            )}
+            {filas.map((f) => (
+              <tr key={f.uuid} className="hover:bg-gray-50">
+                <td className="px-3 py-2 whitespace-nowrap text-gray-700">{fechaMx(f.fecha)}</td>
+                <td className="px-3 py-2"><p className="truncate max-w-[14rem]" title={f.nombreEmisor}>{f.nombreEmisor || f.rfcEmisor || '—'}</p></td>
+                <td className="px-3 py-2 text-gray-600">{CLASE[f.clase] || f.clase}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{mny(f.totalPercepciones)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-gray-600">{mny(f.isr)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{mny(f.neto)}</td>
+                <td className="px-3 py-2 text-center">
+                  {f.contabilizado
+                    ? <span className="text-[11px] text-emerald-700">lista</span>
+                    : <button onClick={() => uno(f.uuid, f.nombreEmisor || f.rfcEmisor)} disabled={!!busy}
+                        className="text-[11px] border border-amber-300 bg-amber-50 text-amber-700 px-2 py-1 rounded hover:bg-amber-100 disabled:opacity-40">
+                        {busy === f.uuid ? '…' : 'Contabilizar'}
+                      </button>}
+                </td>
+                <td className="px-3 py-2 text-center">
+                  {f.contabilizado ? <span title="Codificada"><IconoCodificada /></span> : <span title="Pendiente"><IconoPendiente /></span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-gray-400 px-1">
+        Asiento: Cargo Banco (neto) + Cargo ISR retenido a favor / Abono Ingreso por nómina. Si falta asignar la
+        cuenta de ingreso o de ISR a favor, queda pendiente con el motivo.
       </p>
     </div>
   );

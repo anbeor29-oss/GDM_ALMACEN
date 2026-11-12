@@ -543,6 +543,29 @@ router.get('/pf/resumen', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await nominaPf.resumenPF(companyId(req), anio) });
 }));
 
+/** GET /sat-descarga/pf/nomina-contabilizable?anio=&mes= — nómina RECIBIDA del
+ *  periodo con su estado contable (para la pestaña Nómina → Recibida). */
+router.get('/pf/nomina-contabilizable', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.query.anio) || new Date().getFullYear();
+  const mes = Number(req.query.mes) || 0;
+  res.json({ success: true, data: { nominas: await nominaPf.nominaRecibidaContabilizable(companyId(req), anio, mes) } });
+}));
+
+/** POST /sat-descarga/pf/nomina/:uuid/contabilizar — contabiliza UNA nómina recibida. */
+router.post('/pf/nomina/:uuid/contabilizar', authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await nominaPf.generarPolizaNominaRecibida(companyId(req), req.params.uuid, req.user?.userId);
+    res.json({ success: true, data: r });
+  }));
+
+/** POST /sat-descarga/pf/nomina-contabilizar — contabiliza en BLOQUE la del mes. */
+router.post('/pf/nomina-contabilizar', authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await nominaPf.generarPolizasNominaRecibidaMes(
+      companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
+    res.json({ success: true, data: r });
+  }));
+
 /**
  * GET /sat-descarga/respaldo.zip?anio=&mes=&direccion=
  * El RESPALDO de los XML del SAT —la fuente de la verdad—: un ZIP con cada CFDI

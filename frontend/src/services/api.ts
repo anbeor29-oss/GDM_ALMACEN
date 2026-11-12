@@ -3275,6 +3275,19 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>(`/sat-descarga/comprobantes/${id}/cuenta2`, { cuenta2 });
     return r.data;
   }
+  /* ── Nómina RECIBIDA (pestaña Pólizas → Nómina → Recibida) ── */
+  async getNominaRecibidaContabilizable(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>('/sat-descarga/pf/nomina-contabilizable', { params: { anio, mes } });
+    return r.data;
+  }
+  async contabilizarNominaRecibida(uuid: string) {
+    const r = await this.client.post<APIResponse<any>>(`/sat-descarga/pf/nomina/${uuid}/contabilizar`, {});
+    return r.data;
+  }
+  async contabilizarNominaRecibidaMes(anio: number, mes: number) {
+    const r = await this.client.post<APIResponse<any>>('/sat-descarga/pf/nomina-contabilizar', { anio, mes });
+    return r.data;
+  }
 
   /* ───────────── Mensajería interna ───────────── */
   async getMensajes(buzon: 'recibidos' | 'enviados' = 'recibidos') {

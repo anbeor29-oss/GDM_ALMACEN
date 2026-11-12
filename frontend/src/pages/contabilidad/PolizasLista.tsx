@@ -84,13 +84,9 @@ export function PolizasListaPage() {
   const [descModal, setDescModal] = useState(false);   // modal «Descontabilizar mes»
   const [editar, setEditar] = useState<any>(null);
   const [previa, setPrevia] = useState<any>(null);   // póliza en previsualización/PDF
-  /* Lista COMPACTA: cada póliza es un solo renglón (folio + concepto); con doble
-   * clic (o el chevron) se despliegan sus partidas. Se recuerda cuáles están
-   * abiertas para no cerrarlas al refrescar. El #folio en azul abre el editor. */
-  const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
-  const alternar = (id: string) => setAbiertas((s) => {
-    const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n;
-  });
+  /* El libro diario se muestra como HOJA (tabla plana por fecha); el detalle de
+   * partidas de cada póliza se ve con el ojo (previsualización). El #folio en azul
+   * abre el editor. */
   /* Si se llegó desde el auxiliar de la balanza, al cerrar/guardar el editor se
    * regresa allá (no a esta lista): es donde estaba trabajando el usuario. */
   const [volverBalanza, setVolverBalanza] = useState(false);
@@ -396,69 +392,67 @@ export function PolizasListaPage() {
           </p>
         </div>
       ) : (
-      <div className="space-y-2">
-        {q.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
-        {!q.isLoading && polizas.length === 0 && (
-          <p className="text-sm text-gray-500 italic bg-white border rounded-xl p-6 text-center">
-            Sin pólizas {filtro ? `de ${ETIQUETA[filtro].toLowerCase()} ` : ''}en {(MESES[mes] || 'todo el año')} {anio}.
-          </p>
-        )}
-        {polizas.map((p) => {
-          const cargos = (p.lineas || []).reduce((a: number, l: any) => a + Number(l.cargo || 0), 0);
-          const abonos = (p.lineas || []).reduce((a: number, l: any) => a + Number(l.abono || 0), 0);
-          const cuadra = Math.abs(cargos - abonos) <= 0.02;
-          const abierta = abiertas.has(p.id);
-          const cat = categoria(p);
-          const col = COLOR_CAT[cat] || COLOR_CAT.otro;
-          return (
-            <div key={p.id} className={`bg-white border border-gray-200 border-l-4 ${col.accent} rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden`}>
-              {/* Renglón: doble clic en él (o el chevron) despliega/contrae. */}
-              <div onDoubleClick={() => alternar(p.id)} title="Doble clic para desplegar o contraer"
-                className="group flex items-center gap-2.5 px-3 py-2.5 text-sm cursor-pointer select-none">
-                <button onClick={() => alternar(p.id)} onDoubleClick={(e) => e.stopPropagation()}
-                  className="text-gray-300 hover:text-gray-600 shrink-0" title={abierta ? 'Contraer' : 'Desplegar'}>
-                  {abierta ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-                <button onClick={() => setEditar(p)} onDoubleClick={(e) => e.stopPropagation()} title="Editar esta póliza (cambios manuales)"
-                  className="font-bold text-blue-600 hover:underline tabular-nums shrink-0">#{p.folio}</button>
-                <span className="text-gray-400 text-xs shrink-0 w-20 tabular-nums">{fecha(p.fecha)}</span>
-                <span className="text-gray-700 truncate flex-1 min-w-0">{p.concepto}</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${col.badge}`}>{ETIQUETA[cat]}</span>
-                {!cuadra && (
-                  <span className="text-[10px] text-rose-600 flex items-center gap-0.5 shrink-0"><AlertTriangle size={11} /> descuadrada</span>
-                )}
-                <span className="text-sm font-semibold text-gray-800 font-mono tabular-nums shrink-0 w-28 text-right">{money(cargos)}</span>
-                <div className="flex items-center gap-0.5 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => setPrevia(p)} onDoubleClick={(e) => e.stopPropagation()} title="Previsualizar / PDF"
-                    className="text-gray-300 hover:text-sky-600 p-1"><Eye size={15} /></button>
-                  <button onClick={() => setEditar(p)} onDoubleClick={(e) => e.stopPropagation()} title="Editar póliza"
-                    className="text-gray-300 hover:text-primary p-1"><Pencil size={14} /></button>
-                  <button onClick={() => borrar(p)} onDoubleClick={(e) => e.stopPropagation()} title="Eliminar póliza"
-                    className="text-gray-300 hover:text-rose-500 p-1"><Trash2 size={15} /></button>
-                </div>
-              </div>
-              {abierta && (
-                <table className="w-full text-xs border-t border-gray-100">
-                  <tbody>
-                    {(p.lineas || []).map((l: any, i: number) => (
-                      <tr key={i} className="border-b border-gray-50 last:border-0">
-                        <td className="px-3 py-1.5 font-mono text-gray-500 w-28">{formatCuenta(l.codigo, mascara)}</td>
-                        <td className="px-2 py-1.5 text-gray-700">{l.nombre}{l.concepto ? ` · ${l.concepto}` : ''}</td>
-                        <td className="px-3 py-1.5 text-right w-28 tabular-nums">{Number(l.cargo) !== 0 ? money(l.cargo) : ''}</td>
-                        <td className="px-3 py-1.5 text-right w-28 tabular-nums">{Number(l.abono) !== 0 ? money(l.abono) : ''}</td>
-                      </tr>
-                    ))}
-                    <tr className="font-semibold bg-gray-50/70">
-                      <td colSpan={2} className="px-3 py-1.5 text-right text-gray-600">Sumas</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">{money(cargos)}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">{money(abonos)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              )}
-            </div>
-          );
-        })}
+      /* Libro diario como HOJA: tabla plana, un renglón por póliza, ordenada por
+         fecha. El detalle (partidas) se ve con el ojo (previsualización). */
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b">
+            <tr className="text-xs font-semibold text-gray-600">
+              <th className="px-3 py-2 text-left">Fecha</th>
+              <th className="px-3 py-2 text-left">Folio</th>
+              <th className="px-3 py-2 text-left">Tipo</th>
+              <th className="px-3 py-2 text-left">Concepto</th>
+              <th className="px-3 py-2 text-right">Importe</th>
+              <th className="px-3 py-2 text-center w-24">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {q.isLoading && <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-500">Cargando…</td></tr>}
+            {!q.isLoading && polizas.length === 0 && (
+              <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-500 italic">
+                Sin pólizas {filtro ? `de ${ETIQUETA[filtro].toLowerCase()} ` : ''}en {(MESES[mes] || 'todo el año')} {anio}.
+              </td></tr>
+            )}
+            {polizas.map((p) => {
+              const cargos = (p.lineas || []).reduce((a: number, l: any) => a + Number(l.cargo || 0), 0);
+              const abonos = (p.lineas || []).reduce((a: number, l: any) => a + Number(l.abono || 0), 0);
+              const cuadra = Math.abs(cargos - abonos) <= 0.02;
+              const cat = categoria(p);
+              const col = COLOR_CAT[cat] || COLOR_CAT.otro;
+              return (
+                <tr key={p.id} onDoubleClick={() => setEditar(p)} title="Doble clic para editar"
+                  className={`hover:bg-gray-50 border-l-4 ${col.accent}`}>
+                  <td className="px-3 py-1.5 whitespace-nowrap text-gray-500 tabular-nums">{fecha(p.fecha)}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">
+                    <button onClick={() => setEditar(p)} className="font-bold text-blue-600 hover:underline tabular-nums">#{p.folio}</button>
+                  </td>
+                  <td className="px-3 py-1.5"><span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${col.badge}`}>{ETIQUETA[cat]}</span></td>
+                  <td className="px-3 py-1.5 text-gray-700">
+                    <span className="truncate inline-block max-w-md align-middle">{p.concepto}</span>
+                    {!cuadra && <span className="ml-1.5 text-[10px] text-rose-600 inline-flex items-center gap-0.5 align-middle"><AlertTriangle size={11} /> descuadrada</span>}
+                  </td>
+                  <td className="px-3 py-1.5 text-right font-mono tabular-nums text-gray-800">{money(cargos)}</td>
+                  <td className="px-3 py-1.5">
+                    <div className="flex items-center justify-center gap-0.5">
+                      <button onClick={() => setPrevia(p)} title="Previsualizar / PDF" className="text-gray-300 hover:text-sky-600 p-1"><Eye size={15} /></button>
+                      <button onClick={() => setEditar(p)} title="Editar póliza" className="text-gray-300 hover:text-primary p-1"><Pencil size={14} /></button>
+                      <button onClick={() => borrar(p)} title="Eliminar póliza" className="text-gray-300 hover:text-rose-500 p-1"><Trash2 size={15} /></button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          {polizas.length > 0 && (
+            <tfoot>
+              <tr className="border-t-2 bg-gray-50 font-semibold text-gray-800">
+                <td colSpan={4} className="px-3 py-2 text-right text-xs text-gray-500">Total de cargos</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{money(stats.cargos)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
       </div>
       )}
 
