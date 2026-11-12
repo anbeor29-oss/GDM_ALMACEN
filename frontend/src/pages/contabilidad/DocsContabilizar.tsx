@@ -323,7 +323,7 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
 /* ── Combo de cuenta (datalist: despliega el catálogo; se escribe o se elige) ──
  * campo='cuenta' guarda la cuenta_contable (cliente/proveedor); campo='cuenta2'
  * guarda la cuenta_contable_2 (gasto/compra/activo de compras). */
-function ComboCuenta({ id, valor, opciones, campo, claveVista }: {
+export function ComboCuenta({ id, valor, opciones, campo, claveVista }: {
   id: string; valor?: string | null; opciones: Array<{ codigo: string; nombre: string }>;
   campo: 'cuenta' | 'cuenta2'; claveVista: any[];
 }) {

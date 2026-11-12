@@ -23,9 +23,11 @@ import { BookOpen, TrendingUp, ShoppingCart, Wallet, Coins, Package, Users, Laye
 import { claseOpcion } from '@/utils/coloresOpciones';
 import api from '@/services/api';
 import { aniosContables } from '@/utils/anios';
-import { DocsContabilizar, IconoCodificada, IconoPendiente } from './DocsContabilizar';
+import { DocsContabilizar, IconoCodificada, IconoPendiente, ComboCuenta } from './DocsContabilizar';
 import { PagosContabilizar } from './PagosContabilizar';
+import { AsientoModal } from '@/components/TablaComprobantesSat';
 import { PolizasListaPage } from './PolizasLista';
+import { Eye } from 'lucide-react';
 
 const MESES = ['Todo el año', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -337,12 +339,22 @@ function NominaRecibida({ anio, mes }: { anio: number; mes: number }) {
   const qc = useQueryClient();
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState('');
-  const q = useQuery({ queryKey: ['nomina-recibida', anio, mes], queryFn: () => api.getNominaRecibidaContabilizable(anio, mes) });
+  const [asiento, setAsiento] = useState<string | null>(null);
+  const claveVista: any[] = ['nomina-recibida', anio, mes];
+  const q = useQuery({ queryKey: claveVista, queryFn: () => api.getNominaRecibidaContabilizable(anio, mes) });
   const filas: any[] = q.data?.data?.nominas || [];
   const pend = filas.filter((f) => !f.contabilizado).length;
   const mny = (n: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
   const CLASE: Record<string, string> = { sueldos: 'Sueldos', asimilados: 'Asimilados', jubilacion: 'Jubilación', otro: 'Otro' };
-  const refrescar = () => { qc.invalidateQueries({ queryKey: ['nomina-recibida', anio, mes] }); qc.invalidateQueries({ queryKey: ['polizas'] }); };
+  // Catálogo de movimiento para los combos (acceso al catálogo de cuentas).
+  const ctasQ = useQuery({ queryKey: ['ctas-mov'], queryFn: () => api.getCuentasContables() });
+  const ctasMov = ((ctasQ.data as any)?.data?.cuentas || [])
+    .filter((c: any) => c.permite_movimientos).map((c: any) => ({ codigo: c.codigo, nombre: c.nombre }));
+  const refrescar = () => {
+    qc.invalidateQueries({ queryKey: claveVista });
+    qc.invalidateQueries({ queryKey: ['polizas'] });
+    qc.invalidateQueries({ queryKey: ['asiento'] });
+  };
   const uno = async (uuid: string, nombre: string) => {
     setBusy(uuid); setMsg('');
     try { const r: any = await api.contabilizarNominaRecibida(uuid); setMsg(r?.data?.ok ? `${nombre}: contabilizada.` : `${nombre}: ${r?.data?.error || 'pendiente'}.`); refrescar(); }
@@ -362,7 +374,7 @@ function NominaRecibida({ anio, mes }: { anio: number; mes: number }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="text-xs text-gray-500">Nómina/asimilados que te pagan (CFDI tipo N recibidos): Cargo Banco (neto) + ISR a favor · Abono Ingreso. Cuentas de las Asignaciones.</span>
+        <span className="text-xs text-gray-500">Nómina/asimilados que te pagan (CFDI tipo N): Cargo Banco (neto) + ISR a favor · Abono Ingreso. Captura la <b>cuenta de ingreso</b> y la de <b>ISR a favor</b> (1-1-60-02).</span>
         <button onClick={todas} disabled={!!busy || pend === 0}
           className="ml-auto inline-flex items-center gap-1.5 border border-amber-300 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-100 disabled:opacity-40">
           <PlayCircle size={15} /> {busy === 'todas' ? 'Contabilizando…' : `Contabilizar pendientes${pend ? ` (${pend})` : ''}`}
@@ -376,26 +388,39 @@ function NominaRecibida({ anio, mes }: { anio: number; mes: number }) {
               <th className="px-3 py-2 text-left">Fecha</th>
               <th className="px-3 py-2 text-left">Emisor</th>
               <th className="px-3 py-2 text-left">Clase</th>
+              <th className="px-3 py-2 text-left">Cuenta ingreso</th>
+              <th className="px-3 py-2 text-left">Cuenta ISR a favor</th>
               <th className="px-3 py-2 text-right">Percepciones</th>
               <th className="px-3 py-2 text-right">ISR</th>
               <th className="px-3 py-2 text-right">Neto</th>
+              <th className="px-3 py-2 text-center w-12">Póliza</th>
               <th className="px-3 py-2 text-center w-28">Contabilizar</th>
               <th className="px-3 py-2 text-center w-12">Estado</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {q.isLoading && <tr><td colSpan={8} className="px-3 py-6 text-center text-gray-500">Cargando…</td></tr>}
+            {q.isLoading && <tr><td colSpan={11} className="px-3 py-6 text-center text-gray-500">Cargando…</td></tr>}
             {!q.isLoading && filas.length === 0 && (
-              <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-500 italic">Sin nómina recibida en el periodo (CFDI tipo N recibidos).</td></tr>
+              <tr><td colSpan={11} className="px-3 py-8 text-center text-gray-500 italic">Sin nómina recibida en el periodo (CFDI tipo N recibidos).</td></tr>
             )}
             {filas.map((f) => (
               <tr key={f.uuid} className="hover:bg-gray-50">
                 <td className="px-3 py-2 whitespace-nowrap text-gray-700">{fechaMx(f.fecha)}</td>
-                <td className="px-3 py-2"><p className="truncate max-w-[14rem]" title={f.nombreEmisor}>{f.nombreEmisor || f.rfcEmisor || '—'}</p></td>
+                <td className="px-3 py-2"><p className="truncate max-w-[12rem]" title={f.nombreEmisor}>{f.nombreEmisor || f.rfcEmisor || '—'}</p></td>
                 <td className="px-3 py-2 text-gray-600">{CLASE[f.clase] || f.clase}</td>
+                <td className="px-3 py-2">
+                  {f.id ? <ComboCuenta id={f.id} valor={f.cuenta_contable} campo="cuenta" opciones={ctasMov} claveVista={claveVista} /> : '—'}
+                </td>
+                <td className="px-3 py-2">
+                  {f.id ? <ComboCuenta id={f.id} valor={f.cuenta_contable_2} campo="cuenta2" opciones={ctasMov} claveVista={claveVista} /> : '—'}
+                </td>
                 <td className="px-3 py-2 text-right tabular-nums">{mny(f.totalPercepciones)}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-gray-600">{mny(f.isr)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{mny(f.neto)}</td>
+                <td className="px-3 py-2 text-center">
+                  <button onClick={() => setAsiento(f.uuid)} title="Ver / previsualizar la póliza"
+                    className="text-gray-300 hover:text-sky-600"><Eye size={17} /></button>
+                </td>
                 <td className="px-3 py-2 text-center">
                   {f.contabilizado
                     ? <span className="text-[11px] text-emerald-700">lista</span>
@@ -413,9 +438,10 @@ function NominaRecibida({ anio, mes }: { anio: number; mes: number }) {
         </table>
       </div>
       <p className="text-[11px] text-gray-400 px-1">
-        Asiento: Cargo Banco (neto) + Cargo ISR retenido a favor / Abono Ingreso por nómina. Si falta asignar la
-        cuenta de ingreso o de ISR a favor, queda pendiente con el motivo.
+        Asiento: Cargo Banco (neto) + Cargo ISR retenido a favor / Abono Ingreso por nómina. Captura las cuentas en los
+        combos (despliegan el catálogo); el ISR por defecto usa 1-1-60-02 si no capturas otra. El <b>ojo</b> muestra la póliza.
       </p>
+      {asiento && <AsientoModal uuid={asiento} onClose={() => setAsiento(null)} claveVista={claveVista} />}
     </div>
   );
 }

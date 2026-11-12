@@ -178,15 +178,37 @@ async function ctaPorAgrup(companyId: string, agrupadores: string[]): Promise<{ 
   return r.rows[0] || null;
 }
 
+/** Resuelve una cuenta de MOVIMIENTO por su CÓDIGO exacto (p. ej. la capturada en el combo). */
+async function ctaPorCodigoMov(companyId: string, codigo?: string | null): Promise<{ id: string; codigo: string } | null> {
+  if (!codigo) return null;
+  const r = await query<any>(
+    `SELECT id, codigo FROM accounting_accounts
+      WHERE company_id=$1 AND codigo=$2 AND activa=true AND permite_movimientos=true LIMIT 1`,
+    [companyId, String(codigo).trim()]);
+  return r.rows[0] || null;
+}
+
 /** Nómina RECIBIDA del periodo con su estado contable (¿ya tiene póliza?). */
 export async function nominaRecibidaContabilizable(companyId: string, anio: number, mes = 0) {
   const lista = await nominaRecibidaPF(companyId, anio, mes);
   if (!lista.length) return [];
+  const uuids = lista.map((u) => u.uuid);
   const conPol = new Set<string>((await query<any>(
     `SELECT origen_uuid FROM journal_entries WHERE company_id=$1 AND origen_uuid = ANY($2::text[])`,
     [companyId, lista.map((u) => PREF_NOMREC + u.uuid)])).rows
     .map((r) => String(r.origen_uuid).slice(PREF_NOMREC.length)));
-  return lista.map((n) => ({ ...n, contabilizado: conPol.has(n.uuid) }));
+  // Las cuentas capturadas por el usuario (combo): ingreso y retención (ISR a favor).
+  const ctas = new Map<string, { id: string; cuenta_contable: string | null; cuenta_contable_2: string | null }>();
+  (await query<any>(
+    `SELECT id, uuid, cuenta_contable, cuenta_contable_2 FROM cfdi_recibidos
+      WHERE company_id=$1 AND uuid = ANY($2::text[])`, [companyId, uuids])).rows
+    .forEach((r) => ctas.set(r.uuid, { id: r.id, cuenta_contable: r.cuenta_contable, cuenta_contable_2: r.cuenta_contable_2 }));
+  return lista.map((n) => ({
+    ...n, contabilizado: conPol.has(n.uuid),
+    id: ctas.get(n.uuid)?.id || null,
+    cuenta_contable: ctas.get(n.uuid)?.cuenta_contable || null,
+    cuenta_contable_2: ctas.get(n.uuid)?.cuenta_contable_2 || null,
+  }));
 }
 
 /** Contabiliza UNA nómina recibida. Idempotente por NOMREC:uuid. */
@@ -194,7 +216,7 @@ export async function generarPolizaNominaRecibida(
   companyId: string, uuid: string, userId?: string,
 ): Promise<{ ok: true; folio: number } | { error: string }> {
   const c = (await query<any>(
-    `SELECT uuid, TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha, nombre_emisor, rfc_emisor, xml
+    `SELECT uuid, TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha, nombre_emisor, rfc_emisor, cuenta_contable, cuenta_contable_2, xml
        FROM cfdi_recibidos WHERE company_id=$1 AND uuid=$2 AND direccion='recibidos' AND tipo_comprobante='N' LIMIT 1`,
     [companyId, uuid])).rows[0];
   if (!c || !c.xml) return { error: 'no se encontró la nómina recibida (o sin XML)' };
@@ -203,15 +225,21 @@ export async function generarPolizaNominaRecibida(
 
   const banco = await ctaPorAgrup(companyId, ['102.01']);
   if (!banco) return { error: 'falta la cuenta de banco (agrupador 102.01)' };
-  // Lo ÚNICO obligatorio es la cuenta de INGRESO (el abono). El ISR a favor y otras
-  // retenciones son OPCIONALES: si no hay cuenta, no se separan (se quedan dentro del
-  // ingreso) para que el asiento SIEMPRE cuadre y se pueda contabilizar.
-  const ingreso = await ctaPorAgrup(companyId,
+  // Las cuentas CAPTURADAS mandan: cuenta_contable = ingreso, cuenta_contable_2 = ISR a
+  // favor. Si no se capturan, se resuelven (ingreso por agrupador; ISR por código
+  // 1-1-60-02 «retención ISPT asimilados» o agrupador). Lo ÚNICO obligatorio es el
+  // INGRESO (el abono); el ISR y otras retenciones son opcionales (si no hay cuenta, se
+  // quedan dentro del ingreso para que el asiento SIEMPRE cuadre).
+  const ingreso = (await ctaPorCodigoMov(companyId, c.cuenta_contable)) || await ctaPorAgrup(companyId,
     n.clase === 'asimilados' ? ['700.02', '700.01', '700', '401.02', '401.01', '401']
                              : ['700.01', '700', '401.01', '401']);
-  if (!ingreso) return { error: 'asigna la cuenta de INGRESO por nómina recibida (agrupador 700 / 401) en el catálogo' };
+  if (!ingreso) return { error: 'asigna la cuenta de INGRESO por nómina recibida (combo «Cuenta ingreso» o agrupador 700/401)' };
   const neto = r2(n.neto), isr = r2(n.isr), otras = r2(n.imss + n.otrasDeducciones);
-  const isrCta = isr > 0 ? await ctaPorAgrup(companyId, ['113.01', '113', '118.01', '118']) : null;
+  const isrCta = isr > 0
+    ? (await ctaPorCodigoMov(companyId, c.cuenta_contable_2))
+      || (await ctaPorCodigoMov(companyId, '1-1-60-02'))
+      || await ctaPorAgrup(companyId, ['113.01', '113'])
+    : null;
   const otrasCta = otras > 0 ? await ctaPorAgrup(companyId, ['216', '205', '113']) : null;
 
   const lineas: LineaPoliza[] = [

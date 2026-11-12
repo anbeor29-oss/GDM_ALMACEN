@@ -1963,6 +1963,18 @@ router.post(
   })
 );
 
+/** POST /accounting/polizas/generar-pagos-pue — genera el PAGO de las compras PUE del
+ *  mes que tienen compra pero aún no pago (Cargo Proveedor/118 · Abono Banco/119). */
+router.post(
+  '/polizas/generar-pagos-pue',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await polizas.generarPagosPueDirectoDelMes(
+      companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
+    res.json({ success: true, data: r });
+  })
+);
+
 /** POST /accounting/polizas/recodificar — desliga los enlaces de respaldo de los CFDI
  *  del mes que no tienen póliza real y recodifica (ventas o compras). body:{anio,mes,modo}. */
 router.post(

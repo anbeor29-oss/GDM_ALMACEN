@@ -84,10 +84,10 @@ export function PagosContabilizar({ modo }: { modo: 'cobros' | 'pagos' }) {
       // que tienen venta pero no cobro (como las migradas). Pagos = complementos recibidos.
       const r1: any = await api.generarCobrosPagos(anio, mes, false, modo);
       creadas += r1?.data?.creadas ?? 0; om.push(...(r1?.data?.omitidas || []));
-      if (cobros) {
-        const r2: any = await api.generarCobrosPue(anio, mes);
-        creadas += r2?.data?.creadas ?? 0; om.push(...(r2?.data?.omitidas || []));
-      }
+      // Además del REP: el cobro (ventas) / pago (compras) DIRECTO de las PUE que
+      // tienen su factura pero aún no su liquidación (incluye migradas).
+      const r2: any = cobros ? await api.generarCobrosPue(anio, mes) : await api.generarPagosPue(anio, mes);
+      creadas += r2?.data?.creadas ?? 0; om.push(...(r2?.data?.omitidas || []));
       let m = `${creadas} ${cobros ? 'cobro(s)' : 'pago(s)'} contabilizado(s).`;
       if (om.length) m += ` ${om.length} sin procesar: ${om.slice(0, 3).map((o) => `${o.folio} (${o.motivo})`).join(' · ')}${om.length > 3 ? '…' : ''}.`;
       if (!silencioso || creadas > 0) setMsg(m);

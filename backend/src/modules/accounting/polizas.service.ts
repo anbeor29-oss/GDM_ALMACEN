@@ -1003,6 +1003,102 @@ export async function generarCobrosPueDelMes(
 }
 
 /**
+ * PAGO de una compra (espejo de generarCobroPue, del lado compras). Es el asiento de
+ * la pestaña «Pago de compras», DISTINTO de la compra (devengo):
+ *   Cargo  Proveedor (cuenta capturada o por RFC)   total
+ *   Cargo  118.01 IVA acreditable                    iva
+ *   Abono  Banco (102.01, o destino)                 total
+ *   Abono  119.01 IVA por acreditar                  iva
+ * Banco e IVA de las Asignaciones. Idempotente por PAGOPUE:uuid. Funciona también
+ * con compras MIGRADAS (sin XML): el IVA sale de subtotal/total.
+ */
+export async function generarPagoPueDirecto(
+  companyId: string, uuid: string, userId?: string,
+  destino?: { accountId: string; etiqueta?: string },
+): Promise<{ ok: true; folio: number } | { error: string }> {
+  const c = (await query<any>(
+    `SELECT uuid, serie, folio, TO_CHAR(fecha_emision,'YYYY-MM-DD') AS fecha_emision,
+            subtotal, descuento, total, nombre_emisor, rfc_emisor, cuenta_contable, xml, tipo_comprobante
+       FROM cfdi_recibidos WHERE company_id=$1 AND uuid=$2 AND direccion='recibidos' LIMIT 1`,
+    [companyId, uuid])).rows[0];
+  if (!c) return { error: 'no se encontró el CFDI' };
+  if (c.tipo_comprobante && c.tipo_comprobante !== 'I') return { error: 'solo se paga una factura de ingreso (I)' };
+  const total = round2(c.total);
+  if (total <= 0) return { error: 'el CFDI no tiene importe' };
+  const iva = c.xml ? round2(impuestosDeXml(String(c.xml)).trasladados)
+    : (c.subtotal != null ? round2(total - (Number(c.subtotal) - Number(c.descuento || 0))) : 0);
+
+  let bancoId: string; const etiquetaBanco = destino?.etiqueta || 'Banco';
+  if (destino?.accountId) { bancoId = destino.accountId; }
+  else {
+    const b = await cuentaPorAgrupador(companyId, '102.01');
+    if (!b) return { error: 'falta la cuenta de banco (agrupador 102.01)' };
+    bancoId = b.id;
+  }
+  let provId: string;
+  if (c.cuenta_contable) {
+    const cc = await cuentaPorCodigo(companyId, String(c.cuenta_contable).trim());
+    if (!cc || !cc.permite_movimientos) return { error: `la cuenta del proveedor ${c.cuenta_contable} no es válida` };
+    provId = cc.id;
+  } else {
+    const prov = await resolverOCrearSubcuentaTercero(companyId, 'proveedor', c.rfc_emisor, c.nombre_emisor);
+    if ('error' in prov) return { error: `proveedores: ${prov.error}` };
+    provId = prov.id;
+  }
+
+  const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
+  const lineas: LineaPoliza[] = [
+    { account_id: provId, cargo: total, concepto: 'Proveedores (pago)', uuid_cfdi: c.uuid, party_rfc: c.rfc_emisor },
+    { account_id: bancoId, abono: total, concepto: `${etiquetaBanco} (pago)`, uuid_cfdi: c.uuid },
+  ];
+  if (iva > 0) {
+    const c118 = await cuentaPorAgrupador(companyId, '118.01');
+    const c119 = await cuentaPorAgrupador(companyId, '119.01');
+    if (!c118 || !c119) return { error: 'falta cuenta de IVA (118.01 / 119.01)' };
+    lineas.push({ account_id: c118.id, cargo: iva, concepto: 'IVA acreditable (pagado)', uuid_cfdi: c.uuid });
+    lineas.push({ account_id: c119.id, abono: iva, concepto: 'IVA por acreditar', uuid_cfdi: c.uuid });
+  }
+  try {
+    const pol = await crearPoliza(companyId, {
+      tipo: 'EGRESO', fecha: String(c.fecha_emision).slice(0, 10),
+      concepto: `Pago ${folioTxt} · ${(c.nombre_emisor || c.rfc_emisor || '').toString().slice(0, 80)}`.trim(),
+      origen: 'BANCO', origen_uuid: `PAGOPUE:${c.uuid}`, regla: 'pago_pue_v1', lineas,
+    }, userId);
+    return { ok: true, folio: pol.folio };
+  } catch (e: any) {
+    if (e?.code === '23505' || /ya existe una p[oó]liza con ese UUID/i.test(e?.message || '')) return { error: 'esta factura ya tiene su pago' };
+    return { error: (e?.message || 'no se pudo contabilizar el pago').toString().slice(0, 140) };
+  }
+}
+
+/** Genera en BLOQUE los PAGOS de las compras PUE del mes que tienen compra pero no pago. */
+export async function generarPagosPueDirectoDelMes(
+  companyId: string, anio: number, mes: number, userId?: string,
+): Promise<{ creadas: number; omitidas: Array<{ folio: string; motivo: string }> }> {
+  const r = await query<any>(
+    `SELECT c.uuid, c.serie, c.folio, c.metodo_pago, c.xml
+       FROM cfdi_recibidos c
+      WHERE c.company_id=$1 AND c.direccion='recibidos' AND c.tipo_comprobante='I'
+        AND (c.estado_sat IS NULL OR c.estado_sat <> 'Cancelado')
+        AND c.fecha_emision::date BETWEEN $2 AND $3
+        AND ${cfdiYaContabilizado('c')}
+        AND NOT EXISTS (SELECT 1 FROM journal_entries e
+                         WHERE e.company_id=c.company_id AND e.origen_uuid='PAGOPUE:'||c.uuid)
+      ORDER BY c.fecha_emision`,
+    [companyId, iniDeMes(anio, mes), finDeMes(anio, mes)]);
+  let creadas = 0;
+  const omitidas: Array<{ folio: string; motivo: string }> = [];
+  for (const c of r.rows) {
+    const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
+    const metodo = (String(c.xml || '').match(/MetodoPago\s*=\s*"([^"]+)"/)?.[1] || c.metodo_pago || '').toUpperCase();
+    if (metodo && metodo !== 'PUE') { continue; }
+    const rr = await generarPagoPueDirecto(companyId, c.uuid, userId);
+    if ('ok' in rr) creadas++; else omitidas.push({ folio: folioTxt, motivo: rr.error });
+  }
+  return { creadas, omitidas };
+}
+
+/**
  * Genera en BLOQUE las pólizas de pago de las compras PUE del mes, ruteando por la
  * FORMA DE PAGO del CFDI para llevar control de bancos:
  *   · modo 'todo-banco'   → todo al banco elegido (102-xx).
