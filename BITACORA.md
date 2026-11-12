@@ -8075,3 +8075,12 @@ ventas sigue PUE→208 / PPD→209 (no se cambió).
 **Migración:** `2026-11-11_cfdi_cuenta_contable_2.sql` (idempotente). **Front tocado ⇒ regenerar ZIP `build:hosting`.**
 **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend). Commits: `60d096e`, `0584231`, `a694297`,
 `027797e`, `1010d33`, `83e8cc9` (+ `cb4a0cb`, `151c874` de UI de catálogo/permisos). Ver `docs/POLIZAS_PESTANAS.md`.
+
+**Fix (mismo día, `c981731`):** la lista decía «codificada» pero el ojo «sin póliza». Causa: `asientoPorUuid`
+buscaba la póliza sólo por `origen_uuid` y `journal_lines.uuid_cfdi`, NO por `journal_entry_cfdi` (3ª vía, la de
+los respaldos CPQ/CTLK) — mientras que `cfdiYaContabilizado` (que marca «codificada») sí la usa. El ojo ahora busca
+por las 3 vías. Diagnóstico de fondo: las facturas que salen «codificada» sin póliza visible están **ligadas a un
+respaldo de OTRO periodo**, por eso el motor no las re-genera y no salen en el Libro diario del mes. Nuevo botón
+**«Recodificar respaldo»** en Ventas/Compras (`recodificarPeriodo`): desliga el enlace SÓLO de los CFDI del mes SIN
+póliza propia (no borra pólizas) y recodifica (en Compras dispara también el pago PUE). Nómina recibida: ahora sólo
+exige la cuenta de INGRESO; ISR a favor/otras opcionales.
