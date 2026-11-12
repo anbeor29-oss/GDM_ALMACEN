@@ -1,6 +1,6 @@
 # Pendientes — GDM NEXO
 
-> Lista viva de lo que falta. Actualizada 2026-11-04. Lo hecho se documenta en `BITACORA.md`.
+> Lista viva de lo que falta. Actualizada 2026-11-11. Lo hecho se documenta en `BITACORA.md`.
 
 ## 🟢 En curso / arrancar enseguida (2026-11-04)
 
@@ -31,6 +31,16 @@
   del XML (la columna puede venir vacía); el panel «Pago de compras» también detecta PUE por XML. Idempotente.
   Para compras ya asentadas sin pago: «Descontabilizar mes» + regenerar. **Pendiente:** el pago de NÓMINA (su
   pasivo/neto) es flujo aparte (`nomina-poliza`), no se auto-paga. Ver [[contabilidad-motor-polizas]].
+- **(HECHO 2026-11-11)** ~~Pólizas reconstruida como HUB de pestañas~~ (`60d096e`→`83e8cc9`): Ventas · Compras ·
+  Pagos de ventas · Pago de compras · Depreciaciones · Nómina (emitida/recibida) · Libro diario. Acomodo común
+  (Fecha·Folio·Nombre·Cuenta·[2ª]·Subtotal·IVA·Total·ojo·estado), sin UUID/RFC, combos que alimentan el asiento,
+  auto-contabiliza al abrir, ícono de estado nuevo. Cobro de ventas (`generarCobroPue`), nómina recibida
+  (`nomina-pf`), Libro diario como hoja por fecha. Migración `2026-11-11_cfdi_cuenta_contable_2.sql`. Timbrado→
+  contabilidad ya existía (`postTimbradoEmitido`). Detalle completo en `docs/POLIZAS_PESTANAS.md`. Ver
+  [[polizas-hub-pestanas]]. **Pendiente de usuario/afinar:** (a) confirmar los **agrupadores de nómina recibida**
+  (ingreso 700/401 e ISR a favor 113); (b) **formato final del Libro diario** (hoja: ¿por póliza o por movimiento?);
+  (c) hook server-side **descarga SAT → contabilidad** (hoy lo cubre el auto de las pestañas); (d) en Compras hay que
+  **capturar la 2ª cuenta (gasto)** para que genere (si está migrada, descontabilizar y regenerar).
 - **(HECHO 2026-11-09)** ~~Reparar enlaces del respaldo (opción B)~~ (`d2804b7`): cuando un respaldo no trajo el
   bloque «CFDI Asociados», el XML sale «por clasificar» aunque ya esté contabilizado (y el motor lo duplicaría).
   Botón **«Reparar enlaces del respaldo»** en Asignación de cuentas → Memoria por RFC: empareja XML↔póliza por

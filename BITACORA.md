@@ -8029,3 +8029,49 @@ Sin migración. **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y fro
   `/reiniciar-contabilidad-masivo` (re-verifica la contraseña), reusa `resetContab.reiniciarContabilidad`; auditado.
 
 Sin migración. **Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend).
+
+---
+
+## 2026-11-11 (contabilidad) — Pólizas reconstruida como HUB de pestañas (Ventas/Compras/Pagos/Depreciaciones/Nómina/Libro diario)
+
+Pedido del usuario a lo largo del día: la pantalla de Pólizas se veía confusa («sólo aparece el pasivo») y quería ver y
+contabilizar cada movimiento en su lugar. Se reconstruyó `contabilidad/polizas` como un **hub de pestañas**
+(`PolizasHub.tsx`), SIN tocar el motor: reutiliza la vista de comprobantes, el `AsientoModal` y la pantalla consolidada
+de siempre (que quedó como pestaña **Libro diario**). Referencia completa en `docs/POLIZAS_PESTANAS.md`.
+
+**Acomodo común (como lo pidió):** Fecha · Folio · Nombre · Cuenta · [2ª cuenta] · Subtotal · IVA · Total · 👁 ver
+póliza · estado. **Sin UUID** (y sin RFC en las de pago). Sumatorias al final. Ícono de estado NUEVO a juego con los de
+comprobantes (documento con sello verde = codificada / con puntos ámbar = pendiente). Botón «Generar/Contabilizar»
+siempre visible; las pestañas **auto-contabilizan al abrir el periodo** (idempotente).
+
+- **Vista de comprobantes** (`listarComprobantesVista`) ahora trae `subtotal`, `descuento`, `cuenta_contable_2` y
+  `contabilizado` (predicado único `cfdiYaContabilizado`), para pintar IVA y estado por renglón.
+- **Ventas**: combo de cliente (105) que ALIMENTA el asiento — `generarVentasDelMes` prefiere la `cuenta_contable`
+  capturada sobre la resolución por RFC; si no la conoce, queda pendiente.
+- **Compras**: DOS combos — Cuenta=proveedor (201/205, `cuenta_contable`) y 2ª cuenta=gasto/compra/activo
+  (`cuenta_contable_2`, **columna nueva**, migración `2026-11-11_cfdi_cuenta_contable_2.sql`). Si se captura la 2ª
+  cuenta, toda la factura va a ESA cuenta (cuenta única por factura); si no, parte por producto.
+- **Pagos de ventas** (`PagosContabilizar` modo cobros): procesa REP emitidos (`cobro_cfdi_v1`) **y genera el cobro de
+  las ventas PUE** que no tenían uno — nuevo `generarCobroPue`/`generarCobrosPueDelMes` (espejo de `generarPagoPue`):
+  Cargo Banco 102 + Cargo 209 «IVA por pagar» / Abono Cliente + Abono 208 «IVA pagado». Idempotente `COBROPUE:uuid`;
+  IVA del XML o de subtotal/total si es migrada. Arregla «el ojo mostraba la misma venta».
+- **Pago de compras** (modo pagos): REP recibidos + `generarPagoPue`. Asiento Cargo Proveedor + Cargo 118 / Abono Banco
+  + Abono 119 — ya era correcto, no se tocó el motor.
+- **Nómina** dividida en **emitida** (baja las pólizas del módulo: corridas + finiquitos) y **recibida** (CFDI tipo N
+  recibidos = la nómina/asimilados que te pagan). Recibida: nuevo `nominaRecibidaContabilizable`/
+  `generarPolizaNominaRecibida` (+ bulk) en `nomina-pf.service`, reusa el parser del complemento 1.2. Asiento: Cargo
+  Banco (neto) + Cargo ISR a favor / Abono Ingreso por nómina (700/401 por clase); cuentas de Asignaciones, pendiente si
+  faltan. Idempotente `NOMREC:uuid`. Control de mes/año compartido.
+- **Libro diario** → HOJA: tabla plana, un renglón por póliza, ordenada por fecha+folio; detalle con el ojo. (Formato
+  final por definir.)
+- **Timbrado → contabilidad**: se CONFIRMÓ que ya existía y funciona (`pac.service.postTimbradoEmitido`: indexa + dispara
+  póliza por `soloUuid`, I→venta, P→cobro). La **descarga SAT → contabilidad** la cubre el auto-contabilizar de las
+  pestañas al abrirlas (un hook server-side post-descarga queda opcional).
+
+**Decisiones de IVA (confirmadas por el usuario tras un par de lapsus):** Pago de ventas = Cargo 209 «IVA por pagar» /
+Abono 208 «IVA pagado». Pago de compras = Cargo 118 «IVA acreditable» / Abono 119 «IVA por acreditar». El devengo de
+ventas sigue PUE→208 / PPD→209 (no se cambió).
+
+**Migración:** `2026-11-11_cfdi_cuenta_contable_2.sql` (idempotente). **Front tocado ⇒ regenerar ZIP `build:hosting`.**
+**Despliegue:** `gdmalmacen main` + Manual Deploy (backend y frontend). Commits: `60d096e`, `0584231`, `a694297`,
+`027797e`, `1010d33`, `83e8cc9` (+ `cb4a0cb`, `151c874` de UI de catálogo/permisos). Ver `docs/POLIZAS_PESTANAS.md`.
