@@ -248,19 +248,22 @@ export async function incrementInvoiceFolio(companyId: string): Promise<number> 
  * Returns the folio that was assigned BEFORE incrementing
  */
 export async function getAndIncrementInvoiceFolio(companyId: string): Promise<number> {
-  const result = await query<{ folio: number }>(
-    `UPDATE companies
-     SET next_invoice_folio = next_invoice_folio + 1, updated_at = NOW()
-     WHERE id = $1
-     RETURNING (next_invoice_folio - 1) as folio`,
+  // El folio CONTINÚA la secuencia REAL: MAX(folio ya usado por esta empresa) + 1.
+  // Así, si se borra el ÚLTIMO borrador (antes de timbrar), su folio se REUTILIZA en la
+  // siguiente factura (el usuario «rehace desde cero»); los timbrados nunca se borran, así
+  // que nunca se pisa un folio real. Un borrador borrado a media secuencia deja su hueco y
+  // la secuencia continúa desde el máximo. Antes el contador sólo subía y saltaba el folio
+  // del borrador borrado. Se sincroniza next_invoice_folio para quien lo lea de preview.
+  const r = await query<{ folio: number }>(
+    `SELECT COALESCE(MAX(folio), 0) + 1 AS folio FROM invoices WHERE company_id = $1`,
     [companyId]
   );
-
-  if (result.rows.length === 0) {
-    throw new Error('Failed to get and increment invoice folio');
-  }
-
-  return result.rows[0].folio;
+  const folio = Number(r.rows[0]?.folio) || 1;
+  await query(
+    `UPDATE companies SET next_invoice_folio = $2, updated_at = NOW() WHERE id = $1`,
+    [companyId, folio + 1]
+  );
+  return folio;
 }
 
 export default {
