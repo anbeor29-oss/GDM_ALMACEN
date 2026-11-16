@@ -23,6 +23,13 @@ function fmtMoney(n: number): string {
   if (!isFinite(n)) return '0.00';
   return n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+/* Precio unitario: hasta 6 decimales (como el Anexo 20). Así el usuario ve y captura
+ * la precisión real (p. ej. 22.223801) y el total cierra a 2 al timbrar, en vez de
+ * redondear el precio a 22.22 y descuadrar el importe. */
+function fmtPrecio(n: number): string {
+  if (!isFinite(n)) return '0.00';
+  return n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+}
 function fmtQty(n: number): string {
   if (!isFinite(n)) return '0.000';
   // Hasta 6 enteros + 3 decimales (999,999.999 — miles de kg, piezas, gramaje, etc.)
@@ -228,6 +235,11 @@ export function NewInvoicePage() {
    * honorarios con retenciones). Esta bandera omite ESA primera adopción; si el
    * usuario cambia el cliente a mano después, sí se vuelve a aplicar. */
   const omitirAdopcionPreset = useRef(false);
+  /* Cliente ORIGINAL de la factura que se edita. Mientras el cliente siga siendo
+   * éste, NUNCA se adopta el preset (aunque el objeto `customer` se recargue o su
+   * régimen llegue tarde): así no se pierden los impuestos guardados. Sólo al CAMBIAR
+   * a otro cliente a mano se vuelve a aplicar. (El de un solo disparo era frágil.) */
+  const clienteOriginalRef = useRef<string>('');
   useEffect(() => {
     if (!isEditing || hydratedEditing) return;
     const inv = (editingInvoiceResp as any)?.data;
@@ -238,6 +250,7 @@ export function NewInvoicePage() {
       return;
     }
     omitirAdopcionPreset.current = true;   // no re-pisar los impuestos guardados al cargar
+    clienteOriginalRef.current = inv.customer_id || '';   // mientras siga este cliente, no adoptar
     setCustomerId(inv.customer_id || '');
     setPaymentForm(inv.payment_form || '99');
     setPaymentMethod(inv.payment_method || 'PPD');
@@ -281,6 +294,10 @@ export function NewInvoicePage() {
     // esta adopción UNA vez (la que dispara la hidratación). Un cambio de cliente
     // hecho a mano por el usuario después sí la aplica.
     if (omitirAdopcionPreset.current) { omitirAdopcionPreset.current = false; return; }
+    // Mientras se edita y el cliente siga siendo el ORIGINAL de la factura, NO se
+    // adopta (robusto ante recargas del cliente / régimen que llega tarde). Sólo se
+    // adopta al cambiar a OTRO cliente a mano.
+    if (clienteOriginalRef.current && customer?.id === clienteOriginalRef.current) return;
     const fromCust = inferPresetFromCustomer(customer);
     if (!fromCust) return;
     setLines((prev) =>
@@ -828,12 +845,13 @@ function LineRow({
             const v = parseNum(raw);
             onChange({ precioUnit: v < 0 ? 0 : v });
           }}
-          onBlur={() => setPrecioBuf(line.precioUnit > 0 ? fmtMoney(line.precioUnit) : '')}
+          onBlur={() => setPrecioBuf(line.precioUnit > 0 ? fmtPrecio(line.precioUnit) : '')}
           onFocus={(e) => {
             if (line.precioUnit > 0) setPrecioBuf(String(line.precioUnit));
             e.target.select();
           }}
-          placeholder="0.00"
+          placeholder="0.000000"
+          title="Hasta 6 decimales; el total cierra a 2 al timbrar."
           className="w-28 px-2 py-1 border border-gray-300 rounded text-right"
           inputMode="decimal"
         />

@@ -44,6 +44,20 @@ const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 // seguido de un espacio y el nombre. El importador valida el código contra el catálogo.
 const acctRe = /^(\d[\d.\-]*)(?:\s+(.*\S))?\s*$/;
 
+/* Un CÓDIGO de cuenta válido es SÓLO numérico: dígitos y separadores «-»/«.», sin
+ * letras. Así se rechazan los folios/fechas que Contalink a veces mete en la columna
+ * del código (p. ej. «2026-05-C-44», «2026-05-D-7»): la «C»/«D» del tipo de póliza los
+ * delata. El usuario NO maneja cuentas alfanuméricas. Además exige al menos un
+ * separador o 2+ dígitos para no colar basura de un solo carácter. */
+export function esCodigoCuentaValido(cod: string): boolean {
+  const c = String(cod || '').trim();
+  if (!/^\d[\d.\-]*\d$|^\d$/.test(c)) return false;   // sólo dígitos y - . ; empieza y termina en dígito
+  if (/[a-zA-Z]/.test(c)) return false;               // nada de letras
+  // Rechaza lo que parece una FECHA (AAAA-MM-DD / AAAA-MM): año 19xx/20xx + mes 01-12.
+  if (/^(19|20)\d{2}[-.](0?[1-9]|1[0-2])([-.]\d{1,2})?$/.test(c)) return false;
+  return true;
+}
+
 /** Serial de Excel (sistema 1900) → 'YYYY-MM-DD'. */
 function fechaDeSerial(n: number): string {
   const ms = Math.round((Math.floor(n) - 25569) * 86400000);
@@ -74,7 +88,7 @@ export function parsearCatalogoXls(buffer: Buffer): CuentaCtlk[] {
     const codigo = String(r?.[0] ?? '').trim();
     if (!codigo) continue;
     if (norm(codigo).startsWith('num cuenta')) continue;          // encabezado
-    if (!/^\d/.test(codigo)) continue;                            // solo cuentas reales
+    if (!esCodigoCuentaValido(codigo)) continue;                  // SOLO cuentas numéricas reales (ignora folios/fechas)
     const nombre = String(r?.[1] ?? '').trim() || codigo;
     const padre = String(r?.[2] ?? '').trim();
     let agr = String(r?.[3] ?? '').trim();
@@ -102,7 +116,10 @@ export async function importarCatalogoXls(companyId: string, buffer: Buffer) {
     while (cur && porCodigo.has(cur.padre) && g++ < 60) { d++; cur = porCodigo.get(cur.padre); }
     return d;
   };
-  const ordenadas = [...cuentas].sort((a, b) => prof(a) - prof(b) || a.codigo.localeCompare(b.codigo));
+  // Orden NUMÉRICO (no alfanumérico): «10» va después de «2», no antes. Primero por
+  // profundidad (padres antes que hijos), luego por el código con comparación numérica.
+  const ordenadas = [...cuentas].sort((a, b) =>
+    prof(a) - prof(b) || a.codigo.localeCompare(b.codigo, undefined, { numeric: true }));
 
   const agrs = await query<any>(`SELECT codigo FROM sat_codigos_agrupadores`);
   const agrValidos = new Set<string>(agrs.rows.map((r: any) => r.codigo));
@@ -219,7 +236,9 @@ export function parsearPolizasXls(buffer: Buffer): PolizaCtlk[] {
     // nombre se ignora). «Totales» no trae código → no entra.
     if (cur && !inCfdi && typeof v1 === 'string') {
       const m = acctRe.exec(v1.trim());
-      if (m && norm(v1) !== 'totales') {
+      // Valida el código: sólo cuentas numéricas reales (ignora folios/fechas que
+      // Contalink a veces mete, p. ej. «2026-05-C-44» o «2026-05-44»).
+      if (m && norm(v1) !== 'totales' && esCodigoCuentaValido(m[1])) {
         cur.movimientos.push({ cuenta: m[1], nombre: (m[2] || '').trim(), cargo: Number(row[3]) || 0, abono: Number(row[4]) || 0 });
       }
     }
