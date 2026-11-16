@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown, Wand2, CheckCircle2, Stethoscope, Undo2 } from 'lucide-react';
+import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown, CheckCircle2, Stethoscope, Undo2, Download } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
@@ -125,27 +125,31 @@ export function PolizasListaPage() {
   const aBalanza = () => navigate(`/contabilidad/balanza?anio=${anio}&mes=${mes}`);
   const aCambio = () => navigate(`/contabilidad/cambio-cuenta${cuentaCambio ? `?cuenta=${cuentaCambio}` : ''}`);
 
-  // Generar las pólizas del mes desde AQUÍ: todo se concentra en Contabilidad. La
-  // asignación de cuentas de cada tipo se hace en su pantalla de «asignar cuenta».
-  const generar = async (tipo: string, fn: () => Promise<any>) => {
-    setGenerando(tipo); setMsg('');
+  // Contabilizar el MES de un tirón: corre todos los generadores (Ventas, Cobro,
+  // Compras, Pago, Depreciación). Cada tipo tiene su propia pestaña; aquí es el
+  // botón único del Libro diario para asentar todo el mes a la vez.
+  const contabilizarTodo = async () => {
+    setGenerando('todo'); setMsg('');
+    let total = 0; const detalle: string[] = []; const omit: string[] = [];
     try {
-      const r: any = await fn();
-      // El motor responde { creadas, omitidas[] }. Se muestran los conteos y las
-      // primeras omitidas (incluye los «posible duplicado» de la red día/importe),
-      // para que el usuario vea POR QUÉ no se generaron todas.
-      const d = r?.data || {};
-      if (typeof d.creadas === 'number') {
-        const om = (d.omitidas || []) as Array<{ folio: string; motivo: string }>;
-        let m = `${d.creadas} póliza(s) generada(s).`;
-        if (om.length) m += ` ${om.length} omitida(s): ${om.slice(0, 3).map((o) => `${o.folio} (${o.motivo})`).join(' · ')}${om.length > 3 ? '…' : ''}.`;
-        setMsg(m);
-      } else {
-        setMsg(r?.message || d?.message || 'Pólizas generadas.');
+      for (const [, label, fn] of GENERADORES) {
+        try {
+          const r: any = await fn();
+          const d = r?.data || {};
+          const c = typeof d.creadas === 'number' ? d.creadas : 0;
+          const extra = (d.cobrosPue || 0) + (d.pagosPue || 0);
+          total += c + extra;
+          if (c || extra) detalle.push(`${label}: ${c}${extra ? `+${extra}` : ''}`);
+          const om = (d.omitidas || []) as Array<{ folio: string; motivo: string }>;
+          if (om.length) omit.push(`${label} ${om.length}`);
+        } catch { omit.push(`${label} ✗`); }
       }
+      let m = `Mes contabilizado: ${total} póliza(s).`;
+      if (detalle.length) m += ` ${detalle.join(' · ')}.`;
+      if (omit.length) m += ` Pendientes/omitidas: ${omit.join(' · ')}.`;
+      setMsg(m);
       await qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
-    } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo generar.'); }
-    finally { setGenerando(''); }
+    } finally { setGenerando(''); }
   };
   /* Importa las pólizas históricas desde el TXT de CPQ (el catálogo debe estar antes). */
   const importarTxt = async (file: File) => {
@@ -159,23 +163,6 @@ export function PolizasListaPage() {
       setMsg(m);
       await qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
     } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo importar el TXT.'); }
-    finally { setGenerando(''); }
-  };
-  /* «De un tirón»: asigna cuentas de producto (ventas+compras) con match claro y
-   * genera las subcuentas de terceros. Deja sólo los dudosos por revisar. */
-  const autoAsignar = async () => {
-    setGenerando('auto'); setMsg('');
-    try {
-      const mesEfectivo = (todoAnio || mes === 0) ? 0 : mes;
-      const r: any = await api.autoAsignarCuentasTodo(anio, mesEfectivo);
-      const d = r.data;
-      const pend = (d.ventas?.pendientes?.length || 0) + (d.compras?.pendientes?.length || 0);
-      setMsg(
-        `Auto-asignado: ${d.ventas?.asignadas || 0} de venta y ${d.compras?.asignadas || 0} de compra. ` +
-        `Subcuentas nuevas: ${d.subClientes?.creadas || 0} cliente(s), ${d.subProveedores?.creadas || 0} proveedor(es). ` +
-        (pend ? `Quedan ${pend} producto(s) dudoso(s) por revisar en «Asignar cuentas».` : 'Sin dudosos: todo quedó asignado.'));
-      await qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
-    } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo auto-asignar.'); }
     finally { setGenerando(''); }
   };
   /* Orden pedido: Ventas → Cobro/Venta → Compras → Pago/Compra → Depreciación → PUE.
@@ -303,36 +290,24 @@ export function PolizasListaPage() {
         })}
       </div>
 
+      {/* Barra del Libro diario: Contabilizar el mes (un botón), Descontabilizar e
+          Importar CPQ DESPUÉS. Los botones por tipo (Ventas/Compras/…) ya viven en sus
+          pestañas, así que aquí se ocultaron para no duplicar. */}
       {filtro !== 'ppdpue' && (
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 space-y-2.5">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">{todoAnio ? `Generar ${anio}` : 'Generar mes'}</span>
-          <label className="flex items-center gap-1 text-xs text-gray-500 mr-1" title="Genera Ventas/Compras/Cobros de todos los meses del año (la depreciación sigue siendo mensual)">
+          <label className="flex items-center gap-1 text-xs text-gray-500 mr-1" title="Contabiliza/descontabiliza TODOS los meses del año (la depreciación sigue siendo mensual)">
             <input type="checkbox" checked={todoAnio} onChange={(e) => setTodoAnio(e.target.checked)} /> todo el año
           </label>
-          {GENERADORES.map(([k, label, fn]) => (
-            <button key={k} onClick={() => generar(k, fn)} disabled={!!generando}
-              className="inline-flex items-center gap-1 border border-gray-200 bg-white px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 hover:border-primary hover:text-primary disabled:opacity-40 transition-colors">
-              <PlayCircle size={14} /> {generando === k ? 'Generando…' : label}
-            </button>
-          ))}
-          {/* El PAGO de las compras PUE y el COBRO de las ventas PUE ya NO tienen botón:
-              se generan AUTOMÁTICO al «Generar Compras»/«Generar Ventas» (el motor detecta
-              MetodoPago=PUE y, tras el pasivo/activo, asienta su cancelación). */}
-          {/* Descontabilizar: deshace las pólizas AUTOMÁTICAS del mes (p. ej. si el
-              motor duplicó). Separado y en rojo para no confundir con «Generar». */}
-          <button onClick={() => setDescModal(true)} disabled={!!generando}
-            title="Deshace las pólizas automáticas del mes (CFDI, PUE y depreciación). Útil si se duplicaron."
-            className="ml-auto inline-flex items-center gap-1 border border-rose-200 bg-rose-50 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-rose-100 disabled:opacity-40 transition-colors">
-            <Undo2 size={14} /> Descontabilizar mes
+          <button onClick={contabilizarTodo} disabled={!!generando}
+            title="Contabiliza el mes completo: ventas, sus cobros, compras, sus pagos y la depreciación, de una sola vez."
+            className="inline-flex items-center gap-1.5 border px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
+            <PlayCircle size={15} /> {generando === 'todo' ? 'Contabilizando…' : (todoAnio ? `Contabilizar ${anio}` : 'Contabilizar mes')}
           </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-gray-100">
-          <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">Asignar cuentas</span>
-          <button onClick={autoAsignar} disabled={!!generando}
-            title="Asigna de un tirón las cuentas de producto con match claro (misma familia SAT) de ventas y compras, y genera las subcuentas de clientes/proveedores. Sólo deja los dudosos por revisar a mano."
-            className="inline-flex items-center gap-1 border border-emerald-300 bg-emerald-50 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-40">
-            <Wand2 size={14} /> {generando === 'auto' ? 'Asignando…' : 'Auto-asignar todo'}
+          <button onClick={() => setDescModal(true)} disabled={!!generando}
+            title="Deshace las pólizas automáticas del mes (CFDI, PUE, depreciación, nómina recibida)."
+            className="inline-flex items-center gap-1.5 border border-rose-200 bg-rose-50 text-rose-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-rose-100 disabled:opacity-40">
+            <Undo2 size={15} /> Descontabilizar mes
           </button>
           <label
             title="Importa las pólizas históricas desde el TXT de CPQ. Casa cada renglón por código de cuenta, así que importa el catálogo primero. No duplica: se salta las que ya tengan el mismo UUID."
@@ -342,6 +317,7 @@ export function PolizasListaPage() {
               onChange={(e) => { const f = e.target.files?.[0]; if (f) importarTxt(f); e.currentTarget.value = ''; }} />
           </label>
         </div>
+        <ExportarExcel anio={anio} mes={mes} />
       </div>
       )}
 
@@ -604,6 +580,41 @@ function PreviaPoliza({ poliza, mascara, onCerrar }: any) {
 /* ── Modal «Descontabilizar mes»: deshace las pólizas AUTOMÁTICAS por tipo ──
  * Sólo motor (CFDI/PUE/depreciación). Para re-generar limpio cuando algo se duplicó
  * (p. ej. correr «Compras» sobre CFDI que ya venían de un respaldo). */
+/* ── Exportar el Libro diario a Excel, con fecha inicial y final ───────────── */
+function ExportarExcel({ anio, mes }: { anio: number; mes: number }) {
+  const ym = (a: number, m: number, last = false) => {
+    const mm = m >= 1 && m <= 12 ? m : (last ? 12 : 1);
+    const d = last ? new Date(a, mm, 0).getDate() : 1;
+    return `${a}-${String(mm).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  };
+  const [desde, setDesde] = useState(ym(anio, mes));
+  const [hasta, setHasta] = useState(ym(anio, mes, true));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  // Si cambia el periodo del encabezado, re-sincroniza el rango por comodidad.
+  useEffect(() => { setDesde(ym(anio, mes)); setHasta(ym(anio, mes, true)); }, [anio, mes]); // eslint-disable-line react-hooks/exhaustive-deps
+  const exportar = async () => {
+    setBusy(true); setErr('');
+    try { await api.exportarLibroDiarioExcel(desde, hasta); }
+    catch (e: any) { setErr(e?.response?.data?.message || e?.message || 'No se pudo exportar.'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-gray-100 mt-2.5">
+      <span className="text-xs font-semibold text-gray-500">Exportar a Excel</span>
+      <CampoFecha value={desde} onChange={setDesde} className="input py-1 text-xs w-32" />
+      <span className="text-xs text-gray-400">a</span>
+      <CampoFecha value={hasta} onChange={setHasta} className="input py-1 text-xs w-32" />
+      <button onClick={exportar} disabled={busy}
+        title="Descarga el libro diario del rango de fechas en Excel (un renglón por movimiento)."
+        className="inline-flex items-center gap-1.5 border border-emerald-300 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-emerald-100 disabled:opacity-40">
+        <Download size={14} /> {busy ? 'Generando…' : 'Exportar a Excel'}
+      </button>
+      {err && <span className="text-xs text-rose-600">{err}</span>}
+    </div>
+  );
+}
+
 const TIPOS_DESCONTAB: Array<[string, string]> = [
   ['ventas', 'Ventas'],
   ['cobros', 'Cobros de venta'],

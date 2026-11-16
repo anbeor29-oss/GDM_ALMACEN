@@ -1772,6 +1772,16 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas', { params: { anio, mes } });
     return r.data;
   }
+  /** Descarga el Libro diario a Excel por rango de fechas (dispara la descarga en el navegador). */
+  async exportarLibroDiarioExcel(desde: string, hasta: string) {
+    const r = await this.client.get('/accounting/polizas/excel', { params: { desde, hasta }, responseType: 'blob' });
+    const blob = new Blob([r.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `libro-diario_${desde}_${hasta}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    window.URL.revokeObjectURL(url);
+  }
   async getPolizasConCuadre(anio: number, mes: number) {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas/con-cuadre', { params: { anio, mes } });
     return r.data;

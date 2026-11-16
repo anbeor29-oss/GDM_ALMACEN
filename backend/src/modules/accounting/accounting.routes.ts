@@ -21,6 +21,7 @@ import * as motorNif from './nif-motor.service';
 import * as estados from './estados-financieros.service';
 import * as periodos from './periodos.service';
 import * as polizas from './polizas.service';
+import { exportarLibroDiarioExcel } from './libro-diario-excel.service';
 import * as terceros from './catalogo-terceros.service';
 import * as ventas from './ventas-cuentas.service';
 import * as compras from './compras-cuentas.service';
@@ -1858,6 +1859,18 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const data = await polizas.listarPolizas(companyId(req), Number(req.query.anio), Number(req.query.mes));
     res.json({ success: true, data: { polizas: data } });
+  })
+);
+
+/** GET /accounting/polizas/excel?desde=&hasta= — Libro diario a Excel por rango de fechas. */
+router.get(
+  '/polizas/excel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const desde = String(req.query.desde || ''), hasta = String(req.query.hasta || '');
+    const buf = await exportarLibroDiarioExcel(companyId(req), desde, hasta);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="libro-diario_${desde}_${hasta}.xlsx"`);
+    res.send(buf);
   })
 );
 
