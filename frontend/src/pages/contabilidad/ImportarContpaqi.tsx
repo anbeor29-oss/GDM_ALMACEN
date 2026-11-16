@@ -12,6 +12,7 @@ import { useState, useEffect } from 'react';
 import { Database, Download, Upload, PlayCircle, CheckCircle2, FileArchive, ShieldAlert, RefreshCw } from 'lucide-react';
 import api from '@/services/api';
 import { formatCuenta } from '@/utils/cuenta';
+import { BarraProgreso } from '@/components/BarraProgreso';
 import { extraerCfdisDeZip } from '@/utils/recuperarCfdi';
 
 const ARCHIVOS = ['empresa', 'cuentas', 'polizas', 'movimientos', 'poliza_cfdi', 'cfdi', 'saldos'] as const;
@@ -451,20 +452,21 @@ export function ImportarContalink() {
   const [repCat, setRepCat] = useState<any>(null);
   const [repPol, setRepPol] = useState<any>(null);
   const [err, setErr] = useState('');
+  const [progreso, setProgreso] = useState<number | null>(null);
 
   const subir = async (kind: 'cat' | 'pol', file: File) => {
-    setBusy(kind); setErr('');
+    setBusy(kind); setErr(''); setProgreso(0);
     if (kind === 'cat') setRepCat(null); else setRepPol(null);
     try {
       const fd = new FormData();
       fd.append('archivo', file, file.name);
       const r: any = kind === 'cat'
-        ? await api.importarContalinkCatalogo(fd)
-        : await api.importarContalinkPolizas(fd);
+        ? await api.importarContalinkCatalogo(fd, setProgreso)
+        : await api.importarContalinkPolizas(fd, setProgreso);
       if (kind === 'cat') setRepCat(r.data); else setRepPol(r.data);
     } catch (e: any) {
       setErr(e?.response?.data?.message || e?.message || 'No se pudo importar.');
-    } finally { setBusy(''); }
+    } finally { setBusy(''); setProgreso(null); }
   };
 
   const BotonXls = ({ kind, label }: { kind: 'cat' | 'pol'; label: string }) => (
@@ -489,6 +491,11 @@ export function ImportarContalink() {
       </p>
 
       {err && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded px-3 py-2">{err}</p>}
+
+      {progreso !== null && (
+        <BarraProgreso pct={progreso} procesando={!!busy}
+          etiqueta={busy === 'cat' ? 'Importando catálogo de Contalink…' : 'Importando pólizas de Contalink…'} />
+      )}
 
       <div className="grid sm:grid-cols-2 gap-3">
         {/* Paso 1 — catálogo */}

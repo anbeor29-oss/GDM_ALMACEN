@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown, CheckCircle2, Stethoscope, Undo2, Download } from 'lucide-react';
 import api from '@/services/api';
 import { CampoFecha } from '@/components/CampoFecha';
+import { BarraProgreso } from '@/components/BarraProgreso';
 import { PartidasPoliza, fmt2, type LineaPoliza } from '@/components/contabilidad/PartidasPoliza';
 import { TablaComprobantesSat } from '@/components/TablaComprobantesSat';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
@@ -151,19 +152,21 @@ export function PolizasListaPage() {
       await qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
     } finally { setGenerando(''); }
   };
-  /* Importa las pólizas históricas desde el TXT de CPQ (el catálogo debe estar antes). */
+  /* Importa las pólizas históricas desde el TXT de CPQ (el catálogo debe estar antes).
+     Con barra de avance de la SUBIDA (0–100%) + «procesando…» mientras el servidor lee. */
+  const [progreso, setProgreso] = useState<number | null>(null);
   const importarTxt = async (file: File) => {
-    setGenerando('txt'); setMsg('');
+    setGenerando('txt'); setMsg(''); setProgreso(0);
     try {
       const fd = new FormData(); fd.append('archivo', file);
-      const r: any = await api.importarPolizasTxt(fd);
+      const r: any = await api.importarPolizasTxt(fd, setProgreso);
       let m = r?.message || 'Pólizas importadas.';
       const om = r?.data?.omitidas as Array<{ folio: string; motivo: string }> | undefined;
       if (om?.length) m += ` Omitidas ${om.length}: ${om.slice(0, 2).map((o) => `${o.folio} (${o.motivo})`).join(' · ')}${om.length > 2 ? '…' : ''}.`;
       setMsg(m);
       await qc.invalidateQueries({ queryKey: ['polizas', anio, mes] });
     } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo importar el TXT.'); }
-    finally { setGenerando(''); }
+    finally { setGenerando(''); setProgreso(null); }
   };
   /* Orden pedido: Ventas → Cobro/Venta → Compras → Pago/Compra → Depreciación → PUE.
      Cobro/Venta y Pago/Compra son el mismo motor de complementos, separados por
@@ -319,6 +322,12 @@ export function PolizasListaPage() {
         </div>
         <ExportarExcel anio={anio} mes={mes} />
       </div>
+      )}
+
+      {progreso !== null && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
+          <BarraProgreso pct={progreso} procesando={generando === 'txt'} etiqueta="Importando pólizas de CPQ (.txt)" />
+        </div>
       )}
 
       {filtro !== 'ppdpue' && <DiagnosticoCuadre anio={anio} mes={mes} />}

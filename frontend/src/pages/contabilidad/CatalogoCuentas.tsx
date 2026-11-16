@@ -25,6 +25,7 @@ import api from '@/services/api';
 import { useCapacidades, CAP } from '@/utils/capacidades';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { aniosContables } from '@/utils/anios';
+import { BarraProgreso } from '@/components/BarraProgreso';
 
 const TIPO_COLOR: Record<string, string> = {
   ACTIVO:  'bg-sky-100 text-sky-800',
@@ -72,6 +73,7 @@ export function CatalogoCuentasPage() {
   const [soloSinAgrupador, setSoloSinAgrupador] = useState(false);
   const [soloMalCapturadas, setSoloMalCapturadas] = useState(false);
   const [herr, setHerr] = useState('');   // herramienta de mantenimiento en curso
+  const [progreso, setProgreso] = useState<number | null>(null);  // barra de avance de import
   const [proponer, setProponer] = useState(false);   // modal de propuesta de agrupador
 
   const arbolQ = useQuery({
@@ -182,32 +184,33 @@ export function CatalogoCuentasPage() {
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo descargar la plantilla.'); }
     finally { setHerr(''); }
   };
-  /* Importa el catálogo desde el TXT de CPQ (crea las cuentas con su jerarquía). */
+  /* Importa el catálogo desde el TXT de CPQ (crea las cuentas con su jerarquía).
+     Con barra de avance de la subida + «procesando…». */
   const importarTxt = async (file: File) => {
-    setHerr('txt'); setMsg('');
+    setHerr('txt'); setMsg(''); setProgreso(0);
     try {
       const fd = new FormData(); fd.append('archivo', file);
-      const r: any = await api.importarCatalogoTxt(fd);
+      const r: any = await api.importarCatalogoTxt(fd, setProgreso);
       let m = r?.message || 'Catálogo importado.';
       if (r?.data?.errores?.length) m += ` Errores: ${r.data.errores.slice(0, 3).join(' · ')}${r.data.errores.length > 3 ? '…' : ''}.`;
       setMsg(m);
       refrescar();
     } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo importar el TXT.'); }
-    finally { setHerr(''); }
+    finally { setHerr(''); setProgreso(null); }
   };
   /* Reimporta el Excel editado: casa por código y actualiza nombre + agrupador. */
   const importarExcel = async (file: File) => {
-    setHerr('import'); setMsg('');
+    setHerr('import'); setMsg(''); setProgreso(0);
     try {
       const fd = new FormData(); fd.append('archivo', file);
-      const r: any = await api.importarCatalogoExcel(fd);
+      const r: any = await api.importarCatalogoExcel(fd, setProgreso);
       const d = r?.data || {};
       let m = r?.message || 'Catálogo importado.';
       if (d.errores?.length) m += ` Errores: ${d.errores.slice(0, 3).join(' · ')}${d.errores.length > 3 ? '…' : ''}.`;
       setMsg(m);
       refrescar();
     } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo importar el Excel.'); }
-    finally { setHerr(''); }
+    finally { setHerr(''); setProgreso(null); }
   };
 
   if (arbolQ.isLoading) {
@@ -290,6 +293,10 @@ export function CatalogoCuentasPage() {
           )}
         </div>
       </div>
+
+      {progreso !== null && (
+        <BarraProgreso pct={progreso} procesando={herr === 'txt' || herr === 'import'} etiqueta="Importando catálogo CPQ…" />
+      )}
 
       {/* ── Lo que está mal, arriba y antes de que importe ── */}
       {revision?.avisos?.map((a: any, i: number) => (

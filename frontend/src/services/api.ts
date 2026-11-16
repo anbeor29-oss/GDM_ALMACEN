@@ -1493,33 +1493,38 @@ class APIClient {
     await this.downloadFile(r.data as Blob, 'Plantilla_catalogo_cuentas.xlsx');
   }
   /** Importa el catálogo desde Excel (actualiza las que existen y crea las nuevas). */
-  async importarCatalogoExcel(fd: FormData) {
+  async importarCatalogoExcel(fd: FormData, onProgress?: (pct: number) => void) {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/catalogo/importar', fd,
-      { headers: { 'Content-Type': 'multipart/form-data' } });
+      { headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (e) => { if (e.total) onProgress?.(Math.round((e.loaded / e.total) * 100)); } });
     return r.data;
   }
   /** Importa el catálogo desde el TXT de CPQ (crea las cuentas con su jerarquía). */
-  async importarCatalogoTxt(fd: FormData) {
+  async importarCatalogoTxt(fd: FormData, onProgress?: (pct: number) => void) {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/catalogo/importar-txt', fd,
-      { headers: { 'Content-Type': 'multipart/form-data' } });
+      { headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (e) => { if (e.total) onProgress?.(Math.round((e.loaded / e.total) * 100)); } });
     return r.data;
   }
   /** Importa pólizas desde el TXT de CPQ (el catálogo debe estar importado antes). */
-  async importarPolizasTxt(fd: FormData) {
+  async importarPolizasTxt(fd: FormData, onProgress?: (pct: number) => void) {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/importar-txt', fd,
-      { headers: { 'Content-Type': 'multipart/form-data' } });
+      { headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (e) => { if (e.total) onProgress?.(Math.round((e.loaded / e.total) * 100)); } });
     return r.data;
   }
   /** Importa el catálogo de Contalink (CTLK) desde Excel (.xls/.xlsx). */
-  async importarContalinkCatalogo(fd: FormData) {
+  async importarContalinkCatalogo(fd: FormData, onProgress?: (pct: number) => void) {
     const r = await this.client.post<APIResponse<any>>('/accounting/contalink/catalogo', fd,
-      { headers: { 'Content-Type': 'multipart/form-data' } });
+      { headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (e) => { if (e.total) onProgress?.(Math.round((e.loaded / e.total) * 100)); } });
     return r.data;
   }
   /** Importa el libro diario (pólizas) de Contalink (CTLK) desde Excel; el catálogo va primero. */
-  async importarContalinkPolizas(fd: FormData) {
+  async importarContalinkPolizas(fd: FormData, onProgress?: (pct: number) => void) {
     const r = await this.client.post<APIResponse<any>>('/accounting/contalink/polizas', fd,
-      { headers: { 'Content-Type': 'multipart/form-data' } });
+      { headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (e) => { if (e.total) onProgress?.(Math.round((e.loaded / e.total) * 100)); } });
     return r.data;
   }
   /** Propone el agrupador SAT de las cuentas que no lo tienen (por nombre + herencia). Sólo propone. */
