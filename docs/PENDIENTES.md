@@ -1,8 +1,27 @@
 # Pendientes — GDM NEXO
 
-> Lista viva de lo que falta. Actualizada 2026-11-11. Lo hecho se documenta en `BITACORA.md`.
+> Lista viva de lo que falta. Actualizada 2026-11-16. Lo hecho se documenta en `BITACORA.md`.
 
 ## 🟢 En curso / arrancar enseguida (2026-11-04)
+
+- **(HECHO 2026-11-16)** ~~Correcciones del menú Pólizas (lista A, 7) + depreciación de autos + limpieza de catálogo~~.
+  Cobro IVA 208/209; barra de descontabilizar; fix `ESCAPE`; cancelación pasiva; «Generar pólizas» de Depreciaciones;
+  barras 0-100 % y límite 25 MB; Libro diario a Excel por rango. **#7** impuestos al editar, **#8** precio 6 decimales,
+  **#9** folio reutiliza el del borrador borrado, **#6** reorden de Tesorería + «Cobros y pagos» oculto, **#2** validador
+  de catálogo CTLK. **#3** «Proponer agrupadores» en la pantalla verde del import; **#4** «Reconstruir» dentro de la
+  pantalla verde (tarjeta suelta oculta); **#1** depreciación de autos (resuelve cuentas por AGRUPADOR SAT → sí deprecia
+  en catálogos importados; + tope deducible 36-II editable, migración `2026-11-16_activo_tope_deducible.sql`); **#2
+  limpieza** «Limpiar cuentas raras» (borra las vacías con código inválido, desactiva las que tienen datos); **#6 PDF**
+  `docs/FUNCIONES_OCULTAS.pdf`. Detalle en BITACORA. **Front tocado ⇒ regenerar ZIP `build:hosting`.** Ver
+  [[polizas-hub-pestanas]], [[activo-fijo-depreciacion]].
+- **(Lista B — FALTA, grande) #5 Carga masiva de estados de cuenta del año.** Subir 1-12 PDFs (o un zip) de un banco →
+  extraer a una hoja → **partir por mes** por fechas → armar la balanza/tesorería mes a mes. Base: ya existe el extractor
+  de PDF de un estado de cuenta (Tesorería, formato canónico de 7 columnas). Falta: aceptar varios PDFs/zip en una carga,
+  agrupar los movimientos por mes y encadenar la carga por mes. Ver [[extractor-estados-cuenta]].
+- **(Lista B — FALTA, grande) #10 Complemento de pago (REP) con más de 1 factura.** Pantalla nueva desde «Complementos de
+  pago» en Facturas: capturar depósito, fecha, banco, elegir cliente, marcar **varias** facturas PPD y generar UN REP
+  (CFDI tipo P con varios `DoctoRelacionado`) + timbrar. Base: ya existe el REP de una factura y el multimoneda. Falta la
+  pantalla multi-factura y armar el P con varios documentos. Ver [[complemento-pago-multimoneda]], [[pue-ppd-cobranza-regla]].
 
 - **GRUPO HCGM — reconstruir su contabilidad y limpiar ejemplos.** Saldos no cuadran por catálogo duplicado. Caminos
   listos: **Fusionar** duplicadas (Catálogo → «Cuentas duplicadas») o **Reiniciar contabilidad** (Súper Admin, conserva

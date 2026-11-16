@@ -433,6 +433,31 @@ router.post(
   })
 );
 
+/** GET /accounting/cuentas/invalidas — cuentas con CÓDIGO inválido (folios/fechas
+ *  colados por un import viejo). Sólo previsualiza; no borra nada. */
+router.get(
+  '/cuentas/invalidas',
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await catalogo.previsualizarLimpiezaCuentas(companyId(req));
+    res.json({ success: true, data });
+  })
+);
+
+/** POST /accounting/cuentas/limpiar-invalidas — borra las cuentas con código inválido
+ *  que estén vacías y desactiva las que tengan datos. */
+router.post(
+  '/cuentas/limpiar-invalidas',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await catalogo.limpiarCuentasConCodigoInvalido(companyId(req));
+    res.json({
+      success: true, data: r,
+      message: `${r.borradas.length} cuenta(s) inválida(s) borrada(s)` +
+        (r.desactivadas.length ? `, ${r.desactivadas.length} desactivada(s) por tener datos` : '') + '.',
+    });
+  })
+);
+
 /** GET /accounting/cuentas/duplicadas?q= — grupos de cuentas con el mismo nombre
  *  (posibles duplicados por typo/mayúsculas). */
 router.get(

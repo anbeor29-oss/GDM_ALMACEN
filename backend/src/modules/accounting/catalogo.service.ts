@@ -23,6 +23,7 @@ import { proponerMapeo, agrupadoresValidos, conNombresDelSat } from './mapeador-
 import type { FilaBalanza } from './balanza-lector.service';
 import { NIF_NORMAS } from './nif-normas.data';
 import { construirCatalogoSat, SUBCUENTAS_ARRANQUE, NIVEL2_PENDIENTE, type CodigoSat } from './catalogo-sat.data';
+import { esCodigoCuentaValido } from './codigo-cuenta.util';
 import logger from '../../middleware/logger';
 
 /**
@@ -1016,6 +1017,67 @@ export async function eliminarCuenta(companyId: string, id: string) {
      `Borrada a mano${partidasMovidas ? `; ${partidasMovidas} partida(s) a MIG-TEMPORAL` : ''}`]);
 
   return { id, codigo: cta.codigo, nombre: cta.nombre, partidasMovidas };
+}
+
+/* ── Limpieza de cuentas con CÓDIGO inválido (folios/fechas colados por el import) ──
+ * Contalink a veces mete en la columna del código un folio o fecha de póliza
+ * («2026-05-C-44», «2026-05-D-7»). El validador del importador YA los rechaza al
+ * entrar; esto limpia las que ENTRARON antes de ese validador. Clasifica:
+ *   · SIN movimientos ni subcuentas → se BORRAN (basura pura) y se deja lápida.
+ *   · CON movimientos o subcuentas   → NO se borran (hay datos): se DESACTIVAN y se
+ *     listan para reasignarlas a mano con «Cambio de cuenta». */
+interface CuentaInvalida {
+  id: string; codigo: string; nombre: string; movimientos: number; hijos: number;
+}
+
+async function detectarCuentasConCodigoInvalido(companyId: string): Promise<CuentaInvalida[]> {
+  const r = await query<any>(
+    `SELECT c.id, c.codigo, c.nombre,
+            (SELECT COUNT(*)::int FROM journal_lines l WHERE l.account_id = c.id) AS movimientos,
+            (SELECT COUNT(*)::int FROM accounting_accounts h WHERE h.parent_id = c.id) AS hijos
+       FROM accounting_accounts c
+      WHERE c.company_id = $1
+      ORDER BY c.codigo`, [companyId]);
+  return r.rows
+    .filter((x: any) => !esCodigoCuentaValido(x.codigo))
+    .map((x: any) => ({ id: x.id, codigo: x.codigo, nombre: x.nombre, movimientos: Number(x.movimientos), hijos: Number(x.hijos) }));
+}
+
+/** Previsualiza las cuentas con código inválido (no borra nada). */
+export async function previsualizarLimpiezaCuentas(companyId: string) {
+  const malas = await detectarCuentasConCodigoInvalido(companyId);
+  const borrables = malas.filter((c) => c.movimientos === 0 && c.hijos === 0);
+  const conDatos = malas.filter((c) => c.movimientos > 0 || c.hijos > 0);
+  return { total: malas.length, borrables, conDatos };
+}
+
+/** Limpia las cuentas con código inválido: borra las vacías, desactiva las que
+ *  tienen datos. Devuelve el reporte de lo hecho. */
+export async function limpiarCuentasConCodigoInvalido(companyId: string) {
+  const malas = await detectarCuentasConCodigoInvalido(companyId);
+  const borradas: Array<{ codigo: string; nombre: string }> = [];
+  const desactivadas: Array<{ codigo: string; nombre: string; movimientos: number; hijos: number }> = [];
+
+  for (const c of malas) {
+    if (c.movimientos === 0 && c.hijos === 0) {
+      // Basura pura: se borra y se deja lápida (que el re-import no la recree).
+      await query('DELETE FROM accounting_period_balances WHERE account_id = $1', [c.id]);
+      await query('DELETE FROM accounting_accounts WHERE company_id = $1 AND id = $2', [companyId, c.id]);
+      await query(
+        `INSERT INTO accounting_cuentas_excluidas (company_id, codigo, motivo)
+         VALUES ($1, $2, $3) ON CONFLICT (company_id, codigo) DO NOTHING`,
+        [companyId, c.codigo, 'Código inválido (folio/fecha) — limpieza automática']);
+      borradas.push({ codigo: c.codigo, nombre: c.nombre });
+    } else {
+      // Tiene datos: no se borra. Se desactiva para sacarla de la operación.
+      await query(
+        `UPDATE accounting_accounts SET activa = false, updated_at = NOW() WHERE company_id = $1 AND id = $2`,
+        [companyId, c.id]);
+      desactivadas.push({ codigo: c.codigo, nombre: c.nombre, movimientos: c.movimientos, hijos: c.hijos });
+    }
+  }
+  logger.info(`[catalogo] limpieza de códigos inválidos: ${borradas.length} borradas, ${desactivadas.length} desactivadas (empresa ${companyId})`);
+  return { total: malas.length, borradas, desactivadas };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

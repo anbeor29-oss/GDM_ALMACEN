@@ -137,4 +137,42 @@ export function clasificarAgrupadorPorConcepto(clave: string, ...textos: string[
   return null;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOPE DEDUCIBLE DE AUTOMÓVILES — LISR art. 36, fracc. II
+   ═══════════════════════════════════════════════════════════════════════════
+   La deducción de la inversión en AUTOMÓVILES está topada: el MOI deducible no
+   excede $175,000 (combustión interna) ni $250,000 (eléctricos, híbridos y los de
+   hidrógeno). La depreciación CONTABLE va sobre el MOI completo; el excedente es
+   depreciación NO DEDUCIBLE que se concilia en la anual. OJO: el tope es sólo para
+   «automóviles» (transporte de personas, hasta 10 pasajeros, RLISR 3-II). NO aplica
+   a camiones de CARGA, tractocamiones, pick ups de carga, remolques ni autobuses. */
+export const TOPE_DEDUCIBLE_AUTO = {
+  combustion: 175000,
+  electrico: 250000,
+} as const;
+
+/* ¿El texto describe un AUTOMÓVIL de pasajeros (sujeto al tope 36-II)? Camiones de
+ * carga, pick ups, tractocamiones, remolques y autobuses NO están topados. */
+const PALABRAS_CARGA_O_PASAJE =
+  /\b(CAMION|CAMIONES|CARGA|PICK ?UP|PICKUP|TRACTOCAMION|TRACTO CAMION|REMOLQUE|SEMIRREMOLQUE|AUTOBUS|AUTOBUSES|MICROBUS|CHASIS|VOLTEO|TORTON|RABON|GRUA|MONTACARGAS|MOTOCICLETA)\b/;
+const PALABRAS_AUTO_PASAJEROS =
+  /\b(AUTOMOVIL|AUTOMOVILES|AUTO|SEDAN|SUV|VAGONETA|MINIVAN|COUPE|HATCHBACK|CONVERTIBLE)\b/;
+/* ¿El texto sugiere un auto eléctrico/híbrido (tope mayor)? */
+const PALABRAS_AUTO_ELECTRICO = /\b(ELECTRIC[OA]|HIBRID[OA]|HYBRID|HIDROGENO|EV|PHEV)\b/;
+
+/**
+ * Tope deducible sugerido para un activo recién detectado. Devuelve el monto del
+ * tope (175000 / 250000) SÓLO cuando el rubro es vehículos (154) y el texto parece
+ * un automóvil de pasajeros; `null` en cualquier otro caso (sin tope). Es una
+ * SUGERENCIA: el usuario la confirma o la ajusta al registrar.
+ */
+export function topeDeducibleAutoSugerido(agrupador: string, ...textos: string[]): number | null {
+  if (String(agrupador) !== '154') return null;        // sólo automóviles/transporte
+  const t = normTxt(textos.filter(Boolean).join(' '));
+  if (!t) return null;
+  if (PALABRAS_CARGA_O_PASAJE.test(t)) return null;    // carga/autobús: sin tope
+  if (!PALABRAS_AUTO_PASAJEROS.test(t)) return null;   // no se ve como auto de pasajeros
+  return PALABRAS_AUTO_ELECTRICO.test(t) ? TOPE_DEDUCIBLE_AUTO.electrico : TOPE_DEDUCIBLE_AUTO.combustion;
+}
+
 export { REGLAS };

@@ -29,6 +29,7 @@ import { query } from '../../config/database';
 import { crearPoliza } from './polizas.service';
 import { asignarAgrupadorFaltante } from './catalogo.service';
 import { asegurarCuentaTemporal } from './contpaqi-import.service';
+import { esCodigoCuentaValido } from './codigo-cuenta.util';
 
 /* Tipo + naturaleza natural por el primer dígito del agrupador SAT. */
 const TIPO_POR_DIG: Record<string, string> = {
@@ -44,19 +45,9 @@ const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 // seguido de un espacio y el nombre. El importador valida el código contra el catálogo.
 const acctRe = /^(\d[\d.\-]*)(?:\s+(.*\S))?\s*$/;
 
-/* Un CÓDIGO de cuenta válido es SÓLO numérico: dígitos y separadores «-»/«.», sin
- * letras. Así se rechazan los folios/fechas que Contalink a veces mete en la columna
- * del código (p. ej. «2026-05-C-44», «2026-05-D-7»): la «C»/«D» del tipo de póliza los
- * delata. El usuario NO maneja cuentas alfanuméricas. Además exige al menos un
- * separador o 2+ dígitos para no colar basura de un solo carácter. */
-export function esCodigoCuentaValido(cod: string): boolean {
-  const c = String(cod || '').trim();
-  if (!/^\d[\d.\-]*\d$|^\d$/.test(c)) return false;   // sólo dígitos y - . ; empieza y termina en dígito
-  if (/[a-zA-Z]/.test(c)) return false;               // nada de letras
-  // Rechaza lo que parece una FECHA (AAAA-MM-DD / AAAA-MM): año 19xx/20xx + mes 01-12.
-  if (/^(19|20)\d{2}[-.](0?[1-9]|1[0-2])([-.]\d{1,2})?$/.test(c)) return false;
-  return true;
-}
+/* El validador del código vive en un util compartido (lo reusa la limpieza del
+ * catálogo). Se re-exporta para no romper a quien ya lo importaba de aquí. */
+export { esCodigoCuentaValido };
 
 /** Serial de Excel (sistema 1900) → 'YYYY-MM-DD'. */
 function fechaDeSerial(n: number): string {

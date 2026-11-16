@@ -8084,3 +8084,73 @@ respaldo de OTRO periodo**, por eso el motor no las re-genera y no salen en el L
 **«Recodificar respaldo»** en Ventas/Compras (`recodificarPeriodo`): desliga el enlace SÓLO de los CFDI del mes SIN
 póliza propia (no borra pólizas) y recodifica (en Compras dispara también el pago PUE). Nómina recibida: ahora sólo
 exige la cuenta de INGRESO; ISR a favor/otras opcionales.
+
+---
+
+## 2026-11-16 (contabilidad) — Correcciones pendientes del menú Pólizas + depreciación de autos + limpieza de catálogo
+
+Dos listas del usuario tras usar el hub de Pólizas en real. La **Lista A** (7 «correcciones pendientes») y parte de
+la **Lista B** ya quedaron en commits previos del día; aquí se cierra lo que faltaba de la Lista B (#1, #2-limpieza,
+#3, #4, #6-PDF). Todo con `tsc --noEmit` verde en back **y** front (no sólo `vite build`).
+
+**Lista A — Correcciones del menú Pólizas (commits `629cab3`, `bdfeb2f`, `cce59c2`):**
+- **Cobro de ventas — IVA correcto:** Cargo «IVA por pagar» (208.01) / Abono «IVA pagado» (209.01).
+- **Barra de Descontabilizar / Libro diario** reorganizada: se ocultó el bloque verde, quedaron «Contabilizar» +
+  «Descontabilizar», mes/año; se permite descontabilizar **Nómina recibida**; el importador CPQ al final.
+- **Fix `syntax error at or near "ESCAPE"`** al descontabilizar (cada LIKE con su propio ESCAPE) y el mes arranca
+  vacío hasta que el usuario contabiliza (sin tocar los motores automáticos).
+- **Cancelación pasiva** completada en facturas de venta (líneas de IVA).
+- **Depreciaciones — «Generar pólizas»** con el mismo lugar/color que Compras/Ventas.
+- **Barras de avance 0-100 %** en Catálogo y Pólizas (`BarraProgreso`); **límite de subida 25 MB** (antes 16).
+- **Export del Libro diario a Excel por rango de fechas** (`libro-diario-excel.service.ts`, `GET /accounting/polizas/excel`).
+
+**Lista B — parte ya cerrada antes (commits `abac0c2`, `95ddfbb`):**
+- **#7 Al editar una factura se respetan sus impuestos** (el efecto «adoptar preset del cliente» pisaba el IVA
+  guardado; se fija con `clienteOriginalRef`). Ver [[factura-editar-impuestos]].
+- **#8 Precio unitario a 6 decimales** (`fmtPrecio`), para que el total cuadre a 2 al timbrar.
+- **#9 El folio borrado continúa la secuencia real**: `getAndIncrementInvoiceFolio` = `MAX(folio)+1`, así el folio de
+  un borrador borrado se REUTILIZA (los timbrados nunca se borran; `companies.service.getAndIncrementInvoiceFolio`).
+- **#6 (tesorería) Reorden de pestañas** a Bancos · Cuentas por pagar · Pagos programados; **«Cobros y pagos» oculto**
+  (era `PolizasCobroPago`, duplicado del hub de Pólizas).
+- **#2 (validador) Catálogo de Contalink**: `esCodigoCuentaValido` rechaza folios/fechas colados como cuenta
+  («2026-05-C-44»), orden NUMÉRICO (no alfanumérico).
+
+**Lista B — cerrado HOY:**
+
+**#3 Proponer agrupadores SAT desde la pantalla de import.** Tras importar el catálogo de Contalink, si quedan cuentas
+sin dígito agrupador, la pantalla verde abre **solo** el asistente «Proponer agrupadores» (el MISMO de Catálogo:
+`ModalProponerAgrupador`, ahora exportado) y deja un botón para reabrirlo. Compara con el Anexo 24 y aplica el
+agrupador con un clic. `ImportarContalink` usa `useMascara()` + el modal reutilizado.
+
+**#4 «Reconstruir el respaldo» dentro de la pantalla verde.** La reconstrucción integral dejó de vivir en una tarjeta
+suelta: ahora aparece DENTRO del resultado verde (tanto del respaldo `Reporte` como del import de Contalink), justo
+donde el usuario acaba de importar. `ReconstruirIntegral` ganó una variante `compacto`; la tarjeta suelta se ocultó.
+
+**#1 Depreciación de AUTOS — se revisó y reforzó el algoritmo.** Dos causas reales:
+- **Raíz: no se depreciaban los activos de catálogos IMPORTADOS.** El motor resolvía las cuentas de gasto (701.x) y
+  acumulada (171.x/183.x) por CÓDIGO exacto; un catálogo de Contalink/CPQ las numera distinto, así que la depreciación
+  se quedaba «sin asentar». Ahora `resolverCuentaPorCodigoOAgrupador` y `resolverOCrearAcumulada` buscan **por el
+  AGRUPADOR SAT** (701/702 gasto; 171/183 acumulada) cuando el código exacto no existe — que es justo lo que llena el
+  «Proponer agrupadores». Ata #2/#3 con #1.
+- **Fiscal: tope deducible de automóviles (LISR 36-II).** La depreciación CONTABLE va sobre el 100 % del MOI, pero la
+  DEDUCIBLE de un automóvil está topada ($175,000 combustión / $250,000 eléctrico-híbrido). Se agregó
+  `tope_deducible` por activo (migración `2026-11-16_activo_tope_deducible.sql`, NULL = sin tope), `calcularDepreciacion`
+  devuelve deducible / no-deducible, la detección **sugiere** el tope sólo para autos de pasajeros (no camiones/pick ups/
+  autobuses), y la cédula lo muestra y lo deja **editar** (modal). El asiento contable NO cambia (sigue al 100 % del
+  MOI, NIF C-6); el no-deducible queda para conciliar en la anual. Ver [[activo-fijo-depreciacion]].
+
+**#2 (limpieza) Limpiar cuentas «raras» que YA habían entrado.** El validador frena las nuevas; esto limpia las viejas.
+Botón **«Limpiar cuentas raras»** en Catálogo (`limpiarCuentasConCodigoInvalido`): previsualiza, confirma con el
+detalle y **borra** las de código inválido que estén vacías (deja lápida en `accounting_cuentas_excluidas` para que el
+re-import no las recree) y **desactiva** (sin borrar) las que tengan movimientos o subcuentas, para reasignarlas a mano.
+El validador se movió a un util compartido `codigo-cuenta.util.ts` (lo reusan el importador y la limpieza).
+
+**#6 PDF «Funciones ocultas».** `scripts/funciones-ocultas-pdf.mjs` genera `docs/FUNCIONES_OCULTAS.pdf` con el
+inventario de lo que se ocultó/retiró del menú (Cobros y pagos, Pólizas de venta/compra, Reorganizar terceros,
+PanelAnalisis, Reconstruir suelto, pestañas Clientes/Proveedores de Asignación, prepago, hub Cumplimiento→Panel fiscal),
+con DÓNDE está y CÓMO reactivarlo (casi todo = quitar un `false &&`).
+
+**Migraciones:** `2026-11-16_activo_tope_deducible.sql` (idempotente). **Front tocado ⇒ regenerar ZIP `build:hosting`.**
+**Pendiente de la Lista B (grande, documentado en PENDIENTES):** #5 carga masiva de estados de cuenta del año (1-12
+PDFs/zip → hoja → por mes → balanza) y #10 complemento de pago con >1 factura (pantalla nueva en Facturas). Commits de
+hoy: ver `git log`. Ver [[polizas-hub-pestanas]].

@@ -9,10 +9,11 @@
  */
 import { confirmar } from '@/utils/avisos';
 import { useState, useEffect } from 'react';
-import { Database, Download, Upload, PlayCircle, CheckCircle2, FileArchive, ShieldAlert, RefreshCw } from 'lucide-react';
+import { Database, Download, Upload, PlayCircle, CheckCircle2, FileArchive, ShieldAlert, RefreshCw, Layers } from 'lucide-react';
 import api from '@/services/api';
-import { formatCuenta } from '@/utils/cuenta';
+import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { BarraProgreso } from '@/components/BarraProgreso';
+import { ModalProponerAgrupador } from './CatalogoCuentas';
 import { extraerCfdisDeZip } from '@/utils/recuperarCfdi';
 
 const ARCHIVOS = ['empresa', 'cuentas', 'polizas', 'movimientos', 'poliza_cfdi', 'cfdi', 'saldos'] as const;
@@ -167,8 +168,9 @@ export function ImportarContpaqiPage() {
       {/* Migración desde Contalink (CTLK): catálogo + pólizas en Excel. */}
       <ImportarContalink />
 
-      {/* Reconstrucción integral: cuadra toda la historia de un tirón. */}
-      <ReconstruirIntegral />
+      {/* La «Reconstrucción integral» ya NO vive suelta aquí: ahora aparece DENTRO de la
+          pantalla verde de resultados (tanto del respaldo como de Contalink), justo
+          donde el usuario acaba de importar. Se oculta la tarjeta independiente. */}
 
       {/* Pasos + descargar herramienta */}
       <div className="bg-white rounded-lg shadow border p-5 space-y-4">
@@ -330,6 +332,9 @@ function Reporte({ rep }: { rep: any }) {
       <p className="text-xs text-gray-500">
         Siguiente: en <b>Balanza de comprobación</b>, dale «Actualizar desde pólizas» y compara los saldos contra el origen.
       </p>
+      {/* #4 — la reconstrucción del respaldo vive AQUÍ, en la pantalla verde, justo
+          después de importar (ya no en una tarjeta suelta). */}
+      <ReconstruirIntegral compacto />
     </div>
   );
 }
@@ -453,10 +458,21 @@ export function ImportarContalink() {
   const [repPol, setRepPol] = useState<any>(null);
   const [err, setErr] = useState('');
   const [progreso, setProgreso] = useState<number | null>(null);
+  // #3 — asistente de agrupadores SAT tras importar el catálogo.
+  const mascara = useMascara();
+  const [proponer, setProponer] = useState(false);
+  const [agrupHecho, setAgrupHecho] = useState(false);
+
+  // Si el catálogo recién importado dejó cuentas SIN agrupador SAT, abre
+  // automáticamente el asistente «Proponer agrupadores» (una sola vez). El usuario
+  // también lo puede reabrir con el botón del recuadro verde.
+  useEffect(() => {
+    if (repCat && Number(repCat.sinAgrupador) > 0) { setAgrupHecho(false); setProponer(true); }
+  }, [repCat]);
 
   const subir = async (kind: 'cat' | 'pol', file: File) => {
     setBusy(kind); setErr(''); setProgreso(0);
-    if (kind === 'cat') setRepCat(null); else setRepPol(null);
+    if (kind === 'cat') { setRepCat(null); setAgrupHecho(false); } else setRepPol(null);
     try {
       const fd = new FormData();
       fd.append('archivo', file, file.name);
@@ -504,13 +520,24 @@ export function ImportarContalink() {
           <p className="text-[11px] text-gray-500">Excel con: Num cuenta · Nombre · Cuenta Padre · Agrupador SAT.</p>
           <BotonXls kind="cat" label="Cargar catálogo de CTLK (.xls)" />
           {repCat && (
-            <div className="text-xs bg-emerald-50 border border-emerald-200 rounded px-3 py-2 text-emerald-900 space-y-0.5">
+            <div className="text-xs bg-emerald-50 border border-emerald-200 rounded px-3 py-2 text-emerald-900 space-y-1">
               <p className="flex items-center gap-1.5 font-semibold"><CheckCircle2 size={14} /> Catálogo importado</p>
-              <p>{repCat.creadas} creada(s) · {repCat.yaExistian} ya estaban{repCat.sinAgrupador ? ` · ${repCat.sinAgrupador} sin agrupador` : ''}</p>
+              <p>{repCat.creadas} creada(s) · {repCat.yaExistian} ya estaban{Number(repCat.sinAgrupador) > 0 ? ` · ${repCat.sinAgrupador} sin dígito agrupador` : ''}</p>
               {repCat.errores?.length > 0 && (
                 <details className="text-rose-700"><summary className="cursor-pointer">{repCat.errores.length} con error</summary>
                   <ul className="list-disc pl-4">{repCat.errores.slice(0, 15).map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>
                 </details>
+              )}
+              {/* #3 — mismo asistente que «Proponer agrupadores» del Catálogo: compara con
+                  el Anexo 24, propone el agrupador SAT y lo aplicas con un clic. */}
+              {Number(repCat.sinAgrupador) > 0 && (
+                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  <button onClick={() => setProponer(true)}
+                    className="inline-flex items-center gap-1.5 bg-teal-600 text-white px-3 py-1.5 rounded hover:bg-teal-700 font-semibold">
+                    <Layers size={13} /> {agrupHecho ? 'Seguir con los agrupadores' : 'Proponer agrupadores SAT'}
+                  </button>
+                  {agrupHecho && <span className="flex items-center gap-1 text-emerald-800 font-semibold"><CheckCircle2 size={13} /> Agrupadores aplicados</span>}
+                </div>
               )}
             </div>
           )}
@@ -543,6 +570,23 @@ export function ImportarContalink() {
       <p className="text-[11px] text-gray-400">
         Al terminar, en <b>Balanza de comprobación</b> dale «Actualizar desde pólizas» para ver los saldos reconstruidos.
       </p>
+
+      {/* #4 — tras importar (catálogo o pólizas) aparece aquí mismo la reconstrucción
+          integral, en vez de en una tarjeta suelta. */}
+      {(repCat || repPol) && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+          <ReconstruirIntegral compacto />
+        </div>
+      )}
+
+      {/* #3 — asistente de agrupadores SAT (reutiliza el del Catálogo). */}
+      {proponer && (
+        <ModalProponerAgrupador
+          mascara={mascara}
+          onCerrar={() => setProponer(false)}
+          onListo={() => setAgrupHecho(true)}
+        />
+      )}
     </div>
   );
 }
@@ -553,7 +597,7 @@ export function ImportarContalink() {
  * «Actualizar desde pólizas»). Idempotente y seguro: no borra los meses sin
  * pólizas (la apertura del respaldo de balanza se conserva).
  */
-export function ReconstruirIntegral() {
+export function ReconstruirIntegral({ compacto = false }: { compacto?: boolean } = {}) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -566,6 +610,26 @@ export function ReconstruirIntegral() {
     } catch (e: any) { setError(e?.response?.data?.message || 'No se pudo reconstruir.'); }
     finally { setBusy(false); }
   };
+
+  // Variante COMPACTA: se incrusta dentro de la pantalla verde de resultados (#4).
+  // Misma acción y misma leyenda, sin su propia tarjeta blanca.
+  if (compacto) {
+    return (
+      <div className="border-t pt-3 mt-1 space-y-2">
+        <p className="text-xs text-gray-600">
+          <b>Reconstruir el respaldo:</b> vuelve a cuadrar la balanza de <b>todos los ejercicios</b> con pólizas,
+          en orden y de una sola vez. Déjalo listo sin ir año por año. No duplica ni borra: es repetible.
+        </p>
+        <button onClick={reconstruir} disabled={busy}
+          className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-sm font-semibold">
+          <RefreshCw size={15} className={busy ? 'animate-spin' : ''} /> {busy ? 'Reconstruyendo…' : 'Reconstruir todos los ejercicios'}
+        </button>
+        {msg && <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{msg}</p>}
+        {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{error}</p>}
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-lg shadow border p-5 space-y-3">
       <h2 className="font-semibold text-gray-800 flex items-center gap-2"><RefreshCw size={18} className="text-indigo-600" /> Reconstruir todo el respaldo</h2>

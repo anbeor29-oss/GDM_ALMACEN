@@ -10,7 +10,7 @@
  * asienta sin el clic de «Generar».
  */
 import { confirmar } from '@/utils/avisos';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Sparkles, PlayCircle, FileText, RefreshCw, Check, Pencil, Trash2, X, CalendarClock, Split, Download } from 'lucide-react';
 import { claseOpcion } from '@/utils/coloresOpciones';
@@ -243,6 +243,12 @@ function RenglonActivo({ a, onCedula, onCambio }: { a: any; onCedula: () => void
               {a.categoria_etiqueta}{a.fundamento ? ` · ${a.fundamento}` : ''}
             </p>
           )}
+          {Number(a.no_deducible_anual) > 0 && (
+            <p className="text-[10px] text-amber-700 truncate max-w-xs"
+              title={`Automóvil topado (LISR 36-II): MOI deducible ${money(a.moi_deducible)} de ${money(a.moi)}. No deducible ${money(a.no_deducible_anual)}/año.`}>
+              ⚠ Tope deducible {money(a.tope_deducible)} · no deducible {money(a.no_deducible_anual)}/año
+            </p>
+          )}
         </button>
       </td>
       <td className="px-3 py-2">
@@ -294,10 +300,25 @@ function RenglonActivo({ a, onCedula, onCambio }: { a: any; onCedula: () => void
 }
 
 function ModalCedula({ id, onClose }: { id: string; onClose: () => void }) {
+  const qc = useQueryClient();
   const q = useQuery({ queryKey: ['activo-cedula', id], queryFn: () => api.getCedulaActivo(id) });
   const d = q.data?.data;
   const a = d?.activo;
   const renglones: any[] = d?.renglones || [];
+
+  // Tope deducible (autos 36-II): editable. '' = sin tope (100% deducible).
+  const esVehiculo = a && agrupador3(a.cuenta_activo) === '154';
+  const [tope, setTope] = useState('');
+  const [guardandoTope, setGuardandoTope] = useState(false);
+  useEffect(() => { if (a) setTope(a.tope_deducible ? String(a.tope_deducible) : ''); }, [a?.id, a?.tope_deducible]);
+  const guardarTope = async () => {
+    setGuardandoTope(true);
+    try {
+      await api.actualizarActivo(id, { tope_deducible: tope.trim() === '' ? null : Number(tope) });
+      await qc.invalidateQueries({ queryKey: ['activo-cedula', id] });
+      await qc.invalidateQueries({ queryKey: ['activos-fijos'] });
+    } finally { setGuardandoTope(false); }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -314,6 +335,26 @@ function ModalCedula({ id, onClose }: { id: string; onClose: () => void }) {
             <span>Anual: <b>{money(d?.calculo?.depAnual)}</b></span>
             <span>Inicio: <b>{mesAA(a.mes_inicio)}</b></span>
             <span>Vida: <b>{d?.calculo?.mesesVida} meses</b></span>
+          </div>
+        )}
+        {/* Tope deducible de automóviles (LISR 36-II). La depreciación CONTABLE no
+            cambia; esto separa la parte deducible para la anual de ISR. */}
+        {esVehiculo && (
+          <div className="px-4 py-2 border-b bg-amber-50/60 text-xs text-gray-700 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-amber-800">Tope deducible (auto, LISR 36-II):</span>
+              <span className="text-gray-400">$</span>
+              <input value={tope} onChange={(e) => setTope(e.target.value)} inputMode="decimal"
+                placeholder="175000 / 250000 / vacío = sin tope"
+                className="input py-0.5 w-44 text-right text-xs" />
+              <button onClick={guardarTope} disabled={guardandoTope}
+                className="inline-flex items-center gap-1 bg-amber-600 text-white px-2 py-0.5 rounded text-[11px] hover:bg-amber-700 disabled:opacity-50">
+                <Check size={12} /> {guardandoTope ? '…' : 'Guardar'}
+              </button>
+            </div>
+            {Number(a?.tope_deducible) > 0
+              ? <p className="text-amber-800">MOI deducible <b>{money(d?.calculo?.moiDeducible)}</b> · deducible <b>{money(d?.calculo?.depAnualDeducible)}</b>/año · <span className="text-rose-700">no deducible <b>{money(d?.calculo?.noDeducibleAnual)}</b>/año</span></p>
+              : <p className="text-gray-400">Sin tope: la depreciación es 100% deducible. Combustión $175,000 · eléctrico/híbrido $250,000.</p>}
           </div>
         )}
         <div className="overflow-y-auto">
@@ -468,6 +509,12 @@ function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number
                 <td className="px-3 py-2">
                   <p className="text-xs text-gray-700">{d.etiqueta}</p>
                   <p className="font-mono text-[11px] text-gray-400">{d.cuenta_activo}{!d.depreciable ? ' · no se deprecia' : ''}</p>
+                  {Number(d.tope_deducible) > 0 && (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] bg-amber-100 text-amber-800 border border-amber-200 rounded px-1 py-0.5 mt-0.5"
+                      title="Automóvil con deducción topada (LISR 36-II). Se registra con este tope; ajústalo o quítalo luego en la cédula.">
+                      tope deducible {money(d.tope_deducible)}
+                    </span>
+                  )}
                   {['151', '152'].includes(agrupador3(d.cuenta_activo)) && (
                     <button onClick={() => setDividir(d)}
                       className="mt-1 inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-900">

@@ -1537,6 +1537,16 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/agrupador/aplicar', { items });
     return r.data;
   }
+  /** Previsualiza las cuentas con código inválido (folios/fechas colados). */
+  async previsualizarLimpiezaCuentas() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/cuentas/invalidas');
+    return r.data;
+  }
+  /** Limpia las cuentas con código inválido: borra las vacías, desactiva las que tienen datos. */
+  async limpiarCuentasInvalidas() {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/limpiar-invalidas', {});
+    return r.data;
+  }
   async fijarEquivalenciaCuenta(id: string, datos: any) {
     const r = await this.client.put<APIResponse<any>>(`/accounting/cuentas/${id}/equivalencia`, datos);
     return r.data;

@@ -170,6 +170,28 @@ export function CatalogoCuentasPage() {
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo asignar el agrupador.'); }
     finally { setHerr(''); }
   };
+  /* Limpia las cuentas con CÓDIGO inválido (folios/fechas colados por un import viejo,
+   * p. ej. «2026-05-C-44»): previsualiza, confirma con el detalle y limpia. Borra las
+   * vacías; desactiva (sin borrar) las que tengan datos para reasignarlas a mano. */
+  const limpiarRaras = async () => {
+    setHerr('limpiar'); setMsg('');
+    try {
+      const prev: any = await api.previsualizarLimpiezaCuentas();
+      const d = prev?.data || {};
+      if (!d.total) { setMsg('No hay cuentas con código inválido en el catálogo. 👍'); return; }
+      const borrables = (d.borrables || []).length;
+      const conDatos = (d.conDatos || []).length;
+      const muestra = (d.borrables || []).slice(0, 6).map((c: any) => c.codigo).join(' · ');
+      if (!window.confirm(
+        `Se encontraron ${d.total} cuenta(s) con código inválido (folios/fechas, no cuentas reales).\n\n` +
+        `• ${borrables} vacía(s) se BORRARÁN${muestra ? ` (ej. ${muestra}${borrables > 6 ? '…' : ''})` : ''}.\n` +
+        `• ${conDatos} con movimientos o subcuentas se DESACTIVARÁN (sin borrar) para reasignarlas a mano.\n\n¿Continuar?`)) return;
+      const r: any = await api.limpiarCuentasInvalidas();
+      setMsg(r?.message || 'Limpieza terminada.');
+      refrescar();
+    } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo limpiar el catálogo.'); }
+    finally { setHerr(''); }
+  };
   /* Exporta el catálogo a Excel para revisarlo/corregirlo fuera. */
   const exportarExcel = async () => {
     setHerr('excel'); setMsg('');
@@ -284,6 +306,11 @@ export function CatalogoCuentasPage() {
                 title="Compara el catálogo con el Anexo 24 (por nombre y herencia del padre) y PROPONE el agrupador de las cuentas que no lo tienen, para que lo confirmes"
                 className="border border-teal-300 text-teal-700 px-3 py-1.5 rounded-lg text-sm hover:bg-teal-50 disabled:opacity-50 flex items-center gap-1.5">
                 <Layers size={14} /> Proponer agrupador (SAT)
+              </button>
+              <button onClick={limpiarRaras} disabled={!!herr}
+                title="Limpia las cuentas con código inválido (folios/fechas colados por un import viejo, como «2026-05-C-44»): borra las vacías y desactiva las que tengan datos"
+                className="border border-rose-300 text-rose-700 px-3 py-1.5 rounded-lg text-sm hover:bg-rose-50 disabled:opacity-50 flex items-center gap-1.5">
+                <AlertTriangle size={14} /> {herr === 'limpiar' ? 'Limpiando…' : 'Limpiar cuentas raras'}
               </button>
               <button onClick={() => setAlta({ parentId: null })}
                 className="btn-primary flex items-center gap-1.5 text-sm">
@@ -1103,7 +1130,7 @@ const CONF_PROP: Record<string, string> = {
   BAJA: 'bg-amber-100 text-amber-800',
 };
 
-function ModalProponerAgrupador({ mascara, onCerrar, onListo }: any) {
+export function ModalProponerAgrupador({ mascara, onCerrar, onListo }: any) {
   const [cargando, setCargando] = useState(true);
   const [resumen, setResumen] = useState<any>(null);
   const [rows, setRows] = useState<any[]>([]);

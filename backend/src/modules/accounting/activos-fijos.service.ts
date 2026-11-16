@@ -14,7 +14,7 @@
 import { query, transaction } from '../../config/database';
 import { conceptosDeXml } from './ventas-cuentas.service';
 import { mapaProductoCuentaCompra } from './compras-cuentas.service';
-import { reglaDeCuentaActivo, agrupadorDeCodigo, ReglaDepreciacion, clasificarAgrupadorPorConcepto } from './depreciacion.data';
+import { reglaDeCuentaActivo, agrupadorDeCodigo, ReglaDepreciacion, clasificarAgrupadorPorConcepto, topeDeducibleAutoSugerido } from './depreciacion.data';
 import { descripcionDeClave } from '../products/clave-prodserv-index';
 
 const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
@@ -43,6 +43,34 @@ async function cuentaMovPorCodigo(companyId: string, codigo: string): Promise<Ct
 }
 
 /**
+ * Resuelve una cuenta de MOVIMIENTOS por su CÓDIGO esperado (701.03, 171.03…) y, si
+ * no existe con ese código exacto, la busca por su AGRUPADOR SAT. Esto hace que la
+ * depreciación funcione también sobre catálogos IMPORTADOS (Contalink/CPQ), cuya
+ * numeración es distinta pero —tras «Proponer agrupadores»— sí trae el agrupador
+ * SAT (701/702 gasto; 171/183 acumulada). Orden de búsqueda:
+ *   1) código exacto (701.03)
+ *   2) codigo_agrupador = sub-agrupador exacto (701.03)
+ *   3) codigo_agrupador = mayor (701) — la cuenta de movimientos más específica que cuelgue de él
+ * Devuelve la primera que permita movimientos.
+ */
+async function resolverCuentaPorCodigoOAgrupador(companyId: string, codigo: string): Promise<Cta | null> {
+  if (!codigo) return null;
+  const exacta = await cuentaMovPorCodigo(companyId, codigo);
+  if (exacta && exacta.permite_movimientos) return exacta;
+  const mayor = agrupadorDeCodigo(codigo); // '701.03' → '701'
+  const r = await query<any>(
+    `SELECT id, codigo, nombre, permite_movimientos,
+            CASE WHEN codigo_agrupador = $2 THEN 0 ELSE 1 END AS prioridad
+       FROM accounting_accounts
+      WHERE company_id=$1 AND activa=true AND permite_movimientos=true
+        AND (codigo_agrupador = $2 OR codigo_agrupador = $3 OR codigo_agrupador LIKE $4)
+      ORDER BY prioridad, LENGTH(codigo), codigo
+      LIMIT 1`,
+    [companyId, codigo, mayor, `${mayor}.%`]);
+  return r.rows[0] || null;
+}
+
+/**
  * La subcuenta de depreciación/amortización acumulada por rubro (171.0x / 183.0x).
  * El Anexo 24 sólo trae el mayor (171/183); su desglose por rubro es catálogo
  * propio que mapea al mismo agrupador. Se crea bajo su mayor si aún no existe;
@@ -51,13 +79,23 @@ async function cuentaMovPorCodigo(companyId: string, codigo: string): Promise<Ct
 async function resolverOCrearAcumulada(
   companyId: string, codigo: string, nombre: string
 ): Promise<Cta | { error: string }> {
+  // 1) ¿ya existe la subcuenta exacta (171.03) o una con ese sub-agrupador?
   const ya = await cuentaMovPorCodigo(companyId, codigo);
-  if (ya) return ya;
+  if (ya && ya.permite_movimientos) return ya;
+  const porSub = await query<any>(
+    `SELECT id, codigo, nombre, permite_movimientos FROM accounting_accounts
+      WHERE company_id=$1 AND activa=true AND permite_movimientos=true AND codigo_agrupador=$2
+      ORDER BY LENGTH(codigo), codigo LIMIT 1`, [companyId, codigo]);
+  if (porSub.rows[0]) return porSub.rows[0];
 
+  // 2) la cuenta MAYOR de la acumulada (171/183): por código exacto o por su agrupador
+  //    SAT (catálogos importados la numeran distinto pero traen el agrupador).
   const mayorCodigo = agrupadorDeCodigo(codigo); // '171.03' → '171'
   const m = await query<any>(
     `SELECT id, codigo, nombre, tipo, naturaleza, codigo_agrupador, nif_norma, nivel
-       FROM accounting_accounts WHERE company_id=$1 AND codigo=$2 LIMIT 1`, [companyId, mayorCodigo]);
+       FROM accounting_accounts
+      WHERE company_id=$1 AND (codigo=$2 OR codigo_agrupador=$2)
+      ORDER BY (codigo=$2) DESC, LENGTH(codigo) LIMIT 1`, [companyId, mayorCodigo]);
   const mayor = m.rows[0];
   if (!mayor) return { error: `falta la cuenta mayor ${mayorCodigo} (depreciación acumulada) en el catálogo` };
 
@@ -78,17 +116,35 @@ async function resolverOCrearAcumulada(
 
 export interface CalculoDepreciacion {
   base: number;            // MOI − residual
-  depMensual: number;      // MOI × tasa / 12
-  depAnual: number;        // MOI × tasa
+  depMensual: number;      // MOI × tasa / 12 (CONTABLE)
+  depAnual: number;        // MOI × tasa (CONTABLE)
   mesesVida: number;       // base / depMensual (redondeado hacia arriba)
+  // Parte DEDUCIBLE para ISR cuando hay tope (autos, LISR 36-II). Sin tope coincide
+  // con la contable (todo deducible).
+  moiDeducible: number;        // min(MOI, tope)
+  depAnualDeducible: number;   // moiDeducible × tasa
+  depMensualDeducible: number; // depAnualDeducible / 12
+  noDeducibleAnual: number;    // depAnual contable − deducible (lo que se concilia en la anual)
+  pctNoDeducible: number;      // 0..100
 }
 
-export function calcularDepreciacion(moi: number, residual: number, tasaAnual: number): CalculoDepreciacion {
-  const base = round2(Math.max(0, (Number(moi) || 0) - (Number(residual) || 0)));
-  const depAnual = round2((Number(moi) || 0) * (Number(tasaAnual) || 0));
+export function calcularDepreciacion(
+  moi: number, residual: number, tasaAnual: number, topeDeducible?: number | null
+): CalculoDepreciacion {
+  const moiN = Number(moi) || 0;
+  const tasa = Number(tasaAnual) || 0;
+  const base = round2(Math.max(0, moiN - (Number(residual) || 0)));
+  const depAnual = round2(moiN * tasa);
   const depMensual = round2(depAnual / 12);
   const mesesVida = depMensual > 0 ? Math.ceil(base / depMensual) : 0;
-  return { base, depMensual, depAnual, mesesVida };
+  // Tope deducible (autos 36-II): el MOI deducible no excede el tope. NULL/≤0 = sin tope.
+  const tope = (topeDeducible == null || Number(topeDeducible) <= 0) ? null : Number(topeDeducible);
+  const moiDeducible = tope == null ? moiN : Math.min(moiN, tope);
+  const depAnualDeducible = round2(moiDeducible * tasa);
+  const depMensualDeducible = round2(depAnualDeducible / 12);
+  const noDeducibleAnual = round2(Math.max(0, depAnual - depAnualDeducible));
+  const pctNoDeducible = depAnual > 0 ? Math.round((noDeducibleAnual / depAnual) * 1000) / 10 : 0;
+  return { base, depMensual, depAnual, mesesVida, moiDeducible, depAnualDeducible, depMensualDeducible, noDeducibleAnual, pctNoDeducible };
 }
 
 // ── Detección desde las compras (los recibidos con XML) ──────────────────────
@@ -104,6 +160,8 @@ export interface ActivoDetectado {
   tasa_anual: number;
   depreciable: boolean;
   intangible: boolean;
+  /** Tope deducible sugerido (autos 36-II): 175000/250000, o null si no aplica. */
+  tope_deducible: number | null;
   fecha_adquisicion: string;
   origen_uuid: string;
   origen_folio: string;
@@ -198,6 +256,7 @@ export async function detectarDesdeCompras(
         categoria: regla.categoria, etiqueta: regla.etiqueta,
         cuenta_activo: cod, cuenta_gasto: regla.gasto, cuenta_dep_acum: regla.depAcum,
         moi: e.monto, tasa_anual: regla.tasaAnual, depreciable: regla.depreciable, intangible: regla.intangible,
+        tope_deducible: topeDeducibleAutoSugerido(agrupadorDeCodigo(cod), e.desc, descripcionDeClave(e.clave)),
         fecha_adquisicion: String(c.fecha).slice(0, 10),
         origen_uuid: c.uuid, origen_folio: [c.serie, c.folio].filter(Boolean).join('-') || '',
         clave_prod_serv: e.clave, proveedor_rfc: c.rfc_emisor || '', proveedor_nombre: c.nombre_emisor || '',
@@ -218,6 +277,7 @@ export interface DatosActivo {
   cuenta_dep_acum?: string | null;
   moi: number;
   valor_residual?: number;
+  tope_deducible?: number | null;
   fecha_adquisicion: string;
   mes_inicio?: string | null;
   tasa_anual: number;
@@ -235,19 +295,20 @@ export async function registrarActivo(companyId: string, d: DatosActivo, userId?
   const gasto = d.cuenta_gasto ?? regla?.gasto ?? null;
   const depAcum = d.cuenta_dep_acum ?? regla?.depAcum ?? null;
   const mesInicio = d.mes_inicio ? primerDiaDelMesDe(d.mes_inicio) : primerDiaDelMesDe(d.fecha_adquisicion);
+  const tope = (d.tope_deducible == null || Number(d.tope_deducible) <= 0) ? null : round2(d.tope_deducible);
   const vals = [
     companyId, (d.descripcion || '').slice(0, 500), d.categoria || regla?.categoria || 'otros',
     d.cuenta_activo, gasto, depAcum, round2(d.moi), round2(d.valor_residual || 0),
     String(d.fecha_adquisicion).slice(0, 10), mesInicio, Number(d.tasa_anual) || 0,
     d.origen_uuid || null, d.origen_folio || null, d.clave_prod_serv || null,
-    d.proveedor_rfc || null, (d.proveedor_nombre || '').slice(0, 250) || null, d.notas || null, userId || null,
+    d.proveedor_rfc || null, (d.proveedor_nombre || '').slice(0, 250) || null, d.notas || null, userId || null, tope,
   ];
   const cols = `company_id, descripcion, categoria, cuenta_activo, cuenta_gasto, cuenta_dep_acum,
         moi, valor_residual, fecha_adquisicion, mes_inicio, tasa_anual,
-        origen_uuid, origen_folio, clave_prod_serv, proveedor_rfc, proveedor_nombre, notas, created_by`;
+        origen_uuid, origen_folio, clave_prod_serv, proveedor_rfc, proveedor_nombre, notas, created_by, tope_deducible`;
   // Con CFDI: no registrar dos veces el mismo renglón (CFDI + cuenta). Alta manual: inserta sin más.
   const r = await query<any>(
-    `INSERT INTO activos_fijos (${cols}) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+    `INSERT INTO activos_fijos (${cols}) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      ${d.origen_uuid ? 'ON CONFLICT (company_id, origen_uuid, cuenta_activo) WHERE origen_uuid IS NOT NULL DO UPDATE SET updated_at=NOW()' : ''}
      RETURNING id`, vals);
   return { id: r.rows[0]?.id };
@@ -264,7 +325,7 @@ export async function registrarDetectados(
 
 const CAMPOS_EDITABLES = [
   'descripcion', 'categoria', 'cuenta_activo', 'cuenta_gasto', 'cuenta_dep_acum',
-  'moi', 'valor_residual', 'fecha_adquisicion', 'mes_inicio', 'tasa_anual', 'estado', 'fecha_baja', 'notas',
+  'moi', 'valor_residual', 'tope_deducible', 'fecha_adquisicion', 'mes_inicio', 'tasa_anual', 'estado', 'fecha_baja', 'notas',
 ] as const;
 
 export async function actualizarActivo(companyId: string, id: string, d: Record<string, any>) {
@@ -274,6 +335,8 @@ export async function actualizarActivo(companyId: string, id: string, d: Record<
     let v = d[k];
     if (k === 'mes_inicio' && v) v = primerDiaDelMesDe(v);
     if (k === 'moi' || k === 'valor_residual') v = round2(v);
+    // tope_deducible: '' o ≤0 → NULL (sin tope); si no, redondeado.
+    if (k === 'tope_deducible') v = (v == null || v === '' || Number(v) <= 0) ? null : round2(v);
     sets.push(`${k}=$${i++}`); vals.push(v);
   }
   if (!sets.length) return { actualizado: false };
@@ -311,13 +374,19 @@ export async function listarActivos(companyId: string) {
       ORDER BY a.fecha_adquisicion DESC, a.created_at DESC`, [companyId]);
 
   return r.rows.map((a: any) => {
-    const calc = calcularDepreciacion(Number(a.moi), Number(a.valor_residual), Number(a.tasa_anual));
+    const tope = a.tope_deducible == null ? null : Number(a.tope_deducible);
+    const calc = calcularDepreciacion(Number(a.moi), Number(a.valor_residual), Number(a.tasa_anual), tope);
     const acumulada = round2(a.acumulada);
     const regla = reglaDeCuentaActivo(a.cuenta_activo);
     return {
       ...a,
       moi: Number(a.moi), valor_residual: Number(a.valor_residual), tasa_anual: Number(a.tasa_anual),
+      tope_deducible: tope,
       dep_mensual: calc.depMensual, dep_anual: calc.depAnual, meses_vida: calc.mesesVida,
+      // Fiscal: deducible vs no deducible (autos 36-II). Sin tope, no_deducible = 0.
+      dep_mensual_deducible: calc.depMensualDeducible, dep_anual_deducible: calc.depAnualDeducible,
+      no_deducible_anual: calc.noDeducibleAnual, pct_no_deducible: calc.pctNoDeducible,
+      moi_deducible: calc.moiDeducible,
       acumulada, pendiente: round2(calc.base - acumulada), valor_en_libros: round2(Number(a.moi) - acumulada),
       totalmente_depreciado: calc.base > 0 && acumulada >= calc.base - 0.01,
       // Para separar la vista: intangibles/diferidos se AMORTIZAN (702/183); el resto se DEPRECIA.
@@ -346,7 +415,8 @@ export async function cedulaMensual(companyId: string, id: string) {
     `SELECT anio, mes, monto FROM activo_fijo_depreciacion WHERE company_id=$1 AND activo_id=$2`, [companyId, id]);
   const asentados = new Map<string, number>(asent.rows.map((x: any) => [`${x.anio}-${x.mes}`, Number(x.monto)]));
 
-  const calc = calcularDepreciacion(Number(a.moi), Number(a.valor_residual), Number(a.tasa_anual));
+  const calc = calcularDepreciacion(Number(a.moi), Number(a.valor_residual), Number(a.tasa_anual),
+    a.tope_deducible == null ? null : Number(a.tope_deducible));
   const renglones: Array<{ anio: number; mes: number; monto: number; acumulada: number; en_libros: number; asentada: boolean }> = [];
   if (a.estado !== 'BAJA' && calc.depMensual > 0) {
     let y = Number(String(a.mes_inicio).slice(0, 4));
@@ -406,8 +476,10 @@ export async function generarDepreciacionDelMes(
   const resolverGasto = async (cod: string): Promise<Cta | null> => {
     if (!cod) return null;
     if (cache.has(cod)) return cache.get(cod)!;
-    const c = await cuentaMovPorCodigo(companyId, cod);
-    if (c && c.permite_movimientos) { cache.set(cod, c); return c; }
+    // Por código exacto y, si el catálogo está importado con otra numeración, por
+    // su agrupador SAT (701/702). Así la depreciación no se queda «sin asentar».
+    const c = await resolverCuentaPorCodigoOAgrupador(companyId, cod);
+    if (c) { cache.set(cod, c); return c; }
     return null;
   };
 
