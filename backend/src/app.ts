@@ -92,9 +92,10 @@ import autofacturaRoutes     from './modules/autofactura/autofactura.routes';
 export function createApp(): Express {
   const app = express();
 
-  // Middleware: Body parsing
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ limit: '10mb', extended: true }));
+  // Middleware: Body parsing. 25 MB para que una carga de 20 MB (p. ej. un libro
+  // de pólizas en base64) no se corte antes de llegar al handler.
+  app.use(express.json({ limit: '25mb' }));
+  app.use(express.urlencoded({ limit: '25mb', extended: true }));
 
   // Middleware: CORS
   app.use(

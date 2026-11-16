@@ -60,9 +60,10 @@ import { extraerBinarios } from '../sat-descarga/zip-seguro';
 const router = Router();
 router.use(authenticateToken);
 
-/* 20 MB: una balanza de 5,000 cuentas en PDF no llega ni a la mitad. */
+/* 25 MB (el objetivo pedido era 20): una balanza de 5,000 cuentas en PDF no llega
+   ni a la mitad, y deja holgura para catálogos/pólizas CPQ grandes. */
 const subir = multer({ storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 } });
+  limits: { fileSize: 25 * 1024 * 1024 } });
 
 /* Respaldo .zip de CPQ: más grande. Un respaldo con .bak pesado se procesa con la
  * herramienta local; aquí entra un .zip de XML (sueltos o exportados de la ADD). */

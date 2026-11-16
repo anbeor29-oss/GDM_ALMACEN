@@ -47,7 +47,7 @@ export function PagosContabilizar({ modo }: { modo: 'cobros' | 'pagos' }) {
   const [asiento, setAsiento] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
-  const [autoOn, setAutoOn] = useState(true);
+  const [autoOn, setAutoOn] = useState(false);
   const anios = aniosContables();
   const claveVista: any[] = ['sat-vista', direccion, anio, mes];
   const autoRef = useRef<string>('');

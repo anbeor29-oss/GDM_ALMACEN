@@ -82,7 +82,9 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
   const [asiento, setAsiento] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
-  const [autoOn, setAutoOn] = useState(true);
+  // Apagado por defecto: el mes queda VACÍO hasta que el usuario pulse «Generar
+  // pólizas» (pedido: al descontabilizar no debe re-llenarse solo). El toggle sigue.
+  const [autoOn, setAutoOn] = useState(false);
   const anios = aniosContables();
   const claveVista: any[] = ['sat-vista', direccion, anio, mes];
   const autoRef = useRef<string>('');

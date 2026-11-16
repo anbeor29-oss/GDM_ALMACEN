@@ -611,6 +611,7 @@ const TIPOS_DESCONTAB: Array<[string, string]> = [
   ['pagos', 'Pagos de compra'],
   ['pue', 'Pagos PUE (de contado)'],
   ['depreciacion', 'Depreciación'],
+  ['nomina_recibida', 'Nómina recibida'],
 ];
 function ModalDescontabilizar({ anio, mes, onCerrar, onHecho }:
   { anio: number; mes: number; onCerrar: () => void; onHecho: (texto: string) => void }) {

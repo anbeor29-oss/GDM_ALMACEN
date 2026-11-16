@@ -123,11 +123,15 @@ function DeprecPanel() {
           <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="input py-1.5 text-sm w-24">
             {anios.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
-          <button onClick={correr} disabled={busy}
-            className="inline-flex items-center gap-1.5 border border-violet-300 bg-violet-50 text-violet-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-violet-100 disabled:opacity-40">
-            <PlayCircle size={15} /> {busy ? 'Generando…' : 'Generar depreciación'}
-          </button>
         </div>
+      </div>
+      {/* Botón estandarizado: misma posición (barra bajo el encabezado) y color
+          (emerald) que «Generar pólizas» de Ventas/Compras. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={correr} disabled={busy}
+          className="inline-flex items-center gap-1.5 border px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
+          <PlayCircle size={15} /> {busy ? 'Generando pólizas…' : 'Generar pólizas'}
+        </button>
       </div>
       {msg && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{msg}</p>}
       <p className="text-[11px] text-gray-400 px-1">

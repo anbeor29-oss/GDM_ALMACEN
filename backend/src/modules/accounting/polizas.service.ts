@@ -276,6 +276,10 @@ export async function generarVentasDelMes(
   // acto): el banco de cobros y pagos (102.01) y la Caja (101, para el efectivo). Una vez.
   const cta102Cobro = await cuentaPorAgrupador(companyId, '102.01');
   const ctaCajaCobro = await cuentaPorAgrupadores(companyId, ['101.01', '101.02', '101']);
+  // Cuentas de IVA para la reclasificación del cobro: Cargo «IVA por pagar» (208.01) /
+  // Abono «IVA pagado» (209.01). Se resuelven una vez.
+  const cta208Cobro = await cuentaPorAgrupador(companyId, '208.01');
+  const cta209Cobro = await cuentaPorAgrupador(companyId, '209.01');
 
   for (const c of r.rows) {
     const folioTxt = [c.serie, c.folio].filter(Boolean).join('-') || String(c.uuid).slice(0, 8);
@@ -379,8 +383,8 @@ export async function generarVentasDelMes(
       creadas++;
 
       // PUE = cobrada en una sola exhibición: además de la venta (el activo/cuenta por
-      // cobrar) se genera SU COBRO que la CANCELA (cargo banco|caja / abono cliente). El
-      // IVA ya quedó en 208 (cobrado) en la venta, así que el cobro sólo mueve banco↔cliente.
+      // cobrar) se genera SU COBRO que la CANCELA (cargo banco|caja / abono cliente) y
+      // RECLASIFICA el IVA: Cargo «IVA por pagar» (208.01) / Abono «IVA pagado» (209.01).
       // Efectivo (forma 01) → Caja (101); el resto → banco 102.01. Idempotente (COBROPUE:uuid).
       // Con retención se omite el auto-cobro (la venta ya quedó; es un caso raro en PUE).
       const metodoPagoV = (String(c.xml).match(/MetodoPago\s*=\s*"([^"]+)"/)?.[1] || c.metodo_pago || '').toUpperCase();
@@ -397,6 +401,10 @@ export async function generarVentasDelMes(
               lineas: [
                 { account_id: destV.id, cargo: total, concepto: `${(efectivoV && ctaCajaCobro) ? 'Caja' : 'Banco'} (cobro PUE)`, uuid_cfdi: c.uuid },
                 { account_id: cli.id, abono: total, concepto: 'Clientes (cobro PUE)', uuid_cfdi: c.uuid, party_rfc: c.rfc_receptor },
+                ...((iva > 0 && cta208Cobro && cta209Cobro) ? [
+                  { account_id: cta208Cobro.id, cargo: iva, concepto: 'IVA por pagar', uuid_cfdi: c.uuid },
+                  { account_id: cta209Cobro.id, abono: iva, concepto: 'IVA pagado', uuid_cfdi: c.uuid },
+                ] : []),
               ],
             }, userId);
             cobrosPue++;
@@ -951,11 +959,13 @@ export async function generarCobroPue(
     { account_id: cliId, abono: total, concepto: 'Clientes (cobro)', uuid_cfdi: c.uuid, party_rfc: c.rfc_receptor },
   ];
   if (iva > 0) {
-    const c209 = await cuentaPorAgrupador(companyId, '209.01');
+    // Al COBRAR: Cargo «IVA por pagar» (208.01, donde lo dejó la venta) / Abono «IVA
+    // pagado» (209.01). Antes iba invertido.
     const c208 = await cuentaPorAgrupador(companyId, '208.01');
-    if (!c209 || !c208) return { error: 'falta cuenta de IVA (208.01 / 209.01)' };
-    lineas.push({ account_id: c209.id, cargo: iva, concepto: 'IVA por pagar (cobrado)', uuid_cfdi: c.uuid });
-    lineas.push({ account_id: c208.id, abono: iva, concepto: 'IVA pagado', uuid_cfdi: c.uuid });
+    const c209 = await cuentaPorAgrupador(companyId, '209.01');
+    if (!c208 || !c209) return { error: 'falta cuenta de IVA (208.01 / 209.01)' };
+    lineas.push({ account_id: c208.id, cargo: iva, concepto: 'IVA por pagar', uuid_cfdi: c.uuid });
+    lineas.push({ account_id: c209.id, abono: iva, concepto: 'IVA pagado', uuid_cfdi: c.uuid });
   }
   try {
     const pol = await crearPoliza(companyId, {
@@ -1449,8 +1459,12 @@ const COND_DESCONTAB: Record<string, string> = {
   pagos:   `origen='CFDI' AND regla LIKE 'pago\\_cfdi%' ESCAPE '\\'`,
   // Contado (PUE) y depreciación: generados por el motor, no por el banco. PUE abarca el
   // PAGO de las compras PUE y el COBRO de las ventas PUE (ambos cancelan su pasivo/activo).
-  pue:          `(regla LIKE 'pago\\_pue%' OR regla LIKE 'cobro\\_pue%') ESCAPE '\\'`,
+  // Cada LIKE lleva su propio ESCAPE: en Postgres ESCAPE va PEGADO a su LIKE, no tras un
+  // paréntesis (si no, da «syntax error at or near ESCAPE»).
+  pue:          `(regla LIKE 'pago\\_pue%' ESCAPE '\\' OR regla LIKE 'cobro\\_pue%' ESCAPE '\\')`,
   depreciacion: `origen='DEPRECIACION'`,
+  // Nómina recibida (CFDI tipo N que te pagan): por si se clasificó de más y hay que rehacerla.
+  nomina_recibida: `regla = 'nomina_recibida_v1'`,
 };
 export type TipoDescontab = keyof typeof COND_DESCONTAB;
 
