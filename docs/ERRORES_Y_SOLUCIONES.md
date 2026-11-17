@@ -57,14 +57,22 @@ moría también «cambiar de empresa»).
 **Regla general.** Todo proceso de más de ~15-20 s sobre HTTP va con **jobId + sondeo**,
 nunca manteniendo la petición abierta ni escribiendo al socket para «ganar tiempo».
 
-**Límite conocido que QUEDA.** El parseo de un `.xls` **gigante** (libro de TODOS los años
-en un archivo, ~8 MB+) es **síncrono** y puede **agotar la RAM** (Render plan starter, 512
-MB) → el proceso muere por OOM (eso ningún patrón HTTP lo evita). Mitigación de hoy:
-**exportar el libro por AÑO** y subir uno por uno (idempotente y aditivo), o subir la RAM.
-Pendiente real: **importador por lotes** que parta el archivo internamente (ver PENDIENTES).
+**CONFIRMADO funcionando (2026-11-17).** Con el fix desplegado se verificó en vivo:
+- `GET /health`: **uptime de 10 h sin reiniciarse** en `eaa3dba` → ya no hay crash-loop.
+- **Preflight CORS** del POST desde `https://hcgm.com.mx`: permitido.
+- La ruta `GET /contalink/importar/:jobId` existe (401 sin token = registrada).
+- El **bundle del frontend en vivo** trae el código nuevo (`contalink/importar`, `esperarImportacion`).
+Por tanto un «Network Error» posterior es de ANTES del despliegue (crash-loop) o un **caché viejo
+del navegador** → **hard refresh (Ctrl+F5)** y re-probar.
 
-**Verificado.** El parser en sí está bien: con el archivo real del usuario (768 KB) procesó
-**598 pólizas, 3 412 movimientos, 223 CFDI en 107 ms, 0 descuadres**.
+**Sobre el archivo GIGANTE — NO es OOM (supuesto corregido 2026-11-17).** Medido: 768 KB añade
+~15 MB al parsear; **8 MB ≈ 150 MB**, muy por debajo de los 512 MB. Con las 10 h sin caerse, el
+`.xls` grande **NO revienta la RAM ni tumba el proceso**: entra, sólo tarda minutos en el bucle de
+BD (la barra de avance se mueve). Si algún libro fuera REALMENTE enorme, exportarlo **por AÑO**
+(idempotente, aditivo) — **no** hace falta un importador por lotes.
+
+**Verificado (parser).** Con el archivo real del usuario (768 KB): **598 pólizas, 3 412 movimientos,
+223 CFDI en 107 ms, 0 descuadres**.
 
 ---
 

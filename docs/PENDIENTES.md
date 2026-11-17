@@ -14,10 +14,11 @@
   limpieza** «Limpiar cuentas raras» (borra las vacías con código inválido, desactiva las que tienen datos); **#6 PDF**
   `docs/FUNCIONES_OCULTAS.pdf`. Detalle en BITACORA. **Front tocado ⇒ regenerar ZIP `build:hosting`.** Ver
   [[polizas-hub-pestanas]], [[activo-fijo-depreciacion]].
-- **(Lista B — FALTA, grande) #5 Carga masiva de estados de cuenta del año.** Subir 1-12 PDFs (o un zip) de un banco →
-  extraer a una hoja → **partir por mes** por fechas → armar la balanza/tesorería mes a mes. Base: ya existe el extractor
-  de PDF de un estado de cuenta (Tesorería, formato canónico de 7 columnas). Falta: aceptar varios PDFs/zip en una carga,
-  agrupar los movimientos por mes y encadenar la carga por mes. Ver [[extractor-estados-cuenta]].
+- **(REVISADO 2026-11-17) #5 Estados de cuenta — UNO A LA VEZ, sin bultos.** DECISIÓN del usuario: **NO** subir un
+  documento con 12 estados de cuenta ni un ZIP (los bultos grandes dan problemas de memoria/cortes, igual que el libro
+  gigante de Contalink). Se queda el flujo que ya existe: **un estado de cuenta (un PDF) por carga** → Tesorería (extractor
+  canónico de 7 columnas). Si se quiere «el año», se suben los 12 meses **uno por uno** (cada carga arma su mes). Queda
+  DESCARTADO el importador masivo de 1-12 PDFs/zip. Ver [[extractor-estados-cuenta]].
 - **(HECHO 2026-11-16) #10 Complemento de pago (REP) con más de 1 factura.** El MOTOR ya aceptaba `documentos[]`
   (`construirPagos20` + `createPayment`: UN CFDI tipo P con varios `DoctoRelacionado`, mismo cliente, saldo real,
   parcialidad por factura, multimoneda). Se agregó la **pantalla que arranca del DEPÓSITO** en Facturas → «Complementos de
@@ -35,14 +36,14 @@
   `Set`. Queda sólo el OOM del archivo gigante (parseo síncrono): subir el libro **por año** o más RAM. Ver
   [[importador-contalink-ctlk]].
 
-- **(FALTA — NUEVA 2026-11-16) Importador de Contalink POR LOTES para el libro GIGANTE (evitar OOM).** El import ya corre
-  en segundo plano y ya no tumba el backend (commit `eaa3dba`), pero el **respaldo de TODOS los años en UN archivo**
-  (~8 MB+, p. ej. `libro-diario (2).xls` / `(3).xls`) todavía marca «Network Error»: el parseo de un `.xls` enorme es
-  **síncrono** y agota la RAM del plan starter (512 MB) → el proceso muere por OOM (eso ningún patrón HTTP lo evita).
-  Hoy la salida segura es **exportar el libro por AÑO** y subir uno por uno (idempotente, aditivo). Tarea: (a) que el
-  importador **parta/transmita** el archivo internamente y procese por tramos sin cargarlo entero en memoria, o (b) al
-  menos un aviso claro en la pantalla («si es de varios años, súbelo por año») + verificar cuál es el tope de tamaño que
-  sí entra. Ver [[importador-contalink-ctlk]] y `docs/ERRORES_Y_SOLUCIONES.md` §1.
+- **(REVISADO 2026-11-17) Import de Contalink con archivos grandes — NO es OOM; verificar y, si acaso, avisar «por año».**
+  CORRECCIÓN del supuesto anterior (que el `.xls` grande reventaba la RAM): **medido** → 768 KB añade ~15 MB al parsear y
+  un archivo de **8 MB ≈ 150 MB**, muy por debajo de los 512 MB; y el backend lleva **10 h sin caerse** en `eaa3dba`
+  (`/health`). O sea **ni OOM ni crash**. El «Network Error» del screenshot era del periodo de crash-loop ANTERIOR al
+  despliegue (el latido). Queda: (a) **re-probar** los `libro-diario (2)/(3).xls` de 8 MB con el frontend nuevo (barra de
+  avance → verde); tardan minutos en el bucle de BD pero entran. (b) Alineado con la decisión de «no bultos»: si algún día
+  un libro es REALMENTE enorme, **exportarlo por AÑO** (idempotente, aditivo) en vez de un importador por lotes. NO se
+  requiere batch importer. Ver [[importador-contalink-ctlk]] y `docs/ERRORES_Y_SOLUCIONES.md` §1.
 - **(FALTA — NUEVA 2026-11-16, PARA MAÑANA) Nuevo error de BASE DE DATOS detectado por el usuario.** El usuario reportó
   «otro error de base de datos» el 2026-11-16 y pidió dejarlo para mañana (2026-11-17). **Pendiente de DETALLAR**: falta
   el mensaje/pantalla/pasos exactos para reproducirlo. Al retomar: pedir al usuario el texto del error y dónde aparece,

@@ -8216,3 +8216,20 @@ crash-loop. (El parser NO tenía la culpa: se corrió el archivo real del usuari
 - **OOM de un archivo GIGANTE es lo único que aún puede matar el proceso** (el parseo de un `.xls` enorme es síncrono):
   para eso, exportar el libro **por año** (idempotente, aditivo) o subir la RAM de Render. `tsc` verde back+front; ⇒ ZIP.
 Ver [[importador-contalink-ctlk]].
+
+## 2026-11-17 (contab.) — Verificación del import + correcciones de supuestos (sin código)
+
+Turno de **análisis y documentación** (el usuario pidió documentar errores/soluciones antes de reportar, y no tocar el
+error de BD nuevo —queda para después—). Hallazgos con datos, no suposiciones:
+- **La regresión del import YA está corregida y CONFIRMADA en vivo.** El «Network Error» que seguía apareciendo era de
+  ANTES del despliegue (crash-loop del latido). Verificado: `GET /health` → **uptime 10 h sin reiniciarse** en `eaa3dba`;
+  **preflight CORS** del POST desde hcgm.com.mx permitido; `GET /contalink/importar/:jobId` existe (401); el **bundle del
+  frontend en vivo** trae el código nuevo (`contalink/importar`, `esperarImportacion`). Acción para el usuario: **hard
+  refresh (Ctrl+F5)** por si el navegador cachea un bundle viejo, y re-probar (barra de avance → verde).
+- **Supuesto del OOM CORREGIDO:** medí el parseo → 768 KB añade ~15 MB, **8 MB ≈ 150 MB** (muy por debajo de 512 MB).
+  Sumado a las 10 h estable, **el archivo grande NO revienta la RAM ni tumba el proceso**; sólo tarda minutos en el bucle
+  de BD. Se **descartó** la tarea de «importador por lotes» (no hace falta).
+- **Decisión #5 (estados de cuenta):** NO subir 12 PDFs ni un ZIP de un jalón (bultos = problemas). Se queda **uno a la
+  vez** con el extractor que ya existe. Actualizado en PENDIENTES.
+- Doc nuevo `docs/ERRORES_Y_SOLUCIONES.md` §1 ampliado con la verificación; memorias al día. Sin cambios de código ⇒ sin ZIP.
+Ver [[importador-contalink-ctlk]], `docs/ERRORES_Y_SOLUCIONES.md`.
