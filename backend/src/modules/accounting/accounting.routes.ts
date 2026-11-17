@@ -1099,6 +1099,22 @@ router.post(
   })
 );
 
+/** POST /accounting/periodos/:anio/:mes/saldo-manual — captura MANUAL del saldo inicial y/o
+ *  final de una cuenta en la balanza del periodo (apertura/ajuste). */
+router.post(
+  '/periodos/:anio/:mes/saldo-manual',
+  requireCapability('contabilidad:capturar'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const b = req.body || {};
+    if (!b.codigo) throw new ValidationError('Falta el código de la cuenta.');
+    const num = (v: any) => (v === '' || v == null ? null : Number(v));
+    const r = await periodos.fijarSaldoManual(
+      companyId(req), Number(req.params.anio), Number(req.params.mes), String(b.codigo),
+      num(b.saldoInicial), num(b.saldoFinal));
+    res.json({ success: true, data: r, message: `Saldo de ${r.codigo} actualizado.` });
+  })
+);
+
 /** POST /accounting/periodos/:anio/desde-polizas-anual — reconstruye los 12 meses del
  *  año desde las pólizas, en orden (salta los meses sin pólizas, p.ej. la apertura). */
 router.post(
@@ -1823,6 +1839,39 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const r = await cuentasDup.fusionarPorNombre(companyId(req));
     res.json({ success: true, data: r, message: r.mensaje });
+  })
+);
+
+/** GET /accounting/cfdi/:uuid/conceptos — CONCEPTOS (qué es el gasto/venta) de un CFDI de la
+ *  bóveda, para previsualizarlo desde la worklist de Pólizas y codificar más fácil. */
+router.get(
+  '/cfdi/:uuid/conceptos',
+  asyncHandler(async (req: Request, res: Response) => {
+    const uuid = String(req.params.uuid || '').toUpperCase();
+    const r = await query<any>(
+      `SELECT serie, folio, nombre_emisor, nombre_receptor, rfc_emisor, rfc_receptor,
+              total, moneda, direccion, fecha_emision, xml
+         FROM cfdi_recibidos WHERE company_id=$1 AND UPPER(uuid)=$2 LIMIT 1`,
+      [companyId(req), uuid]);
+    const c = r.rows[0];
+    if (!c) throw new NotFoundError('CFDI no encontrado en la bóveda.');
+    const emitido = c.direccion === 'emitidos';
+    const conceptos = c.xml
+      ? ventas.conceptosDeXml(String(c.xml)).map((x) => ({
+          clave: x.clave, descripcion: x.descripcion,
+          importe: Math.round((x.importe - (x.descuento || 0)) * 100) / 100,
+        }))
+      : [];
+    res.json({
+      success: true,
+      data: {
+        folio: [c.serie, c.folio].filter(Boolean).join('-') || '—',
+        nombre: (emitido ? c.nombre_receptor : c.nombre_emisor) || '—',
+        rfc: (emitido ? c.rfc_receptor : c.rfc_emisor) || '',
+        total: Number(c.total || 0), moneda: c.moneda || 'MXN',
+        fecha: c.fecha_emision, conceptos, sinXml: !c.xml,
+      },
+    });
   })
 );
 

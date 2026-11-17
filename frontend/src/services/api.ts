@@ -1781,6 +1781,11 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas-duplicadas/por-nombre/fusionar', {});
     return r.data;
   }
+  /** Conceptos (qué es el gasto/venta) de un CFDI, para previsualizarlo desde Pólizas. */
+  async getCfdiConceptos(uuid: string) {
+    const r = await this.client.get<APIResponse<any>>(`/accounting/cfdi/${encodeURIComponent(uuid)}/conceptos`);
+    return r.data;
+  }
   async generarCompras(anio: number, mes: number, todoElAnio = false) {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-compras', { anio, mes, todoElAnio });
     return r.data;
@@ -2209,6 +2214,12 @@ class APIClient {
   /** Deriva/actualiza la balanza del mes desde las pólizas (journal_lines). */
   async actualizarBalanzaDesdePolizas(anio: number, mes: number) {
     const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/${mes}/desde-polizas`);
+    return r.data;
+  }
+  /** Captura MANUAL del saldo inicial y/o final de una cuenta en la balanza del periodo. */
+  async setBalanzaSaldoManual(anio: number, mes: number, codigo: string,
+    saldos: { saldoInicial?: number | null; saldoFinal?: number | null }) {
+    const r = await this.client.post<APIResponse<any>>(`/accounting/periodos/${anio}/${mes}/saldo-manual`, { codigo, ...saldos });
     return r.data;
   }
   /** Reconstruye la balanza de los 12 meses del año desde las pólizas, en orden. */

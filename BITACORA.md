@@ -8309,3 +8309,19 @@ Tras usar el dedup por nombre, 3 arreglos (de un lote más grande del usuario):
 `tsc` back+front verde. **Front tocado ⇒ ZIP.** PENDIENTES del lote (documentar): saldo inicial/final editable en Balanza
 NIF; previsualizar el CFDI por el folio verde en Pólizas (y evaluar ocultar la pantalla XML del SAT); parser del estado de
 cuenta de Uber para «bancos»; barrido total de `window.confirm`. Ver [[contabilidad-dedup-nombre-sugerencia]], [[avisos-centrados-modal]].
+
+## 2026-11-17 (contab.) — Preview de conceptos del CFDI en Pólizas + saldo inicial/final EDITABLE en Balanza
+
+Dos del lote, a criterio:
+- **#4 Ver «de qué es el gasto» por el folio verde.** En Ventas/Compras el **folio** ahora es un botón verde que abre un
+  modal con los **CONCEPTOS del CFDI** (Clave SAT · Descripción · Importe), para codificar la 2ª cuenta más fácil sin ir a
+  la pantalla «XML del SAT». Endpoint `GET /accounting/cfdi/:uuid/conceptos` (lee `cfdi_recibidos.xml` con
+  `conceptosDeXml`); componente `ConceptosCfdiModal` en `DocsContabilizar.tsx`. (La pantalla XML del SAT NO se ocultó —
+  tiene más cosas, como descargar XML y cancelaciones—; sólo se trajo el preview a Pólizas.)
+- **#1 Saldo inicial/final editable en la Balanza NIF.** En `Estados.tsx`, las celdas de **Saldo inicial** y **Saldo final**
+  son editables (clic → input → guarda); `CeldaSaldoEditable` + `api.setBalanzaSaldoManual` → ruta
+  `POST /accounting/periodos/:anio/:mes/saldo-manual` → `periodos.fijarSaldoManual` (upsert en
+  `accounting_period_balances`, conserva cargos/abonos). Para capturar la apertura a mano. OJO: «Actualizar desde pólizas»
+  re-deriva el saldo (aplica sobre todo a cuentas sin pólizas). El doble-clic del renglón (auxiliar) se respeta (stopPropagation).
+`tsc` back+front verde. Front tocado ⇒ ZIP. **Faltan del lote:** parser Uber para «bancos» y barrido total de `window.confirm`.
+Ver [[polizas-hub-pestanas]], [[balance-general-contable]].

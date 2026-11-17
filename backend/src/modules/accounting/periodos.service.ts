@@ -26,6 +26,7 @@
  */
 
 import { query, transaction, transactionQuery } from '../../config/database';
+import { ValidationError } from '../../middleware/errorHandler';
 import type { PoolClient } from 'pg';
 import type { FilaBalanza } from './balanza-lector.service';
 import { marcarHojas } from './balanza-lector.service';
@@ -263,6 +264,37 @@ export async function balanzaDelPeriodo(companyId: string, anio: number, mes: nu
     diferencia: sumaCargos - sumaAbonos,
     cuadra: Math.abs(sumaCargos - sumaAbonos) <= 0.02,
   };
+}
+
+/**
+ * Captura MANUAL del saldo inicial y/o final de UNA cuenta en el periodo (p. ej. para
+ * registrar la apertura cuando no viene de un respaldo). Upsert en
+ * `accounting_period_balances`; conserva cargos/abonos. OJO: «Actualizar desde pólizas»
+ * re-deriva el saldo desde las pólizas, así que esta captura manual aplica sobre todo a
+ * cuentas/periodos SIN pólizas (apertura) — si la cuenta tiene pólizas, vuelve a pisarse.
+ */
+export async function fijarSaldoManual(
+  companyId: string, anio: number, mes: number, codigo: string,
+  saldoInicial: number | null, saldoFinal: number | null,
+): Promise<{ codigo: string; saldo_inicial: number; saldo_final: number }> {
+  if (saldoInicial == null && saldoFinal == null) throw new ValidationError('Nada que guardar: captura el saldo inicial o el final.');
+  const p = await periodoDe(companyId, anio, mes);
+  if (!p) throw new ValidationError(`No hay periodo ${mes}/${anio} activo. Activa el ejercicio primero.`);
+  const cta = await query<any>(
+    `SELECT id FROM accounting_accounts WHERE company_id=$1 AND codigo=$2 LIMIT 1`,
+    [companyId, String(codigo).trim()]);
+  if (!cta.rows[0]) throw new ValidationError(`La cuenta ${codigo} no existe en el catálogo.`);
+  const r = await query<any>(
+    `INSERT INTO accounting_period_balances
+       (company_id, periodo_id, account_id, saldo_inicial, cargos, abonos, saldo_final)
+     VALUES ($1,$2,$3, COALESCE($4,0), 0, 0, COALESCE($5, COALESCE($4,0)))
+     ON CONFLICT (periodo_id, account_id) DO UPDATE SET
+       saldo_inicial = COALESCE($4, accounting_period_balances.saldo_inicial),
+       saldo_final   = COALESCE($5, accounting_period_balances.saldo_final),
+       updated_at    = NOW()
+     RETURNING saldo_inicial::float AS saldo_inicial, saldo_final::float AS saldo_final`,
+    [companyId, p.id, cta.rows[0].id, saldoInicial, saldoFinal]);
+  return { codigo: String(codigo).trim(), saldo_inicial: r.rows[0].saldo_inicial, saldo_final: r.rows[0].saldo_final };
 }
 
 /**

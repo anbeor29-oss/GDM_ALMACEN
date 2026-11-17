@@ -27,6 +27,48 @@ import {
    BALANZA DE COMPROBACIÓN
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/** Celda de saldo (inicial/final) EDITABLE: clic → input; al salir guarda el valor
+ *  manual en la balanza del periodo. Útil para capturar la apertura a mano. OJO:
+ *  «Actualizar desde pólizas» re-deriva el saldo, así que aplica sobre todo a cuentas
+ *  sin pólizas. Para en el doble-clic del renglón (que abre el auxiliar). */
+function CeldaSaldoEditable({ anio, mes, codigo, campo, valor, negativoRojo }: {
+  anio: number; mes: number; codigo: string; campo: 'inicial' | 'final'; valor: number; negativoRojo?: boolean;
+}) {
+  const qc = useQueryClient();
+  const [edit, setEdit] = useState(false);
+  const [txt, setTxt] = useState('');
+  const [busy, setBusy] = useState(false);
+  const abrir = (e: any) => { e.stopPropagation(); setTxt(String(valor ?? 0)); setEdit(true); };
+  const guardar = async () => {
+    setEdit(false);
+    const v = parseFloat(txt);
+    if (isNaN(v) || Math.abs(v - (Number(valor) || 0)) < 0.005) return;
+    setBusy(true);
+    try {
+      await api.setBalanzaSaldoManual(anio, mes, codigo, campo === 'inicial' ? { saldoInicial: v } : { saldoFinal: v });
+      qc.invalidateQueries({ queryKey: ['balanza-periodo', anio, mes] });
+    } catch (e: any) {
+      window.alert(e?.response?.data?.message || 'No se pudo guardar el saldo.');
+    } finally { setBusy(false); }
+  };
+  if (edit) {
+    return (
+      <td className="px-3 py-1 text-right" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+        <input autoFocus type="number" step="0.01" value={txt}
+          onChange={(e) => setTxt(e.target.value)} onBlur={guardar}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); else if (e.key === 'Escape') setEdit(false); }}
+          className="w-28 border border-sky-400 rounded px-1.5 py-0.5 text-right text-xs tabular-nums" />
+      </td>
+    );
+  }
+  return (
+    <td onClick={abrir} title="Clic para capturar este saldo a mano (apertura/ajuste)"
+      className={`px-3 py-1 text-right tabular-nums cursor-text hover:bg-sky-100 ${busy ? 'opacity-40' : ''} ${negativoRojo && Number(valor) < 0 ? 'text-rose-700 font-medium' : ''}`}>
+      {mx(valor)}
+    </td>
+  );
+}
+
 export function BalanzaPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -192,11 +234,10 @@ export function BalanzaPage() {
                     <td className="px-2 py-1 text-center text-xs text-gray-500">
                       {f.naturaleza === 'ACREEDORA' ? 'A' : 'D'}
                     </td>
-                    <td className="px-3 py-1 text-right tabular-nums">{mx(f.saldo_inicial)}</td>
+                    <CeldaSaldoEditable anio={anio} mes={mes} codigo={f.codigo} campo="inicial" valor={f.saldo_inicial} />
                     <td className="px-3 py-1 text-right tabular-nums">{mx(f.cargos)}</td>
                     <td className="px-3 py-1 text-right tabular-nums">{mx(f.abonos)}</td>
-                    <td className={`px-3 py-1 text-right tabular-nums font-medium ${
-                      f.saldo_final < 0 ? 'text-rose-700' : ''}`}>{mx(f.saldo_final)}</td>
+                    <CeldaSaldoEditable anio={anio} mes={mes} codigo={f.codigo} campo="final" valor={f.saldo_final} negativoRojo />
                     <td className="px-3 py-1 font-mono text-[10px] text-gray-400">
                       {f.codigo_agrupador || '—'}
                     </td>

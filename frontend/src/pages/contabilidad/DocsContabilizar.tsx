@@ -96,6 +96,7 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
   const [mes, setMes] = useState<number>(hoy.getMonth() + 1);
   const [buscar, setBuscar] = useState('');
   const [asiento, setAsiento] = useState<string | null>(null);
+  const [verCfdi, setVerCfdi] = useState<string | null>(null);   // UUID del CFDI a previsualizar (conceptos)
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [sugiriendo, setSugiriendo] = useState(false);
@@ -340,7 +341,13 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
               return (
                 <tr key={c.id} className={cancelado ? 'bg-rose-50/40' : 'hover:bg-gray-50'}>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-700 bg-amber-50/70">{fechaCorta(c.fecha_emision)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-700">{folioDe(c)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <button onClick={() => c.uuid && setVerCfdi(c.uuid)} disabled={!c.uuid}
+                      title="Ver los conceptos del CFDI (de qué es el gasto)"
+                      className="text-emerald-600 hover:underline font-medium disabled:text-gray-400 disabled:no-underline">
+                      {folioDe(c)}
+                    </button>
+                  </td>
                   <td className={`px-3 py-2 ${ventas ? 'bg-emerald-50/70' : 'bg-sky-50/70'}`}><p className="truncate max-w-[14rem]" title={c.contraparte_nombre}>{c.contraparte_nombre || '—'}</p></td>
                   <td className="px-3 py-2">
                     <ComboCuenta id={c.id} valor={c.cuenta_contable} campo="cuenta"
@@ -392,6 +399,65 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
       {asiento && (
         <AsientoModal uuid={asiento} onClose={() => setAsiento(null)} claveVista={claveVista} />
       )}
+      {verCfdi && <ConceptosCfdiModal uuid={verCfdi} onClose={() => setVerCfdi(null)} />}
+    </div>
+  );
+}
+
+/* ── Previsualización del CFDI: sus CONCEPTOS (de qué es el gasto/venta), para codificar
+ *    más fácil sin ir a la pantalla «XML del SAT». Se abre con el folio verde de la lista. */
+function ConceptosCfdiModal({ uuid, onClose }: { uuid: string; onClose: () => void }) {
+  const q = useQuery({ queryKey: ['cfdi-conceptos', uuid], queryFn: () => api.getCfdiConceptos(uuid) });
+  const d: any = q.data?.data;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl my-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-2.5 border-b">
+          <span className="text-sm font-semibold text-gray-700">Conceptos del CFDI</span>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+        </div>
+        <div className="p-5 space-y-3">
+          {q.isLoading && <p className="text-center text-gray-500 py-6">Cargando…</p>}
+          {q.isError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded px-3 py-2">{(q.error as any)?.response?.data?.message || 'No se pudo leer el CFDI.'}</p>}
+          {d && (
+            <>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm border-b pb-3">
+                <b>{d.folio}</b>
+                <span className="text-gray-600 truncate max-w-xs" title={d.nombre}>{d.nombre}</span>
+                <span className="font-mono text-xs text-gray-500">{d.rfc}</span>
+                <span className="ml-auto font-semibold">{money(d.total, d.moneda)}</span>
+              </div>
+              {d.sinXml ? (
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  Este comprobante bajó como <b>metadato</b> (sin XML), así que no hay conceptos que mostrar.
+                </p>
+              ) : !d.conceptos?.length ? (
+                <p className="text-sm text-gray-500 italic">El CFDI no trae conceptos.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr className="text-xs font-semibold text-gray-600">
+                      <th className="px-3 py-1.5 text-left">Clave SAT</th>
+                      <th className="px-3 py-1.5 text-left">Descripción</th>
+                      <th className="px-3 py-1.5 text-right">Importe</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {d.conceptos.map((cn: any, i: number) => (
+                      <tr key={i}>
+                        <td className="px-3 py-1.5 font-mono text-xs text-gray-500 align-top">{cn.clave}</td>
+                        <td className="px-3 py-1.5 text-gray-800">{cn.descripcion}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{money(cn.importe, d.moneda)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <p className="text-[11px] text-gray-400">Con esto sabes de qué es el gasto para asignar la 2ª cuenta.</p>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
