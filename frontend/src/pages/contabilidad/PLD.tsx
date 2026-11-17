@@ -8,6 +8,7 @@
  * Ver docs/PLD_LFPIORPI_ANALISIS.md.
  */
 import { useState, useEffect } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldAlert, Save, AlertTriangle, Users, FileWarning, CalendarClock, Loader2, Lock, FolderOpen, X, UserX } from 'lucide-react';
 import api from '@/services/api';
@@ -95,7 +96,7 @@ function PanelActividad({ acts, cfg, onSaved }: { acts: any[]; cfg: any; onSaved
    * de su puesto y hay que dejar el dato en limpio hasta designar al nuevo. Borra
    * nombre y RFC y lo PERSISTE de una vez (sin tocar actividad ni padrón). */
   const limpiarRepresentante = async () => {
-    if (!window.confirm('¿Quitar al Representante de Cumplimiento (nombre y RFC)?\n\nÚsalo cuando el responsable deja el puesto. Captura al nuevo cuando lo designes.')) return;
+    if (!await confirmar('¿Quitar al Representante de Cumplimiento (nombre y RFC)?\n\nÚsalo cuando el responsable deja el puesto. Captura al nuevo cuando lo designes.')) return;
     const limpio = { ...form, representante_nombre: '', representante_rfc: '' };
     setForm(limpio);
     setBusy(true); setMsg('');

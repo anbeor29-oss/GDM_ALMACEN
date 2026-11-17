@@ -15,6 +15,7 @@
  * ATORADO (el SAT lo rechazó), con el motivo textual de cada rechazo.
  */
 import { useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock, Gauge, History, AlertTriangle, CheckCircle2,
@@ -241,8 +242,8 @@ export function ProgramacionSat() {
 
           {d.enVuelo > 0 && (
             <button
-              onClick={() => {
-                if (window.confirm(`¿Borrar las ${n(d.enVuelo)} descarga(s) pendientes / en curso?\n\nSólo se quitan las que quedaron a medias o en cola. Los XML que ya bajaron se CONSERVAN. Podrás volver a pedir ese periodo por sus fechas.`))
+              onClick={async () => {
+                if (await confirmar(`¿Borrar las ${n(d.enVuelo)} descarga(s) pendientes / en curso?\n\nSólo se quitan las que quedaron a medias o en cola. Los XML que ya bajaron se CONSERVAN. Podrás volver a pedir ese periodo por sus fechas.`))
                   accion('borrar-pend', () => api.borrarPendientesSat());
               }}
               disabled={!!busy}
@@ -254,8 +255,8 @@ export function ProgramacionSat() {
           )}
 
           <button
-            onClick={() => {
-              if (window.confirm('¿Borrar TODOS los trabajos y el cupo del día para monitorear en limpio?\n\nTu e.firma y la configuración se conservan. Esta acción no se puede deshacer.'))
+            onClick={async () => {
+              if (await confirmar('¿Borrar TODOS los trabajos y el cupo del día para monitorear en limpio?\n\nTu e.firma y la configuración se conservan. Esta acción no se puede deshacer.'))
                 accion('reiniciar', () => api.reiniciarSatDescarga());
             }}
             disabled={!!busy}

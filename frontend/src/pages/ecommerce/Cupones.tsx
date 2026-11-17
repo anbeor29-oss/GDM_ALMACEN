@@ -7,6 +7,7 @@
  * vigencia y límite de usos opcionales.
  */
 import { useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Tag, ArrowLeft, Plus, Pencil, Trash2, Loader2, Save, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -32,7 +33,7 @@ export function CuponesEcPage() {
     catch (e: any) { flash(e?.response?.data?.message || 'No se pudo cambiar.'); }
   };
   const eliminar = async (c: any) => {
-    if (!window.confirm(`¿Eliminar el cupón «${c.codigo}»?`)) return;
+    if (!await confirmar(`¿Eliminar el cupón «${c.codigo}»?`)) return;
     try { const r = await api.eliminarCuponEc(c.id); flash(r?.message || 'Cupón eliminado.'); refrescar(); }
     catch (e: any) { flash(e?.response?.data?.message || 'No se pudo eliminar.'); }
   };

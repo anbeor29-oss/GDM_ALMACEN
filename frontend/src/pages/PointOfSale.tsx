@@ -6,6 +6,7 @@
  *    (público en general, RFC XAXX010101000) — cierre manual o cron 23:55.
  */
 import { useState, useEffect } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Store, Search, Trash2, Plus, Minus, Banknote, Receipt, XCircle, Lock, Barcode,
@@ -251,7 +252,7 @@ export function PointOfSalePage() {
   };
 
   const handleCancel = async (sale: any) => {
-    if (!window.confirm(`¿Cancelar la venta #${sale.folio}? La mercancía regresa al inventario.`)) return;
+    if (!await confirmar(`¿Cancelar la venta #${sale.folio}? La mercancía regresa al inventario.`)) return;
     setError('');
     try {
       await api.cancelPosSale(sale.id);
@@ -262,7 +263,7 @@ export function PointOfSalePage() {
   };
 
   const handleCloseDay = async () => {
-    if (!window.confirm(
+    if (!await confirmar(
       `Cerrar el día genera la FACTURA GLOBAL al público en general con las ${summary?.open ?? 0} venta(s) abiertas. ¿Continuar?`
     )) return;
     setBusy(true); setError(''); setBanner('');

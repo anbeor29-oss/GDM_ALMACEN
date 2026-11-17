@@ -6,6 +6,7 @@
  * áreas de IMSS e INFONAVIT.
  */
 import { useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Plus, Trash2, FileText, X, Save, AlertTriangle, Settings, DownloadCloud, ExternalLink, Download } from 'lucide-react';
 import api from '@/services/api';
@@ -84,7 +85,7 @@ export function PanelOpinion({ tipo }: { tipo: string }) {
   };
 
   const borrar = async (id: string) => {
-    if (!window.confirm('¿Borrar este registro de opinión?')) return;
+    if (!await confirmar('¿Borrar este registro de opinión?')) return;
     try { await api.borrarOpinion(id); qc.invalidateQueries({ queryKey: ['opinion-hist', tipo] }); qc.invalidateQueries({ queryKey: ['opinion-resumen'] }); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo borrar.'); }
   };

@@ -10,6 +10,7 @@
  * consultas, un día dirían cosas diferentes del mismo mes.
  */
 import { useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Info, TrendingUp, X, FileSpreadsheet, FileDown } from 'lucide-react';
@@ -122,7 +123,7 @@ export function BalanzaPage() {
   };
 
   const reconstruirAnio = async () => {
-    if (!window.confirm(`¿Reconstruir la balanza de los 12 meses de ${anio} desde las pólizas?\n\nSe re-deriva cada mes EN ORDEN (cada mes arrastra del anterior). Los meses SIN pólizas —como la apertura cargada de un respaldo de balanza— se dejan intactos.`)) return;
+    if (!await confirmar(`¿Reconstruir la balanza de los 12 meses de ${anio} desde las pólizas?\n\nSe re-deriva cada mes EN ORDEN (cada mes arrastra del anterior). Los meses SIN pólizas —como la apertura cargada de un respaldo de balanza— se dejan intactos.`)) return;
     setBusy(true); setMsg(''); setAviso('');
     try {
       const r: any = await api.actualizarBalanzaAnualDesdePolizas(anio);

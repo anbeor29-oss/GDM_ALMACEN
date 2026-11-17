@@ -13,6 +13,7 @@
  * renovarla.
  */
 import { Fragment, useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   KeyRound, Download, Trash2, PlayCircle, AlertTriangle,
@@ -139,7 +140,7 @@ export function XmlRecibidos({ direccionInicial }: {
 
   const limpiables = trabajos.filter((t) => ['TERMINADO', 'CANCELADO', 'CON_ERRORES'].includes(t.estado)).length;
   const limpiarTerminados = async () => {
-    if (!window.confirm(`¿Quitar de la lista los ${limpiables} trabajo(s) terminados o con error?\n\nLos comprobantes que ya bajaron siguen en el sistema: no se pierde nada. Los que quedaron con error se pueden volver a pedir por su periodo.`)) return;
+    if (!await confirmar(`¿Quitar de la lista los ${limpiables} trabajo(s) terminados o con error?\n\nLos comprobantes que ya bajaron siguen en el sistema: no se pierde nada. Los que quedaron con error se pueden volver a pedir por su periodo.`)) return;
     try { const r: any = await api.limpiarTrabajosTerminados(); setAviso(r?.message || 'Lista limpia.'); refrescar(); }
     catch (e: any) { setError(e?.response?.data?.message || 'No se pudo limpiar.'); }
   };
@@ -231,7 +232,7 @@ export function XmlRecibidos({ direccionInicial }: {
                   </button>
                   <button
                     onClick={async () => {
-                      if (!window.confirm('¿Borrar la e.firma guardada? Habrá que cargarla otra vez para descargar.')) return;
+                      if (!await confirmar('¿Borrar la e.firma guardada? Habrá que cargarla otra vez para descargar.')) return;
                       await api.borrarSatCredencial(); setReemplazar(false); refrescar();
                     }}
                     className="flex items-center gap-1.5 text-rose-600 hover:bg-rose-50 px-2 py-1 rounded text-sm">

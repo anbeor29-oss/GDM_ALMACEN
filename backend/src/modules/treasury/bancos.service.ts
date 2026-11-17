@@ -36,7 +36,7 @@ const pesos = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
    y fintechs del catálogo de México que aún no tienen lector dedicado. Formato del
    reporte, igual que los de activos fijos. */
 const BANCOS_COBERTURA: Array<{ banco: string; clave: string; estado: 'Procesado' | 'Pendiente'; formato: string }> = [
-  // ── Procesados (13) ──
+  // ── Procesados (14) ──
   { banco: 'BBVA México',           clave: '012', estado: 'Procesado', formato: 'Tabular' },
   { banco: 'Banorte',               clave: '072', estado: 'Procesado', formato: 'Tabular' },
   { banco: 'Banamex (Citibanamex)', clave: '002', estado: 'Procesado', formato: 'Tabular' },
@@ -50,6 +50,7 @@ const BANCOS_COBERTURA: Array<{ banco: string; clave: string; estado: 'Procesado
   { banco: 'Bancrea',               clave: '152', estado: 'Procesado', formato: 'Tabular' },
   { banco: 'Nu México',             clave: '—',   estado: 'Procesado', formato: 'Narrativo' },
   { banco: 'Mercado Pago',          clave: '722', estado: 'Procesado', formato: 'Saldos y movimientos' },
+  { banco: 'Consubanco',            clave: '140', estado: 'Procesado', formato: 'Tabular (saldos)' },
   // ── Pendientes (por agregar lector) ──
   { banco: 'Inbursa',               clave: '036', estado: 'Pendiente', formato: '—' },
   { banco: 'Banco Azteca',          clave: '127', estado: 'Pendiente', formato: '—' },
@@ -62,7 +63,6 @@ const BANCOS_COBERTURA: Array<{ banco: string; clave: string; estado: 'Procesado
   { banco: 'Actinver',              clave: '133', estado: 'Pendiente', formato: '—' },
   { banco: 'Invex',                 clave: '059', estado: 'Pendiente', formato: '—' },
   { banco: 'Bansi',                 clave: '060', estado: 'Pendiente', formato: '—' },
-  { banco: 'Consubanco',            clave: '140', estado: 'Pendiente', formato: '—' },
   { banco: 'Banjército',            clave: '019', estado: 'Pendiente', formato: '—' },
   { banco: 'Banco del Bienestar',   clave: '166', estado: 'Pendiente', formato: '—' },
   { banco: 'Compartamos',           clave: '130', estado: 'Pendiente', formato: '—' },
@@ -72,8 +72,9 @@ const BANCOS_COBERTURA: Array<{ banco: string; clave: string; estado: 'Procesado
   { banco: 'Cuenca',                clave: '723', estado: 'Pendiente', formato: '—' },
 ];
 
-export async function bancosSoportadosPdf(companyId: string): Promise<{ buffer: Buffer; nombre: string }> {
-  const e = (await query<any>('SELECT business_name, rfc FROM companies WHERE id=$1', [companyId])).rows[0] || {};
+/** Arma el PDF de cobertura desde `BANCOS_COBERTURA` (sin tocar la BD; reusable por un
+ *  script para regenerar el PDF de referencia). */
+export function coberturaBancosPdfBuffer(empresa = '', rfc = ''): Promise<Buffer> {
   const procesados = BANCOS_COBERTURA.filter((b) => b.estado === 'Procesado').length;
   const columnas: ColumnaPdf[] = [
     { titulo: '#',      clave: 'n',       ancho: 1, align: 'center' },
@@ -83,9 +84,9 @@ export async function bancosSoportadosPdf(companyId: string): Promise<{ buffer: 
     { titulo: 'Formato', clave: 'formato', ancho: 3 },
   ];
   const filas = BANCOS_COBERTURA.map((b, i) => ({ n: i + 1, banco: b.banco, clave: b.clave, estado: b.estado, formato: b.formato }));
-  const buffer = await reporteTablaPdf({
+  return reporteTablaPdf({
     titulo: 'Cobertura de lectura de estados de cuenta',
-    empresa: e.business_name || '', rfc: e.rfc || '',
+    empresa, rfc,
     subtitulos: [
       `Procesados: ${procesados} · Pendientes: ${BANCOS_COBERTURA.length - procesados}`,
       'Procesado = el sistema lee su estado de cuenta en PDF para la conciliación. Pendiente = por agregar lector.',
@@ -93,6 +94,11 @@ export async function bancosSoportadosPdf(companyId: string): Promise<{ buffer: 
     columnas, filas,
     nota: 'Si tu banco está «Pendiente», puedes subir su estado y el sistema lo intenta en modo genérico; si no cuadra, lo agregamos al lector.',
   });
+}
+
+export async function bancosSoportadosPdf(companyId: string): Promise<{ buffer: Buffer; nombre: string }> {
+  const e = (await query<any>('SELECT business_name, rfc FROM companies WHERE id=$1', [companyId])).rows[0] || {};
+  const buffer = await coberturaBancosPdfBuffer(e.business_name || '', e.rfc || '');
   return { buffer, nombre: 'Cobertura_bancos.pdf' };
 }
 

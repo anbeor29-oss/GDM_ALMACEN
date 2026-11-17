@@ -6,6 +6,7 @@
  * y se puede borrar una que salió mal (el asiento y sus partidas).
  */
 import { useEffect, useMemo, useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Trash2, AlertTriangle, Pencil, Plus, Save, X, PlayCircle, Eye, Printer, ChevronRight, ChevronDown, CheckCircle2, Stethoscope, Undo2, Download } from 'lucide-react';
@@ -218,7 +219,7 @@ export function PolizasListaPage() {
   }, [todas]);
 
   const borrar = async (p: any) => {
-    if (!window.confirm(`¿Borrar la póliza #${p.folio} (${p.concepto || 'sin concepto'})? Esto no se puede deshacer.`)) return;
+    if (!await confirmar(`¿Borrar la póliza #${p.folio} (${p.concepto || 'sin concepto'})? Esto no se puede deshacer.`)) return;
     setMsg('');
     try {
       await api.borrarPoliza(p.id);

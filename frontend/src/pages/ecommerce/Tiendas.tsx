@@ -130,7 +130,7 @@ function EnviosModal({ tienda, onClose }: { tienda: any; onClose: () => void }) 
     catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo guardar.'); }
   };
   const borrar = async (m: any) => {
-    if (!window.confirm(`¿Eliminar el método de envío «${m.nombre}»?`)) return;
+    if (!await confirmar(`¿Eliminar el método de envío «${m.nombre}»?`)) return;
     try { await api.eliminarEnvioEc(m.id); refetch(); }
     catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo eliminar.'); }
   };

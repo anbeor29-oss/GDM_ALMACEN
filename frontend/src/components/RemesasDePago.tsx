@@ -12,6 +12,7 @@
  * la fecha en cada corrida; si algún día cambia, se escribe encima.
  */
 import { useState, useMemo } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarCheck, Printer, Check, XCircle, FileSignature, Building2, Trash2, Search,
@@ -433,7 +434,7 @@ function DetalleRemesa({ runId, canManage, onClose, onChanged }: {
   };
 
   const cambiarEstado = async (status: 'AUTHORIZED' | 'PAID' | 'CANCELLED', pregunta: string) => {
-    if (!window.confirm(pregunta)) return;
+    if (!await confirmar(pregunta)) return;
     setBusy(true); setError('');
     try { await api.setPaymentRunStatus(runId, status); refrescar(); }
     catch (e: any) { setError(e?.response?.data?.message || 'No se pudo cambiar el estado'); }

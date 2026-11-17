@@ -13,6 +13,7 @@
  * esto es el dato del que esa regla parte.
  */
 import { useMemo, useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Tag, Check, Users, RefreshCw, FileText, PlayCircle, Trash2, X } from 'lucide-react';
 import { api } from '@/services/api';
@@ -184,7 +185,7 @@ function PolizasPanel({ anio, mes }: { anio: number; mes: number }) {
     finally { setCargando(false); }
   };
   const regenerar = async () => {
-    if (!window.confirm('¿Borrar las pólizas de CFDI de este mes y volver a generarlas?')) return;
+    if (!await confirmar('¿Borrar las pólizas de CFDI de este mes y volver a generarlas?')) return;
     setCargando(true); setMsg('');
     try { await api.borrarPolizasCfdi(anio, mes); await generar(); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo regenerar'); setCargando(false); }

@@ -14,6 +14,7 @@
  * es lo que permite comprobar que la equivalencia con el SAT no se movió.
  */
 import { useState, useMemo, useEffect } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -143,7 +144,7 @@ export function CatalogoCuentasPage() {
      cuenta tiene subcuentas o movimientos; ahí se avisa y no pasa nada. */
   const eliminar = async (nodo: any) => {
     if ((nodo.hijosLista || []).length) { setMsg(`«${nodo.codigo}» tiene subcuentas: bórralas primero.`); return; }
-    if (!window.confirm(`¿Borrar la cuenta ${nodo.codigo} — ${nodo.nombre}?\n\nSi tiene partidas, se pasan a MIG-TEMPORAL para reasignarlas luego. Al reimportar el respaldo NO volverá a aparecer.`)) return;
+    if (!await confirmar(`¿Borrar la cuenta ${nodo.codigo} — ${nodo.nombre}?\n\nSi tiene partidas, se pasan a MIG-TEMPORAL para reasignarlas luego. Al reimportar el respaldo NO volverá a aparecer.`)) return;
     setMsg('');
     try {
       const r: any = await api.eliminarCuentaContable(nodo.id);
@@ -157,7 +158,7 @@ export function CatalogoCuentasPage() {
 
   /* Mueve los terceros mal colocados (mezclados) a su control correcto. */
   const reorganizar = async () => {
-    if (!window.confirm('¿Reorganizar los terceros?\n\nLos clientes/proveedores que quedaron bajo un control equivocado se mueven a su control correcto (105 cliente / 201 proveedor) y se renumeran. Sus partidas los siguen (misma cuenta).')) return;
+    if (!await confirmar('¿Reorganizar los terceros?\n\nLos clientes/proveedores que quedaron bajo un control equivocado se mueven a su control correcto (105 cliente / 201 proveedor) y se renumeran. Sus partidas los siguen (misma cuenta).')) return;
     setHerr('reorg'); setMsg('');
     try { const r: any = await api.reorganizarTerceros(); setMsg(r?.message || 'Terceros reorganizados.'); refrescar(); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo reorganizar.'); }
@@ -182,7 +183,7 @@ export function CatalogoCuentasPage() {
       const borrables = (d.borrables || []).length;
       const conDatos = (d.conDatos || []).length;
       const muestra = (d.borrables || []).slice(0, 6).map((c: any) => c.codigo).join(' · ');
-      if (!window.confirm(
+      if (!await confirmar(
         `Se encontraron ${d.total} cuenta(s) con código inválido (folios/fechas, no cuentas reales).\n\n` +
         `• ${borrables} vacía(s) se BORRARÁN${muestra ? ` (ej. ${muestra}${borrables > 6 ? '…' : ''})` : ''}.\n` +
         `• ${conDatos} con movimientos o subcuentas se DESACTIVARÁN (sin borrar) para reasignarlas a mano.\n\n¿Continuar?`)) return;
@@ -704,7 +705,7 @@ function SeccionApertura({ archivo, encabezado }: { archivo: File | null; encabe
   const asentar = async () => {
     if (!archivo || !fecha) return;
     const cuantas = prev?.lineasTotal ?? prev?.lineas?.length ?? '';
-    if (!window.confirm(`¿Asentar la póliza de apertura al ${fecha} con ${cuantas} cuenta(s)?`)) return;
+    if (!await confirmar(`¿Asentar la póliza de apertura al ${fecha} con ${cuantas} cuenta(s)?`)) return;
     setBusy('gen'); setError(''); setMsg('');
     try { const r: any = await api.polizaApertura(archivo, fecha, false); setMsg(r.message || 'Póliza de apertura asentada.'); setPrev(null); }
     catch (e: any) { setError(e?.response?.data?.message || 'No se pudo asentar.'); }

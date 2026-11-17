@@ -7,6 +7,7 @@
  * «Descartar» la quita a mano si decides que no va.
  */
 import { useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Trash2, RefreshCw, ChevronRight, ChevronDown } from 'lucide-react';
 import api from '@/services/api';
@@ -24,7 +25,7 @@ export function PolizasPendientesPage() {
   const total: number = data?.total ?? 0;
 
   const descartar = async (guid: string, folio: string) => {
-    if (!window.confirm(`¿Descartar la póliza pendiente ${folio}? Ya no se intentará importar.`)) return;
+    if (!await confirmar(`¿Descartar la póliza pendiente ${folio}? Ya no se intentará importar.`)) return;
     setMsg('');
     try {
       await api.descartarPolizaPendiente(guid);

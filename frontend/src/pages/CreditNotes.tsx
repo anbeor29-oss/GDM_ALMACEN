@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Receipt, X, FileText, ArrowDownCircle, FileDown, Eye, Ban } from 'lucide-react';
 import api from '@/services/api';
@@ -80,7 +81,7 @@ ${e.response?.data?.message || e.message}`);
       if (!folioSustitucion) return;
     }
     const etiqueta = `${n.serie}-${String(n.folio).padStart(6, '0')}`;
-    if (!window.confirm(
+    if (!await confirmar(
       `Se cancelara ante el SAT la nota ${etiqueta}.\n\n` +
       `Si el SAT la rechaza, no se modifica nada en el sistema.`
     )) return;

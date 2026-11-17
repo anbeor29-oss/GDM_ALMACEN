@@ -11,6 +11,7 @@
  * ante el SAT + un PAC con servicio de adquirentes. Hoy se captura/previsualiza.
  */
 import { useState, useMemo } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sprout, Users, FileText, Plus, Trash2, Save, X, Eye, AlertTriangle, Info } from 'lucide-react';
 import api from '@/services/api';
@@ -152,7 +153,7 @@ function TabEnajenantes() {
     } catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo guardar.'); }
   };
   const borrar = async (e: any) => {
-    if (!window.confirm(`¿Quitar a ${e.nombre}?`)) return;
+    if (!await confirmar(`¿Quitar a ${e.nombre}?`)) return;
     try { await api.borrarEnajenante(e.id); qc.invalidateQueries({ queryKey: ['autofact-enaj'] }); }
     catch (err: any) { setMsg(err?.response?.data?.message || 'No se pudo.'); }
   };
@@ -279,7 +280,7 @@ function TabComprobantes() {
   const [msg, setMsg] = useState('');
 
   const borrar = async (c: any) => {
-    if (!window.confirm(`¿Borrar el comprobante de ${c.enajenante} por ${money(c.total)}?`)) return;
+    if (!await confirmar(`¿Borrar el comprobante de ${c.enajenante} por ${money(c.total)}?`)) return;
     try { await api.borrarComprobanteAutofactura(c.id); qc.invalidateQueries({ queryKey: ['autofact-comp'] }); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo.'); }
   };

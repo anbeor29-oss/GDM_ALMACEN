@@ -6,6 +6,7 @@
  * web va vacío, el storefront usa el dato del maestro (nombre/precio base).
  */
 import { useState, useRef } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Globe, ArrowLeft, Search, Star, Save, X, Loader2, Pencil, ImagePlus, Trash2, Tags, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -276,7 +277,7 @@ function CategoriasModal({ onClose, onChange }: { onClose: () => void; onChange:
     catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo guardar.'); }
   };
   const borrar = async (c: any) => {
-    if (!window.confirm(`¿Eliminar la categoría «${c.nombre}»?\n\nLos productos que la tengan quedan SIN categoría (no se borran).`)) return;
+    if (!await confirmar(`¿Eliminar la categoría «${c.nombre}»?\n\nLos productos que la tengan quedan SIN categoría (no se borran).`)) return;
     try { await api.eliminarCategoriaEc(c.id); refetch(); }
     catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo eliminar.'); }
   };

@@ -13,6 +13,7 @@
  * aprender dos pantallas para el mismo trabajo.
  */
 import { useState, useEffect } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wallet, FileDown, Eye, Ban, Download, Plus, X, Loader2 } from 'lucide-react';
 import { api } from '@/services/api';
@@ -86,7 +87,7 @@ export default function Payments() {
       folioSustitucion = window.prompt('Folio fiscal (UUID) del CFDI que lo sustituye:') || undefined;
       if (!folioSustitucion) return;
     }
-    if (!window.confirm(
+    if (!await confirmar(
       `Se cancelará ante el SAT el complemento ${etiqueta(p)}.\n\n` +
       `Si el SAT lo rechaza, no se modifica nada en el sistema.`
     )) return;

@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -135,7 +136,7 @@ export function InvoicesPage() {
   // Sólo para facturas NO timbradas (DRAFT/Capturada): quita los ejemplos o
   // borradores que no se van a usar. Las timbradas se cancelan, no se borran.
   const handleDelete = async (invoice: Invoice) => {
-    if (!window.confirm(`¿Borrar la factura ${(invoice as any).serie || 'FAC'}-${(invoice as any).folio}? Es un borrador no timbrado; no se puede deshacer.`)) return;
+    if (!await confirmar(`¿Borrar la factura ${(invoice as any).serie || 'FAC'}-${(invoice as any).folio}? Es un borrador no timbrado; no se puede deshacer.`)) return;
     try {
       await api.deleteInvoice(invoice.id);
       queryClient.invalidateQueries({ queryKey: ['invoices'] });

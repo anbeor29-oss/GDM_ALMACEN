@@ -6,6 +6,7 @@
  *  · Eliminar exige almacén sin existencias (el backend lo bloquea).
  */
 import { useState, useEffect } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Warehouse, Plus, Pencil, Trash2, Star, MapPin, Loader2 } from 'lucide-react';
 import api from '@/services/api';
@@ -48,7 +49,7 @@ export function WarehousesPage() {
   const refresh = () => qc.invalidateQueries({ queryKey: ['warehouses'] });
 
   const handleDelete = async (w: WarehouseRow) => {
-    if (!window.confirm(`¿Eliminar el almacén ${w.code} — ${w.name}?`)) return;
+    if (!await confirmar(`¿Eliminar el almacén ${w.code} — ${w.name}?`)) return;
     setError('');
     try {
       await api.deleteWarehouse(w.id);

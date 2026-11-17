@@ -8335,3 +8335,18 @@ El PDF que el usuario llamó «estado de cuenta de los uber» es en realidad un 
 sale de la DIFERENCIA de saldos; descripción y `Referencia NNN` en líneas debajo). **Probado contra el PDF real: 90
 movimientos, CUADRA** (saldo inicial 1,144.98 + depósitos 4,497.82 − retiros 5,366.30 = saldo final 276.50 exacto).
 Backend-only ⇒ **sin ZIP** (pero se regenera igual por los cambios de front de `ad82c22`). Ver [[extractor-estados-cuenta]].
+
+## 2026-11-17 — Barrido TOTAL de `window.confirm` → modal centrado + PDF de cobertura de bancos con Consubanco
+
+Cierre del lote:
+- **Se quitó el feo «JavaScript de hcgm.com.mx» de TODA la app.** Las ~40 llamadas `window.confirm(...)` (en 28 archivos)
+  se reemplazaron por **`await confirmar(...)`** (el modal centrado que ya existía en `@/utils/avisos`). Clave: `!await
+  confirmar(x)` equivale a `!(await confirmar(x))` (el `await` liga antes que `!`) y `confirmar(` toma los MISMOS
+  paréntesis, así que el reemplazo no cambió el balance; sólo 3 handlers inline (`onClick={() => …}`) hubo que marcarlos
+  `async` (ProgramacionSat ×2, PurchaseOrders ×1). Import `confirmar` agregado donde faltaba. `tsc` front verde, 0
+  `window.confirm` restantes. (`confirm()` ya se mapeaba al modal de forma inconsistente; ahora es uniforme.) Ver
+  [[avisos-centrados-modal]].
+- **PDF «Cobertura de bancos» actualizado:** Consubanco pasó de **Pendiente → Procesado** en `BANCOS_COBERTURA`
+  (`bancos.service.ts`, ahora 14 procesados). Se extrajo `coberturaBancosPdfBuffer(empresa,rfc)` (sin BD) para regenerar el
+  PDF; el doc de referencia `docs/COBERTURA_BANCOS.pdf` se regeneró y se envió al usuario. (En la app el PDF sale por
+  `GET /treasury/bancos/soportados/pdf`.) `tsc` back verde. Front tocado ⇒ ZIP. Ver [[extractor-estados-cuenta]].

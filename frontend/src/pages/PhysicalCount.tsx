@@ -6,6 +6,7 @@
  *  y las diferencias quedan en el kardex como ajustes.
  */
 import { useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ClipboardCheck, Plus, Eye, CheckCircle2, XCircle, PackageX, PackagePlus,
@@ -235,7 +236,7 @@ function CountDetailModal({ countId, canManage, onClose, onChanged, onError }: {
   };
 
   const closeCount = async () => {
-    if (!window.confirm('Cerrar el conteo aplicará los ajustes al inventario. ¿Continuar?')) return;
+    if (!await confirmar('Cerrar el conteo aplicará los ajustes al inventario. ¿Continuar?')) return;
     setBusy(true);
     try {
       const r = await api.closePhysicalCount(countId);
@@ -248,7 +249,7 @@ function CountDetailModal({ countId, canManage, onClose, onChanged, onError }: {
   };
 
   const cancelCount = async () => {
-    if (!window.confirm('¿Cancelar el conteo? No se aplicará ningún ajuste.')) return;
+    if (!await confirmar('¿Cancelar el conteo? No se aplicará ningún ajuste.')) return;
     setBusy(true);
     try { await api.cancelPhysicalCount(countId); refreshDetail(); onClose(); }
     catch (e: any) { onError(e?.response?.data?.message || 'No se pudo cancelar'); }

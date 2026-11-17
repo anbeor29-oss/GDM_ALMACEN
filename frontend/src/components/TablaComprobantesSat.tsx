@@ -14,6 +14,7 @@
  * Iconos estándar (lucide): Wallet verde = pagado; Ban rojo = cancelado.
  */
 import { useState, type ReactNode } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wallet, Ban, FileText, X, RefreshCw, Search, Circle, Check, Pencil } from 'lucide-react';
 import { api } from '@/services/api';
@@ -305,7 +306,7 @@ export function AsientoModal({ uuid, onClose, claveVista }: {
 
   // Deshacer una póliza de pago PUE (para corregir el banco: se borra y se regenera).
   const deshacer = async (id: string) => {
-    if (!window.confirm('¿Deshacer esta póliza de pago? Podrás generarla de nuevo con el banco correcto.')) return;
+    if (!await confirmar('¿Deshacer esta póliza de pago? Podrás generarla de nuevo con el banco correcto.')) return;
     setBorrando(id); setErr(''); setMsg('');
     try {
       await api.borrarPoliza(id);

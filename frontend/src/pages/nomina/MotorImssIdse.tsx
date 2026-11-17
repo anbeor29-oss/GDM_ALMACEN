@@ -13,6 +13,7 @@
  * produce y se listan todos los que hay que corregir.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery } from '@tanstack/react-query';
 import {
   HeartPulse, Search, X, Download,
@@ -466,7 +467,7 @@ function BitacoraIdse({ lotes, onCambio }: { lotes: any[]; onCambio: () => void 
     finally { setSubiendo(null); }
   };
   const borrar = async (loteId: string) => {
-    if (!window.confirm('¿Borrar este lote de la bitácora? (No afecta lo ya enviado al IMSS.)')) return;
+    if (!await confirmar('¿Borrar este lote de la bitácora? (No afecta lo ya enviado al IMSS.)')) return;
     setErr('');
     try { await api.borrarIdseLote(loteId); onCambio(); }
     catch (e: any) { setErr(e?.response?.data?.message || 'No se pudo borrar.'); }

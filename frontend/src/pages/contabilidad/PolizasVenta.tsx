@@ -6,6 +6,7 @@
  *                   (partido por producto) y al IVA (208 PUE / 209 PPD).
  */
 import { useState, useMemo } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Users, PlayCircle, RefreshCw, Check, Pencil } from 'lucide-react';
 import api from '@/services/api';
@@ -305,7 +306,7 @@ function TabPolizas({ anio, mes }: { anio: number; mes: number }) {
     finally { setBusy(false); }
   };
   const regenerar = async () => {
-    if (!window.confirm('¿Borrar las pólizas de CFDI de este mes y volver a generarlas?')) return;
+    if (!await confirmar('¿Borrar las pólizas de CFDI de este mes y volver a generarlas?')) return;
     setBusy(true); setMsg('');
     try { await api.borrarPolizasCfdi(anio, mes); await generar(); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo'); setBusy(false); }

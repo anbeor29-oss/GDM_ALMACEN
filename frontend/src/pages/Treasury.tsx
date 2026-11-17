@@ -7,6 +7,7 @@
  *  cancelan; también se pueden dar de alta manualmente.
  */
 import { useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { claseOpcion } from '@/utils/coloresOpciones';
 import {
@@ -61,7 +62,7 @@ export function TreasuryPage() {
   };
 
   const doPay = async (p: any) => {
-    if (!window.confirm(`¿Marcar como pagado ${money(p.amount)} a ${p.supplier_name}?`)) return;
+    if (!await confirmar(`¿Marcar como pagado ${money(p.amount)} a ${p.supplier_name}?`)) return;
     setError('');
     try { await api.payTreasuryPayment(p.id); refresh(); }
     catch (e: any) { setError(e?.response?.data?.message || 'No se pudo marcar pagado'); }
@@ -74,7 +75,7 @@ export function TreasuryPage() {
     catch (e: any) { setError(e?.response?.data?.message || 'No se pudo reprogramar'); }
   };
   const doCancel = async (p: any) => {
-    if (!window.confirm(`¿Cancelar el pago de ${money(p.amount)}? Libera la línea de crédito.`)) return;
+    if (!await confirmar(`¿Cancelar el pago de ${money(p.amount)}? Libera la línea de crédito.`)) return;
     setError('');
     try { await api.cancelTreasuryPayment(p.id); refresh(); }
     catch (e: any) { setError(e?.response?.data?.message || 'No se pudo cancelar'); }

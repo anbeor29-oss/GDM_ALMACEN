@@ -18,6 +18,7 @@
  * generar 53 periodos que nadie va a usar.
  */
 import { useState, useEffect, useMemo } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery } from '@tanstack/react-query';
 import {
   CalendarPlus, Users, AlertTriangle, RefreshCw, Plus, X, Info, FileSpreadsheet, Lock,
@@ -332,7 +333,7 @@ export function NominaCalculoPage() {
    * del cierre el periodo ya no se recalcula, y sus recibos quedan como están. */
   const cerrarPeriodo = async () => {
     const t = pre.totales;
-    const ok = window.confirm(
+    const ok = await confirmar(
       `Se van a generar ${t.trabajadores} recibo(s) por ${money(t.neto)}.
 
 ` +
@@ -1285,7 +1286,7 @@ function RecibosPtu({ periodoId, cerrado, onCambio, titulo = 'Recibos de PTU' }:
   const [modoXml, setModoXml] = useState(false);
 
   const generar = async () => {
-    if (!window.confirm(
+    if (!await confirmar(
       'Se van a generar los recibos del reparto de PTU y se cerrará el periodo.\n\n' +
       'Después podrás timbrarlos, marcarlos para correo y bajarlos en PDF/XML. ¿Sigo?'
     )) return;
@@ -1302,7 +1303,7 @@ function RecibosPtu({ periodoId, cerrado, onCambio, titulo = 'Recibos de PTU' }:
   const timbrar = async () => {
     const ids = Object.entries(elegidos).filter(([, v]) => v).map(([k]) => k);
     if (ids.length === 0) { setMsg('No marcaste ningún recibo para timbrar.'); return; }
-    if (!window.confirm(
+    if (!await confirmar(
       `Se van a timbrar ${ids.length} recibo(s) ante el PAC.\n\n` +
       'Timbrar gasta timbres y deshacerlo exige una cancelación ante el SAT. ¿Sigo?'
     )) return;

@@ -18,6 +18,7 @@
  * todavía tiene un error.
  */
 import { useState, useMemo } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery } from '@tanstack/react-query';
 import {
   FileCode2, FileDown, Download, Eye, Mail, AlertTriangle, X, CheckCircle2, Stamp, Check, Search, UserCog,
@@ -81,7 +82,7 @@ export function NominaCFDIPage() {
     const ids = Object.entries(elegidos).filter(([, v]) => v).map(([k]) => k);
     if (ids.length === 0) { setError('No marcaste ningún recibo'); return; }
     const sinTimbrar = recibos.filter((r) => ids.includes(r.id) && !r.uuid).length;
-    if (!window.confirm(
+    if (!await confirmar(
       `Se van a timbrar ${sinTimbrar} recibo(s) ante el PAC.\n\n` +
       'Timbrar gasta timbres y deshacerlo exige una cancelación ante el SAT. ¿Sigo?'
     )) return;

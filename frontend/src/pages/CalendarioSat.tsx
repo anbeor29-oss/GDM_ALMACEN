@@ -9,6 +9,7 @@
  * (GET /sat-descarga/cobertura-combinada).
  */
 import { useMemo, useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarDays, Download, RefreshCw, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '@/services/api';
@@ -56,7 +57,7 @@ export function CalendarioSatPage() {
   const totalXml = useMemo(() => dias.reduce((a, d) => a + (d.total || 0), 0), [dias]);
 
   const llenar = async () => {
-    if (!window.confirm(`¿Crear los trabajos de descarga (emitidos y recibidos) para los meses de ${anio} con días faltantes? El motor los baja dentro del presupuesto diario.`)) return;
+    if (!await confirmar(`¿Crear los trabajos de descarga (emitidos y recibidos) para los meses de ${anio} con días faltantes? El motor los baja dentro del presupuesto diario.`)) return;
     setBusy(true); setMsg('');
     try {
       const re: any = await api.llenarHuecosSat(anio, 'recibidos');

@@ -7,6 +7,7 @@
  *    el costo (prorratear / revaluar todo / respetar capas).
  */
 import { useState } from 'react';
+import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ClipboardList, Sparkles, CheckCircle2, PackageCheck, XCircle,
@@ -376,7 +377,7 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
     /* Sin folio de factura la mercancía entra pero NADIE le debe nada al
      * proveedor. Es un caso legítimo —la remisión suele llegar antes que la
      * factura— pero tiene que ser una decisión, no un descuido. */
-    if (!numFactura.trim() && !window.confirm(
+    if (!numFactura.trim() && !await confirmar(
       'No capturaste el número de factura.\n\n' +
       'La mercancía va a entrar al almacén, pero NO se va a generar la deuda ' +
       'en tesorería. Tendrás que capturarla a mano cuando llegue la factura.\n\n' +
@@ -864,7 +865,7 @@ function OrderDetailModal({ orderId, canWrite, onClose, onChanged }: {
             {!cerrada && !receiving && !capturandoFactura && (
               <ActionBtn icon={<XCircle size={16} />} label="Cancelar orden" color="rose"
                 disabled={busy}
-                onClick={() => { if (window.confirm('¿Cancelar esta orden?')) doStatus('CANCELLED'); }} />
+                onClick={async () => { if (await confirmar('¿Cancelar esta orden?')) doStatus('CANCELLED'); }} />
             )}
           </div>
         )}
