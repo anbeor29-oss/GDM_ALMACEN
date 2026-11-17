@@ -8233,3 +8233,22 @@ error de BD nuevo —queda para después—). Hallazgos con datos, no suposicion
   vez** con el extractor que ya existe. Actualizado en PENDIENTES.
 - Doc nuevo `docs/ERRORES_Y_SOLUCIONES.md` §1 ampliado con la verificación; memorias al día. Sin cambios de código ⇒ sin ZIP.
 Ver [[importador-contalink-ctlk]], `docs/ERRORES_Y_SOLUCIONES.md`.
+
+## 2026-11-17 (contab.) — El libro GIGANTE de Contalink SÍ era OOM; reducida la memoria del parseo
+
+**Me equivoqué antes al decir «no es OOM».** Medí sólo la memoria RETENIDA tras el parseo, no el PICO. Al subir de verdad
+el libro de **todos los años (~8 MB)**, el parseo síncrono del `.xls` **pasa los 512 MB** del plan starter → el OS mata el
+proceso → crash-loop. Confirmado en `/health`: con `1f7d3e2` desplegado, uptime ~113 s y luego **502** mientras el usuario
+importaba. Las dos capturas cuadran: como el parseo corre en `setImmediate` (el POST ya devolvió el `jobId`), el **sondeo**
+falla → «Se perdió la conexión con el proceso de importación»; y un POST durante el reinicio → «Network Error».
+
+**Arreglo — bajar la memoria del parseo, SIN tocar la máquina de estados (bajo riesgo):**
+- `XLSX.read(..., { cellFormula:false, cellHTML:false })`: no genera fórmulas ni HTML por celda → mucha menos RAM/celda.
+- `sheet_to_json(..., { blankrows:false })`: **no materializa las filas VACÍAS** (son no-ops para la máquina de estados);
+  en un libro con miles de blancos entre bloques eso quita el grueso del arreglo.
+- `delete wb.Sheets[nombre]` tras procesar cada hoja: no deja TODAS las hojas en RAM a la vez.
+- **Medido:** memoria del parseo **14.6 → 7.7 MB (~mitad)** en el archivo de prueba, con **salida IDÉNTICA** (598 pólizas,
+  3 412 movs, 223 CFDI, 0 descuadres). `tsc` back verde. **Backend-only ⇒ sin ZIP**, sin migración.
+- **Si aun así un libro es demasiado grande:** exportar **por AÑO** (idempotente, aditivo) o **subir la RAM** (plan
+  Standard) — eso lo resuelve para cualquier tamaño. Re-probar los `libro-diario (2)/(3).xls` tras desplegar.
+Ver [[importador-contalink-ctlk]], `docs/ERRORES_Y_SOLUCIONES.md` §1.

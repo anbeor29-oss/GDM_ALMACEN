@@ -36,14 +36,15 @@
   `Set`. Queda sólo el OOM del archivo gigante (parseo síncrono): subir el libro **por año** o más RAM. Ver
   [[importador-contalink-ctlk]].
 
-- **(REVISADO 2026-11-17) Import de Contalink con archivos grandes — NO es OOM; verificar y, si acaso, avisar «por año».**
-  CORRECCIÓN del supuesto anterior (que el `.xls` grande reventaba la RAM): **medido** → 768 KB añade ~15 MB al parsear y
-  un archivo de **8 MB ≈ 150 MB**, muy por debajo de los 512 MB; y el backend lleva **10 h sin caerse** en `eaa3dba`
-  (`/health`). O sea **ni OOM ni crash**. El «Network Error» del screenshot era del periodo de crash-loop ANTERIOR al
-  despliegue (el latido). Queda: (a) **re-probar** los `libro-diario (2)/(3).xls` de 8 MB con el frontend nuevo (barra de
-  avance → verde); tardan minutos en el bucle de BD pero entran. (b) Alineado con la decisión de «no bultos»: si algún día
-  un libro es REALMENTE enorme, **exportarlo por AÑO** (idempotente, aditivo) en vez de un importador por lotes. NO se
-  requiere batch importer. Ver [[importador-contalink-ctlk]] y `docs/ERRORES_Y_SOLUCIONES.md` §1.
+- **(ARREGLADO 2026-11-17) Import de Contalink con archivos grandes — SÍ ERA OOM; reducida la memoria del parseo.**
+  El supuesto de «no es OOM» (ayer) era FALSO: medí sólo la memoria RETENIDA, no el PICO. Al subir de verdad el libro de
+  **todos los años (~8 MB)**, el parseo síncrono del `.xls` **pasa los 512 MB** → el OS mata el proceso → crash-loop
+  (`/health`: uptime ~113 s y luego 502; con el backend ocioso sí aguantaba). Arreglo (bajo riesgo, sin tocar la máquina
+  de estados): `XLSX.read` con `cellFormula:false,cellHTML:false`; `sheet_to_json` con `blankrows:false` (no materializa
+  las filas vacías); y `delete wb.Sheets[nombre]` tras cada hoja. **Medido:** memoria del parseo **14.6 → 7.7 MB (~½)**,
+  **salida idéntica** (598 pólizas/3 412 movs/223 CFDI/0 descuadres). Backend-only ⇒ sin ZIP; el usuario empuja para
+  desplegar. Si aun así un libro fuera demasiado grande: exportar **por AÑO** o **subir la RAM** (plan Standard). Re-probar
+  los `libro-diario (2)/(3).xls` tras desplegar. Ver [[importador-contalink-ctlk]] y `docs/ERRORES_Y_SOLUCIONES.md` §1.
 - **(FALTA — NUEVA 2026-11-16, PARA MAÑANA) Nuevo error de BASE DE DATOS detectado por el usuario.** El usuario reportó
   «otro error de base de datos» el 2026-11-16 y pidió dejarlo para mañana (2026-11-17). **Pendiente de DETALLAR**: falta
   el mensaje/pantalla/pasos exactos para reproducirlo. Al retomar: pedir al usuario el texto del error y dónde aparece,

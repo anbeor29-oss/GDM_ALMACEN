@@ -57,22 +57,31 @@ moría también «cambiar de empresa»).
 **Regla general.** Todo proceso de más de ~15-20 s sobre HTTP va con **jobId + sondeo**,
 nunca manteniendo la petición abierta ni escribiendo al socket para «ganar tiempo».
 
-**CONFIRMADO funcionando (2026-11-17).** Con el fix desplegado se verificó en vivo:
-- `GET /health`: **uptime de 10 h sin reiniciarse** en `eaa3dba` → ya no hay crash-loop.
-- **Preflight CORS** del POST desde `https://hcgm.com.mx`: permitido.
-- La ruta `GET /contalink/importar/:jobId` existe (401 sin token = registrada).
-- El **bundle del frontend en vivo** trae el código nuevo (`contalink/importar`, `esperarImportacion`).
-Por tanto un «Network Error» posterior es de ANTES del despliegue (crash-loop) o un **caché viejo
-del navegador** → **hard refresh (Ctrl+F5)** y re-probar.
+**El patrón en segundo plano resolvió el crash del latido** (ya no se cae por `uncaughtException`
+del socket): CORS, ruta de avance y bundle en vivo verificados OK; con el backend ocioso el
+`uptime` crecía sin reiniciarse.
 
-**Sobre el archivo GIGANTE — NO es OOM (supuesto corregido 2026-11-17).** Medido: 768 KB añade
-~15 MB al parsear; **8 MB ≈ 150 MB**, muy por debajo de los 512 MB. Con las 10 h sin caerse, el
-`.xls` grande **NO revienta la RAM ni tumba el proceso**: entra, sólo tarda minutos en el bucle de
-BD (la barra de avance se mueve). Si algún libro fuera REALMENTE enorme, exportarlo **por AÑO**
-(idempotente, aditivo) — **no** hace falta un importador por lotes.
+**PERO el archivo GIGANTE SÍ revienta la RAM (OOM) — corregido 2026-11-17.** (El supuesto previo
+de «no es OOM» era FALSO: salía de medir sólo la memoria RETENIDA tras el parseo, no el PICO
+transitorio.) Al subir de verdad un libro de **todos los años (~8 MB)**, el parseo síncrono del
+`.xls` **pasa de los 512 MB del plan starter** → el OS mata el proceso → crash-loop (`/health`:
+`uptime` de ~113 s y luego **502**). Como el parseo corre en segundo plano (`setImmediate`), el POST
+ya devolvió el `jobId`; el sondeo entonces falla y el front muestra **«Se perdió la conexión…»** (y
+un POST durante el reinicio = **«Network Error»**). Eso cuadra con las dos capturas.
 
-**Verificado (parser).** Con el archivo real del usuario (768 KB): **598 pólizas, 3 412 movimientos,
-223 CFDI en 107 ms, 0 descuadres**.
+**✅ Arreglo (memoria del parseo, bajo riesgo, sin tocar la máquina de estados):**
+- `XLSX.read(..., { cellFormula:false, cellHTML:false })` → mucha menos RAM por celda.
+- `sheet_to_json(..., { blankrows:false })` → NO materializa las filas VACÍAS (son no-ops); en un
+  libro con miles de blancos entre bloques eso ahorra el grueso del arreglo.
+- `delete wb.Sheets[nombre]` tras procesar cada hoja → no quedan TODAS las hojas en RAM a la vez.
+- **Medido:** la memoria del parseo bajó **de 14.6 MB a 7.7 MB (~mitad)** en el archivo de prueba, con
+  **salida idéntica** (598 pólizas, 3 412 movs, 223 CFDI, 0 descuadres) → el pico del libro grande baja
+  en proporción y debe caber en 512 MB.
+- **Si aun así un libro fuera demasiado grande:** exportarlo **por AÑO** (idempotente, aditivo) o
+  **subir la RAM** de Render (plan Standard) — eso lo resuelve para cualquier tamaño.
+
+**Verificado (parser), idéntico antes y después del arreglo:** 598 pólizas, 3 412 movs, 223 CFDI,
+0 descuadres.
 
 ---
 
