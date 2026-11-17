@@ -13,7 +13,7 @@
 
 import { Router, Request, Response } from 'express';
 import { authenticateToken, requireCapability, authorize } from '../../middleware/authentication';
-import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
+import { asyncHandler, ValidationError, responderConLatido } from '../../middleware/errorHandler';
 import * as catalogo from './catalogo.service';
 import * as balanza from './balanza-lector.service';
 import * as mapeador from './mapeador-sat.service';
@@ -573,12 +573,16 @@ router.post(
     if (!/\.xlsx?$/i.test(f.originalname || '') && !/spreadsheet|excel/.test(f.mimetype || '')) {
       throw new ValidationError('El catálogo de Contalink debe ser Excel (.xls/.xlsx).');
     }
-    const rep = await contalink.importarCatalogoXls(companyId(req), f.buffer);
-    res.json({
-      success: true, data: rep,
-      message: `Catálogo CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya existían` +
-        (rep.sinAgrupador ? `, ${rep.sinAgrupador} sin agrupador` : '') +
-        (rep.errores.length ? `, ${rep.errores.length} con error` : '') + '.',
+    // Latido: un catálogo grande también puede tardar lo bastante para que el proxy
+    // corte la conexión; mantenemos viva la conexión mientras se inserta.
+    await responderConLatido(res, async () => {
+      const rep = await contalink.importarCatalogoXls(companyId(req), f.buffer);
+      return {
+        success: true, data: rep,
+        message: `Catálogo CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya existían` +
+          (rep.sinAgrupador ? `, ${rep.sinAgrupador} sin agrupador` : '') +
+          (rep.errores.length ? `, ${rep.errores.length} con error` : '') + '.',
+      };
     });
   })
 );
@@ -595,17 +599,22 @@ router.post(
     if (!/\.xlsx?$/i.test(f.originalname || '') && !/spreadsheet|excel/.test(f.mimetype || '')) {
       throw new ValidationError('El libro diario de Contalink debe ser Excel (.xls/.xlsx).');
     }
-    const rep = await contalink.importarPolizasXls(companyId(req), f.buffer, req.user?.userId);
-    res.json({
-      success: true, data: rep,
-      message: `Pólizas CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya estaban` +
-        (rep.omitidas.length ? `, ${rep.omitidas.length} omitida(s)` : '') +
-        (rep.conCuadre.length ? `, ${rep.conCuadre.length} por codificar` : '') +
-        ` · ${rep.cfdiLigados} CFDI ligados` +
-        ` · cargos ${rep.totalCargos.toFixed(2)} / abonos ${rep.totalAbonos.toFixed(2)}` +
-        (Math.abs(rep.totalCargos - rep.totalAbonos) > 0.005 ? ` (dif ${(rep.totalCargos - rep.totalAbonos).toFixed(2)})` : '') +
-        (rep.cuentasCreadas.length ? ` · ${rep.cuentasCreadas.length} cuenta(s) creada(s) al vuelo` : '') +
-        (rep.cuentasNoHomologadas.length ? ` · ${rep.cuentasNoHomologadas.length} cuenta(s) sin homologar` : '') + '.',
+    // Proceso LARGO (miles de pólizas → decenas de miles de consultas): se responde
+    // con latido para que el proxy no corte la conexión y el navegador no vea
+    // «Network Error» a media corrida (el import ya es idempotente: re-subir continúa).
+    await responderConLatido(res, async () => {
+      const rep = await contalink.importarPolizasXls(companyId(req), f.buffer, req.user?.userId);
+      return {
+        success: true, data: rep,
+        message: `Pólizas CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya estaban` +
+          (rep.omitidas.length ? `, ${rep.omitidas.length} omitida(s)` : '') +
+          (rep.conCuadre.length ? `, ${rep.conCuadre.length} por codificar` : '') +
+          ` · ${rep.cfdiLigados} CFDI ligados` +
+          ` · cargos ${rep.totalCargos.toFixed(2)} / abonos ${rep.totalAbonos.toFixed(2)}` +
+          (Math.abs(rep.totalCargos - rep.totalAbonos) > 0.005 ? ` (dif ${(rep.totalCargos - rep.totalAbonos).toFixed(2)})` : '') +
+          (rep.cuentasCreadas.length ? ` · ${rep.cuentasCreadas.length} cuenta(s) creada(s) al vuelo` : '') +
+          (rep.cuentasNoHomologadas.length ? ` · ${rep.cuentasNoHomologadas.length} cuenta(s) sin homologar` : '') + '.',
+      };
     });
   })
 );

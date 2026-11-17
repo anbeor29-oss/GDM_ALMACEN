@@ -287,6 +287,15 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
   const ctas = await query<any>(`SELECT id, codigo FROM accounting_accounts WHERE company_id=$1`, [companyId]);
   const idPorCodigo = new Map<string, string>(ctas.rows.map((r: any) => [r.codigo, r.id]));
 
+  // Idempotencia RÁPIDA: precargamos en un Set TODAS las firmas CTLK ya asentadas,
+  // así re-subir tras un corte no cuesta un SELECT por póliza (de miles de consultas
+  // → 1). Es justo el camino de recuperación: si la 1ª corrida se cortó a media
+  // marcha, la 2ª salta lo ya hecho en segundos en vez de volver a consultarlo todo.
+  const firmasPrevias = await query<any>(
+    `SELECT origen_uuid FROM journal_entries WHERE company_id=$1 AND origen_uuid LIKE 'CTLK:%'`,
+    [companyId]);
+  const yaImportadas = new Set<string>(firmasPrevias.rows.map((r: any) => String(r.origen_uuid)));
+
   const rep = {
     total: polizas.length, creadas: 0, yaExistian: 0, cfdiLigados: 0,
     omitidas: [] as Array<{ folio: string; motivo: string }>,
@@ -312,8 +321,9 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
       const firma = [p.fecha, p.tipoRaw, p.consecutivo, p.concepto,
         p.movimientos.map((m) => `${m.cuenta}:${m.cargo}:${m.abono}`).join(';')].join('|');
       const origenUuid = 'CTLK:' + crypto.createHash('sha256').update(firma).digest('hex').slice(0, 35);
-      const ya = await query<any>(`SELECT 1 FROM journal_entries WHERE company_id=$1 AND origen_uuid=$2 LIMIT 1`, [companyId, origenUuid]);
-      if (ya.rows.length) { rep.yaExistian++; continue; }
+      // Ya asentada (en una corrida previa o antes en ESTE mismo archivo si dos bloques
+      // tienen contenido idéntico): se salta sin tocar la BD.
+      if (yaImportadas.has(origenUuid)) { rep.yaExistian++; continue; }
 
       const unicoCfdi = p.cfdis.length === 1 ? p.cfdis[0] : null;
       const lineas: any[] = [];
@@ -360,6 +370,7 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
         origen: 'MANUAL', origen_uuid: origenUuid, regla: reglaDeTipo(p.tipoRaw), lineas,
       } as any, userId);
       rep.creadas++;
+      yaImportadas.add(origenUuid);   // evita re-asentar un bloque idéntico más adelante en el mismo archivo
       rep.totalCargos = round2(rep.totalCargos + sc);   // cargos/abonos DECLARADOS del respaldo
       rep.totalAbonos = round2(rep.totalAbonos + sa);
       if (dif !== 0) rep.conCuadre.push({ folio: etq, diferencia: dif });

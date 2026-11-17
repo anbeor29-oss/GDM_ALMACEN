@@ -12,13 +12,18 @@
  * factura y se administran igual; que se vean distinto sólo obligaría a
  * aprender dos pantallas para el mismo trabajo.
  */
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Wallet, FileDown, Eye, Ban, Download } from 'lucide-react';
+import { Wallet, FileDown, Eye, Ban, Download, Plus, X, Loader2 } from 'lucide-react';
 import { api } from '@/services/api';
 import { fechaMx } from '@/utils/fecha';
 
 export default function Payments() {
   const qc = useQueryClient();
+  // #10 — alta de complemento ARRANCANDO DEL DEPÓSITO: un pago que cubre varias
+  // facturas PPD del mismo cliente genera UN solo CFDI tipo P (varios
+  // DoctoRelacionado) y consume UN timbre. El alta por factura sigue en la factura.
+  const [nuevo, setNuevo] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['payments'],
@@ -102,16 +107,31 @@ export default function Payments() {
           <h1 className="text-3xl font-bold text-slate-900">Complementos de Pago</h1>
           <p className="text-slate-500 mt-1">CFDI de Pago (Anexo 20)</p>
         </div>
+        {/* #10 — alta desde el DEPÓSITO: cubre varias facturas del cliente en un
+            solo comprobante. El alta desde una factura concreta sigue disponible
+            en la factura («Registrar pago»). */}
+        <button onClick={() => setNuevo(true)}
+          className="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold shadow-sm">
+          <Plus size={18} /> Nuevo complemento
+        </button>
       </div>
 
-      {/* El alta vive en la factura, no aquí: un complemento SIEMPRE se emite
-          contra una factura concreta, y crearlo desde una lista suelta obligaría
-          a buscarla primero. Esta pantalla es para consultarlos y actuar sobre
-          ellos. */}
       <p className="text-sm text-slate-500 mb-4">
-        Para registrar un pago nuevo, entra a la factura correspondiente y usa
-        <b> Registrar pago</b>.
+        Un <b>depósito</b> que cubre varias facturas PPD del mismo cliente se timbra en
+        <b> un solo comprobante</b> con «Nuevo complemento». Para el pago de <b>una</b> factura
+        también puedes entrar a ella y usar <b>Registrar pago</b>.
       </p>
+
+      {nuevo && (
+        <NuevoComplementoPago
+          onClose={() => setNuevo(false)}
+          onDone={() => {
+            setNuevo(false);
+            qc.invalidateQueries({ queryKey: ['payments'] });
+            qc.invalidateQueries({ queryKey: ['invoices'] });
+          }}
+        />
+      )}
 
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         {isLoading ? (
@@ -204,6 +224,282 @@ export default function Payments() {
             </tbody>
           </table>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── Nuevo complemento de pago (desde el DEPÓSITO, multi-factura) ─────────────
+ *
+ * El modal de la factura ya arma complementos de varias facturas ARRANCANDO de una
+ * factura. Este arranca del DEPÓSITO: eliges cliente, ves TODAS sus facturas PPD con
+ * saldo, repartes el depósito (o marcas a mano) y se timbra UN CFDI tipo P con varios
+ * DoctoRelacionado. El backend (`createPayment`) ya valida: mismo cliente, saldo real
+ * (total − pagos − NC), parcialidad por factura y no repetir factura.
+ *
+ * Una sola moneda por complemento: MonedaP es única en el Anexo 20. El caso «factura en
+ * USD cobrada en pesos» se hace desde «Registrar pago» de esa factura (tiene el TC).
+ */
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+function NuevoComplementoPago({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [clienteId, setClienteId] = useState('');
+  const [fecha, setFecha] = useState(hoy);
+  const [forma, setForma] = useState('03');
+  const [banco, setBanco] = useState('');
+  const [deposito, setDeposito] = useState<number | ''>('');
+  const [sel, setSel] = useState<Record<string, number>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  // Facturas candidatas: timbradas, con saldo, no pagadas ni canceladas (= PPD por cobrar).
+  const { data, isLoading } = useQuery({
+    queryKey: ['invoices', 'pendientes-rep'],
+    queryFn: () => api.getInvoices(1, 500),
+    retry: false,
+  });
+  const formas = useQuery({
+    queryKey: ['catalog', 'formapago'],
+    queryFn: () => api.getCatalog('formapago'),
+    staleTime: Infinity,
+  });
+
+  // Al cambiar de cliente se limpia la selección (otro receptor, otras facturas).
+  useEffect(() => { setSel({}); setDeposito(''); }, [clienteId]);
+
+  const saldoDe = (f: any) => {
+    const calc = Math.max(0, Number(f.total || 0) - Number(f.paid_total || 0) - Number(f.credited_total || 0));
+    return f.balance != null ? Number(f.balance) : calc;
+  };
+
+  const lista: any[] = ((data as any)?.data?.invoices) || ((data as any)?.data) || [];
+  const candidatas = lista.filter((f: any) =>
+    f.cfdi_uuid && ['STAMPED', 'PARTIAL_PAYMENT'].includes(f.status) && saldoDe(f) > 0.01);
+
+  // Clientes que tienen facturas por cobrar (sólo esos aparecen en el selector).
+  const mapaCli = new Map<string, string>();
+  candidatas.forEach((f: any) => { if (!mapaCli.has(f.customer_id)) mapaCli.set(f.customer_id, f.customer_name || f.customer_rfc || '—'); });
+  const clientes = [...mapaCli.entries()].map(([id, nombre]) => ({ id, nombre }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+
+  // Las del cliente, de la MÁS VIEJA a la más nueva (para repartir el depósito en orden).
+  const delCliente = (clienteId ? candidatas.filter((f: any) => f.customer_id === clienteId) : [])
+    .slice().sort((a: any, b: any) =>
+      new Date(a.date_issued || a.issue_date || 0).getTime() - new Date(b.date_issued || b.issue_date || 0).getTime());
+
+  const seleccionadas = delCliente.filter((f: any) => f.id in sel);
+  const monedas = [...new Set(seleccionadas.map((f: any) => String(f.currency || 'MXN').toUpperCase()))];
+  const monedaUnica = monedas.length <= 1 ? (monedas[0] || String(delCliente[0]?.currency || 'MXN').toUpperCase()) : null;
+  const totalAplicado = r2(Object.values(sel).reduce((a, m) => a + (Number(m) || 0), 0));
+  const formasEntries: any[] = (formas.data as any)?.data?.entries || [
+    { catalog_key: '03', description: 'Transferencia electrónica de fondos' },
+    { catalog_key: '01', description: 'Efectivo' },
+  ];
+
+  const alternar = (f: any) => setSel((prev) => {
+    const c = { ...prev };
+    if (f.id in c) delete c[f.id];
+    else c[f.id] = r2(saldoDe(f));   // por omisión, el saldo completo
+    return c;
+  });
+
+  // Reparte el depósito capturado entre las facturas del cliente, de la más vieja a la
+  // más nueva, topando cada una a su saldo. Después se puede ajustar a mano.
+  const repartir = () => {
+    let resto = r2(Number(deposito) || 0);
+    const next: Record<string, number> = {};
+    for (const f of delCliente) {
+      if (resto <= 0.009) break;
+      const s = r2(saldoDe(f));
+      if (s <= 0) continue;
+      const aplica = Math.min(s, resto);
+      if (aplica > 0.009) { next[f.id] = aplica; resto = r2(resto - aplica); }
+    }
+    setSel(next);
+  };
+
+  const submit = async () => {
+    setError('');
+    const docs = Object.entries(sel).filter(([, m]) => Number(m) > 0);
+    if (!clienteId) { setError('Elige el cliente.'); return; }
+    if (!docs.length) { setError('Marca al menos una factura y su monto.'); return; }
+    if (!monedaUnica) {
+      setError('Todas las facturas del complemento deben ser de la misma moneda (un CFDI de pago tiene una sola MonedaP). ' +
+        'Si cobras en pesos una factura en otra moneda, usa «Registrar pago» dentro de esa factura.');
+      return;
+    }
+    for (const [id, m] of docs) {
+      const f = delCliente.find((x: any) => x.id === id);
+      if (f && Number(m) > saldoDe(f) + 0.01) {
+        setError(`El monto de ${f.serie || ''}${f.folio} excede su saldo (${saldoDe(f).toFixed(2)} ${String(f.currency || 'MXN').toUpperCase()}).`);
+        return;
+      }
+    }
+    setBusy(true);
+    try {
+      const res: any = await api.createPayment({
+        documentos: docs.map(([invoiceId, monto]) => ({ invoiceId, monto: Number(monto) })),
+        // Mediodía local para que la fecha no se recorra un día al pasar a UTC.
+        paymentDate: new Date(`${fecha}T12:00:00`).toISOString(),
+        paymentForm: forma,
+        notes: banco.trim() ? `Depósito: ${banco.trim()}` : undefined,
+      });
+      const d = res?.data || {};
+      alert(
+        `✅ Complemento de Pago timbrado con ${d.provider || 'el PAC'}\n\n` +
+        (d.payment?.uuid ? `UUID: ${d.payment.uuid}\n` : '') +
+        `${docs.length} factura(s) · depósito $${totalAplicado.toFixed(2)} ${monedaUnica}`
+      );
+      onDone();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'No se pudo timbrar el complemento.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+        <div className="flex items-center justify-between p-5 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+              <Wallet className="text-emerald-700" size={20} />
+            </div>
+            <div>
+              <h2 className="font-bold text-slate-900">Nuevo complemento de pago</h2>
+              <p className="text-xs text-slate-500">Un depósito que cubre varias facturas del mismo cliente — CFDI tipo P</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg"><X size={20} /></button>
+        </div>
+
+        <div className="p-5 space-y-4 overflow-y-auto">
+          {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded text-sm">{error}</div>}
+
+          {isLoading ? (
+            <div className="py-10 text-center text-slate-500 flex items-center justify-center gap-2">
+              <Loader2 size={18} className="animate-spin" /> Cargando facturas…
+            </div>
+          ) : !clientes.length ? (
+            <div className="py-10 text-center text-slate-500">
+              <Wallet size={36} className="mx-auto mb-2 text-slate-300" />
+              No hay facturas PPD timbradas con saldo pendiente para generar un complemento.
+            </div>
+          ) : (
+            <>
+              {/* Datos del depósito */}
+              <div className="grid sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-600 block mb-1">Cliente</span>
+                  <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="">— Elige el cliente —</option>
+                    {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-600 block mb-1">Fecha del pago</span>
+                  <input type="date" value={fecha} max={hoy} onChange={(e) => setFecha(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-600 block mb-1">Forma de pago (c_FormaPago)</span>
+                  <select value={forma} onChange={(e) => setForma(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+                    {formasEntries.map((f: any) => (
+                      <option key={f.catalog_key} value={f.catalog_key}>{f.catalog_key} — {f.description}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-600 block mb-1">Banco / referencia <span className="text-slate-400">(opcional)</span></span>
+                  <input type="text" value={banco} onChange={(e) => setBanco(e.target.value)}
+                    placeholder="BBVA 1234 · folio del depósito"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                </label>
+              </div>
+
+              {clienteId && (
+                <>
+                  {/* Repartir el depósito */}
+                  <div className="flex flex-wrap items-end gap-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-600 block mb-1">Monto del depósito</span>
+                      <input type="number" min={0} step="0.01" value={deposito}
+                        onChange={(e) => setDeposito(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        placeholder="0.00" className="w-40 border border-slate-300 rounded-lg px-3 py-2 text-sm text-right" />
+                    </label>
+                    <button type="button" onClick={repartir} disabled={!deposito}
+                      className="px-3 py-2 text-sm border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 disabled:opacity-40">
+                      Repartir en las más viejas
+                    </button>
+                    <span className="text-xs text-slate-500">o marca las facturas a mano ↓</span>
+                  </div>
+
+                  {/* Facturas del cliente */}
+                  {!delCliente.length ? (
+                    <p className="text-sm text-slate-500 py-4 text-center">Este cliente no tiene facturas con saldo.</p>
+                  ) : (
+                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="grid grid-cols-[auto_1fr_auto_auto] gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600">
+                        <span></span><span>Factura</span><span className="text-right">Saldo</span><span className="text-right">A pagar</span>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
+                        {delCliente.map((f: any) => {
+                          const marcada = f.id in sel;
+                          const saldo = saldoDe(f);
+                          const mon = String(f.currency || 'MXN').toUpperCase();
+                          return (
+                            <div key={f.id} className={`grid grid-cols-[auto_1fr_auto_auto] gap-2 px-3 py-2 items-center text-sm ${marcada ? 'bg-emerald-50/50' : ''}`}>
+                              <input type="checkbox" checked={marcada} onChange={() => alternar(f)} className="w-4 h-4 accent-emerald-600" />
+                              <div className="min-w-0">
+                                <span className="font-semibold text-slate-800">{f.serie || ''}{f.serie ? '-' : ''}{String(f.folio).padStart(6, '0')}</span>
+                                <span className="text-slate-400 text-xs"> · {fechaMx(f.date_issued || f.issue_date)}</span>
+                                <span className="text-slate-400 text-xs block truncate">total ${Number(f.total || 0).toFixed(2)} {mon}</span>
+                              </div>
+                              <span className="text-right text-slate-600 tabular-nums">${saldo.toFixed(2)}<br /><span className="text-[10px] text-slate-400">{mon}</span></span>
+                              <input type="number" min={0.01} step="0.01" max={saldo} disabled={!marcada}
+                                value={marcada ? sel[f.id] : ''} placeholder="0.00"
+                                onChange={(e) => setSel((prev) => ({ ...prev, [f.id]: parseFloat(e.target.value) || 0 }))}
+                                className="w-28 border border-slate-300 rounded px-2 py-1 text-sm text-right disabled:bg-slate-100 disabled:opacity-50" />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Resumen */}
+                  <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+                    <span className="text-sm text-slate-600">
+                      {seleccionadas.length} factura(s) seleccionada(s)
+                      {monedas.length > 1 && <span className="text-rose-600 font-medium"> · ⚠ monedas mezcladas</span>}
+                    </span>
+                    <span className="text-lg font-bold text-emerald-700 tabular-nums">
+                      ${totalAplicado.toFixed(2)} {monedaUnica || ''}
+                    </span>
+                  </div>
+                  {deposito !== '' && Math.abs(Number(deposito) - totalAplicado) > 0.01 && (
+                    <p className="text-xs text-amber-600">
+                      El depósito capturado (${Number(deposito).toFixed(2)}) no cuadra con lo aplicado (${totalAplicado.toFixed(2)}).
+                      Ajusta los montos o reparte de nuevo.
+                    </p>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 p-5 border-t border-slate-200">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50">Cancelar</button>
+          <button onClick={submit} disabled={busy || !seleccionadas.length}
+            className="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold disabled:opacity-40">
+            {busy ? <><Loader2 size={16} className="animate-spin" /> Timbrando…</> : <>Timbrar complemento</>}
+          </button>
+        </div>
       </div>
     </div>
   );

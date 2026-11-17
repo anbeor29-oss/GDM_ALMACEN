@@ -65,6 +65,61 @@ export const asyncHandler = (
 };
 
 /**
+ * Responde un proceso LARGO sin que el navegador vea «Network Error».
+ *
+ * Imports grandes (p. ej. el libro diario de Contalink: miles de pólizas → decenas
+ * de miles de consultas) tardan varios minutos. Mientras el server trabaja NO fluye
+ * ningún byte y algunos proxies/entornos cierran la conexión «inactiva»; el navegador
+ * lo reporta como `Network Error` aunque el proceso siga vivo o termine bien.
+ *
+ * Solución: se envía un byte de relleno (un espacio, que es BLANCO válido en JSON)
+ * cada pocos segundos para que la conexión nunca quede inactiva, y al final se escribe
+ * el cuerpo JSON real. `JSON.parse` ignora el blanco inicial, así que axios lo parsea
+ * sin cambios y el contrato `{ success, data, message }` se conserva intacto.
+ *
+ * `work()` devuelve el objeto a serializar. Si lanza, se responde `{ success:false }`:
+ * con su status si aún no empezó el streaming, o con 200 + cuerpo de error si ya se
+ * mandaron espacios (ya no se puede cambiar el status). El cliente debe tratar
+ * `success:false` como error (ver `importarContalink*` en `api.ts`).
+ */
+export async function responderConLatido(
+  res: Response,
+  work: () => Promise<any>,
+  cadaMs: number = 15000
+): Promise<void> {
+  res.status(200);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('X-Accel-Buffering', 'no'); // nginx/proxy: no bufferear la respuesta
+  let latiendo = true;
+  const latido = setInterval(() => {
+    if (latiendo && !res.writableEnded) {
+      try { res.write(' '); } catch { /* conexión ya cerrada */ }
+    }
+  }, cadaMs);
+  // Si el cliente se desconecta a media corrida, dejamos de latir (el proceso de BD
+  // sigue; al reimportar continúa por ser idempotente).
+  const detener = () => { latiendo = false; clearInterval(latido); };
+  res.on('close', detener);
+  try {
+    const data = await work();
+    detener();
+    if (!res.writableEnded) { res.write(JSON.stringify(data)); res.end(); }
+  } catch (e: any) {
+    detener();
+    if (res.writableEnded) return;
+    const message = (e?.message || 'Error en el proceso.').toString();
+    const statusCode = e?.statusCode || 400;
+    if (!res.headersSent) {
+      res.status(statusCode).json({ success: false, statusCode, message });
+    } else {
+      try { res.write(JSON.stringify({ success: false, message })); } catch { /* ignore */ }
+      res.end();
+    }
+  }
+}
+
+/**
  * Create application error
  */
 export class AppException extends Error implements AppError {

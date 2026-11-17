@@ -18,10 +18,19 @@
   extraer a una hoja → **partir por mes** por fechas → armar la balanza/tesorería mes a mes. Base: ya existe el extractor
   de PDF de un estado de cuenta (Tesorería, formato canónico de 7 columnas). Falta: aceptar varios PDFs/zip en una carga,
   agrupar los movimientos por mes y encadenar la carga por mes. Ver [[extractor-estados-cuenta]].
-- **(Lista B — FALTA, grande) #10 Complemento de pago (REP) con más de 1 factura.** Pantalla nueva desde «Complementos de
-  pago» en Facturas: capturar depósito, fecha, banco, elegir cliente, marcar **varias** facturas PPD y generar UN REP
-  (CFDI tipo P con varios `DoctoRelacionado`) + timbrar. Base: ya existe el REP de una factura y el multimoneda. Falta la
-  pantalla multi-factura y armar el P con varios documentos. Ver [[complemento-pago-multimoneda]], [[pue-ppd-cobranza-regla]].
+- **(HECHO 2026-11-16) #10 Complemento de pago (REP) con más de 1 factura.** El MOTOR ya aceptaba `documentos[]`
+  (`construirPagos20` + `createPayment`: UN CFDI tipo P con varios `DoctoRelacionado`, mismo cliente, saldo real,
+  parcialidad por factura, multimoneda). Se agregó la **pantalla que arranca del DEPÓSITO** en Facturas → «Complementos de
+  Pago»: botón **«Nuevo complemento»** → elegir cliente, fecha/forma/banco, ver sus facturas PPD con saldo, teclear el
+  depósito y **«Repartir en las más viejas»** o marcar/editar a mano, y **«Timbrar complemento»**. Una sola moneda por
+  complemento (el cruce de monedas sigue en «Registrar pago» de la factura). Ver [[complemento-pago-multimoneda]],
+  [[pue-ppd-cobranza-regla]].
+- **(HECHO 2026-11-16) «Network Error» al recuperar pólizas de Contalink.** El import corre todo en una sola petición
+  (miles de pólizas → decenas de miles de round-trips) y el proxy cortaba la conexión «inactiva». Arreglo:
+  **`responderConLatido`** manda un espacio (blanco válido en JSON) cada 15 s para mantener viva la conexión y al final el
+  JSON real (contrato intacto); envuelve `/contalink/polizas` y `/contalink/catalogo`. Además el re-subido precarga las
+  firmas `CTLK:*` ya asentadas en un `Set` (de un SELECT por póliza a uno solo). El import ya era idempotente: re-subir
+  continúa. Ver [[importador-contalink-ctlk]].
 
 - **GRUPO HCGM — reconstruir su contabilidad y limpiar ejemplos.** Saldos no cuadran por catálogo duplicado. Caminos
   listos: **Fusionar** duplicadas (Catálogo → «Cuentas duplicadas») o **Reiniciar contabilidad** (Súper Admin, conserva

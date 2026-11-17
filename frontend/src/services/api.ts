@@ -1516,15 +1516,19 @@ class APIClient {
   /** Importa el catálogo de Contalink (CTLK) desde Excel (.xls/.xlsx). */
   async importarContalinkCatalogo(fd: FormData, onProgress?: (pct: number) => void) {
     const r = await this.client.post<APIResponse<any>>('/accounting/contalink/catalogo', fd,
-      { headers: { 'Content-Type': 'multipart/form-data' },
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 0,
         onUploadProgress: (e) => { if (e.total) onProgress?.(Math.round((e.loaded / e.total) * 100)); } });
+    // El proceso largo responde con «latido» (200 + espacios + JSON). Si algo falla a
+    // media corrida llega 200 con success:false: lo tratamos como error igual que un 4xx.
+    if (r.data && (r.data as any).success === false) throw new Error((r.data as any).message || 'No se pudo importar el catálogo.');
     return r.data;
   }
   /** Importa el libro diario (pólizas) de Contalink (CTLK) desde Excel; el catálogo va primero. */
   async importarContalinkPolizas(fd: FormData, onProgress?: (pct: number) => void) {
     const r = await this.client.post<APIResponse<any>>('/accounting/contalink/polizas', fd,
-      { headers: { 'Content-Type': 'multipart/form-data' },
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 0,
         onUploadProgress: (e) => { if (e.total) onProgress?.(Math.round((e.loaded / e.total) * 100)); } });
+    if (r.data && (r.data as any).success === false) throw new Error((r.data as any).message || 'No se pudieron importar las pólizas.');
     return r.data;
   }
   /** Propone el agrupador SAT de las cuentas que no lo tienen (por nombre + herencia). Sólo propone. */

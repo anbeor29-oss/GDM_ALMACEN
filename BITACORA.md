@@ -8154,3 +8154,35 @@ con DÓNDE está y CÓMO reactivarlo (casi todo = quitar un `false &&`).
 **Pendiente de la Lista B (grande, documentado en PENDIENTES):** #5 carga masiva de estados de cuenta del año (1-12
 PDFs/zip → hoja → por mes → balanza) y #10 complemento de pago con >1 factura (pantalla nueva en Facturas). Commits de
 hoy: ver `git log`. Ver [[polizas-hub-pestanas]].
+
+## 2026-11-16 (contab./facturas) — «Network Error» del import de Contalink + Complemento de pago multi-factura (#10)
+
+Dos cosas pedidas a la vez. `tsc --noEmit` verde en back **y** front; ZIP `build:hosting` regenerado.
+
+**1) Recuperación de pólizas de Contalink marcaba «Network Error».** Causa real: el import corre TODO síncrono en una
+sola petición (parsea el libro completo y por cada póliza abre transacción = `BEGIN`+SELECT folio+INSERT asiento+N
+INSERT líneas+`COMMIT`, más el SELECT de idempotencia por póliza y un INSERT por CFDI). Para ~6,000 pólizas son decenas
+de miles de round-trips → tarda minutos → mientras el server trabaja NO fluye ningún byte y el proxy/entorno cierra la
+conexión «inactiva» → axios lo reporta como `Network Error` aunque el proceso siga vivo (el import YA es idempotente:
+re-subir continúa). Arreglo en tres piezas:
+- **`responderConLatido(res, work)`** (nuevo en `middleware/errorHandler.ts`): manda un **espacio** (blanco válido en JSON)
+  cada 15 s para que la conexión nunca quede inactiva y al final escribe el JSON real; `JSON.parse` ignora el blanco
+  inicial, así que axios lo parsea igual y el contrato `{success,data,message}` NO cambia. Si falla a media corrida y ya
+  se enviaron espacios, responde 200 + `{success:false,message}` (ya no se puede cambiar el status). Envuelve **ambas**
+  rutas de Contalink (`/contalink/polizas` y `/contalink/catalogo`).
+- **Re-subido RÁPIDO:** `importarPolizasXls` precarga en un `Set` TODAS las firmas `CTLK:*` ya asentadas (1 consulta) y la
+  idempotencia por póliza pasa de un SELECT cada una a una comparación en memoria. Es justo el camino de recuperación:
+  tras un corte, la 2ª corrida salta lo ya hecho en segundos.
+- **Front:** `importarContalink*` tratan `success:false` como error (y `timeout:0`, el latido mantiene viva la conexión).
+
+**2) #10 Complemento de pago con VARIAS facturas (pantalla nueva).** El MOTOR ya existía: `construirPagos20` (builder
+Pago 2.0) y `createPayment` ya aceptan `documentos[]` → UN CFDI tipo P con varios `DoctoRelacionado`, timbrado, con todas
+las validaciones (mismo cliente, saldo real total−pagos−NC, parcialidad por factura, no repetir factura, multimoneda).
+Lo único que faltaba era una pantalla que ARRANCARA DEL DEPÓSITO. Se agregó a **Facturas → Complementos de Pago**
+(`Payments.tsx`) el botón **«Nuevo complemento»** → modal: eliges **cliente** (sólo los que tienen facturas por cobrar),
+capturas **fecha / forma de pago / banco-referencia**, y ves **todas sus facturas PPD con saldo**; puedes teclear el
+**monto del depósito** y **«Repartir en las más viejas»** (tope por saldo) o marcar/editar a mano; el resumen muestra
+total aplicado y facturas, y **«Timbrar complemento»** llama a `createPayment({documentos,…})`. **Una sola moneda por
+complemento** (MonedaP es única en el Anexo 20); el caso «factura en otra moneda cobrada en pesos» sigue en «Registrar
+pago» de la factura (ahí está el campo de TC). El alta por UNA factura no cambió. Ver [[complemento-pago-multimoneda]],
+[[importador-contalink-ctlk]].
