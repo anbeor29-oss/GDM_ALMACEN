@@ -1513,23 +1513,59 @@ class APIClient {
         onUploadProgress: (e) => { if (e.total) onProgress?.(Math.round((e.loaded / e.total) * 100)); } });
     return r.data;
   }
-  /** Importa el catálogo de Contalink (CTLK) desde Excel (.xls/.xlsx). */
+  /** Importa el catálogo de Contalink (CTLK): sube el archivo (arranca un trabajo en
+   *  segundo plano en el backend) y consulta el avance hasta terminar. Así NINGÚN
+   *  request queda colgado minutos ni puede tumbar el backend. Devuelve { success, data, message }. */
   async importarContalinkCatalogo(fd: FormData, onProgress?: (pct: number) => void) {
     const r = await this.client.post<APIResponse<any>>('/accounting/contalink/catalogo', fd,
-      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 0,
-        onUploadProgress: (e) => { if (e.total) onProgress?.(Math.round((e.loaded / e.total) * 100)); } });
-    // El proceso largo responde con «latido» (200 + espacios + JSON). Si algo falla a
-    // media corrida llega 200 con success:false: lo tratamos como error igual que un 4xx.
-    if (r.data && (r.data as any).success === false) throw new Error((r.data as any).message || 'No se pudo importar el catálogo.');
-    return r.data;
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 600000,
+        onUploadProgress: (e) => { if (e.total) onProgress?.(Math.round((e.loaded / e.total) * 40)); } });
+    const jobId = (r.data as any)?.data?.jobId;
+    if (!jobId) {
+      if (r.data && (r.data as any).success === false) throw new Error((r.data as any).message || 'No se pudo importar el catálogo.');
+      throw new Error('No se recibió el identificador del proceso de importación.');
+    }
+    return this.esperarImportacionContalink(jobId, onProgress);
   }
-  /** Importa el libro diario (pólizas) de Contalink (CTLK) desde Excel; el catálogo va primero. */
+  /** Importa el libro diario (pólizas) de Contalink (CTLK); el catálogo va primero. Mismo
+   *  patrón: sube → trabajo en segundo plano → sondeo del avance. */
   async importarContalinkPolizas(fd: FormData, onProgress?: (pct: number) => void) {
     const r = await this.client.post<APIResponse<any>>('/accounting/contalink/polizas', fd,
-      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 0,
-        onUploadProgress: (e) => { if (e.total) onProgress?.(Math.round((e.loaded / e.total) * 100)); } });
-    if (r.data && (r.data as any).success === false) throw new Error((r.data as any).message || 'No se pudieron importar las pólizas.');
-    return r.data;
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 600000,
+        onUploadProgress: (e) => { if (e.total) onProgress?.(Math.round((e.loaded / e.total) * 40)); } });
+    const jobId = (r.data as any)?.data?.jobId;
+    if (!jobId) {
+      if (r.data && (r.data as any).success === false) throw new Error((r.data as any).message || 'No se pudieron importar las pólizas.');
+      throw new Error('No se recibió el identificador del proceso de importación.');
+    }
+    return this.esperarImportacionContalink(jobId, onProgress);
+  }
+  /** Sondea el avance de un import en segundo plano hasta que termine (o falle). Tolera
+   *  cortes transitorios (un reinicio del backend) reintentando; un 404 = el job se perdió. */
+  private async esperarImportacionContalink(jobId: string, onProgress?: (pct: number) => void) {
+    const t0 = Date.now();
+    const MAX_MS = 30 * 60 * 1000;      // 30 min de techo
+    let fallos = 0;
+    for (;;) {
+      await new Promise((res) => setTimeout(res, 1500));
+      let d: any;
+      try {
+        const pr = await this.client.get<APIResponse<any>>(`/accounting/contalink/importar/${jobId}`, { timeout: 20000 });
+        fallos = 0;
+        d = (pr.data as any)?.data || {};
+      } catch (e: any) {
+        if (e?.response?.status === 404) {
+          throw new Error(e?.response?.data?.message || 'El proceso de importación se perdió. Vuelve a subir el archivo (lo ya hecho no se duplica).');
+        }
+        if (++fallos >= 10) throw new Error('Se perdió la conexión con el proceso de importación. Si no ves los datos, vuelve a subir el archivo (no se duplica).');
+        if (Date.now() - t0 > MAX_MS) throw new Error('La importación está tardando demasiado. Vuelve a intentar o sube el libro por año (no se duplica).');
+        continue;   // blip transitorio: reintenta el sondeo
+      }
+      if (d.total > 0) onProgress?.(Math.min(99, 40 + Math.round((d.procesadas / d.total) * 59)));
+      if (d.estado === 'listo') { onProgress?.(100); return { success: true, data: d.rep, message: d.mensaje }; }
+      if (d.estado === 'error') throw new Error(d.error || 'La importación falló.');
+      if (Date.now() - t0 > MAX_MS) throw new Error('La importación está tardando demasiado. Vuelve a intentar o sube el libro por año (no se duplica).');
+    }
   }
   /** Propone el agrupador SAT de las cuentas que no lo tienen (por nombre + herencia). Sólo propone. */
   async proponerAgrupadores() {

@@ -91,7 +91,10 @@ export function parsearCatalogoXls(buffer: Buffer): CuentaCtlk[] {
   return out;
 }
 
-export async function importarCatalogoXls(companyId: string, buffer: Buffer) {
+export async function importarCatalogoXls(
+  companyId: string, buffer: Buffer,
+  onProgress?: (procesadas: number, total: number) => void,
+) {
   const cuentas = parsearCatalogoXls(buffer);
   if (!cuentas.length) {
     throw new Error('No se encontraron cuentas. ¿Es el catálogo de Contalink (Num cuenta · Nombre · Cuenta Padre · Agrupador SAT)?');
@@ -119,7 +122,8 @@ export async function importarCatalogoXls(companyId: string, buffer: Buffer) {
     existentes.rows.map((r: any) => [r.codigo, { id: r.id, nivel: r.nivel }]));
 
   const rep = { total: cuentas.length, creadas: 0, yaExistian: 0, sinAgrupador: 0, errores: [] as string[] };
-  for (const c of ordenadas) {
+  for (const [i, c] of ordenadas.entries()) {
+    if (i % 25 === 0) onProgress?.(i, ordenadas.length);   // avance para la pantalla
     try {
       // Agrupador válido en el Anexo 24: exacto, el zero-pad del decimal, o su padre.
       let agrupador: string | null = null;
@@ -153,6 +157,7 @@ export async function importarCatalogoXls(companyId: string, buffer: Buffer) {
     }
   }
   try { await asignarAgrupadorFaltante(companyId); } catch { /* no crítico */ }
+  onProgress?.(ordenadas.length, ordenadas.length);
   return rep;
 }
 
@@ -278,7 +283,10 @@ async function asegurarCuentaCtlk(
   return id;
 }
 
-export async function importarPolizasXls(companyId: string, buffer: Buffer, userId?: string) {
+export async function importarPolizasXls(
+  companyId: string, buffer: Buffer, userId?: string,
+  onProgress?: (procesadas: number, total: number) => void,
+) {
   const polizas = parsearPolizasXls(buffer);
   if (!polizas.length) {
     throw new Error('No se encontraron pólizas. ¿Es el libro diario (impreso de pólizas) de Contalink en Excel?');
@@ -314,6 +322,7 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
 
   for (const [i, p] of polizas.entries()) {
     const etq = (`${p.tipoRaw} ${p.fecha} #${p.consecutivo}`).trim().slice(0, 60) || `#${i + 1}`;
+    if (i % 25 === 0) onProgress?.(i, polizas.length);   // avance para la pantalla
     try {
       if (!p.fecha) { rep.omitidas.push({ folio: etq, motivo: 'sin fecha válida' }); continue; }
 
@@ -388,5 +397,6 @@ export async function importarPolizasXls(companyId: string, buffer: Buffer, user
       rep.omitidas.push({ folio: etq, motivo: (e?.message || 'error').toString().slice(0, 140) });
     }
   }
+  onProgress?.(polizas.length, polizas.length);
   return rep;
 }

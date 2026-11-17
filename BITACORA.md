@@ -8186,3 +8186,28 @@ total aplicado y facturas, y **«Timbrar complemento»** llama a `createPayment(
 complemento** (MonedaP es única en el Anexo 20); el caso «factura en otra moneda cobrada en pesos» sigue en «Registrar
 pago» de la factura (ahí está el campo de TC). El alta por UNA factura no cambió. Ver [[complemento-pago-multimoneda]],
 [[importador-contalink-ctlk]].
+
+## 2026-11-16 (contab.) — El «latido» del import TUMBABA el backend; se reemplazó por trabajo en segundo plano
+
+**Regresión real (la que avisó el usuario: «arreglas uno y rompes dos»).** El `responderConLatido` del arreglo anterior
+escribía un espacio al socket cada 15 s DENTRO de un `setInterval`. Si la conexión se cerraba a media corrida (que es
+justo cuando «hace falta»), ese `res.write` provoca un evento **`'error'` ASÍNCRONO del stream SIN listener** →
+Node lo eleva a `uncaughtException` → el handler global de `index.ts` hace **`process.exit(1)`** → **se cae TODO el
+backend**, no sólo el import: por eso también salía «No se pudo cambiar de empresa — Network Error». Diagnóstico con
+`GET /health` del backend desplegado: corría el commit del fix pero **`uptime` se reiniciaba en ciclo y daba 502** =
+crash-loop. (El parser NO tenía la culpa: se corrió el archivo real del usuario — 598 pólizas, 3 412 movs, 223 CFDI en
+**107 ms**, 0 descuadres.)
+
+**Arreglo correcto — trabajo en SEGUNDO PLANO + sondeo (sin request largo, sin escribir a sockets, cero crash):**
+- `import-jobs.ts` (nuevo): registro en memoria de trabajos (`crearImportJob`/`getImportJob`/`correrImportEnFondo`).
+  `correrImportEnFondo` difiere con `setImmediate` (para que el `res.json(jobId)` salga antes del parseo síncrono) y
+  envuelve el trabajo en `.then/.catch`: **un error NUNCA escapa**, se guarda en el job (no puede tumbar el proceso).
+- El POST de `/contalink/polizas` y `/contalink/catalogo` **arranca el trabajo y responde al instante con `{ jobId }`**.
+  Nuevo `GET /contalink/importar/:jobId` (aislado por empresa) devuelve estado/avance/resultado.
+- `importarPolizasXls`/`importarCatalogoXls` reciben un `onProgress(procesadas,total)` opcional (sólo asignaciones).
+- Front (`api.importarContalink*`): suben el archivo (upload = 0-40 %), obtienen `jobId` y **sondean** el avance
+  (40-99 %) hasta `listo`/`error`; el sondeo **tolera reinicios** (reintenta) y un 404 = el job se perdió → «vuelve a
+  subir, no se duplica». Se **eliminó `responderConLatido`** de `errorHandler.ts`.
+- **OOM de un archivo GIGANTE es lo único que aún puede matar el proceso** (el parseo de un `.xls` enorme es síncrono):
+  para eso, exportar el libro **por año** (idempotente, aditivo) o subir la RAM de Render. `tsc` verde back+front; ⇒ ZIP.
+Ver [[importador-contalink-ctlk]].

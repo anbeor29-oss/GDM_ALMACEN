@@ -25,12 +25,15 @@
   depósito y **«Repartir en las más viejas»** o marcar/editar a mano, y **«Timbrar complemento»**. Una sola moneda por
   complemento (el cruce de monedas sigue en «Registrar pago» de la factura). Ver [[complemento-pago-multimoneda]],
   [[pue-ppd-cobranza-regla]].
-- **(HECHO 2026-11-16) «Network Error» al recuperar pólizas de Contalink.** El import corre todo en una sola petición
-  (miles de pólizas → decenas de miles de round-trips) y el proxy cortaba la conexión «inactiva». Arreglo:
-  **`responderConLatido`** manda un espacio (blanco válido en JSON) cada 15 s para mantener viva la conexión y al final el
-  JSON real (contrato intacto); envuelve `/contalink/polizas` y `/contalink/catalogo`. Además el re-subido precarga las
-  firmas `CTLK:*` ya asentadas en un `Set` (de un SELECT por póliza a uno solo). El import ya era idempotente: re-subir
-  continúa. Ver [[importador-contalink-ctlk]].
+- **(HECHO 2026-11-16) «Network Error» al recuperar pólizas de Contalink — ahora en SEGUNDO PLANO.** 1er intento
+  (`responderConLatido`, latido al socket) fue una REGRESIÓN: al cerrarse la conexión, el `res.write` emitía un `'error'`
+  de stream sin listener → `uncaughtException` → `process.exit(1)` → **se caía TODO el backend** (por eso también moría
+  «cambiar de empresa»); crash-loop confirmado en `/health`. Arreglo correcto: el POST **arranca el import en segundo
+  plano y responde al instante con `{ jobId }`** (`import-jobs.ts`, `correrImportEnFondo` con `setImmediate` + `.catch`
+  que atrapa TODO); nuevo `GET /contalink/importar/:jobId` da el avance; el front **sondea** hasta terminar (tolera
+  reinicios; 404 = re-subir, no duplica). Se quitó `responderConLatido`. Idempotente + precarga de firmas `CTLK:*` en
+  `Set`. Queda sólo el OOM del archivo gigante (parseo síncrono): subir el libro **por año** o más RAM. Ver
+  [[importador-contalink-ctlk]].
 
 - **GRUPO HCGM — reconstruir su contabilidad y limpiar ejemplos.** Saldos no cuadran por catálogo duplicado. Caminos
   listos: **Fusionar** duplicadas (Catálogo → «Cuentas duplicadas») o **Reiniciar contabilidad** (Súper Admin, conserva

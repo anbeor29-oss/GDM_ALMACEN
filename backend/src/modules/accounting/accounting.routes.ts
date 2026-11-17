@@ -13,7 +13,7 @@
 
 import { Router, Request, Response } from 'express';
 import { authenticateToken, requireCapability, authorize } from '../../middleware/authentication';
-import { asyncHandler, ValidationError, responderConLatido } from '../../middleware/errorHandler';
+import { asyncHandler, ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import * as catalogo from './catalogo.service';
 import * as balanza from './balanza-lector.service';
 import * as mapeador from './mapeador-sat.service';
@@ -42,6 +42,7 @@ import * as erContable from './estado-resultados-contable.service';
 import * as indicadores from './indicadores.service';
 import * as contpaqiTxt from './contpaqi-txt.service';
 import * as contalink from './contalink-import.service';
+import { crearImportJob, getImportJob, correrImportEnFondo } from './import-jobs';
 import * as cierre from './cierre-ejercicio.service';
 import * as reparar from './reparar-enlaces.service';
 import * as diotSvc from './diot.service';
@@ -573,17 +574,21 @@ router.post(
     if (!/\.xlsx?$/i.test(f.originalname || '') && !/spreadsheet|excel/.test(f.mimetype || '')) {
       throw new ValidationError('El catálogo de Contalink debe ser Excel (.xls/.xlsx).');
     }
-    // Latido: un catálogo grande también puede tardar lo bastante para que el proxy
-    // corte la conexión; mantenemos viva la conexión mientras se inserta.
-    await responderConLatido(res, async () => {
-      const rep = await contalink.importarCatalogoXls(companyId(req), f.buffer);
+    // Mismo patrón que las pólizas: segundo plano + jobId (ver /contalink/importar/:jobId).
+    const cid = companyId(req);
+    const buffer = f.buffer;
+    const job = crearImportJob(cid);
+    correrImportEnFondo(job, async () => {
+      const rep = await contalink.importarCatalogoXls(cid, buffer,
+        (proc, total) => { job.procesadas = proc; job.total = total; });
       return {
-        success: true, data: rep,
-        message: `Catálogo CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya existían` +
+        rep,
+        mensaje: `Catálogo CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya existían` +
           (rep.sinAgrupador ? `, ${rep.sinAgrupador} sin agrupador` : '') +
           (rep.errores.length ? `, ${rep.errores.length} con error` : '') + '.',
       };
     });
+    res.json({ success: true, data: { jobId: job.id } });
   })
 );
 
@@ -599,14 +604,21 @@ router.post(
     if (!/\.xlsx?$/i.test(f.originalname || '') && !/spreadsheet|excel/.test(f.mimetype || '')) {
       throw new ValidationError('El libro diario de Contalink debe ser Excel (.xls/.xlsx).');
     }
-    // Proceso LARGO (miles de pólizas → decenas de miles de consultas): se responde
-    // con latido para que el proxy no corte la conexión y el navegador no vea
-    // «Network Error» a media corrida (el import ya es idempotente: re-subir continúa).
-    await responderConLatido(res, async () => {
-      const rep = await contalink.importarPolizasXls(companyId(req), f.buffer, req.user?.userId);
+    // El import puede tardar minutos (miles de pólizas → decenas de miles de consultas).
+    // Se corre EN SEGUNDO PLANO y se responde YA con un jobId: ninguna conexión larga
+    // que cortar, ningún socket que reviente (antes el «latido» podía tumbar el proceso).
+    // El frontend consulta el avance en GET /contalink/importar/:jobId. Idempotente:
+    // si el proceso se reinicia, re-subir continúa.
+    const cid = companyId(req);
+    const userId = req.user?.userId;
+    const buffer = f.buffer;
+    const job = crearImportJob(cid);
+    correrImportEnFondo(job, async () => {
+      const rep = await contalink.importarPolizasXls(cid, buffer, userId,
+        (proc, total) => { job.procesadas = proc; job.total = total; });
       return {
-        success: true, data: rep,
-        message: `Pólizas CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya estaban` +
+        rep,
+        mensaje: `Pólizas CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya estaban` +
           (rep.omitidas.length ? `, ${rep.omitidas.length} omitida(s)` : '') +
           (rep.conCuadre.length ? `, ${rep.conCuadre.length} por codificar` : '') +
           ` · ${rep.cfdiLigados} CFDI ligados` +
@@ -615,6 +627,27 @@ router.post(
           (rep.cuentasCreadas.length ? ` · ${rep.cuentasCreadas.length} cuenta(s) creada(s) al vuelo` : '') +
           (rep.cuentasNoHomologadas.length ? ` · ${rep.cuentasNoHomologadas.length} cuenta(s) sin homologar` : '') + '.',
       };
+    });
+    res.json({ success: true, data: { jobId: job.id } });
+  })
+);
+
+/** GET /accounting/contalink/importar/:jobId — avance de un import en segundo plano
+ *  (catálogo o pólizas). El frontend lo consulta hasta que `estado` sea listo/error. */
+router.get(
+  '/contalink/importar/:jobId',
+  asyncHandler(async (req: Request, res: Response) => {
+    const job = getImportJob(req.params.jobId, companyId(req));
+    if (!job) throw new NotFoundError('El proceso de importación no existe o ya expiró. Vuelve a subir el archivo (lo ya hecho no se duplica).');
+    res.json({
+      success: true,
+      data: {
+        estado: job.estado,
+        procesadas: job.procesadas,
+        total: job.total,
+        ...(job.estado === 'listo' ? { rep: job.rep, mensaje: job.mensaje } : {}),
+        ...(job.estado === 'error' ? { error: job.error } : {}),
+      },
     });
   })
 );
