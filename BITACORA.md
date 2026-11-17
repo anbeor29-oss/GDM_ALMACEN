@@ -8281,3 +8281,14 @@ tercero.
 
 `tsc` verde back+front; **front tocado ⇒ ZIP**. Sin migración. Ver [[contabilidad-dedup-nombre-sugerencia]],
 [[contabilidad-terceros-numeracion]], [[motor-codificacion-rfc]].
+
+## 2026-11-17 (contab.) — Import Contalink: carga HOJA POR HOJA (anti-OOM más fuerte)
+
+El archivo de 8 MB **seguía tumbando el backend** pese a la reducción anterior (lean + blankrows): el pico de memoria era
+cargar el libro ENTERO en el workbook. Arreglo fuerte en `parsearPolizasXls`/`parsearCatalogoXls`: **se cargan los NOMBRES
+de hoja primero** (`XLSX.read(..., {bookSheets:true})`, barato) y luego **UNA hoja a la vez** (`XLSX.read(..., {sheets:[nombre]})`);
+el workbook de cada hoja sale de alcance y el GC lo libera antes de la siguiente. Así el pico es ~UNA hoja + el buffer, no
+el libro completo. El estado del parseo (cur/inCfdi) persiste entre hojas → una póliza partida entre hojas no se pierde.
+**Salida IDÉNTICA** verificada (598 pólizas, 3 412 movs, 223 CFDI, 0 descuadres). `tsc` back verde. **Backend-only ⇒ sin ZIP.**
+Honesto: no pude probar el archivo real de 8 MB; si aun así truena, lo seguro es **subir por AÑO** (idempotente) o **subir la
+RAM** (plan Standard, lo resuelve para cualquier tamaño). Ver [[importador-contalink-ctlk]], `docs/ERRORES_Y_SOLUCIONES.md` §1.

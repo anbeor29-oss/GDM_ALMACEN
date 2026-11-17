@@ -64,17 +64,16 @@ export interface CuentaCtlk {
 }
 
 export function parsearCatalogoXls(buffer: Buffer): CuentaCtlk[] {
-  // Lean (cellFormula/cellHTML false): menos RAM por celda, igual que en pólizas.
-  const wb = XLSX.read(buffer, { type: 'buffer', dense: true, cellFormula: false, cellHTML: false });
-  // Todas las hojas (por si el catálogo también desborda); raw:false → texto formateado:
-  // conserva el agrupador exacto ("102.01", no 102.1). El encabezado «Num cuenta» de cada
-  // hoja se salta más abajo.
+  // UNA hoja a la vez (anti-OOM, igual que las pólizas): nombres primero, luego cada hoja
+  // sola. raw:false → texto formateado: conserva el agrupador exacto ("102.01", no 102.1).
+  // El encabezado «Num cuenta» de cada hoja se salta más abajo.
+  const nombresHojas: string[] = XLSX.read(buffer, { type: 'buffer', bookSheets: true }).SheetNames || [];
   const rows: any[][] = [];
-  for (const nombre of wb.SheetNames) {
+  for (const nombre of nombresHojas) {
+    const wb = XLSX.read(buffer, { type: 'buffer', dense: true, sheets: [nombre], cellFormula: false, cellHTML: false });
     const ws = wb.Sheets[nombre];
     if (!ws) continue;
     for (const r of XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, blankrows: false }) as any[][]) rows.push(r);
-    delete wb.Sheets[nombre];   // libera la hoja ya leída
   }
   const out: CuentaCtlk[] = [];
   for (const r of rows) {
@@ -199,10 +198,12 @@ export function parsearPolizasXls(buffer: Buffer): PolizaCtlk[] {
   // FILA-POR-FILA (sin leer hacia adelante) para que un bloque que cruce el corte de hoja
   // no se pierda. `dense` = almacenamiento compacto de SheetJS → menos memoria en libros
   // grandes (10k+ pólizas en un solo archivo, sin partir por años).
-  // cellFormula/cellHTML en false: NO generamos fórmulas ni HTML por celda (sólo leemos
-  // valores) → bastante menos RAM por celda. Clave para no reventar la memoria (OOM) del
-  // plan starter (512 MB) con un libro de todos los años en un solo archivo.
-  const wb = XLSX.read(buffer, { type: 'buffer', dense: true, cellFormula: false, cellHTML: false });
+  // ANTI-OOM: cargamos UNA HOJA A LA VEZ. Primero sólo los NOMBRES de hoja (barato, sin
+  // celdas); luego, por cada hoja, un `XLSX.read` con `sheets:[nombre]` que materializa SÓLO
+  // esa hoja. Así el pico de memoria es ~una hoja + el buffer, no el libro ENTERO (que con
+  // el archivo de todos los años reventaba los 512 MB del plan starter). `cellFormula/
+  // cellHTML:false` = aún menos RAM por celda.
+  const nombresHojas: string[] = XLSX.read(buffer, { type: 'buffer', bookSheets: true }).SheetNames || [];
   const out: PolizaCtlk[] = [];
   let cur: PolizaCtlk | null = null;
   let inCfdi = false;      // dentro del bloque «CFDI Asociados a la póliza»
@@ -244,17 +245,16 @@ export function parsearPolizasXls(buffer: Buffer): PolizaCtlk[] {
       }
     }
   };
-  for (const nombre of wb.SheetNames) {
+  for (const nombre of nombresHojas) {
+    // Carga SÓLO esta hoja. El workbook `wb` sale de alcance al terminar la iteración → GC lo
+    // libera antes de la siguiente. El estado del parseo (cur/inCfdi) persiste entre hojas, así
+    // que una póliza partida entre el final de una hoja y el inicio de otra NO se pierde.
+    const wb = XLSX.read(buffer, { type: 'buffer', dense: true, sheets: [nombre], cellFormula: false, cellHTML: false });
     const ws = wb.Sheets[nombre];
     if (!ws) continue;
-    // blankrows:false → NO materializa las filas vacías (son no-ops para la máquina de
-    // estados, que sólo reacciona a encabezados y renglones con valor). En un libro grande
-    // con miles de filas en blanco entre bloques eso ahorra MUCHA memoria del arreglo.
+    // blankrows:false → NO materializa las filas vacías (son no-ops para la máquina de estados).
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: false }) as any[][];
     for (const row of rows) procesar(row);
-    // Liberamos la hoja ya procesada del workbook: así no quedan TODAS las hojas en RAM a la
-    // vez (evita el OOM en el plan starter con el libro de todos los años).
-    delete wb.Sheets[nombre];
   }
   return out;
 }
