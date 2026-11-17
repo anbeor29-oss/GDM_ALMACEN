@@ -21,6 +21,7 @@
  */
 import { query, transaction, transactionQuery } from '../../config/database';
 import { ValidationError } from '../../middleware/errorHandler';
+import { normRazon, normBasico, sinFormaLegal } from './razon-social.util';
 
 const r2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -86,14 +87,34 @@ export async function detectar(companyId: string): Promise<{
   };
 }
 
-/** Consolida todas las cuentas duplicadas de la empresa en una sola por código. */
-export async function fusionar(companyId: string): Promise<{ fusionadas: number; codigos: number; mensaje: string }> {
-  const { grupos } = await detectar(companyId);
-  if (!grupos.length) return { fusionadas: 0, codigos: 0, mensaje: 'No hay cuentas duplicadas que fusionar.' };
-
-  const pares: Array<{ dupe: string; canon: string }> = [];
-  for (const g of grupos) for (const d of g.duplicadas) pares.push({ dupe: d.id, canon: g.canonica.id });
-
+/**
+ * El TRASPASO en sí: mueve TODO lo que cuelga de cada cuenta `dupe` a su `canon`
+ * (movimientos, saldos, hijos, cualquier FK) y borra el dupe. En UNA transacción.
+ * Lo reusan la fusión por CÓDIGO y la fusión por NOMBRE.
+ */
+export async function fusionarPares(
+  pares: Array<{ dupe: string; canon: string }>,
+  aperturaRepetida = true,
+): Promise<void> {
+  if (!pares.length) return;
+  // Apertura (saldo inicial/final): en duplicados POR CÓDIGO las copias son la MISMA
+  // cuenta → la apertura está REPETIDA → se toma UNA (la de mayor magnitud). En
+  // duplicados POR NOMBRE son cuentas DISTINTAS del mismo tercero → sus aperturas son
+  // dinero DISTINTO → se SUMAN (si no, se perdería el saldo de las que se eliminan).
+  const selIni = aperturaRepetida
+    ? `(array_agg(b.saldo_inicial ORDER BY ABS(b.saldo_inicial) DESC, b.account_id))[1]`
+    : `SUM(b.saldo_inicial)`;
+  const selFin = aperturaRepetida
+    ? `(array_agg(b.saldo_final   ORDER BY ABS(b.saldo_final)   DESC, b.account_id))[1]`
+    : `SUM(b.saldo_final)`;
+  const updIni = aperturaRepetida
+    ? `CASE WHEN ABS(EXCLUDED.saldo_inicial) > ABS(accounting_period_balances.saldo_inicial)
+            THEN EXCLUDED.saldo_inicial ELSE accounting_period_balances.saldo_inicial END`
+    : `accounting_period_balances.saldo_inicial + EXCLUDED.saldo_inicial`;
+  const updFin = aperturaRepetida
+    ? `CASE WHEN ABS(EXCLUDED.saldo_final) > ABS(accounting_period_balances.saldo_final)
+            THEN EXCLUDED.saldo_final ELSE accounting_period_balances.saldo_final END`
+    : `accounting_period_balances.saldo_final + EXCLUDED.saldo_final`;
   await transaction(async (client) => {
     await transactionQuery(client,
       `CREATE TEMP TABLE _fusion (dupe uuid PRIMARY KEY, canon uuid NOT NULL) ON COMMIT DROP`);
@@ -117,18 +138,16 @@ export async function fusionar(companyId: string): Promise<{ fusionadas: number;
     await transactionQuery(client, `
       INSERT INTO accounting_period_balances (company_id, periodo_id, account_id, saldo_inicial, cargos, abonos, saldo_final)
         SELECT b.company_id, b.periodo_id, f.canon,
-               (array_agg(b.saldo_inicial ORDER BY ABS(b.saldo_inicial) DESC, b.account_id))[1],
+               ${selIni},
                SUM(b.cargos), SUM(b.abonos),
-               (array_agg(b.saldo_final   ORDER BY ABS(b.saldo_final)   DESC, b.account_id))[1]
+               ${selFin}
           FROM accounting_period_balances b JOIN _fusion f ON f.dupe = b.account_id
          GROUP BY b.company_id, b.periodo_id, f.canon
       ON CONFLICT (periodo_id, account_id) DO UPDATE SET
-        saldo_inicial = CASE WHEN ABS(EXCLUDED.saldo_inicial) > ABS(accounting_period_balances.saldo_inicial)
-                             THEN EXCLUDED.saldo_inicial ELSE accounting_period_balances.saldo_inicial END,
+        saldo_inicial = ${updIni},
         cargos        = accounting_period_balances.cargos + EXCLUDED.cargos,
         abonos        = accounting_period_balances.abonos + EXCLUDED.abonos,
-        saldo_final   = CASE WHEN ABS(EXCLUDED.saldo_final) > ABS(accounting_period_balances.saldo_final)
-                             THEN EXCLUDED.saldo_final ELSE accounting_period_balances.saldo_final END,
+        saldo_final   = ${updFin},
         updated_at    = NOW()`);
     await transactionQuery(client,
       `DELETE FROM accounting_period_balances b USING _fusion f WHERE b.account_id = f.dupe`);
@@ -161,11 +180,91 @@ export async function fusionar(companyId: string): Promise<{ fusionadas: number;
     // 5) Borrar las copias (sus equivalencias caen por ON DELETE CASCADE).
     await transactionQuery(client, `DELETE FROM accounting_accounts a USING _fusion f WHERE a.id = f.dupe`);
   });
+}
 
+/** Consolida todas las cuentas duplicadas de la empresa en una sola POR CÓDIGO. */
+export async function fusionar(companyId: string): Promise<{ fusionadas: number; codigos: number; mensaje: string }> {
+  const { grupos } = await detectar(companyId);
+  if (!grupos.length) return { fusionadas: 0, codigos: 0, mensaje: 'No hay cuentas duplicadas que fusionar.' };
+  const pares: Array<{ dupe: string; canon: string }> = [];
+  for (const g of grupos) for (const d of g.duplicadas) pares.push({ dupe: d.id, canon: g.canonica.id });
+  await fusionarPares(pares);
   return {
     fusionadas: pares.length,
     codigos: grupos.length,
     mensaje: `Se fusionaron ${pares.length} cuenta(s) duplicada(s) en ${grupos.length} código(s). ` +
       `Reconstruye la balanza (Contabilidad → Balanza → «Reconstruir año») para re-derivar los saldos consolidados.`,
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DUPLICADAS POR NOMBRE (razón social) — un MISMO cliente/proveedor con varias
+   cuentas: unas con la forma legal (SA de CV, S de RL…) y otra sin ella. Se
+   agrupan por el nombre NORMALIZADO sin forma legal; la CANÓNICA = la «limpia»
+   (sin forma legal) y, a igualdad, la de más hijos/movimientos/más antigua. La
+   fusión traspasa los movimientos de las demás a la canónica (reusa fusionarPares).
+   Es REVISABLE: `detectar` sólo propone; la fusión la dispara el usuario.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Sólo cuentas de TERCEROS (clientes 105, proveedores 201/205) de movimiento. */
+export async function detectarPorNombre(companyId: string): Promise<{
+  grupos: GrupoDuplicado[]; totalGrupos: number; totalCuentasSobrantes: number;
+}> {
+  const r = await query<any>(
+    `SELECT a.id, a.codigo, a.nombre, a.tipo, a.created_at,
+            (SELECT count(*)::int FROM journal_lines l WHERE l.account_id = a.id)      AS movimientos,
+            (SELECT count(*)::int FROM accounting_accounts h WHERE h.parent_id = a.id) AS hijos,
+            (SELECT COALESCE(SUM(b.saldo_final),0)::float FROM accounting_period_balances b
+               WHERE b.account_id = a.id)                                              AS saldo
+       FROM accounting_accounts a
+      WHERE a.company_id = $1 AND a.permite_movimientos = true
+        AND ( a.codigo_agrupador LIKE '105%'
+           OR a.codigo_agrupador LIKE '201%'
+           OR a.codigo_agrupador LIKE '205%' )`,
+    [companyId]);
+
+  const porBase = new Map<string, any[]>();
+  for (const a of r.rows) {
+    const base = normRazon(a.nombre);
+    if (!base || base.length < 3) continue;          // nombres muy cortos NO se agrupan (evita falsos)
+    a._base = base;
+    a._limpia = sinFormaLegal(a.nombre);             // la «limpia» (sin forma legal) será la canónica
+    if (!porBase.has(base)) porBase.set(base, []);
+    porBase.get(base)!.push(a);
+  }
+
+  const grupos: GrupoDuplicado[] = [];
+  for (const cuentas of porBase.values()) {
+    if (cuentas.length < 2) continue;                // sólo grupos con 2+ cuentas
+    // Canónica: la limpia primero; a igualdad, más hijos → más movimientos → más antigua.
+    cuentas.sort((x, y) =>
+      (y._limpia ? 1 : 0) - (x._limpia ? 1 : 0) ||
+      y.hijos - x.hijos || y.movimientos - x.movimientos ||
+      String(x.created_at).localeCompare(String(y.created_at)));
+    const [canonica, ...duplicadas] = cuentas;
+    grupos.push({
+      codigo: canonica.codigo, nombre: canonica.nombre, tipo: canonica.tipo, copias: cuentas.length,
+      canonica: { id: canonica.id, codigoRaw: canonica.codigo, movimientos: canonica.movimientos, hijos: canonica.hijos, saldo: r2(canonica.saldo) },
+      duplicadas: duplicadas.map((d) => ({ id: d.id, codigoRaw: d.codigo, movimientos: d.movimientos, hijos: d.hijos, saldo: r2(d.saldo) })),
+    });
+  }
+  grupos.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+  return {
+    grupos, totalGrupos: grupos.length,
+    totalCuentasSobrantes: grupos.reduce((a, g) => a + (g.copias - 1), 0),
+  };
+}
+
+/** Fusiona TODOS los grupos por nombre detectados (traspasa a la canónica «limpia»). */
+export async function fusionarPorNombre(companyId: string): Promise<{ fusionadas: number; grupos: number; mensaje: string }> {
+  const { grupos } = await detectarPorNombre(companyId);
+  if (!grupos.length) return { fusionadas: 0, grupos: 0, mensaje: 'No hay cuentas de clientes/proveedores duplicadas por nombre.' };
+  const pares: Array<{ dupe: string; canon: string }> = [];
+  for (const g of grupos) for (const d of g.duplicadas) pares.push({ dupe: d.id, canon: g.canonica.id });
+  await fusionarPares(pares, false);   // cuentas DISTINTAS del mismo tercero → aperturas se SUMAN
+  return {
+    fusionadas: pares.length, grupos: grupos.length,
+    mensaje: `Se concentraron ${pares.length} cuenta(s) en ${grupos.length} tercero(s) (se conservó la cuenta sin forma legal). ` +
+      `Reconstruye la balanza para re-derivar los saldos.`,
   };
 }

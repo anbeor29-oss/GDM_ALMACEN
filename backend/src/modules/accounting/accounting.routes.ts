@@ -1806,6 +1806,26 @@ router.post(
   })
 );
 
+/** GET /accounting/cuentas-duplicadas/por-nombre — clientes/proveedores (105/201/205) con la
+ *  MISMA razón social escrita con/sin forma legal (SA de CV, S de RL…). Solo lectura (preview). */
+router.get(
+  '/cuentas-duplicadas/por-nombre',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await cuentasDup.detectarPorNombre(companyId(req)) });
+  })
+);
+
+/** POST /accounting/cuentas-duplicadas/por-nombre/fusionar — concentra cada tercero en su
+ *  cuenta sin forma legal (traspasa los movimientos de las demás). */
+router.post(
+  '/cuentas-duplicadas/por-nombre/fusionar',
+  requireCapability('contabilidad:catalogo'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await cuentasDup.fusionarPorNombre(companyId(req));
+    res.json({ success: true, data: r, message: r.mensaje });
+  })
+);
+
 /** GET /accounting/enlaces-respaldo/diagnostico?anio — por año: XML vs enlazados vs pólizas de respaldo (solo lectura) */
 router.get(
   '/enlaces-respaldo/diagnostico',

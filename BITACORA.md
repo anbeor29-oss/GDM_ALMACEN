@@ -8252,3 +8252,32 @@ falla → «Se perdió la conexión con el proceso de importación»; y un POST 
 - **Si aun así un libro es demasiado grande:** exportar **por AÑO** (idempotente, aditivo) o **subir la RAM** (plan
   Standard) — eso lo resuelve para cualquier tamaño. Re-probar los `libro-diario (2)/(3).xls` tras desplegar.
 Ver [[importador-contalink-ctlk]], `docs/ERRORES_Y_SOLUCIONES.md` §1.
+
+## 2026-11-17 (contab.) — Dedup de cuentas de terceros POR NOMBRE + auto-sugerir la cuenta por nombre en Ventas/Compras
+
+Pedido del usuario (3 pasos) ahora que ya hay catálogo importado: 1) identificar cuentas con la MISMA razón social (unas
+con «SA de CV», «S de RL», «SC»…, otra sin), elegir la **limpia** (sin forma legal); 2) **traspasar** los movimientos de
+las demás a la limpia (en «Cuentas duplicadas»); 3) **auto-sugerir** la cuenta del cliente/proveedor por nombre en
+Ventas/Compras, para capturar sólo el gasto.
+
+**Normalización compartida** `razon-social.util.ts` (`normBasico`/`normRazon`/`sinFormaLegal`): MAYÚSCULAS sin acentos/
+puntuación y, **sólo al final**, quita la forma legal (SA DE CV, S DE RL DE CV, SAPI DE CV, SAS, SC, AC…). Nunca toca un
+«DE»/«CV» en medio del nombre. (Replicado en el front: `normRazon` en `DocsContabilizar.tsx`.)
+
+**Pasos 1+2 — «Cuentas duplicadas» con pestaña «Por nombre»** (`cuentas-duplicadas.service`):
+- `detectarPorNombre`: clientes 105 / proveedores 201/205 (de movimiento) agrupados por `normRazon`; **canónica = la
+  limpia** (sin forma legal), a igualdad la de más hijos→movimientos→antigua. Sólo grupos de 2+. Solo lectura (revisable).
+- `fusionarPorNombre`: reusa el traspaso `fusionarPares` (movimientos, saldos, hijos, FKs, borra el dupe) con
+  **`aperturaRepetida=false`**: como son cuentas DISTINTAS del mismo tercero, el saldo inicial/final se **SUMA** (no se
+  toma el mayor como en el dedup por código, donde la apertura está repetida). Rutas `GET/POST
+  /cuentas-duplicadas/por-nombre[/fusionar]`. Front: `CuentasDuplicadas.tsx` con toggle Por código / Por nombre.
+- **Después de fusionar: Balanza → «Reconstruir año».**
+
+**Paso 3 — «Sugerir cuentas por nombre» en Ventas/Compras** (`DocsContabilizar.tsx`, frontend-only, reusa el guardado que
+ya existe): botón que, para las filas SIN cuenta, busca la razón social del documento (`contraparte_nombre`) en el
+catálogo de clientes/proveedores (`ctas.cliente`/`proveedor`) por `normRazon` y rellena la 1ª columna (cuenta del
+tercero). Queda sólo capturar la 2ª cuenta (gasto/ingreso). Tip: fusionar antes las duplicadas para que haya UNA por
+tercero.
+
+`tsc` verde back+front; **front tocado ⇒ ZIP**. Sin migración. Ver [[contabilidad-dedup-nombre-sugerencia]],
+[[contabilidad-terceros-numeracion]], [[motor-codificacion-rfc]].

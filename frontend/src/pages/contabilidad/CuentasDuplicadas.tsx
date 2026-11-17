@@ -1,8 +1,11 @@
 /**
- * Cuentas duplicadas — detecta cuentas del catálogo con el MISMO código (dos ids
- * para un mismo código) y las FUSIONA en una sola, reapuntando pólizas y saldos.
- * Pasa en catálogos viejos importados dos veces: la balanza sale con cada cuenta
- * repetida. Primero se PREVISUALIZA (solo lectura) y, con un clic, se consolida.
+ * Cuentas duplicadas — dos modos:
+ *  · POR CÓDIGO: cuentas con el MISMO código escrito distinto (p. ej. «31080000» y
+ *    «3-10-80-000»); se consolidan en la que conserva más historia.
+ *  · POR NOMBRE: un MISMO cliente/proveedor (105/201/205) con varias cuentas, unas con
+ *    forma legal (SA de CV, S de RL…) y otra sin ella; se concentra en la cuenta SIN
+ *    forma legal, traspasando los movimientos de las demás.
+ * Siempre se PREVISUALIZA (solo lectura) y, con un clic, se consolida.
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,25 +16,38 @@ import { formatCuenta, useMascara } from '@/utils/cuenta';
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
 
+type Modo = 'codigo' | 'nombre';
+
 export function CuentasDuplicadasPage() {
   const qc = useQueryClient();
   const mascara = useMascara();
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [modo, setModo] = useState<Modo>('codigo');
+  const esNombre = modo === 'nombre';
 
-  const q = useQuery({ queryKey: ['cuentas-duplicadas'], queryFn: () => api.getCuentasDuplicadas() });
-  const d: any = q.data?.data || { grupos: [], totalCodigos: 0, totalCuentasSobrantes: 0 };
+  const q = useQuery({
+    queryKey: ['cuentas-duplicadas', modo],
+    queryFn: () => (esNombre ? api.getCuentasDuplicadasPorNombre() : api.getCuentasDuplicadas()),
+  });
+  const d: any = q.data?.data || { grupos: [], totalCuentasSobrantes: 0 };
   const grupos: any[] = d.grupos || [];
+  const totalGrupos = esNombre ? (d.totalGrupos ?? grupos.length) : (d.totalCodigos ?? grupos.length);
 
   const fusionar = async () => {
-    if (!window.confirm(
-      `¿Fusionar ${d.totalCuentasSobrantes} cuenta(s) duplicada(s) en ${d.totalCodigos} código(s)?\n\n` +
-      `Las pólizas y los saldos de las copias se mueven a UNA sola cuenta por código y las copias se eliminan. ` +
-      `Es una operación en bloque (si algo choca, no se aplica nada). Conviene tener respaldo.\n\n` +
-      `Después: Balanza → «Reconstruir año» para re-derivar los saldos.`)) return;
+    const txt = esNombre
+      ? `¿Concentrar ${d.totalCuentasSobrantes} cuenta(s) en ${totalGrupos} tercero(s)?\n\n` +
+        `De cada cliente/proveedor se CONSERVA la cuenta SIN forma legal y se le traspasan los movimientos ` +
+        `de las que traen «SA de CV», «S de RL», etc.; esas copias se eliminan. Es en bloque (si algo choca, no se aplica nada). ` +
+        `Revisa la lista antes y ten respaldo.\n\nDespués: Balanza → «Reconstruir año».`
+      : `¿Fusionar ${d.totalCuentasSobrantes} cuenta(s) duplicada(s) en ${totalGrupos} código(s)?\n\n` +
+        `Las pólizas y los saldos de las copias se mueven a UNA sola cuenta por código y las copias se eliminan. ` +
+        `Es una operación en bloque (si algo choca, no se aplica nada). Conviene tener respaldo.\n\n` +
+        `Después: Balanza → «Reconstruir año» para re-derivar los saldos.`;
+    if (!window.confirm(txt)) return;
     setBusy(true); setMsg('');
     try {
-      const r: any = await api.fusionarCuentasDuplicadas();
+      const r: any = esNombre ? await api.fusionarCuentasDuplicadasPorNombre() : await api.fusionarCuentasDuplicadas();
       setMsg(r.message || r.data?.mensaje || 'Cuentas fusionadas.');
       qc.invalidateQueries({ queryKey: ['cuentas-duplicadas'] });
       qc.invalidateQueries({ queryKey: ['ctas-mov'] });
@@ -41,6 +57,15 @@ export function CuentasDuplicadasPage() {
     } finally { setBusy(false); }
   };
 
+  const Tab = ({ v, children }: { v: Modo; children: any }) => (
+    <button onClick={() => { setModo(v); setMsg(''); }}
+      className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${modo === v
+        ? 'bg-primary text-white border-primary'
+        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+      {children}
+    </button>
+  );
+
   return (
     <div className="p-6 space-y-4 max-w-6xl">
       <div>
@@ -48,10 +73,15 @@ export function CuentasDuplicadasPage() {
           <Copy size={22} className="text-primary" /> Cuentas duplicadas
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Cuentas que son la <b>misma</b> aunque el código esté escrito distinto (p. ej. <span className="font-mono">«31080000»</span> y
-          <span className="font-mono"> «3-10-80-000»</span> se ven iguales en pantalla). Se consolidan en una sola:
-          las pólizas y los saldos de las copias se mueven a la cuenta que conserva más historia (entre «comillas», el código tal cual está guardado).
+          {esNombre
+            ? <>Un <b>mismo cliente/proveedor</b> con varias cuentas: unas con forma legal (<span className="font-mono">SA de CV</span>, <span className="font-mono">S de RL</span>…) y otra sin ella. Se concentra todo en la cuenta <b>sin forma legal</b>, traspasándole los movimientos de las demás.</>
+            : <>Cuentas que son la <b>misma</b> aunque el código esté escrito distinto (p. ej. <span className="font-mono">«31080000»</span> y <span className="font-mono">«3-10-80-000»</span>). Se consolidan en la que conserva más historia.</>}
         </p>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Tab v="codigo">Por código</Tab>
+        <Tab v="nombre">Por nombre (clientes/proveedores)</Tab>
       </div>
 
       {msg && <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{msg}</p>}
@@ -60,7 +90,7 @@ export function CuentasDuplicadasPage() {
 
       {!q.isLoading && grupos.length === 0 && (
         <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-4 py-6 flex items-center gap-2">
-          <CheckCircle2 size={16} /> No hay cuentas duplicadas en esta empresa.
+          <CheckCircle2 size={16} /> {esNombre ? 'No hay clientes/proveedores duplicados por nombre.' : 'No hay cuentas duplicadas en esta empresa.'}
         </p>
       )}
 
@@ -69,13 +99,12 @@ export function CuentasDuplicadasPage() {
           <div className="flex flex-wrap items-center gap-3 bg-amber-50 border border-amber-300 rounded-lg p-3">
             <AlertTriangle size={18} className="text-amber-700 shrink-0" />
             <p className="text-sm text-amber-800 flex-1 min-w-[16rem]">
-              <b>{d.totalCodigos}</b> código(s) con copias — <b>{d.totalCuentasSobrantes}</b> cuenta(s) sobrante(s)
-              que se eliminarán al fusionar. La cuenta <b>canónica</b> (la que se queda) es la de más hijos, luego
-              más movimientos, luego más antigua.
+              <b>{totalGrupos}</b> {esNombre ? 'tercero(s)' : 'código(s)'} con copias — <b>{d.totalCuentasSobrantes}</b> cuenta(s) sobrante(s)
+              que se eliminarán al fusionar. La cuenta <b>que se queda</b> es {esNombre ? <>la que <b>no</b> trae forma legal (a igualdad, la de más historia)</> : 'la de más hijos, luego más movimientos, luego más antigua'}.
             </p>
             <button onClick={fusionar} disabled={busy}
               className="flex items-center gap-1.5 bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 text-sm">
-              <Merge size={15} /> {busy ? 'Fusionando…' : 'Fusionar todas'}
+              <Merge size={15} /> {busy ? 'Fusionando…' : (esNombre ? 'Concentrar todas' : 'Fusionar todas')}
             </button>
           </div>
 
@@ -84,7 +113,7 @@ export function CuentasDuplicadasPage() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Código</th>
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Nombre</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Nombre {esNombre ? '(se queda)' : ''}</th>
                   <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Copias</th>
                   <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Se queda (movs · hijos)</th>
                   <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Se eliminan</th>
@@ -92,9 +121,9 @@ export function CuentasDuplicadasPage() {
               </thead>
               <tbody className="divide-y">
                 {grupos.map((g) => (
-                  <tr key={g.codigo} className="hover:bg-gray-50 align-top">
-                    <td className="px-4 py-2 font-mono text-xs text-gray-700 whitespace-nowrap">{formatCuenta(g.codigo, mascara)}</td>
-                    <td className="px-4 py-2"><p className="truncate max-w-xs">{g.nombre}</p></td>
+                  <tr key={g.canonica.id} className="hover:bg-gray-50 align-top">
+                    <td className="px-4 py-2 font-mono text-xs text-gray-700 whitespace-nowrap">{formatCuenta(g.canonica.codigoRaw, mascara)}</td>
+                    <td className="px-4 py-2"><p className="truncate max-w-xs" title={g.nombre}>{g.nombre}</p></td>
                     <td className="px-4 py-2 text-center">
                       <span className="inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">{g.copias}</span>
                     </td>

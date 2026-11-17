@@ -1771,6 +1771,16 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas-duplicadas/fusionar', {});
     return r.data;
   }
+  /** Clientes/proveedores con la MISMA razón social (con/sin forma legal) — preview. */
+  async getCuentasDuplicadasPorNombre() {
+    const r = await this.client.get<APIResponse<any>>('/accounting/cuentas-duplicadas/por-nombre');
+    return r.data;
+  }
+  /** Concentra cada tercero en su cuenta sin forma legal (traspasa movimientos). */
+  async fusionarCuentasDuplicadasPorNombre() {
+    const r = await this.client.post<APIResponse<any>>('/accounting/cuentas-duplicadas/por-nombre/fusionar', {});
+    return r.data;
+  }
   async generarCompras(anio: number, mes: number, todoElAnio = false) {
     const r = await this.client.post<APIResponse<any>>('/accounting/polizas/generar-compras', { anio, mes, todoElAnio });
     return r.data;

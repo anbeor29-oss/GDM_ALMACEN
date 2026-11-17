@@ -39,6 +39,22 @@ const folioDe = (c: any) => [c.serie, c.folio].filter(Boolean).join('-') || '—
 const MESES = ['Todo el año', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
+/**
+ * Nombre de un cliente/proveedor normalizado para COMPARAR por razón social: en
+ * MAYÚSCULAS, sin acentos ni puntuación, y sin la FORMA LEGAL al final (SA de CV,
+ * S de RL de CV, SAPI de CV, SC, SAS, AC…). Así «DISTRIBUIDORA DE LUBRICANTES SA DE
+ * CV» y «DISTRIBUIDORA DE LUBRICANTES» caen al MISMO texto. Sólo se quita la forma
+ * legal al FINAL, nunca un «DE»/«CV» en medio del nombre real.
+ */
+export function normRazon(nombre?: string | null): string {
+  let s = String(nombre || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+  s = s.replace(/[.,]/g, '').replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const legal = /\s+(SOCIEDAD ANONIMA|SA DE CV|S DE RL DE CV|SAPI DE CV|SAPI|SAS|SA|S DE RL|SRL|SC|SCL|AC|DE CV|CV)$/;
+  let prev = '';
+  while (s !== prev && s.length > 2) { prev = s; s = s.replace(legal, '').trim(); }
+  return s;
+}
+
 /** IVA derivado del documento: total − (subtotal − descuento). NULL si no hay subtotal. */
 function ivaDe(c: any): number | null {
   if (c.subtotal == null) return null;
@@ -82,6 +98,7 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
   const [asiento, setAsiento] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [sugiriendo, setSugiriendo] = useState(false);
   // Apagado por defecto: el mes queda VACÍO hasta que el usuario pulse «Generar
   // pólizas» (pedido: al descontabilizar no debe re-llenarse solo). El toggle sigue.
   const [autoOn, setAutoOn] = useState(false);
@@ -169,6 +186,40 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
     finally { setBusy(false); }
   };
 
+  // «Sugerir cuentas por nombre»: rellena la cuenta del cliente/proveedor (1ª columna)
+  // buscando la RAZÓN SOCIAL del documento en el catálogo (ignora SA de CV, S de RL…).
+  // Sólo toca las filas SIN cuenta y no canceladas; la 2ª cuenta (gasto) la captura el
+  // usuario. Es justo lo pedido: automatizar la cuenta del tercero para capturar sólo el gasto.
+  const sugerirPorNombre = async () => {
+    setSugiriendo(true); setMsg('');
+    try {
+      const opciones = ventas ? ctas.cliente : ctas.proveedor;
+      // razón normalizada → código (la PRIMERA cuenta que la tenga gana; por eso conviene
+      // haber fusionado antes las duplicadas en «Cuentas duplicadas»).
+      const porNombre = new Map<string, string>();
+      for (const o of opciones) {
+        const k = normRazon(o.nombre);
+        if (k && !porNombre.has(k)) porNombre.set(k, o.codigo);
+      }
+      const pend = filas.filter((c) =>
+        !c.cuenta_contable && c.contraparte_nombre &&
+        String(c.estado_sat || '').toLowerCase() !== 'cancelado');
+      let aplicadas = 0; let sinMatch = 0;
+      for (const c of pend) {
+        const cod = porNombre.get(normRazon(c.contraparte_nombre));
+        if (cod) { await api.setSatCuentaContable(c.id, cod); aplicadas++; } else sinMatch++;
+      }
+      qc.invalidateQueries({ queryKey: claveVista });
+      qc.invalidateQueries({ queryKey: ['polizas'] });
+      setMsg(aplicadas
+        ? `Se asignaron ${aplicadas} cuenta(s) de ${ventas ? 'cliente' : 'proveedor'} por nombre` +
+          (sinMatch ? ` · ${sinMatch} sin coincidencia (créalas o captúralas a mano)` : '') +
+          `. Falta sólo la cuenta de ${ventas ? 'ingreso' : 'gasto'}.`
+        : `No hubo coincidencia de nombre en el catálogo para las ${pend.length} pendiente(s).`);
+    } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudieron sugerir las cuentas.'); }
+    finally { setSugiriendo(false); }
+  };
+
   // «Que se vayan contabilizando en automático»: una corrida por periodo cuando
   // hay pendientes (el motor es idempotente; deja fuera las de cuenta desconocida).
   useEffect(() => {
@@ -223,6 +274,11 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
         <label className="flex items-center gap-1 text-xs text-gray-500" title="Al abrir el periodo, contabiliza solo las que tengan cuenta conocida">
           <input type="checkbox" checked={autoOn} onChange={(e) => setAutoOn(e.target.checked)} /> automático
         </label>
+        <button onClick={sugerirPorNombre} disabled={busy || sugiriendo}
+          title={`Rellena la cuenta del ${ventas ? 'cliente' : 'proveedor'} (1ª columna) buscando su nombre en el catálogo, ignorando SA de CV / S de RL, etc. Sólo las que están sin cuenta. Tip: fusiona antes las duplicadas en «Cuentas duplicadas».`}
+          className="text-xs border border-violet-300 bg-violet-50 text-violet-700 px-2.5 py-1.5 rounded-lg hover:bg-violet-100 disabled:opacity-40">
+          {sugiriendo ? 'Sugiriendo…' : `Sugerir cuentas por nombre`}
+        </button>
         <button onClick={recodificar} disabled={busy}
           title="¿La factura sale «codificada» pero el ojo no muestra su póliza? Está ligada a un respaldo de otro periodo. Esto la desliga y la recodifica en el mes."
           className="text-xs border border-amber-300 bg-amber-50 text-amber-700 px-2.5 py-1.5 rounded-lg hover:bg-amber-100 disabled:opacity-40">
