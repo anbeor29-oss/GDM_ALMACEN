@@ -8159,12 +8159,17 @@ hoy: ver `git log`. Ver [[polizas-hub-pestanas]].
 
 Dos cosas pedidas a la vez. `tsc --noEmit` verde en back **y** front; ZIP `build:hosting` regenerado.
 
-**1) Recuperación de pólizas de Contalink marcaba «Network Error».** Causa real: el import corre TODO síncrono en una
+**1) Recuperación de pólizas de Contalink marcaba «Network Error».**
+> ⚠️ **SUPERADO — este «latido» resultó una REGRESIÓN que tumbaba el backend. NO repetir.** Ver la entrada siguiente
+> del 2026-11-16 («El latido del import TUMBABA el backend…») y `docs/ERRORES_Y_SOLUCIONES.md` §1. Se deja aquí el
+> relato para que quede el error documentado, no como solución vigente.
+
+Causa real: el import corre TODO síncrono en una
 sola petición (parsea el libro completo y por cada póliza abre transacción = `BEGIN`+SELECT folio+INSERT asiento+N
 INSERT líneas+`COMMIT`, más el SELECT de idempotencia por póliza y un INSERT por CFDI). Para ~6,000 pólizas son decenas
 de miles de round-trips → tarda minutos → mientras el server trabaja NO fluye ningún byte y el proxy/entorno cierra la
 conexión «inactiva» → axios lo reporta como `Network Error` aunque el proceso siga vivo (el import YA es idempotente:
-re-subir continúa). Arreglo en tres piezas:
+re-subir continúa). Arreglo en tres piezas (el (1) fue el error):
 - **`responderConLatido(res, work)`** (nuevo en `middleware/errorHandler.ts`): manda un **espacio** (blanco válido en JSON)
   cada 15 s para que la conexión nunca quede inactiva y al final escribe el JSON real; `JSON.parse` ignora el blanco
   inicial, así que axios lo parsea igual y el contrato `{success,data,message}` NO cambia. Si falla a media corrida y ya

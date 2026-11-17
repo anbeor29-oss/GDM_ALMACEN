@@ -35,6 +35,19 @@
   `Set`. Queda sólo el OOM del archivo gigante (parseo síncrono): subir el libro **por año** o más RAM. Ver
   [[importador-contalink-ctlk]].
 
+- **(FALTA — NUEVA 2026-11-16) Importador de Contalink POR LOTES para el libro GIGANTE (evitar OOM).** El import ya corre
+  en segundo plano y ya no tumba el backend (commit `eaa3dba`), pero el **respaldo de TODOS los años en UN archivo**
+  (~8 MB+, p. ej. `libro-diario (2).xls` / `(3).xls`) todavía marca «Network Error»: el parseo de un `.xls` enorme es
+  **síncrono** y agota la RAM del plan starter (512 MB) → el proceso muere por OOM (eso ningún patrón HTTP lo evita).
+  Hoy la salida segura es **exportar el libro por AÑO** y subir uno por uno (idempotente, aditivo). Tarea: (a) que el
+  importador **parta/transmita** el archivo internamente y procese por tramos sin cargarlo entero en memoria, o (b) al
+  menos un aviso claro en la pantalla («si es de varios años, súbelo por año») + verificar cuál es el tope de tamaño que
+  sí entra. Ver [[importador-contalink-ctlk]] y `docs/ERRORES_Y_SOLUCIONES.md` §1.
+- **(FALTA — NUEVA 2026-11-16, PARA MAÑANA) Nuevo error de BASE DE DATOS detectado por el usuario.** El usuario reportó
+  «otro error de base de datos» el 2026-11-16 y pidió dejarlo para mañana (2026-11-17). **Pendiente de DETALLAR**: falta
+  el mensaje/pantalla/pasos exactos para reproducirlo. Al retomar: pedir al usuario el texto del error y dónde aparece,
+  luego diagnosticar. (No confundir con el «Network Error» del import, que ya quedó en segundo plano.)
+
 - **GRUPO HCGM — reconstruir su contabilidad y limpiar ejemplos.** Saldos no cuadran por catálogo duplicado. Caminos
   listos: **Fusionar** duplicadas (Catálogo → «Cuentas duplicadas») o **Reiniciar contabilidad** (Súper Admin, conserva
   XML) + re-importar. El usuario eligió reiniciar. Además se están **borrando por SQL** (Web Shell) facturas/pagos/
