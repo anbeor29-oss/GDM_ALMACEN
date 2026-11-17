@@ -211,7 +211,7 @@ export async function detectarPorNombre(companyId: string): Promise<{
   grupos: GrupoDuplicado[]; totalGrupos: number; totalCuentasSobrantes: number;
 }> {
   const r = await query<any>(
-    `SELECT a.id, a.codigo, a.nombre, a.tipo, a.created_at,
+    `SELECT a.id, a.codigo, a.nombre, a.tipo, a.created_at, a.codigo_agrupador,
             (SELECT count(*)::int FROM journal_lines l WHERE l.account_id = a.id)      AS movimientos,
             (SELECT count(*)::int FROM accounting_accounts h WHERE h.parent_id = a.id) AS hijos,
             (SELECT COALESCE(SUM(b.saldo_final),0)::float FROM accounting_period_balances b
@@ -227,10 +227,17 @@ export async function detectarPorNombre(companyId: string): Promise<{
   for (const a of r.rows) {
     const base = normRazon(a.nombre);
     if (!base || base.length < 3) continue;          // nombres muy cortos NO se agrupan (evita falsos)
+    // CLAVE: separar CLIENTES de PROVEEDORES. Un mismo tercero puede ser cliente
+    // (agrupador 105, cuenta por COBRAR/deudora) Y proveedor (201/205, por PAGAR/acreedora):
+    // son cuentas DISTINTAS que NO se deben fusionar entre sí (mezclaría un saldo deudor con
+    // uno acreedor). Se agrupa por (LADO, nombre): clientes con clientes, proveedores con
+    // proveedores. El usuario lo pidió explícito: «no mezclar 1-1-30 (cliente) con 2-1-00».
+    const lado = String(a.codigo_agrupador || '').startsWith('105') ? 'C' : 'P';
+    const key = `${lado}|${base}`;
     a._base = base;
     a._limpia = sinFormaLegal(a.nombre);             // la «limpia» (sin forma legal) será la canónica
-    if (!porBase.has(base)) porBase.set(base, []);
-    porBase.get(base)!.push(a);
+    if (!porBase.has(key)) porBase.set(key, []);
+    porBase.get(key)!.push(a);
   }
 
   const grupos: GrupoDuplicado[] = [];

@@ -8292,3 +8292,20 @@ el libro completo. El estado del parseo (cur/inCfdi) persiste entre hojas → un
 **Salida IDÉNTICA** verificada (598 pólizas, 3 412 movs, 223 CFDI, 0 descuadres). `tsc` back verde. **Backend-only ⇒ sin ZIP.**
 Honesto: no pude probar el archivo real de 8 MB; si aun así truena, lo seguro es **subir por AÑO** (idempotente) o **subir la
 RAM** (plan Standard, lo resuelve para cualquier tamaño). Ver [[importador-contalink-ctlk]], `docs/ERRORES_Y_SOLUCIONES.md` §1.
+
+## 2026-11-17 (contab.) — Fix dedup (no mezclar clientes/proveedores) + confirm centrado + orden/color en Pólizas
+
+Tras usar el dedup por nombre, 3 arreglos (de un lote más grande del usuario):
+- **BUG del dedup por nombre (importante):** agrupaba SÓLO por nombre, así que juntaba la cuenta de CLIENTE (agrupador 105,
+  por cobrar) con la de PROVEEDOR (201/205, por pagar) del mismo tercero (p. ej. AGUSTIN LARA: 1-1-30-13 con 2-1-87-00) →
+  «Concentrar todas» habría mezclado un saldo deudor con uno acreedor. Fix: `detectarPorNombre` ahora agrupa por **(LADO,
+  nombre)** —`lado` = 105 ⇒ cliente, 201/205 ⇒ proveedor—. Un tercero que es cliente Y proveedor conserva sus DOS cuentas.
+- **Confirm centrado (#2 parcial):** la pantalla «Cuentas duplicadas» usaba `window.confirm` (el feo «JavaScript de
+  hcgm.com.mx»); ahora usa `confirmar()` (modal centrado que ya existía). Quedan ~40 `window.confirm` más en la app → barrido
+  dedicado pendiente.
+- **Pólizas (Ventas/Compras) — orden + color:** encabezados **Fecha** y **Cliente/Proveedor** clicables para **ordenar**
+  (alterna ▲/▼); además esas dos columnas quedan con **color** (ámbar la fecha; esmeralda/azul el nombre) para capturar más
+  rápido. `DocsContabilizar.tsx`.
+`tsc` back+front verde. **Front tocado ⇒ ZIP.** PENDIENTES del lote (documentar): saldo inicial/final editable en Balanza
+NIF; previsualizar el CFDI por el folio verde en Pólizas (y evaluar ocultar la pantalla XML del SAT); parser del estado de
+cuenta de Uber para «bancos»; barrido total de `window.confirm`. Ver [[contabilidad-dedup-nombre-sugerencia]], [[avisos-centrados-modal]].

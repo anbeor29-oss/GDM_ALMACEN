@@ -99,6 +99,12 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [sugiriendo, setSugiriendo] = useState(false);
+  // Orden de la lista: por fecha (default) o por nombre del cliente/proveedor; clic en el
+  // encabezado alterna la dirección. Pedido para capturar más rápido cuentas repetidas.
+  const [orden, setOrden] = useState<{ col: 'fecha' | 'nombre'; dir: 1 | -1 }>({ col: 'fecha', dir: 1 });
+  const ordenarPor = (col: 'fecha' | 'nombre') =>
+    setOrden((o) => (o.col === col ? { col, dir: (o.dir === 1 ? -1 : 1) as 1 | -1 } : { col, dir: 1 }));
+  const flecha = (col: 'fecha' | 'nombre') => (orden.col === col ? (orden.dir === 1 ? ' ▲' : ' ▼') : '');
   // Apagado por defecto: el mes queda VACÍO hasta que el usuario pulse «Generar
   // pólizas» (pedido: al descontabilizar no debe re-llenarse solo). El toggle sigue.
   const [autoOn, setAutoOn] = useState(false);
@@ -134,10 +140,17 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
       .filter((c) => !t || [c.contraparte_nombre, c.contraparte_rfc, c.folio, c.cuenta_contable]
         .some((v) => String(v || '').toLowerCase().includes(t)))
       .sort((a, b) => {
-        const fa = String(a.fecha_emision || ''), fb = String(b.fecha_emision || '');
-        return fa === fb ? folioDe(a).localeCompare(folioDe(b)) : fa.localeCompare(fb);
+        let r: number;
+        if (orden.col === 'nombre') {
+          r = String(a.contraparte_nombre || '').localeCompare(String(b.contraparte_nombre || ''), 'es');
+          if (r === 0) r = String(a.fecha_emision || '').localeCompare(String(b.fecha_emision || ''));
+        } else {
+          const fa = String(a.fecha_emision || ''), fb = String(b.fecha_emision || '');
+          r = fa === fb ? folioDe(a).localeCompare(folioDe(b)) : fa.localeCompare(fb);
+        }
+        return r * orden.dir;
       });
-  }, [q.data, buscar]);
+  }, [q.data, buscar, orden]);
 
   const tot = useMemo(() => {
     let sub = 0, iva = 0, total = 0, pend = 0;
@@ -298,9 +311,11 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr className="text-xs font-semibold text-gray-600">
-              <th className="px-3 py-2 text-left">Fecha</th>
+              <th onClick={() => ordenarPor('fecha')} title="Ordenar por fecha"
+                className="px-3 py-2 text-left bg-amber-100/70 cursor-pointer select-none hover:bg-amber-100 whitespace-nowrap">Fecha{flecha('fecha')}</th>
               <th className="px-3 py-2 text-left">Folio</th>
-              <th className="px-3 py-2 text-left">{ventas ? 'Cliente' : 'Proveedor'}</th>
+              <th onClick={() => ordenarPor('nombre')} title="Ordenar por nombre"
+                className={`px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap ${ventas ? 'bg-emerald-100/70 hover:bg-emerald-100' : 'bg-sky-100/70 hover:bg-sky-100'}`}>{ventas ? 'Cliente' : 'Proveedor'}{flecha('nombre')}</th>
               <th className="px-3 py-2 text-left">{ventas ? 'Cuenta (cliente)' : 'Cuenta (proveedor)'}</th>
               {!ventas && <th className="px-3 py-2 text-left">2ª cuenta (gasto/activo)</th>}
               <th className="px-3 py-2 text-right">Subtotal</th>
@@ -324,9 +339,9 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
               const cancelado = String(c.estado_sat || '').toLowerCase() === 'cancelado';
               return (
                 <tr key={c.id} className={cancelado ? 'bg-rose-50/40' : 'hover:bg-gray-50'}>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-700">{fechaCorta(c.fecha_emision)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-700 bg-amber-50/70">{fechaCorta(c.fecha_emision)}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-700">{folioDe(c)}</td>
-                  <td className="px-3 py-2"><p className="truncate max-w-[14rem]" title={c.contraparte_nombre}>{c.contraparte_nombre || '—'}</p></td>
+                  <td className={`px-3 py-2 ${ventas ? 'bg-emerald-50/70' : 'bg-sky-50/70'}`}><p className="truncate max-w-[14rem]" title={c.contraparte_nombre}>{c.contraparte_nombre || '—'}</p></td>
                   <td className="px-3 py-2">
                     <ComboCuenta id={c.id} valor={c.cuenta_contable} campo="cuenta"
                       opciones={ventas ? ctas.cliente : ctas.proveedor} claveVista={claveVista} />

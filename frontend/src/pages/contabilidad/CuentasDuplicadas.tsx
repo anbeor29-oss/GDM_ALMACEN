@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Copy, CheckCircle2, AlertTriangle, Merge } from 'lucide-react';
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
+import { confirmar } from '@/utils/avisos';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -44,7 +45,7 @@ export function CuentasDuplicadasPage() {
         `Las pólizas y los saldos de las copias se mueven a UNA sola cuenta por código y las copias se eliminan. ` +
         `Es una operación en bloque (si algo choca, no se aplica nada). Conviene tener respaldo.\n\n` +
         `Después: Balanza → «Reconstruir año» para re-derivar los saldos.`;
-    if (!window.confirm(txt)) return;
+    if (!(await confirmar(txt))) return;
     setBusy(true); setMsg('');
     try {
       const r: any = esNombre ? await api.fusionarCuentasDuplicadasPorNombre() : await api.fusionarCuentasDuplicadas();
