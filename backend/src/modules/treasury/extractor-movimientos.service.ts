@@ -409,6 +409,7 @@ function detectarBanco(texto: string): string {
   if (/BANCO\s*SANTANDER|BSM9\d/.test(t))                                return 'Santander';
   if (/SCOTIABANK\s*INVERLAT/.test(t))                                  return 'Scotiabank';
   if (/HSBC\s*M[ÉE]XICO/.test(t))                                       return 'HSBC';
+  if (/CONSUBANCO|CONSUCUENTA|BFS060308V14/.test(t))                    return 'Consubanco';
   return 'Genérico';
 }
 
@@ -794,6 +795,81 @@ function extraerAfirme(
 
   return {
     banco: 'Afirme', saldoInicial, saldoFinal, movimientos, totalRetiros, totalDepositos,
+    conAdvertencia: 0, inferidos: 0, cuadra, avisos,
+  };
+}
+
+/**
+ * Consubanco (CONSUCUENTA) — estado TABULAR. Cada movimiento abre con
+ * "DD mmm YYYY <concepto><monto> <saldo>" (concepto pegado al importe; el separador de
+ * importes ya desenganchó monto y saldo), y debajo trae líneas de descripción y
+ * "Referencia NNN". El ÚLTIMO importe de la línea de fecha es el SALDO corriente; el
+ * movimiento —y su lado abono/cargo— sale de la DIFERENCIA de saldos (como Afirme/BBVA),
+ * robusto aunque las columnas Abono/Cargo se pierdan al colapsar los espacios.
+ */
+function extraerConsubanco(
+  texto: string, _opciones: { anio?: number; mes?: number }, avisos: string[]
+): ResultadoExtraccion {
+  const lineas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const saldoInicial = importeTrasEtiqueta(texto, /Saldo\s*Inicial\s*del\s*Periodo\s*\$?\s*([\d,]+\.\d{2})/i);
+  const saldoFinal = importeTrasEtiqueta(texto, /Saldo\s*final\s*\(?\+?\)?\s*\$?\s*([\d,]+\.\d{2})/i);
+
+  const RX_FECHA = /^(\d{1,2})\s+([A-Za-zÁÉÍÓÚÑ]{3,})\s+(\d{4})(.*)$/;
+  const RX_IMP = /[\d,]+\.\d{2}/g;
+  const mesOk = (s: string) => !!MESES_ES[s.toUpperCase().slice(0, 3)];
+
+  // Líneas que ABREN un movimiento (fecha con mes válido), dentro del detalle.
+  const idx: number[] = [];
+  let enDetalle = false;
+  for (let i = 0; i < lineas.length; i++) {
+    if (!enDetalle) { if (/Detalle\s+de\s+operaciones/i.test(lineas[i])) enDetalle = true; continue; }
+    const m = RX_FECHA.exec(lineas[i]);
+    if (m && mesOk(m[2]) && (m[4] || '').match(RX_IMP)) idx.push(i);
+  }
+
+  const movimientos: MovimientoExtraido[] = [];
+  let prev = saldoInicial ?? 0; let orden = 0;
+  for (let k = 0; k < idx.length; k++) {
+    const i = idx[k];
+    const fin = k + 1 < idx.length ? idx[k + 1] : lineas.length;
+    const m = RX_FECHA.exec(lineas[i])!;
+    const fecha = aFechaIso(`${m[1]}-${m[2].slice(0, 3)}-${m[3]}`);
+    const resto = m[4] || '';
+    const nums = resto.match(RX_IMP) || [];
+    const saldo = aNumero(nums[nums.length - 1]);
+    const delta = pesos(saldo - prev);
+    prev = saldo;
+    if (delta === 0) continue;   // un movimiento que no mueve el saldo no aporta
+    let concepto = resto.replace(RX_IMP, ' ').replace(/\s{2,}/g, ' ').trim();
+    let referencia = '';
+    for (let j = i + 1; j < fin; j++) {
+      const c = lineas[j];
+      const ref = /Referencia\s+([\w-]+)/i.exec(c);
+      if (ref) { referencia = ref[1]; continue; }
+      if (concepto.length < 110) concepto = `${concepto} ${c.replace(RX_IMP, ' ')}`.replace(/\s{2,}/g, ' ').trim();
+    }
+    movimientos.push({
+      fecha, concepto: (concepto || 'Movimiento').slice(0, 140), referencia,
+      retiro: delta < 0 ? pesos(-delta) : 0, deposito: delta > 0 ? pesos(delta) : 0,
+      saldo: pesos(saldo), saldoCalculado: 0, advertencia: '', inferido: false, duda: false,
+      orden: orden++, lineaOrigen: lineas[i].slice(0, 300),
+    });
+  }
+
+  let corr = saldoInicial ?? 0;
+  for (const mv of movimientos) { corr = pesos(corr - mv.retiro + mv.deposito); mv.saldoCalculado = corr; }
+  const totalRetiros = pesos(movimientos.reduce((a, m) => a + m.retiro, 0));
+  const totalDepositos = pesos(movimientos.reduce((a, m) => a + m.deposito, 0));
+  const finalCalc = pesos((saldoInicial ?? 0) - totalRetiros + totalDepositos);
+  const cuadra = saldoFinal !== null && Math.abs((saldoFinal ?? 0) - finalCalc) <= 0.02;
+  if (saldoInicial === null) avisos.push('Consubanco: no se encontró el saldo inicial.');
+  if (saldoFinal !== null && !cuadra) {
+    avisos.push(`NO CUADRA: Consubanco declara saldo final ${saldoFinal.toFixed(2)} y los movimientos dan ${finalCalc.toFixed(2)} (dif ${pesos((saldoFinal ?? 0) - finalCalc).toFixed(2)}).`);
+  }
+  if (!movimientos.length) avisos.push('Consubanco: no se reconoció ningún movimiento en el detalle.');
+
+  return {
+    banco: 'Consubanco', saldoInicial, saldoFinal, movimientos, totalRetiros, totalDepositos,
     conAdvertencia: 0, inferidos: 0, cuadra, avisos,
   };
 }
@@ -1306,6 +1382,11 @@ export function extraerMovimientos(
   /* MercadoPago: fecha, descripción e ID en renglones aparte y el VALOR (firmado)
    * + SALDO pegados al final ("$ 89.22$ 428.37"). El lado sale del signo del valor. */
   if (banco === 'MercadoPago') return extraerMercadoPago(texto, opciones, avisos);
+
+  /* Consubanco (CONSUCUENTA): cada movimiento es "DD mmm YYYY <concepto><monto> <saldo>"
+   * con líneas de descripción y "Referencia" debajo. El ÚLTIMO importe de la línea de
+   * fecha es el saldo corriente; el movimiento sale de la diferencia de saldos. */
+  if (banco === 'Consubanco') return extraerConsubanco(texto, opciones, avisos);
 
   const mIni = RX_SALDO_INICIAL.exec(texto);
   const mFin = RX_SALDO_FINAL.exec(texto);

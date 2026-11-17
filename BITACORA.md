@@ -8325,3 +8325,13 @@ Dos del lote, a criterio:
   re-deriva el saldo (aplica sobre todo a cuentas sin pólizas). El doble-clic del renglón (auxiliar) se respeta (stopPropagation).
 `tsc` back+front verde. Front tocado ⇒ ZIP. **Faltan del lote:** parser Uber para «bancos» y barrido total de `window.confirm`.
 Ver [[polizas-hub-pestanas]], [[balance-general-contable]].
+
+## 2026-11-17 (tesorería) — Parser de Consubanco (el «estado de cuenta de los uber») para el extractor de bancos
+
+El PDF que el usuario llamó «estado de cuenta de los uber» es en realidad un **estado de cuenta de Consubanco**
+(CONSUCUENTA, 12 páginas). El extractor genérico sacaba **0 movimientos**. Se agregó parser propio en
+`extractor-movimientos.service.ts`: detección (`CONSUBANCO|CONSUCUENTA|BFS060308V14`) + `extraerConsubanco` (enfoque
+**saldo-diff**, como Afirme/BBVA: cada movimiento abre con `DD mmm YYYY <concepto><monto> <saldo>` y el lado abono/cargo
+sale de la DIFERENCIA de saldos; descripción y `Referencia NNN` en líneas debajo). **Probado contra el PDF real: 90
+movimientos, CUADRA** (saldo inicial 1,144.98 + depósitos 4,497.82 − retiros 5,366.30 = saldo final 276.50 exacto).
+Backend-only ⇒ **sin ZIP** (pero se regenera igual por los cambios de front de `ad82c22`). Ver [[extractor-estados-cuenta]].
