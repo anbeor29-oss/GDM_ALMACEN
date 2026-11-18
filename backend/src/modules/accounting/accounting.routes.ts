@@ -1138,9 +1138,12 @@ router.post(
   requireCapability('contabilidad:capturar'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await periodos.reconstruirIntegral(companyId(req), req.user?.userId);
+    const aviso = (r as any).cerradosTotal
+      ? ` · ⚠ ${(r as any).cerradosTotal} mes(es) con pólizas OMITIDO(S) por estar CERRADOS (${((r as any).cerradosDetalle || []).join('; ')}). Reábrelos en Balanza → «Reabrir» y vuelve a reconstruir.`
+      : '';
     res.json({
       success: true, data: r,
-      message: `Reconstrucción integral: ${r.anios} ejercicio(s) y ${r.meses} mes(es) reconstruido(s) desde pólizas.`,
+      message: `Reconstrucción integral: ${r.anios} ejercicio(s) y ${r.meses} mes(es) reconstruido(s) desde pólizas.${aviso}`,
     });
   })
 );

@@ -662,19 +662,25 @@ export async function alimentarAnioDesdePolizas(companyId: string, anio: number,
       WHERE e.company_id = $1 AND EXTRACT(YEAR FROM e.fecha) = $2`, [companyId, anio]);
   const conPolizas = new Set<number>(mm.rows.map((r: any) => Number(r.mes)));
 
-  const meses: Array<{ mes: number; cuentas?: number; cuadra?: boolean; saltado?: boolean; error?: string }> = [];
+  const meses: Array<{ mes: number; cuentas?: number; cuadra?: boolean; saltado?: boolean; error?: string; cerrado?: boolean }> = [];
   for (let mes = 1; mes <= 12; mes++) {
     if (!conPolizas.has(mes)) { meses.push({ mes, saltado: true }); continue; }
     try {
       const r = await alimentarDesdePolizas(companyId, anio, mes, { userId });
       meses.push({ mes, cuentas: r.cuentas, cuadra: r.cuadra });
     } catch (e: any) {
-      meses.push({ mes, error: (e?.message || 'no se pudo').toString().slice(0, 120) });
+      // Un mes CON pólizas que NO se reconstruyó suele ser porque está CERRADO
+      // (alimentarDesdePolizas lanza en ese caso). Se marca para avisarlo: si no,
+      // «3 meses reconstruidos» no dice por qué faltaron los demás.
+      const msg = (e?.message || 'no se pudo').toString();
+      meses.push({ mes, error: msg.slice(0, 120), cerrado: /cerrad/i.test(msg) });
     }
   }
   const reconstruidos = meses.filter((x) => x.cuentas !== undefined).length;
+  const cerrados = meses.filter((x) => x.cerrado).map((x) => x.mes);
+  if (cerrados.length) logger.warn(`[contabilidad] ${anio}: ${cerrados.length} mes(es) con pólizas OMITIDO(S) por estar cerrados: ${cerrados.join(', ')}`);
   logger.info(`[contabilidad] ${anio}: balanza anual reconstruida (${reconstruidos} mes(es) con pólizas)`);
-  return { anio, meses, reconstruidos };
+  return { anio, meses, reconstruidos, cerrados };
 }
 
 /**
@@ -693,19 +699,22 @@ export async function reconstruirIntegral(companyId: string, userId?: string) {
       ORDER BY anio`, [companyId]);
   const anios: number[] = yy.rows.map((r: any) => Number(r.anio)).filter((a: number) => a > 1900 && a < 3000);
 
-  const porAnio: Array<{ anio: number; reconstruidos: number }> = [];
+  const porAnio: Array<{ anio: number; reconstruidos: number; cerrados?: number[] }> = [];
+  const cerradosDetalle: string[] = [];   // «ene-sep 2026» para avisar al usuario
   for (const anio of anios) {
     try {
       const r = await alimentarAnioDesdePolizas(companyId, anio, userId);
-      porAnio.push({ anio, reconstruidos: r.reconstruidos });
+      porAnio.push({ anio, reconstruidos: r.reconstruidos, cerrados: r.cerrados });
+      if (r.cerrados?.length) cerradosDetalle.push(`${r.cerrados.map((m: number) => nombreMes(m).slice(0, 3)).join(',')} ${anio}`);
     } catch (e: any) {
       logger.warn(`[contabilidad] reconstrucción integral ${anio}: ${(e?.message || 'error').toString().slice(0, 120)}`);
       porAnio.push({ anio, reconstruidos: 0 });
     }
   }
   const mesesTotal = porAnio.reduce((s, x) => s + x.reconstruidos, 0);
-  logger.info(`[contabilidad] reconstrucción integral: ${anios.length} ejercicio(s), ${mesesTotal} mes(es)`);
-  return { anios: anios.length, ejercicios: anios, meses: mesesTotal, porAnio };
+  const cerradosTotal = porAnio.reduce((s, x) => s + (x.cerrados?.length || 0), 0);
+  logger.info(`[contabilidad] reconstrucción integral: ${anios.length} ejercicio(s), ${mesesTotal} mes(es)` + (cerradosTotal ? `, ${cerradosTotal} omitido(s) por cerrados` : ''));
+  return { anios: anios.length, ejercicios: anios, meses: mesesTotal, porAnio, cerradosTotal, cerradosDetalle };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
