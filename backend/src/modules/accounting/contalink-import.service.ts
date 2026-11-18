@@ -55,6 +55,32 @@ function fechaDeSerial(n: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+/**
+ * Celda de fecha → 'YYYY-MM-DD'. La cabecera «Fecha» de una póliza puede llegar de
+ * TRES formas según cómo se generó el Excel:
+ *   · número  → serial de Excel (lo normal con raw:true; p. ej. 45995)
+ *   · Date    → si el libro trae la celda como fecha real y se leyó con cellDates
+ *   · texto   → ISO '2026-01-20T...' o 'DD/MM/AAAA' / 'DD-MM-AAAA' (exports propios)
+ * ANTES sólo se aceptaba el número: si un export escribía la fecha como Date o texto,
+ * TODAS las pólizas se caían como «sin fecha válida» y no entraba nada. Devuelve ''
+ * cuando no es una fecha reconocible (la póliza entonces se omite con su motivo).
+ */
+function fechaDeCelda(v: any): string {
+  if (v == null || v === '') return '';
+  if (typeof v === 'number' && isFinite(v)) return fechaDeSerial(v);
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    // Valor de SÓLO fecha: se toman los componentes locales para no correrla un día
+    // por la zona horaria (una póliza no tiene hora).
+    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+  }
+  const s = String(v).trim();
+  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);                 // ISO o 'AAAA-MM-DD…'
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/.exec(s);          // 'DD/MM/AAAA' o 'DD-MM-AAAA'
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  return '';
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    CATÁLOGO
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -217,7 +243,10 @@ export function parsearPolizasXls(buffer: Buffer): PolizaCtlk[] {
       cur = { tipoRaw: String(v1 ?? '').trim(), tipo: tipoNexo(String(v1 ?? '')), fecha: '', consecutivo: '', concepto: '', movimientos: [], cfdis: [] };
       out.push(cur); inCfdi = false; cfdiTabla = false; return;
     }
-    if (cur && c0 === 'fecha' && !inCfdi && typeof v1 === 'number') { cur.fecha = fechaDeSerial(v1); return; }
+    // Cabecera «Fecha» de la póliza: se CONSUME siempre (return), y se fija la fecha si
+    // la celda es interpretable (serial, Date o texto). Así una fecha en texto ya no
+    // tira la póliza entera. (El «Fecha|Documento» del bloque CFDI va por !inCfdi.)
+    if (cur && c0 === 'fecha' && !inCfdi) { const f = fechaDeCelda(v1); if (f) cur.fecha = f; return; }
     if (cur && c0 === 'descripcion' && !inCfdi) { cur.consecutivo = String(v1 ?? '').trim(); return; }
     if (c0 === 'notas adicionales' && cur) { cur.concepto = String(v1 ?? '').trim(); return; }
     if (c0.startsWith('cfdi asociados')) { inCfdi = true; cfdiTabla = false; return; }

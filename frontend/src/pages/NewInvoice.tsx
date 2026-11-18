@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { ArrowLeft, Trash2, Search, Save, Building2, User, X } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
@@ -160,6 +160,14 @@ export function NewInvoicePage() {
   const { id: editingInvoiceId } = useParams<{ id: string }>();
   const isEditing = !!editingInvoiceId;
 
+  // Clonar: /invoices/new?clonar=:id → precarga los datos de una factura existente
+  // (de CUALQUIER estado, timbrada incluida) para crear una NUEVA. No edita la
+  // original: al guardar se va por createInvoice, así el backend asigna folio y
+  // fecha NUEVOS (la de hoy). El usuario puede ajustar todo antes de guardar.
+  const [searchParams] = useSearchParams();
+  const clonarId = searchParams.get('clonar');
+  const isCloning = !!clonarId && !isEditing;
+
   // Máximo de líneas por factura (regla del sistema).
   const MAX_LINES = 15;
 
@@ -228,7 +236,14 @@ export function NewInvoicePage() {
     queryFn: () => api.getInvoice(editingInvoiceId!),
     enabled: isEditing,
   });
+  // Origen para clonar (independiente del de edición; se puede clonar una timbrada).
+  const { data: cloneSourceResp } = useQuery({
+    queryKey: ['invoice-clonar', clonarId],
+    queryFn: () => api.getInvoice(clonarId!),
+    enabled: isCloning,
+  });
   const [hydratedEditing, setHydratedEditing] = useState(false);
+  const [hydratedClone, setHydratedClone] = useState(false);
   /* Al CARGAR una factura para editar, el cliente se fija desde lo guardado y eso
    * dispara el efecto de «adoptar el preset del cliente» (abajo), que pisaría los
    * impuestos ORIGINALES de la factura (p. ej. un IVA 16% simple se volvería
@@ -278,6 +293,41 @@ export function NewInvoicePage() {
     }
     setHydratedEditing(true);
   }, [isEditing, editingInvoiceResp, hydratedEditing, navigate]);
+
+  // Precarga al CLONAR: copia cliente, impuestos, líneas y moneda de la factura
+  // origen, pero NO la fecha ni el periodo global ni el folio: la clonada nace como
+  // una factura nueva (hoy). Se permite clonar aunque la origen esté timbrada.
+  useEffect(() => {
+    if (!isCloning || hydratedClone) return;
+    const inv = (cloneSourceResp as any)?.data;
+    if (!inv) return;
+    omitirAdopcionPreset.current = true;   // respetar los impuestos de la origen
+    clienteOriginalRef.current = inv.customer_id || '';
+    setCustomerId(inv.customer_id || '');
+    setPaymentForm(inv.payment_form || '99');
+    setPaymentMethod(inv.payment_method || 'PPD');
+    setCfdiUse(inv.cfdi_use || 'G03');
+    setNotes(inv.notes || '');
+    if (inv.currency) setCurrency(inv.currency);
+    const items = Array.isArray(inv.items) ? inv.items : [];
+    if (items.length > 0) {
+      setLines(
+        items.map((it: any) => ({
+          uid: Math.random(),
+          productId: it.product_id,
+          sku: it.sku || '',
+          claveSat: it.clave_sat || '',
+          unitCode: it.unit_code || '',
+          unitLabel: it.unit_code || '',
+          description: it.description || '',
+          cantidad: Number(it.quantity) || 0,
+          precioUnit: Number(it.unit_price) || 0,
+          taxPresetId: it.tax_preset_id || 'iva16',
+        }))
+      );
+    }
+    setHydratedClone(true);
+  }, [isCloning, cloneSourceResp, hydratedClone]);
 
   // Aplicar uso CFDI por defecto del cliente cuando se selecciona
   useEffect(() => {
@@ -437,10 +487,14 @@ export function NewInvoicePage() {
         </button>
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            {isEditing ? 'Editar Factura' : 'Nueva Factura'}
+            {isEditing ? 'Editar Factura' : isCloning ? 'Nueva Factura (clonada)' : 'Nueva Factura'}
           </h1>
           <p className="text-sm text-gray-600">
-            {isEditing ? 'Comprobante en DRAFT — se puede modificar antes de timbrar' : 'Comprobante de Ingreso'}
+            {isEditing
+              ? 'Comprobante en DRAFT — se puede modificar antes de timbrar'
+              : isCloning
+                ? 'Copia de otra factura — folio y fecha nuevos; ajusta lo que necesites antes de guardar'
+                : 'Comprobante de Ingreso'}
           </p>
         </div>
       </div>

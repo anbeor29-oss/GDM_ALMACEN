@@ -15,7 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Download, FileDown, CheckCircle, Eye, Stamp, X, Ban, Loader2, Wallet, Coins, History,
-  Mail, Send, FileText, FileMinus2, Pencil, Ship, Trash2,
+  Mail, Send, FileText, FileMinus2, Pencil, Ship, Trash2, Copy,
 } from 'lucide-react';
 import api from '@/services/api';
 import { BanderaMoneda } from '@/components/BanderaMoneda';
@@ -230,17 +230,21 @@ export function InvoicesPage() {
                     <td className="px-6 py-2 text-sm text-gray-600">
                       {fechaMx(invoice.date_issued)}
                     </td>
-                    <td className="px-6 py-2 text-sm font-semibold text-gray-900 text-right">
+                    <td className="px-6 py-2 text-sm font-semibold text-gray-900 text-right tabular-nums">
                       {/* La bandera va PEGADA al importe, no en su propia
                           columna: la moneda no es un dato suelto, es lo que
                           define qué significa ese número. Separarla obliga a
-                          mirar dos lugares para leer una sola cosa. */}
+                          mirar dos lugares para leer una sola cosa.
+                          La bandera ya es de ancho fijo (SVG cuadrado, shrink-0);
+                          el importe lleva tabular-nums (en el <td>) para que los
+                          dígitos caigan en columna de una fila a otra aunque
+                          cambie la moneda (MXN/USD/EUR/GBP). */}
                       <span className="inline-flex items-center justify-end gap-2">
                         <BanderaMoneda moneda={(invoice as any).currency} />
-                        $ {Number(invoice.total).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span>$ {Number(invoice.total).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </span>
                     </td>
-                    <td className="px-6 py-2 text-sm text-right">
+                    <td className="px-6 py-2 text-sm text-right tabular-nums">
                       {(() => {
                         const bal = Number((invoice as any).balance ?? invoice.total);
                         const paid = Number((invoice as any).paid_total || 0);
@@ -291,6 +295,15 @@ export function InvoicesPage() {
                           onClick={() => ((invoice as any).tiene_carta_porte || !invoice.is_stamped)
                             && navigate(`/invoices/${invoice.id}/carta-porte`)}
                         ><Ship size={18} /></IconBtn>
+                        {/* Clonar: crea una NUEVA factura con los mismos datos
+                             (cliente, líneas, impuestos, moneda) pero folio y
+                             fecha nuevos, lista para editar. Se muestra siempre
+                             —incluso en timbradas— porque el caso típico es
+                             rehacer una factura parecida a una que ya se emitió. */}
+                        <IconBtn color="teal" title="Clonar factura (nueva, con folio y fecha de hoy, editable)"
+                          onClick={() => navigate(`/invoices/new?clonar=${invoice.id}`)}>
+                          <Copy size={18} />
+                        </IconBtn>
                         {canEdit && (
                           <IconBtn color="sky" title="Editar factura (solo DRAFT)"
                             onClick={() => navigate(`/invoices/${invoice.id}/edit`)}>
@@ -810,7 +823,7 @@ function StatusBadge({ status }: { status: string }) {
 function IconBtn({
   color, title, onClick, disabled, children,
 }: {
-  color: 'red' | 'green' | 'blue' | 'purple' | 'orange' | 'amber' | 'indigo' | 'sky';
+  color: 'red' | 'green' | 'blue' | 'purple' | 'orange' | 'amber' | 'indigo' | 'sky' | 'teal';
   title: string;
   onClick: () => void;
   disabled?: boolean;
@@ -825,6 +838,7 @@ function IconBtn({
     amber: 'text-amber-600 hover:bg-amber-50',
     indigo: 'text-indigo-600 hover:bg-indigo-50',
     sky: 'text-sky-600 hover:bg-sky-50',
+    teal: 'text-teal-600 hover:bg-teal-50',
   };
   return (
     <button
