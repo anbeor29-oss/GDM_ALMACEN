@@ -92,6 +92,59 @@ un POST durante el reinicio = **«Network Error»**). Eso cuadra con las dos cap
 
 ---
 
+## 3. Codificar pólizas «Todo el año» → `date/time field value out of range: "2026-00-01"`
+
+**Síntoma.** Al codificar las pólizas pendientes con **«Todo el año»** seleccionado, Postgres truena con
+`date/time field value out of range: "2026-00-01"` y no se contabiliza nada.
+
+**Causa raíz.** Con «Todo el año» el front mandaba `mes = 0`; en `polizas.service.ts` el helper
+`iniDeMes(anio, 0)` armaba literalmente `${anio}-00-01` → mes 0 no existe → fecha inválida.
+
+**❌ Lo que NO hay que hacer.** Parchear sólo el front (seguiría roto si cualquier otra pantalla manda
+mes = 0). El arreglo va en el **helper**, que es el origen único.
+
+**✅ Solución (commit `f7bd659`).**
+- `iniDeMes`/`finDeMes`: **mes 1–12** = ese mes; **mes 0 o fuera de rango** = **AÑO COMPLETO**
+  (`${anio}-01-01` … `${anio}-12-31`). Un solo lugar, cubre todas las pantallas.
+- `DocsContabilizar.tsx` pasa `todoElAnio = (mes === 0)` a `generarVentas/generarCompras` (las rutas
+  `…DelAnio` ya existían en el backend).
+
+**Verificado.** `tsc` backend + frontend verde.
+
+---
+
+## 4. Libro diario (respaldo NEXO): «las pólizas de enero a septiembre 2026 no se suben» (RFC saj10120859a)
+
+**Síntoma.** Al importar el `libro-diario.xls` de saj10120859a, las pólizas de **ene–sep 2026** no aparecen.
+
+**Cómo diagnosticar.** Réplica FIEL del parser (`raw:true`, misma máquina de estados) corrida sobre el
+archivo real, contando pólizas y omisiones **por mes**.
+
+**Hallazgo (el archivo NO es el problema).** El `.xls` (OLE2/BIFF8 real) parsea al **100 %**:
+**240 pólizas**, Dic-2025 → Nov-2026, **ene–sep completas (183)**, en **orden cronológico** (0 saltos),
+con **1 sola duplicada real** (2026-01-20, «iva de comisiones bancarias»). Ni el parser ni `crearPoliza`
+descartan por mes; el `UNIQUE (company_id, origen_uuid)` es **por empresa** (no colisiona entre empresas).
+
+**Causa raíz (BD / visibilidad, no el archivo).** El faltante de ene–sep es de **estado de la base**, no del
+parseo: (a) el import no completó contra esa empresa, o (b) las pólizas entraron pero **falta reconstruir la
+balanza** (los estados leen los **saldos de los periodos**, no las pólizas directas). Oct-Nov 2026
+probablemente ya existían «en vivo» (operación reciente), por eso sí se ven.
+
+**Qué hacer.** Importar respaldo → en la **pantalla verde de resultados**, botón **«Reconstruir todos los
+ejercicios»** (o Balanza de comprobación → **«Reconstruir año»** 2026). Para confirmar qué hay realmente,
+contar pólizas por mes en la BD (consulta en `docs/DIAGNOSTICO_POLIZAS_SAJ.sql`).
+
+**✅ Mejora defensiva (commit `9911e40`).** `fechaDeCelda()` en `contalink-import.service.ts` acepta la
+cabecera «Fecha» como **serial de Excel, Date o texto** (ISO / DD-MM-AAAA). ANTES sólo se aceptaba número:
+si un export la escribía como Date o texto, **TODAS** las pólizas se caían como «sin fecha válida» y no
+entraba nada. (En este archivo venía numérica, así que no era la causa aquí, pero blinda el caso.)
+
+**Límite conocido.** Si Oct-Nov ya existían en vivo, re-importar el respaldo los **duplicaría** (la
+idempotencia CTLK sólo coteja contra imports CTLK previos, no contra pólizas en vivo). Revisar duplicados
+por mes tras el import si aplica.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

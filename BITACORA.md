@@ -8350,3 +8350,41 @@ Cierre del lote:
   (`bancos.service.ts`, ahora 14 procesados). Se extrajo `coberturaBancosPdfBuffer(empresa,rfc)` (sin BD) para regenerar el
   PDF; el doc de referencia `docs/COBERTURA_BANCOS.pdf` se regeneró y se envió al usuario. (En la app el PDF sale por
   `GET /treasury/bancos/soportados/pdf`.) `tsc` back verde. Front tocado ⇒ ZIP. Ver [[extractor-estados-cuenta]].
+
+---
+
+## 2026-11-18 (contab./facturas) — Fix «2026-00-01», activo por monto, clonar factura y diagnóstico del libro diario
+
+Lote de 4 peticiones (saj10120859a de fondo):
+
+**A) `date/time field value out of range: "2026-00-01"` al codificar pólizas «Todo el año» (commit `f7bd659`).**
+Con «Todo el año» el front mandaba `mes = 0` y `iniDeMes(anio,0)` armaba `${anio}-00-01`. Arreglado en el
+**helper** (origen único): mes 1-12 = ese mes; **mes 0 o fuera de rango = año completo**. `DocsContabilizar`
+pasa `todoElAnio = mes===0`. Detalle en `ERRORES_Y_SOLUCIONES.md` #3. Ver [[contabilidad-motor-polizas]].
+
+**C) Regla de activo por MONTO > $300,000 (commit `f7bd659`).** En `activos-fijos.service.ts`
+(`detectarDesdeCompras`): si un concepto de compra **no** cae en un agrupador de activo por su cuenta ni por
+su concepto, pero su importe supera **$300,000**, se **propone como activo a depreciar** (`deteccion:'monto'`,
+agrupador 153 editable). Badge naranja en `ActivoFijo.tsx` («por monto > $300,000 · revisa la cuenta»). La
+102 (compra de activo fijo) ya la dicta el usuario; esto cubre lo clasificado como gasto. Ver
+[[activo-fijo-depreciacion]].
+
+**B) Clonar factura + alineación de moneda (commit `9911e40`, ZIP).** Botón **«Clonar»** (icono Copy, teal) en
+cada fila de Facturas, **siempre visible** (incl. timbradas: el caso típico es rehacer una parecida). Navega a
+`/invoices/new?clonar=:id`; `NewInvoice` precarga cliente/impuestos/líneas/moneda pero **nace como NUEVA**
+(`createInvoice` → folio y fecha de HOY), todo editable, título «Nueva Factura (clonada)». No bloquea por
+timbrada. Moneda: Total y Saldo con **`tabular-nums`** para que los dígitos caigan en columna aunque cambie la
+moneda (la bandera ya era de ancho fijo). Ver [[cfdi-pdf-formatos]].
+
+**D) «Las pólizas de ene-sep 2026 no se suben» — diagnóstico (commit `9911e40`).** Réplica fiel del parser
+sobre el `libro-diario.xls` real: **el archivo NO es el problema** — parsea al 100 % (**240 pólizas**,
+Dic-2025→Nov-2026, **ene-sep completas (183)**, cronológico, **1 sola duplicada real**). Ni el parser ni
+`crearPoliza` descartan por mes; el `UNIQUE` de `origen_uuid` es **por empresa**. El faltante es de **BD /
+visibilidad**: (a) el import no completó, o (b) faltó **reconstruir la balanza** (los estados leen saldos de
+periodos). Oct-Nov probablemente ya existían en vivo. **Qué hacer:** importar → «Reconstruir todos los
+ejercicios» (o Balanza → «Reconstruir año» 2026). **Mejora defensiva:** `fechaDeCelda()` acepta la fecha como
+serial, Date o texto (antes sólo número → un export distinto tiraba TODAS las pólizas). Consulta de
+diagnóstico BD: `docs/DIAGNOSTICO_POLIZAS_SAJ.sql`. **Estado de resultados 2024-2027:** feature existente
+(Contabilidad → Reportes → Estado de resultados, por año, PDF/Excel); depende de que los datos estén
+importados + balanza reconstruida (2024 y casi todo 2025 **no** están en este archivo, requieren su respaldo).
+Detalle en `ERRORES_Y_SOLUCIONES.md` #4. Ver [[contabilidad-roadmap-import-reportes]], [[balance-general-contable]].
