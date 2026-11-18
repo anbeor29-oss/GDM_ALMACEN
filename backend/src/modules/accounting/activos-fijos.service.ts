@@ -15,6 +15,12 @@ import { query, transaction } from '../../config/database';
 import { conceptosDeXml } from './ventas-cuentas.service';
 import { mapaProductoCuentaCompra } from './compras-cuentas.service';
 import { reglaDeCuentaActivo, agrupadorDeCodigo, ReglaDepreciacion, clasificarAgrupadorPorConcepto, topeDeducibleAutoSugerido } from './depreciacion.data';
+
+/** Regla por MONTO: una compra de más de este importe que NO se clasificó por concepto
+ *  es, casi siempre, un activo fijo caro (maquinaria/equipo/vehículo). Se propone a
+ *  depreciar con un agrupador por defecto (153 maquinaria) y el usuario ajusta la cuenta. */
+const UMBRAL_ACTIVO_POR_MONTO = 300000;
+const AGRUPADOR_ACTIVO_POR_MONTO = '153';   // maquinaria y equipo (10% LISR), default editable
 import { descripcionDeClave } from '../products/clave-prodserv-index';
 
 const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
@@ -172,7 +178,7 @@ export interface ActivoDetectado {
   /** Cómo se detectó: 'cuenta' = el producto ya estaba mapeado a una cuenta de activo
    *  (alta confianza); 'concepto' = se reconoció por la descripción/ClaveProdServ del
    *  XML (revisar la cuenta sugerida antes de registrar). */
-  deteccion: 'cuenta' | 'concepto';
+  deteccion: 'cuenta' | 'concepto' | 'monto';
 }
 
 /**
@@ -229,18 +235,26 @@ export async function detectarDesdeCompras(
   const out: ActivoDetectado[] = [];
   for (const c of r.rows) {
     // Un activo por (CFDI, cuenta de activo): se suman los conceptos que caen en la misma cuenta.
-    const porCuenta = new Map<string, { monto: number; desc: string; clave: string; deteccion: 'cuenta' | 'concepto' }>();
+    const porCuenta = new Map<string, { monto: number; desc: string; clave: string; deteccion: 'cuenta' | 'concepto' | 'monto' }>();
     for (const cn of conceptosDeXml(String(c.xml))) {
       let cod = mapaProd.get(cn.clave);
-      let deteccion: 'cuenta' | 'concepto' = 'cuenta';
+      let deteccion: 'cuenta' | 'concepto' | 'monto' = 'cuenta';
       if (!cod || !reglaDeCuentaActivo(cod)) {
         // El producto NO está mapeado a una cuenta de activo. Antes aquí se descartaba;
         // ahora se LEE el XML: descripción del concepto + descripción oficial de su
         // ClaveProdServ del SAT, por si es un vehículo, pick up, cómputo, etc.
-        const agr = clasificarAgrupadorPorConcepto(cn.clave, cn.descripcion, descripcionDeClave(cn.clave));
-        if (!agr) continue;
+        let agr = clasificarAgrupadorPorConcepto(cn.clave, cn.descripcion, descripcionDeClave(cn.clave));
+        if (agr) {
+          deteccion = 'concepto';
+        } else if (round2(cn.importe - (cn.descuento || 0)) > UMBRAL_ACTIVO_POR_MONTO) {
+          // No se clasificó por concepto, pero es una compra GRANDE (> $300,000) → casi siempre
+          // es un activo fijo caro. Se propone a depreciar con un agrupador por defecto; el
+          // usuario revisa/ajusta la cuenta. (Regla pedida por el usuario.)
+          agr = AGRUPADOR_ACTIVO_POR_MONTO; deteccion = 'monto';
+        } else {
+          continue;
+        }
         cod = cuentaPorAgr.get(agr) || `${agr}.01`;   // cuenta existente del rubro, o sugerida
-        deteccion = 'concepto';
       }
       const e = porCuenta.get(cod) || { monto: 0, desc: cn.descripcion || '', clave: cn.clave, deteccion };
       e.monto = round2(e.monto + cn.importe - cn.descuento);
@@ -260,7 +274,10 @@ export async function detectarDesdeCompras(
         fecha_adquisicion: String(c.fecha).slice(0, 10),
         origen_uuid: c.uuid, origen_folio: [c.serie, c.folio].filter(Boolean).join('-') || '',
         clave_prod_serv: e.clave, proveedor_rfc: c.rfc_emisor || '', proveedor_nombre: c.nombre_emisor || '',
-        fundamento: regla.fundamento, deteccion: e.deteccion,
+        fundamento: e.deteccion === 'monto'
+          ? `Compra mayor a $${UMBRAL_ACTIVO_POR_MONTO.toLocaleString('es-MX')} — propuesta como activo a depreciar; revisa/ajusta la cuenta`
+          : regla.fundamento,
+        deteccion: e.deteccion,
       });
     }
   }

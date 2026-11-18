@@ -167,7 +167,9 @@ export function DocsContabilizar({ modo }: { modo: 'ventas' | 'compras' }) {
   const contabilizar = async (silencioso = false) => {
     setBusy(true); if (!silencioso) setMsg('');
     try {
-      const r: any = ventas ? await api.generarVentas(anio, mes) : await api.generarCompras(anio, mes);
+      // mes === 0 = «Todo el año»: hay que pedir el AÑO completo (si no, el backend arma una
+      // fecha inválida «AAAA-00-01» → error de Postgres «date/time field value out of range»).
+      const r: any = ventas ? await api.generarVentas(anio, mes, mes === 0) : await api.generarCompras(anio, mes, mes === 0);
       const d = r?.data || {};
       const om = (d.omitidas || []) as Array<{ folio: string; motivo: string }>;
       let m = `${d.creadas ?? 0} póliza(s) generada(s).`;

@@ -504,6 +504,12 @@ function TabDetectar({ anio, mes, soloIntangibles }: { anio: number; mes: number
                         <Sparkles size={9} /> por concepto · revisa la cuenta
                       </span>
                     )}
+                    {d.deteccion === 'monto' && (
+                      <span title="Compra mayor a $300,000 que no se clasificó por concepto: casi siempre es un activo fijo. Revisa/ajusta la cuenta sugerida antes de registrar."
+                        className="inline-flex items-center gap-0.5 text-[10px] font-medium bg-orange-100 text-orange-800 border border-orange-200 rounded px-1 py-0.5 whitespace-nowrap">
+                        <Sparkles size={9} /> por monto &gt; $300,000 · revisa la cuenta
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="px-3 py-2">

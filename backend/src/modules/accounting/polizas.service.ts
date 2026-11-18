@@ -35,8 +35,12 @@ export interface NuevaPoliza {
 }
 
 const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
-const finDeMes = (anio: number, mes: number) => new Date(anio, mes, 0).toISOString().slice(0, 10);
-const iniDeMes = (anio: number, mes: number) => `${anio}-${String(mes).padStart(2, '0')}-01`;
+// mes 1-12 = ese mes; mes 0 (o fuera de rango, p. ej. «Todo el año») = AÑO COMPLETO.
+// Antes mes=0 armaba «AAAA-00-01» (Postgres: «date/time field value out of range»).
+const finDeMes = (anio: number, mes: number) =>
+  (mes >= 1 && mes <= 12) ? new Date(anio, mes, 0).toISOString().slice(0, 10) : `${anio}-12-31`;
+const iniDeMes = (anio: number, mes: number) =>
+  (mes >= 1 && mes <= 12) ? `${anio}-${String(mes).padStart(2, '0')}-01` : `${anio}-01-01`;
 
 /** Totales de impuestos a nivel comprobante, leídos del XML sin parser completo. */
 function impuestosDeXml(xml: string): { trasladados: number; retenidos: number } {
