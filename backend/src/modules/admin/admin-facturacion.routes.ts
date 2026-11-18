@@ -84,6 +84,26 @@ router.post('/:id/emitir', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data, message: `Factura ${data.folio} emitida desde ${data.emisora}.` });
 }));
 
+/** Fija el igualado mensual de servicios contables de una empresa (columna editable). */
+router.post('/costo-contable', asyncHandler(async (req: Request, res: Response) => {
+  const { companyId, monto } = req.body || {};
+  const data = await fact.setCostoContable(String(companyId || ''), Number(monto));
+  await audit(req, { action: 'FACTURACION_COSTO_CONTABLE', targetKind: 'company', targetId: String(companyId || ''), payload: { monto: data.costo_contable } });
+  res.json({ success: true, data });
+}));
+
+/** Emite el CFDI de SERVICIOS (renta de software 81112218 + servicios contables 84111500),
+ *  con los conceptos editados en la pantalla flotante, desde la emisora elegida. */
+router.post('/:id/emitir-servicios', asyncHandler(async (req: Request, res: Response) => {
+  const { emisoraId, conceptos, usoCfdi, formaPago, metodoPago } = req.body || {};
+  const data = await fact.emitirFacturaServicios(
+    req.params.id, String(emisoraId || ''),
+    Array.isArray(conceptos) ? conceptos : [],
+    { usoCfdi, formaPago, metodoPago });
+  await audit(req, { action: 'FACTURACION_EMITIR_SERVICIOS', targetKind: 'facturacion_mensual', targetId: req.params.id, payload: { emisoraId, folio: data.folio } });
+  res.json({ success: true, data, message: `Factura ${data.folio} emitida desde ${data.emisora}.` });
+}));
+
 /** Cobro del servicio IVA: monto libre + emisora elegida → crea el cargo y timbra. */
 router.post('/iva-cobro', asyncHandler(async (req: Request, res: Response) => {
   const { companyId, monto, emisoraId, concepto } = req.body || {};

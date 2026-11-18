@@ -7,9 +7,9 @@
  * Prepago: generar la lista del día 30, marcar pagado / suspender por falta de pago.
  */
 import { confirmar } from '@/utils/avisos';
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo, useEffect, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { DollarSign, RefreshCw, Check, Ban, RotateCcw, Settings, Loader2, AlertTriangle, FlaskConical, Users, Stamp, ChevronRight, ChevronDown, FileText, X } from 'lucide-react';
+import { DollarSign, RefreshCw, Check, Ban, RotateCcw, Settings, Loader2, AlertTriangle, FlaskConical, Users, Stamp, ChevronRight, ChevronDown, FileText, X, Receipt } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { aTextoMx } from '@/components/CampoFecha';
@@ -29,6 +29,19 @@ export function AdminFacturacionPage() {
   const emisorasQ = useQuery({ queryKey: ['admin-emisores'], queryFn: () => api.adminListEmisores() });
   const emisoras: any[] = ((emisorasQ.data as any)?.data?.emisores || []).filter((e: any) => e.es_emisor);
   const [emitir, setEmitir] = useState<any>(null);   // cargo a facturar (abre el modal de emisora)
+  // Generar factura de SERVICIOS (renta de software + servicios contables) en la
+  // pantalla flotante: `facturar` es la fila elegida. El `check` por fila habilita el
+  // botón: NO es automático, se factura «cuando ya se cobró». El igualado contable es un
+  // valor editable por empresa; se guarda en caliente y se refleja aquí sin recargar.
+  const [facturar, setFacturar] = useState<any>(null);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [costoLocal, setCostoLocal] = useState<Record<string, number>>({});
+  const toggleCheck = (id: string) => setChecked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const costoDe = (f: any) => (costoLocal[f.company_id] ?? Number(f.costo_contable || 0));
+  const guardarCosto = async (companyId: string, monto: number) => {
+    await api.setCostoContable(companyId, monto);
+    setCostoLocal((m) => ({ ...m, [companyId]: monto }));
+  };
   const data = q.data?.data;
   const prueba: any[] = data?.prueba || [];
   const reales: any[] = data?.reales || [];
@@ -203,18 +216,20 @@ export function AdminFacturacionPage() {
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Empresa</th>
             <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Usuarios</th>
             <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Renta</th>
+            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600" title="Igualado mensual de servicios contables (editable). Se factura como 2.º concepto del CFDI.">Costo contable</th>
             <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Timbres</th>
             <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Extra</th>
             <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Total</th>
             <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Estado</th>
+            <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600" title="Marca el check cuando ya cobraste; eso habilita generar la factura.">Factura</th>
             <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Acciones</th>
           </tr></thead>
           <tbody className="divide-y">
-            {realesF.length === 0 && <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400 italic">Sin clientes de pago todavía.</td></tr>}
+            {realesF.length === 0 && <tr><td colSpan={10} className="px-3 py-4 text-center text-gray-400 italic">Sin clientes de pago todavía.</td></tr>}
             {gruposReales.map(([key, g]) => (
               <Fragment key={key}>
                 <tr className="bg-indigo-50/70 border-y border-indigo-100">
-                  <td colSpan={8} className="px-3 py-1.5">
+                  <td colSpan={10} className="px-3 py-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <button onClick={() => alternarGrupo(key)} className="flex items-center gap-1.5 text-sm font-semibold text-indigo-800 hover:text-indigo-900">
                         {colapsado.has(key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
@@ -247,6 +262,13 @@ export function AdminFacturacionPage() {
                 </td>
                 <td className="px-3 py-2 text-center">{f.usuarios}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{money(f.renta_mxn)}</td>
+                <td className="px-3 py-2 text-right">
+                  {/* Igualado contable editable por empresa. No entra al Total por usuario;
+                      es el 2.º concepto del CFDI de servicios. */}
+                  {f.iva_vigencia_fin
+                    ? <span className="text-gray-300 text-xs">—</span>
+                    : <CeldaCosto valor={costoDe(f)} onSave={(m) => guardarCosto(f.company_id, m)} />}
+                </td>
                 <td className="px-3 py-2 text-center text-xs">{f.timbres_usados}<span className="text-gray-400">/{f.timbres_incluidos}</span>{f.timbres_extra > 0 && <span className="block text-[10px] text-rose-600">+{f.timbres_extra} extra</span>}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-gray-600">{money(f.extra_mxn)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{money(f.total_mxn)}</td>
@@ -257,6 +279,23 @@ export function AdminFacturacionPage() {
                   : f.usuarios === 0
                     ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-500">sin usuarios</span>
                     : <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge(f.status)}`}>{f.status === 'SIN_GENERAR' ? 'sin generar' : f.status}</span>}</td>
+                {/* FACTURA: la que emites tú. Si ya se emitió, su marca; si no, el CHECK
+                    que —al marcarlo— habilita el botón «Generar factura». No es automático:
+                    se marca cuando ya cobraste. (El servicio IVA tiene su propio flujo.) */}
+                <td className="px-3 py-2 text-center">
+                  {(() => {
+                    const esIva = panel === 'IVA' && f.iva_vigencia_fin;
+                    const emitible = !esIva && f.cargo_id && f.status !== 'PAGADO' && !f.exenta && (f.usuarios > 0 || costoDe(f) > 0);
+                    if (esIva) return <span className="text-gray-300">—</span>;
+                    if (f.facturado) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700" title="CFDI ya emitido a este cliente">Facturado</span>;
+                    if (!emitible) return <span className="text-gray-300">—</span>;
+                    return (
+                      <input type="checkbox" checked={checked.has(f.company_id)} onChange={() => toggleCheck(f.company_id)}
+                        title="Márcalo cuando ya cobraste: habilita «Generar factura»"
+                        className="w-4 h-4 accent-emerald-600 cursor-pointer" />
+                    );
+                  })()}
+                </td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   {/* Sólo se factura a quien TIENE usuarios (cobro por usuario). Las
                       exentas y las de 0 usuarios no llevan cobro. */}
@@ -266,11 +305,14 @@ export function AdminFacturacionPage() {
                     : <button onClick={() => setEmitir([{ ...f, iva: true }])} className="p-1.5 text-violet-600 hover:bg-violet-50 rounded" title="Facturar anualidad IVA (elige la emisora)"><FileText size={15} /></button>)}
                   {!(panel === 'IVA' && f.iva_vigencia_fin) && (f.exenta || f.usuarios === 0) && <span className="text-[11px] text-gray-400" title={f.usuarios === 0 ? 'Sin usuarios: no se factura' : 'Exenta'}>—</span>}
                   {!f.exenta && f.usuarios > 0 && !f.cargo_id && <span className="text-[11px] text-gray-400">genera la lista</span>}
-                  {/* Emitir la factura del servicio: pregunta desde cuál emisora se timbra. */}
-                  {f.cargo_id && f.status !== 'PAGADO' && !f.exenta && f.usuarios > 0 && (
-                    <button onClick={() => setEmitir([f])}
-                      disabled={busy === f.cargo_id} className="p-1.5 text-violet-600 hover:bg-violet-50 rounded" title="Emitir factura (elige la emisora)">
-                      <FileText size={15} />
+                  {/* Generar la factura de SERVICIOS (renta de software 81112218 + servicios
+                      contables 84111500) en la pantalla FLOTANTE: editar y timbrar. Habilitado
+                      sólo con el check marcado (ya se cobró). Es un CFDI de servicio, sin carta porte. */}
+                  {!(panel === 'IVA' && f.iva_vigencia_fin) && f.cargo_id && f.status !== 'PAGADO' && !f.exenta && !f.facturado && (f.usuarios > 0 || costoDe(f) > 0) && (
+                    <button onClick={() => setFacturar(f)} disabled={!checked.has(f.company_id)}
+                      className="p-1.5 text-violet-600 hover:bg-violet-50 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={checked.has(f.company_id) ? 'Generar factura (editar y timbrar)' : 'Marca el check «Factura» para habilitar'}>
+                      <Receipt size={15} />
                     </button>
                   )}
                   {f.cargo_id && f.status !== 'PAGADO' && (
@@ -330,6 +372,161 @@ export function AdminFacturacionPage() {
           onClose={() => setEmitir(null)}
           onDone={(m: string) => { setEmitir(null); setMsg(m); q.refetch(); }} />
       )}
+
+      {/* Pantalla FLOTANTE para generar la factura de servicios (2 conceptos), editar y timbrar. */}
+      {facturar && (
+        <ModalFacturaServicios fila={facturar} periodo={periodo} emisoras={emisoras}
+          costoContable={costoDe(facturar)}
+          onClose={() => setFacturar(null)}
+          onDone={(m: string) => { setFacturar(null); setMsg(m); setChecked((s) => { const n = new Set(s); n.delete(facturar.company_id); return n; }); q.refetch(); }} />
+      )}
+    </div>
+  );
+}
+
+/** Celda editable del igualado contable: guarda al salir del campo (blur) o con Enter. */
+function CeldaCosto({ valor, onSave }: { valor: number; onSave: (m: number) => Promise<void> }) {
+  const [v, setV] = useState(String(valor ?? 0));
+  const [saving, setSaving] = useState(false);
+  const [ok, setOk] = useState(false);
+  useEffect(() => { setV(String(valor ?? 0)); }, [valor]);
+  const guardar = async () => {
+    const m = Number(v);
+    if (!isFinite(m) || m < 0) { setV(String(valor ?? 0)); return; }
+    if (m === Number(valor ?? 0)) return;           // sin cambios: no molestar al backend
+    setSaving(true); setOk(false);
+    try { await onSave(m); setOk(true); setTimeout(() => setOk(false), 1500); }
+    catch { setV(String(valor ?? 0)); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="inline-flex items-center gap-1 justify-end">
+      <span className="text-gray-400 text-xs">$</span>
+      <input value={v} onChange={(e) => setV(e.target.value)} onBlur={guardar}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        inputMode="decimal"
+        className="w-24 border border-slate-300 rounded px-2 py-1 text-sm text-right tabular-nums focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400" />
+      {saving ? <Loader2 size={12} className="animate-spin text-gray-400" /> : ok ? <Check size={12} className="text-emerald-500" /> : <span className="w-3" />}
+    </div>
+  );
+}
+
+const MESES_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+/** 'YYYY-MM' → 'Septiembre 2026'. */
+function mesLargo(periodo: string): string {
+  const [a, m] = String(periodo || '').split('-').map(Number);
+  if (!a || !m || m < 1 || m > 12) return periodo || '';
+  return `${MESES_ES[m - 1]} ${a}`;
+}
+
+/**
+ * Pantalla FLOTANTE para generar la factura de SERVICIOS a un cliente: dos conceptos
+ * editables —Renta de Software en línea (81112218) y Servicios Contables (84111500)—,
+ * emisora, uso/forma/método, y timbrar. Es un CFDI de servicio (sin carta porte); sigue
+ * las reglas de la pantalla de facturación (preset de IVA por concepto, texto libre).
+ */
+function ModalFacturaServicios({ fila, periodo, emisoras, costoContable, onClose, onDone }:
+  { fila: any; periodo: string; emisoras: any[]; costoContable: number; onClose: () => void; onDone: (m: string) => void }) {
+  const [emisoraId, setEmisoraId] = useState<string>(emisoras.find((e) => e.predeterminado)?.id || emisoras[0]?.id || '');
+  const [usoCfdi, setUsoCfdi] = useState('G03');
+  const [formaPago, setFormaPago] = useState('99');
+  const [metodoPago, setMetodoPago] = useState('PPD');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  // Conceptos: renta de software (todo el cargo por usuario) + servicios contables (igualado).
+  const [conceptos, setConceptos] = useState(() => [
+    { clave: '81112218', descripcion: 'Renta de Software en línea', cantidad: 1, precio: Number(fila.total_mxn || 0), preset: 'iva16', incluir: Number(fila.total_mxn || 0) > 0 },
+    { clave: '84111500', descripcion: `Servicios Contables de ${mesLargo(periodo)}`, cantidad: 1, precio: Number(costoContable || 0), preset: 'iva16', incluir: Number(costoContable || 0) > 0 },
+  ]);
+  const setC = (i: number, campo: string, val: any) => setConceptos((cs) => cs.map((c, j) => j === i ? { ...c, [campo]: val } : c));
+  const activos = conceptos.filter((c) => c.incluir && Number(c.precio) > 0 && c.clave.trim() && c.descripcion.trim());
+  const subtotal = activos.reduce((a, c) => a + Number(c.precio) * Number(c.cantidad || 1), 0);
+  const ivaAprox = activos.reduce((a, c) => a + (c.preset === 'iva16' ? Number(c.precio) * Number(c.cantidad || 1) * 0.16 : 0), 0);
+
+  const emitir = async () => {
+    if (!emisoraId) { setError('Elige la emisora.'); return; }
+    if (activos.length === 0) { setError('Incluye al menos un concepto con importe.'); return; }
+    setBusy(true); setError('');
+    try {
+      const r: any = await api.emitirFacturaServicios(fila.cargo_id, emisoraId,
+        activos.map((c) => ({ clave: c.clave.trim(), descripcion: c.descripcion.trim(), cantidad: Number(c.cantidad) || 1, precio: Number(c.precio), preset: c.preset })),
+        { usoCfdi, formaPago, metodoPago });
+      onDone(r?.message || `Factura ${r?.data?.folio || ''} emitida.`);
+    } catch (e: any) { setError(e?.response?.data?.message || 'No se pudo emitir.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <h3 className="font-bold text-gray-900 flex items-center gap-2"><Receipt size={18} className="text-violet-600" /> Generar factura de servicios</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-4 text-sm">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <p className="text-gray-600">Cliente: <b>{fila.business_name}</b> <span className="font-mono text-gray-400">{fila.rfc}</span><br />
+              <span className="text-xs text-gray-500">Periodo {mesLargo(periodo)} · CFDI de servicio (sin carta porte)</span></p>
+            <label className="block">
+              <span className="text-xs font-semibold text-gray-600 block mb-1">¿Desde cuál emisora?</span>
+              <select value={emisoraId} onChange={(e) => setEmisoraId(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm min-w-[14rem]">
+                {emisoras.length === 0 && <option value="">No hay emisoras marcadas</option>}
+                {emisoras.map((e) => (<option key={e.id} value={e.id}>{e.business_name} · {e.rfc}{e.predeterminado ? ' (predeterminada)' : ''}</option>))}
+              </select>
+            </label>
+          </div>
+
+          {/* Conceptos editables */}
+          <div className="border rounded-lg overflow-hidden">
+            <div className="grid grid-cols-[auto_6rem_1fr_7rem_6rem] gap-2 bg-gray-50 border-b px-3 py-2 text-[11px] font-semibold text-gray-500">
+              <span>Incluir</span><span>Clave SAT</span><span>Descripción</span><span className="text-right">Importe</span><span>IVA</span>
+            </div>
+            {conceptos.map((c, i) => (
+              <div key={i} className="grid grid-cols-[auto_6rem_1fr_7rem_6rem] gap-2 items-center px-3 py-2 border-b last:border-b-0">
+                <input type="checkbox" checked={c.incluir} onChange={(e) => setC(i, 'incluir', e.target.checked)} className="w-4 h-4 accent-violet-600" />
+                <input value={c.clave} onChange={(e) => setC(i, 'clave', e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs font-mono w-full" />
+                <input value={c.descripcion} onChange={(e) => setC(i, 'descripcion', e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-sm w-full" />
+                <input value={String(c.precio)} onChange={(e) => setC(i, 'precio', e.target.value)} inputMode="decimal" className="border border-slate-300 rounded px-2 py-1 text-sm text-right tabular-nums w-full" />
+                <select value={c.preset} onChange={(e) => setC(i, 'preset', e.target.value)} className="border border-slate-300 rounded px-1 py-1 text-xs">
+                  <option value="iva16">16%</option><option value="iva0">0%</option><option value="ivaex">Exento</option>
+                </select>
+              </div>
+            ))}
+          </div>
+
+          {/* Uso / forma / método — reglas de la pantalla de facturación */}
+          <div className="grid grid-cols-3 gap-3">
+            <label className="block"><span className="text-xs font-semibold text-gray-600 block mb-1">Uso CFDI</span>
+              <select value={usoCfdi} onChange={(e) => setUsoCfdi(e.target.value)} className="w-full border border-slate-300 rounded px-2 py-2 text-sm">
+                <option value="G03">G03 · Gastos en general</option><option value="G01">G01 · Adquisición mercancías</option><option value="P01">P01 · Por definir</option>
+              </select></label>
+            <label className="block"><span className="text-xs font-semibold text-gray-600 block mb-1">Forma de pago</span>
+              <select value={formaPago} onChange={(e) => setFormaPago(e.target.value)} className="w-full border border-slate-300 rounded px-2 py-2 text-sm">
+                <option value="99">99 · Por definir</option><option value="03">03 · Transferencia</option><option value="01">01 · Efectivo</option><option value="04">04 · Tarjeta crédito</option><option value="28">28 · Tarjeta débito</option>
+              </select></label>
+            <label className="block"><span className="text-xs font-semibold text-gray-600 block mb-1">Método de pago</span>
+              <select value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)} className="w-full border border-slate-300 rounded px-2 py-2 text-sm">
+                <option value="PPD">PPD · Parcialidades/diferido</option><option value="PUE">PUE · Una exhibición</option>
+              </select></label>
+          </div>
+
+          <div className="flex items-center justify-end gap-6 text-sm">
+            <span className="text-gray-500">Subtotal <b className="text-gray-800 tabular-nums">{money(subtotal)}</b></span>
+            <span className="text-gray-500">IVA aprox. <b className="text-gray-800 tabular-nums">{money(ivaAprox)}</b></span>
+            <span className="text-gray-700">Total aprox. <b className="text-emerald-700 tabular-nums">{money(subtotal + ivaAprox)}</b></span>
+          </div>
+
+          {error && <p className="text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{error}</p>}
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">Se timbrará un CFDI real desde la emisora elegida. Verifica RFC, régimen y CP del cliente. El total final lo recalcula el timbrado (retenciones/redondeo del Anexo 20).</p>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t bg-gray-50">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border text-gray-700 hover:bg-gray-100">Cancelar</button>
+          <button onClick={emitir} disabled={busy || !emisoraId || activos.length === 0}
+            className="px-4 py-2 text-sm rounded-lg bg-violet-600 text-white font-medium hover:bg-violet-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+            <Stamp size={15} /> {busy ? 'Timbrando…' : 'Timbrar CFDI'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

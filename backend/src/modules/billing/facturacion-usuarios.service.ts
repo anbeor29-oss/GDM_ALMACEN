@@ -267,6 +267,7 @@ export async function resumenConsolidado(periodoInput?: string) {
     `SELECT c.id, c.rfc, c.business_name, c.billing_exempt, c.prueba_inicio, c.servicio_suspendido,
             c.created_at, c.empresa_cobro_id, COALESCE(c.emisor_predeterminado,false) AS emisor_predeterminado,
             COALESCE(c.es_emisor_cobro,false) AS es_emisor_cobro,
+            COALESCE(c.costo_contable_mxn,0) AS costo_contable_mxn,
             ${DESPACHO_EFECTIVO} AS despacho_id,
             (SELECT d2.nombre FROM despachos_contables d2 WHERE d2.id = ${DESPACHO_EFECTIVO} AND d2.deleted_at IS NULL) AS despacho_nombre,
             COALESCE(c.producto,'NEXO') AS producto,
@@ -317,6 +318,9 @@ export async function resumenConsolidado(periodoInput?: string) {
       despacho_id: e.despacho_id || null, despacho_nombre: e.despacho_nombre || null,
       usuarios, timbres_usados: timbresUsados, timbres_incluidos: incluidos, timbres_extra: timbresExtra,
       renta_mxn: renta, extra_mxn: extra, total_mxn: r2(renta + extra),
+      // Igualado contable (editable por el super admin). NO se suma al total por usuario;
+      // se factura como 2.º concepto del CFDI (84111500) junto con la renta de software.
+      costo_contable: Number(e.costo_contable_mxn || 0),
       esPrueba, exenta, motivo, producto: e.producto || 'NEXO',
       iva_pagado_desde: e.iva_pagado_desde || null, iva_vigencia_fin: e.iva_vigencia_fin || null,
       cargo_id: e.cargo_id || null,
@@ -418,6 +422,79 @@ export async function emitirFacturaMensual(cargoId: string, emisoraId?: string, 
 
   await query(`UPDATE facturacion_mensual SET factura_id = $2 WHERE id = $1`, [cargoId, invoice.id]);
   logger.info(`[facturacion] CFDI de cobro emitido: ${folio} (${stamp.uuid}) desde ${platform.rfc} → ${fm.client_rfc} [${fm.periodo_label}]`);
+  return { folio, uuid: stamp.uuid, emisora: platform.business_name };
+}
+
+/** Fija el IGUALADO mensual de servicios contables de una empresa (columna editable de la lista). */
+export async function setCostoContable(companyId: string, monto: number) {
+  if (!companyId) throw new ValidationError('Falta la empresa.');
+  const m = r2(Number(monto) || 0);
+  if (m < 0) throw new ValidationError('El costo contable no puede ser negativo.');
+  const r = await query<{ id: string }>(
+    `UPDATE companies SET costo_contable_mxn = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
+    [companyId, m]);
+  if (!r.rows.length) throw new NotFoundError('Empresa no encontrada.');
+  return { companyId, costo_contable: m };
+}
+
+export interface ConceptoServicio { clave: string; descripcion: string; cantidad: number; precio: number; preset?: string; unidad?: string; }
+
+/**
+ * Emite el CFDI de SERVICIOS (renta de software 81112218 + servicios contables 84111500)
+ * desde la emisora ELEGIDA hacia el cliente del cargo. Los conceptos vienen de la pantalla
+ * FLOTANTE (editables): se timbra lo que el super admin confirmó, un comprobante por cliente.
+ * NO es automático: se hace «cuando ya se cobró» (de ahí el check en la lista). Es un CFDI de
+ * servicio: SIN carta porte. Guarda `factura_id` en el cargo. Idempotente: si ya tiene factura,
+ * no re-emite. Reúsa los helpers de emisión de la plataforma (cliente + timbrado real por PAC).
+ */
+export async function emitirFacturaServicios(
+  cargoId: string, emisoraId: string, conceptos: ConceptoServicio[],
+  opts?: { usoCfdi?: string; formaPago?: string; metodoPago?: string },
+): Promise<{ folio: string; uuid?: string; emisora: string }> {
+  const r = await query<any>(
+    `SELECT fm.id, fm.company_id, fm.factura_id,
+            c.rfc AS client_rfc, c.business_name AS client_name, c.fiscal_regime AS client_regime,
+            c.postal_code AS client_cp, c.contact_email AS client_email
+       FROM facturacion_mensual fm JOIN companies c ON c.id = fm.company_id
+      WHERE fm.id = $1`, [cargoId]);
+  const fm = r.rows[0];
+  if (!fm) throw new NotFoundError('Cargo mensual no encontrado.');
+  if (fm.factura_id) throw new ConflictError('Ese cargo ya tiene una factura emitida.');
+  if (!fm.client_cp || !fm.client_regime) {
+    throw new ValidationError(`Al cliente ${fm.client_rfc} le falta CP o régimen fiscal — complétalos antes de facturar.`);
+  }
+
+  // Sólo los conceptos con importe > 0 (el super admin pudo dejar uno en 0).
+  const items = (conceptos || [])
+    .map((c) => ({
+      clave: String(c.clave || '').trim(), descripcion: String(c.descripcion || '').trim(),
+      cantidad: Number(c.cantidad) || 1, precio: r2(Number(c.precio) || 0),
+      preset: c.preset || 'iva16', unidad: c.unidad || 'E48',
+    }))
+    .filter((c) => c.precio > 0 && c.clave && c.descripcion);
+  if (!items.length) throw new ValidationError('No hay conceptos con importe para facturar.');
+
+  const platform = emisoraId ? await getEmisoraComoPlatform(emisoraId) : await getPlatformCompany();
+  if (!platform) throw new ValidationError('La emisora elegida no existe o no está marcada como emisora de cobro.');
+  if (platform.id === fm.company_id) throw new ValidationError('La emisora no se factura a sí misma.');
+
+  const customerId = await upsertPlatformCustomer(platform.id, {
+    rfc: fm.client_rfc, business_name: fm.client_name,
+    fiscal_regime: fm.client_regime, postal_code: fm.client_cp, contact_email: fm.client_email,
+  });
+  // Conceptos de TEXTO LIBRE (sin producto): el CFDI toma clave/unidad/descripción de invoice_items.
+  const invoice = await invoicesService.createInvoice(platform.id, {
+    customerId, cfdiType: 'I',
+    paymentForm: opts?.formaPago || '99', paymentMethod: opts?.metodoPago || 'PPD', cfdiUse: opts?.usoCfdi || 'G03',
+    items: items.map((c) => ({
+      quantity: c.cantidad, unitPrice: c.precio, taxPresetId: c.preset,
+      claveSat: c.clave, unitCode: c.unidad, description: c.descripcion,
+    } as any)),
+  });
+  const stamp = await pacService.stampInvoice(platform.id, invoice.id);
+  const folio = `${invoice.serie || 'FAC'}-${String(invoice.folio).padStart(6, '0')}`;
+  await query(`UPDATE facturacion_mensual SET factura_id = $2 WHERE id = $1`, [cargoId, invoice.id]);
+  logger.info(`[facturacion] CFDI de servicios emitido: ${folio} (${stamp.uuid}) desde ${platform.rfc} → ${fm.client_rfc} [${items.length} concepto(s)]`);
   return { folio, uuid: stamp.uuid, emisora: platform.business_name };
 }
 

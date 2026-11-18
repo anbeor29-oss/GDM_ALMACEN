@@ -8388,3 +8388,29 @@ diagnóstico BD: `docs/DIAGNOSTICO_POLIZAS_SAJ.sql`. **Estado de resultados 2024
 (Contabilidad → Reportes → Estado de resultados, por año, PDF/Excel); depende de que los datos estén
 importados + balanza reconstruida (2024 y casi todo 2025 **no** están en este archivo, requieren su respaldo).
 Detalle en `ERRORES_Y_SOLUCIONES.md` #4. Ver [[contabilidad-roadmap-import-reportes]], [[balance-general-contable]].
+
+---
+
+## 2026-11-18 (super admin · facturación) — Costo contable editable + check + factura flotante de servicios (2 conceptos)
+
+Extensión del **Súper Admin → Facturación** (`AdminFacturacion.tsx`), pedida sobre la lista de empresas:
+
+- **Columna editable «Costo contable»** (tras Renta): igualado mensual de servicios contables por empresa.
+  Se guarda en caliente (blur/Enter) en `companies.costo_contable_mxn` (migración `2026-11-18_costo_contable.sql`,
+  `POST /admin/facturacion/costo-contable`). **NO** se suma al Total por usuario; es un concepto aparte del CFDI.
+- **Columna «Factura» con CHECK** (antes de Acciones): si ya se emitió, marca «Facturado»; si no, un checkbox que
+  —al marcarlo— **habilita** el botón «Generar factura». Es manual a propósito: se factura **«cuando ya se cobró»**
+  (no automático). El check es estado efímero de la pantalla.
+- **Botón «Generar factura» → pantalla FLOTANTE** (`ModalFacturaServicios`): dos conceptos **editables** —
+  **Renta de Software en línea** (ClaveProdServ **81112218**, precarga = Total por usuario) y **Servicios Contables
+  de {Mes} {Año}** (ClaveProdServ **84111500**, precarga = costo contable)— + emisora (GHC/SAJ) + uso/forma/método
+  (reglas de la pantalla de facturación) + preset de IVA por concepto. **Timbra** un CFDI real de servicio
+  (`tipo I`, **sin carta porte**) vía `emitirFacturaServicios` (conceptos de texto libre, `createInvoice` +
+  `pacService.stampInvoice`), guarda `factura_id` en el cargo. Sólo emite los conceptos con importe > 0. Ambas
+  claves verificadas en el catálogo SAT. `POST /admin/facturacion/:id/emitir-servicios`.
+
+Backend: `facturacion-usuarios.service.ts` (`setCostoContable`, `emitirFacturaServicios`, `costo_contable` en el
+consolidado), `admin-facturacion.routes.ts` (2 rutas), `api.ts` (`setCostoContable`, `emitirFacturaServicios`).
+`tsc` back+front verde. Front tocado ⇒ **ZIP**; backend ⇒ push (la migración corre sola al desplegar). El flujo
+viejo de 1 concepto (`emitirFacturaMensual`) se conserva para el botón «Emitir facturas del grupo» y el servicio IVA.
+Ver [[emisor-facturas-superadmin]], [[cobro-por-usuario-algoritmo]], [[despachos-contables]].

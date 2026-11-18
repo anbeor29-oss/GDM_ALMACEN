@@ -3631,6 +3631,21 @@ class APIClient {
     return (await this.client.post('/admin/facturacion/iva-cobro', { companyId, monto, emisoraId, concepto })).data;
   }
 
+  /** Fija el igualado mensual de servicios contables de una empresa (columna editable). */
+  async setCostoContable(companyId: string, monto: number) {
+    return (await this.client.post('/admin/facturacion/costo-contable', { companyId, monto })).data;
+  }
+
+  /** Emite el CFDI de servicios (renta de software 81112218 + servicios contables 84111500)
+   *  con los conceptos editados en la pantalla flotante, desde la emisora elegida. */
+  async emitirFacturaServicios(
+    cargoId: string, emisoraId: string,
+    conceptos: Array<{ clave: string; descripcion: string; cantidad: number; precio: number; preset?: string; unidad?: string }>,
+    opts?: { usoCfdi?: string; formaPago?: string; metodoPago?: string },
+  ) {
+    return (await this.client.post(`/admin/facturacion/${cargoId}/emitir-servicios`, { emisoraId, conceptos, ...opts })).data;
+  }
+
   /* ── Emisor de facturas (SUPER_ADMIN): empresas emisoras, SMTP y depósito ── */
   async getEmisores() {
     return (await this.client.get('/admin/emisores')).data;
