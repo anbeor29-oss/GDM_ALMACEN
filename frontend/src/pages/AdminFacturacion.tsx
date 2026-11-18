@@ -271,19 +271,15 @@ export function AdminFacturacionPage() {
                 </td>
                 <td className="px-3 py-2 text-center">{f.usuarios}</td>
                 <td className="px-3 py-2 text-right">
-                  {/* Renta de software EDITABLE (override). Para clientes sin cobro por
-                      usuario se captura a mano; para los de usuarios muestra el cálculo y
-                      permite ajustarlo. No cambia el Total por usuario. */}
-                  {f.iva_vigencia_fin
-                    ? <span className="tabular-nums">{money(f.renta_mxn)}</span>
-                    : <CeldaCosto valor={rentaMostradaDe(f)} onSave={(m) => guardarRenta(f.company_id, m)} />}
+                  {/* Renta de software EDITABLE (override), en TODOS los paneles (NEXO/IVA/
+                      e-commerce). Para clientes sin cobro por usuario se captura a mano; para
+                      los de usuarios muestra el cálculo y permite ajustarlo. No cambia el Total. */}
+                  <CeldaCosto valor={rentaMostradaDe(f)} onSave={(m) => guardarRenta(f.company_id, m)} />
                 </td>
                 <td className="px-3 py-2 text-right">
-                  {/* Igualado contable editable por empresa. No entra al Total por usuario;
-                      es el 2.º concepto del CFDI de servicios. */}
-                  {f.iva_vigencia_fin
-                    ? <span className="text-gray-300 text-xs">—</span>
-                    : <CeldaCosto valor={costoDe(f)} onSave={(m) => guardarCosto(f.company_id, m)} />}
+                  {/* Igualado contable editable por empresa (todos los paneles). No entra al
+                      Total por usuario; es el 2.º concepto del CFDI de servicios. */}
+                  <CeldaCosto valor={costoDe(f)} onSave={(m) => guardarCosto(f.company_id, m)} />
                 </td>
                 <td className="px-3 py-2 text-center text-xs">{f.timbres_usados}<span className="text-gray-400">/{f.timbres_incluidos}</span>{f.timbres_extra > 0 && <span className="block text-[10px] text-rose-600">+{f.timbres_extra} extra</span>}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-gray-600">{money(f.extra_mxn)}</td>
@@ -300,15 +296,12 @@ export function AdminFacturacionPage() {
                     se marca cuando ya cobraste. (El servicio IVA tiene su propio flujo.) */}
                 <td className="px-3 py-2 text-center">
                   {(() => {
-                    const esIva = panel === 'IVA' && f.iva_vigencia_fin;
-                    // Hay algo que facturar si tiene usuarios (renta por uso), o se capturó
-                    // una renta de software, o un igualado contable. NO depende de que sea
-                    // «cobrable» por usuario: una empresa sin cobro puede pagar contabilidad.
+                    // Hay algo que facturar si tiene usuarios (renta por uso), una renta de
+                    // software capturada, o un igualado contable. Vale en TODOS los paneles
+                    // (NEXO/IVA/e-commerce) y sin importar que sea «sin cobro» por usuario.
                     const hayQueFacturar = f.usuarios > 0 || costoDe(f) > 0 || rentaOverrideDe(f) > 0;
-                    const emitible = !esIva && !f.facturado && hayQueFacturar;
-                    if (esIva) return <span className="text-gray-300">—</span>;
                     if (f.facturado) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700" title="CFDI ya emitido a este cliente">Facturado</span>;
-                    if (!emitible) return <span className="text-gray-300">—</span>;
+                    if (!hayQueFacturar) return <span className="text-gray-300">—</span>;
                     return (
                       <input type="checkbox" checked={checked.has(f.company_id)} onChange={() => toggleCheck(f.company_id)}
                         title="Márcalo cuando ya cobraste: habilita «Generar factura»"
@@ -324,11 +317,11 @@ export function AdminFacturacionPage() {
                     ? <span className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">Facturado {money(f.cargo_total)}</span>
                     : <button onClick={() => setEmitir([{ ...f, iva: true }])} className="p-1.5 text-violet-600 hover:bg-violet-50 rounded" title="Facturar anualidad IVA (elige la emisora)"><FileText size={15} /></button>)}
                   {/* Generar la factura de SERVICIOS (renta de software 81112218 + servicios
-                      contables 84111500) en la pantalla FLOTANTE: editar y timbrar. Aparece
-                      cuando hay ALGO que facturar (usuarios, renta o igualado contable), AUNQUE
-                      la empresa sea «sin cobro» por usuario. Habilitado sólo con el check
-                      marcado (ya se cobró). Es un CFDI de servicio, sin carta porte. */}
-                  {!(panel === 'IVA' && f.iva_vigencia_fin) && !f.facturado && (() => {
+                      contables 84111500) en la pantalla FLOTANTE: editar y timbrar. En TODOS los
+                      paneles (NEXO/IVA/e-commerce). Aparece cuando hay ALGO que facturar (usuarios,
+                      renta o igualado contable), AUNQUE la empresa sea «sin cobro». Habilitado sólo
+                      con el check marcado (ya se cobró). Es un CFDI de servicio, sin carta porte. */}
+                  {!f.facturado && (() => {
                     const hayQueFacturar = f.usuarios > 0 || costoDe(f) > 0 || rentaOverrideDe(f) > 0;
                     if (!hayQueFacturar) return <span className="text-[11px] text-gray-400" title="Captura una renta o un costo contable para facturar">—</span>;
                     return (
