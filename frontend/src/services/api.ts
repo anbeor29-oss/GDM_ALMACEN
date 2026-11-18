@@ -3636,14 +3636,19 @@ class APIClient {
     return (await this.client.post('/admin/facturacion/costo-contable', { companyId, monto })).data;
   }
 
+  /** Fija la renta de software editable (override) de una empresa (columna editable). */
+  async setRentaServicio(companyId: string, monto: number) {
+    return (await this.client.post('/admin/facturacion/renta-servicio', { companyId, monto })).data;
+  }
+
   /** Emite el CFDI de servicios (renta de software 81112218 + servicios contables 84111500)
-   *  con los conceptos editados en la pantalla flotante, desde la emisora elegida. */
+   *  por EMPRESA + periodo, con los conceptos editados en la pantalla flotante. */
   async emitirFacturaServicios(
-    cargoId: string, emisoraId: string,
+    companyId: string, periodo: string, emisoraId: string,
     conceptos: Array<{ clave: string; descripcion: string; cantidad: number; precio: number; preset?: string; unidad?: string }>,
     opts?: { usoCfdi?: string; formaPago?: string; metodoPago?: string },
   ) {
-    return (await this.client.post(`/admin/facturacion/${cargoId}/emitir-servicios`, { emisoraId, conceptos, ...opts })).data;
+    return (await this.client.post('/admin/facturacion/servicios', { companyId, periodo, emisoraId, conceptos, ...opts })).data;
   }
 
   /* ── Emisor de facturas (SUPER_ADMIN): empresas emisoras, SMTP y depósito ── */

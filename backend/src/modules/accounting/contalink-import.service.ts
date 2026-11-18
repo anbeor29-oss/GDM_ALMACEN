@@ -335,17 +335,24 @@ export async function importarPolizasXls(
   const ctas = await query<any>(`SELECT id, codigo FROM accounting_accounts WHERE company_id=$1`, [companyId]);
   const idPorCodigo = new Map<string, string>(ctas.rows.map((r: any) => [r.codigo, r.id]));
 
-  // Idempotencia RÁPIDA: precargamos en un Set TODAS las firmas CTLK ya asentadas,
-  // así re-subir tras un corte no cuesta un SELECT por póliza (de miles de consultas
-  // → 1). Es justo el camino de recuperación: si la 1ª corrida se cortó a media
-  // marcha, la 2ª salta lo ya hecho en segundos en vez de volver a consultarlo todo.
+  // Idempotencia RÁPIDA: precargamos en un Set las firmas CTLK ya asentadas, así
+  // re-subir tras un corte no cuesta un SELECT por póliza (miles de consultas → 1).
+  // CLAVE: sólo cuentan las que TIENEN RENGLONES. Una importación previa pudo dejar el
+  // ENCABEZADO de la póliza sin sus partidas (queda invisible en la balanza aunque el
+  // `origen_uuid` exista) — ésas NO se consideran «ya importadas» para poder SANARLAS
+  // (borrarlas y re-crearlas completas) en esta corrida. Ver [[reparar-enlaces-respaldo]].
   const firmasPrevias = await query<any>(
-    `SELECT origen_uuid FROM journal_entries WHERE company_id=$1 AND origen_uuid LIKE 'CTLK:%'`,
+    `SELECT je.origen_uuid FROM journal_entries je
+      WHERE je.company_id=$1 AND je.origen_uuid LIKE 'CTLK:%'
+        AND EXISTS (SELECT 1 FROM journal_lines jl WHERE jl.entry_id = je.id)`,
     [companyId]);
   const yaImportadas = new Set<string>(firmasPrevias.rows.map((r: any) => String(r.origen_uuid)));
 
   const rep = {
     total: polizas.length, creadas: 0, yaExistian: 0, cfdiLigados: 0,
+    // Pólizas «fantasma» (encabezado sin renglones, de una importación previa a medias)
+    // que se borraron y re-crearon completas en esta corrida.
+    sanadas: 0,
     omitidas: [] as Array<{ folio: string; motivo: string }>,
     // Pólizas que NO cuadraban de origen: su diferencia se mandó a la cuenta de
     // cuadre (MIG-TEMPORAL) para no perderlas; hay que revisarlas y corregirlas.
@@ -370,9 +377,22 @@ export async function importarPolizasXls(
       const firma = [p.fecha, p.tipoRaw, p.consecutivo, p.concepto,
         p.movimientos.map((m) => `${m.cuenta}:${m.cargo}:${m.abono}`).join(';')].join('|');
       const origenUuid = 'CTLK:' + crypto.createHash('sha256').update(firma).digest('hex').slice(0, 35);
-      // Ya asentada (en una corrida previa o antes en ESTE mismo archivo si dos bloques
-      // tienen contenido idéntico): se salta sin tocar la BD.
+      // Ya asentada CON renglones (corrida previa, o un bloque idéntico más arriba en
+      // ESTE archivo): se salta sin tocar la BD.
       if (yaImportadas.has(origenUuid)) { rep.yaExistian++; continue; }
+
+      // SANEO: si existe una póliza con este hash pero SIN renglones (encabezado huérfano
+      // de una importación previa a medias → invisible en la balanza), se BORRA para
+      // re-crearla completa abajo. El `NOT EXISTS` garantiza que NUNCA se toca una con
+      // renglones (ésas ya salieron por `yaImportadas`). Evita además chocar con el
+      // índice único (company_id, origen_uuid) al re-insertar.
+      const borr = await query<any>(
+        `DELETE FROM journal_entries je
+          WHERE je.company_id=$1 AND je.origen_uuid=$2
+            AND NOT EXISTS (SELECT 1 FROM journal_lines jl WHERE jl.entry_id = je.id)
+          RETURNING je.id`,
+        [companyId, origenUuid]).catch(() => ({ rows: [] as any[] }));
+      if (borr.rows.length) rep.sanadas++;
 
       const unicoCfdi = p.cfdis.length === 1 ? p.cfdis[0] : null;
       const lineas: any[] = [];

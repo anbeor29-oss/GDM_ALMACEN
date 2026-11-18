@@ -8414,3 +8414,32 @@ consolidado), `admin-facturacion.routes.ts` (2 rutas), `api.ts` (`setCostoContab
 `tsc` back+front verde. Front tocado ⇒ **ZIP**; backend ⇒ push (la migración corre sola al desplegar). El flujo
 viejo de 1 concepto (`emitirFacturaMensual`) se conserva para el botón «Emitir facturas del grupo» y el servicio IVA.
 Ver [[emisor-facturas-superadmin]], [[cobro-por-usuario-algoritmo]], [[despachos-contables]].
+
+---
+
+## 2026-11-18 (contab. + facturación) — Pólizas FANTASMA (sanadas) + facturar a clientes «sin cobro» que pagan contabilidad
+
+Dos arreglos tras probar en vivo con ALEJANDRO AYALA BARBA (AABA020418BW2):
+
+**1) Balanza ene–sep 2026 en 0 = pólizas FANTASMA (encabezado sin renglones).** El re-import decía «0 creadas ·
+**183 ya estaban**» y la reconstrucción solo tocaba **3 meses**. Causa: las 183 pólizas de ene–sep existen en
+`journal_entries` pero **sin `journal_lines`** (importación previa a medias) → el candado de idempotencia (contaba por
+`origen_uuid`) las daba por hechas, pero la balanza (deriva de `journal_lines`, `JOIN`) no las ve. **Fix en
+`contalink-import.service.ts`:** la idempotencia ahora solo cuenta pólizas CTLK **con renglones**
+(`AND EXISTS (journal_lines)`), y antes de re-crear cada una un `DELETE … WHERE NOT EXISTS (journal_lines)` **borra la
+fantasma** (nunca toca las que sí tienen renglones) para no chocar con el índice único. El reporte añade «N sanada(s)».
+Para no duplicar oct-nov (ya en vivo), se entregó un **archivo filtrado solo ene–sep** verificado (183 pólizas). Detalle
+en `ERRORES_Y_SOLUCIONES.md` #5. Ver [[reparar-enlaces-respaldo]], [[importador-contalink-ctlk]].
+
+**2) Facturación de servicios para clientes «sin cobro» que pagan contabilidad.** El check + ícono de generar NO salían
+para empresas exentas/sin usuarios (p. ej. AABA, GOJR730617E8A, PABJ7311218L8), aunque pagan contabilidad. Arreglos en
+`AdminFacturacion.tsx` + backend:
+- **Renta EDITABLE** (columna, override `companies.renta_servicio_mxn`, migración `2026-11-18b`): para clientes sin cobro
+  se captura a mano; para los de usuarios muestra el cálculo y permite ajustarlo. No cambia el Total por usuario.
+- **Check + «Generar factura» aparecen cuando hay ALGO que facturar** (`usuarios>0 || costo_contable>0 ||
+  renta_servicio>0`), **sin** depender de `!exenta` ni de que exista el cargo del periodo.
+- **`emitirFacturaServicios` ahora va por EMPRESA + periodo** (find-or-create del cargo, como `cobrarIva`) → se puede
+  facturar aunque la empresa sea «sin cobro». Ruta `POST /admin/facturacion/servicios`; `setRentaServicio` +
+  `POST /renta-servicio`. La pantalla flotante precarga Renta de software (81112218) del override y Servicios Contables
+  (84111500) del igualado. `tsc` back+front verde; build OK. Front ⇒ ZIP; backend ⇒ push (2 migraciones corren solas).
+Ver [[emisor-facturas-superadmin]], [[cobro-por-usuario-algoritmo]].

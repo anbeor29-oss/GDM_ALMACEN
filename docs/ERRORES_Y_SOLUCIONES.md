@@ -145,6 +145,42 @@ por mes tras el import si aplica.
 
 ---
 
+## 5. «Ene–sep 2026 no cargan» (AABA020418BW2): pólizas FANTASMA (encabezado sin renglones)
+
+**Síntoma.** La balanza anual 2026 de ALEJANDRO AYALA BARBA muestra **ENE–SEP en 0** y solo
+OCT–NOV–DIC con saldo. Al re-importar el libro diario dice **«0 creadas · 183 ya estaban»** y la
+reconstrucción integral solo toca **«3 meses»**. (Antes se pensó —entrada #4— que era solo falta de
+reconstruir; el dato real lo dio la combinación «ya estaban» + «3 meses» + balanza 0.)
+
+**Causa raíz.** Las 183 pólizas de ene–sep **existen como ENCABEZADO (`journal_entries`) pero SIN
+renglones (`journal_lines`)** — una importación previa a medias creó la cabecera y no las partidas.
+Entonces:
+- El candado de idempotencia contaba por `origen_uuid` (sin mirar renglones) → **«ya estaban»** →
+  nunca se re-creaban.
+- La balanza/`reconstruirIntegral` se derivan de `journal_lines` (`alimentarAnioDesdePolizas` hace
+  `JOIN journal_lines`) → esas pólizas **no existen** para la balanza → ene–sep en 0 y solo 3 meses
+  reconstruidos (Dic-2025, Oct, Nov, que sí tienen renglones).
+
+**❌ Lo que NO sirve.** Solo «Reconstruir año» (no hay renglones que sumar). Re-importar el archivo
+completo (decía «ya estaban» y no sanaba; además duplicaría oct-nov si ya existen en vivo).
+
+**✅ Solución (commit de esta fecha).** El importador **SANA** las fantasma:
+- La idempotencia ahora solo cuenta pólizas CTLK **que tienen renglones**
+  (`AND EXISTS (journal_lines)`), así una fantasma NO se considera «ya importada».
+- Antes de re-crear cada póliza, un `DELETE … WHERE NOT EXISTS (journal_lines)` **borra la fantasma**
+  (nunca toca una con renglones) para evitar chocar con el índice único `(company_id, origen_uuid)`.
+- El reporte añade «N sanada(s)». Tras re-importar → **«Reconstruir todos los ejercicios»**.
+- Para no duplicar oct-nov (que ya estaban en vivo), se entregó un **archivo filtrado solo ene–sep**
+  (`libro-diario-AABA-ene-sep-2026.xlsx`, generado del respaldo; verificado: 183 pólizas, 0 omitidas).
+
+**Diagnóstico BD.** `docs/DIAGNOSTICO_POLIZAS_SAJ.sql` (parametrizable por RFC) — y para ver fantasmas:
+`SELECT count(*) FROM journal_entries je WHERE je.company_id=… AND je.origen_uuid LIKE 'CTLK:%' AND NOT EXISTS (SELECT 1 FROM journal_lines jl WHERE jl.entry_id=je.id);`
+
+**Límite conocido.** No se halló POR QUÉ la 1.ª importación dejó cabeceras sin renglones (crearPoliza es
+transaccional); el saneo es idempotente y cubre el caso venga de donde venga.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

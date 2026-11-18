@@ -36,11 +36,20 @@ export function AdminFacturacionPage() {
   const [facturar, setFacturar] = useState<any>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [costoLocal, setCostoLocal] = useState<Record<string, number>>({});
+  const [rentaLocal, setRentaLocal] = useState<Record<string, number>>({});
   const toggleCheck = (id: string) => setChecked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const costoDe = (f: any) => (costoLocal[f.company_id] ?? Number(f.costo_contable || 0));
+  // Renta de software editable (override). Si no se ha tocado, se muestra la renta por
+  // usuario calculada; al editarla se guarda como override y manda en la factura.
+  const rentaOverrideDe = (f: any) => (rentaLocal[f.company_id] ?? Number(f.renta_servicio || 0));
+  const rentaMostradaDe = (f: any) => { const o = rentaOverrideDe(f); return o > 0 ? o : Number(f.renta_mxn || 0); };
   const guardarCosto = async (companyId: string, monto: number) => {
     await api.setCostoContable(companyId, monto);
     setCostoLocal((m) => ({ ...m, [companyId]: monto }));
+  };
+  const guardarRenta = async (companyId: string, monto: number) => {
+    await api.setRentaServicio(companyId, monto);
+    setRentaLocal((m) => ({ ...m, [companyId]: monto }));
   };
   const data = q.data?.data;
   const prueba: any[] = data?.prueba || [];
@@ -261,7 +270,14 @@ export function AdminFacturacionPage() {
                   )}
                 </td>
                 <td className="px-3 py-2 text-center">{f.usuarios}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{money(f.renta_mxn)}</td>
+                <td className="px-3 py-2 text-right">
+                  {/* Renta de software EDITABLE (override). Para clientes sin cobro por
+                      usuario se captura a mano; para los de usuarios muestra el cálculo y
+                      permite ajustarlo. No cambia el Total por usuario. */}
+                  {f.iva_vigencia_fin
+                    ? <span className="tabular-nums">{money(f.renta_mxn)}</span>
+                    : <CeldaCosto valor={rentaMostradaDe(f)} onSave={(m) => guardarRenta(f.company_id, m)} />}
+                </td>
                 <td className="px-3 py-2 text-right">
                   {/* Igualado contable editable por empresa. No entra al Total por usuario;
                       es el 2.º concepto del CFDI de servicios. */}
@@ -285,7 +301,11 @@ export function AdminFacturacionPage() {
                 <td className="px-3 py-2 text-center">
                   {(() => {
                     const esIva = panel === 'IVA' && f.iva_vigencia_fin;
-                    const emitible = !esIva && f.cargo_id && f.status !== 'PAGADO' && !f.exenta && (f.usuarios > 0 || costoDe(f) > 0);
+                    // Hay algo que facturar si tiene usuarios (renta por uso), o se capturó
+                    // una renta de software, o un igualado contable. NO depende de que sea
+                    // «cobrable» por usuario: una empresa sin cobro puede pagar contabilidad.
+                    const hayQueFacturar = f.usuarios > 0 || costoDe(f) > 0 || rentaOverrideDe(f) > 0;
+                    const emitible = !esIva && !f.facturado && hayQueFacturar;
                     if (esIva) return <span className="text-gray-300">—</span>;
                     if (f.facturado) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700" title="CFDI ya emitido a este cliente">Facturado</span>;
                     if (!emitible) return <span className="text-gray-300">—</span>;
@@ -303,18 +323,22 @@ export function AdminFacturacionPage() {
                   {panel === 'IVA' && f.iva_vigencia_fin && (f.facturado
                     ? <span className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">Facturado {money(f.cargo_total)}</span>
                     : <button onClick={() => setEmitir([{ ...f, iva: true }])} className="p-1.5 text-violet-600 hover:bg-violet-50 rounded" title="Facturar anualidad IVA (elige la emisora)"><FileText size={15} /></button>)}
-                  {!(panel === 'IVA' && f.iva_vigencia_fin) && (f.exenta || f.usuarios === 0) && <span className="text-[11px] text-gray-400" title={f.usuarios === 0 ? 'Sin usuarios: no se factura' : 'Exenta'}>—</span>}
-                  {!f.exenta && f.usuarios > 0 && !f.cargo_id && <span className="text-[11px] text-gray-400">genera la lista</span>}
                   {/* Generar la factura de SERVICIOS (renta de software 81112218 + servicios
-                      contables 84111500) en la pantalla FLOTANTE: editar y timbrar. Habilitado
-                      sólo con el check marcado (ya se cobró). Es un CFDI de servicio, sin carta porte. */}
-                  {!(panel === 'IVA' && f.iva_vigencia_fin) && f.cargo_id && f.status !== 'PAGADO' && !f.exenta && !f.facturado && (f.usuarios > 0 || costoDe(f) > 0) && (
-                    <button onClick={() => setFacturar(f)} disabled={!checked.has(f.company_id)}
-                      className="p-1.5 text-violet-600 hover:bg-violet-50 rounded disabled:opacity-40 disabled:cursor-not-allowed"
-                      title={checked.has(f.company_id) ? 'Generar factura (editar y timbrar)' : 'Marca el check «Factura» para habilitar'}>
-                      <Receipt size={15} />
-                    </button>
-                  )}
+                      contables 84111500) en la pantalla FLOTANTE: editar y timbrar. Aparece
+                      cuando hay ALGO que facturar (usuarios, renta o igualado contable), AUNQUE
+                      la empresa sea «sin cobro» por usuario. Habilitado sólo con el check
+                      marcado (ya se cobró). Es un CFDI de servicio, sin carta porte. */}
+                  {!(panel === 'IVA' && f.iva_vigencia_fin) && !f.facturado && (() => {
+                    const hayQueFacturar = f.usuarios > 0 || costoDe(f) > 0 || rentaOverrideDe(f) > 0;
+                    if (!hayQueFacturar) return <span className="text-[11px] text-gray-400" title="Captura una renta o un costo contable para facturar">—</span>;
+                    return (
+                      <button onClick={() => setFacturar(f)} disabled={!checked.has(f.company_id)}
+                        className="p-1.5 text-violet-600 hover:bg-violet-50 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={checked.has(f.company_id) ? 'Generar factura (editar y timbrar)' : 'Marca el check «Factura» para habilitar'}>
+                        <Receipt size={15} />
+                      </button>
+                    );
+                  })()}
                   {f.cargo_id && f.status !== 'PAGADO' && (
                     <button onClick={() => accion(() => api.pagarFacturacion(f.cargo_id), f.cargo_id, 'Marcado como pagado.')}
                       disabled={busy === f.cargo_id} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="Marcar pagado">
@@ -376,7 +400,7 @@ export function AdminFacturacionPage() {
       {/* Pantalla FLOTANTE para generar la factura de servicios (2 conceptos), editar y timbrar. */}
       {facturar && (
         <ModalFacturaServicios fila={facturar} periodo={periodo} emisoras={emisoras}
-          costoContable={costoDe(facturar)}
+          costoContable={costoDe(facturar)} rentaServicio={rentaMostradaDe(facturar)}
           onClose={() => setFacturar(null)}
           onDone={(m: string) => { setFacturar(null); setMsg(m); setChecked((s) => { const n = new Set(s); n.delete(facturar.company_id); return n; }); q.refetch(); }} />
       )}
@@ -425,8 +449,8 @@ function mesLargo(periodo: string): string {
  * emisora, uso/forma/método, y timbrar. Es un CFDI de servicio (sin carta porte); sigue
  * las reglas de la pantalla de facturación (preset de IVA por concepto, texto libre).
  */
-function ModalFacturaServicios({ fila, periodo, emisoras, costoContable, onClose, onDone }:
-  { fila: any; periodo: string; emisoras: any[]; costoContable: number; onClose: () => void; onDone: (m: string) => void }) {
+function ModalFacturaServicios({ fila, periodo, emisoras, costoContable, rentaServicio, onClose, onDone }:
+  { fila: any; periodo: string; emisoras: any[]; costoContable: number; rentaServicio: number; onClose: () => void; onDone: (m: string) => void }) {
   const [emisoraId, setEmisoraId] = useState<string>(emisoras.find((e) => e.predeterminado)?.id || emisoras[0]?.id || '');
   const [usoCfdi, setUsoCfdi] = useState('G03');
   const [formaPago, setFormaPago] = useState('99');
@@ -435,7 +459,7 @@ function ModalFacturaServicios({ fila, periodo, emisoras, costoContable, onClose
   const [error, setError] = useState('');
   // Conceptos: renta de software (todo el cargo por usuario) + servicios contables (igualado).
   const [conceptos, setConceptos] = useState(() => [
-    { clave: '81112218', descripcion: 'Renta de Software en línea', cantidad: 1, precio: Number(fila.total_mxn || 0), preset: 'iva16', incluir: Number(fila.total_mxn || 0) > 0 },
+    { clave: '81112218', descripcion: 'Renta de Software en línea', cantidad: 1, precio: Number(rentaServicio || 0), preset: 'iva16', incluir: Number(rentaServicio || 0) > 0 },
     { clave: '84111500', descripcion: `Servicios Contables de ${mesLargo(periodo)}`, cantidad: 1, precio: Number(costoContable || 0), preset: 'iva16', incluir: Number(costoContable || 0) > 0 },
   ]);
   const setC = (i: number, campo: string, val: any) => setConceptos((cs) => cs.map((c, j) => j === i ? { ...c, [campo]: val } : c));
@@ -448,7 +472,7 @@ function ModalFacturaServicios({ fila, periodo, emisoras, costoContable, onClose
     if (activos.length === 0) { setError('Incluye al menos un concepto con importe.'); return; }
     setBusy(true); setError('');
     try {
-      const r: any = await api.emitirFacturaServicios(fila.cargo_id, emisoraId,
+      const r: any = await api.emitirFacturaServicios(fila.company_id, periodo, emisoraId,
         activos.map((c) => ({ clave: c.clave.trim(), descripcion: c.descripcion.trim(), cantidad: Number(c.cantidad) || 1, precio: Number(c.precio), preset: c.preset })),
         { usoCfdi, formaPago, metodoPago });
       onDone(r?.message || `Factura ${r?.data?.folio || ''} emitida.`);

@@ -619,6 +619,7 @@ router.post(
       return {
         rep,
         mensaje: `Pólizas CTLK: ${rep.creadas} creada(s), ${rep.yaExistian} ya estaban` +
+          ((rep as any).sanadas ? `, ${(rep as any).sanadas} sanada(s) (encabezado sin renglones)` : '') +
           (rep.omitidas.length ? `, ${rep.omitidas.length} omitida(s)` : '') +
           (rep.conCuadre.length ? `, ${rep.conCuadre.length} por codificar` : '') +
           ` · ${rep.cfdiLigados} CFDI ligados` +
