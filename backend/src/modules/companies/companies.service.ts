@@ -248,14 +248,17 @@ export async function incrementInvoiceFolio(companyId: string): Promise<number> 
  * Returns the folio that was assigned BEFORE incrementing
  */
 export async function getAndIncrementInvoiceFolio(companyId: string): Promise<number> {
-  // El folio CONTINÚA la secuencia REAL: MAX(folio ya usado por esta empresa) + 1.
-  // Así, si se borra el ÚLTIMO borrador (antes de timbrar), su folio se REUTILIZA en la
-  // siguiente factura (el usuario «rehace desde cero»); los timbrados nunca se borran, así
-  // que nunca se pisa un folio real. Un borrador borrado a media secuencia deja su hueco y
-  // la secuencia continúa desde el máximo. Antes el contador sólo subía y saltaba el folio
-  // del borrador borrado. Se sincroniza next_invoice_folio para quien lo lea de preview.
+  // El folio CONTINÚA la secuencia REAL: MAX(folio VIGENTE de esta empresa) + 1.
+  // CLAVE: `deleted_at IS NULL` — un borrador BORRADO ya no cuenta, así que su folio se
+  // REUTILIZA en la siguiente factura (el usuario «rehace desde cero»). Antes el MAX NO
+  // excluía los borrados (el soft-delete deja el renglón), así que el folio del borrador
+  // borrado quedaba ocupado y NUNCA se reusaba — justo la queja. `deleteInvoice` sólo borra
+  // DRAFT, y una timbrada (aunque se CANCELE) conserva `deleted_at NULL`, así que su folio
+  // NO se reutiliza (el CFDI ya existe ante el SAT). Se sincroniza next_invoice_folio para
+  // quien lo lea del preview. (Invoices no tiene UNIQUE(company_id,folio): reusar no choca.)
   const r = await query<{ folio: number }>(
-    `SELECT COALESCE(MAX(folio), 0) + 1 AS folio FROM invoices WHERE company_id = $1`,
+    `SELECT COALESCE(MAX(folio), 0) + 1 AS folio FROM invoices
+      WHERE company_id = $1 AND deleted_at IS NULL`,
     [companyId]
   );
   const folio = Number(r.rows[0]?.folio) || 1;

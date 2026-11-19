@@ -8478,3 +8478,16 @@ salen de la diferencia de saldos. Dos piezas finas: (a) se descarta el encabezad
 movimiento absorbía esa sección y descuadraba. **Probado contra el PDF real: 43 movimientos, CUADRA exacto**
 (saldo inicial 3,134.72 − retiros 142,938.04 + depósitos 143,606.00 = saldo final 3,802.68). Backend-only ⇒ **sin ZIP**,
 sólo push. Cobertura: BanRegio pasa a formato «Tabular (saldos)». Ver [[extractor-estados-cuenta]].
+
+---
+
+## 2026-11-19 (facturas) — Folio: borrar un borrador REUTILIZA su folio (bug del MAX)
+
+Queja: al borrar/cancelar una factura, su folio quedaba «quemado» y la siguiente saltaba el número. Causa:
+`getAndIncrementInvoiceFolio` (companies.service) calculaba `MAX(folio)+1` **sin excluir los borrados** — el soft-delete
+deja el renglón con su folio, así que `MAX` lo seguía contando y nunca se reusaba (el comentario del código AFIRMABA que
+se reutilizaba, pero la query no lo hacía). Fix: `… WHERE company_id=$1 AND deleted_at IS NULL`. Ahora borrar el borrador
+libera su folio para la siguiente factura. Seguro: `deleteInvoice` sólo borra DRAFT, y una timbrada (aunque se CANCELE)
+conserva `deleted_at NULL`, así que su folio **no** se reutiliza (el CFDI ya existe ante el SAT). `invoices` no tiene
+UNIQUE(company_id,folio), así que reusar no choca. Backend-only ⇒ push. (El recordatorio de Uso CFDI del commit `7f9778d`
+es FRONTEND: va en el ZIP, no en el push — por eso «no aparecía».) Ver [[factura-global-publico-general]].
