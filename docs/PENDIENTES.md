@@ -18,6 +18,15 @@ Prueba en vivo del módulo; el usuario pidió seguir con las pantallas. Lo que f
 - **Subdominio `tienda.hcgm.com.mx`.** Hoy solo funciona `/t/:slug` bajo el dominio principal; el comentario del código
   dice «el ruteo real llega luego». El subdominio necesita **DNS + que el hosting sirva la SPA ahí** (infra del
   servidor, no solo código). Dejar indicado.
+- **Diseño de la tienda: logo + plantillas (pedido 2026-11-19).** Hoy Tiendas tiene logo por **URL** + 2 colores. Falta:
+  (a) **subir** el logo como archivo (como las fotos de producto, endpoint propio + storage), (b) elegir **plantilla/
+  diseño** entre varias (campo `plantilla` en `ec_store` + variantes de layout en el storefront `/t/:slug`). Es lo que
+  el usuario quiere para «capturar su logo y elegir su diseño» antes de publicar.
+- **Tienda «no encontrada» al probar:** no es el API base (el ERP corre en cPanel con el mismo `VITE_API_BASE`); el
+  backend no halla la tienda por slug → revisar que la tienda esté **activa** (Tiendas, que NO diga «inactiva») y usar
+  el botón **«Ver tienda pública»** (lleva el slug correcto) en vez de teclear la URL. Pedir el slug para diagnosticar.
+- **(HECHO 2026-11-19, commit `7f9778d`)** ~~Almacén «No hay almacenes» al cargar stock~~: `GET /ecommerce/almacenes`
+  crea un «Almacén principal» al vuelo si la empresa no tiene. ~~Fotos de producto en rejilla 3×3 con zoom (lightbox)~~.
 
 ## 🟢 En curso / arrancar enseguida (2026-11-04)
 
