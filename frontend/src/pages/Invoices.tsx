@@ -70,6 +70,9 @@ export function InvoicesPage() {
   const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null);
   const [balanceTarget, setBalanceTarget] = useState<Invoice | null>(null);
   const [timbresTarget, setTimbresTarget] = useState<Invoice | null>(null);
+  // Recordatorio ANTES de timbrar: muestra el Uso CFDI (y datos fiscales) para
+  // cacharlo si está mal y no acabar cancelando la factura. El usuario confirma.
+  const [timbrarTarget, setTimbrarTarget] = useState<Invoice | null>(null);
 
   const { data: invoicesData, isLoading } = useQuery({
     queryKey: ['invoices', page],
@@ -317,9 +320,9 @@ export function InvoicesPage() {
                           </IconBtn>
                         )}
                         {canStamp && (
-                          <IconBtn color="purple" title="Timbrar con CSD del emisor"
+                          <IconBtn color="purple" title="Timbrar (revisa el Uso CFDI antes)"
                             disabled={stampingId === invoice.id}
-                            onClick={() => handleStamp(invoice)}>
+                            onClick={() => setTimbrarTarget(invoice)}>
                             {stampingId === invoice.id ? <Loader2 size={18} className="animate-spin" /> : <Stamp size={18} />}
                           </IconBtn>
                         )}
@@ -416,6 +419,66 @@ export function InvoicesPage() {
           }}
         />
       )}
+
+      {timbrarTarget && (
+        <TimbrarRecordatorio invoice={timbrarTarget}
+          onClose={() => setTimbrarTarget(null)}
+          onTimbrar={() => { const inv = timbrarTarget; setTimbrarTarget(null); handleStamp(inv); }} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Recordatorio ANTES de timbrar: muestra los datos fiscales y —sobre todo— el
+ * USO CFDI, para cacharlo si está mal y no acabar cancelando la factura (motivo
+ * recurrente). No valida contra el SAT; es un último vistazo del humano.
+ */
+function TimbrarRecordatorio({ invoice, onClose, onTimbrar }: { invoice: Invoice; onClose: () => void; onTimbrar: () => void }) {
+  const { data: invResp } = useQuery({ queryKey: ['invoice', invoice.id], queryFn: () => api.getInvoice(invoice.id) });
+  const { data: usosResp } = useQuery({ queryKey: ['catalog', 'usoCfdi'], queryFn: () => api.getCatalog('usoCfdi'), staleTime: Infinity });
+  const inv: any = (invResp as any)?.data;
+  const usos: any[] = (usosResp as any)?.data || [];
+  const uso = inv?.cfdi_use || '';
+  const usoLabel = usos.find((u: any) => (u.clave || u.value || u.id) === uso)?.descripcion
+    || usos.find((u: any) => (u.clave || u.value || u.id) === uso)?.label || '';
+  const fmt = (n: any) => Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <h3 className="font-bold text-gray-900 flex items-center gap-2"><Stamp size={18} className="text-purple-600" /> Antes de timbrar</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-3 text-sm">
+          <p className="text-gray-600">Factura <b>{(invoice as any).serie || 'FAC'}-{String((invoice as any).folio).padStart(6, '0')}</b> a <b>{invoice.customer_name}</b></p>
+
+          {/* USO CFDI — lo que más se equivoca, destacado */}
+          <div className="rounded-lg border-2 border-amber-300 bg-amber-50 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-amber-700 font-semibold">Uso CFDI</p>
+            <p className="text-lg font-bold text-amber-900">{uso || '—'}{usoLabel ? <span className="font-normal text-amber-800"> — {usoLabel}</span> : ''}</p>
+            <p className="text-[11px] text-amber-700 mt-1">¿Corresponde a este cliente? Si está mal, <b>cancela y edítalo</b> antes de timbrar — una factura mal timbrada hay que cancelarla.</p>
+          </div>
+
+          {inv && (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[13px] text-gray-600">
+              <span>Forma de pago: <b className="text-gray-800">{inv.payment_form || '—'}</b></span>
+              <span>Método: <b className="text-gray-800">{inv.payment_method || '—'}</b></span>
+              <span>Moneda: <b className="text-gray-800">{inv.currency || 'MXN'}</b></span>
+              <span>Total: <b className="text-gray-800 tabular-nums">$ {fmt(inv.total ?? (invoice as any).total)}</b></span>
+            </div>
+          )}
+          <p className="text-[11px] text-gray-500">Se timbrará un CFDI real con el CSD del emisor. Esto no se puede deshacer sin cancelar.</p>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t bg-gray-50">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border text-gray-700 hover:bg-gray-100">Cancelar</button>
+          <button onClick={onTimbrar} disabled={!inv}
+            className="px-4 py-2 text-sm rounded-lg bg-purple-600 text-white font-medium hover:bg-purple-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+            <Stamp size={15} /> El Uso CFDI es correcto, timbrar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

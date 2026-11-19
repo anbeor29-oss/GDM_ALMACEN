@@ -209,6 +209,7 @@ function ImagenesProducto({ productId }: { productId: string }) {
   const qc = useQueryClient();
   const [subiendo, setSubiendo] = useState(false);
   const [err, setErr] = useState('');
+  const [zoom, setZoom] = useState<string | null>(null);   // imagen ampliada (lightbox)
   const fileRef = useRef<HTMLInputElement>(null);
   const q = useQuery({ queryKey: ['ec-img', productId], queryFn: () => api.listarImagenesProductoEc(productId) });
   const imgs: any[] = (q.data as any)?.data?.imagenes || [];
@@ -230,25 +231,35 @@ function ImagenesProducto({ productId }: { productId: string }) {
 
   return (
     <div>
-      <span className="text-xs font-medium text-gray-600 block mb-1">Fotos del producto <span className="text-gray-400">(hasta 6; se muestran en la tienda)</span></span>
-      <div className="flex flex-wrap gap-2">
+      <span className="text-xs font-medium text-gray-600 block mb-1">Fotos del producto <span className="text-gray-400">(hasta 6; clic para ampliar; se muestran en la tienda)</span></span>
+      {/* Rejilla de 3 columnas (3×3). Cada foto se amplía con un clic (lightbox). */}
+      <div className="grid grid-cols-3 gap-2">
         {imgs.map((im) => (
-          <div key={im.id} className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 group">
-            <img src={api.imagenProductoUrl(im.id)} alt="" className="w-full h-full object-cover" />
+          <div key={im.id} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 group">
+            <img src={api.imagenProductoUrl(im.id)} alt="" onClick={() => setZoom(im.id)}
+              className="w-full h-full object-cover cursor-zoom-in" />
             <button type="button" onClick={() => borrar(im.id)} title="Quitar"
-              className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition">
-              <Trash2 size={12} />
+              className="absolute top-1 right-1 bg-black/60 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition">
+              <Trash2 size={13} />
             </button>
           </div>
         ))}
         {imgs.length < 6 && (
-          <label className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 cursor-pointer hover:bg-gray-50">
+          <label className="aspect-square rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-1 text-gray-400 cursor-pointer hover:bg-gray-50 hover:border-cyan-400">
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => subir(e.target.files?.[0])} />
-            {subiendo ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
+            {subiendo ? <Loader2 size={20} className="animate-spin" /> : <><ImagePlus size={20} /><span className="text-[10px]">Agregar</span></>}
           </label>
         )}
       </div>
       {err && <p className="text-xs text-rose-600 mt-1">{err}</p>}
+
+      {/* Lightbox: la foto ampliada a pantalla; clic afuera para cerrar. */}
+      {zoom && (
+        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-6" onClick={() => setZoom(null)}>
+          <img src={api.imagenProductoUrl(zoom)} alt="" className="max-w-full max-h-full rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
+          <button type="button" onClick={() => setZoom(null)} className="absolute top-4 right-4 text-white/80 hover:text-white"><X size={26} /></button>
+        </div>
+      )}
     </div>
   );
 }

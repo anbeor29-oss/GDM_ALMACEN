@@ -36,6 +36,18 @@ function companyId(req: Request): string {
   return id;
 }
 
+/** Garantiza que la empresa tenga AL MENOS un almacén: para operar la tienda (cargar
+ *  stock) no se puede exigir configurar el módulo de Almacén del ERP. Si no hay ninguno,
+ *  crea un «Almacén principal» (is_default). Idempotente. */
+async function asegurarAlmacenPrincipal(cid: string): Promise<void> {
+  const r = await query<any>(`SELECT 1 FROM warehouses WHERE company_id=$1 AND deleted_at IS NULL LIMIT 1`, [cid]);
+  if (r.rows.length) return;
+  await query(
+    `INSERT INTO warehouses (company_id, code, name, is_default, is_active)
+     VALUES ($1, 'PRINCIPAL', 'Almacén principal', true, true)
+     ON CONFLICT (company_id, code) DO NOTHING`, [cid]);
+}
+
 /** GET /ecommerce/estado — salud del módulo + contadores. */
 router.get('/estado', asyncHandler(async (req: Request, res: Response) => {
   const cid = req.user?.companyId || null;
@@ -112,12 +124,15 @@ router.get('/inventario', asyncHandler(async (req, res) => {
   res.json({ success: true, data: { renglones: r.rows } });
 }));
 
-/** GET /ecommerce/almacenes — almacenes de la empresa (para capturar stock). */
+/** GET /ecommerce/almacenes — almacenes de la empresa (para capturar stock). Si la
+ *  empresa no tiene ninguno, se le crea un «Almacén principal» al vuelo. */
 router.get('/almacenes', asyncHandler(async (req, res) => {
+  const cid = companyId(req);
+  await asegurarAlmacenPrincipal(cid);
   const r = await query<any>(
     `SELECT id, code, name FROM warehouses
       WHERE company_id = $1 AND deleted_at IS NULL AND COALESCE(is_active,TRUE) = TRUE
-      ORDER BY name`, [companyId(req)]);
+      ORDER BY name`, [cid]);
   res.json({ success: true, data: { almacenes: r.rows } });
 }));
 
