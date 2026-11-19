@@ -121,15 +121,22 @@ export function InvoicesPage() {
   const handleStamp = async (invoice: Invoice) => {
     setStampingId(invoice.id);
     try {
-      const result = await api.stampInvoice(invoice.id);
+      const result: any = await api.stampInvoice(invoice.id);
+      const d = result?.data || {};
       alert(
-        `✅ Factura timbrada con ${result.data?.provider || 'el PAC'}\n\n` +
-        `UUID: ${result.data.uuid}\n` +
-        `Fecha timbrado: ${result.data.fecha_timbrado || ''}`
+        `✅ Factura timbrada con ${d.provider || 'el PAC'}\n\n` +
+        `UUID: ${d.uuid || '—'}\n` +
+        `Fecha timbrado: ${d.fecha_timbrado || ''}`
       );
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
     } catch (e: any) {
-      alert(`No se pudo timbrar.\n\n${e.response?.data?.message || e.message}`);
+      // El detalle COMPLETO queda en la consola (DevTools → Console) para diagnosticar;
+      // el aviso muestra el mensaje legible. El `try/catch` evita que el error tumbe la
+      // pantalla; el ErrorBoundary cubre cualquier crash de render aparte.
+      const msg = e?.response?.data?.message || e?.response?.data?.error || e?.message || 'Error desconocido al timbrar.';
+      // eslint-disable-next-line no-console
+      console.error('[timbrado] error', { status: e?.response?.status, data: e?.response?.data, error: e });
+      alert(`No se pudo timbrar.\n\n${msg}`);
     } finally {
       setStampingId(null);
     }

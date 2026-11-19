@@ -14,6 +14,7 @@ import { ChecadorCampoPage } from '@/pages/nomina/ChecadorCampo';
 import { useAuthStore } from '@/store/auth';
 import { canAccess, type ModuleKey, homeDe } from '@/utils/permissions';
 import { AvisoGlobal } from '@/components/AvisoGlobal';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { leerKiosco, borrarKiosco, hayKiosco } from '@/utils/kioscoAuto';
 
 /**
@@ -256,6 +257,7 @@ export function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <ErrorBoundary>
       <Router basename={import.meta.env.BASE_URL}>
         <AutoActualizar />
         <AvisoGlobal />
@@ -297,6 +299,7 @@ export function App() {
         </Routes>
         </Suspense>
       </Router>
+      </ErrorBoundary>
     </QueryClientProvider>
   );
 }
