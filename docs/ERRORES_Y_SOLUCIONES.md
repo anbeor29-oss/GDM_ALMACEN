@@ -188,6 +188,34 @@ transaccional); el saneo es idempotente y cubre el caso venga de donde venga.
 
 ---
 
+## 6. «Al timbrar sale un error y se BORRA la pantalla» (pantalla en blanco)
+
+**Síntoma.** El usuario da Timbrar, aparece un error y la **pantalla queda en BLANCO** (no se puede leer el error).
+
+**Causa raíz.** DOS cosas encadenadas: (1) la app **no tenía ErrorBoundary**, así que un error durante el RENDER
+desmontaba TODO el árbol de React y dejaba la página vacía; (2) el crash concreto era el **modal recordatorio de Uso
+CFDI** (`TimbrarRecordatorio`, commit `7f9778d`): leía el catálogo SAT como `.data` y llamaba `.find()` →
+`TypeError: o.find is not a function`. El catálogo de `api.getCatalog('usoCfdi')` viene en **`.data.entries`** (cada
+entrada: `catalog_key` + `description`), NO en `.data`.
+
+**Cómo diagnosticar.** Con el ErrorBoundary puesto, el error se LEE (ya no es blanco): `o.find is not a function` en
+`tH` (ErpPrivado). DevTools → Console también lo muestra.
+
+**✅ Solución (commits `d3c566e` + `aaf8c3c`).**
+- **ErrorBoundary** (`components/ErrorBoundary.tsx`) envuelve el Router en `App.tsx`: ante cualquier crash de render
+  muestra el error + detalle + botones (Copiar/Reintentar/Recargar) en vez de blanco. **Red de seguridad general.**
+- Fix del modal: `const usos = Array.isArray((usosResp)?.data?.entries) ? … : []` y `u.catalog_key === uso`.
+  El `Array.isArray` evita que vuelva a tronar aunque cambie la forma.
+- `handleStamp` escribe el error COMPLETO (status+data) en la consola; blindado el acceso a `result.data`.
+
+**❌ Lo que NO hay que hacer.** Dejar `.find()` directo sobre `response.data` de un catálogo sin verificar que es
+arreglo (la forma es `{ success, data: { entries: [...] } }`, no un arreglo plano). Y no tener ErrorBoundary: un
+error de render = pantalla en blanco imposible de diagnosticar.
+
+**Límite conocido.** El ErrorBoundary SÓLO atrapa errores de RENDER; los de promesas (fetch/timbrado) van por try/catch.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …
