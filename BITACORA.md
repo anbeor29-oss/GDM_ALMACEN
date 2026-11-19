@@ -8443,3 +8443,22 @@ para empresas exentas/sin usuarios (p. ej. AABA, GOJR730617E8A, PABJ7311218L8), 
   `POST /renta-servicio`. La pantalla flotante precarga Renta de software (81112218) del override y Servicios Contables
   (84111500) del igualado. `tsc` back+front verde; build OK. Front ⇒ ZIP; backend ⇒ push (2 migraciones corren solas).
 Ver [[emisor-facturas-superadmin]], [[cobro-por-usuario-algoritmo]].
+
+---
+
+## 2026-11-18 (contab.) — RESUELTO: balanza ene-sep (fantasmas) + candado por mes en Periodos
+
+**Balanza ene-sep 2026 (AABA020418BW2) — RESUELTO.** La captura de «Periodos contables» mostró **«0 cerrados»** y
+ene-sep en **«Sin saldos»**: no era periodos cerrados, eran **pólizas FANTASMA** (encabezado sin `journal_lines`). Se
+resolvió SIN desplegar: `DELETE FROM journal_entries … AND NOT EXISTS (journal_lines)` en el Web Shell de Render (borra
+los 183 encabezados vacíos) → re-importar el `.xlsx` filtrado (ahora «183 creadas») → «Reconstruir todos los
+ejercicios» → ene-sep con saldos. El auto-saneo del importador (`62288e6`) hace lo mismo al desplegarse. Script y
+detalle en `docs/FIX_POLIZAS_AABA.sql` y `ERRORES_Y_SOLUCIONES.md` #5. Ver [[importador-contalink-ctlk]].
+
+**Candado de estado en CADA mes (commit `96f0d79`, ZIP).** En «Periodos y cierre» (`Periodos.tsx`) las 12 tarjetas
+—incluidas «Sin saldos» y «sin ejercicio»— muestran candado: 🔒 ámbar CERRADO (clic=reabrir), 🔓 verde ABIERTO con
+saldos (clic=cerrar), 🔓 gris abierto sin saldos (nada que cerrar). Pedido del usuario para ver el estado de un vistazo.
+La pantalla «Cierre contable» (póliza de cierre) es distinta del candado de periodo (`accounting_periods.estado`).
+
+**Leyes a Obsidian RAW.** Se subieron `LISR_vigente_2027.pdf` y `DOF_2027.pdf` a `E:\Obsidian\ANBEOR\raw\leyes` (misma
+convención que las 2026). Pendiente e-commerce: ver `docs/PENDIENTES.md`.

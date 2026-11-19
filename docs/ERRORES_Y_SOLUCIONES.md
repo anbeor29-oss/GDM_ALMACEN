@@ -176,6 +176,13 @@ completo (decía «ya estaban» y no sanaba; además duplicaría oct-nov si ya e
 **Diagnóstico BD.** `docs/DIAGNOSTICO_POLIZAS_SAJ.sql` (parametrizable por RFC) — y para ver fantasmas:
 `SELECT count(*) FROM journal_entries je WHERE je.company_id=… AND je.origen_uuid LIKE 'CTLK:%' AND NOT EXISTS (SELECT 1 FROM journal_lines jl WHERE jl.entry_id=je.id);`
 
+**✅ CONFIRMADO funcionando (2026-11-18).** La pantalla «Periodos contables» del cliente mostró **«0 cerrados»** y
+ene-sep en **«Sin saldos»** → NO era periodos cerrados, eran **fantasmas** (encabezado sin renglones). Lo que lo
+resolvió, SIN desplegar: en el Web Shell de Render, `DELETE FROM journal_entries … AND NOT EXISTS (journal_lines)`
+(borra los 183 encabezados vacíos) → re-importar `libro-diario-AABA-ene-sep-2026.xlsx` (ahora dice «183 creadas», ya
+no «ya estaban») → **«Reconstruir todos los ejercicios»** → ene-sep con saldos. El auto-saneo del importador (commit
+`62288e6`) hace lo mismo al re-importar, una vez desplegado.
+
 **Límite conocido.** No se halló POR QUÉ la 1.ª importación dejó cabeceras sin renglones (crearPoliza es
 transaccional); el saneo es idempotente y cubre el caso venga de donde venga.
 

@@ -1,6 +1,23 @@
 # Pendientes — GDM NEXO
 
-> Lista viva de lo que falta. Actualizada 2026-11-16. Lo hecho se documenta en `BITACORA.md`.
+> Lista viva de lo que falta. Actualizada 2026-11-18. Lo hecho se documenta en `BITACORA.md`.
+
+## 🛒 E-commerce — pendientes (2026-11-18)
+
+Prueba en vivo del módulo; el usuario pidió seguir con las pantallas. Lo que falta:
+
+- **Captura de stock desde el Inventario de e-commerce.** Hoy `Inventario.tsx` es **solo lectura** (lee
+  `warehouse_stock`, dice «los movimientos se hacen en el ERP»). El usuario quiere **capturar/ajustar existencias
+  ahí mismo**. Falta: endpoint de ajuste de stock (entrada/salida/ajuste con su efecto en el kardex/capas de costo del
+  ERP — NO escribir `warehouse_stock` a pelo) + UI de captura por producto/almacén. Ojo con el kardex (ver módulo
+  ALMACEN). Ver [[ecommerce-modulo-plan]], [[almacen-modulo-inventarios]].
+- **Tienda «no disponible» / vacía.** La ruta pública `/t/:slug` SÍ está montada (App.tsx) y el backend
+  (`ecommerce-storefront.service`) exige tienda `activa=TRUE` + productos con `ec_product_channel.publicado=TRUE`. Falta
+  confirmar con el usuario: slug exacto, tienda activa, y **publicar productos en «Catálogo web»**. Revisar si el flujo
+  de publicar productos es claro (puede faltar un botón «publicar a la tienda»).
+- **Subdominio `tienda.hcgm.com.mx`.** Hoy solo funciona `/t/:slug` bajo el dominio principal; el comentario del código
+  dice «el ruteo real llega luego». El subdominio necesita **DNS + que el hosting sirva la SPA ahí** (infra del
+  servidor, no solo código). Dejar indicado.
 
 ## 🟢 En curso / arrancar enseguida (2026-11-04)
 
