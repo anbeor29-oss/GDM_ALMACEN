@@ -445,10 +445,12 @@ function TimbrarRecordatorio({ invoice, onClose, onTimbrar }: { invoice: Invoice
   const { data: invResp } = useQuery({ queryKey: ['invoice', invoice.id], queryFn: () => api.getInvoice(invoice.id) });
   const { data: usosResp } = useQuery({ queryKey: ['catalog', 'usoCfdi'], queryFn: () => api.getCatalog('usoCfdi'), staleTime: Infinity });
   const inv: any = (invResp as any)?.data;
-  const usos: any[] = (usosResp as any)?.data || [];
+  // El catálogo del SAT viene en `.data.entries` (cada entrada: catalog_key + description),
+  // NO en `.data`. Con Array.isArray NUNCA truena aunque cambie la forma.
+  const usosRaw = (usosResp as any)?.data?.entries;
+  const usos: any[] = Array.isArray(usosRaw) ? usosRaw : [];
   const uso = inv?.cfdi_use || '';
-  const usoLabel = usos.find((u: any) => (u.clave || u.value || u.id) === uso)?.descripcion
-    || usos.find((u: any) => (u.clave || u.value || u.id) === uso)?.label || '';
+  const usoLabel = usos.find((u: any) => u.catalog_key === uso)?.description || '';
   const fmt = (n: any) => Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
