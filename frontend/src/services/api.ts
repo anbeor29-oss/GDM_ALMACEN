@@ -3779,6 +3779,12 @@ class APIClient {
   async getInventarioEc(search?: string) {
     return (await this.client.get('/ecommerce/inventario', { params: { search } })).data;
   }
+  async getAlmacenesEc() {
+    return (await this.client.get('/ecommerce/almacenes')).data;
+  }
+  async ajustarInventarioEc(body: { productId: string; warehouseId: string; direction: 'IN' | 'OUT'; quantity: number; unitCost?: number; reason?: string }) {
+    return (await this.client.post('/ecommerce/inventario/ajuste', body)).data;
+  }
   // Catálogo web
   async getCatalogoEc(params: { search?: string; publicados?: boolean } = {}) {
     return (await this.client.get('/ecommerce/catalogo', { params })).data;

@@ -23,6 +23,8 @@ import * as reportesExport from './ecommerce-reportes-export.service';
 import * as productsService from '../products/products.service';
 import * as fulfillment from './ec-fulfillment.service';
 import * as media from './ecommerce-media.service';
+// Movimiento de inventario del ERP (único que escribe warehouse_stock + kardex).
+import { applyMovement } from '../inventory/inventory.service';
 
 const router = Router();
 const imgUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
@@ -89,7 +91,11 @@ router.delete('/productos/:id', asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Producto dado de baja.' });
 }));
 
-/* ──────────  INVENTARIO (embebido, lectura): existencias por almacén  ────────── */
+/* ──────────  INVENTARIO (embebido): existencias por almacén + captura  ──────────
+ * Lista TODOS los productos activos (LEFT JOIN): los que aún no tienen existencias
+ * salen con 0, para poder darles de alta su stock desde aquí. Los movimientos van
+ * por `applyMovement` del ERP (kardex + capas de costo), nunca a `warehouse_stock`
+ * a pelo. */
 router.get('/inventario', asyncHandler(async (req, res) => {
   const cid = companyId(req);
   const params: any[] = [cid];
@@ -97,13 +103,47 @@ router.get('/inventario', asyncHandler(async (req, res) => {
   if (req.query.search) { params.push(`%${String(req.query.search)}%`); filtroBusq = `AND (p.name ILIKE $${params.length} OR p.sku ILIKE $${params.length})`; }
   const r = await query<any>(
     `SELECT p.id AS product_id, p.sku, p.name, w.id AS warehouse_id, w.name AS almacen,
-            ws.quantity::float AS existencia, ws.avg_cost::float AS costo_promedio
-       FROM warehouse_stock ws
-       JOIN products p   ON p.id = ws.product_id AND p.deleted_at IS NULL
-       JOIN warehouses w ON w.id = ws.warehouse_id
-      WHERE p.company_id = $1 ${filtroBusq}
-      ORDER BY p.name, w.name`, params);
+            COALESCE(ws.quantity,0)::float AS existencia, ws.avg_cost::float AS costo_promedio
+       FROM products p
+       LEFT JOIN warehouse_stock ws ON ws.product_id = p.id
+       LEFT JOIN warehouses w       ON w.id = ws.warehouse_id AND w.deleted_at IS NULL
+      WHERE p.company_id = $1 AND p.deleted_at IS NULL AND p.is_active = TRUE ${filtroBusq}
+      ORDER BY p.name, w.name NULLS FIRST`, params);
   res.json({ success: true, data: { renglones: r.rows } });
+}));
+
+/** GET /ecommerce/almacenes — almacenes de la empresa (para capturar stock). */
+router.get('/almacenes', asyncHandler(async (req, res) => {
+  const r = await query<any>(
+    `SELECT id, code, name FROM warehouses
+      WHERE company_id = $1 AND deleted_at IS NULL AND COALESCE(is_active,TRUE) = TRUE
+      ORDER BY name`, [companyId(req)]);
+  res.json({ success: true, data: { almacenes: r.rows } });
+}));
+
+/** POST /ecommerce/inventario/ajuste — alta/ajuste de existencias desde la tienda.
+ *  Reusa `applyMovement` del ERP (kardex + costeo); NO escribe warehouse_stock directo.
+ *  body: { productId, warehouseId, direction: 'IN'|'OUT', quantity, unitCost?, reason? } */
+router.post('/inventario/ajuste', asyncHandler(async (req, res) => {
+  const { productId, warehouseId, direction, quantity, unitCost, reason } = req.body || {};
+  if (!productId || !warehouseId) throw new ValidationError('Elige el producto y el almacén.');
+  const cant = Number(quantity);
+  if (!(cant > 0)) throw new ValidationError('La cantidad debe ser mayor a 0.');
+  const esEntrada = String(direction || 'IN').toUpperCase() !== 'OUT';
+  const result = await applyMovement({
+    companyId: companyId(req),
+    productId: String(productId),
+    movementType: esEntrada ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+    quantity: cant,
+    unitCost: unitCost != null && unitCost !== '' ? Number(unitCost) : undefined,
+    warehouseFromId: esEntrada ? undefined : String(warehouseId),
+    warehouseToId:   esEntrada ? String(warehouseId) : undefined,
+    referenceType: 'ecommerce_ajuste',
+    reason: String(reason || '').trim() || (esEntrada ? 'Alta de existencias (tienda)' : 'Salida de existencias (tienda)'),
+    userId: req.user?.userId,
+    userEmail: req.user?.email,
+  });
+  res.json({ success: true, data: result, message: `${esEntrada ? 'Entrada' : 'Salida'} de ${cant} registrada.` });
 }));
 
 /* ──────────  CATÁLOGO WEB  ────────── */
