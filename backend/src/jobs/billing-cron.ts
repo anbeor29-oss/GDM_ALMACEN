@@ -62,7 +62,7 @@ export function registerBillingCron(): void {
     runMonthlyClose().catch((e) =>
       logger.error(`[billing-cron] error no capturado: ${e.message}`)
     );
-  });
+  }, { timezone: 'America/Mexico_City' });
 
   // Cada hora en punto: alertas de prepago (low/zero) para todas las FLEX.
   // Safety net del trigger post-timbrado — cubre recargas manuales en BD,
@@ -79,7 +79,7 @@ export function registerBillingCron(): void {
     sendPaymentReminders().catch((e) =>
       logger.error(`[billing-cron] payment reminders: ${e.message}`)
     );
-  });
+  }, { timezone: 'America/Mexico_City' });
 
   // Día 1 a las 06:00: reporte mensual de la bitácora a los usuarios que el
   // ADMIN de cada empresa marcó para monitoreo (cláusula SEXTA del contrato).
@@ -89,7 +89,7 @@ export function registerBillingCron(): void {
     sendMonthlyReports().catch((e) =>
       logger.error(`[billing-cron] monitoring reports: ${e.message}`)
     );
-  });
+  }, { timezone: 'America/Mexico_City' });
 
   logger.info(
     '[billing-cron] Registrado: cierre mensual (día 1 00:15) · ' +

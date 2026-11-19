@@ -39,12 +39,12 @@ export function registerAuditoriaCron(): void {
     return;
   }
 
-  // '0 4 * * *' → diario 04:00 (hora servidor)
+  // '0 4 * * *' → diario 04:00 (America/Mexico_City)
   cron.schedule('0 4 * * *', () => {
     correrAuditoriaGlobal()
       .then((r) => logger.info(`[auditoria-cron] corrida terminada: ${JSON.stringify(r)}`))
       .catch((e) => logger.error(`[auditoria-cron] falló: ${e.message}`));
-  });
+  }, { timezone: 'America/Mexico_City' });
 
   logger.info(
     `[auditoria-cron] Registrado: revisión diaria 04:00 de los comprobantes ` +

@@ -28,7 +28,7 @@ export function registerInventoryCron(): void {
     takeSnapshotAllCompanies().catch((e) =>
       logger.error(`[inventory-cron] snapshot mensual falló: ${e.message}`)
     );
-  });
+  }, { timezone: 'America/Mexico_City' });
 
   // '0 7 * * *' → diario 07:00 (hora servidor): análisis de mínimos y
   // proyección a 15 días → órdenes de cotización AUTO + alerta email (§2).
@@ -37,7 +37,7 @@ export function registerInventoryCron(): void {
     runReorderCheckAllCompanies().catch((e) =>
       logger.error(`[inventory-cron] análisis de reorden falló: ${e.message}`)
     );
-  });
+  }, { timezone: 'America/Mexico_City' });
 
   // '55 23 * * *' → diario 23:55: cierre POS — factura global al público en
   // general con las ventas OPEN del día (conclusión de ALMACEN.MD).
@@ -48,7 +48,7 @@ export function registerInventoryCron(): void {
       .catch((e) =>
         logger.error(`[inventory-cron] cierre POS global falló: ${e.message}`)
       );
-  });
+  }, { timezone: 'America/Mexico_City' });
 
   logger.info(
     '[inventory-cron] Registrado: snapshot de valuación (día 1 00:30) · ' +

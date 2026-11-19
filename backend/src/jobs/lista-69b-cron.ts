@@ -51,7 +51,7 @@ export function registerLista69BCron(): void {
           `Dirección configurada: ${URL_69B}`
         )
       );
-  });
+  }, { timezone: 'America/Mexico_City' });
 
   logger.info('[69b-cron] Programado: domingos 03:30');
 }

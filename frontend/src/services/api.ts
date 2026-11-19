@@ -767,6 +767,17 @@ class APIClient {
     return customerId ? `${base}?customerId=${customerId}` : base;
   }
 
+  /** PDF del reporte de cobranza como BLOB, vía axios (añade el token de sesión solo
+   *  — antes un fetch crudo leía el token de localStorage, pero vive en sessionStorage,
+   *  así que iba sin auth → 401 → PDF roto). */
+  async getReceivablesPDF(customerId?: string): Promise<Blob> {
+    const r = await this.client.get('/reports/receivables/pdf', {
+      params: customerId ? { customerId } : {},
+      responseType: 'blob',
+    });
+    return r.data as Blob;
+  }
+
   async getSalesReport(dateFrom?: string, dateTo?: string) {
     const response = await this.client.get('/reports/sales', {
       params: { dateFrom, dateTo },

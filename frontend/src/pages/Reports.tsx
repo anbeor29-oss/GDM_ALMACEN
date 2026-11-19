@@ -88,12 +88,18 @@ export function ReceivablesReport() {
 
   const report = data?.data;
 
-  const openPDF = () => {
-    const url = api.receivablesPDFUrl(customerId || undefined);
-    const token = localStorage.getItem('token');
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.blob())
-      .then((blob) => window.open(URL.createObjectURL(blob), '_blank'));
+  const openPDF = async () => {
+    try {
+      // Vía axios (añade el token de SESIÓN solo) y descarga directo a Descargas —
+      // antes un fetch crudo leía el token de localStorage (vive en sessionStorage) →
+      // iba sin auth → 401 → PDF roto.
+      const blob = await api.getReceivablesPDF(customerId || undefined);
+      await api.downloadFile(blob, 'Cobranza_facturas_con_saldo.pdf');
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.error('[cobranza pdf] error', e?.response?.status, e?.response?.data, e);
+      alert(`No se pudo descargar el PDF de cobranza.\n\n${e?.response?.data?.message || e?.message || 'Error'}`);
+    }
   };
 
   return (
