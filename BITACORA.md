@@ -8462,3 +8462,19 @@ La pantalla «Cierre contable» (póliza de cierre) es distinta del candado de p
 
 **Leyes a Obsidian RAW.** Se subieron `LISR_vigente_2027.pdf` y `DOF_2027.pdf` a `E:\Obsidian\ANBEOR\raw\leyes` (misma
 convención que las 2026). Pendiente e-commerce: ver `docs/PENDIENTES.md`.
+
+---
+
+## 2026-11-19 (tesorería) — Parser dedicado de BANREGIO (saldo-diff): de 9-10 a 43 movimientos
+
+El PDF venía nombrado «BANBAJIO» pero el contenido era **Banregio** (CUENTA NARANJA FULL, CLABE 058, RFC emisor
+BRM940216). `detectarBanco` ya lo marcaba `BanRegio`, pero **faltaba el parser** → caía al genérico, que sólo pescaba
+los movimientos de UNA línea (~9-10) y perdía todos los SPEI (concepto multilínea). Nuevo **`extraerBanregio`**
+(saldo-diff como Afirme/Banamex/Consubanco): cada movimiento abre con `DD`+código (`01TRA…`, `02INT…`), el concepto se
+extiende varias líneas, y el **último importe del bloque es el saldo corriente** → el movimiento y su lado (abono/cargo)
+salen de la diferencia de saldos. Dos piezas finas: (a) se descarta el encabezado/pie que se repite por página (de
+«Página N de M» hasta el siguiente «DIACONCEPTO»); (b) el detalle de la chequera **corta** donde arranca otra sección
+(detalle del crédito «27036 - DISPOSICION-CAPITAL…», «Detalle de Comisiones», fila de totales) — sin eso, el último
+movimiento absorbía esa sección y descuadraba. **Probado contra el PDF real: 43 movimientos, CUADRA exacto**
+(saldo inicial 3,134.72 − retiros 142,938.04 + depósitos 143,606.00 = saldo final 3,802.68). Backend-only ⇒ **sin ZIP**,
+sólo push. Cobertura: BanRegio pasa a formato «Tabular (saldos)». Ver [[extractor-estados-cuenta]].

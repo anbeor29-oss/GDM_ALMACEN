@@ -875,6 +875,120 @@ function extraerConsubanco(
 }
 
 /**
+ * Banregio (CUENTA NARANJA FULL) — estado TABULAR con columnas DIA·CONCEPTO·CARGOS·
+ * ABONOS·SALDO. Cada movimiento ABRE con "DD<CODE> …" (p. ej. "01TRA …", "02INT …"),
+ * el concepto se extiende por VARIAS líneas, y al final van `importe`+`saldo` (el
+ * separador de importes ya los desenganchó). El ÚLTIMO importe del bloque es el SALDO
+ * corriente; el movimiento —y su lado abono/cargo— sale de la DIFERENCIA de saldos
+ * (como Afirme/Banamex/Consubanco), robusto aunque las columnas Cargo/Abono se fundan
+ * al colapsar los espacios. Antes caía al parser genérico, que sólo pescaba ~9-10 de
+ * las 40+ operaciones (los renglones de UNA sola línea), perdiendo todos los SPEI
+ * (concepto multilínea). El día sólo trae DD: el mes/año salen del periodo
+ * ("del 01 al 31 de OCTUBRE 2026") o de las opciones de la carga.
+ */
+function extraerBanregio(
+  texto: string, opciones: { anio?: number; mes?: number }, avisos: string[]
+): ResultadoExtraccion {
+  // Saldo inicial: "3,134.72Saldo Inicial" (importe ANTES de la etiqueta en la tabla).
+  const mIni = /([\d,]+\.\d{2})\s*Saldo\s*Inicial/i.exec(texto);
+  const saldoInicial = mIni ? aNumero(mIni[1]) : null;
+  // Saldo final: la fila de totales "… 3,802.68Total" o el resumen "= Saldo Final … $3,802.68".
+  const mFin = /([\d,]+\.\d{2})\s*Total\b/i.exec(texto)
+    || /Saldo\s*Final[\s\S]{0,60}?\$\s*([\d,]+\.\d{2})/i.exec(texto);
+  const saldoFinal = mFin ? aNumero(mFin[1]) : null;
+
+  // Mes/año del periodo ("del 01 al 31 de OCTUBRE 2026"); las opciones mandan si vienen.
+  const mPer = /de\s+([A-Za-zÁÉÍÓÚÑ]{3,12})\s+(\d{4})/i.exec(texto);
+  const anio = opciones.anio || (mPer ? Number(mPer[2]) : undefined);
+  const mes = opciones.mes || (mPer ? MESES_ES[mPer[1].toUpperCase()] || MESES_ES[mPer[1].toUpperCase().slice(0, 3)] : undefined);
+
+  // Quita el ENCABEZADO/PIE que se repite en cada página (todo lo que va de un
+  // "Página N de M" hasta el siguiente encabezado "DIACONCEPTO…"), para que un
+  // movimiento que cruza el corte de página no arrastre esa basura en su concepto.
+  const crudas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lineas: string[] = [];
+  let saltando = false;
+  for (const l of crudas) {
+    if (/^P[áa]gina\s+\d+\s+de\s+\d+/i.test(l)) { saltando = true; continue; }
+    if (saltando) { if (/DIACONCEPTO|DIA\s*CONCEPTO/i.test(l)) saltando = false; continue; }
+    lineas.push(l);
+  }
+
+  const RX_IMP = /[\d,]+\.\d{2}/g;
+  // Arranque de movimiento: DD (01-31) + código de 2-5 letras (TRA/INT/…) + espacio o
+  // guion. Las líneas de continuación arrancan con texto o con números largos de
+  // referencia (DD seguido de más dígitos), así que no colisionan.
+  const RX_MOV = /^(\d{2})([A-Z]{2,5})[\s-]/;
+  const diaOk = (s: string) => { const d = Number(s); return d >= 1 && d <= 31; };
+
+  let ini = lineas.findIndex((l) => /DIACONCEPTO|DIA\s*CONCEPTO/i.test(l));
+  if (ini < 0) ini = 0;
+  // Fin del detalle de la CHEQUERA: donde arranca otra sección —detalle del crédito
+  // ("27036 - DISPOSICION-CAPITAL…"), detalle de comisiones— o la fila de totales. El
+  // PRIMERO que aparezca tras los movimientos. Sin esto, el último movimiento absorbía
+  // esa sección y tomaba un saldo equivocado (descuadre). Ojo: una «Disposición del
+  // Crédito» que SÍ es movimiento viene como "27TRA …", no como "27036 - DISPOSICION".
+  const RX_FIN = [
+    /Detalle\s*de\s*Comisiones/i,
+    /^Total[\d,]/i,                                               // "Total99,400.00 0.00"
+    /^\d{3,}\s*-\s*DISPOSICION/i,                                 // detalle del crédito
+    /[\d,]+\.\d{2}\s+[\d,]+\.\d{2}\s+[\d,]+\.\d{2}\s*Total\b/i,    // fila de totales (3 montos)
+    /Saldo\s*M[íi]nimo/i,
+  ];
+  let fin = lineas.length;
+  for (let i = ini + 1; i < lineas.length; i++) {
+    if (RX_FIN.some((rx) => rx.test(lineas[i]))) { fin = i; break; }
+  }
+
+  const idx: number[] = [];
+  for (let i = ini; i < fin; i++) {
+    const m = RX_MOV.exec(lineas[i]);
+    if (m && diaOk(m[1])) idx.push(i);
+  }
+
+  const movimientos: MovimientoExtraido[] = [];
+  let prev = saldoInicial ?? 0; let orden = 0;
+  for (let k = 0; k < idx.length; k++) {
+    const a = idx[k];
+    const b = k + 1 < idx.length ? idx[k + 1] : fin;
+    const bloque = lineas.slice(a, b).join(' ');
+    const dia = RX_MOV.exec(lineas[a])![1];
+    const nums = bloque.match(RX_IMP) || [];
+    if (!nums.length) continue;                 // sin importe = no es un movimiento real
+    const saldo = aNumero(nums[nums.length - 1]);
+    const delta = pesos(saldo - prev);
+    prev = saldo;
+    if (delta === 0) continue;                  // no mueve el saldo (comisión exenta, etc.)
+    const concepto = bloque.replace(/^\d{2}/, '').replace(RX_IMP, ' ').replace(/\s{2,}/g, ' ').trim();
+    const fecha = (anio && mes) ? `${anio}-${String(mes).padStart(2, '0')}-${dia.padStart(2, '0')}` : '';
+    movimientos.push({
+      fecha, concepto: (concepto || 'Movimiento').slice(0, 160), referencia: '',
+      retiro: delta < 0 ? pesos(-delta) : 0, deposito: delta > 0 ? pesos(delta) : 0,
+      saldo: pesos(saldo), saldoCalculado: 0, advertencia: '', inferido: false, duda: false,
+      orden: orden++, lineaOrigen: lineas[a].slice(0, 300),
+    });
+  }
+
+  let corr = saldoInicial ?? 0;
+  for (const mv of movimientos) { corr = pesos(corr - mv.retiro + mv.deposito); mv.saldoCalculado = corr; }
+  const totalRetiros = pesos(movimientos.reduce((a, m) => a + m.retiro, 0));
+  const totalDepositos = pesos(movimientos.reduce((a, m) => a + m.deposito, 0));
+  const finalCalc = pesos((saldoInicial ?? 0) - totalRetiros + totalDepositos);
+  const cuadra = saldoFinal !== null && Math.abs((saldoFinal ?? 0) - finalCalc) <= 0.02;
+  if (saldoInicial === null) avisos.push('Banregio: no se encontró el saldo inicial.');
+  if (!anio || !mes) avisos.push('Banregio: no se reconoció el mes/año del periodo; captura el periodo al subir el PDF.');
+  if (saldoFinal !== null && !cuadra) {
+    avisos.push(`NO CUADRA: Banregio declara saldo final ${saldoFinal.toFixed(2)} y los movimientos dan ${finalCalc.toFixed(2)} (dif ${pesos((saldoFinal ?? 0) - finalCalc).toFixed(2)}).`);
+  }
+  if (!movimientos.length) avisos.push('Banregio: no se reconoció ningún movimiento en el detalle.');
+
+  return {
+    banco: 'BanRegio', saldoInicial, saldoFinal, movimientos, totalRetiros, totalDepositos,
+    conAdvertencia: 0, inferidos: 0, cuadra, avisos,
+  };
+}
+
+/**
  * Banamex reparte cada operación en un bloque largo delimitado por su FECHA
  * ("09   JUL"), y AL CIERRE imprime "…SUC <4 díg><importe> <saldo>" con el saldo
  * pegado a la sucursal. Se lee por bloques: el SALDO corriente es el último
@@ -1387,6 +1501,11 @@ export function extraerMovimientos(
    * con líneas de descripción y "Referencia" debajo. El ÚLTIMO importe de la línea de
    * fecha es el saldo corriente; el movimiento sale de la diferencia de saldos. */
   if (banco === 'Consubanco') return extraerConsubanco(texto, opciones, avisos);
+
+  /* Banregio (CUENTA NARANJA FULL): tabular DIA·CONCEPTO·CARGOS·ABONOS·SALDO, pero el
+   * concepto de los SPEI ocupa varias líneas y el genérico sólo pescaba los de una
+   * línea. El ÚLTIMO importe de cada bloque es el saldo; el lado sale de su diferencia. */
+  if (banco === 'BanRegio') return extraerBanregio(texto, opciones, avisos);
 
   const mIni = RX_SALDO_INICIAL.exec(texto);
   const mFin = RX_SALDO_FINAL.exec(texto);

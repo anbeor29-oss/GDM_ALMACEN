@@ -43,7 +43,7 @@ const BANCOS_COBERTURA: Array<{ banco: string; clave: string; estado: 'Procesado
   { banco: 'Santander',             clave: '014', estado: 'Procesado', formato: 'Tabular' },
   { banco: 'Scotiabank',            clave: '044', estado: 'Procesado', formato: 'Tabular' },
   { banco: 'HSBC',                  clave: '021', estado: 'Procesado', formato: 'Tabular' },
-  { banco: 'BanRegio',              clave: '058', estado: 'Procesado', formato: 'Tabular' },
+  { banco: 'BanRegio',              clave: '058', estado: 'Procesado', formato: 'Tabular (saldos)' },
   { banco: 'Banco del Bajío',       clave: '030', estado: 'Procesado', formato: 'Tabular' },
   { banco: 'Ve por Más',            clave: '113', estado: 'Procesado', formato: 'Tabular' },
   { banco: 'Afirme',                clave: '062', estado: 'Procesado', formato: 'Tabular' },
