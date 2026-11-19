@@ -124,14 +124,49 @@ export function PeriodosPage() {
   );
 }
 
+/**
+ * Candado de estado de UN mes, en CADA tarjeta:
+ *   · CERRADO → candado CERRADO (ámbar). Admin: clic = reabrir.
+ *   · ABIERTO con saldos → candado ABIERTO (verde). Admin: clic = cerrar.
+ *   · ABIERTO sin saldos / sin ejercicio → candado ABIERTO (gris, no accionable):
+ *     está abierto pero aún no hay nada que cerrar.
+ * Así el estado (abierto/cerrado) se lee de un vistazo en los 12 meses.
+ */
+function Candado({ m, puedeCerrar, onCerrar, onReabrir }: any) {
+  const cerrado = m.estado === 'CERRADO';
+  const sinEjercicio = m.estado === 'SIN_EJERCICIO';
+  if (cerrado) {
+    const reabrible = puedeCerrar;
+    return (
+      <button type="button" onClick={reabrible ? onReabrir : undefined} disabled={!reabrible}
+        title={reabrible ? 'Mes CERRADO — clic para reabrir' : 'Mes cerrado'}
+        className="shrink-0 text-amber-600 hover:text-amber-800 disabled:text-amber-500 disabled:cursor-default">
+        <Lock size={16} />
+      </button>
+    );
+  }
+  const cerrable = puedeCerrar && m.tieneDatos && !sinEjercicio;
+  return (
+    <button type="button" onClick={cerrable ? onCerrar : undefined} disabled={!cerrable}
+      title={cerrable ? 'Mes ABIERTO — clic para cerrar' : (sinEjercicio ? 'Abierto (ejercicio no activado)' : 'Abierto (sin saldos: aún no se puede cerrar)')}
+      className={`shrink-0 ${cerrable ? 'text-emerald-600 hover:text-emerald-800' : 'text-gray-300 cursor-default'}`}>
+      <Unlock size={16} />
+    </button>
+  );
+}
+
 function Casilla({ m, puedeCargar, puedeCerrar, onCargar, onCerrar, onReabrir }: any) {
   const cerrado = m.estado === 'CERRADO';
   const sinEjercicio = m.estado === 'SIN_EJERCICIO';
+  const candado = <Candado m={m} puedeCerrar={puedeCerrar} onCerrar={onCerrar} onReabrir={onReabrir} />;
 
   if (sinEjercicio) {
     return (
-      <div className="border border-dashed rounded-lg p-3 opacity-60">
-        <p className="font-medium text-gray-500 text-sm">{MESES[m.mes]}</p>
+      <div className="border border-dashed rounded-lg p-3 opacity-70">
+        <div className="flex items-start justify-between gap-2">
+          <p className="font-medium text-gray-500 text-sm">{MESES[m.mes]}</p>
+          {candado}
+        </div>
         <p className="text-xs text-gray-400 mt-1">El ejercicio no está abierto</p>
       </div>
     );
@@ -139,17 +174,19 @@ function Casilla({ m, puedeCargar, puedeCerrar, onCargar, onCerrar, onReabrir }:
 
   if (!m.tieneDatos) {
     return (
-      <button disabled={!puedeCargar} onClick={onCargar}
-        className="border border-dashed rounded-lg p-3 text-left hover:border-emerald-400
-          hover:bg-emerald-50/40 transition disabled:opacity-60 disabled:cursor-default">
-        <p className="font-medium text-gray-500 text-sm">{MESES[m.mes]}</p>
+      <div className="border border-dashed rounded-lg p-3">
+        <div className="flex items-start justify-between gap-2">
+          <p className="font-medium text-gray-500 text-sm">{MESES[m.mes]}</p>
+          {candado}
+        </div>
         <p className="text-xs text-gray-400 mt-1">Sin saldos</p>
         {puedeCargar && (
-          <span className="inline-flex items-center gap-1 text-xs text-emerald-700 mt-2">
+          <button type="button" onClick={onCargar}
+            className="inline-flex items-center gap-1 text-xs text-emerald-700 mt-2 hover:underline">
             <Upload size={12} /> Cargar balanza
-          </span>
+          </button>
         )}
-      </button>
+      </div>
     );
   }
 
@@ -160,16 +197,19 @@ function Casilla({ m, puedeCargar, puedeCerrar, onCargar, onCerrar, onReabrir }:
       : 'border-rose-300 bg-rose-50/40'}`}>
       <div className="flex items-start justify-between gap-2">
         <p className="font-medium text-gray-900 text-sm">{MESES[m.mes]}</p>
-        {cerrado ? <Lock size={14} className="text-gray-500 shrink-0" />
-          : m.cuadra ? <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
-          : <AlertTriangle size={15} className="text-rose-600 shrink-0" />}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {!cerrado && (m.cuadra
+            ? <span title="Cuadra"><CheckCircle2 size={15} className="text-emerald-600" /></span>
+            : <span title="No cuadra"><AlertTriangle size={15} className="text-rose-600" /></span>)}
+          {candado}
+        </div>
       </div>
 
       <p className="text-xs text-gray-600 mt-1">{m.cuentasConSaldo} cuentas</p>
       <p className="text-[11px] text-gray-500">
         Cargos {mx(m.totalCargos)}<br />Abonos {mx(m.totalAbonos)}
       </p>
-      {!m.cuadra && <p className="text-[11px] text-rose-700 mt-1">No cuadra</p>}
+      {!m.cuadra && !cerrado && <p className="text-[11px] text-rose-700 mt-1">No cuadra</p>}
 
       {m.fuentes?.length > 0 && (
         <p className="text-[10px] text-gray-500 mt-1 truncate"
@@ -183,15 +223,8 @@ function Casilla({ m, puedeCargar, puedeCerrar, onCargar, onCerrar, onReabrir }:
           Ver estados
         </a>
         {!cerrado && puedeCargar && (
-          <button onClick={onCargar} title="Volver a cargar (reemplaza)"
-            className="text-gray-500 hover:text-emerald-700"><Upload size={13} /></button>
-        )}
-        {puedeCerrar && (
-          cerrado
-            ? <button onClick={onReabrir} title="Reabrir"
-                className="text-gray-500 hover:text-amber-700 ml-auto"><Unlock size={13} /></button>
-            : <button onClick={onCerrar} title="Cerrar el mes"
-                className="text-gray-500 hover:text-gray-900 ml-auto"><Lock size={13} /></button>
+          <button type="button" onClick={onCargar} title="Volver a cargar (reemplaza)"
+            className="text-gray-500 hover:text-emerald-700 ml-auto"><Upload size={13} /></button>
         )}
       </div>
     </div>
