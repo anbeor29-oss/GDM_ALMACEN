@@ -6,11 +6,11 @@
 
 Prueba en vivo del módulo; el usuario pidió seguir con las pantallas. Lo que falta:
 
-- **Captura de stock desde el Inventario de e-commerce.** Hoy `Inventario.tsx` es **solo lectura** (lee
-  `warehouse_stock`, dice «los movimientos se hacen en el ERP»). El usuario quiere **capturar/ajustar existencias
-  ahí mismo**. Falta: endpoint de ajuste de stock (entrada/salida/ajuste con su efecto en el kardex/capas de costo del
-  ERP — NO escribir `warehouse_stock` a pelo) + UI de captura por producto/almacén. Ojo con el kardex (ver módulo
-  ALMACEN). Ver [[ecommerce-modulo-plan]], [[almacen-modulo-inventarios]].
+- **(HECHO 2026-11-18, commit `bc4a859`)** ~~Captura de stock desde el Inventario de e-commerce.~~ El Inventario ya
+  NO es solo lectura: lista TODOS los productos activos (los sin stock con 0) y captura **entrada/salida** por
+  producto+almacén desde un modal, vía `applyMovement` del ERP (kardex + costeo; no escribe `warehouse_stock` a pelo).
+  Endpoints gated ecommerce: `GET /ecommerce/almacenes`, `POST /ecommerce/inventario/ajuste`. Front ⇒ ZIP.
+  Ver [[ecommerce-modulo-plan]], [[almacen-modulo-inventarios]].
 - **Tienda «no disponible» / vacía.** La ruta pública `/t/:slug` SÍ está montada (App.tsx) y el backend
   (`ecommerce-storefront.service`) exige tienda `activa=TRUE` + productos con `ec_product_channel.publicado=TRUE`. Falta
   confirmar con el usuario: slug exacto, tienda activa, y **publicar productos en «Catálogo web»**. Revisar si el flujo
