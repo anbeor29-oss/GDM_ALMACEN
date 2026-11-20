@@ -121,6 +121,34 @@ export async function getReceivablesPDF(req: Request, res: Response) {
   res.send(pdf);
 }
 
+/** Filtros comunes del historial de facturas (fecha/cliente). */
+function filtrosHistorial(req: Request) {
+  return {
+    desde: (req.query.desde as string) || undefined,
+    hasta: (req.query.hasta as string) || undefined,
+    customerId: (req.query.customerId as string) || undefined,
+  };
+}
+
+/** GET /reports/invoices-history — historial de facturas EMITIDAS por cliente/fecha
+ *  con estado de pago (pagada/pendiente/cancelada) + pronóstico por antigüedad. */
+export async function getInvoicesHistory(req: Request, res: Response) {
+  const companyId = getCompanyId(req);
+  const { historialFacturas } = await import('./historial-facturas.service');
+  const data = await historialFacturas(companyId, filtrosHistorial(req));
+  res.status(200).json({ success: true, data });
+}
+
+/** GET /reports/invoices-history.xlsx — el mismo historial en Excel (pestaña verde). */
+export async function getInvoicesHistoryExcel(req: Request, res: Response) {
+  const companyId = getCompanyId(req);
+  const { historialFacturasExcel } = await import('./historial-facturas.service');
+  const { buffer, nombre } = await historialFacturasExcel(companyId, filtrosHistorial(req));
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+  res.send(buffer);
+}
+
 /**
  * GET /api/v1/reports/sales-summary
  * Resumen por mes y año: venta, cobrada, no cobrada y adeudo acumulado.

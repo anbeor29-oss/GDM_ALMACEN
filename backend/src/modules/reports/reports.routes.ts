@@ -23,5 +23,7 @@ router.get('/status', asyncHandler(reportsController.getStatus));
 router.get('/dashboard', asyncHandler(reportsController.getDashboard));
 router.get('/receivables', asyncHandler(reportsController.getReceivables));
 router.get('/receivables/pdf', asyncHandler(reportsController.getReceivablesPDF));
+router.get('/invoices-history', asyncHandler(reportsController.getInvoicesHistory));
+router.get('/invoices-history.xlsx', asyncHandler(reportsController.getInvoicesHistoryExcel));
 
 export default router;

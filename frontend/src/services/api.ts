@@ -778,6 +778,17 @@ class APIClient {
     return r.data as Blob;
   }
 
+  /** Historial de facturas EMITIDAS (por cliente/fecha) con estado de pago + pronóstico. */
+  async getInvoicesHistory(filtros: { desde?: string; hasta?: string; customerId?: string } = {}) {
+    const r = await this.client.get('/reports/invoices-history', { params: filtros });
+    return r.data;
+  }
+  /** El historial en Excel (pestaña verde). */
+  async getInvoicesHistoryExcel(filtros: { desde?: string; hasta?: string; customerId?: string } = {}): Promise<Blob> {
+    const r = await this.client.get('/reports/invoices-history.xlsx', { params: filtros, responseType: 'blob' });
+    return r.data as Blob;
+  }
+
   async getSalesReport(dateFrom?: string, dateTo?: string) {
     const response = await this.client.get('/reports/sales', {
       params: { dateFrom, dateTo },

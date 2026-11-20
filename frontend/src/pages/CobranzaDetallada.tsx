@@ -8,7 +8,7 @@
  */
 import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, ChevronRight } from 'lucide-react';
+import { RefreshCw, ChevronRight, TrendingUp, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { ReceivablesReport } from './Reports';
 import api from '@/services/api';
 
@@ -24,6 +24,8 @@ export function CobranzaDetalladaPage() {
           Lo que te deben tus clientes, desde la contabilidad y desde las facturas de NEXO.
         </p>
       </div>
+
+      <HistorialFacturas />
 
       <CarteraReconstruida />
 
@@ -208,6 +210,136 @@ function SaldosContables() {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ─────────────── Historial de facturas emitidas (por cliente/fecha) ───────────────
+ * Verde = pagada · rojo = pendiente · gris = cancelada. Excel (pestaña verde) y un
+ * PRONÓSTICO de cobranza por antigüedad del saldo. */
+function HistorialFacturas() {
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
+  const [customerId, setCustomerId] = useState('');
+  const [verPron, setVerPron] = useState(false);
+  const [bajando, setBajando] = useState(false);
+
+  const { data: customersResp } = useQuery({
+    queryKey: ['customers-historial'],
+    queryFn: () => api.getCustomers(1, 500, { sortBy: 'name', sortOrder: 'ASC' }),
+  });
+  const customers: any[] = (customersResp as any)?.data?.customers || [];
+
+  const filtros = { desde: desde || undefined, hasta: hasta || undefined, customerId: customerId || undefined };
+  const q = useQuery({
+    queryKey: ['historial-facturas', desde, hasta, customerId],
+    queryFn: () => api.getInvoicesHistory(filtros),
+  });
+  const d: any = (q.data as any)?.data;
+  const filas: any[] = d?.filas || [];
+  const tot: any = d?.totales;
+  const pron: any[] = d?.pronostico || [];
+
+  const descargarExcel = async () => {
+    setBajando(true);
+    try {
+      const blob = await api.getInvoicesHistoryExcel(filtros);
+      await api.downloadFile(blob, 'Historial_facturas.xlsx');
+    } catch (e: any) {
+      alert(e?.response?.data?.message || 'No se pudo generar el Excel.');
+    } finally { setBajando(false); }
+  };
+
+  const dotColor = (estado: string) => estado === 'PAGADA' ? 'bg-emerald-500' : estado === 'PENDIENTE' ? 'bg-rose-500' : 'bg-gray-300';
+  const estadoTexto = (estado: string) => estado === 'PAGADA' ? 'Pagada' : estado === 'PENDIENTE' ? 'Pendiente' : 'Cancelada';
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-800">Historial de facturas emitidas</h2>
+          <p className="text-sm text-gray-500 flex flex-wrap items-center gap-x-3 gap-y-1">
+            Todo el historial, por cliente y fecha.
+            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> pagada</span>
+            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" /> pendiente</span>
+          </p>
+        </div>
+        <div className="flex items-end gap-2 flex-wrap">
+          <label className="text-[11px] text-gray-500">Desde<input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="input block py-1.5 text-sm" /></label>
+          <label className="text-[11px] text-gray-500">Hasta<input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="input block py-1.5 text-sm" /></label>
+          <label className="text-[11px] text-gray-500">Cliente
+            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="input block py-1.5 text-sm w-44">
+              <option value="">Todos</option>
+              {customers.map((c) => <option key={c.id} value={c.id}>{c.business_name}</option>)}
+            </select>
+          </label>
+          <button type="button" onClick={() => setVerPron((v) => !v)} title="Pronóstico de cobranza por antigüedad"
+            className={`inline-flex items-center gap-1.5 border px-3 py-2 rounded-lg text-sm ${verPron ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}>
+            <TrendingUp size={15} /> Pronóstico
+          </button>
+          <button type="button" onClick={descargarExcel} disabled={bajando}
+            className="inline-flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm font-medium">
+            {bajando ? <Loader2 size={15} className="animate-spin" /> : <FileSpreadsheet size={15} />} Excel
+          </button>
+        </div>
+      </div>
+
+      {tot && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+          <div className="bg-white rounded-lg shadow border px-4 py-2"><p className="text-xs text-gray-500">Facturado</p><p className="text-lg font-bold text-gray-800 tabular-nums">{fmt(tot.totalFacturado)}</p></div>
+          <div className="bg-white rounded-lg shadow border px-4 py-2"><p className="text-xs text-gray-500">Pagado ({tot.pagadas})</p><p className="text-lg font-bold text-emerald-700 tabular-nums">{fmt(tot.totalPagado)}</p></div>
+          <div className="bg-white rounded-lg shadow border px-4 py-2"><p className="text-xs text-gray-500">Pendiente ({tot.pendientes})</p><p className="text-lg font-bold text-rose-700 tabular-nums">{fmt(tot.totalPendiente)}</p></div>
+          <div className="bg-white rounded-lg shadow border px-4 py-2"><p className="text-xs text-gray-500">Facturas</p><p className="text-lg font-bold text-gray-800 tabular-nums">{tot.facturas}{tot.canceladas ? <span className="text-xs text-gray-400"> · {tot.canceladas} cancel.</span> : null}</p></div>
+        </div>
+      )}
+
+      {verPron && (
+        <div className="bg-indigo-50/60 border border-indigo-200 rounded-lg p-4 mb-3">
+          <p className="text-sm font-semibold text-indigo-800 flex items-center gap-1.5 mb-2"><TrendingUp size={15} /> Pronóstico de cobranza (por antigüedad del saldo)</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {pron.map((p) => (
+              <div key={p.rango} className="bg-white rounded-lg border px-3 py-2">
+                <p className="text-[11px] text-gray-500">{p.rango}</p>
+                <p className="text-base font-bold text-rose-700 tabular-nums">{fmt(p.monto)}</p>
+                <p className="text-[10px] text-gray-400">{p.facturas} factura(s)</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg shadow border overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b"><tr>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Fecha</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Cliente</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Folio</th>
+            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Total</th>
+            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Pagado</th>
+            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Saldo</th>
+            <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Estado</th>
+          </tr></thead>
+          <tbody className="divide-y">
+            {q.isLoading && <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">Cargando…</td></tr>}
+            {!q.isLoading && filas.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400 italic">Sin facturas emitidas en el periodo.</td></tr>}
+            {filas.map((f, i) => (
+              <tr key={`${f.serie}-${f.folio}-${i}`} className="hover:bg-gray-50">
+                <td className="px-3 py-1.5 whitespace-nowrap text-gray-600">{f.fecha}</td>
+                <td className="px-3 py-1.5 text-gray-800">{f.cliente} <span className="text-[11px] text-gray-400 font-mono">{f.rfc}</span></td>
+                <td className="px-3 py-1.5 font-mono text-xs text-gray-500">{f.serie}-{String(f.folio).padStart(6, '0')}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{fmt(f.total)}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-emerald-700">{fmt(f.pagado)}</td>
+                <td className={`px-3 py-1.5 text-right tabular-nums ${f.saldo > 0 ? 'text-rose-700 font-medium' : 'text-gray-400'}`}>{fmt(f.saldo)}</td>
+                <td className="px-3 py-1.5 text-center">
+                  <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                    <span className={`w-2.5 h-2.5 rounded-full inline-block ${dotColor(f.estado)}`} /> {estadoTexto(f.estado)}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
