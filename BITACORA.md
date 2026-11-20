@@ -8491,3 +8491,25 @@ libera su folio para la siguiente factura. Seguro: `deleteInvoice` sólo borra D
 conserva `deleted_at NULL`, así que su folio **no** se reutiliza (el CFDI ya existe ante el SAT). `invoices` no tiene
 UNIQUE(company_id,folio), así que reusar no choca. Backend-only ⇒ push. (El recordatorio de Uso CFDI del commit `7f9778d`
 es FRONTEND: va en el ZIP, no en el push — por eso «no aparecía».) Ver [[factura-global-publico-general]].
+
+---
+
+## 2026-11-19 (cobranza) — Pantalla en blanco al timbrar + PDF de cobranza + crons CDMX + historial de facturas
+
+Lote de arreglos y una función nueva:
+- **Pantalla en blanco al timbrar (commits `d3c566e`+`aaf8c3c`).** No había **ErrorBoundary**, así que un crash de
+  render desmontaba todo (blanco). El crash concreto era MI modal de recordatorio de Uso CFDI (`usos.find`): leía el
+  catálogo como `.data` (objeto) cuando viene en `.data.entries` (campos `catalog_key`+`description`). Fix + `Array.isArray`.
+  El ErrorBoundary (envuelve el Router) queda como red de seguridad. Detalle en `ERRORES_Y_SOLUCIONES.md` #6.
+- **PDF de cobranza no bajaba (commit `28acbd2`).** `openPDF` hacía fetch crudo con `localStorage.getItem('token')`,
+  pero el token vive en **sessionStorage** → 401 → PDF roto. Ahora vía axios (`getReceivablesPDF`) + `downloadFile`.
+- **Crons en hora de México (`28acbd2`).** billing/auditoría/inventory/lista-69b fijan `{ timezone: 'America/Mexico_City' }`
+  (descarga SAT 3:00 y limpieza 6:30 ya lo tenían). OJO: el **cierre POS 23:55** corría en UTC = 5:55pm CDMX. Para TODO
+  el proceso (logs) → var `TZ=America/Mexico_City` en Render (lo pone el usuario).
+- **Folio reutilizable (`5e39aea`).** Ver entrada previa (MAX excluía borrados).
+- **Historial de facturas (commit `f46ab22`).** Nueva sección en **Cobranza detallada**: historial de facturas EMITIDAS
+  por cliente/fecha, punto **verde**=pagada / **rojo**=pendiente / gris=cancelada; filtros, tarjetas de totales, **Excel
+  verde** (`ws.tabColor`, reusa `estilo-excel`) e **ícono de pronóstico** (cobranza por antigüedad 0-30/31-60/61-90/+90).
+  Backend `historial-facturas.service` + rutas `GET /reports/invoices-history(.xlsx)`. Ver [[reportes-excel-pdf-nexo]],
+  [[pue-ppd-cobranza-regla]].
+- **Pendiente e-commerce:** fotos de producto salen rotas (código OK; falta ver qué responde `/storefront/img/:id`).
