@@ -425,7 +425,7 @@ modo campo ocupaban toda la pantalla **sin ningún control para volver**.
 **❌ Lo que NO hay que hacer.** Mostrar `e.message` de una API del navegador a quien está parado frente a la tableta;
 y dejar una pantalla completa sin salida (heurística #3 de Nielsen: control y libertad del usuario).
 
-**✅ Solución (commit `__HASH__`).**
+**✅ Solución (commit `233f7b3`).**
 - `components/CamaraAviso.tsx`: `revisarEntornoCamara()` comprueba contexto seguro y disponibilidad de la API ANTES
   de pedir la cámara; `diagnosticarCamara(e)` mapea `NotAllowedError` / `NotFoundError` / `OverconstrainedError` /
   `NotReadableError` a causa + pasos concretos en español; `<CamaraAviso>` los pinta con `role="alert"`, botón
