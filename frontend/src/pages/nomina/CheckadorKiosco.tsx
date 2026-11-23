@@ -14,6 +14,8 @@ import { UserCheck, UserX, Camera, LogIn, LogOut, Loader2, Settings, Clock, MapP
 import { cargarFaceApi, descriptorDeVideo } from '@/utils/faceApi';
 import { leerKioscoSel, guardarKioscoSel, borrarKioscoSel, type KioscoSel } from '@/utils/kioscoSel';
 import { modoKiosco } from '@/utils/kioscoAuto';
+import { CamaraAviso, diagnosticarCamara, revisarEntornoCamara, type DiagnosticoCamara } from '@/components/CamaraAviso';
+import { BotonSalirPantalla } from '@/components/BotonSalirPantalla';
 import api from '@/services/api';
 
 type Resultado = { ok: boolean; nombre?: string; tipo?: string; repetido?: boolean; hora?: string; espera?: boolean; mensaje?: string };
@@ -28,7 +30,10 @@ export function CheckadorKioscoPage() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const [fase, setFase] = useState<'iniciando' | 'listo' | 'error'>('iniciando');
-  const [error, setError] = useState('');
+  /* El fallo de cámara se DIAGNOSTICA (ver CamaraAviso): antes se pintaba el
+   * `e.message` crudo del navegador —«Permission denied»— que no dice qué hacer. */
+  const [diag, setDiag] = useState<DiagnosticoCamara | null>(null);
+  const [intento, setIntento] = useState(0);   // «Reintentar» re-corre el efecto
   const [res, setRes] = useState<Resultado | null>(null);
   const ocupado = useRef(false);
   const enfriando = useRef(0);   // timestamp hasta el que no se vuelve a procesar
@@ -96,7 +101,12 @@ export function CheckadorKioscoPage() {
     };
 
     (async () => {
+      /* Antes de pedir la cámara: si la página no está en https el navegador ni
+       * pregunta, y el error saldría como «permiso denegado» —que es mentira—. */
+      const previo = revisarEntornoCamara();
+      if (previo) { setDiag(previo); setFase('error'); return; }
       try {
+        setFase('iniciando'); setDiag(null);
         await cargarFaceApi();
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 }, audio: false });
         if (!vivo) return;
@@ -104,20 +114,27 @@ export function CheckadorKioscoPage() {
         setFase('listo');
         timer = setInterval(tick, 1200);
       } catch (e: any) {
-        setError(e?.message || 'No se pudo iniciar la cámara. Da permiso de cámara y recarga.');
+        if (!vivo) return;
+        setDiag(diagnosticarCamara(e));
         setFase('error');
       }
     })();
 
     return () => { vivo = false; if (timer) clearInterval(timer); stream?.getTracks().forEach((t) => t.stop()); };
-  }, []);
+  }, [intento]);
 
   if (esCampo) return null;           // redirigiendo al checador de campo
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-6 p-4 sm:p-6 bg-gray-900 text-white relative overflow-hidden">
-      <Link to="/checador" className="absolute top-3 right-3 text-gray-400 hover:text-white p-2" title="Administración" aria-label="Administración">
-        <Settings size={20} />
+      {/* Salida explícita arriba-izquierda (antes sólo había un engrane gris de 20px
+          arriba-derecha, que nadie encontraba). En el kiosco va CON confirmación:
+          es un equipo compartido y no debe salirse del modo registro por un roce. */}
+      <BotonSalirPantalla confirmar etiqueta="Salir" />
+      <Link to="/checador" className="absolute top-3 right-3 inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-2xl
+        text-gray-300 hover:text-white hover:bg-slate-700/60 transition
+        focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-400/60" title="Administración" aria-label="Ir a administración del checador">
+        <Settings size={20} aria-hidden="true" /> <span className="text-sm hidden sm:inline">Administración</span>
       </Link>
       <h1 className="text-2xl font-bold flex items-center gap-2"><Camera size={24} /> Checador · Kiosco</h1>
       {sel && (
@@ -136,7 +153,9 @@ export function CheckadorKioscoPage() {
         )}
       </div>
 
-      {fase === 'error' && <p className="text-rose-300 text-sm max-w-md text-center">{error}</p>}
+      {fase === 'error' && diag && (
+        <CamaraAviso d={diag} tono="oscuro" onReintentar={() => setIntento((n) => n + 1)} />
+      )}
       {fase === 'listo' && !res && <p className="text-gray-300 text-sm">Acércate y mira a la cámara para registrar tu entrada o salida.</p>}
 
       {res && (

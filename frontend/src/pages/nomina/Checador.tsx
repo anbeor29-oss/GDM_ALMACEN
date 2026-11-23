@@ -56,13 +56,37 @@ export function ChecadorPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {items.map((it, i) => {
+      {/* Las PESTAÑAS cambian el contenido aquí mismo; los ENLACES abren una pantalla
+          completa de cámara. Mezclados sin distinción, tocar «Abrir kiosco» se sentía
+          como un salto inesperado (heurística #1: visibilidad del estado). Se separan
+          en dos grupos con un rótulo, se conserva el mismo esquema de color
+          (claseOpcion) y se añade estado de foco visible + microinteracción. */}
+      <div role="tablist" aria-label="Secciones del checador" className="flex flex-wrap gap-1.5">
+        {items.filter((it) => it.kind === 'tab').map((it: any, i) => {
           const Ico = it.icon;
-          const cls = `inline-flex items-center gap-1.5 ${claseOpcion(i, it.kind === 'tab' && tab === it.id)}`;
-          return it.kind === 'tab'
-            ? <button key={it.id} onClick={() => setTab(it.id)} className={cls}><Ico size={15} /> {it.label}</button>
-            : <Link key={it.to} to={it.to} className={cls}><Ico size={15} /> {it.label}</Link>;
+          const activa = tab === it.id;
+          return (
+            <button key={it.id} role="tab" aria-selected={activa} onClick={() => setTab(it.id)}
+              className={`inline-flex items-center gap-1.5 transition active:scale-[.97]
+                focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300
+                ${activa ? '' : 'hover:-translate-y-px hover:shadow-sm'} ${claseOpcion(i, activa)}`}>
+              <Ico size={15} aria-hidden="true" /> {it.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] uppercase tracking-wide text-gray-400 mr-0.5">Abrir cámara:</span>
+        {items.filter((it) => it.kind === 'link').map((it: any, i) => {
+          const Ico = it.icon;
+          return (
+            <Link key={it.to} to={it.to}
+              className={`inline-flex items-center gap-1.5 transition active:scale-[.97]
+                hover:-translate-y-px hover:shadow-sm
+                focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 ${claseOpcion(i + 4, false)}`}>
+              <Ico size={15} aria-hidden="true" /> {it.label}
+            </Link>
+          );
         })}
       </div>
 
@@ -234,7 +258,24 @@ function TabConfig() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['checador-config'] }); },
   });
 
-  if (!f) return <p className="text-sm text-gray-500">Cargando…</p>;
+  /* ANTES: `if (!f) return <p>Cargando…</p>` — si la petición FALLABA, `f` nunca se
+   * llenaba y la pestaña se quedaba en «Cargando…» para siempre, sin decir nada.
+   * Ahora el error se enseña con su causa y un botón para reintentar. */
+  if (q.isError) {
+    const e: any = q.error;
+    return (
+      <div role="alert" className="bg-rose-50 border border-rose-200 text-rose-900 rounded-lg p-4 max-w-xl">
+        <p className="font-semibold">No se pudo cargar la configuración del checador.</p>
+        <p className="text-sm mt-0.5">{e?.response?.data?.message || e?.message || 'El servidor no respondió.'}</p>
+        <button onClick={() => q.refetch()}
+          className="mt-3 inline-flex items-center justify-center min-h-[44px] px-4 rounded-lg bg-rose-600 text-white font-medium
+            hover:bg-rose-700 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-rose-300">
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+  if (!f) return <p className="text-sm text-gray-500" role="status">Cargando…</p>;
   const num = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value === '' ? null : Number(e.target.value) });
 
   return (

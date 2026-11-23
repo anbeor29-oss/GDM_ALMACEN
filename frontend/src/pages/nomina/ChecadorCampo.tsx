@@ -13,6 +13,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { UserCheck, UserX, MapPin, MapPinOff, LogIn, LogOut, Loader2, Settings, RefreshCw, Clock } from 'lucide-react';
 import { cargarFaceApi, descriptorDeVideo } from '@/utils/faceApi';
+import { CamaraAviso, diagnosticarCamara, revisarEntornoCamara, type DiagnosticoCamara } from '@/components/CamaraAviso';
+import { BotonSalirPantalla } from '@/components/BotonSalirPantalla';
 import api from '@/services/api';
 
 type Coords = { lat: number; lng: number } | null;
@@ -21,7 +23,9 @@ type Resultado = { ok: boolean; nombre?: string; tipo?: string; repetido?: boole
 export function ChecadorCampoPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [fase, setFase] = useState<'iniciando' | 'listo' | 'error'>('iniciando');
-  const [error, setError] = useState('');
+  /* Diagnóstico accionable en vez del `e.message` crudo del navegador. */
+  const [diag, setDiag] = useState<DiagnosticoCamara | null>(null);
+  const [intento, setIntento] = useState(0);
   const [gps, setGps] = useState<'buscando' | 'ok' | 'denegado' | 'sin'>('buscando');
   const [res, setRes] = useState<Resultado | null>(null);
   const [checando, setChecando] = useState(false);
@@ -76,7 +80,12 @@ export function ChecadorCampoPage() {
 
     pedirGps();
     (async () => {
+      /* Sin https el navegador ni pregunta, y el error saldría como «permiso
+       * denegado» —que es mentira—. Se revisa antes para decir la verdad. */
+      const previo = revisarEntornoCamara();
+      if (previo) { setDiag(previo); setFase('error'); return; }
       try {
+        setFase('iniciando'); setDiag(null);
         await cargarFaceApi();
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 }, audio: false });
         if (!vivo) return;
@@ -84,13 +93,14 @@ export function ChecadorCampoPage() {
         setFase('listo');
         timer = setInterval(tick, 1000);
       } catch (e: any) {
-        setError(e?.message || 'No se pudo iniciar la cámara. Da permiso de cámara y recarga.');
+        if (!vivo) return;
+        setDiag(diagnosticarCamara(e));
         setFase('error');
       }
     })();
 
     return () => { vivo = false; if (timer) clearInterval(timer); stream?.getTracks().forEach((t) => t.stop()); };
-  }, []);
+  }, [intento]);
 
   const gpsChip = {
     buscando: { icon: <Loader2 className="animate-spin" size={14} />, txt: 'Ubicación…', cls: 'bg-gray-700 text-gray-200' },
@@ -101,10 +111,14 @@ export function ChecadorCampoPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center gap-4 p-4 bg-gray-900 text-white relative overflow-hidden">
-      <Link to="/checador" className="absolute top-3 right-3 text-gray-400 hover:text-white p-2" title="Administración" aria-label="Administración">
-        <Settings size={20} />
+      {/* Salida explícita. En campo (celular propio) NO pide confirmación: estorba. */}
+      <BotonSalirPantalla etiqueta="Salir" />
+      <Link to="/checador" className="absolute top-3 right-3 inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-2xl
+        text-gray-300 hover:text-white hover:bg-slate-700/60 transition
+        focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-400/60" title="Administración" aria-label="Ir a administración del checador">
+        <Settings size={20} aria-hidden="true" /> <span className="text-sm hidden sm:inline">Administración</span>
       </Link>
-      <h1 className="text-xl font-bold flex items-center gap-2 mt-1"><MapPin size={22} /> Checador · Campo</h1>
+      <h1 className="text-xl font-bold flex items-center gap-2 mt-1 pt-12 sm:pt-0"><MapPin size={22} /> Checador · Campo</h1>
 
       <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${gpsChip.cls}`}>
         {gpsChip.icon} {gpsChip.txt}
@@ -127,7 +141,9 @@ export function ChecadorCampoPage() {
         )}
       </div>
 
-      {fase === 'error' && <p className="text-rose-300 text-sm max-w-md text-center">{error}</p>}
+      {fase === 'error' && diag && (
+        <CamaraAviso d={diag} tono="oscuro" onReintentar={() => setIntento((n) => n + 1)} />
+      )}
       {fase === 'listo' && !res && !checando && <p className="text-gray-300 text-sm text-center">Mira a la cámara para registrar tu entrada o salida.</p>}
 
       {res && (

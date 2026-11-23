@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Camera, Check, Loader2, ShieldCheck, UserPlus, RefreshCw, Save, Settings, Printer } from 'lucide-react';
 import { cargarFaceApi, descriptorDeVideo } from '@/utils/faceApi';
+import { CamaraAviso, diagnosticarCamara, revisarEntornoCamara, type DiagnosticoCamara } from '@/components/CamaraAviso';
 import { useAuthStore } from '@/store/auth';
 import { ConsentimientoTexto, htmlConsentimientoImprimir } from './ConsentimientoBiometrico';
 import api from '@/services/api';
@@ -37,7 +38,9 @@ export function CheckadorEnrolarPage() {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [empId, setEmpId] = useState('');
   const [fase, setFase] = useState<'iniciando' | 'listo' | 'error'>('iniciando');
-  const [error, setError] = useState('');
+  /* Diagnóstico accionable en vez del `e.message` crudo del navegador. */
+  const [diag, setDiag] = useState<DiagnosticoCamara | null>(null);
+  const [intento, setIntento] = useState(0);
   const [tomas, setTomas] = useState<number[][]>([]);
   const [fotoFrente, setFotoFrente] = useState<string | null>(null);  // JPEG de la 1ª toma → expediente
   const [capturando, setCapturando] = useState(false);
@@ -89,19 +92,23 @@ export function CheckadorEnrolarPage() {
     let vivo = true;
     (async () => {
       await cargarEmpleados();
+      const previo = revisarEntornoCamara();
+      if (previo) { setDiag(previo); setFase('error'); return; }
       try {
+        setFase('iniciando'); setDiag(null);
         await cargarFaceApi();
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 }, audio: false });
         if (!vivo) return;
         if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play().catch(() => {}); }
         setFase('listo');
       } catch (e: any) {
-        setError(e?.message || 'No se pudo iniciar la cámara. Da permiso de cámara y recarga.');
+        if (!vivo) return;
+        setDiag(diagnosticarCamara(e));
         setFase('error');
       }
     })();
     return () => { vivo = false; stream?.getTracks().forEach((t) => t.stop()); };
-  }, []);
+  }, [intento]);
 
   const capturar = async () => {
     if (!videoRef.current || capturando || tomas.length >= TOMAS) return;
@@ -162,7 +169,9 @@ export function CheckadorEnrolarPage() {
               </div>
             )}
           </div>
-          {fase === 'error' && <p className="text-rose-600 text-sm">{error}</p>}
+          {fase === 'error' && diag && (
+            <CamaraAviso d={diag} onReintentar={() => setIntento((n) => n + 1)} />
+          )}
 
           <div className="flex items-center gap-2">
             {Array.from({ length: TOMAS }).map((_, i) => (

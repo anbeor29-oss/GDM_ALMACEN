@@ -407,6 +407,43 @@ de quien importó su catálogo. La regla sólo se aplica cuando el PADRE ya est�
 
 ---
 
+## 12. Checador: «Permission denied» en la cámara y pestañas atoradas en «Cargando…»
+
+**Síntoma.** (a) Enrolar rostro, Abrir kiosco y Campo mostraban un cuadro negro con **«Permission denied»** en inglés;
+(b) las pestañas Configuración, Kioscos y Registro se quedaban en **«Cargando…»** para siempre; (c) el kiosco y el
+modo campo ocupaban toda la pantalla **sin ningún control para volver**.
+
+**Causa raíz.**
+- (a) Las tres pantallas hacían `catch (e) { setError(e.message) }` y pintaban el mensaje CRUDO del navegador. Ese
+  texto es para el programador: no dice la causa (son 5 distintas con salidas distintas) ni ofrece reintentar. La
+  causa que más se esconde: `getUserMedia` sólo funciona en **contexto seguro** (https:// o localhost); abierta por
+  http:// o por IP de la red local el navegador **ni siquiera pregunta**, y el error igual sale como «permiso
+  denegado», que es mentira.
+- (b) `if (!f) return <p>Cargando…</p>` sin rama de error: si la petición fallaba, el estado nunca se llenaba.
+- (c) Sólo había un engrane gris de 20 px arriba a la derecha, sin etiqueta: nadie lo encontraba.
+
+**❌ Lo que NO hay que hacer.** Mostrar `e.message` de una API del navegador a quien está parado frente a la tableta;
+y dejar una pantalla completa sin salida (heurística #3 de Nielsen: control y libertad del usuario).
+
+**✅ Solución (commit `__HASH__`).**
+- `components/CamaraAviso.tsx`: `revisarEntornoCamara()` comprueba contexto seguro y disponibilidad de la API ANTES
+  de pedir la cámara; `diagnosticarCamara(e)` mapea `NotAllowedError` / `NotFoundError` / `OverconstrainedError` /
+  `NotReadableError` a causa + pasos concretos en español; `<CamaraAviso>` los pinta con `role="alert"`, botón
+  Reintentar de 44 px y un `<details>` con el detalle técnico para soporte. Tonos claro y oscuro, ambos AA.
+- `components/BotonSalirPantalla.tsx`: salida fija arriba-izquierda, 44×44 px, foco visible. En el KIOSCO va con
+  confirmación (equipo compartido: no debe salirse del modo registro por un roce); en campo, directa.
+- Las tres pantallas de cámara reintentan de verdad (el efecto depende de `intento`, ya no hay que recargar).
+- `TabConfig`: rama `q.isError` con la causa y botón Reintentar.
+- Barra del Checador: pestañas y accesos de cámara **separados en dos grupos** (unas cambian el contenido, los otros
+  abren pantalla completa), con `role="tablist"`/`aria-selected`, foco visible y microinteracción. Mismo esquema de
+  color (`claseOpcion`), como pide [[opciones-menu-colores]].
+
+**Límite conocido.** No se pudo verificar en ejecución: las pantallas están detrás del login y no se usan las
+credenciales del usuario. Compila y empaqueta; **falta probar en la tableta real**. Si el «Permission denied» venía
+de http://, el aviso ahora lo dirá — pero la solución de fondo es servir el checador por https.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …
