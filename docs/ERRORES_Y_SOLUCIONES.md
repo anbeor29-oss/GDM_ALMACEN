@@ -264,7 +264,7 @@ concreto no, el problema es el criterio de mes, no los datos ni el aislamiento d
 **❌ Lo que NO hay que hacer.** Clasificar el mes contable de una provisión de nómina por `fecha_pago`. La fecha de
 pago es caja; el devengo lo marca el periodo (`fecha_inicio`/`fecha_fin`, o el `numero` del mes para MENSUAL).
 
-**✅ Solución (commit `__HASH__`).**
+**✅ Solución (commit `1950b14`).**
 - `PolizasHub.tsx` (NominaEmitida): nuevo `mesPeriodo(p)` → para **MENSUAL** usa `numero` (1–12); para lo demás, el
   mes de **`fecha_fin`** (cierre del periodo), con respaldo `fecha_inicio`/`fecha_pago`. El filtro `enPeriodo` ahora
   empareja `anio` + `mesPeriodo`, sin usar `fecha_pago`.
