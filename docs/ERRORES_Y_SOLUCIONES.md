@@ -463,7 +463,7 @@ true` con `documento` nulo, ese enrolamiento no tiene prueba de la firma detrás
 sensible. Y confiar en «¿se imprimió?» como prueba: que el navegador abra el diálogo de impresión no significa que
 alguien haya firmado.
 
-**✅ Solución (commit `__HASH__`).** El candado del enrolamiento pasa a ser la **evidencia**:
+**✅ Solución (commit `fa3c821`).** El candado del enrolamiento pasa a ser la **evidencia**:
 1. **Imprimir** el convenio (el texto ya existía en `ConsentimientoBiometrico.tsx`) → `impreso_at`.
 2. **Firma autógrafa** en papel, por duplicado — fuera del sistema.
 3. **Foto del convenio firmado** → `checador_consentimiento.documento` (data-URL, mismo patrón que la foto del
