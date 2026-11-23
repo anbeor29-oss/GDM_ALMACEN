@@ -351,7 +351,7 @@ estados financieros suman por PREFIJO (`suma('105')`), por eso se veía ahí y e
   rubro. Por eso la corrección exige `tercero_rfc IS NOT NULL` — un control nunca lo tiene.
 - Pisar un agrupador específico ya puesto (p. ej. `105.02` capturado a mano): puede ser deliberado.
 
-**✅ Solución (commit `__HASH__`).**
+**✅ Solución (commit `6cd7ead`).**
 - `resolverOCrearSubcuentaTercero`: el INSERT usa el agrupador **específico** (`agrup`, que sale del tipo + RFC:
   `XEXX…` → extranjero), no el del control. Al **ligar** una cuenta del respaldo, sólo se le pone el específico si
   venía vacío o con el del rubro; uno específico ya puesto no se pisa.
