@@ -393,7 +393,10 @@ router.post(
   requireCapability('contabilidad:catalogo'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await terceros.reorganizarTerceros(companyId(req));
-    res.json({ success: true, data: r, message: `${r.movidas} tercero(s) reubicado(s) en su control correcto.` });
+    const msg = `${r.movidas} tercero(s) reubicado(s) en su control correcto`
+      + (r.agrupador ? ` · ${r.agrupador} reagrupado(s) al agrupador del SAT que les toca (105.01/201.01 en vez del 105/201 del mayor)` : '')
+      + '.';
+    res.json({ success: true, data: r, message: msg });
   })
 );
 
@@ -403,8 +406,16 @@ router.post(
   '/cuentas/asignar-agrupador',
   requireCapability('contabilidad:catalogo'),
   asyncHandler(async (req: Request, res: Response) => {
-    const r = await catalogo.asignarAgrupadorFaltante(companyId(req));
-    res.json({ success: true, data: r, message: `${r.rellenadas} cuenta(s) recibieron agrupador del padre.` });
+    const cid = companyId(req);
+    const r = await catalogo.asignarAgrupadorFaltante(cid);
+    /* La herencia copia el agrupador del padre TAL CUAL, y a una subcuenta de tercero
+     * le toca el ESPECÍFICO (105.01/201.01), no el de RUBRO del mayor (105/201). Se
+     * corrige aquí mismo para que el botón deje el catálogo bien de una pasada. */
+    const t = await terceros.normalizarAgrupadorTerceros(cid);
+    const msg = `${r.rellenadas} cuenta(s) recibieron agrupador del padre`
+      + (t.corregidas ? ` · ${t.corregidas} subcuenta(s) de cliente/proveedor quedaron en su agrupador específico (105.01/105.02 · 201.01/201.02)` : '')
+      + '.';
+    res.json({ success: true, data: { ...r, ...t }, message: msg });
   })
 );
 

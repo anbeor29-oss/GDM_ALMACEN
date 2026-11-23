@@ -164,7 +164,8 @@ export function CatalogoCuentasPage() {
     catch (e: any) { setMsg(e?.response?.data?.message || 'No se pudo reorganizar.'); }
     finally { setHerr(''); }
   };
-  /* Rellena el agrupador SAT que falta, heredándolo del padre. */
+  /* Rellena el agrupador SAT que falta (heredándolo del padre) y corrige el de las
+     subcuentas de tercero que quedaron con el del rubro (105/201) en vez del suyo. */
   const asignarAgrupador = async () => {
     setHerr('agrup'); setMsg('');
     try { const r: any = await api.asignarAgrupadorFaltante(); setMsg(r?.message || 'Agrupadores asignados.'); refrescar(); }
@@ -299,7 +300,7 @@ export function CatalogoCuentasPage() {
               </button>
               )}
               <button onClick={asignarAgrupador} disabled={!!herr}
-                title="Rellena el agrupador del SAT de las cuentas que no lo tienen, heredándolo del padre"
+                title="Rellena el agrupador del SAT de las cuentas que no lo tienen (heredándolo del padre) y deja a cada cliente/proveedor en su agrupador específico: 105.01/105.02 y 201.01/201.02, no el 105/201 del mayor"
                 className="border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg text-sm hover:bg-amber-50 disabled:opacity-50 flex items-center gap-1.5">
                 <Tag size={14} /> {herr === 'agrup' ? 'Asignando…' : 'Asignar agrupador'}
               </button>

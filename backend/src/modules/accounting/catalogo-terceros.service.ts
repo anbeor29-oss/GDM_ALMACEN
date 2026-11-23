@@ -205,10 +205,16 @@ export async function resolverOCrearSubcuentaTercero(
     const hit = cand.rows.find((c: any) => norm(c.nombre) === nombreNorm)
              || cand.rows.find((c: any) => normSorted(c.nombre) === nombreSorted);
     if (hit) {
+      /* Al LIGAR una cuenta del respaldo se le pone el agrupador específico si venía
+       * vacío o con el del RUBRO (105/201, heredado del padre). Un agrupador
+       * específico ya puesto NO se pisa: puede ser deliberado (p. ej. 105.02). */
       await query(
         `UPDATE accounting_accounts SET tercero_rfc=$2, requiere_tercero=false,
-           codigo_agrupador=COALESCE(codigo_agrupador,$3) WHERE id=$1`,
-        [hit.id, rfcU, agrup]);
+           codigo_agrupador = CASE
+             WHEN codigo_agrupador IS NULL OR codigo_agrupador = '' OR codigo_agrupador = $4
+               THEN $3 ELSE codigo_agrupador END
+         WHERE id=$1`,
+        [hit.id, rfcU, agrup, agrup.split('.')[0]]);
       return { id: hit.id, codigo: hit.codigo, creada: false };
     }
   }
@@ -225,7 +231,14 @@ export async function resolverOCrearSubcuentaTercero(
         es_complementaria, nif_norma, nivel, permite_movimientos, requiere_tercero, tercero_rfc)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true,false,$11)
      RETURNING id, codigo`,
-    [companyId, control.id, codigo, (nombre || rfcU).slice(0, 250), control.codigo_agrupador,
+    /* El agrupador es el ESPECÍFICO del tercero (105.01/105.02 · 201.01/201.02), NO el
+     * del control. El mayor lleva el de RUBRO (105 Clientes / 201 Proveedores) y sus
+     * hijos el específico —la misma regla que declara el mapeador (`hijos`)—. Heredar
+     * el del control hacía nacer al tercero con 105/201 y entonces quedaba INVISIBLE
+     * para todo lo que filtra por el específico: la pantalla de subcuentas, los saldos
+     * por cliente (cuentas por cobrar), la captura en el catálogo de terceros y la
+     * propia «Reorganizar terceros». */
+    [companyId, control.id, codigo, (nombre || rfcU).slice(0, 250), agrup,
      control.tipo, control.naturaleza, control.es_complementaria, control.nif_norma,
      (control.nivel || 1) + 1, rfcU]);
 
@@ -248,6 +261,40 @@ async function guardarCuentaEnTercero(
 }
 
 /**
+ * Corrige el AGRUPADOR de las subcuentas de tercero que quedaron con el del PADRE.
+ *
+ * El mayor lleva el agrupador de RUBRO (105 Clientes / 201 Proveedores) y sus hijos el
+ * ESPECÍFICO (105.01/105.02 · 201.01/201.02). Las subcuentas que creó el motor de
+ * pólizas heredaban el del control, así que cuando el control venía con 105/201 —lo
+ * normal: el mayor del respaldo trae el agrupador padre— el tercero nacía con 105/201 y
+ * quedaba fuera de TODO lo que filtra por el específico: `listarSubcuentasTercero`,
+ * `saldosPorCliente` (cuentas por cobrar), `capturarTercerosEnCatalogo`,
+ * `reorganizarTerceros` y el enlace `customers.cuenta_contable`.
+ *
+ * Sólo toca cuentas con `tercero_rfc`: son terceros sin ambigüedad y un control NUNCA
+ * lo tiene, así que el mayor no se puede «promover» por error. Nacional o extranjero se
+ * decide por el RFC, igual que al crearlas.
+ */
+export async function normalizarAgrupadorTerceros(
+  companyId: string,
+): Promise<{ corregidas: number }> {
+  const r = await query(
+    `UPDATE accounting_accounts a
+        SET codigo_agrupador = CASE
+              WHEN a.codigo_agrupador = $2
+                THEN (CASE WHEN UPPER(a.tercero_rfc) LIKE 'XEXX%' THEN $3 ELSE $4 END)
+                ELSE (CASE WHEN UPPER(a.tercero_rfc) LIKE 'XEXX%' THEN $5 ELSE $6 END)
+            END,
+            updated_at = NOW()
+      WHERE a.company_id = $1
+        AND a.tercero_rfc IS NOT NULL
+        AND a.codigo_agrupador IN ($2, $7)`,
+    [companyId, '105', AGRUP.cliente.extranjero, AGRUP.cliente.nacional,
+     AGRUP.proveedor.extranjero, AGRUP.proveedor.nacional, '201']);
+  return { corregidas: r.rowCount || 0 };
+}
+
+/**
  * Da de alta la subcuenta de cada tercero que aún no la tenga, tomando los RFC
  * de DOS fuentes: los comprobantes (emitidos→clientes por receptor;
  * recibidos→proveedores por emisor) Y el CATÁLOGO de terceros (customers con el
@@ -263,6 +310,9 @@ export async function generarSubcuentasDeComprobantes(
   // tercero y se inventaba un número nuevo —el 1-10-25-001-076—. Con el agrupador
   // puesto, el enlace de abajo encuentra la cuenta REAL del respaldo y la liga.
   try { await asignarAgrupadorFaltante(companyId); } catch { /* no crítico */ }
+  /* …y DESPUÉS se corrige el que haya quedado con el del rubro (105/201): la herencia
+   * de arriba copia el del padre tal cual, y un tercero debe llevar el específico. */
+  try { await normalizarAgrupadorTerceros(companyId); } catch { /* no crítico */ }
 
   const esCliente = direccion === 'emitidos';
   const tipo = esCliente ? 'cliente' : 'proveedor';
@@ -393,7 +443,10 @@ export async function fijarCodigoSubcuenta(
  */
 export async function reorganizarTerceros(
   companyId: string,
-): Promise<{ movidas: number; detalle: Array<{ de: string; a: string; nombre: string }> }> {
+): Promise<{ movidas: number; agrupador: number; detalle: Array<{ de: string; a: string; nombre: string }> }> {
+  /* PRIMERO el agrupador: un tercero que quedó con el del rubro (105/201) no entra al
+   * barrido de abajo —que filtra por el específico— y se quedaría sin reubicar. */
+  const { corregidas: agrupador } = await normalizarAgrupadorTerceros(companyId);
   const AGR = ['105.01', '105.02', '201.01', '201.02'];
   let movidas = 0;
   const detalle: Array<{ de: string; a: string; nombre: string }> = [];
@@ -443,7 +496,7 @@ export async function reorganizarTerceros(
     }
     if (enPasada === 0) break;
   }
-  return { movidas, detalle };
+  return { movidas, agrupador, detalle };
 }
 
 /**

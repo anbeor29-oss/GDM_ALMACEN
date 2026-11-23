@@ -322,6 +322,52 @@ no se detecta (revisar antes de bajar esos meses).
 
 ---
 
+## 10. Subcuentas de cliente/proveedor nacían con el agrupador del MAYOR (105 / 201)
+
+**Síntoma.** En la **balanza (Reportes NIF)** aparecían terceros creados por el motor de pólizas con el agrupador
+del rubro: `11025001 LUIS AMADOR TORALES DURON` con **105** y `21005001 PEDRO MARTINEZ HERNANDEZ` con **201**,
+en vez de `105.01` y `201.01`.
+
+**Causa raíz.** En `resolverOCrearSubcuentaTercero` (catalogo-terceros.service) el INSERT de la subcuenta copiaba
+`control.codigo_agrupador`. Y `cuentaControl` busca el control por el agrupador **específico Y por su padre**
+(`IN ('105.01','105')`) justamente porque *el mayor del respaldo suele traer el agrupador padre* — así que el
+tercero heredaba **105 / 201**. La regla del propio proyecto es la contraria y está declarada en el mapeador:
+`{ /CLIENTES/, agrupador: '105', hijos: '105.01' }` y `{ /PROVEEDORES/, agrupador: '201', hijos: '201.01' }` —
+el **mayor** lleva el rubro, los **hijos** el específico.
+
+**Por qué importa (no es cosmético).** Media app filtra por el agrupador ESPECÍFICO, así que esos terceros quedaban
+invisibles: `listarSubcuentasTercero` (pantalla de subcuentas), **`saldosPorCliente` → cuentas por cobrar desde la
+contabilidad**, `capturarTercerosEnCatalogo`, el enlace `customers.cuenta_contable` y hasta `reorganizarTerceros`
+(filtra `['105.01','105.02','201.01','201.02']`, o sea *la herramienta de reparación tampoco los veía*). Además
+el `ya`-existe de la propia función busca por `codigo_agrupador = ANY(['105.01','105.02'])`, de modo que si el
+control elegido cambiaba, el tercero no se encontraba y se **duplicaba**. En la balanza sí salían porque los
+estados financieros suman por PREFIJO (`suma('105')`), por eso se veía ahí y en ningún otro lado.
+
+**Cómo diagnosticar.** En la balanza, una subcuenta de tercero (con nombre de persona/empresa) cuyo agrupador sea
+`105` o `201` pelón. En SQL: `tercero_rfc IS NOT NULL AND codigo_agrupador IN ('105','201')`.
+
+**❌ Lo que NO hay que hacer.**
+- «Promover» a 105.01/201.01 toda cuenta con agrupador 105/201: el **mayor** (1-10-25-000) debe conservar el de
+  rubro. Por eso la corrección exige `tercero_rfc IS NOT NULL` — un control nunca lo tiene.
+- Pisar un agrupador específico ya puesto (p. ej. `105.02` capturado a mano): puede ser deliberado.
+
+**✅ Solución (commit `__HASH__`).**
+- `resolverOCrearSubcuentaTercero`: el INSERT usa el agrupador **específico** (`agrup`, que sale del tipo + RFC:
+  `XEXX…` → extranjero), no el del control. Al **ligar** una cuenta del respaldo, sólo se le pone el específico si
+  venía vacío o con el del rubro; uno específico ya puesto no se pisa.
+- Nueva `normalizarAgrupadorTerceros(companyId)`: corrige las que ya nacieron mal
+  (`tercero_rfc IS NOT NULL AND codigo_agrupador IN ('105','201')` → `.01`/`.02` según el RFC).
+- Se engancha donde el usuario puede ejecutarla: en el botón **«Asignar agrupador»** del Catálogo de cuentas
+  (`POST /accounting/cuentas/asignar-agrupador`), que corre justo después de la herencia del padre —que es la que
+  deja el 105—; también al inicio de `reorganizarTerceros` y dentro de `generarSubcuentasDeComprobantes`.
+
+**Límite conocido.** Sólo corrige terceros con `tercero_rfc`. Las hojas del respaldo sin RFC que quedaron con
+`105`/`201` no se tocan (no se puede distinguirlas del mayor sin adivinar): ésas se ligan al pasar el motor, o se
+capturan a mano. **«Reorganizar terceros» sigue OCULTO** en el Catálogo (`false &&`, decisión del 2026-11-11), así
+que la vía real es «Asignar agrupador».
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …
