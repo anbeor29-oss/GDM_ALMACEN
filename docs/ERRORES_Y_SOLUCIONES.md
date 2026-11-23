@@ -277,6 +277,51 @@ quisiera por inicio, se cambiaría a `fecha_inicio`.
 
 ---
 
+## 9. Pólizas → Nómina (emitida) seguía vacía: la nómina se timbró FUERA del módulo de Nómina
+
+**Síntoma.** Tras el arreglo #8, **Nómina emitida** seguía en «Sin corridas de nómina» y «Bajar pendientes»
+deshabilitado, aunque la nómina de todo 2026 estaba timbrada. La **Nómina recibida** sí aparecía.
+
+**Causa raíz.** La pestaña sólo leía las corridas del **módulo de Nómina** (`nomina_periodos` + `nomina_recibos`).
+Esta empresa timbra su nómina en **otro sistema**: no hay corridas en el módulo; sus recibos sólo existen en la
+**bóveda de XML** (`cfdi_recibidos`, `direccion='emitidos'`, `tipo_comprobante='N'`), que llena la descarga del SAT.
+La recibida sí salía porque ésa siempre leyó la bóveda. Además, `/nomina/*` exige el módulo de Nómina
+(`requireModule('nomina')`) y si falla, la tabla mostraba «Sin corridas» **sin enseñar el error**.
+
+**❌ Intento que NO resolvió (registrado).** El #8 (mes por periodo devengado, no por `fecha_pago`) es correcto y se
+queda, pero sólo arregla empresas que SÍ usan el módulo. Aquí no había corridas que filtrar.
+
+**❌ Lo que NO hay que hacer.**
+- Reconstruir las corridas DENTRO del módulo (crear periodos/recibos/trabajadores desde el XML): crear un trabajador
+  exige confirmación explícita (importar-xml.service) y alteraría acumulados de ISR, PTU, aguinaldo y la revisión anual.
+- Contabilizar la bóveda sin candados: los recibos que timbró el propio módulo TAMBIÉN están en la bóveda (su póliza
+  de corrida no lleva los UUID) y los respaldos CPQ/CTLK pueden traer ya la provisión → se duplicaría el gasto.
+- Poner las rutas bajo `/nomina`: quien timbra fuera puede no tener el módulo.
+
+**✅ Solución (commit `__HASH__`).**
+- Backend `sat-descarga/nomina-emitida-xml.ts` (puro, con pruebas Jest) + `nomina-emitida-xml.service.ts`: lee los
+  emitidos tipo N de la bóveda cuyo **FechaFinalPago** cae en el periodo (mismo criterio devengado que el #8), los
+  agrupa en **corridas** (tipo de nómina + periodo + fecha de pago) y arma la MISMA póliza de provisión que la corrida
+  del módulo, con las cuentas de Asignación de cuentas → Nómina (percepciones 601 / subsidio 110 / deducciones
+  216-205-213 / neto 210). El concepto se reconoce por su **clave SAT** (el catálogo de NEXO está indexado así); 011 →
+  FONACOT, 009 → INFONAVIT; lo que no tiene concepto propio cae al «cajón» (039 / 004), rotulado y avisado.
+- Rutas `GET /sat-descarga/nomina-emitida/corridas` y `POST /sat-descarga/nomina-emitida/contabilizar` (ADMIN).
+- `crearPoliza` acepta `cfdis` opcional: liga los UUID en `journal_entry_cfdi` en la MISMA transacción.
+- Candados: excluye los UUID de `nomina_recibos`; «ya contabilizado» = `cfdiYaContabilizado` (3 vías); `origen_uuid`
+  = `NOMXML:<md5 de los UUID>` (doble clic choca); dedupe por UUID; sólo emisor = RFC de la empresa; el neto del
+  detalle debe ser el Total del CFDI; red «posible duplicado» (otra póliza en las fechas con el mismo neto abonado
+  fuera de caja/bancos o el mismo total de percepciones) → sale del bloque, se fuerza una por una confirmando.
+- Frontend `PolizasHub.tsx`: «Bajar pendientes» SIEMPRE activo (baja corridas del módulo y luego busca y baja la
+  bóveda); tabla «Nómina emitida en la bóveda de XML» con faltantes, posible duplicado, conceptos sin concepto propio
+  y vista previa de la póliza (ojo); avisos de recibos sin XML, que no cuadran o de otro RFC.
+
+**Límite conocido.** La póliza lleva la **fecha de pago** (igual que la corrida del módulo): una nómina de julio
+pagada en agosto se lista en julio pero su póliza queda en agosto. Todos los «otros pagos» van a la cuenta del
+subsidio (como en el módulo). La red de duplicado empata importes exactos: un respaldo que agrupó la nómina por mes
+no se detecta (revisar antes de bajar esos meses).
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

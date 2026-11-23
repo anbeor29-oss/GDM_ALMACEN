@@ -20,6 +20,7 @@ import { query } from '../../config/database';
 import * as service from './descarga.service';
 import * as programacion from './programacion.service';
 import * as nominaPf from './nomina-pf.service';
+import * as nominaEmitidaXml from './nomina-emitida-xml.service';
 import * as satgoConsultas from '../satgo/satgo.consultas.service';
 import { bovedaLista } from './boveda';
 import { EfirmaInvalida } from './efirma';
@@ -563,6 +564,27 @@ router.post('/pf/nomina-contabilizar', authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
     const r = await nominaPf.generarPolizasNominaRecibidaMes(
       companyId(req), Number(req.body?.anio), Number(req.body?.mes), req.user?.userId);
+    res.json({ success: true, data: r });
+  }));
+
+/** GET /sat-descarga/nomina-emitida/corridas?anio=&mes= — la nómina EMITIDA que está en
+ *  la bóveda de XML y NO salió del módulo de Nómina (timbrada en otro sistema), en
+ *  corridas y con su estado contable (Pólizas → Nómina → Emitida). Va aquí y no bajo
+ *  /nomina porque quien timbra fuera de NEXO puede no tener el módulo de Nómina. */
+router.get('/nomina-emitida/corridas', asyncHandler(async (req: Request, res: Response) => {
+  const anio = Number(req.query.anio) || new Date().getFullYear();
+  const mes = Number(req.query.mes) || 0;
+  res.json({ success: true, data: await nominaEmitidaXml.corridasBoveda(companyId(req), anio, mes) });
+}));
+
+/** POST /sat-descarga/nomina-emitida/contabilizar — {anio, mes, clave?, forzar?}: baja a la
+ *  contabilidad UNA corrida (clave) o todas las pendientes del periodo. */
+router.post('/nomina-emitida/contabilizar', authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const b = req.body || {};
+    const r = await nominaEmitidaXml.generarPolizasBoveda(
+      companyId(req), Number(b.anio) || new Date().getFullYear(), Number(b.mes) || 0,
+      { clave: b.clave ? String(b.clave) : undefined, forzar: b.forzar === true }, req.user?.userId);
     res.json({ success: true, data: r });
   }));
 

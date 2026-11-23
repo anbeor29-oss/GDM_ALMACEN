@@ -3406,6 +3406,15 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/sat-descarga/pf/nomina-contabilizar', { anio, mes });
     return r.data;
   }
+  /* ── Nómina EMITIDA desde la bóveda de XML (timbrada fuera del módulo de Nómina) ── */
+  async getNominaEmitidaBoveda(anio: number, mes: number) {
+    const r = await this.client.get<APIResponse<any>>('/sat-descarga/nomina-emitida/corridas', { params: { anio, mes } });
+    return r.data;
+  }
+  async contabilizarNominaEmitidaBoveda(anio: number, mes: number, clave?: string, forzar?: boolean) {
+    const r = await this.client.post<APIResponse<any>>('/sat-descarga/nomina-emitida/contabilizar', { anio, mes, clave, forzar });
+    return r.data;
+  }
 
   /* ───────────── Mensajería interna ───────────── */
   async getMensajes(buzon: 'recibidos' | 'enviados' = 'recibidos') {

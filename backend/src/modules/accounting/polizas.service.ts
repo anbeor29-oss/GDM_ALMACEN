@@ -32,6 +32,11 @@ export interface NuevaPoliza {
   fecha: string; concepto?: string;
   origen?: string; origen_uuid?: string | null; regla?: string | null;
   lineas: LineaPoliza[];
+  /** CFDI que se LIGAN a la póliza (journal_entry_cfdi) en la MISMA transacción que la
+   *  crea. Para la póliza que agrega VARIOS comprobantes (p. ej. la nómina de una
+   *  corrida): los deja «contabilizados» por la vía 3 de cfdiYaContabilizado, y si la
+   *  póliza se borra, las ligas se van con ella (ON DELETE CASCADE). */
+  cfdis?: Array<{ uuid: string; rfc?: string | null; tipo?: string | null; documento?: string | null }>;
 }
 
 const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
@@ -223,6 +228,15 @@ export async function crearPoliza(companyId: string, p: NuevaPoliza, userId?: st
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [entryId, orden++, l.account_id, round2(l.cargo || 0), round2(l.abono || 0),
          l.concepto || null, l.uuid_cfdi || null, l.party_rfc || null]);
+    }
+    for (const c of p.cfdis || []) {
+      await client.query(
+        `INSERT INTO journal_entry_cfdi (entry_id, company_id, uuid, rfc, tipo_comprobante, documento)
+         VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (entry_id, uuid) DO NOTHING`,
+        [entryId, companyId, String(c.uuid).slice(0, 40),
+         c.rfc ? String(c.rfc).slice(0, 13) : null,
+         c.tipo ? String(c.tipo).slice(0, 8) : null,
+         c.documento ? String(c.documento).slice(0, 60) : null]);
     }
     return { id: entryId, folio: e.rows[0].folio };
   });
