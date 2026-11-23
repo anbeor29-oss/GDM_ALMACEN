@@ -298,7 +298,7 @@ queda, pero sólo arregla empresas que SÍ usan el módulo. Aquí no había corr
   de corrida no lleva los UUID) y los respaldos CPQ/CTLK pueden traer ya la provisión → se duplicaría el gasto.
 - Poner las rutas bajo `/nomina`: quien timbra fuera puede no tener el módulo.
 
-**✅ Solución (commit `__HASH__`).**
+**✅ Solución (commit `da30148`).**
 - Backend `sat-descarga/nomina-emitida-xml.ts` (puro, con pruebas Jest) + `nomina-emitida-xml.service.ts`: lee los
   emitidos tipo N de la bóveda cuyo **FechaFinalPago** cae en el periodo (mismo criterio devengado que el #8), los
   agrupa en **corridas** (tipo de nómina + periodo + fecha de pago) y arma la MISMA póliza de provisión que la corrida
