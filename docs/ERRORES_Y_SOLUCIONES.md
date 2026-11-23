@@ -391,7 +391,7 @@ colgara del padre y que no se duplicara, pero aceptaba cualquier formato y no pr
 **❌ Lo que NO hay que hacer.** Imponer la máscara a un catálogo HEREDADO con numeración propia: se rompería el alta
 de quien importó su catálogo. La regla sólo se aplica cuando el PADRE ya está en la máscara.
 
-**✅ Solución (commit `__HASH__`).**
+**✅ Solución (commit `97a667e`).**
 - `mascara-cuenta.ts`: módulo PURO con la regla (`siguienteCodigoHijo` rellena huecos, `normalizarAMascara`,
   `conMascara`, `cuelgaDeEnMascara`, `rubroDe`) + 16 pruebas Jest.
 - `crearCuenta`: con el padre en la máscara, **genera** el código si no se escribió ninguno y **normaliza** el que
