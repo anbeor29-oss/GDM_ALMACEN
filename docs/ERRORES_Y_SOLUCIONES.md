@@ -246,6 +246,37 @@ no se detecta como PUE; el método debe venir correcto del alta/timbrado.
 
 ---
 
+## 8. Pólizas → Nómina (emitida): corridas de un mes no aparecían (se filtraban por día de PAGO)
+
+**Síntoma.** En **Contabilidad → Pólizas → Nómina → Nómina emitida**, al elegir un mes concreto (p. ej. **julio 2026**)
+la tabla salía vacía («Sin corridas de nómina») y el botón **«Bajar pendientes»** quedaba deshabilitado, aunque la
+nómina de todo el año ya estaba generada/timbrada. En **«Todo el año»** sí aparecían.
+
+**Causa raíz.** El filtro de mes del frontend tomaba el mes de **`fecha_pago`** (y si no, de `fecha_fin`). La
+provisión de nómina es **devengo**: pertenece al mes que **cubre** la corrida, no al día en que se paga. Si a una
+corrida de julio se le fijó `fecha_pago` en los primeros días de agosto (pago el 5 de agosto), caía en **agosto** y
+julio quedaba vacío. Mezclaba fecha de **caja** con mes **contable**.
+
+**Cómo diagnosticar.** Cambiar el selector de mes a **«Todo el año»**: si ahí aparecen las corridas pero en el mes
+concreto no, el problema es el criterio de mes, no los datos ni el aislamiento de empresa. El endpoint
+`/nomina/poliza-periodos` no filtra por fecha (devuelve todo); el filtro vivía sólo en `PolizasHub.tsx`.
+
+**❌ Lo que NO hay que hacer.** Clasificar el mes contable de una provisión de nómina por `fecha_pago`. La fecha de
+pago es caja; el devengo lo marca el periodo (`fecha_inicio`/`fecha_fin`, o el `numero` del mes para MENSUAL).
+
+**✅ Solución (commit `__HASH__`).**
+- `PolizasHub.tsx` (NominaEmitida): nuevo `mesPeriodo(p)` → para **MENSUAL** usa `numero` (1–12); para lo demás, el
+  mes de **`fecha_fin`** (cierre del periodo), con respaldo `fecha_inicio`/`fecha_pago`. El filtro `enPeriodo` ahora
+  empareja `anio` + `mesPeriodo`, sin usar `fecha_pago`.
+- La columna «Fecha» de la fila muestra `fecha_fin` (devengado) en vez del día de pago, para que concuerde con el mes.
+- «Nómina recibida» no cambia: filtra en el backend por su propia fecha de CFDI (otra semántica).
+
+**Límite conocido.** Una corrida SEMANAL que cierra el primer día del mes siguiente (p. ej. semana que termina el 1
+de agosto) se archiva en ese mes de cierre. Es una convención consistente (el periodo cierra en agosto); si se
+quisiera por inicio, se cambiaría a `fecha_inicio`.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

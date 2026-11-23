@@ -190,8 +190,18 @@ function NominaEmitida({ anio, mes }: { anio: number; mes: number }) {
   const periodosQ = useQuery({ queryKey: ['nomina-poliza-periodos'], queryFn: () => api.getPeriodosOrdinariosPoliza() });
   const finiqQ = useQuery({ queryKey: ['nomina-poliza-finiquitos'], queryFn: () => api.getFiniquitosParaPoliza() });
   const mesDe = (s?: string) => s ? new Date(s + (String(s).length <= 10 ? 'T12:00:00' : '')).getMonth() + 1 : 0;
-  const enPeriodo = (f?: string, a?: number) => Number(a) === anio && (mes === 0 || mesDe(f) === mes);
-  const periodos: any[] = (periodosQ.data?.data?.periodos || []).filter((p: any) => enPeriodo(p.fecha_pago || p.fecha_fin, p.anio));
+  /* El mes CONTABLE de una corrida es el del PERIODO DEVENGADO, no el día de pago:
+     una corrida de julio pagada el 5 de agosto se provisiona en JULIO. Para MENSUAL
+     el número ES el mes; para lo demás se usa el cierre del periodo (fecha_fin). */
+  const mesPeriodo = (p: any): number => {
+    if (String(p?.tipo).toUpperCase() === 'MENSUAL') {
+      const n = Number(p?.numero);
+      if (n >= 1 && n <= 12) return n;
+    }
+    return mesDe(p?.fecha_fin || p?.fecha_inicio || p?.fecha_pago);
+  };
+  const enPeriodo = (p: any) => Number(p?.anio) === anio && (mes === 0 || mesPeriodo(p) === mes);
+  const periodos: any[] = (periodosQ.data?.data?.periodos || []).filter((p: any) => enPeriodo(p));
   const finiquitos: any[] = (finiqQ.data?.data?.finiquitos || []).filter((f: any) => mes === 0 || (mesDe(f.fecha_baja) === mes && new Date((f.fecha_baja || '') + 'T12:00:00').getFullYear() === anio));
 
   const refrescar = () => {
@@ -266,7 +276,7 @@ function NominaEmitida({ anio, mes }: { anio: number; mes: number }) {
               const etiqueta = `${ETIQ_TIPO[p.tipo] || p.tipo} ${p.numero}/${p.anio}`;
               return (
                 <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-700">{fechaMx(p.fecha_pago || p.fecha_fin)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-700">{fechaMx(p.fecha_fin || p.fecha_pago)}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-700">{etiqueta}</td>
                   <td className="px-3 py-2"><p className="truncate max-w-[16rem]" title={p.concepto}>{p.concepto || '—'}</p></td>
                   <td className="px-3 py-2 text-center tabular-nums text-gray-600">{p.recibos}</td>
