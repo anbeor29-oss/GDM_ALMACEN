@@ -233,7 +233,7 @@ Los reportes de cobranza (`reports.service`) ya excluían PUE; el desajuste esta
 **❌ Lo que NO hay que hacer.** Calcular el saldo de una PUE como `total − pagos`: nunca habrá pagos registrados, así
 que siempre dará el total. No mezclar PUE con PPD en los controles de cobranza.
 
-**✅ Solución (commit `__PENDIENTE_PUSH__`).**
+**✅ Solución (commit `7145a8e`).**
 - `getInvoices` (invoices.service): el saldo y el pagado ahora llevan `CASE WHEN payment_method LIKE 'PUE%'` →
   `balance = 0`, `paid_total = i.total`, y se expone la bandera `es_pue`.
 - `Invoices.tsx`: el badge de Estado muestra **«Pagada»** cuando la factura es PUE + timbrada + no cancelada
