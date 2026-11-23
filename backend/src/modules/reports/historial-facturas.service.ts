@@ -37,6 +37,7 @@ export async function historialFacturas(
             c.business_name AS cliente, c.rfc AS rfc,
             COALESCE(i.serie,'FAC') AS serie, i.folio, i.total::numeric AS total,
             COALESCE(i.currency,'MXN') AS moneda, i.status AS status, i.cfdi_uuid AS uuid,
+            COALESCE(i.payment_method,'') AS metodo,
             ${SUB_PAGOS}::numeric AS pagado,
             GREATEST(0, i.total - ${SUB_PAGOS} - ${SUB_NC})::numeric AS saldo,
             GREATEST(0, (CURRENT_DATE - i.date_issued::date))::int AS dias
@@ -45,12 +46,22 @@ export async function historialFacturas(
       ORDER BY c.business_name, i.date_issued, i.folio`, params);
 
   const filas: FilaHistorial[] = r.rows.map((x: any) => {
-    const saldo = r2(x.saldo);
+    const total = r2(x.total);
     const cancelada = String(x.status) === 'CANCELLED';
-    const estado: FilaHistorial['estado'] = cancelada ? 'CANCELADA' : (saldo <= 0.01 ? 'PAGADA' : 'PENDIENTE');
+    // REGLA PUE/PPD (ver [[pue-ppd-cobranza-regla]]): una PUE (Pago en Una Exhibición)
+    // está PAGADA desde que se timbra —no lleva complemento de pago—, así que NUNCA es
+    // cuenta por cobrar. Sólo la PPD (Parcialidades/Diferido) tiene saldo real
+    // (total − pagos − NC). Sin esto, las PUE salían «pendientes» e inflaban la cobranza.
+    const esPue = String(x.metodo || '').toUpperCase().startsWith('PUE');
+    let estado: FilaHistorial['estado'];
+    let pagado: number;
+    let saldo: number;
+    if (cancelada) { estado = 'CANCELADA'; pagado = 0; saldo = 0; }
+    else if (esPue) { estado = 'PAGADA'; pagado = total; saldo = 0; }
+    else { saldo = r2(x.saldo); pagado = r2(x.pagado); estado = saldo <= 0.01 ? 'PAGADA' : 'PENDIENTE'; }
     return {
       fecha: x.fecha, cliente: x.cliente, rfc: x.rfc, serie: x.serie, folio: Number(x.folio),
-      total: r2(x.total), pagado: r2(x.pagado), saldo: cancelada ? 0 : saldo, moneda: x.moneda,
+      total, pagado, saldo, moneda: x.moneda,
       estado, uuid: x.uuid || null, dias: Number(x.dias) || 0,
     };
   });

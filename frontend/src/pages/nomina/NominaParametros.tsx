@@ -296,7 +296,10 @@ function PanelFiscal() {
             onChange={(ev) => setAnio(Number(ev.target.value))}
             className="border rounded-lg px-2 py-1 text-sm"
           >
-            {[anioActual + 1, anioActual, anioActual - 1, anioActual - 2].map((a) => (
+            {/* Del año próximo hacia atrás hasta 2020 (primer ejercicio con tablas ISR
+                cargadas). Los años viejos sin parámetros patronales igual sirven para
+                consultar sus tablas del ISR, que se muestran más abajo. */}
+            {Array.from({ length: anioActual + 1 - 2020 + 1 }, (_, i) => anioActual + 1 - i).map((a) => (
               <option key={a} value={a}>{a}</option>
             ))}
           </select>

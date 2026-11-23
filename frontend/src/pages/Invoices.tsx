@@ -231,6 +231,17 @@ export function InvoicesPage() {
                   invoice.is_stamped &&
                   !['PAID', 'CANCELLED', 'DRAFT'].includes(invoice.status) &&
                   !liquidada;
+                // ESTADO VISIBLE: una PUE está PAGADA desde que se timbra (se liquida
+                // con su forma de pago real y NO lleva complemento), así que se muestra
+                // «Pagada» aunque el status interno siga en STAMPED/SENT. Sólo la PPD
+                // conserva su estado de cobranza. Ver [[pue-ppd-cobranza-regla]].
+                const esPue = Boolean((invoice as any).es_pue) ||
+                  String((invoice as any).payment_method || '').toUpperCase().startsWith('PUE');
+                const estadoVisible =
+                  esPue && invoice.is_stamped &&
+                  invoice.status !== 'CANCELLED' && invoice.status !== 'DRAFT'
+                    ? 'PAID'
+                    : invoice.status;
                 return (
                   <tr key={invoice.id} className="hover:bg-gray-50">
                     <td className="px-6 py-2 text-sm font-medium text-gray-900">
@@ -277,7 +288,7 @@ export function InvoicesPage() {
                       })()}
                     </td>
                     <td className="px-6 py-2">
-                      <StatusBadge status={invoice.status} />
+                      <StatusBadge status={estadoVisible} />
                     </td>
                     <td className="px-6 py-2">
                       <div className="flex items-center gap-1">

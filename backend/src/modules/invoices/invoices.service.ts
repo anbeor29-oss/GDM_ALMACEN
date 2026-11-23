@@ -416,18 +416,25 @@ export async function listInvoices(
              * saber cuáles son de traslado. EXISTS y no un JOIN: interesa si
              * hay o no, no cuántas, y un JOIN duplicaría el renglón. */
             EXISTS (SELECT 1 FROM carta_porte cp WHERE cp.invoice_id = i.id) AS tiene_carta_porte,
-            COALESCE((SELECT SUM(payment_amount) FROM payments
+            /* REGLA PUE/PPD (ver [[pue-ppd-cobranza-regla]]): una PUE está PAGADA desde que
+             * se timbra (no lleva complemento de pago) → saldo 0 y pagado = total. Sólo la
+             * PPD tiene saldo real (total − pagos − NC). Antes la PUE salía con saldo completo
+             * en el listado e inflaba la cobranza. */
+            (UPPER(COALESCE(i.payment_method,'')) LIKE 'PUE%') AS es_pue,
+            CASE WHEN UPPER(COALESCE(i.payment_method,'')) LIKE 'PUE%' THEN i.total
+                 ELSE COALESCE((SELECT SUM(payment_amount) FROM payments
                        WHERE invoice_id = i.id AND deleted_at IS NULL
-                         AND document_status != 'CANCELLED'), 0)::numeric AS paid_total,
+                         AND document_status != 'CANCELLED'), 0) END::numeric AS paid_total,
             COALESCE((SELECT SUM(total) FROM credit_notes
                        WHERE invoice_id = i.id AND deleted_at IS NULL AND status != 'CANCELLED'), 0)::numeric AS credited_total,
-            GREATEST(0, i.total
+            CASE WHEN UPPER(COALESCE(i.payment_method,'')) LIKE 'PUE%' THEN 0
+                 ELSE GREATEST(0, i.total
                       - COALESCE((SELECT SUM(payment_amount) FROM payments
                                    WHERE invoice_id = i.id AND deleted_at IS NULL
                                      AND document_status != 'CANCELLED'), 0)
                       - COALESCE((SELECT SUM(total) FROM credit_notes
                                    WHERE invoice_id = i.id AND deleted_at IS NULL AND status != 'CANCELLED'), 0)
-                    )::numeric AS balance
+                    ) END::numeric AS balance
      FROM invoices i
      JOIN customers c ON i.customer_id = c.id
      ${whereClause}

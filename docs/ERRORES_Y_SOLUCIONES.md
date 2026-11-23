@@ -216,6 +216,36 @@ error de render = pantalla en blanco imposible de diagnosticar.
 
 ---
 
+## 7. Facturas PUE salían «Pendientes» e INFLABAN la cobranza
+
+**Síntoma.** En el reporte de facturas (Excel/Historial) y en el menú de Facturas, folios PUE (p. ej. 295 y 300)
+aparecían en rojo como «Pendiente» con saldo = total, aunque ya estaban pagadas. La cobranza se veía inflada.
+
+**Causa raíz.** El saldo se calculaba `total − pagos − notas de crédito` para TODA factura. Una **PUE** (Pago en Una
+Exhibición) se liquida con su forma de pago real **al timbrar** y **no lleva complemento de pago**, así que nunca
+registra un `payment` → su saldo quedaba en el total completo. Sólo la **PPD** (Parcialidades/Diferido) lleva
+complemento por cada pago y sí es cuenta por cobrar. Ver [[pue-ppd-cobranza-regla]].
+
+**Cómo diagnosticar.** Una factura con `payment_method LIKE 'PUE%'`, timbrada y no cancelada, mostrando saldo > 0.
+Los reportes de cobranza (`reports.service`) ya excluían PUE; el desajuste estaba en el **listado de facturas**
+(`getInvoices`) y en el **historial** (`historial-facturas.service`).
+
+**❌ Lo que NO hay que hacer.** Calcular el saldo de una PUE como `total − pagos`: nunca habrá pagos registrados, así
+que siempre dará el total. No mezclar PUE con PPD en los controles de cobranza.
+
+**✅ Solución (commit `__PENDIENTE_PUSH__`).**
+- `getInvoices` (invoices.service): el saldo y el pagado ahora llevan `CASE WHEN payment_method LIKE 'PUE%'` →
+  `balance = 0`, `paid_total = i.total`, y se expone la bandera `es_pue`.
+- `Invoices.tsx`: el badge de Estado muestra **«Pagada»** cuando la factura es PUE + timbrada + no cancelada
+  (el saldo ya llega en 0 desde el backend).
+- `historial-facturas.service`: en el mapeo, una PUE no cancelada se marca `PAGADA` (verde) con saldo 0.
+- `reports.service` ya excluía PUE (sin cambios).
+
+**Límite conocido.** La regla se basa en `payment_method`. Si una factura PUE se capturó con método vacío/incorrecto,
+no se detecta como PUE; el método debe venir correcto del alta/timbrado.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …
