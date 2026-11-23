@@ -444,6 +444,61 @@ de http://, el aviso ahora lo dirá — pero la solución de fondo es servir el 
 
 ---
 
+## 13. Checador: el consentimiento biométrico se otorgaba con una PALOMITA (sin prueba de la firma)
+
+**Síntoma.** Para liberar el enrolamiento facial bastaba marcar una casilla («El trabajador firmó el
+consentimiento»). Nada obligaba a imprimir el convenio, ni a que el trabajador lo firmara, ni quedaba constancia de
+nada. Además el engrane de «Administración» de las pantallas de cámara iba al MISMO lugar que el botón Salir —dos
+controles para lo mismo, y uno de ellos prometiendo configuración que no daba—.
+
+**Causa raíz.** El rostro es un dato personal **SENSIBLE** (art. 3 fr. VI LFPDPPP) y la ley pide consentimiento
+**expreso y por escrito**. Una palomita en pantalla no prueba nada el día de una queja ante el INAI: no identifica
+quién la marcó, ni que el trabajador haya leído o firmado algo. El orden real es físico (imprimir → firmar en papel
+→ archivar la prueba) y el sistema no lo imponía.
+
+**Cómo diagnosticar.** `SELECT aceptado, documento IS NOT NULL FROM checador_consentimiento` — si hay `aceptado =
+true` con `documento` nulo, ese enrolamiento no tiene prueba de la firma detrás.
+
+**❌ Lo que NO hay que hacer.** Dejar que una casilla de la UI sea la única evidencia de un consentimiento de dato
+sensible. Y confiar en «¿se imprimió?» como prueba: que el navegador abra el diálogo de impresión no significa que
+alguien haya firmado.
+
+**✅ Solución (commit `__HASH__`).** El candado del enrolamiento pasa a ser la **evidencia**:
+1. **Imprimir** el convenio (el texto ya existía en `ConsentimientoBiometrico.tsx`) → `impreso_at`.
+2. **Firma autógrafa** en papel, por duplicado — fuera del sistema.
+3. **Foto del convenio firmado** → `checador_consentimiento.documento` (data-URL, mismo patrón que la foto del
+   trabajador y la de entregas de equipo). **Esa foto, y sólo esa, libera el rostro.**
+- `enrolarRostros` rechaza si no hay foto («Falta la FOTO del convenio FIRMADO…») y si el consentimiento fue
+  revocado, con mensajes que dicen qué hacer.
+- `setConsentimiento` se volvió una actualización **por partes** (`impreso` / `documento` / `aceptado` / `notas`):
+  antes era un upsert que pisaba `metodo` y `notas` en cada llamada, así que marcar «impreso» borraba lo demás —y
+  un PUT sin `aceptado` lo ponía en `false` (`!!undefined`)—. Otorgar sin foto se rechaza; **revocar siempre se
+  puede** (es derecho del trabajador) y al revocar se bloquea el enrolamiento, conservando el convenio como
+  constancia de lo que se firmó.
+- `pages/nomina/ConsentimientoFirmado.tsx`: los 3 pasos numerados con su palomita, en la pantalla de Enrolar y en
+  Checador → Empleados. Dos formas de tomar la foto: con la cámara ya abierta (laptop, sosteniendo la hoja) y con
+  `capture="environment"`, que en celular/tableta abre la cámara **trasera** —la buena para un papel—. La imagen se
+  reduce a 1600 px y ~1.4 MB en el navegador; el backend rechaza arriba de ~2 MB.
+- El botón de captura apagado ahora **dice por qué** lo está (heurística #1 de Nielsen).
+- `components/AvisoCarga.tsx`: un solo componente para «no se pudo cargar X» + Reintentar, usado en Configuración,
+  Kioscos y Registro (del día e historial). Las tablas enseñaban «Aún no hay kioscos» / «Sin registros» cuando lo
+  que pasaba era que el servidor no contestaba: **afirmar que no hay datos cuando no se sabe**. El error va antes
+  del vacío.
+- Las 3 opciones de cámara pasan a **verde fuerte relleno** (`claseOpcionCamara`, green-700) para distinguirlas de
+  las pestañas de configuración; con eso el rótulo «Abrir cámara:» salió sobrando. Se quitó el engrane redundante
+  de Kiosco, Campo, Enrolar y Registro (todos iban al mismo `/checador` que Salir/Regresar).
+- Contrastes medidos, no supuestos: green-600 con texto blanco de 14 px da **3.3:1** y NO pasa AA; green-700 da
+  5.0:1. Igual emerald-600 (3.8:1) → emerald-700 (5.5:1) en los botones, y emerald-500 → emerald-600 en la
+  palomita de cada paso (3:1 para objetos gráficos).
+
+**Límite conocido.** Sin verificar en ejecución (login) y el frontend no tiene corredor de pruebas: sólo `tsc` de
+backend y frontend + build de producción. **Falta probarlo en la tableta real.** Consecuencia a tener presente: a
+quien ya tenía `aceptado = true` por la palomita vieja **no se le podrá re-enrolar** hasta subir la foto de su
+convenio firmado; los rostros YA enrolados siguen checando normal (la identificación no se tocó). El despliegue va
+**primero backend y luego frontend**: con el backend viejo, un PUT sin `aceptado` apagaría el consentimiento.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

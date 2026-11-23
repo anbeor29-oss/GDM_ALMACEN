@@ -17,6 +17,19 @@ const OPCION_ACTIVA = 'bg-blue-600 text-white border-blue-600';
 const OPCION_INACTIVA = 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200';
 
 /**
+ * Opción que ABRE LA CÁMARA a pantalla completa (kiosco, campo, enrolar): verde
+ * FUERTE relleno. No es una pestaña: se sale del admin y arranca la cámara, así
+ * que no puede verse igual que las pestañas de configuración. Mismo verde de la
+ * familia, otro tono —el peso del relleno dice «esto hace algo distinto»— sin
+ * meter un color nuevo a la pantalla.
+ *
+ * POR QUÉ green-700 Y NO green-600: con texto blanco de 14 px el 600 da 3.3:1 y
+ * NO pasa WCAG AA (pide 4.5:1 para texto normal). El 700 da 5.0:1, casi igual
+ * que el azul de la pestaña activa (5.2:1), así que los dos pesan lo mismo.
+ */
+const OPCION_CAMARA = 'bg-green-700 text-white border-green-800 hover:bg-green-800 shadow-sm';
+
+/**
  * Se conserva para compatibilidad con quien aún importe la paleta: todas las
  * entradas son el MISMO par (verde claro / azul). Ya no se distingue por color.
  */
@@ -34,4 +47,9 @@ export function colorOpcion(_i: number, activa: boolean): string {
 /** Atajo: clase COMPLETA de una pastilla de opción (base + color). */
 export function claseOpcion(i: number, activa: boolean): string {
   return `${PILL_OPCION} ${colorOpcion(i, activa)}`;
+}
+
+/** Clase COMPLETA de una opción que abre la CÁMARA (verde fuerte relleno). */
+export function claseOpcionCamara(): string {
+  return `${PILL_OPCION} ${OPCION_CAMARA}`;
 }

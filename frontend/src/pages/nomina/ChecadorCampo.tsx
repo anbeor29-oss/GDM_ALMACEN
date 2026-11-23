@@ -10,8 +10,7 @@
  * necesite, desde el registro. Corre a pantalla completa, fuera del ERP.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { UserCheck, UserX, MapPin, MapPinOff, LogIn, LogOut, Loader2, Settings, RefreshCw, Clock } from 'lucide-react';
+import { UserCheck, UserX, MapPin, MapPinOff, LogIn, LogOut, Loader2, RefreshCw, Clock } from 'lucide-react';
 import { cargarFaceApi, descriptorDeVideo } from '@/utils/faceApi';
 import { CamaraAviso, diagnosticarCamara, revisarEntornoCamara, type DiagnosticoCamara } from '@/components/CamaraAviso';
 import { BotonSalirPantalla } from '@/components/BotonSalirPantalla';
@@ -113,12 +112,7 @@ export function ChecadorCampoPage() {
     <div className="min-h-screen flex flex-col items-center gap-4 p-4 bg-gray-900 text-white relative overflow-hidden">
       {/* Salida explícita. En campo (celular propio) NO pide confirmación: estorba. */}
       <BotonSalirPantalla etiqueta="Salir" />
-      <Link to="/checador" className="absolute top-3 right-3 inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-2xl
-        text-gray-300 hover:text-white hover:bg-slate-700/60 transition
-        focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-400/60" title="Administración" aria-label="Ir a administración del checador">
-        <Settings size={20} aria-hidden="true" /> <span className="text-sm hidden sm:inline">Administración</span>
-      </Link>
-      <h1 className="text-xl font-bold flex items-center gap-2 mt-1 pt-12 sm:pt-0"><MapPin size={22} /> Checador · Campo</h1>
+      <h1 className="text-xl font-bold flex items-center gap-2 mt-1 pt-12 sm:pt-0"><MapPin size={22} aria-hidden="true" /> Checador · Campo</h1>
 
       <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${gpsChip.cls}`}>
         {gpsChip.icon} {gpsChip.txt}

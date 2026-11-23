@@ -3,19 +3,33 @@
  * guarda como plantillas para que el kiosco luego lo reconozca.
  *
  * Igual que el kiosco: el descriptor (128 flotantes) se calcula EN EL DISPOSITIVO
- * y al backend solo van los números, nunca la foto. Solo se puede enrolar a quien
- * ya firmó el consentimiento biométrico (LFPDPPP).
+ * y al backend solo van los números, nunca la foto.
+ *
+ * EL CANDADO ES LA FIRMA, NO UNA PALOMITA
+ * Sólo se enrola a quien ya firmó el convenio de datos biométricos EN PAPEL y
+ * cuya firma quedó fotografiada en el sistema (LFPDPPP: dato sensible, se exige
+ * consentimiento expreso y por escrito). El flujo —imprimir, firmar, fotografiar—
+ * vive en <ConsentimientoFirmado/> y es lo que habilita los botones de captura.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Camera, Check, Loader2, ShieldCheck, UserPlus, RefreshCw, Save, Settings, Printer } from 'lucide-react';
+import { Camera, Check, Loader2, ShieldCheck, UserPlus, RefreshCw, Save, ArrowLeft, FileText } from 'lucide-react';
 import { cargarFaceApi, descriptorDeVideo } from '@/utils/faceApi';
 import { CamaraAviso, diagnosticarCamara, revisarEntornoCamara, type DiagnosticoCamara } from '@/components/CamaraAviso';
 import { useAuthStore } from '@/store/auth';
-import { ConsentimientoTexto, htmlConsentimientoImprimir } from './ConsentimientoBiometrico';
+import { ConsentimientoTexto } from './ConsentimientoBiometrico';
+import { ConsentimientoFirmado, fotoDocumentoDeVideo } from './ConsentimientoFirmado';
 import api from '@/services/api';
 
-type Empleado = { id: string; nombre: string; num_empleado?: string; plantillas: number; consentimiento: boolean };
+type Empleado = {
+  id: string; nombre: string; num_empleado?: string; plantillas: number;
+  /** Consentimiento vigente (no revocado). */
+  consentimiento: boolean;
+  /** Ya existe la FOTO del convenio firmado: esto es lo que libera el enrolamiento. */
+  convenio_firmado?: boolean;
+  impreso_at?: string | null;
+  documento_at?: string | null;
+};
 const TOMAS = 3;
 
 /** Toma una foto del video (cuadrado central, 320 px, JPEG) para el expediente.
@@ -48,39 +62,19 @@ export function CheckadorEnrolarPage() {
   const [msg, setMsg] = useState('');
   const { user } = useAuthStore();
   const [empresa, setEmpresa] = useState('');
-  const [acepta, setAcepta] = useState(false);      // el trabajador marcó que acepta
-  const [regConsent, setRegConsent] = useState(false);
 
   const emp = useMemo(() => empleados.find((e) => e.id === empId), [empleados, empId]);
+  /* Las DOS condiciones: existe la foto del convenio firmado y el consentimiento
+   * sigue vigente (el trabajador puede revocarlo en cualquier momento). */
+  const liberado = !!emp?.convenio_firmado && !!emp?.consentimiento;
 
-  // Nombre de la empresa (Responsable del tratamiento) para el consentimiento.
+  // Nombre de la empresa (Responsable del tratamiento) para el convenio.
   useEffect(() => {
     api.misEmpresas().then((r: any) => {
       const e = (r?.data || []).find((x: any) => x.id === user?.companyId);
       setEmpresa(e?.business_name || '');
     }).catch(() => {});
   }, [user?.companyId]);
-
-  // El trabajador acepta el consentimiento AL enrolarse: se registra y se habilita la captura.
-  const aceptarConsentimiento = async () => {
-    if (!empId || !acepta) return;
-    setRegConsent(true); setMsg('');
-    try {
-      await api.setCheckadorConsentimiento(empId, { aceptado: true });
-      await cargarEmpleados();
-      setAcepta(false);
-    } catch (e: any) {
-      setMsg(e?.response?.data?.message || 'No se pudo registrar el consentimiento.');
-    } finally { setRegConsent(false); }
-  };
-
-  // Versión IMPRESA (para firma autógrafa por duplicado).
-  const imprimirConsentimiento = () => {
-    const html = htmlConsentimientoImprimir({ empresa, empleado: emp?.nombre });
-    const w = window.open('', '_blank', 'width=820,height=920');
-    if (w) { w.document.write(html); w.document.close(); }
-    else setMsg('Permite las ventanas emergentes para imprimir el consentimiento.');
-  };
 
   const cargarEmpleados = async () => {
     try { const r: any = await api.checadorEmpleadosEnrolar(); setEmpleados(r?.data || []); }
@@ -147,15 +141,21 @@ export function CheckadorEnrolarPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
      <div className="max-w-3xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold flex items-center gap-2"><UserPlus size={22} /> Enrolamiento facial</h1>
-        <Link to="/checador" className="text-gray-400 hover:text-gray-700 p-2" title="Administración" aria-label="Administración">
-          <Settings size={20} />
+      {/* Salida explícita y etiquetada. Antes sólo había un engrane gris que iba al
+          MISMO lugar que esto: dos controles para lo mismo, y el engrane prometía
+          «configuración» sin darla. Se quitó. */}
+      <div className="flex items-center gap-3">
+        <Link to="/checador" aria-label="Regresar al checador"
+          className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-lg border border-gray-300 bg-white
+            text-sm font-medium text-gray-700 hover:bg-gray-100 transition active:scale-[.97]
+            focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300">
+          <ArrowLeft size={17} aria-hidden="true" /> Regresar
         </Link>
+        <h1 className="text-xl font-bold flex items-center gap-2"><UserPlus size={22} aria-hidden="true" /> Enrolamiento facial</h1>
       </div>
       <p className="text-sm text-gray-500">
-        Elige al empleado, captura {TOMAS} tomas de su rostro y guarda. Después el kiosco lo reconocerá al checar.
-        La <b>primera toma (de frente)</b> se guarda además como su <b>foto del expediente</b>, para no tomar otra aparte.
+        Primero el <b>convenio firmado</b>; con eso se libera la captura. Luego elige al empleado, toma {TOMAS} tomas
+        de su rostro y guarda. La <b>primera toma (de frente)</b> se guarda además como su <b>foto del expediente</b>.
       </p>
 
       <div className="grid md:grid-cols-2 gap-4">
@@ -189,72 +189,89 @@ export function CheckadorEnrolarPage() {
           </div>
 
           <div className="flex gap-2">
-            <button onClick={capturar} disabled={fase !== 'listo' || capturando || tomas.length >= TOMAS || !emp?.consentimiento}
-              className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 text-white px-3 py-2 text-sm font-medium disabled:opacity-50">
+            <button onClick={capturar} disabled={fase !== 'listo' || capturando || tomas.length >= TOMAS || !liberado}
+              className="flex-1 inline-flex items-center justify-center gap-2 min-h-[44px] rounded-lg bg-blue-600 text-white px-3
+                text-sm font-medium transition active:scale-[.97] disabled:opacity-50
+                focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300">
               {capturando ? <Loader2 className="animate-spin" size={16} /> : <Camera size={16} />} Capturar toma
             </button>
             {tomas.length > 0 && (
-              <button onClick={() => { setTomas([]); setFotoFrente(null); }} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm text-gray-600">
+              <button onClick={() => { setTomas([]); setFotoFrente(null); }}
+                className="inline-flex items-center gap-1 min-h-[44px] rounded-lg border px-3 text-sm text-gray-600
+                  hover:bg-gray-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300">
                 <RefreshCw size={14} /> Reiniciar
               </button>
             )}
           </div>
+          {/* La razón por la que el botón está apagado, escrita. Un botón muerto sin
+              explicación es el peor estado posible (heurística #1 de Nielsen). */}
+          {emp && !liberado && (
+            <p className="text-xs text-amber-800">
+              La captura está bloqueada: {emp.convenio_firmado
+                ? 'el trabajador revocó su consentimiento.'
+                : 'falta la foto del convenio firmado (panel de la derecha).'}
+            </p>
+          )}
         </div>
 
-        {/* Selección de empleado + guardar */}
+        {/* Selección de empleado + convenio + guardar */}
         <div className="space-y-3">
-          <label className="block text-sm font-medium text-gray-700">Empleado</label>
-          <select value={empId} onChange={(e) => { setEmpId(e.target.value); setTomas([]); setFotoFrente(null); setMsg(''); }}
+          <label className="block text-sm font-medium text-gray-700" htmlFor="emp-enrolar">Empleado</label>
+          <select id="emp-enrolar" value={empId}
+            onChange={(e) => { setEmpId(e.target.value); setTomas([]); setFotoFrente(null); setMsg(''); }}
             className="w-full rounded-lg border px-3 py-2 text-sm">
             <option value="">— Selecciona —</option>
             {empleados.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.nombre}{e.num_empleado ? ` (#${e.num_empleado})` : ''} · {e.plantillas > 0 ? `${e.plantillas} plantillas` : 'sin enrolar'}
+                {e.convenio_firmado ? '' : ' · sin convenio firmado'}
               </option>
             ))}
           </select>
 
-          {emp && !emp.consentimiento && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 space-y-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
-                <ShieldCheck size={18} className="shrink-0" /> Consentimiento biométrico (LFPDPPP)
-              </div>
-              <div className="max-h-56 overflow-y-auto rounded-md border border-amber-100 bg-white p-3">
-                <ConsentimientoTexto empresa={empresa} />
-              </div>
-              <label className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer">
-                <input type="checkbox" checked={acepta} onChange={(e) => setAcepta(e.target.checked)} className="mt-0.5" />
-                <span>El trabajador <b>leyó y acepta</b> el consentimiento para el uso de su rostro, única y exclusivamente para el reloj checador NEXO.</span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={aceptarConsentimiento} disabled={!acepta || regConsent}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 text-white px-3 py-2 text-sm font-medium disabled:opacity-50">
-                  {regConsent ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />} Aceptar y habilitar captura
-                </button>
-                <button onClick={imprimirConsentimiento} type="button"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                  <Printer size={15} /> Imprimir para firma
-                </button>
-              </div>
-              <p className="text-[11px] text-amber-800">Sin aceptar el consentimiento no se puede capturar su rostro. Es voluntario: si no acepta, usa un método alterno de asistencia.</p>
-            </div>
-          )}
-          {emp && emp.consentimiento && (
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1 text-emerald-700"><ShieldCheck size={14} /> Consentimiento otorgado.</span>
-              {emp.plantillas > 0 && <span className="text-gray-500">Ya tiene {emp.plantillas} plantillas; guardar de nuevo las reemplaza.</span>}
-              <button onClick={imprimirConsentimiento} type="button" className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-700 underline">
-                <Printer size={13} /> Imprimir
-              </button>
-            </div>
+          {emp && (
+            <ConsentimientoFirmado
+              empleadoId={emp.id}
+              datos={{ empresa, empleado: emp.nombre }}
+              estado={{
+                aceptado: emp.consentimiento,
+                tiene_documento: emp.convenio_firmado,
+                impreso_at: emp.impreso_at,
+                documento_at: emp.documento_at,
+              }}
+              onCambio={cargarEmpleados}
+              /* La cámara ya está abierta: se puede fotografiar la hoja aquí mismo
+                 (en celular/tableta el otro botón abre la cámara trasera). */
+              tomarDeCamara={() => (videoRef.current ? fotoDocumentoDeVideo(videoRef.current) : null)}
+            />
           )}
 
-          <button onClick={guardar} disabled={!empId || tomas.length < TOMAS || guardando || !emp?.consentimiento}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 text-white px-3 py-2 text-sm font-medium disabled:opacity-50">
+          {/* El texto del convenio, para leerlo en pantalla sin imprimirlo. */}
+          {emp && (
+            <details className="rounded-lg border bg-white">
+              <summary className="cursor-pointer px-3 py-2.5 text-sm font-medium text-gray-700 flex items-center gap-1.5
+                focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 rounded-lg">
+                <FileText size={15} aria-hidden="true" /> Leer el texto del convenio
+              </summary>
+              <div className="max-h-56 overflow-y-auto border-t p-3">
+                <ConsentimientoTexto empresa={empresa} />
+              </div>
+            </details>
+          )}
+
+          <button onClick={guardar} disabled={!empId || tomas.length < TOMAS || guardando || !liberado}
+            className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] rounded-lg bg-emerald-600 text-white px-3
+              text-sm font-medium transition active:scale-[.97] disabled:opacity-50
+              focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-300">
             {guardando ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Guardar enrolamiento
           </button>
 
-          {msg && <p className={`text-sm ${msg.startsWith('✓') ? 'text-emerald-600' : 'text-rose-600'}`}>{msg}</p>}
+          {emp && liberado && emp.plantillas > 0 && (
+            <p className="text-xs text-gray-500 flex items-center gap-1">
+              <ShieldCheck size={13} className="text-emerald-600" /> Ya tiene {emp.plantillas} plantillas; guardar de nuevo las reemplaza.
+            </p>
+          )}
+          {msg && <p role="status" className={`text-sm ${msg.startsWith('✓') ? 'text-emerald-600' : 'text-rose-600'}`}>{msg}</p>}
         </div>
       </div>
      </div>

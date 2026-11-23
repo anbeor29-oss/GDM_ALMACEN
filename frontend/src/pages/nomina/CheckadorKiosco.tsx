@@ -9,8 +9,8 @@
  * El token de dispositivo sin login personal es la siguiente fase.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { UserCheck, UserX, Camera, LogIn, LogOut, Loader2, Settings, Clock, MapPin } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { UserCheck, UserX, Camera, LogIn, LogOut, Loader2, Clock, MapPin } from 'lucide-react';
 import { cargarFaceApi, descriptorDeVideo } from '@/utils/faceApi';
 import { leerKioscoSel, guardarKioscoSel, borrarKioscoSel, type KioscoSel } from '@/utils/kioscoSel';
 import { modoKiosco } from '@/utils/kioscoAuto';
@@ -131,12 +131,7 @@ export function CheckadorKioscoPage() {
           arriba-derecha, que nadie encontraba). En el kiosco va CON confirmación:
           es un equipo compartido y no debe salirse del modo registro por un roce. */}
       <BotonSalirPantalla confirmar etiqueta="Salir" />
-      <Link to="/checador" className="absolute top-3 right-3 inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-2xl
-        text-gray-300 hover:text-white hover:bg-slate-700/60 transition
-        focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-400/60" title="Administración" aria-label="Ir a administración del checador">
-        <Settings size={20} aria-hidden="true" /> <span className="text-sm hidden sm:inline">Administración</span>
-      </Link>
-      <h1 className="text-2xl font-bold flex items-center gap-2"><Camera size={24} /> Checador · Kiosco</h1>
+      <h1 className="text-2xl font-bold flex items-center gap-2"><Camera size={24} aria-hidden="true" /> Checador · Kiosco</h1>
       {sel && (
         <button onClick={cambiar} className="flex items-center gap-1.5 text-sm text-gray-300 hover:text-white -mt-4"
           title="Cambiar de kiosco en este equipo">

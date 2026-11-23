@@ -4471,6 +4471,11 @@ class APIClient {
     const r = await this.client.put<APIResponse<any>>(`/checador/empleados/${empleadoId}/consentimiento`, body);
     return r.data;
   }
+  /** Foto del convenio FIRMADO (aparte: pesa y no debe viajar en cada consulta). */
+  async getCheckadorConvenioFirmado(empleadoId: string) {
+    const r = await this.client.get<APIResponse<any>>(`/checador/empleados/${empleadoId}/consentimiento/documento`);
+    return r.data;
+  }
   async getCheckadorEnrolamiento(empleadoId: string) {
     const r = await this.client.get<APIResponse<any>>(`/checador/empleados/${empleadoId}/enrolamiento`);
     return r.data;

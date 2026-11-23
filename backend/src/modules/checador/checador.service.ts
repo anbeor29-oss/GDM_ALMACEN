@@ -243,24 +243,111 @@ export async function asignarDia(companyId: string, empleadoId: string, d: any) 
   return r.rows[0];
 }
 
-/* ── Consentimiento (LFPDPPP) ────────────────────────────────────────────── */
+/* ── Consentimiento (LFPDPPP) ──────────────────────────────────────────────
+ * EL CONSENTIMIENTO SE LIBERA CON LA EVIDENCIA, NO CON UNA PALOMITA.
+ * El rostro es un dato personal SENSIBLE y la ley pide consentimiento EXPRESO
+ * Y POR ESCRITO: marcar una casilla no prueba nada ante el INAI. El orden es
+ *   1. se imprime el convenio               → impreso_at
+ *   2. el trabajador lo firma de su puño     —fuera del sistema—
+ *   3. se le toma FOTO al convenio firmado   → documento
+ *   4. esa foto LIBERA el enrolamiento facial.
+ * Otorgar sin foto se rechaza; REVOCAR siempre se puede (es su derecho). */
+
+/** Lo que ve la pantalla: todo menos la foto (pesa), diciendo si ya está. */
+const CAMPOS_CONSENT = `empleado_id, company_id, aceptado, fecha, metodo, notas,
+         impreso_at, documento_at, (documento IS NOT NULL) AS tiene_documento`;
 
 export async function getConsentimiento(companyId: string, empleadoId: string) {
   const r = await query<any>(
-    `SELECT * FROM checador_consentimiento WHERE empleado_id = $1 AND company_id = $2`,
+    `SELECT ${CAMPOS_CONSENT} FROM checador_consentimiento WHERE empleado_id = $1 AND company_id = $2`,
     [empleadoId, companyId]);
-  return r.rows[0] || { empleado_id: empleadoId, aceptado: false };
+  return r.rows[0] || { empleado_id: empleadoId, aceptado: false, tiene_documento: false };
 }
 
+/** La foto del convenio firmado. Endpoint aparte: no viaja en cada consulta. */
+export async function documentoConsentimiento(companyId: string, empleadoId: string) {
+  const r = await query<any>(
+    `SELECT documento, documento_at FROM checador_consentimiento WHERE empleado_id = $1 AND company_id = $2`,
+    [empleadoId, companyId]);
+  if (!r.rows.length || !r.rows[0].documento) {
+    throw new NotFoundError('Este trabajador no tiene foto del convenio firmado.');
+  }
+  return r.rows[0];
+}
+
+/* Techo del data-URL. Una foto de celular pesa 4 MB; el cliente la reduce a
+ * ~1600 px antes de subirla, que basta para que el texto se lea. */
+const MAX_DOC_CHARS = 3 * 1024 * 1024;
+
+function validarDocumento(v: any): string {
+  const s = String(v || '');
+  if (!/^data:image\/(png|jpe?g|webp);base64,/.test(s)) {
+    throw new ValidationError('La foto del convenio debe ser una imagen PNG, JPG o WEBP.');
+  }
+  if (s.length > MAX_DOC_CHARS) {
+    throw new ValidationError('La foto del convenio pesa demasiado (máx. ~2 MB). Vuelve a tomarla.');
+  }
+  return s;
+}
+
+/**
+ * Actualiza el consentimiento por PARTES (`impreso`, `documento`, `aceptado`,
+ * `notas`). Antes era un upsert que pisaba `metodo` y `notas` en cada llamada:
+ * marcar «impreso» borraba lo demás.
+ */
 export async function setConsentimiento(companyId: string, empleadoId: string, d: any) {
+  const emp = await query<any>(
+    `SELECT id FROM nomina_empleados WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
+    [empleadoId, companyId]);
+  if (!emp.rows.length) throw new NotFoundError('Empleado no encontrado en esta empresa.');
+
+  const donde = `WHERE empleado_id = $1 AND company_id = $2`;
+  const args = [empleadoId, companyId];
+
+  // Una fila por empleado; si ya existe NO se pisa nada.
   await query(
-    `INSERT INTO checador_consentimiento (empleado_id, company_id, aceptado, fecha, metodo, notas)
-     VALUES ($1,$2,$3,$4,$5,$6)
-     ON CONFLICT (empleado_id) DO UPDATE SET
-       aceptado = EXCLUDED.aceptado, fecha = EXCLUDED.fecha,
-       metodo = EXCLUDED.metodo, notas = EXCLUDED.notas`,
-    [empleadoId, companyId, !!d?.aceptado, d?.fecha || new Date().toISOString().slice(0, 10),
-     d?.metodo || 'FIRMA_FISICA', d?.notas || null]);
+    `INSERT INTO checador_consentimiento (empleado_id, company_id, aceptado)
+     VALUES ($1,$2,false) ON CONFLICT (empleado_id) DO NOTHING`, args);
+
+  if (d?.impreso) {
+    await query(`UPDATE checador_consentimiento SET impreso_at = NOW() ${donde}`, args);
+  }
+
+  if (d?.documento !== undefined) {
+    if (d.documento === null) {
+      /* Quitar la evidencia vuelve a BLOQUEAR el enrolamiento: sin prueba de la
+       * firma no se puede seguir tratando el rostro. */
+      await query(
+        `UPDATE checador_consentimiento
+            SET documento = NULL, documento_at = NULL, aceptado = false ${donde}`, args);
+    } else {
+      const doc = validarDocumento(d.documento);
+      await query(
+        `UPDATE checador_consentimiento
+            SET documento = $3, documento_at = NOW(), aceptado = true, metodo = 'FIRMA_FISICA',
+                fecha = COALESCE($4::date, fecha, CURRENT_DATE) ${donde}`,
+        [...args, doc, d?.fecha || null]);
+    }
+  } else if (d?.aceptado !== undefined) {
+    if (d.aceptado) {
+      const act = await getConsentimiento(companyId, empleadoId);
+      if (!act.tiene_documento) {
+        throw new ValidationError(
+          'Para otorgar el consentimiento hay que subir la FOTO del convenio FIRMADO: ' +
+          'imprímelo, que lo firme el trabajador y tómale foto. Eso libera el enrolamiento.');
+      }
+      await query(
+        `UPDATE checador_consentimiento
+            SET aceptado = true, fecha = COALESCE(fecha, CURRENT_DATE) ${donde}`, args);
+    } else {
+      // Revocación: es un derecho del trabajador y no necesita nada más.
+      await query(`UPDATE checador_consentimiento SET aceptado = false ${donde}`, args);
+    }
+  }
+
+  if (d?.notas !== undefined) {
+    await query(`UPDATE checador_consentimiento SET notas = $3 ${donde}`, [...args, d.notas || null]);
+  }
   return getConsentimiento(companyId, empleadoId);
 }
 
@@ -286,9 +373,18 @@ export async function enrolarRostros(companyId: string, empleadoId: string, desc
     [empleadoId, companyId]);
   if (!emp.rows.length) throw new NotFoundError('Empleado no encontrado en esta empresa.');
 
+  /* El candado del enrolamiento son DOS cosas, y la segunda es la que vale:
+   * el consentimiento vigente (no revocado) y la FOTO del convenio firmado. */
   const cons = await getConsentimiento(companyId, empleadoId);
+  if (!cons.tiene_documento) {
+    throw new ValidationError(
+      'Falta la FOTO del convenio FIRMADO. Imprime el consentimiento, que lo firme el trabajador ' +
+      'de su puño y letra, tómale foto y súbela: eso libera el enrolamiento del rostro.');
+  }
   if (!cons.aceptado) {
-    throw new ValidationError('Falta el consentimiento biométrico del empleado (LFPDPPP) antes de enrolar su rostro.');
+    throw new ValidationError(
+      'El trabajador REVOCÓ su consentimiento biométrico (LFPDPPP): no se puede enrolar su rostro. ' +
+      'Usa un método alterno de asistencia.');
   }
   if (!Array.isArray(descriptores) || !descriptores.length) {
     throw new ValidationError('Manda al menos un descriptor facial (idealmente 3).');
@@ -453,7 +549,10 @@ export async function empleadosParaEnrolar(companyId: string) {
             TRIM(e.nombre || ' ' || e.apellido_pat || ' ' || COALESCE(e.apellido_mat,'')) AS nombre,
             e.num_empleado,
             (SELECT COUNT(*)::int FROM checador_rostro r WHERE r.empleado_id = e.id) AS plantillas,
-            COALESCE(c.aceptado, false) AS consentimiento
+            COALESCE(c.aceptado, false) AS consentimiento,
+            -- Lo que de verdad libera el enrolamiento: la foto del convenio firmado.
+            (c.documento IS NOT NULL) AS convenio_firmado,
+            c.impreso_at, c.documento_at
        FROM nomina_empleados e
        LEFT JOIN checador_consentimiento c ON c.empleado_id = e.id AND c.company_id = e.company_id
       WHERE e.company_id = $1 AND e.deleted_at IS NULL AND COALESCE(e.activo, true)
@@ -592,7 +691,7 @@ export default {
   listarTurnos, crearTurno, actualizarTurno, borrarTurno,
   listarKioscos, crearKiosco, actualizarKiosco, borrarKiosco,
   getHorario, setHorario, asignarHorarioMasivo, asignarDia,
-  getConsentimiento, setConsentimiento,
+  getConsentimiento, setConsentimiento, documentoConsentimiento,
   enrolarRostros, estadoEnrolamiento, identificar,
   registrarChecada, empleadosParaEnrolar,
   asistenciaDelDia, historialAsistencia, historialExcel, historialPdf,

@@ -13,8 +13,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Calendar, Download, ClipboardList, Settings, FileSpreadsheet, FileText, ArrowLeft } from 'lucide-react';
+import { Calendar, Download, ClipboardList, FileSpreadsheet, FileText, ArrowLeft } from 'lucide-react';
 import { claseOpcion } from '@/utils/coloresOpciones';
+import { AvisoCarga } from '@/components/AvisoCarga';
 import api from '@/services/api';
 
 const hoy = () => new Date().toLocaleDateString('en-CA');              // YYYY-MM-DD local
@@ -60,8 +61,14 @@ function VistaDia() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {q.isLoading ? (
-              <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">Cargando…</td></tr>
+            {/* El error va ANTES del vacío: si el servidor no contestó no se puede
+                decir «sin checadas ese día» —sería afirmar algo que no se sabe—. */}
+            {q.isError ? (
+              <tr><td colSpan={7} className="px-3 py-6">
+                <AvisoCarga error={q.error} que="el registro del día" onReintentar={() => q.refetch()} plano />
+              </td></tr>
+            ) : q.isLoading ? (
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400" role="status">Cargando…</td></tr>
             ) : filas.length === 0 ? (
               <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-500">Sin checadas ese día.</td></tr>
             ) : filas.map((f) => (
@@ -148,8 +155,12 @@ function VistaHistorial() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {q.isLoading ? (
-              <tr><td colSpan={9} className="px-3 py-8 text-center text-gray-400">Cargando…</td></tr>
+            {q.isError ? (
+              <tr><td colSpan={9} className="px-3 py-6">
+                <AvisoCarga error={q.error} que="el historial de asistencia" onReintentar={() => q.refetch()} plano />
+              </td></tr>
+            ) : q.isLoading ? (
+              <tr><td colSpan={9} className="px-3 py-8 text-center text-gray-400" role="status">Cargando…</td></tr>
             ) : filas.length === 0 ? (
               <tr><td colSpan={9} className="px-3 py-8 text-center text-gray-500">Sin registros en el rango.</td></tr>
             ) : filas.map((f) => (
@@ -191,16 +202,16 @@ export function ChecadorRegistroPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-5xl mx-auto space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <Link to="/checador" className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 border rounded-lg px-2.5 py-1.5">
-              <ArrowLeft size={16} /> Regresar
-            </Link>
-            <h1 className="text-xl font-bold flex items-center gap-2"><ClipboardList size={22} /> Registro de asistencia</h1>
-          </div>
-          <Link to="/checador" className="text-gray-400 hover:text-gray-700 p-2" title="Administración" aria-label="Administración">
-            <Settings size={20} />
+        {/* Un solo control de salida. El engrane de la derecha iba al MISMO lugar
+            que «Regresar» y prometía «configuración» sin darla: se quitó. */}
+        <div className="flex items-center gap-3">
+          <Link to="/checador" aria-label="Regresar al checador"
+            className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-lg border border-gray-300 bg-white
+              text-sm font-medium text-gray-700 hover:bg-gray-100 transition active:scale-[.97]
+              focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300">
+            <ArrowLeft size={17} aria-hidden="true" /> Regresar
           </Link>
+          <h1 className="text-xl font-bold flex items-center gap-2"><ClipboardList size={22} aria-hidden="true" /> Registro de asistencia</h1>
         </div>
         <RegistroAsistencia />
       </div>

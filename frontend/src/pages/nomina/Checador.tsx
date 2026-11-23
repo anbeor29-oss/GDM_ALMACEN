@@ -14,9 +14,11 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Clock, Users, Settings, Plus, Trash2, ShieldCheck, Camera, Save, UserPlus, ClipboardList, MapPin, Timer, CheckCircle2, XCircle, FileSpreadsheet, FileText } from 'lucide-react';
-import { claseOpcion } from '@/utils/coloresOpciones';
+import { claseOpcion, claseOpcionCamara } from '@/utils/coloresOpciones';
+import { AvisoCarga } from '@/components/AvisoCarga';
 import { parseCoordenadas } from '@/utils/coords';
 import { RegistroAsistencia } from '@/pages/nomina/RegistroAsistencia';
+import { ConsentimientoFirmado } from '@/pages/nomina/ConsentimientoFirmado';
 import api from '@/services/api';
 
 const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -58,9 +60,11 @@ export function ChecadorPage() {
 
       {/* Las PESTAÑAS cambian el contenido aquí mismo; los ENLACES abren una pantalla
           completa de cámara. Mezclados sin distinción, tocar «Abrir kiosco» se sentía
-          como un salto inesperado (heurística #1: visibilidad del estado). Se separan
-          en dos grupos con un rótulo, se conserva el mismo esquema de color
-          (claseOpcion) y se añade estado de foco visible + microinteracción. */}
+          como un salto inesperado (heurística #1: visibilidad del estado).
+          Lo que los separa ahora es el COLOR —las pestañas en verde claro (activa en
+          azul) y las de cámara en verde FUERTE relleno—, así que el rótulo «Abrir
+          cámara:» ya no hace falta: el color dice lo mismo sin ocupar renglón.
+          El grupo conserva su etiqueta para el lector de pantalla, que no ve color. */}
       <div role="tablist" aria-label="Secciones del checador" className="flex flex-wrap gap-1.5">
         {items.filter((it) => it.kind === 'tab').map((it: any, i) => {
           const Ico = it.icon;
@@ -75,15 +79,14 @@ export function ChecadorPage() {
           );
         })}
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[11px] uppercase tracking-wide text-gray-400 mr-0.5">Abrir cámara:</span>
-        {items.filter((it) => it.kind === 'link').map((it: any, i) => {
+      <div role="group" aria-label="Abrir cámara" className="flex flex-wrap items-center gap-1.5">
+        {items.filter((it) => it.kind === 'link').map((it: any) => {
           const Ico = it.icon;
           return (
             <Link key={it.to} to={it.to}
               className={`inline-flex items-center gap-1.5 transition active:scale-[.97]
-                hover:-translate-y-px hover:shadow-sm
-                focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 ${claseOpcion(i + 4, false)}`}>
+                hover:-translate-y-px hover:shadow-md
+                focus:outline-none focus-visible:ring-4 focus-visible:ring-green-300 ${claseOpcionCamara()}`}>
               <Ico size={15} aria-hidden="true" /> {it.label}
             </Link>
           );
@@ -154,8 +157,12 @@ function TabKioscos() {
         <div className="px-4 py-2.5 border-b bg-gray-50 text-sm font-semibold text-gray-700">
           Kioscos / centros de trabajo
         </div>
-        {q.isLoading ? (
-          <p className="p-4 text-sm text-gray-500">Cargando…</p>
+        {/* El orden importa: si la petición FALLÓ no se puede decir «aún no hay
+            kioscos» —eso sería afirmar que no existen cuando no se sabe—. */}
+        {q.isError ? (
+          <div className="p-4"><AvisoCarga error={q.error} que="los kioscos" onReintentar={() => q.refetch()} plano /></div>
+        ) : q.isLoading ? (
+          <p className="p-4 text-sm text-gray-500" role="status">Cargando…</p>
         ) : kioscos.length === 0 ? (
           <p className="p-4 text-sm text-gray-500">
             Aún no hay kioscos. Da de alta el primero (Kiosko 1, Recepción, Planta Norte…) y fíjale su ubicación.
@@ -261,20 +268,7 @@ function TabConfig() {
   /* ANTES: `if (!f) return <p>Cargando…</p>` — si la petición FALLABA, `f` nunca se
    * llenaba y la pestaña se quedaba en «Cargando…» para siempre, sin decir nada.
    * Ahora el error se enseña con su causa y un botón para reintentar. */
-  if (q.isError) {
-    const e: any = q.error;
-    return (
-      <div role="alert" className="bg-rose-50 border border-rose-200 text-rose-900 rounded-lg p-4 max-w-xl">
-        <p className="font-semibold">No se pudo cargar la configuración del checador.</p>
-        <p className="text-sm mt-0.5">{e?.response?.data?.message || e?.message || 'El servidor no respondió.'}</p>
-        <button onClick={() => q.refetch()}
-          className="mt-3 inline-flex items-center justify-center min-h-[44px] px-4 rounded-lg bg-rose-600 text-white font-medium
-            hover:bg-rose-700 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-rose-300">
-          Reintentar
-        </button>
-      </div>
-    );
-  }
+  if (q.isError) return <AvisoCarga error={q.error} que="la configuración del checador" onReintentar={() => q.refetch()} />;
   if (!f) return <p className="text-sm text-gray-500" role="status">Cargando…</p>;
   const num = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value === '' ? null : Number(e.target.value) });
 
@@ -605,10 +599,6 @@ function EditorEmpleado({ empleado, turnos }: { empleado: any; turnos: any[] }) 
     onSuccess: () => qc.invalidateQueries({ queryKey: ['checador-horario', id] }),
   });
   const cons = consQ.data?.data;
-  const toggleCons = useMutation({
-    mutationFn: (aceptado: boolean) => api.setCheckadorConsentimiento(id, { aceptado }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['checador-cons', id] }),
-  });
 
   return (
     <div className="bg-white rounded-lg shadow border p-5 space-y-5">
@@ -637,17 +627,27 @@ function EditorEmpleado({ empleado, turnos }: { empleado: any; turnos: any[] }) 
         {tipo === 'EXENTO' && <p className="text-xs text-gray-500">Personal de confianza: no se le registra ni genera retardo/falta.</p>}
       </div>
 
-      {/* Consentimiento */}
+      {/* Consentimiento — ya NO es una palomita: imprimir → firmar en papel →
+          fotografiar el convenio. La foto es la prueba y es lo que libera el rostro. */}
       <div className="space-y-2 border-t pt-4">
         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5"><ShieldCheck size={14} /> Consentimiento biométrico (LFPDPPP)</span>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={!!cons?.aceptado} onChange={(e) => toggleCons.mutate(e.target.checked)} />
-          El trabajador firmó el consentimiento para el uso de datos biométricos.
-        </label>
-        {!cons?.aceptado && <p className="text-xs text-amber-600">Sin consentimiento no se puede enrolar su rostro.</p>}
+        {consQ.isError ? (
+          <AvisoCarga error={consQ.error} que="el consentimiento" onReintentar={() => consQ.refetch()} />
+        ) : (
+          <ConsentimientoFirmado
+            empleadoId={id}
+            datos={{
+              empleado: `${empleado.nombre || ''} ${empleado.apellido_pat || ''} ${empleado.apellido_mat || ''}`.trim(),
+              rfc: empleado.rfc || empleado.curp,
+              puesto: empleado.puesto || empleado.departamento,
+            }}
+            estado={cons}
+            onCambio={() => { qc.invalidateQueries({ queryKey: ['checador-cons', id] }); }}
+          />
+        )}
       </div>
 
-      {/* Enrolamiento (estado; la captura con cámara va en la siguiente fase) */}
+      {/* Enrolamiento (estado; la captura con cámara va en la pantalla de enrolar) */}
       <div className="space-y-1 border-t pt-4">
         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5"><Camera size={14} /> Rostro enrolado</span>
         <p className="text-sm text-gray-700">

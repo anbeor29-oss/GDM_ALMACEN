@@ -65,9 +65,15 @@ router.post('/empleados/:id/asignacion', asyncHandler(async (req, res) => ok(res
 router.put('/horarios/masivo', asyncHandler(async (req, res) =>
   ok(res, await checador.asignarHorarioMasivo(companyId(req), (req.body || {}).empleadoIds, req.body || {}))));
 
-/* ── Consentimiento (LFPDPPP) ── */
+/* ── Consentimiento (LFPDPPP) ──
+ * El PUT recibe por partes: { impreso } marca que ya se imprimió el convenio,
+ * { documento } sube la FOTO del convenio firmado (y con eso se libera el
+ * enrolamiento), { aceptado:false } lo revoca. La foto se pide aparte porque
+ * pesa y no debe viajar en cada consulta de la pantalla. */
 router.get('/empleados/:id/consentimiento', asyncHandler(async (req, res) => ok(res, await checador.getConsentimiento(companyId(req), req.params.id))));
 router.put('/empleados/:id/consentimiento', asyncHandler(async (req, res) => ok(res, await checador.setConsentimiento(companyId(req), req.params.id, req.body || {}))));
+router.get('/empleados/:id/consentimiento/documento', asyncHandler(async (req, res) =>
+  ok(res, await checador.documentoConsentimiento(companyId(req), req.params.id))));
 
 /* ── Enrolamiento facial ── */
 router.get('/empleados/:id/enrolamiento', asyncHandler(async (req, res) => ok(res, await checador.estadoEnrolamiento(companyId(req), req.params.id))));
