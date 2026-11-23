@@ -1499,6 +1499,12 @@ class APIClient {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/reorganizar-terceros', {});
     return r.data;
   }
+  /** El código que le toca a una cuenta nueva bajo ese padre: en la máscara de la
+   *  empresa (1-10-25-001) y ocupando el primer hueco libre de la serie. */
+  async getSiguienteCodigoCuenta(parentId: string) {
+    const r = await this.client.get<APIResponse<any>>('/accounting/cuentas/siguiente-codigo', { params: { parentId } });
+    return r.data;
+  }
   /** Rellena el agrupador SAT de las cuentas que no lo tienen, heredándolo del padre. */
   async asignarAgrupadorFaltante() {
     const r = await this.client.post<APIResponse<any>>('/accounting/cuentas/asignar-agrupador', {});

@@ -24,6 +24,10 @@ import type { FilaBalanza } from './balanza-lector.service';
 import { NIF_NORMAS } from './nif-normas.data';
 import { construirCatalogoSat, SUBCUENTAS_ARRANQUE, NIVEL2_PENDIENTE, type CodigoSat } from './catalogo-sat.data';
 import { esCodigoCuentaValido } from './codigo-cuenta.util';
+import {
+  MASCARA_DEFAULT, esFormatoMascara as enFormatoMascara, normalizarAMascara,
+  siguienteCodigoHijo as siguienteHijoEnMascara,
+} from './mascara-cuenta';
 import logger from '../../middleware/logger';
 
 /**
@@ -488,9 +492,48 @@ export interface DatosCuenta {
 
 const TIPOS = ['ACTIVO', 'PASIVO', 'CAPITAL', 'INGRESO', 'COSTO', 'GASTO', 'RIF', 'ORDEN'];
 
+/* ── LA REGLA DE NUMERACIÓN (ver mascara-cuenta.ts) ────────────────────────────
+ * Una cuenta nueva no lleva «un número»: lleva el código en la MÁSCARA de la
+ * empresa (`1-10-25-001`, con sus ceros y separadores) y ocupa el PRIMER hueco
+ * libre de la serie. El rubro —activo 1, pasivo 2, capital 3…— queda garantizado
+ * porque el hijo conserva los segmentos del padre.
+ *
+ * Sólo se aplica cuando el PADRE ya está en la máscara: un catálogo heredado con
+ * numeración propia no se rompe (ahí se respeta lo que el usuario escriba). */
+async function mascaraDeEmpresa(companyId: string): Promise<string> {
+  const r = await query<any>('SELECT mascara_cuenta FROM companies WHERE id=$1', [companyId]);
+  return r.rows[0]?.mascara_cuenta || MASCARA_DEFAULT;
+}
+async function codigosDeEmpresa(companyId: string): Promise<string[]> {
+  const r = await query<any>('SELECT codigo FROM accounting_accounts WHERE company_id=$1', [companyId]);
+  return r.rows.map((x: any) => String(x.codigo));
+}
+
+/**
+ * El código que le TOCA a una cuenta nueva bajo `parentId`, ya en el formato de la
+ * máscara y rellenando huecos. Lo usa la pantalla de alta para proponerlo y
+ * `crearCuenta` para generarlo cuando no se escribe ninguno.
+ */
+export async function sugerirCodigoHijo(
+  companyId: string, parentId: string,
+): Promise<{ codigo: string | null; mascara: string; padre?: string; motivo?: string }> {
+  const mascara = await mascaraDeEmpresa(companyId);
+  const p = (await query<any>(
+    'SELECT codigo FROM accounting_accounts WHERE company_id=$1 AND id=$2', [companyId, parentId])).rows[0];
+  if (!p) return { codigo: null, mascara, motivo: 'La cuenta padre no existe en esta empresa.' };
+  if (!enFormatoMascara(p.codigo, mascara)) {
+    return { codigo: null, mascara, padre: p.codigo,
+      motivo: `«${p.codigo}» no está en la máscara ${mascara}; captura el código a mano.` };
+  }
+  const codigo = siguienteHijoEnMascara(p.codigo, mascara, await codigosDeEmpresa(companyId));
+  return {
+    codigo, mascara, padre: p.codigo,
+    motivo: codigo ? undefined : `Ya no hay números libres bajo «${p.codigo}» en la máscara ${mascara}.`,
+  };
+}
+
 export async function crearCuenta(companyId: string, d: DatosCuenta) {
-  const codigo = d.codigo?.trim();
-  if (!codigo) throw new Error('El código de la cuenta es obligatorio.');
+  let codigo = d.codigo?.trim() || '';
   if (!d.nombre?.trim()) throw new Error('El nombre de la cuenta es obligatorio.');
 
   /* ── El padre manda tipo y naturaleza ──
@@ -505,6 +548,36 @@ export async function crearCuenta(companyId: string, d: DatosCuenta) {
     padre = r.rows[0];
     if (!padre) throw new Error('La cuenta padre no existe en esta empresa.');
 
+    /* LA REGLA: con el padre en la máscara, el código va en la máscara. Si no se
+     * escribió ninguno se GENERA (primer hueco libre); si se escribió, se NORMALIZA
+     * —da igual que venga `11025001`, `1-10-25-001` o `1.10.25.001`— para que el
+     * catálogo no acabe con tres formatos del mismo número. */
+    const mascara = await mascaraDeEmpresa(companyId);
+    if (enFormatoMascara(padre.codigo, mascara)) {
+      if (!codigo) {
+        const sug = siguienteHijoEnMascara(padre.codigo, mascara, await codigosDeEmpresa(companyId));
+        if (!sug) {
+          throw new Error(
+            `Ya no hay números libres bajo «${padre.codigo}» en la máscara ${mascara}. ` +
+            `Captura el código a mano o revisa la máscara en el Catálogo de cuentas.`);
+        }
+        codigo = sug;
+      } else {
+        const norm = normalizarAMascara(codigo, mascara);
+        if (!norm) {
+          throw new Error(
+            `El código "${codigo}" no cabe en la máscara ${mascara} de la empresa. ` +
+            `Una subcuenta de «${padre.codigo}» se escribe como ${padre.codigo.replace(/\d/g, '#')} ` +
+            `(p. ej. el que sigue libre). Corrige el código o la máscara.`);
+        }
+        codigo = norm;
+      }
+    }
+  }
+
+  if (!codigo) throw new Error('El código de la cuenta es obligatorio.');
+
+  if (padre) {
     if (!cuelgaDe(codigo, padre.codigo)) {
       throw new Error(
         `El código "${codigo}" no cuelga de "${padre.codigo}". Una subcuenta ` +

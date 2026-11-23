@@ -1278,7 +1278,7 @@ export function ModalProponerAgrupador({ mascara, onCerrar, onListo }: any) {
 
 function ModalNuevaCuenta({ datos, onCerrar, onListo }: any) {
   const [f, setF] = useState({
-    codigo: datos.padre ? `${datos.padre.codigo}.` : '',
+    codigo: '',
     nombre: '',
     tipo: datos.padre?.tipo || 'ACTIVO',
     naturaleza: datos.padre?.naturaleza || 'DEUDORA',
@@ -1288,6 +1288,25 @@ function ModalNuevaCuenta({ datos, onCerrar, onListo }: any) {
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [sug, setSug] = useState<{ codigo: string | null; mascara: string; motivo?: string } | null>(null);
+
+  /* El código se PROPONE con la regla del catálogo: en la máscara de la empresa
+     (1-10-25-001) y ocupando el primer hueco libre de la serie. Antes se prellenaba
+     «padre.codigo + "."», que no es un código válido de ninguna máscara. */
+  useEffect(() => {
+    if (!datos.parentId) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const r: any = await api.getSiguienteCodigoCuenta(datos.parentId);
+        const d = r?.data || {};
+        if (!vivo) return;
+        setSug(d);
+        if (d.codigo) setF((prev) => (prev.codigo ? prev : { ...prev, codigo: d.codigo }));
+      } catch { /* sin sugerencia: se captura a mano */ }
+    })();
+    return () => { vivo = false; };
+  }, [datos.parentId]);
 
   const guardar = async () => {
     setError(''); setBusy(true);
@@ -1317,7 +1336,14 @@ function ModalNuevaCuenta({ datos, onCerrar, onListo }: any) {
           <label className="block">
             <span className="text-xs text-gray-600">Código *</span>
             <input value={f.codigo} onChange={(e) => setF({ ...f, codigo: e.target.value })}
-              className="input w-full font-mono" placeholder="102.03" />
+              className="input w-full font-mono" placeholder={sug?.codigo || (sug?.mascara ? sug.mascara.replace(/#/g, '0') : '1-10-25-001')} />
+            {datos.parentId && (
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                {sug?.codigo
+                  ? <>Propuesto <b className="font-mono">{sug.codigo}</b>: el primer libre bajo {datos.padre?.codigo} en la máscara {sug.mascara}. Puedes cambiarlo.</>
+                  : (sug?.motivo || 'Respeta la máscara del catálogo (no «código del padre + punto»).')}
+              </p>
+            )}
           </label>
           <label className="block">
             <span className="text-xs text-gray-600">Nombre *</span>

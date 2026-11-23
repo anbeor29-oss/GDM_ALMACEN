@@ -368,6 +368,45 @@ que la vía real es «Asignar agrupador».
 
 ---
 
+## 11. Alta de cuentas: el código no respetaba la MÁSCARA ni rellenaba huecos
+
+**Síntoma.** Al dar de alta una subcuenta, la pantalla prellenaba el código con
+**`<código del padre>` + punto** (`1-10-25-000.`), que no es un código válido de ninguna máscara. El usuario pidió
+la regla explícita: *«no nada más pongas el número, acuérdate que tienen un formato… pero primero revisa si puedes
+rellenar los huecos de la serie de clientes o proveedores»*.
+
+**Causa raíz.** La regla de numeración sólo existía para TERCEROS (`codigoSiguienteTercero`, que sí usa máscara y sí
+rellena huecos). El alta general (`crearCuenta` + `ModalNuevaCuenta`) no tenía ninguna: validaba que el código
+colgara del padre y que no se duplicara, pero aceptaba cualquier formato y no proponía nada.
+
+**La regla (mascara-cuenta.ts).** Un catálogo mexicano numera con una máscara de segmentos de ancho fijo
+(`#-##-##-###` → `1-10-25-001`), y el PRIMER segmento es el RUBRO: 1 activo · 2 pasivo · 3 capital · 4 ingresos ·
+5/6 costos y gastos. De ahí las dos reglas:
+1. **Formato** — el hijo de `1-10-25-000` es `1-10-25-001`, nunca `1-10-25-000.1` ni `1-10-25-000-001` (un segmento
+   de más). El hijo conserva los segmentos del padre y sólo numera el suyo, así que el rubro queda garantizado por
+   construcción: un pasivo NO puede colgar de un activo.
+2. **Huecos** — se ocupa el PRIMER número libre (001, 002, 003…), no el siguiente al mayor: un alta nueva rellena el
+   hueco que dejó una cuenta dada de baja y la serie sólo crece cuando ya no hay huecos.
+
+**❌ Lo que NO hay que hacer.** Imponer la máscara a un catálogo HEREDADO con numeración propia: se rompería el alta
+de quien importó su catálogo. La regla sólo se aplica cuando el PADRE ya está en la máscara.
+
+**✅ Solución (commit `__HASH__`).**
+- `mascara-cuenta.ts`: módulo PURO con la regla (`siguienteCodigoHijo` rellena huecos, `normalizarAMascara`,
+  `conMascara`, `cuelgaDeEnMascara`, `rubroDe`) + 16 pruebas Jest.
+- `crearCuenta`: con el padre en la máscara, **genera** el código si no se escribió ninguno y **normaliza** el que
+  se escriba (da igual `11025001`, `1-10-25-001` o `1.10.25.001`), para que el catálogo no acabe con tres formatos
+  del mismo número. Sin máscara utilizable se respeta lo capturado (comportamiento anterior).
+- `GET /accounting/cuentas/siguiente-codigo?parentId=` + `sugerirCodigoHijo()`.
+- `ModalNuevaCuenta`: propone el código correcto al abrir y explica de dónde salió; ya no prellena «padre + punto».
+- Clientes/proveedores ya cumplían la regla (`codigoSiguienteTercero`): se verificó, no se tocó.
+
+**Límite conocido.** Escribir sólo el último segmento (`001`) se interpreta como `0-01-00-000` y falla el candado de
+«cuelga del padre» — es ambiguo a propósito; el formulario ya propone el código completo. Queda duplicado el helper
+`anchosDeMascaraCat` en catalogo.service (ruta de importación), pendiente de unificar con el módulo nuevo.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

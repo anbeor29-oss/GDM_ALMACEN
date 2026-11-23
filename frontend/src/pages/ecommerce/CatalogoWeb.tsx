@@ -8,7 +8,7 @@
 import { useState, useRef } from 'react';
 import { confirmar } from '@/utils/avisos';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Globe, ArrowLeft, Search, Star, Save, X, Loader2, Pencil, ImagePlus, Trash2, Tags, Plus } from 'lucide-react';
+import { Globe, ArrowLeft, Search, Star, Save, X, Loader2, Pencil, ImagePlus, ImageOff, Trash2, Tags, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '@/services/api';
 
@@ -210,6 +210,10 @@ function ImagenesProducto({ productId }: { productId: string }) {
   const [subiendo, setSubiendo] = useState(false);
   const [err, setErr] = useState('');
   const [zoom, setZoom] = useState<string | null>(null);   // imagen ampliada (lightbox)
+  /* Fotos que el navegador NO pudo cargar. La miniatura rota no decía nada y no se
+     sabía si faltaba el archivo o si la URL no respondía; aquí se avisa y se deja el
+     enlace para abrirla directo y ver el error del servidor. */
+  const [rotas, setRotas] = useState<Record<string, boolean>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const q = useQuery({ queryKey: ['ec-img', productId], queryFn: () => api.listarImagenesProductoEc(productId) });
   const imgs: any[] = (q.data as any)?.data?.imagenes || [];
@@ -236,8 +240,18 @@ function ImagenesProducto({ productId }: { productId: string }) {
       <div className="grid grid-cols-3 gap-2">
         {imgs.map((im) => (
           <div key={im.id} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 group">
-            <img src={api.imagenProductoUrl(im.id)} alt="" onClick={() => setZoom(im.id)}
-              className="w-full h-full object-cover cursor-zoom-in" />
+            {rotas[im.id] ? (
+              <a href={api.imagenProductoUrl(im.id)} target="_blank" rel="noreferrer"
+                title="El navegador no pudo cargar esta foto. Ábrela para ver qué responde el servidor."
+                className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-rose-50 text-rose-600 text-[10px] text-center px-1">
+                <ImageOff size={18} />
+                <span>No cargó<br />clic para ver</span>
+              </a>
+            ) : (
+              <img src={api.imagenProductoUrl(im.id)} alt="" onClick={() => setZoom(im.id)}
+                onError={() => setRotas((r) => ({ ...r, [im.id]: true }))}
+                className="w-full h-full object-cover cursor-zoom-in" />
+            )}
             <button type="button" onClick={() => borrar(im.id)} title="Quitar"
               className="absolute top-1 right-1 bg-black/60 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition">
               <Trash2 size={13} />

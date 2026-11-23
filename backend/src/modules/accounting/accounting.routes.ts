@@ -419,6 +419,18 @@ router.post(
   })
 );
 
+/** GET /accounting/cuentas/siguiente-codigo?parentId= — el código que le TOCA a una
+ *  cuenta nueva bajo ese padre: en la MÁSCARA de la empresa (1-10-25-001) y ocupando
+ *  el primer hueco libre de la serie. La pantalla de alta lo propone. */
+router.get(
+  '/cuentas/siguiente-codigo',
+  asyncHandler(async (req: Request, res: Response) => {
+    const parentId = String(req.query.parentId || '');
+    if (!parentId) throw new ValidationError('Falta la cuenta padre.');
+    res.json({ success: true, data: await catalogo.sugerirCodigoHijo(companyId(req), parentId) });
+  })
+);
+
 /** GET /accounting/cuentas/agrupador/propuestas — propone el agrupador SAT de las
  *  cuentas que no lo tienen, comparando el catálogo con el Anexo 24 (por nombre +
  *  herencia del padre). Sólo propone; no aplica nada. */
