@@ -4,6 +4,14 @@
 
 ## 🔜 Abierto (2026-11-24)
 
+- **PROBAR EL CORREO DE GRUPO HCGM.** El remitente guardado era `f` (una letra) y por eso el servidor
+  rechazaba todo con «501 … sender address must contain a domain». Ya se arregló en las cuatro capas, pero
+  hay que verlo en vivo: (a) abrir **Datos de mi empresa → Servidor de correo (SMTP)** y comprobar que el
+  formulario **ya muestra** lo guardado y que abajo dice *«Tus correos saldrán desde …»* con la dirección
+  completa; (b) **Enviar prueba** — el mensaje ahora dice **desde qué buzón** salió, que es como se confirma
+  si está tomando el buzón propio o el del despacho; (c) mandar una factura de verdad a un tercero.
+  Ver `ERRORES_Y_SOLUCIONES.md` #23.
+
 - **Correo — el bloque de depósito quedó APAGADO para todos.** Era lo pedido («no mandes este texto»), pero
   eso incluye el correo **automático** del cargo mensual: ya no lleva banco ni CLABE. Para los clientes a los
   que sí conviene, encenderlo en **Súper Admin → Emisor de facturas → Depósito** («Incluir estos datos de

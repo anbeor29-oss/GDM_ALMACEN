@@ -18,7 +18,7 @@
  * todavía tiene un error. Durante un tiempo sólo existió la primera mitad: se
  * marcaba y el correo nunca salía. El botón «Enviar» es la segunda.
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { confirmar } from '@/utils/avisos';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -154,7 +154,40 @@ export function NominaCFDIPage() {
     queryFn: () => api.getRecibosNomina({ estatus: estatus || undefined }),
     enabled: estatus !== 'RECUPERADOS',
   });
-  const recibos: any[] = q.data?.data?.recibos || [];
+  const recibosTodos: any[] = q.data?.data?.recibos || [];
+
+  /* EL PERIODO ACOTA LO QUE SE VE Y LO QUE SE MANDA.
+   * La lista trae TODOS los recibos de la empresa, de todos los periodos. Con un
+   * solo «marcar todos» + «Enviar» eso serían años de recibos saliendo de golpe
+   * a los trabajadores. El envío se hace por periodo, que es como se paga. */
+  const periodos = useMemo(() => {
+    const m = new Map<string, { id: string; label: string; anio: number; num: number }>();
+    for (const r of recibosTodos) {
+      if (!r.periodo_id || m.has(r.periodo_id)) continue;
+      m.set(r.periodo_id, {
+        id: r.periodo_id,
+        label: r.tipo === 'ESPECIAL' && r.concepto
+          ? `${r.concepto} ${r.anio}`
+          : `${r.tipo} #${r.periodo_numero} · ${r.anio}`,
+        anio: Number(r.anio) || 0, num: Number(r.periodo_numero) || 0,
+      });
+    }
+    return [...m.values()].sort((a, b) => b.anio - a.anio || b.num - a.num);
+  }, [recibosTodos]);
+
+  const [periodoId, setPeriodoId] = useState('');
+  // Por omisión, el periodo MÁS RECIENTE: es el que se acaba de cerrar y el que
+  // se va a mandar. Si el elegido deja de existir al cambiar de pestaña, se cae
+  // al más reciente en vez de dejar la lista vacía sin explicación.
+  useEffect(() => {
+    if (!periodos.length) return;
+    if (!periodoId || !periodos.some((p) => p.id === periodoId)) setPeriodoId(periodos[0].id);
+  }, [periodos]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const recibos = periodoId === '__todos__'
+    ? recibosTodos
+    : recibosTodos.filter((r) => r.periodo_id === periodoId);
+  const periodoActual = periodos.find((p) => p.id === periodoId);
 
   const totales = recibos.reduce(
     (a, r) => ({
@@ -233,8 +266,12 @@ export function NominaCFDIPage() {
   const enviarCorreos = async (reenviar: boolean) => {
     const listos = recibos.filter((r) => r.enviar_por_correo && r.uuid);
     if (listos.length === 0) { setError('No hay recibos timbrados y marcados para correo.'); return; }
+    const alcance = periodoId === '__todos__'
+      ? 'TODOS LOS PERIODOS a la vez'
+      : (periodoActual?.label || 'el periodo en pantalla');
     if (!await confirmar(
-      `Se le va a mandar su recibo a ${listos.length} trabajador(es), con el PDF y el XML timbrado.` +
+      `Se le va a mandar su recibo de ${alcance} a ${listos.length} trabajador(es), ` +
+      'con el PDF y el XML timbrado.' +
       (reenviar ? '\n\nSe REENVIARÁ también a quienes ya lo recibieron.' : '') + '\n\n¿Sigo?'
     )) return;
     setError(''); setAviso(''); setEnviando(true);
@@ -325,6 +362,17 @@ export function NominaCFDIPage() {
             </button>
           ))}
         </div>
+
+        {periodos.length > 0 && (
+          <label className="text-sm text-gray-600 flex items-center gap-1.5">
+            Periodo:
+            <select value={periodoId} onChange={(e) => setPeriodoId(e.target.value)}
+              className="input py-1.5 text-sm max-w-[16rem]">
+              {periodos.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              <option value="__todos__">Todos los periodos</option>
+            </select>
+          </label>
+        )}
 
         {esAdmin && recibos.length > 0 && (
           <div className="ml-auto flex items-center gap-3 text-sm">

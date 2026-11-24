@@ -361,7 +361,7 @@ function SmtpTab({ emisoras, onChange, flash }: any) {
         </div>
         <Campo label="Usuario"><input className="input" value={f.mail_user || ''} onChange={(e) => set('mail_user', e.target.value)} placeholder="facturas@hcgm.com.mx" /></Campo>
         <Campo label="Contraseña"><input className="input" type="password" value={f.mail_pass || ''} onChange={(e) => set('mail_pass', e.target.value)} placeholder={em?.tiene_smtp ? '•••••• (se conserva si lo dejas vacío)' : ''} /></Campo>
-        <Campo label="Remitente (From)"><input className="input" value={f.mail_from || ''} onChange={(e) => set('mail_from', e.target.value)} placeholder="GRUPO HCGM <facturas@hcgm.com.mx>" /></Campo>
+        <Campo label="Remitente (From)"><input className="input" value={f.mail_from || ''} onChange={(e) => set('mail_from', e.target.value)} placeholder="facturas@hcgm.com.mx" /></Campo>
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <button onClick={guardar} disabled={busy} className="inline-flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50">
             {busy ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Guardar

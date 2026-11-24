@@ -34,6 +34,28 @@ export interface MailAttachmentSpec {
   id: string;
 }
 
+/**
+ * La DIRECCIÓN que hay dentro de un remitente, o null si no hay ninguna usable.
+ *
+ * POR QUÉ ESTO EXISTE
+ * Un servidor SMTP rechaza el correo entero si el remitente no trae dominio:
+ * «501 <f>: sender address must contain a domain». El mensaje llega hasta la
+ * pantalla del usuario sin decir de dónde salió esa «f». Aquí se filtra antes:
+ * lo que no sea una dirección completa no se usa como remitente, y se cae al
+ * siguiente candidato en vez de mandar basura al servidor.
+ *
+ * Acepta las dos formas que puede traer `mail_from`: «dir@dominio.mx» a secas y
+ * «Nombre <dir@dominio.mx>», de la que extrae la dirección — meterla tal cual en
+ * el From produciría «"Empresa" <Nombre <dir@dominio.mx>>», que tampoco es válido.
+ */
+export function direccionDe(v: any): string | null {
+  const s = String(v || '').trim();
+  if (!s) return null;
+  const m = s.match(/<([^>]+)>/);
+  const dir = (m ? m[1] : s).trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dir) ? dir : null;
+}
+
 let envTransporter: Transporter | null = null;
 const companyTransporterCache = new Map<string, { t: Transporter; user: string; from?: string }>();
 
@@ -88,7 +110,12 @@ async function smtpDeEmpresa(companyId: string): Promise<{ t: Transporter; user:
     auth: { user: row.mail_user, pass },
     connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 30_000,
   });
-  return { t, user: row.mail_user, from: row.mail_from || row.mail_user };
+  // El From guardado manda, pero sólo si ES una dirección: si alguien dejó algo
+  // incompleto en ese campo, vale más el usuario autenticado —que casi siempre
+  // es el propio buzón— que tumbar todos los envíos de la empresa.
+  const from = direccionDe(row.mail_from) || direccionDe(row.mail_user) || undefined;
+  if (!from) logger.warn(`SMTP empresa ${companyId}: ni mail_from ni mail_user son direcciones válidas.`);
+  return { t, user: row.mail_user, from };
 }
 
 /** La emisora predeterminada del DESPACHO de la empresa (su buzón central, p. ej.
@@ -172,8 +199,18 @@ function getTransporter(): Transporter {
  * probar credenciales SMTP de una empresa. Falla con el error real de
  * nodemailer si las credenciales están mal (útil para debugging).
  */
-export async function sendTestMail(companyId: string, to: string): Promise<void> {
-  const { t, from } = await getTransporterForCompany(companyId);
+export async function sendTestMail(companyId: string, to: string): Promise<{ desde: string }> {
+  const { t, from, user } = await getTransporterForCompany(companyId);
+  /* Qué buzón se usó. Es la pregunta que de verdad se hace quien prueba —«¿está
+   * tomando mi configuración o la del despacho?»— y antes la prueba contestaba
+   * «enviado» sin decirlo. */
+  const desde = direccionDe(from) || direccionDe(user) || direccionDe(process.env.MAIL_FROM) || '';
+  if (!desde) {
+    throw new ValidationError(
+      'El remitente configurado no es una dirección válida (le falta el dominio). ' +
+      'Captura «Remitente (From)» como facturas@tudominio.mx y vuelve a guardar.'
+    );
+  }
   // La prueba es un ESPEJO de lo que va a salir de verdad: enseña el párrafo de la
   // casa y el bloque de depósito SÓLO si están encendidos. Si los mostrara siempre,
   // el admin creería que el cliente recibe algo que no recibe.
@@ -193,7 +230,7 @@ export async function sendTestMail(companyId: string, to: string): Promise<void>
     : 'Los datos de depósito están APAGADOS: no se mandan. Se encienden en Emisor de facturas.';
   try {
     await t.sendMail({
-      from: from || process.env.MAIL_FROM || process.env.MAIL_USER!,
+      from: desde,
       to,
       subject: 'Prueba SMTP · GDM NEXO',
       text: `${base}${adicional ? `\n\n${adicional}` : ''}${dep ? `\n${dep.text}` : ''}\n\n(${pie})\n\n— GDM NEXO`,
@@ -203,6 +240,7 @@ export async function sendTestMail(companyId: string, to: string): Promise<void>
   } catch (e: any) {
     throw new ValidationError(explicarErrorSmtp(e));
   }
+  return { desde };
 }
 
 /** Traduce los errores crudos de SMTP a una pista accionable (host mal escrito,
@@ -218,6 +256,10 @@ function explicarErrorSmtp(e: any): string {
   if (code === 'ETIMEDOUT' || code === 'ESOCKET') return `No se pudo conectar al SMTP (tiempo agotado). Revisa host/puerto/SSL; algunos hosts bloquean el puerto 25.`;
   if (code === 'EAUTH' || /invalid login|authentication failed/i.test(String(e?.message))) {
     return `El SMTP rechazó el usuario/contraseña. En Gmail/Outlook/Hotmail usa una «app password», no tu contraseña normal.`;
+  }
+  if (/sender address must contain a domain|501/i.test(String(e?.message))) {
+    return `El servidor rechazó el REMITENTE porque no trae dominio. Captura «Remitente (From)» completo ` +
+      `(p. ej. facturas@tudominio.mx) en el Servidor de correo (SMTP) y vuelve a guardar.`;
   }
   if (code === 'EENVELOPE' || /recipient|all recipients were rejected|550/i.test(String(e?.message))) {
     return `La conexión al SMTP funcionó, pero el servidor RECHAZÓ al destinatario. Prueba con un correo REAL (un buzón que exista); si es tu propio dominio, revisa que la cuenta destino esté dada de alta.`;
@@ -399,10 +441,10 @@ export async function sendInvoiceMail(input: {
   if (compR.rows.length === 0) throw new NotFoundError('Empresa emisora no encontrada');
   const company = compR.rows[0];
 
-  const fromAddress =
-    company.contact_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(company.contact_email)
-      ? company.contact_email
-      : process.env.MAIL_FROM || process.env.MAIL_USER!;
+  const fromAddress = direccionDe(company.contact_email)
+    || direccionDe(process.env.MAIL_FROM)
+    || direccionDe(process.env.MAIL_USER)
+    || '';
 
   const { ok: attachments, errors: skipped } =
     await buildAttachments(input.companyId, input.attachments);
@@ -417,8 +459,18 @@ export async function sendInvoiceMail(input: {
   }
 
   // Transportador: SMTP propio de la empresa si está configurado, si no env.
-  const { t: tx, from: smtpFrom } = await getTransporterForCompany(input.companyId);
-  const effectiveFrom = smtpFrom || fromAddress;
+  const { t: tx, from: smtpFrom, user: smtpUser } = await getTransporterForCompany(input.companyId);
+  /* EL REMITENTE SALE DEL BUZÓN QUE AUTENTICA, no del correo de contacto: es el
+   * único que el servidor va a aceptar (SPF/DKIM apuntan a él). El contacto de la
+   * empresa queda como Reply-To, que es donde el cliente contesta. */
+  const effectiveFrom = direccionDe(smtpFrom) || direccionDe(smtpUser) || fromAddress;
+  if (!effectiveFrom) {
+    throw new ValidationError(
+      'El remitente del correo no es una dirección válida. Revisa «Remitente (From)» y «Usuario / correo» ' +
+      'en Datos de mi empresa → Servidor de correo (SMTP): el servidor rechaza cualquier envío cuyo ' +
+      'remitente no traiga dominio (p. ej. «facturas@tudominio.mx»).'
+    );
+  }
   // El bloque de depósito ya NO sale solo: se enciende por empresa (o por envío).
   // Antes acompañaba a toda factura por cobrar y era ruido para el cliente de años.
   const quiereDep = input.incluirDeposito !== undefined
@@ -445,7 +497,7 @@ export async function sendInvoiceMail(input: {
   const adicional = (input.textoAdicional ?? company.mail_texto_adicional ?? '').trim();
   const info = await tx.sendMail({
     from: `"${company.business_name}" <${effectiveFrom}>`,
-    replyTo: fromAddress,
+    replyTo: fromAddress || effectiveFrom,
     to: input.to.trim(),
     cc: input.cc?.trim() || undefined,
     subject: input.subject,
@@ -550,7 +602,7 @@ export async function sendPlainMail(input: {
   }
 
   let fromName = 'Sistema de Facturación';
-  let fromAddress = process.env.MAIL_FROM || process.env.MAIL_USER!;
+  let fromAddress = direccionDe(process.env.MAIL_FROM) || direccionDe(process.env.MAIL_USER) || '';
   let replyTo: string | undefined;
   let tx: Transporter = getTransporter();
 
@@ -569,7 +621,13 @@ export async function sendPlainMail(input: {
     // (facturas@hcgm.com.mx). El From usa ESE buzón autenticado (SPF/deliverabilidad).
     const tp = await getTransporterForCompany(input.companyId);
     tx = tp.t;
-    if (tp.from) fromAddress = tp.from;
+    fromAddress = direccionDe(tp.from) || direccionDe(tp.user) || fromAddress;
+  }
+  if (!fromAddress) {
+    throw new ValidationError(
+      'El remitente del correo no es una dirección válida (falta el dominio). Revísalo en el ' +
+      'Servidor de correo (SMTP) de la empresa.'
+    );
   }
 
   const info = await tx.sendMail({

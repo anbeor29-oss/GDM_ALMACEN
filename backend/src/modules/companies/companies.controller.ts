@@ -156,7 +156,17 @@ export async function updateSMTP(req: Request, res: Response) {
     throw new (require('../../middleware/errorHandler').ValidationError)('mail_host y mail_user son obligatorios');
   }
   const { query } = require('../../config/database');
-  const { encryptPass, invalidateSMTPCache } = require('../mailer/mailer.service');
+  const { encryptPass, invalidateSMTPCache, direccionDe } = require('../mailer/mailer.service');
+  /* EL REMITENTE SE VALIDA AL GUARDAR, NO AL ENVIAR.
+   * Un From sin dominio hace que el servidor rechace el correo entero con un
+   * «501 … sender address must contain a domain» que aparece semanas después,
+   * delante del cliente, sin pista de dónde salió. Aquí se detiene con el nombre
+   * del campo que hay que corregir. */
+  if (!direccionDe(mail_from || mail_user)) {
+    throw new (require('../../middleware/errorHandler').ValidationError)(
+      'El remitente debe ser una dirección completa, con dominio (p. ej. facturas@tudominio.mx). ' +
+      'Revisa «Remitente (From)» o «Usuario / correo».');
+  }
   const fields = ['mail_host=$1','mail_port=$2','mail_secure=$3','mail_user=$4','mail_from=$5','mail_updated_at=NOW()'];
   const values: any[] = [mail_host, Number(mail_port) || 587, mail_secure === true, mail_user, mail_from || mail_user];
   if (mail_pass && String(mail_pass).length > 0) {
@@ -223,8 +233,8 @@ export async function testSMTP(req: Request, res: Response) {
       'No hay un correo de destino válido para la prueba. Captura el correo de contacto de la empresa o envíala a un correo real.');
   }
   try {
-    await sendTestMail(id, destino);
-    res.json({ success: true, message: `Correo de prueba enviado a ${destino}` });
+    const r = await sendTestMail(id, destino);
+    res.json({ success: true, message: `Correo de prueba enviado a ${destino} desde ${r.desde}` });
   } catch (e: any) {
     res.status(400).json({ success: false, message: e?.message || 'Error al enviar prueba' });
   }

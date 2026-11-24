@@ -773,13 +773,50 @@ function SMTPConfig({ companyId }: { companyId: string }) {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
+  /* LO GUARDADO SE MUESTRA.
+   * El formulario arrancaba en blanco aunque la empresa ya tuviera su buzón
+   * configurado: nadie podía ver qué estaba realmente grabado, y un remitente
+   * mal guardado era invisible hasta que un correo rebotaba delante del cliente.
+   * La contraseña NO se trae —vive cifrada y no tiene por qué bajar al navegador—;
+   * dejarla vacía conserva la que está. */
+  useEffect(() => {
+    let vivo = true;
+    api.getCompany(companyId).then((r: any) => {
+      if (!vivo || !r?.data) return;
+      const d = r.data;
+      setForm((f) => ({
+        ...f,
+        mail_host: d.mail_host || '',
+        mail_port: Number(d.mail_port) || 587,
+        mail_secure: d.mail_secure === true,
+        mail_user: d.mail_user || '',
+        mail_from: d.mail_from || '',
+      }));
+    }).catch(() => undefined);
+    return () => { vivo = false; };
+  }, [companyId]);
+
+  /* El remitente SIGUE al usuario mientras nadie lo escriba a mano. Antes la
+   * copia era `mail_from || mail_user`, así que se quedaba con la PRIMERA LETRA
+   * tecleada —al segundo carácter ya había valor y dejaba de copiar— y se
+   * guardaba un From como «f». El servidor lo rechaza entero:
+   * «501 <f>: sender address must contain a domain». */
+  const [fromPropio, setFromPropio] = useState(false);
+  const esDireccion = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
+  const remitente = (fromPropio ? form.mail_from : (form.mail_from || form.mail_user)).trim();
+
   const save = async () => {
+    if (!esDireccion(remitente)) {
+      setMsg({ kind: 'err', text: 'El remitente tiene que ser una dirección completa, con dominio (p. ej. facturas@tudominio.mx).' });
+      return;
+    }
     setSaving(true); setMsg(null);
     try {
-      await api.updateCompanySMTP(companyId, form);
-      setMsg({ kind: 'ok', text: '✓ SMTP guardado. Ya puedes enviar facturas desde tu correo.' });
+      await api.updateCompanySMTP(companyId, { ...form, mail_from: remitente });
+      setForm((f) => ({ ...f, mail_from: remitente, mail_pass: '' }));
+      setMsg({ kind: 'ok', text: `✓ SMTP guardado. Tus correos saldrán desde ${remitente}.` });
     } catch (e: any) {
-      setMsg({ kind: 'err', text: e?.message || 'Error al guardar SMTP' });
+      setMsg({ kind: 'err', text: e?.response?.data?.message || e?.message || 'Error al guardar SMTP' });
     } finally { setSaving(false); }
   };
 
@@ -830,7 +867,9 @@ function SMTPConfig({ companyId }: { companyId: string }) {
 
         <label className="block col-span-2">
           <span className="block text-xs text-slate-500 mb-1">Usuario / correo</span>
-          <input value={form.mail_user} onChange={e => setForm({ ...form, mail_user: e.target.value, mail_from: form.mail_from || e.target.value })} placeholder="facturas@tudominio.com" className="input" />
+          <input value={form.mail_user}
+            onChange={e => setForm({ ...form, mail_user: e.target.value, mail_from: fromPropio ? form.mail_from : e.target.value })}
+            placeholder="facturas@tudominio.com" className="input" />
         </label>
         <label className="block">
           <span className="block text-xs text-slate-500 mb-1">SSL/TLS</span>
@@ -846,9 +885,21 @@ function SMTPConfig({ companyId }: { companyId: string }) {
         </label>
         <label className="block">
           <span className="block text-xs text-slate-500 mb-1">Remitente (From)</span>
-          <input value={form.mail_from} onChange={e => setForm({ ...form, mail_from: e.target.value })} placeholder="Igual al usuario" className="input" />
+          <input value={form.mail_from}
+            onChange={e => { setFromPropio(true); setForm({ ...form, mail_from: e.target.value }); }}
+            placeholder="Igual al usuario" className="input" />
         </label>
       </div>
+
+      {/* Qué va a ver el cliente en el «De:». Dicho aquí, un remitente incompleto
+          se nota ANTES de guardar y no cuando un correo rebota delante de él. */}
+      <p className={`text-xs ${esDireccion(remitente) ? 'text-slate-600' : 'text-rose-700'}`}>
+        {remitente
+          ? (esDireccion(remitente)
+              ? <>Tus correos saldrán desde <b>{remitente}</b>.</>
+              : <>«{remitente}» no es una dirección completa: el servidor rechaza todo envío cuyo remitente no traiga dominio.</>)
+          : <>Captura el usuario para fijar el remitente. Si dejas esto vacío, los correos salen por el buzón central del despacho.</>}
+      </p>
 
       <div className="text-[11px] text-slate-500 space-y-1">
         <p>💡 <b>Gmail</b> y <b>Yahoo</b> no aceptan tu contraseña normal: activa la verificación en dos pasos y genera una <b>contraseña de aplicación</b> (Gmail: myaccount.google.com/apppasswords).</p>

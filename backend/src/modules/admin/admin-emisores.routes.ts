@@ -15,7 +15,7 @@ import { authenticateToken } from '../../middleware/authentication';
 import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { requireSuperAdmin, audit } from './admin.middleware';
 import { query } from '../../config/database';
-import { encryptPass, invalidateSMTPCache, sendTestMail } from '../mailer/mailer.service';
+import { encryptPass, invalidateSMTPCache, sendTestMail, direccionDe } from '../mailer/mailer.service';
 
 const router = Router();
 router.use(authenticateToken);
@@ -76,6 +76,13 @@ router.put('/:id/smtp', asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { mail_host, mail_port, mail_secure, mail_user, mail_pass, mail_from } = req.body || {};
   if (!mail_host || !mail_user) throw new ValidationError('mail_host y mail_user son obligatorios.');
+  // El From se valida aquí: sin dominio, el servidor rechaza TODO envío de esta
+  // emisora con un «501» que sale semanas después, delante del cliente.
+  if (!direccionDe(mail_from || mail_user)) {
+    throw new ValidationError(
+      'El remitente debe ser una dirección completa, con dominio (p. ej. facturas@hcgm.com.mx). ' +
+      'Revisa «Remitente (From)» o «Usuario».');
+  }
 
   const fields = ['mail_host=$1', 'mail_port=$2', 'mail_secure=$3', 'mail_user=$4', 'mail_from=$5', 'mail_updated_at=NOW()'];
   const values: any[] = [mail_host, Number(mail_port) || 587, mail_secure === true || mail_secure === 'true', mail_user, mail_from || mail_user];
@@ -97,8 +104,8 @@ router.post('/:id/smtp/test', asyncHandler(async (req: Request, res: Response) =
   const to = (req.body?.to && String(req.body.to).trim()) || (req as any).user?.email;
   if (!to) throw new ValidationError('Indica un correo de destino.');
   try {
-    await sendTestMail(id, to);
-    res.json({ success: true, message: `Correo de prueba enviado a ${to}.` });
+    const r = await sendTestMail(id, to);
+    res.json({ success: true, message: `Correo de prueba enviado a ${to} desde ${r.desde}.` });
   } catch (e: any) {
     res.status(400).json({ success: false, message: e?.message || 'No se pudo enviar la prueba.' });
   }

@@ -780,6 +780,68 @@ ejercitado con `tsc` y las 191 pruebas.
 
 ---
 
+## 23. «501 &lt;f&gt;: sender address must contain a domain» — el remitente guardado era una sola letra
+
+**Síntoma.** Al mandar la factura F-000062 por correo, el servidor contestó
+`Mail command failed: 501 <f>: sender address must contain a domain`. El remitente que salía era **`f`**: una
+letra, sin arroba ni dominio.
+
+**Cómo diagnosticar.** `grep -n "mail_from" frontend/src/components/IssuerModal.tsx`. El campo «Usuario /
+correo» llevaba este `onChange`:
+
+```tsx
+onChange={e => setForm({ ...form, mail_user: e.target.value, mail_from: form.mail_from || e.target.value })}
+```
+
+**Causa raíz.** Esa línea copia el usuario al remitente **sólo mientras el remitente esté vacío**. Al teclear
+la **primera letra** de `facturas@hcgm.com.mx`, `form.mail_from` todavía era `''` (falso) → `mail_from = 'f'`.
+A partir del **segundo** carácter `form.mail_from` ya valía `'f'` (verdadero) y **dejaba de copiar**. El
+remitente quedaba congelado en la primera letra tecleada, y así se guardó en la base.
+
+Dos cosas lo volvieron invisible hasta que rebotó delante del cliente:
+- `SMTPConfig` **nunca leía** la configuración guardada: el formulario arrancaba en blanco aunque la empresa
+  ya tuviera su buzón, así que nadie podía ver que ahí decía `f`.
+- No había validación: ni al guardar (se aceptó `f`) ni al enviar (se armaba el From y se mandaba al
+  servidor). El único que se quejó fue el SMTP, semanas después y con un mensaje sobre `<f>`.
+
+**✅ Solución (commit `__HASH__`), en las cuatro capas donde pudo detenerse.**
+- **El formulario** copia el usuario al remitente mientras nadie escriba el remitente a mano (bandera
+  `fromPropio`), ya **carga lo guardado** (host, puerto, SSL, usuario y remitente — la contraseña no: vive
+  cifrada y no tiene por qué bajar al navegador) y enseña en vivo **desde qué dirección van a salir** los
+  correos, en rojo si no es una dirección completa.
+- **Al guardar**, backend y frontend rechazan un remitente sin dominio, nombrando el campo que hay que
+  corregir. `PATCH /companies/:id/smtp` y `PUT /admin/emisores/:id/smtp`.
+- **Al enviar**, `direccionDe()` filtra lo que no sea una dirección usable y cae al siguiente candidato
+  (`mail_from` → `mail_user` → `contact_email` → `MAIL_FROM`). Acepta `Nombre <dir@dom>` y extrae la
+  dirección: meterla entera produciría `"Empresa" <Nombre <dir@dom>>`, que tampoco es válido. **Con esto, el
+  buzón roto vuelve a funcionar sin que nadie lo re-guarde**, porque el usuario autenticado sí es una
+  dirección.
+- **La prueba de SMTP** dice ahora **desde qué buzón salió** («enviado a X desde facturas@hcgm.com.mx»), que
+  es la pregunta real de quien prueba: ¿está tomando mi configuración o la del despacho? Y
+  `explicarErrorSmtp` traduce el 501 a «captura el remitente completo» en vez de repetir el `<f>`.
+
+**Lección.** Un `a || b` dentro de un `onChange` que se dispara **por cada tecla** no es «usa b si a está
+vacío»: es «usa b sólo en el primer carácter». Para espejear un campo hace falta una bandera de «el usuario
+ya lo tocó», no la vacuidad del destino.
+
+---
+
+## 24. Un clic podía mandar años de recibos de nómina de golpe
+
+**Síntoma.** (Encontrado al revisar el envío recién hecho, antes de que pasara.) Nómina → CFDI lista **todos**
+los recibos de la empresa, de **todos los periodos**. «Marcar todos» + «Enviar» le habría mandado a cada
+trabajador su historia completa.
+
+**Causa raíz.** La pantalla sólo filtraba por estatus (sin timbrar / timbrados / todos). Mientras únicamente
+se *marcaba*, el alcance no importaba; con el envío real, sí.
+
+**✅ Solución (commit `__HASH__`).** Un **selector de periodo** (derivado de los recibos cargados, con
+`periodo_id` agregado al listado) que arranca en el **más reciente** —el que se acaba de cerrar y el que se
+va a mandar—. Marcar, desmarcar y enviar operan sobre lo que está en pantalla, y la confirmación **nombra el
+periodo**; «Todos los periodos» existe, pero hay que elegirlo y el aviso lo dice con todas sus letras.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …
