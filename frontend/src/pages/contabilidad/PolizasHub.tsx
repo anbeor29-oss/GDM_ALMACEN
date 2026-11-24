@@ -52,6 +52,18 @@ export function PolizasHubPage() {
     const p = new URLSearchParams(params); p.set('tab', t); setParams(p, { replace: true });
   };
 
+  /* EDITAR UNA PÓLIZA desde cualquier pestaña: se va al Libro diario con
+   * `?editar=<id>`, que es el camino que YA existe (el mismo del auxiliar de la
+   * balanza). Así no hay un segundo editor que mantener ni dos formas de editar
+   * la misma póliza. */
+  const editarPoliza = (id: string, anio: number, mes: number) => {
+    const p = new URLSearchParams(params);
+    p.set('tab', 'libro'); p.set('editar', id);
+    p.set('anio', String(anio)); p.set('mes', String(mes));
+    setParams(p, { replace: true });
+    setTab('libro');
+  };
+
   return (
     <div className="p-6 space-y-5">
       {/* Encabezado */}
@@ -79,7 +91,7 @@ export function PolizasHubPage() {
       {tab === 'compras' && <DocsContabilizar modo="compras" />}
       {tab === 'cobros' && <PagosContabilizar modo="cobros" />}
       {tab === 'pagos' && <PagosContabilizar modo="pagos" />}
-      {tab === 'deprec' && <DeprecPanel />}
+      {tab === 'deprec' && <DeprecPanel onEditar={editarPoliza} />}
       {tab === 'nomina' && <NominaPanel />}
       {tab === 'libro' && <PolizasListaPage />}
     </div>
@@ -89,7 +101,7 @@ export function PolizasHubPage() {
 /* ── Depreciaciones: la corrida mensual (reutiliza el generador del motor) ──── */
 const money = (n: any) => Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 
-function DeprecPanel() {
+function DeprecPanel({ onEditar }: { onEditar: (id: string, anio: number, mes: number) => void }) {
   const qc = useQueryClient();
   const hoy = new Date();
   const [anio, setAnio] = useState(hoy.getFullYear());
@@ -190,7 +202,17 @@ function DeprecPanel() {
               {polizas.map((p) => (
                 <Fragment key={p.id}>
                   <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => setAbierta(abierta === p.id ? null : p.id)}>
-                    <td className="px-3 py-2 font-mono text-gray-700">{p.folio}</td>
+                    <td className="px-3 py-2">
+                      {/* El folio en AZUL abre el editor, igual que en el Libro
+                          diario. `stopPropagation` para que el clic no despliegue
+                          además las partidas. */}
+                      <button onClick={(e) => { e.stopPropagation(); onEditar(p.id, anio, mes); }}
+                        title="Editar esta póliza en el Libro diario"
+                        className="font-bold text-blue-600 hover:underline tabular-nums
+                          focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 rounded">
+                        #{p.folio}
+                      </button>
+                    </td>
                     <td className="px-3 py-2 text-gray-600">{fechaMx(p.fecha)}</td>
                     <td className="px-3 py-2 text-gray-800">{p.concepto}</td>
                     <td className="px-3 py-2 text-center">
