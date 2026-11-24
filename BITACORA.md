@@ -8618,6 +8618,38 @@ haría leer como navegación. Detalle en `ERRORES_Y_SOLUCIONES.md` #16. Ver [[op
 
 ---
 
+## 2026-11-24 (storefront) — La tienda pública estaba muerta: un router de en medio pedía token por toda la API
+
+La URL de la imagen de un producto —la que va dentro de un `<img src>`— contestaba
+`{"success":false,"message":"No token provided"}`. No era la imagen: era **toda** la tienda del comprador.
+
+El router del storefront estaba bien escrito y bien montado, y dice en su primera línea «API PÚBLICA …
+SIN login». Moría antes de que lo llamaran. La pista fue que **una ruta inventada también daba 401**: si
+algo que no existe contesta «falta token», el 401 no sale de ninguna ruta, sale de antes.
+
+En Express, un router montado en la **raíz** de la API ve *todo* lo que entra a `/api/v1`, no sólo sus
+rutas. Dos lo están —el del mailer y el de Carta Porte, porque sus rutas cuelgan de `/invoices/:id/…`— y
+los dos abrían con `router.use(authenticateToken)`. Ese middleware corría para cada petición de la API y
+cortaba la cadena con 401 antes de llegar a lo montado después.
+
+Lo caro: **ya estaba advertido en el propio `app.ts`**, cuatro líneas más arriba, para el router de
+documentos legales. La advertencia se cumplió moviendo *ese* router. El storefront nació después, debajo,
+y volvió a caer en lo mismo. Un comentario avisa a quien lo lee; no protege.
+
+Por eso el arreglo **no** fue subir el storefront de línea —eso funciona y deja la trampa armada para la
+siguiente ruta pública—, sino quitarle a esos dos routers el poder de decidir por los demás: el auth pasa
+a ir **ruta por ruta** (7 rutas). Lo que no casa con ellas sigue su camino.
+
+De regalo, una ruta inexistente vuelve a dar **404** en vez de 401. No es cosmético: es lo que permite
+distinguir «no está desplegado» de «está protegido» cuando se diagnostica desde fuera, y es justo lo que
+faltó en diagnósticos anteriores.
+
+Lo sostiene una prueba **estructural** (`backend/src/app-montaje.test.ts`): lee `app.ts`, saca los routers
+montados en la raíz y falla si alguno trae `router.use(authenticateToken)`. No levanta servidor ni toca
+base de datos, porque la regla es de montaje, no de ejecución. Comprobado que detecta la regresión.
+
+197 pruebas verdes (191 + 6 nuevas), `tsc` del backend limpio. Entrada 26 de `ERRORES_Y_SOLUCIONES.md`.
+
 ## 2026-11-24 (correo + cobranza) — El correo del grupo sale de verdad, y el súper admin lleva el cobro
 
 Tres cosas que estaban a medias, en el mismo lote.

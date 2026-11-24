@@ -12,10 +12,26 @@ import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
 import { sendInvoiceMail, testMailConfig, MailAttachmentSpec } from './mailer.service';
 
 const router = Router();
-router.use(authenticateToken);
 
+/* EL AUTH VA EN CADA RUTA, NO EN EL ROUTER.
+ *
+ * Este router se monta en la RAIZ `/api/v1` (comodin) para que
+ * `/invoices/:id/send-email` no choque con el modulo de invoices. Con
+ * `router.use(authenticateToken)` ese middleware corria para TODO lo que entra
+ * a `/api/v1` —exista o no la ruta aqui dentro— y cortaba la cadena con 401
+ * ANTES de llegar a los routers montados despues.
+ *
+ * Eso dejo muerto al storefront publico (`/api/v1/storefront/*`, que se monta
+ * mas abajo): la tienda del comprador y hasta las <img> de los productos
+ * contestaban "No token provided". Y cualquier ruta inexistente devolvia 401
+ * en vez de 404, lo que vuelve imposible distinguir "no desplegado" de
+ * "protegido" al diagnosticar.
+ *
+ * Con el middleware en cada ruta, lo que no casa aqui SIGUE SU CAMINO.
+ */
 router.post(
   '/invoices/:id/send-email',
+  authenticateToken,
   asyncHandler(async (req: Request, res: Response) => {
     if (!req.user?.companyId) throw new ValidationError('Company ID requerido');
     const { id } = req.params;
@@ -47,6 +63,7 @@ router.post(
 
 router.post(
   '/admin/mail-test',
+  authenticateToken,
   asyncHandler(async (req: Request, res: Response) => {
     if (req.user?.role !== 'SUPER_ADMIN') {
       throw new ValidationError('Solo SUPER_ADMIN puede probar la config SMTP');

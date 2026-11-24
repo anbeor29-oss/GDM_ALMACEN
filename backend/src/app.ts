@@ -211,6 +211,9 @@ export function createApp(): Express {
   app.use(`/api/${config.apiVersion}/csf`, csfRoutes);
   // Mailer expone POST /invoices/:id/send-email — se monta en la raíz para
   // que la ruta llegue sin conflicto con el módulo de invoices.
+  // OJO: un router montado en la RAÍZ ve TODO lo que entra a /api/v1. Su auth
+  // tiene que ir ruta por ruta, nunca con router.use(authenticateToken), o
+  // mata con 401 a todo lo que se monte después (pasó con el storefront).
   app.use(`/api/${config.apiVersion}`, mailerRoutes);
   app.use(`/api/${config.apiVersion}/payments`, paymentsRoutes);
   app.use(`/api/${config.apiVersion}/credit-notes`, creditNotesRoutes);

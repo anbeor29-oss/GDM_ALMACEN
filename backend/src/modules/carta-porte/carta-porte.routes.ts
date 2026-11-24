@@ -18,7 +18,11 @@ import { buildCartaPorteXml } from './build-carta-porte-xml';
 import { validateCartaPorte } from './validate-carta-porte';
 
 const router = Router();
-router.use(authenticateToken);
+
+/* El auth va en cada ruta: este router tambien se monta en la RAIZ `/api/v1`
+ * (comodin) y un `router.use(authenticateToken)` cortaria con 401 todo lo que
+ * entre a la API, aunque la ruta viva en otro router montado despues. Ver la
+ * nota larga en mailer.routes.ts. */
 
 function companyId(req: Request): string {
   if (!req.user?.companyId) throw new ValidationError('Company ID is required');
@@ -27,6 +31,7 @@ function companyId(req: Request): string {
 
 router.get(
   '/invoices/:invoiceId/carta-porte',
+  authenticateToken,
   asyncHandler(async (req: Request, res: Response) => {
     const cp = await getByInvoiceId(req.params.invoiceId);
     res.json({ cartaPorte: cp });
@@ -35,6 +40,7 @@ router.get(
 
 router.put(
   '/invoices/:invoiceId/carta-porte',
+  authenticateToken,
   asyncHandler(async (req: Request, res: Response) => {
     const input = parseCartaPorte(req.body);
     /* `edicion` no es parte de la Carta Porte: es el número que traía el
@@ -46,6 +52,7 @@ router.put(
 
 router.get(
   '/invoices/:invoiceId/carta-porte/validate',
+  authenticateToken,
   asyncHandler(async (req: Request, res: Response) => {
     const cp = await getByInvoiceId(req.params.invoiceId);
     if (!cp) { res.status(404).json({ error: 'Sin Carta Porte' }); return; }
@@ -59,6 +66,7 @@ router.get(
 
 router.get(
   '/invoices/:invoiceId/carta-porte/xml',
+  authenticateToken,
   asyncHandler(async (req: Request, res: Response) => {
     const cp = await getByInvoiceId(req.params.invoiceId);
     if (!cp) { res.status(404).json({ error: 'Sin Carta Porte' }); return; }
@@ -69,6 +77,7 @@ router.get(
 
 router.delete(
   '/invoices/:invoiceId/carta-porte',
+  authenticateToken,
   asyncHandler(async (req: Request, res: Response) => {
     const r = await remove(companyId(req), req.params.invoiceId);
     res.json(r);

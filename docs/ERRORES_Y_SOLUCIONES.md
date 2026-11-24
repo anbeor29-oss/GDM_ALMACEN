@@ -889,6 +889,75 @@ contestaba 200 — con `Content-Type: text/html`. Para saber si un archivo está
 
 ---
 
+## 26. El storefront público entero contestaba «No token provided»
+
+**Síntoma.** Abrir la imagen de un producto de la tienda —la URL que va dentro de un `<img src>`—
+devolvía JSON en vez de la foto:
+
+```
+GET /api/v1/storefront/img/18dd44a2-…  →  {"success":false,"message":"No token provided"}
+```
+
+No era sólo la imagen: **toda** la tienda del comprador estaba muerta.
+
+```
+/api/v1/storefront/img/<uuid>   → 401
+/api/v1/storefront/<slug>       → 401
+/api/v1/no-existe-xyz-123       → 401   ← una ruta inventada
+/api/v1/public/companies/x/logo → 500   ← ésta SÍ llegaba a su handler
+```
+
+**Cómo diagnosticar.** El router del storefront estaba bien: se monta **sin** `authenticateToken` y su
+primera línea de comentario dice «API PÚBLICA … SIN login». El `<img>` tampoco tenía culpa: un navegador
+no manda `Authorization` al pedir una imagen. La pista fue la **ruta inventada**: si algo que no existe
+contesta 401 en vez de 404, el 401 no sale de ninguna ruta — sale de **antes**.
+
+La comparación lo cerró: `/public/companies/x/logo` (montado en la línea 198) llegaba a su handler,
+`/storefront/*` (línea 263) no. Lo que cambia entre una y otra es lo que hay **en medio**.
+
+**Causa raíz.** En Express, un router montado en la **raíz** de la API recibe *todo* lo que entra a
+`/api/v1`, no sólo sus propias rutas. Dos lo están —`mailerRoutes` (línea 214) y `cartaPorteRoutes`
+(línea 242)— porque sus rutas cuelgan de `/invoices/:id/…` y no deben chocar con el módulo de invoices.
+Y los dos abrían con:
+
+```ts
+const router = Router();
+router.use(authenticateToken);   // ← corre para TODA la API, no sólo para este router
+```
+
+Así que cada petición a la API pasaba por ese `authenticateToken` **antes** de que la cadena llegara a
+los routers montados después. Sin `Bearer`, 401 y se acabó: el storefront nunca fue llamado.
+
+Lo más caro es que **ya estaba advertido en el propio `app.ts`**, cuatro líneas más arriba, para el
+router de documentos legales:
+
+> «DEBE ir ANTES de mailerRoutes, que se monta en /api/v1 (wildcard) con authenticateToken y bloquearía
+> cualquier request posterior al no encontrar Bearer token.»
+
+La advertencia se cumplió moviendo *ese* router. El storefront nació después, debajo, y volvió a caer en
+lo mismo. Un comentario no protege nada: sólo avisa a quien lo lee.
+
+**❌ Lo que NO hay que hacer.** Subir el montaje del storefront por encima de la línea 214. Funciona, y
+deja la trampa armada para la siguiente ruta pública que alguien añada abajo.
+
+**✅ Solución (commit `__HASH__`).** El auth de esos dos routers pasó a ir **ruta por ruta**
+(`router.post('/invoices/:id/send-email', authenticateToken, …)`), que son 7 rutas en total. Un router
+montado en la raíz ya no decide por los demás: lo que no casa con sus rutas **sigue su camino**.
+
+Dos efectos de regalo: el storefront público funciona esté montado donde esté, y una ruta inexistente
+vuelve a dar **404** en vez de 401 — que no es cosmético, es lo que permite distinguir «no está
+desplegado» de «está protegido» cuando se diagnostica desde fuera.
+
+**Prueba que lo sostiene.** `backend/src/app-montaje.test.ts` lee `app.ts`, saca los routers montados en
+la raíz y falla si alguno trae `router.use(authenticateToken)`. Es **estructural** —no levanta servidor,
+no toca base de datos— porque la regla es de montaje, no de ejecución. Comprobado que detecta la
+regresión: reintroducido el `router.use` a propósito, la prueba falla.
+
+**Nota.** El detector ignora los comentarios. La primera versión no, y acusaba a los dos archivos… por
+las notas que explican precisamente por qué no se usa `router.use(authenticateToken)`.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …
