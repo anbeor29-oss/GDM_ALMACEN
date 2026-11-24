@@ -32,12 +32,15 @@ export function ChecadorPage() {
    * índice fijo). Orden por lógica: configurar → checar → consultar. Las que
    * cambian el contenido in-page son pestañas (resaltan al estar activas);
    * enrolar/kiosco/campo son pantallas completas de cámara, por eso navegan.
-   * Antes «Registro» salía dos veces (botón arriba + pestaña abajo): ahora una. */
+   * Antes «Registro» salía dos veces (botón arriba + pestaña abajo): ahora una.
+   *
+   * CONFIGURACIÓN no está en esta lista a propósito: no es trabajo del día a día
+   * —se ajusta una vez y se olvida—, así que no compite con las demás. Va como
+   * ENGRANE, sin apariencia de botón, al final de la barra (ver abajo). */
   const items: Array<
     | { kind: 'tab'; id: Tab; label: string; icon: any }
     | { kind: 'link'; to: string; label: string; icon: any }
   > = [
-    { kind: 'tab',  id: 'config',            label: 'Configuración',  icon: Settings },
     { kind: 'tab',  id: 'turnos',            label: 'Turnos',         icon: Clock },
     { kind: 'tab',  id: 'kioscos',           label: 'Kioscos',        icon: MapPin },
     { kind: 'tab',  id: 'empleados',         label: 'Empleados',      icon: Users },
@@ -65,7 +68,7 @@ export function ChecadorPage() {
           azul) y las de cámara en verde FUERTE relleno—, así que el rótulo «Abrir
           cámara:» ya no hace falta: el color dice lo mismo sin ocupar renglón.
           El grupo conserva su etiqueta para el lector de pantalla, que no ve color. */}
-      <div role="tablist" aria-label="Secciones del checador" className="flex flex-wrap gap-1.5">
+      <div role="tablist" aria-label="Secciones del checador" className="flex flex-wrap items-center gap-1.5">
         {items.filter((it) => it.kind === 'tab').map((it: any, i) => {
           const Ico = it.icon;
           const activa = tab === it.id;
@@ -78,6 +81,22 @@ export function ChecadorPage() {
             </button>
           );
         })}
+
+        {/* CONFIGURACIÓN — engrane SIN apariencia de botón: ni relleno ni borde, el
+            fondo sólo asoma al pasar el cursor. Va a la DERECHA, que es donde se
+            busca un engrane (convención del sistema y de toda la web). Sigue
+            siendo una pestaña de verdad (`role="tab"`), así que al estar activa
+            tiene que verse: azul + subrayado + fondo tenue —y no sólo color,
+            porque el color solo no basta (WCAG 1.4.1)—. */}
+        <button role="tab" aria-selected={tab === 'config'} onClick={() => setTab('config')}
+          title="Configuración del checador"
+          className={`ml-auto inline-flex items-center gap-1.5 min-h-[44px] px-2 rounded-lg text-sm
+            transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300
+            ${tab === 'config'
+              ? 'text-blue-700 font-semibold bg-blue-50 underline decoration-2 underline-offset-4'
+              : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'}`}>
+          <Settings size={18} aria-hidden="true" /> Configuración
+        </button>
       </div>
       <div role="group" aria-label="Abrir cámara" className="flex flex-wrap items-center gap-1.5">
         {items.filter((it) => it.kind === 'link').map((it: any) => {
