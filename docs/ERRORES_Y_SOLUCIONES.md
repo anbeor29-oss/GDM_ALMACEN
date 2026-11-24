@@ -597,7 +597,7 @@ pegados, y en algunas la opción activa casi no se distinguía.
 pero siete se habían escrito antes o a mano. Una incluso repetía las clases literales del helper —mismo
 color, escrito aparte—, que es la forma segura de desincronizarse el día que el esquema cambie.
 
-**✅ Solución (commit `__HASH__`).** Barrido: todas las barras de opciones pasan por `claseOpcion` —
+**✅ Solución (commit `3c1b4a9`).** Barrido: todas las barras de opciones pasan por `claseOpcion` —
 `Reports`, `Inventory` (bandeja gris), `AdminEmisores` (pastillas azul cielo), `ReportesFiscales` y
 `ReportesEspeciales` (bandeja gris/violeta), `CuentasDuplicadas` (pastillas `primary`) y
 `CodificacionRfc` (clases literales)—. Todas ganan además `role="tablist"`/`aria-selected`, anillo de
