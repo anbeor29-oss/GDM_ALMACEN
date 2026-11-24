@@ -842,6 +842,53 @@ periodo**; «Todos los periodos» existe, pero hay que elegirlo y el aviso lo di
 
 ---
 
+## 25. El service worker nunca se instaló en hcgm.com.mx/erp (registro desde la raíz)
+
+**Síntoma.** Al abrir https://hcgm.com.mx/erp/ la consola traía
+`A bad HTTP response code (404) was received when fetching the script`. La página cargaba bien y todos los
+assets respondían 200, así que no parecía nada.
+
+**Cómo diagnosticar.** El 404 no salía en la lista de peticiones —el registro de un service worker no es una
+petición de la página— así que se buscó el registro en el HTML servido:
+
+```
+curl -s https://hcgm.com.mx/erp/ | sed -n '/<script>/,/<\/script>/p' | grep -i register
+    navigator.serviceWorker.register('/sw.js').catch(function () {});
+```
+
+Y la comprobación directa:
+
+```
+/sw.js      → 404
+/erp/sw.js  → 200
+```
+
+**Causa raíz.** `frontend/index.html` registraba el worker con una **ruta absoluta al dominio**: `/sw.js`. En
+desarrollo funciona, porque la app vive en `/`. El build del hosting la publica bajo **`/erp/`**, donde el
+archivo está en `/erp/sw.js`. El registro pedía un archivo que no existe.
+
+Y el `.catch(function () {})` **se tragaba el error sin decir nada**: por eso siguió roto sin que nadie lo
+notara. La única huella era ese mensaje de consola, que no dice qué script.
+
+**Consecuencia.** En el sitio publicado el service worker **nunca llegó a instalarse**, y con él se perdió
+justo lo que existe para evitar: *servir bundles viejos después de un despliegue*. Es el mismo síntoma —«no
+veo los cambios»— que ya había costado días y que motivó poner el commit en `/health`.
+
+**✅ Solución (commit `__HASH__`).** El registro se mudó a `main.tsx`, que es el único lugar donde se conoce
+la base real de la app: `` `${import.meta.env.BASE_URL}sw.js` `` → `/sw.js` en desarrollo y `/erp/sw.js` en el
+hosting. Una ruta **relativa** no habría servido: desde una ruta profunda de la SPA (`/erp/facturas`)
+resolvería contra ella. El `catch` ahora deja un `console.warn` con la URL: callar el error es lo que lo
+mantuvo roto.
+
+Comprobado en el bundle construido: `const t="/erp/sw.js"`.
+
+**Nota de diagnóstico para el futuro.** En este hosting, un `200` **no prueba que el archivo exista**: el
+`.htaccess` de la SPA devuelve `index.html` para cualquier ruta desconocida. `/erp/service-worker.js` también
+contestaba 200 — con `Content-Type: text/html`. Para saber si un archivo está de verdad, hay que mirar el
+**Content-Type** o las primeras líneas, no el código de estado.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

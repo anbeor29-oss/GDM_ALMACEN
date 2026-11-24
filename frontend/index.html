@@ -77,13 +77,9 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // Registra el service worker para que la app sea instalable como PWA.
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function () {
-          navigator.serviceWorker.register('/sw.js').catch(function () {});
-        });
-      }
-    </script>
+    <!-- El service worker se registra desde main.tsx, que es el único lugar
+         donde se conoce la BASE real de la app (`/` en dev, `/erp/` en el
+         hosting). Registrarlo aquí con ruta absoluta lo mandaba siempre a
+         `/sw.js`, que en hcgm.com.mx/erp no existe. -->
   </body>
 </html>
