@@ -804,7 +804,7 @@ Dos cosas lo volvieron invisible hasta que rebotó delante del cliente:
 - No había validación: ni al guardar (se aceptó `f`) ni al enviar (se armaba el From y se mandaba al
   servidor). El único que se quejó fue el SMTP, semanas después y con un mensaje sobre `<f>`.
 
-**✅ Solución (commit `__HASH__`), en las cuatro capas donde pudo detenerse.**
+**✅ Solución (commit `1294246`), en las cuatro capas donde pudo detenerse.**
 - **El formulario** copia el usuario al remitente mientras nadie escriba el remitente a mano (bandera
   `fromPropio`), ya **carga lo guardado** (host, puerto, SSL, usuario y remitente — la contraseña no: vive
   cifrada y no tiene por qué bajar al navegador) y enseña en vivo **desde qué dirección van a salir** los
@@ -835,7 +835,7 @@ trabajador su historia completa.
 **Causa raíz.** La pantalla sólo filtraba por estatus (sin timbrar / timbrados / todos). Mientras únicamente
 se *marcaba*, el alcance no importaba; con el envío real, sí.
 
-**✅ Solución (commit `__HASH__`).** Un **selector de periodo** (derivado de los recibos cargados, con
+**✅ Solución (commit `1294246`).** Un **selector de periodo** (derivado de los recibos cargados, con
 `periodo_id` agregado al listado) que arranca en el **más reciente** —el que se acaba de cerrar y el que se
 va a mandar—. Marcar, desmarcar y enviar operan sobre lo que está en pantalla, y la confirmación **nombra el
 periodo**; «Todos los periodos» existe, pero hay que elegirlo y el aviso lo dice con todas sus letras.
