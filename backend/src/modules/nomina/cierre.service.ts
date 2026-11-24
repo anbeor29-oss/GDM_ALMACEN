@@ -369,7 +369,7 @@ export async function listarRecibos(
     `SELECT r.id, r.num_empleado, r.nombre, r.rfc, r.dias,
             r.total_percepciones, r.total_deducciones, r.total_gravado, r.total_exento,
             r.isr, r.imss, r.neto, r.estatus, r.uuid, r.timbrado_at,
-            r.enviar_por_correo, r.enviado_at, r.correo, r.created_at,
+            r.enviar_por_correo, r.enviado_at, r.enviado_error, r.correo, r.created_at,
             p.tipo, p.numero AS periodo_numero, p.anio, p.concepto,
             TO_CHAR(p.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
             TO_CHAR(p.fecha_fin, 'YYYY-MM-DD')    AS fecha_fin

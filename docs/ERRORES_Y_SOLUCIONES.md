@@ -691,6 +691,95 @@ se genera ninguna») en vez de quedarse en blanco.
 
 ---
 
+## 20. El bloque de depósito salía en todos los correos (y no había dónde escribir nada más)
+
+**Síntoma.** Todo correo de cobro —y la prueba de SMTP— llevaba pegado el bloque «Datos para tu pago
+(transferencia o depósito)» con el banco, la CLABE y la nota. A un cliente nuevo le sirve; a uno de años se
+lo repetía cada mes. Y no había forma de añadir un párrafo propio: el cuerpo del correo era el texto fijo
+del sistema y lo que se escribiera en ese envío, nada más.
+
+**Causa raíz.** El bloque era incondicional: `sendInvoiceMail` lo armaba siempre que el caller mandara
+`reference`, y `sendTestMail` lo enseñaba siempre. No existía ninguna bandera que dijera «este cliente ya
+sabe dónde depositar», ni campo para un texto de la casa.
+
+**✅ Solución (commit `__HASH__`).** Dos columnas en `companies` y dos controles donde se administran:
+- `mail_incluir_deposito` — nace **APAGADA**, así que el bloque deja de salir. Se enciende por empresa
+  (Datos de mi empresa → Texto de los correos, y Súper Admin → Emisor de facturas) y también **por envío**,
+  en el modal de «Enviar por correo» de la factura: es dato para un cliente nuevo, no para repetírselo.
+- `mail_texto_adicional` — el párrafo de la casa. La factura y el recibo de nómina conservan su cuerpo por
+  omisión; esto se antepone a la firma y se escribe una sola vez. En cada envío se puede cambiar sin tocar
+  la configuración.
+
+La prueba de SMTP pasó a ser un **espejo** de lo que sale de verdad: enseña el párrafo y el bloque sólo si
+están encendidos, y cuando no, lo dice con todas sus letras en vez de mostrar algo que el cliente no va a
+recibir.
+
+**Consecuencia que hay que saber.** El correo automático del cargo mensual (`issue-invoice`,
+`cobro-prepago`) ya **no** lleva los datos bancarios hasta que se enciendan en la emisora.
+
+---
+
+## 21. El recibo de nómina se marcaba para correo y el correo nunca salía
+
+**Síntoma.** En Nómina → CFDI se marcaba «enviar por correo» a los trabajadores y la columna «enviado»
+jamás se prendía.
+
+**Cómo diagnosticar.** `grep -rn "enviado_at" backend/src` — `nomina_recibos.enviado_at` se **leía** en tres
+lados (listados, Excel, PDF) y **no lo escribía nadie**. No había ninguna ruta de envío.
+
+**Causa raíz.** Sólo existía la mitad del flujo: `marcarEnvioPorCorreo` guardaba la decisión. El envío
+«ocurre después», decía el comentario, pero ese después nunca se escribió.
+
+**✅ Solución (commit `__HASH__`).** `envio-recibos.service` manda el recibo **TIMBRADO** con su PDF y su
+XML, un correo por trabajador:
+- Sólo lo timbrado. Un pre-timbre no ampara ningún pago y mandarlo invita al trabajador a guardarlo como si
+  sí lo amparara.
+- Un fallo **no detiene a los demás**: cada trabajador es un correo aparte y que el buzón de uno rebote no
+  es razón para dejar sin recibo al resto. Lo que falló queda escrito en `enviado_error` y se ve en su
+  renglón; sin eso el siguiente intento repite el error a ciegas.
+- A quien ya se le mandó se **omite**, salvo que se pida reenviar.
+- El **correo del trabajador** se resuelve `recibo.correo` → `empleado.email` (el recibo guarda una foto del
+  correo al cierre; si el expediente se completó después, esa foto está vacía) y se puede **capturar en la
+  misma pantalla**, que es donde se descubre que falta. Se escribe en los dos lados para no volver a
+  capturarlo el mes que entra.
+- El resultado se enseña renglón por renglón: «3 enviados» no dice a quién hay que capturarle el correo.
+
+---
+
+## 22. El check «ya cobré» se perdía al recargar, y no había cómo cobrar ni timbrar el complemento
+
+**Síntoma.** En Súper Admin → Facturación, el check que habilita «Generar factura» se borraba al recargar la
+pantalla. «Marcar pagado» era una palomita que no decía cuánto entró ni cuándo. Y no había ninguna forma de
+emitir el complemento de pago.
+
+**Causa raíz.** Tres cosas encadenadas:
+- El check vivía en un `useState` del navegador: ni sobrevivía a un refresco ni distinguía un mes de otro.
+- `marcarPagado` sólo ponía `status='PAGADO'`. Sin importe, fecha ni forma de pago no se puede emitir un
+  CFDI tipo P — y esas facturas se emiten **PPD**, porque al facturar el cliente todavía no ha pagado. El
+  SAT exige el complemento para toda PPD: sin él la operación sigue abierta aunque la lista diga «pagado».
+- El cargo guardaba `factura_id` pero no el **consecutivo**: la lista decía «Facturado» y para saber cuál
+  factura era había que irse a otra pantalla.
+
+**✅ Solución (commit `__HASH__`).** Todo cuelga del cargo del periodo (`facturacion_mensual`):
+- `listo_para_facturar` por (empresa, periodo). Se conserva dentro del mes y queda **limpio solo al cambiar
+  de mes**, porque el mes nuevo es otro renglón: no hay nada que vaciar a mano ni un día en que alguien
+  tenga que acordarse.
+- `factura_folio`, `factura_uuid` y `emisora_id` al emitir. La lista enseña el consecutivo, el importe real
+  del CFDI (con IVA y con los conceptos que se editaron), lo cobrado y el complemento.
+- `cobrado_mxn`, `pago_fecha`, `pago_forma`, `pago_nota` — la pantalla de cobro captura importe, fecha y
+  forma del Anexo 20; por omisión el total del CFDI con IVA, que es lo que el cliente deposita.
+- `emitirComplementoPago()` timbra el CFDI tipo P **desde la misma emisora que timbró la factura** (se lee
+  de la factura, no se vuelve a elegir: elegir otra produce un comprobante que el SAT rechaza), reusando
+  `payments.service`. Se puede hacer en el mismo acto del cobro o después, desde el renglón.
+- Arriba, el **acumulado del mes**: facturado, cobrado, por cobrar y cuántos cobros siguen **sin
+  complemento** — que es la deuda con el SAT que antes no se veía.
+
+**Límite conocido.** Sin probar contra el PAC real: el flujo de timbrado es el mismo de `payments.service`,
+que ya se usa en producción, pero este camino concreto (súper admin → complemento del cargo) sólo se ha
+ejercitado con `tsc` y las 191 pruebas.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

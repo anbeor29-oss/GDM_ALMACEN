@@ -383,6 +383,9 @@ export function IssuerModal({ companyId, onClose }: Props) {
             <Section>Servidor de correo (SMTP) — para enviar facturas al cliente</Section>
             <SMTPConfig companyId={companyId} />
 
+            <Section>Texto de los correos — lo que el cliente LEE</Section>
+            <MensajeCorreo companyId={companyId} />
+
             <div className="flex gap-3 pt-4 border-t border-gray-200">
               <button
                 type="button"
@@ -678,6 +681,83 @@ function Section({ children }: { children: React.ReactNode }) {
     <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 border-b border-gray-200 pb-1">
       {children}
     </h3>
+  );
+}
+
+/**
+ * MensajeCorreo — el cuerpo que acompaña a cada factura y a cada recibo.
+ *
+ * DOS COSAS, LAS DOS OPCIONALES
+ *  · El PÁRRAFO DE LA CASA: la factura y el recibo de nómina ya traen su texto;
+ *    esto se antepone a la firma y se escribe una sola vez (condiciones,
+ *    teléfono de cobranza, lo que haga falta).
+ *  · Los DATOS DE DEPÓSITO: antes salían en todo correo de cobro. Para un
+ *    cliente nuevo son justo lo que necesita; para uno de años son ruido cada
+ *    mes. Por eso nacen APAGADOS y se encienden a propósito.
+ */
+function MensajeCorreo({ companyId }: { companyId: string }) {
+  const [texto, setTexto] = useState('');
+  const [incluir, setIncluir] = useState(false);
+  const [cargado, setCargado] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    api.getCompany(companyId)
+      .then((r: any) => {
+        if (!vivo) return;
+        setTexto(r?.data?.mail_texto_adicional || '');
+        setIncluir(r?.data?.mail_incluir_deposito === true);
+        setCargado(true);
+      })
+      .catch(() => { if (vivo) setCargado(true); });
+    return () => { vivo = false; };
+  }, [companyId]);
+
+  const save = async () => {
+    setSaving(true); setMsg(null);
+    try {
+      await api.updateCompanyMailMensaje(companyId, {
+        mail_texto_adicional: texto,
+        mail_incluir_deposito: incluir,
+      });
+      setMsg({ kind: 'ok', text: '✓ Guardado. Así saldrán tus próximos correos.' });
+    } catch (e: any) {
+      setMsg({ kind: 'err', text: e?.response?.data?.message || e?.message || 'No se pudo guardar' });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="space-y-3">
+      <label className="block">
+        <span className="block text-xs text-slate-500 mb-1">Texto adicional (opcional)</span>
+        <textarea rows={3} value={texto} onChange={(e) => setTexto(e.target.value)}
+          disabled={!cargado} className="input w-full font-sans"
+          placeholder="Va entre el mensaje y la firma, en facturas y recibos de nómina. Se escribe una vez." />
+      </label>
+
+      <label className={`flex items-start gap-2.5 cursor-pointer rounded-lg border px-3 py-2.5 ${incluir ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+        <input type="checkbox" checked={incluir} disabled={!cargado}
+          onChange={(e) => setIncluir(e.target.checked)} className="w-4 h-4 mt-0.5 accent-emerald-600" />
+        <span className="text-sm">
+          <b>Incluir los datos de depósito en los correos</b>
+          <span className="block text-xs text-slate-600 mt-0.5">
+            El bloque «Datos para tu pago» (banco, titular, CLABE y la referencia con el RFC y el folio).
+            Apagado, no sale; en cada envío se puede encender para un cliente en particular.
+          </span>
+        </span>
+      </label>
+
+      {msg && (
+        <p className={`text-xs ${msg.kind === 'ok' ? 'text-emerald-700' : 'text-rose-700'}`}>{msg.text}</p>
+      )}
+
+      <button type="button" onClick={save} disabled={saving || !cargado}
+        className="px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded disabled:opacity-50">
+        {saving ? 'Guardando…' : 'Guardar texto del correo'}
+      </button>
+    </div>
   );
 }
 

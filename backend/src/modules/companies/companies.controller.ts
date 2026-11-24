@@ -140,6 +140,7 @@ export default {
   deleteCompany,
   updateSMTP,
   testSMTP,
+  updateMailMensaje,
 };
 
 /**
@@ -165,6 +166,38 @@ export async function updateSMTP(req: Request, res: Response) {
   values.push(id);
   await query(`UPDATE companies SET ${fields.join(', ')} WHERE id=$${values.length}`, values);
   invalidateSMTPCache(id);
+  res.json({ success: true });
+}
+
+/**
+ * PATCH /companies/:id/mail-mensaje — qué CUERPO lleva el correo de esta empresa.
+ *
+ * Dos cosas, las dos opcionales:
+ *  · `mail_texto_adicional` — el párrafo de la casa. La factura y el recibo de
+ *    nómina ya traen su texto; éste se antepone a la firma y se escribe una vez.
+ *  · `mail_incluir_deposito` — el bloque «Datos para tu pago». Nace APAGADO: es
+ *    dato para un cliente nuevo, no algo que repetirle cada mes a uno de años.
+ */
+export async function updateMailMensaje(req: Request, res: Response) {
+  const { id } = req.params;
+  const { query } = require('../../config/database');
+  const texto = req.body?.mail_texto_adicional;
+  const incluir = req.body?.mail_incluir_deposito;
+  const fields: string[] = [];
+  const values: any[] = [];
+  if (texto !== undefined) {
+    values.push(String(texto || '').trim() || null);
+    fields.push('mail_texto_adicional=$' + values.length);
+  }
+  if (incluir !== undefined) {
+    values.push(incluir === true || incluir === 'true');
+    fields.push('mail_incluir_deposito=$' + values.length);
+  }
+  if (!fields.length) {
+    throw new (require('../../middleware/errorHandler').ValidationError)('No se indicó nada que guardar.');
+  }
+  values.push(id);
+  await query('UPDATE companies SET ' + fields.join(', ') + ' WHERE id=$' + values.length, values);
   res.json({ success: true });
 }
 

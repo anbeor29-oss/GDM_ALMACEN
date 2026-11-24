@@ -30,7 +30,8 @@ const COLS = `id, rfc, business_name,
   mail_host, mail_port, mail_secure, mail_user, mail_from,
   (mail_pass_enc IS NOT NULL) AS tiene_smtp,
   deposito_banco, deposito_titular, deposito_clabe, deposito_cuenta,
-  deposito_referencia, deposito_notas`;
+  deposito_referencia, deposito_notas,
+  mail_texto_adicional, COALESCE(mail_incluir_deposito,false) AS mail_incluir_deposito`;
 
 /** GET /admin/emisores — emisoras actuales + empresas candidatas + RFC del env. */
 router.get('/', asyncHandler(async (_req: Request, res: Response) => {
@@ -117,6 +118,21 @@ router.put('/:id/deposito', asyncHandler(async (req: Request, res: Response) => 
      b.deposito_cuenta || null, b.deposito_referencia || null, b.deposito_notas || null]);
   if (!r.rowCount) throw new ValidationError('La empresa no existe.');
   await audit(req, { action: 'EMISOR_DEPOSITO', targetKind: 'company', targetId: id });
+  res.json({ success: true });
+}));
+
+/** PUT /admin/emisores/:id/mensaje — párrafo de la casa + bloque de depósito
+ *  encendido/apagado. Es lo que el cliente LEE; los datos del depósito se
+ *  capturan aparte (arriba) y sólo salen si aquí se encienden. */
+router.put('/:id/mensaje', asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const b = req.body || {};
+  const r = await query(
+    `UPDATE companies SET mail_texto_adicional = $2, mail_incluir_deposito = $3 WHERE id=$1 AND deleted_at IS NULL`,
+    [id, String(b.mail_texto_adicional || '').trim() || null,
+     b.mail_incluir_deposito === true || b.mail_incluir_deposito === 'true']);
+  if (!r.rowCount) throw new ValidationError('La empresa no existe.');
+  await audit(req, { action: 'EMISOR_MENSAJE', targetKind: 'company', targetId: id, payload: { incluir_deposito: b.mail_incluir_deposito === true } });
   res.json({ success: true });
 }));
 

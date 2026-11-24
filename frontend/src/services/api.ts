@@ -661,6 +661,10 @@ class APIClient {
     subject: string;
     message: string;
     attachments: Array<{ kind: string; id: string }>;
+    /** Párrafo de la casa. Si no va, se usa el guardado de la empresa. */
+    textoAdicional?: string;
+    /** Bloque «Datos para tu pago». Si no va, manda la bandera de la empresa (apagada por omisión). */
+    incluirDeposito?: boolean;
   }) {
     const r = await this.client.post(`/invoices/${invoiceId}/send-email`, body);
     return r.data;
@@ -933,6 +937,13 @@ class APIClient {
   async getCompany(id: string) {
     const response = await this.client.get(`/companies/${id}`);
     return response.data;
+  }
+
+  /** Qué cuerpo llevan los correos de la empresa: el párrafo de la casa y si
+   *  sale el bloque «Datos para tu pago» (apagado por omisión). */
+  async updateCompanyMailMensaje(id: string, data: { mail_texto_adicional?: string; mail_incluir_deposito?: boolean }) {
+    const r = await this.client.patch<any>(`/companies/${id}/mail-mensaje`, data);
+    return r.data;
   }
 
   async updateCompanySMTP(id: string, data: { mail_host: string; mail_port: number; mail_secure: boolean; mail_user: string; mail_pass?: string; mail_from?: string }) {
@@ -3182,6 +3193,24 @@ class APIClient {
     return r.data;
   }
 
+  /** Los recibos TIMBRADOS del periodo con su correo y si ya se mandaron. */
+  async getRecibosEnvio(periodoId?: string) {
+    const r = await this.client.get<APIResponse<any[]>>('/nomina/recibos/envio', { params: { periodoId } });
+    return r.data;
+  }
+
+  /** Captura o corrige el correo del trabajador (recibo + expediente). */
+  async setCorreoRecibo(id: string, correo: string) {
+    const r = await this.client.put<APIResponse<any>>(`/nomina/recibos/${id}/correo`, { correo });
+    return r.data;
+  }
+
+  /** Manda los recibos: los indicados, o todos los MARCADOS del periodo. */
+  async enviarRecibosCorreo(body: { ids?: string[]; periodoId?: string; reenviar?: boolean; textoAdicional?: string }) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/recibos/enviar', body);
+    return r.data;
+  }
+
   /** Recalcula con lo capturado en la rejilla. NO guarda: sigue siendo cálculo. */
   /** Abre el documento legal de la baja (finiquito | renuncia | liquidacion) en PDF. */
   async verDocumentoBaja(reciboId: string, variante: string) {
@@ -3660,8 +3689,22 @@ class APIClient {
   async getFacturacionConsolidado(periodo?: string) {
     return (await this.client.get('/admin/facturacion/consolidado', { params: { periodo } })).data;
   }
-  async pagarFacturacion(id: string) {
-    return (await this.client.post(`/admin/facturacion/${id}/pagar`)).data;
+  /** Registra el COBRO del cargo: importe, fecha y forma de pago del Anexo 20.
+   *  Sin datos, toma el total con IVA, la fecha de hoy y transferencia (03). */
+  async pagarFacturacion(id: string, cobro?: { monto?: number; fecha?: string; forma?: string; nota?: string }) {
+    return (await this.client.post(`/admin/facturacion/${id}/pagar`, cobro || {})).data;
+  }
+
+  /** Emite el COMPLEMENTO DE PAGO (CFDI tipo P) de ese cobro, desde la misma
+   *  emisora que timbró la factura. */
+  async emitirComplementoFacturacion(id: string, datos?: { monto?: number; fecha?: string; forma?: string; nota?: string }) {
+    return (await this.client.post(`/admin/facturacion/${id}/complemento`, datos || {})).data;
+  }
+
+  /** El check de control «ya cobré»: se guarda por (empresa, periodo) y queda
+   *  limpio solo al cambiar de mes. */
+  async setListoParaFacturar(companyId: string, periodo: string, listo: boolean) {
+    return (await this.client.post('/admin/facturacion/listo', { companyId, periodo, listo })).data;
   }
   async suspenderFacturacion(id: string) {
     return (await this.client.post(`/admin/facturacion/${id}/suspender`)).data;
@@ -3714,6 +3757,10 @@ class APIClient {
   }
   async setEmisorDeposito(companyId: string, d: { deposito_banco?: string; deposito_titular?: string; deposito_clabe?: string; deposito_cuenta?: string; deposito_referencia?: string; deposito_notas?: string }) {
     return (await this.client.put(`/admin/emisores/${companyId}/deposito`, d)).data;
+  }
+  /** Párrafo de la casa + si el bloque de depósito sale en los correos. */
+  async setEmisorMensaje(companyId: string, d: { mail_texto_adicional?: string; mail_incluir_deposito?: boolean }) {
+    return (await this.client.put(`/admin/emisores/${companyId}/mensaje`, d)).data;
   }
   // ── SatGo (proveedor fiscal) ──
   async getSatgoConfig() {

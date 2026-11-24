@@ -18,6 +18,7 @@ import {
   Mail, Send, FileText, FileMinus2, Pencil, Ship, Trash2, Copy,
 } from 'lucide-react';
 import api from '@/services/api';
+import { useAuthStore } from '@/store/auth';
 import { BanderaMoneda } from '@/components/BanderaMoneda';
 import { Invoice } from '@/types';
 import { fechaMx, fechaHoraMx } from '@/utils/fecha';
@@ -1106,6 +1107,29 @@ function SendMailModal({
     'Adjuntamos la factura y documentos fiscales relacionados para su registro contable.\n\nQuedamos atentos a cualquier duda.'
   );
 
+  /* EL PÁRRAFO DE LA CASA Y LOS DATOS DE DEPÓSITO.
+   * El cuerpo de arriba es el de este envío; esto es lo que la empresa dejó
+   * escrito una vez (condiciones, teléfono de cobranza, lo que sea) y el bloque
+   * «Datos para tu pago». Los dos se prellenan con lo guardado y se pueden
+   * cambiar aquí sin tocar la configuración: el depósito es dato para un cliente
+   * NUEVO, no algo que repetirle cada mes a uno de años. */
+  const { user } = useAuthStore();
+  const empresaQ = useQuery({
+    queryKey: ['empresa-correo', user?.companyId],
+    queryFn: () => api.getCompany(user!.companyId!),
+    enabled: !!user?.companyId,
+  });
+  const emp: any = (empresaQ.data as any)?.data || null;
+  const [textoAdicional, setTextoAdicional] = useState('');
+  const [incluirDeposito, setIncluirDeposito] = useState(false);
+  const [tocado, setTocado] = useState(false);
+  useEffect(() => {
+    if (!emp || tocado) return;
+    setTextoAdicional(emp.mail_texto_adicional || '');
+    setIncluirDeposito(emp.mail_incluir_deposito === true);
+  }, [emp, tocado]);
+  const hayDeposito = !!(emp && (emp.deposito_banco || emp.deposito_clabe || emp.deposito_cuenta));
+
   // Prellenamos "to" cuando llega el cliente
   useEffect(() => { if (customerEmail && !to) setTo(customerEmail); }, [customerEmail]);
 
@@ -1163,7 +1187,10 @@ function SendMailModal({
     if (!to) { setError('Captura el correo destino'); return; }
     setBusy(true);
     try {
-      const r = await api.sendInvoiceMail(invoice.id, { to, cc, subject, message, attachments });
+      const r = await api.sendInvoiceMail(invoice.id, {
+        to, cc, subject, message, attachments,
+        textoAdicional, incluirDeposito,
+      });
       const attached = r.data?.attached ?? attachments.length;
       const skipped: Array<{ kind: string; message: string }> = r.data?.skipped || [];
       let msg = `Correo enviado a ${r.data.recipients.join(', ')} con ${attached} adjunto(s).`;
@@ -1229,6 +1256,33 @@ function SendMailModal({
             <textarea value={message} onChange={(e)=>setMessage(e.target.value)}
               rows={4} className="input w-full font-sans"/>
           </label>
+
+          {/* Texto adicional de la casa + datos de depósito (opcionales). */}
+          <label className="block">
+            <span className="text-sm font-medium block mb-1">
+              Texto adicional <span className="font-normal text-gray-500">(opcional)</span>
+            </span>
+            <textarea value={textoAdicional}
+              onChange={(e)=>{ setTocado(true); setTextoAdicional(e.target.value); }}
+              rows={3} className="input w-full font-sans"
+              placeholder="Va entre el mensaje y la firma. Lo que escribas aquí sale sólo en este correo; para dejarlo fijo, guárdalo en Datos de mi empresa."/>
+          </label>
+
+          <div className={`rounded-lg border px-3 py-2.5 ${incluirDeposito ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'}`}>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={incluirDeposito} disabled={!hayDeposito}
+                onChange={(e)=>{ setTocado(true); setIncluirDeposito(e.target.checked); }}
+                className="w-4 h-4 mt-0.5 accent-emerald-600 disabled:opacity-40"/>
+              <span className="text-sm">
+                <b>Incluir los datos de depósito</b>
+                <span className="block text-xs text-gray-600 mt-0.5">
+                  {hayDeposito
+                    ? 'Banco, titular, CLABE y la referencia con el RFC y el folio. Útil para un cliente nuevo; al de años le sobra.'
+                    : 'Captura primero los datos bancarios en Datos de mi empresa → Depósito.'}
+                </span>
+              </span>
+            </label>
+          </div>
 
           {/* ── Selección de adjuntos ──
               "Todos los documentos" es lo que se manda casi siempre: el cliente

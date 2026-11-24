@@ -19,12 +19,14 @@ import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import { generateInvoicePDF } from '../cfdi/pdf.service';
 import { generateCreditNotePDF } from '../cfdi/pdf-credit-note.service';
 import { generatePaymentPDF } from '../cfdi/pdf-payment.service';
+import { generarReciboPDF } from '../nomina/pdf-recibo.service';
 
 /** Tipos de documento que se pueden adjuntar. */
 export type MailAttachmentKind =
   | 'invoice_pdf' | 'invoice_xml'
   | 'credit_note_pdf' | 'credit_note_xml'
-  | 'payment_pdf' | 'payment_xml';
+  | 'payment_pdf' | 'payment_xml'
+  | 'nomina_pdf' | 'nomina_xml';
 
 export interface MailAttachmentSpec {
   kind: MailAttachmentKind;
@@ -172,20 +174,31 @@ function getTransporter(): Transporter {
  */
 export async function sendTestMail(companyId: string, to: string): Promise<void> {
   const { t, from } = await getTransporterForCompany(companyId);
-  // Si la emisora ya tiene datos de depósito, se muestran en la prueba para que el
-  // admin vea cómo se verán en las facturas (con una referencia de ejemplo).
+  // La prueba es un ESPEJO de lo que va a salir de verdad: enseña el párrafo de la
+  // casa y el bloque de depósito SÓLO si están encendidos. Si los mostrara siempre,
+  // el admin creería que el cliente recibe algo que no recibe.
   const depR = await query<any>(
     `SELECT business_name, deposito_banco, deposito_titular, deposito_clabe, deposito_cuenta,
-            deposito_referencia, deposito_notas FROM companies WHERE id = $1`, [companyId]);
-  const dep = bloqueDeposito(depR.rows[0], { clienteRfc: 'XAXX010101000', folio: 'FAC-000123' });
+            deposito_referencia, deposito_notas, mail_texto_adicional,
+            COALESCE(mail_incluir_deposito, FALSE) AS mail_incluir_deposito
+       FROM companies WHERE id = $1`, [companyId]);
+  const emp = depR.rows[0] || {};
+  const dep = emp.mail_incluir_deposito === true
+    ? bloqueDeposito(emp, { clienteRfc: 'XAXX010101000', folio: 'FAC-000123' })
+    : null;
+  const adicional = String(emp.mail_texto_adicional || '').trim();
   const base = 'Este correo confirma que la configuración SMTP de tu empresa quedó lista para enviar facturas.';
+  const pie = dep
+    ? 'Así se verán los datos de depósito en tus facturas.'
+    : 'Los datos de depósito están APAGADOS: no se mandan. Se encienden en Emisor de facturas.';
   try {
     await t.sendMail({
       from: from || process.env.MAIL_FROM || process.env.MAIL_USER!,
       to,
       subject: 'Prueba SMTP · GDM NEXO',
-      text: `${base}${dep ? `\n${dep.text}\n\n(Así se verán los datos de depósito en tus facturas.)` : ''}\n\n— GDM NEXO`,
-      html: `<p>${base}</p>${dep ? `${dep.html}<p style="font-size:12px;color:#64748b">Así se verán los datos de depósito en tus facturas.</p>` : ''}<p>— <b>GDM NEXO</b></p>`,
+      text: `${base}${adicional ? `\n\n${adicional}` : ''}${dep ? `\n${dep.text}` : ''}\n\n(${pie})\n\n— GDM NEXO`,
+      html: `<p>${base}</p>${adicional ? `<p>${escHtml(adicional).replace(/\n/g, '<br>')}</p>` : ''}` +
+            `${dep ? dep.html : ''}<p style="font-size:12px;color:#64748b">${escHtml(pie)}</p><p>— <b>GDM NEXO</b></p>`,
     });
   } catch (e: any) {
     throw new ValidationError(explicarErrorSmtp(e));
@@ -291,6 +304,30 @@ async function buildAttachments(
         out.push({ filename: fname, content: buf, contentType: 'application/pdf' });
         break;
       }
+      case 'nomina_pdf': {
+        const r = await query<{ num_empleado: string; nombre: string }>(
+          `SELECT num_empleado, nombre FROM nomina_recibos WHERE id = $1 AND company_id = $2`,
+          [spec.id, companyId]
+        );
+        if (r.rows.length === 0) throw new NotFoundError(`Recibo ${spec.id} no encontrado`);
+        const rec = await generarReciboPDF(companyId, spec.id);
+        out.push({ filename: rec.nombre, content: rec.buffer, contentType: 'application/pdf' });
+        break;
+      }
+      case 'nomina_xml': {
+        const r = await query<{ num_empleado: string; nombre: string; xml_timbrado: string | null }>(
+          `SELECT num_empleado, nombre, xml_timbrado FROM nomina_recibos WHERE id = $1 AND company_id = $2`,
+          [spec.id, companyId]
+        );
+        if (r.rows.length === 0) throw new NotFoundError(`Recibo ${spec.id} no encontrado`);
+        const row = r.rows[0];
+        // Sólo el XML TIMBRADO: un pre-timbre no ampara el pago y mandarlo invita
+        // a que el trabajador lo guarde creyendo que es su recibo fiscal.
+        if (!row.xml_timbrado) throw new ValidationError('El recibo aún no está timbrado.');
+        const fname = `Recibo-${row.num_empleado}-${spec.id.slice(0, 8)}.xml`;
+        out.push({ filename: fname, content: Buffer.from(row.xml_timbrado, 'utf-8'), contentType: 'application/xml' });
+        break;
+      }
       case 'payment_xml': {
         const r = await query<{ serie: string; folio: number; xml_content: string | null }>(
           `SELECT serie, folio, xml_content FROM payments WHERE id = $1 AND company_id = $2`,
@@ -331,6 +368,12 @@ export async function sendInvoiceMail(input: {
   actingUserEmail?: string;
   // Para armar la referencia de pago del bloque de depósito (RFC del cliente + folio).
   reference?: { clienteRfc?: string; folio?: string };
+  /** Párrafo extra de la casa. Si no viene, se usa el de la empresa (`mail_texto_adicional`). */
+  textoAdicional?: string;
+  /** Bloque «Datos para tu pago». Si no viene, manda la bandera de la empresa
+   *  (`mail_incluir_deposito`), que nace APAGADA: es dato para un cliente nuevo,
+   *  no para repetírselo cada mes a uno de años. */
+  incluirDeposito?: boolean;
 }): Promise<{
   messageId: string;
   recipients: string[];
@@ -348,7 +391,8 @@ export async function sendInvoiceMail(input: {
   const compR = await query<any>(
     `SELECT business_name, contact_email, rfc,
             deposito_banco, deposito_titular, deposito_clabe, deposito_cuenta,
-            deposito_referencia, deposito_notas
+            deposito_referencia, deposito_notas,
+            mail_texto_adicional, COALESCE(mail_incluir_deposito, FALSE) AS mail_incluir_deposito
        FROM companies WHERE id = $1`,
     [input.companyId]
   );
@@ -375,17 +419,22 @@ export async function sendInvoiceMail(input: {
   // Transportador: SMTP propio de la empresa si está configurado, si no env.
   const { t: tx, from: smtpFrom } = await getTransporterForCompany(input.companyId);
   const effectiveFrom = smtpFrom || fromAddress;
-  // El bloque de depósito solo en facturas por COBRAR (el caller manda `reference`),
-  // no en confirmaciones de pago ya recibido.
-  const dep = input.reference ? bloqueDeposito(company, input.reference) : null;
+  // El bloque de depósito ya NO sale solo: se enciende por empresa (o por envío).
+  // Antes acompañaba a toda factura por cobrar y era ruido para el cliente de años.
+  const quiereDep = input.incluirDeposito !== undefined
+    ? input.incluirDeposito === true
+    : company.mail_incluir_deposito === true;
+  const dep = quiereDep ? bloqueDeposito(company, input.reference) : null;
+  // Párrafo de la casa: el del envío manda sobre el guardado de la empresa.
+  const adicional = (input.textoAdicional ?? company.mail_texto_adicional ?? '').trim();
   const info = await tx.sendMail({
     from: `"${company.business_name}" <${effectiveFrom}>`,
     replyTo: fromAddress,
     to: input.to.trim(),
     cc: input.cc?.trim() || undefined,
     subject: input.subject,
-    text: buildPlainText(input.message, company.business_name, dep?.text),
-    html: buildHtml(input.message, company.business_name, dep?.html),
+    text: buildPlainText(input.message, company.business_name, dep?.text, adicional),
+    html: buildHtml(input.message, company.business_name, dep?.html, adicional),
     attachments,
   });
 
@@ -408,18 +457,23 @@ export async function sendInvoiceMail(input: {
 const escHtml = (s: any) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-function buildPlainText(userMsg: string, companyName: string, extra?: string): string {
+function buildPlainText(userMsg: string, companyName: string, extra?: string, adicional?: string): string {
   const clean = userMsg.trim() || 'Adjuntamos los documentos fiscales solicitados.';
-  return `${clean}${extra ? `\n${extra}` : ''}\n\n---\n${companyName}\nSistema de facturación CFDI 4.0`;
+  const add = (adicional || '').trim();
+  return `${clean}${add ? `\n\n${add}` : ''}${extra ? `\n${extra}` : ''}` +
+    `\n\n---\n${companyName}\nSistema de facturación CFDI 4.0`;
 }
 
-function buildHtml(userMsg: string, companyName: string, extraHtml?: string): string {
+function buildHtml(userMsg: string, companyName: string, extraHtml?: string, adicional?: string): string {
   const clean = (userMsg.trim() || 'Adjuntamos los documentos fiscales solicitados.')
     .replace(/</g, '&lt;')
     .replace(/\n/g, '<br>');
+  const add = (adicional || '').trim();
+  const addHtml = add ? `<p>${escHtml(add).replace(/\n/g, '<br>')}</p>` : '';
   return `
     <div style="font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#0f172a">
       <p>${clean}</p>
+      ${addHtml}
       ${extraHtml || ''}
       <hr style="border:0;border-top:1px solid #e2e8f0;margin:20px 0">
       <p style="color:#64748b;font-size:12px">

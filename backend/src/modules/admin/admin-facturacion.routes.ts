@@ -59,9 +59,35 @@ router.get('/consolidado', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await fact.resumenConsolidado(normPeriodo(String(req.query.periodo || ''))) });
 }));
 
+/** Registra el COBRO: importe, fecha y forma de pago (no sólo la bandera). */
 router.post('/:id/pagar', asyncHandler(async (req: Request, res: Response) => {
-  const data = await fact.marcarPagado(req.params.id, req.body?.facturaId);
-  await audit(req, { action: 'FACTURACION_PAGAR', targetKind: 'facturacion_mensual', targetId: req.params.id });
+  const data = await fact.marcarPagado(req.params.id, req.body?.facturaId, {
+    monto: req.body?.monto != null ? Number(req.body.monto) : undefined,
+    fecha: req.body?.fecha ? String(req.body.fecha) : undefined,
+    forma: req.body?.forma ? String(req.body.forma) : undefined,
+    nota:  req.body?.nota  ? String(req.body.nota)  : undefined,
+  });
+  await audit(req, { action: 'FACTURACION_PAGAR', targetKind: 'facturacion_mensual', targetId: req.params.id, payload: data });
+  res.json({ success: true, data });
+}));
+
+/** Emite el COMPLEMENTO DE PAGO (CFDI tipo P) del cobro de ese cargo. */
+router.post('/:id/complemento', asyncHandler(async (req: Request, res: Response) => {
+  const data = await fact.emitirComplementoPago(req.params.id, {
+    monto: req.body?.monto != null ? Number(req.body.monto) : undefined,
+    fecha: req.body?.fecha ? String(req.body.fecha) : undefined,
+    forma: req.body?.forma ? String(req.body.forma) : undefined,
+    nota:  req.body?.nota  ? String(req.body.nota)  : undefined,
+  });
+  await audit(req, { action: 'FACTURACION_COMPLEMENTO', targetKind: 'facturacion_mensual', targetId: req.params.id, payload: { folio: data.folio, monto: data.monto } });
+  res.json({ success: true, data, message: `Complemento de pago ${data.folio} timbrado por ${data.monto.toFixed(2)}.` });
+}));
+
+/** El CHECK de control «ya cobré»: se guarda por (empresa, periodo) y se limpia
+ *  solo al cambiar de mes, porque el mes nuevo es otro renglón. */
+router.post('/listo', asyncHandler(async (req: Request, res: Response) => {
+  const { companyId, periodo, listo } = req.body || {};
+  const data = await fact.setListoParaFacturar(String(companyId || ''), String(normPeriodo(String(periodo || '')) || ''), listo === true);
   res.json({ success: true, data });
 }));
 

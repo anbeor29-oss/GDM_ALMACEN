@@ -50,6 +50,7 @@ import { generarExcelRevision, generarPdfRevision } from './revision-excel.servi
 import * as tiempoExtra from './tiempo-extra.service';
 import { generarExcelTe, generarPdfTe } from './tiempo-extra-excel.service';
 import * as sbcBimestral from './sbc-bimestral.service';
+import * as envioRecibos from './envio-recibos.service';
 import { BANKS_MX } from '../suppliers/banks-mx';
 import { PERCEPCIONES, DEDUCCIONES } from './motor';
 
@@ -519,6 +520,50 @@ router.post('/cfdi-recuperados/:uuid/activar', soloAdmin, asyncHandler(async (re
   res.json({ success: true, data: await nominaRecuperados.activarTrabajador(companyId(req), req.params.uuid) })));
 
 /** Marca a quién se le manda el recibo por correo. Es decisión, no envío. */
+/* ── Envío de recibos por correo ──────────────────────────────────────────
+ * Marcar y mandar son dos actos (ver envio-recibos.service): el marcado de
+ * arriba decide a quién, esto lo manda. Sólo sale lo TIMBRADO. */
+
+/** Los recibos timbrados del periodo con su correo y si ya se mandaron. */
+router.get(
+  '/recibos/envio',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const periodoId = req.query.periodoId ? String(req.query.periodoId) : undefined;
+    res.json({ success: true, data: await envioRecibos.listaDeEnvio(companyId(req), periodoId) });
+  })
+);
+
+/** Captura o corrige el correo del trabajador (recibo + expediente). */
+router.put(
+  '/recibos/:id/correo',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await envioRecibos.setCorreoTrabajador(companyId(req), req.params.id, String(req.body?.correo || ''));
+    res.json({ success: true, data: r });
+  })
+);
+
+/** Manda los recibos: los indicados, o todos los MARCADOS del periodo. */
+router.post(
+  '/recibos/enviar',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const r = await envioRecibos.enviarRecibos(companyId(req), {
+      ids: Array.isArray(req.body?.ids) ? req.body.ids : undefined,
+      periodoId: req.body?.periodoId ? String(req.body.periodoId) : undefined,
+      reenviar: req.body?.reenviar === true,
+      textoAdicional: req.body?.textoAdicional ? String(req.body.textoAdicional) : undefined,
+    });
+    res.json({
+      success: true, data: r,
+      message: `${r.enviados} recibo(s) enviado(s)` +
+        (r.fallidos ? `, ${r.fallidos} con error` : '') +
+        (r.omitidos ? `, ${r.omitidos} omitido(s)` : '') + '.',
+    });
+  })
+);
+
 router.put(
   '/recibos/envio-por-correo',
   soloAdmin,

@@ -81,4 +81,14 @@ router.post(
   asyncHandler(companiesController.testSMTP),
 );
 
+/**
+ * PATCH /api/v1/companies/:id/mail-mensaje — párrafo de la casa y bloque de
+ * depósito (encendido/apagado) para los correos que manda esta empresa.
+ */
+router.patch(
+  '/:id/mail-mensaje',
+  authorize('ADMIN'),
+  asyncHandler(companiesController.updateMailMensaje),
+);
+
 export default router;

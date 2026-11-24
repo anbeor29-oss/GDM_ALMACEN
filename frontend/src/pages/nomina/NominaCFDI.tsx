@@ -12,16 +12,17 @@
  * sin terminar; y a quién se le va a mandar por correo, que es una decisión
  * aparte del timbrado y se toma antes.
  *
- * EL CORREO SE MARCA, NO SE MANDA
+ * EL CORREO SE MARCA Y LUEGO SE MANDA
  * Marcar es decir "a éste sí"; el envío ocurre después del timbrado. Separarlos
  * permite revisar la lista sin arriesgar que salga un correo con un recibo que
- * todavía tiene un error.
+ * todavía tiene un error. Durante un tiempo sólo existió la primera mitad: se
+ * marcaba y el correo nunca salía. El botón «Enviar» es la segunda.
  */
 import { useState, useMemo } from 'react';
 import { confirmar } from '@/utils/avisos';
 import { useQuery } from '@tanstack/react-query';
 import {
-  FileCode2, FileDown, Download, Eye, Mail, AlertTriangle, X, CheckCircle2, Stamp, Check, Search, UserCog,
+  FileCode2, FileDown, Download, Eye, Mail, AlertTriangle, X, CheckCircle2, Stamp, Check, Search, UserCog, Send,
 } from 'lucide-react';
 import api from '@/services/api';
 import { aTextoMx } from '@/components/CampoFecha';
@@ -36,6 +37,95 @@ const ESTATUS: Record<string, { label: string; cls: string }> = {
   TIMBRADO:  { label: 'Timbrado',    cls: 'bg-emerald-100 text-emerald-800' },
   CANCELADO: { label: 'Cancelado',   cls: 'bg-rose-100 text-rose-700' },
 };
+
+/**
+ * CapturaCorreo — el correo que falta, capturado donde se descubre que falta.
+ *
+ * Mandar al trabajador a la pantalla de expedientes a mitad del envío es la
+ * forma segura de que el recibo se quede sin mandar. Se guarda en los dos
+ * lados (recibo y expediente) para no volver a capturarlo el mes que entra.
+ */
+function CapturaCorreo({ id, marcado, onSave }: {
+  id: string; marcado: boolean; onSave: (id: string, correo: string) => Promise<void>;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [valor, setValor] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  if (!abierto) {
+    return (
+      <button onClick={() => setAbierto(true)}
+        className={`block text-[11px] underline decoration-dotted ${marcado ? 'text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}>
+        <AlertTriangle size={10} className="inline mr-0.5" />
+        {marcado ? 'marcado para correo, pero su expediente no trae uno — capturarlo' : 'sin correo — capturarlo'}
+      </button>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 mt-0.5">
+      <input autoFocus type="email" value={valor} onChange={(e) => setValor(e.target.value)}
+        placeholder="correo@dominio.com"
+        className="text-[11px] border border-gray-300 rounded px-1.5 py-0.5 w-52"
+        onKeyDown={(e) => { if (e.key === 'Escape') setAbierto(false); }} />
+      <button disabled={guardando || !valor.trim()}
+        onClick={async () => { setGuardando(true); await onSave(id, valor.trim()); setGuardando(false); setAbierto(false); }}
+        className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-600 text-white disabled:opacity-40">
+        {guardando ? '…' : 'Guardar'}
+      </button>
+      <button onClick={() => setAbierto(false)} className="text-[11px] text-gray-400 hover:text-gray-600">cancelar</button>
+    </span>
+  );
+}
+
+/**
+ * ResultadoEnvio — quién recibió su recibo y quién no, con el porqué.
+ *
+ * «3 enviados» no sirve para nada cuando son veinte: lo que hace falta saber es
+ * a quién hay que capturarle el correo y qué buzón rebotó.
+ */
+function ResultadoEnvio({ data, onClose }: { data: any; onClose: () => void }) {
+  const COLOR: Record<string, string> = {
+    ENVIADO: 'bg-emerald-100 text-emerald-800',
+    FALLO:   'bg-rose-100 text-rose-700',
+    OMITIDO: 'bg-amber-100 text-amber-800',
+  };
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="font-bold flex items-center gap-2"><Send size={18} className="text-emerald-600" /> Resultado del envío</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded"><X size={18} /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="flex gap-3 text-sm">
+            <span className="px-2 py-1 rounded bg-emerald-100 text-emerald-800">{data.enviados} enviado(s)</span>
+            {data.fallidos > 0 && <span className="px-2 py-1 rounded bg-rose-100 text-rose-700">{data.fallidos} con error</span>}
+            {data.omitidos > 0 && <span className="px-2 py-1 rounded bg-amber-100 text-amber-800">{data.omitidos} omitido(s)</span>}
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b"><tr>
+              <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Trabajador</th>
+              <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Correo</th>
+              <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Resultado</th>
+            </tr></thead>
+            <tbody className="divide-y">
+              {(data.detalle || []).map((d: any) => (
+                <tr key={d.id}>
+                  <td className="px-2 py-1.5">{d.nombre}<span className="text-[11px] text-gray-400 ml-1 font-mono">{d.num_empleado}</span></td>
+                  <td className="px-2 py-1.5 text-xs text-gray-600">{d.correo || '—'}</td>
+                  <td className="px-2 py-1.5">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${COLOR[d.estado] || 'bg-gray-100 text-gray-600'}`}>{d.estado}</span>
+                    {d.mensaje && <span className="block text-[11px] text-gray-500 mt-0.5">{d.mensaje}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function NominaCFDIPage() {
   /* No es el rol lo que decide, sino la capacidad — y no se adivina: se
@@ -132,6 +222,45 @@ export function NominaCFDIPage() {
     setPdfUrl(''); setViendo(null); setModoXml(false);
   };
 
+  /* ENVIAR DE VERDAD.
+   * Sólo sale lo TIMBRADO y marcado. A quien ya se le mandó se omite salvo que
+   * se pida reenviar: mandar dos veces el mismo recibo confunde al trabajador
+   * sobre cuál es el bueno. El resultado se enseña renglón por renglón porque
+   * «3 enviados» no dice quién se quedó sin correo. */
+  const [enviando, setEnviando] = useState(false);
+  const [resultado, setResultado] = useState<any | null>(null);
+
+  const enviarCorreos = async (reenviar: boolean) => {
+    const listos = recibos.filter((r) => r.enviar_por_correo && r.uuid);
+    if (listos.length === 0) { setError('No hay recibos timbrados y marcados para correo.'); return; }
+    if (!await confirmar(
+      `Se le va a mandar su recibo a ${listos.length} trabajador(es), con el PDF y el XML timbrado.` +
+      (reenviar ? '\n\nSe REENVIARÁ también a quienes ya lo recibieron.' : '') + '\n\n¿Sigo?'
+    )) return;
+    setError(''); setAviso(''); setEnviando(true);
+    try {
+      const r = await api.enviarRecibosCorreo({ ids: listos.map((x) => x.id), reenviar });
+      setResultado(r.data);
+      setAviso((r as any).message || 'Envío terminado.');
+      q.refetch();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudieron enviar los recibos');
+    } finally { setEnviando(false); }
+  };
+
+  /* El correo del trabajador se captura AQUÍ, que es donde se descubre que
+   * falta. Se guarda también en el expediente para que el mes que entra ya no
+   * falte: corregirlo sólo en el recibo es volver a capturarlo cada periodo. */
+  const guardarCorreo = async (id: string, correo: string) => {
+    setError('');
+    try {
+      await api.setCorreoRecibo(id, correo);
+      q.refetch();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo guardar el correo');
+    }
+  };
+
   const marcarCorreo = async (ids: string[], enviar: boolean) => {
     setError(''); setAviso('');
     try {
@@ -221,9 +350,22 @@ export function NominaCFDIPage() {
             <span className="text-gray-300">·</span>
             <button onClick={() => marcarCorreo(recibos.map((r) => r.id), false)}
               className="text-gray-500 hover:underline">ninguno</button>
+            {marcados.length > 0 && (
+              <button
+                onClick={() => enviarCorreos(false)}
+                disabled={enviando}
+                title="Manda el PDF y el XML timbrado a cada trabajador marcado"
+                className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Send size={14} />
+                {enviando ? 'Enviando…' : `Enviar ${marcados.length}`}
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {resultado && <ResultadoEnvio data={resultado} onClose={() => setResultado(null)} />}
 
       {estatus === 'RECUPERADOS' ? <CfdiRecuperados /> : (<>
       <div className="bg-white rounded-lg shadow overflow-x-auto">
@@ -321,10 +463,15 @@ export function NominaCFDIPage() {
                     <span className="text-[11px] text-gray-400 ml-1.5 font-mono">
                       {r.num_empleado} · {r.rfc}
                     </span>
-                    {r.enviar_por_correo && !r.correo && (
-                      <span className="block text-[11px] text-amber-700">
+                    {esAdmin && r.uuid && (
+                      r.correo
+                        ? <span className="block text-[11px] text-gray-500">{r.correo}</span>
+                        : <CapturaCorreo id={r.id} marcado={!!r.enviar_por_correo} onSave={guardarCorreo} />
+                    )}
+                    {r.enviado_error && (
+                      <span className="block text-[11px] text-rose-700" title={r.enviado_error}>
                         <AlertTriangle size={10} className="inline mr-0.5" />
-                        marcado para correo pero su expediente no trae uno
+                        el último envío falló: {String(r.enviado_error).slice(0, 70)}
                       </span>
                     )}
                   </td>

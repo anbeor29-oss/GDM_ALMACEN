@@ -8615,3 +8615,40 @@ color escrito aparte, la forma segura de desincronizarse cuando el esquema cambi
 conmutadores y filtros** (Mensual/Anual, «Ver: factura por factura», pastillas de filtro con contador,
 Acumulado/Por periodo, orden del reporte de rotación): no son opciones de menú y pintarlos de verde los
 haría leer como navegación. Detalle en `ERRORES_Y_SOLUCIONES.md` #16. Ver [[opciones-menu-colores]].
+
+---
+
+## 2026-11-24 (correo + cobranza) — El correo del grupo sale de verdad, y el súper admin lleva el cobro
+
+Tres cosas que estaban a medias, en el mismo lote.
+
+**1. El correo deja de mandar lo que no se le pidió.** El bloque «Datos para tu pago» salía en TODO correo
+de cobro y en la prueba de SMTP. Es dato para un cliente nuevo; al de años se lo repetía cada mes. Pasa a
+ser **opcional y apagado por omisión** (`companies.mail_incluir_deposito`), encendible por empresa y
+también por envío. Junto a él, un **texto adicional** propio de la casa (`mail_texto_adicional`) que se
+escribe una vez y se antepone a la firma; la factura y el recibo de nómina conservan su cuerpo por omisión.
+La prueba de SMTP se vuelve un **espejo**: enseña lo que de verdad va a salir, y cuando algo está apagado lo
+dice. *Consecuencia:* el correo automático del cargo mensual ya no lleva los datos bancarios hasta que se
+enciendan en la emisora.
+
+**2. El recibo de nómina ya se manda.** Se marcaba «enviar por correo» y el correo nunca salía:
+`nomina_recibos.enviado_at` se leía en tres lados y no lo escribía nadie. `envio-recibos.service` manda el
+recibo **timbrado** con su PDF y su XML, uno por trabajador; un rebote no detiene a los demás y queda
+escrito en `enviado_error`; a quien ya se le mandó se omite salvo reenvío. El **correo del trabajador** se
+resuelve contra el expediente y se puede **capturar en la misma pantalla** —que es donde se descubre que
+falta— quedando guardado también en el expediente, para no recapturarlo el mes que entra.
+
+**3. El súper admin lleva el cobro, no una palomita.** El check «ya cobré» vivía en el navegador: se perdía
+al recargar y no sabía de meses. Ahora vive en el cargo del periodo (`listo_para_facturar`), así que se
+conserva dentro del mes y queda **limpio solo al cambiar de mes**. Al emitir se guardan el **consecutivo**
+(`factura_folio`, `factura_uuid`) y la emisora; la lista enseña folio, importe del CFDI, lo cobrado y el
+complemento. El cobro captura **importe, fecha y forma de pago** del Anexo 20, y desde ahí se timbra el
+**complemento de pago (CFDI tipo P)** desde la misma emisora que timbró la factura —que es la única que
+puede—. Arriba, el acumulado del mes: facturado, cobrado, por cobrar y cuántos cobros siguen **sin
+complemento**, que es la deuda con el SAT que antes no se veía.
+
+**Decisión de fondo.** Esas facturas se emiten PPD porque al facturar el cliente todavía no ha pagado; el
+SAT pide el complemento cuando entra el dinero. Marcar «pagado» era un dato interno que no comprobaba nada.
+
+Migración: `2026-11-24_correo_y_cobranza.sql`. 191 pruebas verdes, `tsc` de backend y frontend, build de
+producción. Sin probar contra el PAC real ni contra un buzón real: eso se valida en vivo.

@@ -34,10 +34,25 @@ export function AdminFacturacionPage() {
   // botón: NO es automático, se factura «cuando ya se cobró». El igualado contable es un
   // valor editable por empresa; se guarda en caliente y se refleja aquí sin recargar.
   const [facturar, setFacturar] = useState<any>(null);
+  const [cobrar, setCobrar] = useState<any>(null);     // fila cuyo COBRO se registra
+  /* EL CHECK DE CONTROL VIVE EN EL CARGO DEL PERIODO, NO EN EL NAVEGADOR.
+   * Así se conserva al recargar y queda LIMPIO solo al cambiar de mes, porque
+   * el mes nuevo es otro renglón. Esto de aquí es sólo el reflejo optimista:
+   * la verdad llega con los datos. */
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [costoLocal, setCostoLocal] = useState<Record<string, number>>({});
   const [rentaLocal, setRentaLocal] = useState<Record<string, number>>({});
-  const toggleCheck = (id: string) => setChecked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleCheck = async (id: string) => {
+    const quiero = !checked.has(id);
+    setChecked((s) => { const n = new Set(s); quiero ? n.add(id) : n.delete(id); return n; });
+    try { await api.setListoParaFacturar(id, periodo, quiero); }
+    catch (e: any) {
+      // Se revierte: dejar el check prendido sin que el servidor lo sepa haría
+      // creer que el cobro quedó asentado cuando no quedó.
+      setChecked((s) => { const n = new Set(s); quiero ? n.delete(id) : n.add(id); return n; });
+      setMsg(e?.response?.data?.message || 'No se pudo guardar la marca.');
+    }
+  };
   const costoDe = (f: any) => (costoLocal[f.company_id] ?? Number(f.costo_contable || 0));
   // Renta de software editable (override). Si no se ha tocado, se muestra la renta por
   // usuario calculada; al editarla se guarda como override y manda en la factura.
@@ -54,6 +69,13 @@ export function AdminFacturacionPage() {
   const data = q.data?.data;
   const prueba: any[] = data?.prueba || [];
   const reales: any[] = data?.reales || [];
+  /* La marca la manda el servidor. Al cambiar de periodo se vuelve a sembrar y,
+   * como el mes nuevo no tiene marcas, la lista aparece limpia sola. */
+  useEffect(() => {
+    const s = new Set<string>();
+    for (const f of [...reales, ...prueba]) if (f.listo_para_facturar) s.add(f.company_id);
+    setChecked(s);
+  }, [data]);
   const cfg = cfgQ.data?.data;
   // Dos paneles por producto contratado: NEXO (ERP) e IVA (servicio IVA.HTML, su CFDI
   // lo emite NEXO). 'AMBOS' aparece en los dos. Las listas y los totales se filtran.
@@ -98,6 +120,7 @@ export function AdminFacturacionPage() {
     }
     return [...m.entries()].sort((a, b) => a[0] === '__none__' ? 1 : b[0] === '__none__' ? -1 : a[1].nombre.localeCompare(b[1].nombre));
   }, [realesF, data]);
+  const acum: any = data?.totales || null;
   const totPanel = {
     empresasReales: realesF.length,
     usuariosReales: realesF.reduce((a, f) => a + Number(f.usuarios || 0), 0),
@@ -180,6 +203,28 @@ export function AdminFacturacionPage() {
         <Tarjeta label="Total a cobrar" valor={money(totPanel.total)} destacado />
       </div>
 
+      {/* ACUMULADO DEL MES. Lo de arriba es la estimación —renta por usuario—; esto
+          son hechos: cuánto se facturó de verdad (con IVA, con los conceptos que se
+          editaron), cuánto entró y qué falta por cobrar. Es lo que hay que mirar
+          para saber cómo va el mes. */}
+      {acum && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Tarjeta label={`Facturado (${acum.facturas} CFDI)`} valor={money(acum.facturado)} />
+          <Tarjeta label="Cobrado" valor={money(acum.cobrado)} />
+          <Tarjeta label="Por cobrar" valor={money(acum.porCobrar)} destacado />
+          <Tarjeta label="Marcados sin facturar" valor={acum.marcados} />
+        </div>
+      )}
+      {acum && acum.sinComplemento > 0 && (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-1.5">
+          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+          <span>
+            <b>{acum.sinComplemento}</b> cobro(s) de este mes todavía <b>sin complemento de pago</b>.
+            Toda factura PPD lo necesita: sin él la operación sigue abierta ante el SAT aunque aquí diga «pagado».
+          </span>
+        </p>
+      )}
+
       {q.isLoading && <p className="text-gray-500">Cargando…</p>}
 
       {/* 1) Ambientes de PRUEBA — sin cobro */}
@@ -230,15 +275,16 @@ export function AdminFacturacionPage() {
             <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Extra</th>
             <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Total</th>
             <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Estado</th>
-            <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600" title="Marca el check cuando ya cobraste; eso habilita generar la factura.">Factura</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600" title="El consecutivo del CFDI emitido, lo que entró y su complemento de pago.">CFDI y cobro</th>
+            <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600" title="Marca el check cuando ya cobraste; eso habilita generar la factura. Se guarda y se limpia solo al cambiar de mes.">Factura</th>
             <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Acciones</th>
           </tr></thead>
           <tbody className="divide-y">
-            {realesF.length === 0 && <tr><td colSpan={10} className="px-3 py-4 text-center text-gray-400 italic">Sin clientes de pago todavía.</td></tr>}
+            {realesF.length === 0 && <tr><td colSpan={11} className="px-3 py-4 text-center text-gray-400 italic">Sin clientes de pago todavía.</td></tr>}
             {gruposReales.map(([key, g]) => (
               <Fragment key={key}>
                 <tr className="bg-indigo-50/70 border-y border-indigo-100">
-                  <td colSpan={10} className="px-3 py-1.5">
+                  <td colSpan={11} className="px-3 py-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <button onClick={() => alternarGrupo(key)} className="flex items-center gap-1.5 text-sm font-semibold text-indigo-800 hover:text-indigo-900">
                         {colapsado.has(key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
@@ -291,6 +337,24 @@ export function AdminFacturacionPage() {
                   : f.usuarios === 0
                     ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-500">sin usuarios</span>
                     : <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge(f.status)}`}>{f.status === 'SIN_GENERAR' ? 'sin generar' : f.status}</span>}</td>
+                {/* CFDI Y COBRO: el consecutivo de lo emitido, lo que entró y el
+                    complemento. «Facturado» a secas obliga a ir a otra pantalla a
+                    averiguar CUÁL factura fue y si ya se cobró. */}
+                <td className="px-3 py-2 text-xs">
+                  {f.factura_folio ? (
+                    <>
+                      <span className="font-semibold text-gray-800 tabular-nums" title={f.factura_uuid || ''}>{f.factura_folio}</span>
+                      {f.factura_total != null && <span className="text-gray-500"> · {money(f.factura_total)}</span>}
+                      {Number(f.cobrado_mxn) > 0
+                        ? <span className="block text-emerald-700">Cobrado {money(f.cobrado_mxn)}{f.pago_fecha ? ` · ${aTextoMx(f.pago_fecha)}` : ''}</span>
+                        : <span className="block text-amber-700">Sin cobrar</span>}
+                      {f.rep_folio
+                        ? <span className="block text-violet-700" title={f.rep_uuid || ''}>Complemento {f.rep_folio}</span>
+                        : (Number(f.cobrado_mxn) > 0 && String(f.factura_metodo || '').toUpperCase() !== 'PUE'
+                            ? <span className="block text-rose-600">Falta complemento de pago</span> : null)}
+                    </>
+                  ) : <span className="text-gray-300">—</span>}
+                </td>
                 {/* FACTURA: la que emites tú. Si ya se emitió, su marca; si no, el CHECK
                     que —al marcarlo— habilita el botón «Generar factura». No es automático:
                     se marca cuando ya cobraste. (El servicio IVA tiene su propio flujo.) */}
@@ -333,9 +397,19 @@ export function AdminFacturacionPage() {
                     );
                   })()}
                   {f.cargo_id && f.status !== 'PAGADO' && (
-                    <button onClick={() => accion(() => api.pagarFacturacion(f.cargo_id), f.cargo_id, 'Marcado como pagado.')}
-                      disabled={busy === f.cargo_id} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="Marcar pagado">
+                    <button onClick={() => setCobrar(f)}
+                      disabled={busy === f.cargo_id} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded"
+                      title="Registrar el cobro (importe, fecha y forma de pago)">
                       {busy === f.cargo_id ? <Loader2 className="animate-spin" size={14} /> : <Check size={15} />}
+                    </button>
+                  )}
+                  {/* El complemento de pago de un cobro que ya quedó asentado: el
+                      SAT lo pide para toda factura PPD y aquí no había por dónde. */}
+                  {f.cargo_id && f.factura_folio && !f.rep_folio && Number(f.cobrado_mxn) > 0
+                    && String(f.factura_metodo || '').toUpperCase() !== 'PUE' && (
+                    <button onClick={() => setCobrar({ ...f, soloComplemento: true })}
+                      className="p-1.5 text-violet-600 hover:bg-violet-50 rounded" title="Emitir el complemento de pago (CFDI tipo P)">
+                      <Receipt size={15} />
                     </button>
                   )}
                   {f.cargo_id && f.status === 'PENDIENTE' && (
@@ -388,6 +462,13 @@ export function AdminFacturacionPage() {
         <ModalEmitir cargos={emitir} emisoras={emisoras}
           onClose={() => setEmitir(null)}
           onDone={(m: string) => { setEmitir(null); setMsg(m); q.refetch(); }} />
+      )}
+
+      {/* Registro del COBRO y, si procede, su complemento de pago. */}
+      {cobrar && (
+        <ModalCobro fila={cobrar}
+          onClose={() => setCobrar(null)}
+          onDone={(m: string) => { setCobrar(null); setMsg(m); q.refetch(); }} />
       )}
 
       {/* Pantalla FLOTANTE para generar la factura de servicios (2 conceptos), editar y timbrar. */}
@@ -549,6 +630,126 @@ function ModalFacturaServicios({ fila, periodo, emisoras, costoContable, rentaSe
 }
 
 /** Pregunta DESDE CUÁL emisora (GHC/SAJ) se emite el CFDI del cargo, y lo timbra. */
+/**
+ * ModalCobro — registrar el cobro de un cargo y, si procede, su complemento.
+ *
+ * POR QUÉ NO BASTA UN BOTÓN DE «PAGADO»
+ * Marcar pagado era una bandera: no decía cuánto entró, cuándo ni por dónde. Sin
+ * esos tres datos no se puede emitir el complemento de pago, y el SAT lo exige
+ * para toda factura PPD — que es como se emiten éstas, porque al facturar el
+ * cliente todavía no ha pagado. Sin complemento la operación queda abierta ante
+ * el SAT aunque la lista diga «pagado».
+ *
+ * El importe por omisión es el TOTAL DEL CFDI (con IVA), que es lo que el cliente
+ * deposita. Si abonó otra cantidad se captura y manda la capturada.
+ */
+function ModalCobro({ fila, onClose, onDone }: { fila: any; onClose: () => void; onDone: (m: string) => void }) {
+  const soloComplemento = fila.soloComplemento === true;
+  const esperado = Number(fila.factura_total || 0) > 0
+    ? Number(fila.factura_total)
+    : Math.round(Number(fila.total_mxn || 0) * 1.16 * 100) / 100;
+  const [monto, setMonto] = useState(String(soloComplemento && Number(fila.cobrado_mxn) > 0 ? fila.cobrado_mxn : esperado));
+  const [fecha, setFecha] = useState(fila.pago_fecha || new Date().toISOString().slice(0, 10));
+  const [forma, setForma] = useState(fila.pago_forma || '03');
+  const [nota, setNota] = useState('');
+  // El complemento sólo cabe si hay factura timbrada y es PPD.
+  const puedeComplemento = !!fila.factura_folio && String(fila.factura_metodo || '').toUpperCase() !== 'PUE' && !fila.rep_folio;
+  const [conComplemento, setConComplemento] = useState(puedeComplemento);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const guardar = async () => {
+    setBusy(true); setError('');
+    const datos = { monto: Number(monto), fecha, forma, nota: nota.trim() || undefined };
+    try {
+      if (soloComplemento || (conComplemento && puedeComplemento)) {
+        const r: any = await api.emitirComplementoFacturacion(fila.cargo_id, datos);
+        onDone(r?.message || `Complemento de pago ${r?.data?.folio} timbrado.`);
+      } else {
+        await api.pagarFacturacion(fila.cargo_id, datos);
+        onDone(`Cobro de ${fila.business_name} registrado por ${money(datos.monto)}.`);
+      }
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo registrar el cobro.');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b">
+          <div>
+            <h2 className="font-bold flex items-center gap-2">
+              <Receipt size={18} className="text-emerald-600" />
+              {soloComplemento ? 'Complemento de pago' : 'Registrar el cobro'}
+            </h2>
+            <p className="text-xs text-gray-500">{fila.business_name} · {fila.rfc}{fila.factura_folio ? ` · ${fila.factura_folio}` : ''}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded"><X size={18} /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded text-sm">{error}</div>}
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-sm font-medium block mb-1">Importe cobrado</span>
+              <input type="number" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} className="input w-full tabular-nums" />
+              <span className="text-[11px] text-gray-500">Total del CFDI con IVA: {money(esperado)}</span>
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium block mb-1">Fecha del cobro</span>
+              <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="input w-full" />
+            </label>
+          </div>
+          <label className="block">
+            <span className="text-sm font-medium block mb-1">Forma de pago (Anexo 20)</span>
+            <select value={forma} onChange={(e) => setForma(e.target.value)} className="input w-full">
+              <option value="03">03 — Transferencia electrónica de fondos</option>
+              <option value="01">01 — Efectivo</option>
+              <option value="02">02 — Cheque nominativo</option>
+              <option value="04">04 — Tarjeta de crédito</option>
+              <option value="28">28 — Tarjeta de débito</option>
+              <option value="99">99 — Por definir</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium block mb-1">Nota <span className="font-normal text-gray-500">(opcional)</span></span>
+            <input value={nota} onChange={(e) => setNota(e.target.value)} className="input w-full" placeholder="Referencia del depósito, banco…" />
+          </label>
+
+          {soloComplemento ? (
+            <p className="text-xs text-violet-800 bg-violet-50 border border-violet-200 rounded px-3 py-2">
+              Se va a timbrar el <b>CFDI tipo P</b> de este cobro, desde la misma emisora que timbró la factura.
+            </p>
+          ) : puedeComplemento ? (
+            <label className="flex items-start gap-2.5 cursor-pointer rounded border border-violet-200 bg-violet-50 px-3 py-2">
+              <input type="checkbox" checked={conComplemento} onChange={(e) => setConComplemento(e.target.checked)}
+                className="w-4 h-4 mt-0.5 accent-violet-600" />
+              <span className="text-sm">
+                <b>Emitir también el complemento de pago</b>
+                <span className="block text-xs text-gray-600 mt-0.5">
+                  La factura es PPD: el SAT pide el CFDI tipo P cuando entra el dinero. Gasta un timbre.
+                </span>
+              </span>
+            </label>
+          ) : fila.factura_folio ? null : (
+            <p className="text-xs text-gray-500">
+              Este cargo todavía no tiene factura: se registra el cobro y el complemento se emite después de facturar.
+            </p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50">
+          <button onClick={onClose} className="px-4 py-2 text-sm border rounded-lg hover:bg-white">Cancelar</button>
+          <button onClick={guardar} disabled={busy || !(Number(monto) > 0)}
+            className="px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+            {busy ? <Loader2 className="animate-spin" size={15} /> : <Check size={15} />}
+            {soloComplemento ? 'Timbrar complemento' : conComplemento && puedeComplemento ? 'Cobrar y timbrar complemento' : 'Registrar cobro'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModalEmitir({ cargos, emisoras, onClose, onDone }: { cargos: any[]; emisoras: any[]; onClose: () => void; onDone: (m: string) => void }) {
   const [emisoraId, setEmisoraId] = useState<string>(emisoras.find((e) => e.predeterminado)?.id || emisoras[0]?.id || '');
   const [busy, setBusy] = useState(false);

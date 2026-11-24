@@ -14,6 +14,7 @@ import logger from '../../middleware/logger';
 import { getEmisoraComoPlatform, getPlatformCompany, upsertPlatformCustomer, upsertPlatformProduct } from './issue-invoice.service';
 import * as invoicesService from '../invoices/invoices.service';
 import * as pacService from '../pac/pac.service';
+import * as paymentsService from '../payments/payments.service';
 
 export interface FacturacionConfig {
   precioUsuario: number;
@@ -275,7 +276,17 @@ export async function resumenConsolidado(periodoInput?: string) {
             TO_CHAR(c.iva_pagado_desde,'YYYY-MM-DD') AS iva_pagado_desde, TO_CHAR(c.iva_vigencia_fin,'YYYY-MM-DD') AS iva_vigencia_fin,
             (SELECT MIN(sc.signed_at) FROM service_contracts sc WHERE sc.company_id = c.id) AS signed_at,
             (SELECT COUNT(*) FROM service_contracts sc WHERE sc.company_id = c.id) > 0 AS firmado,
-            fm.id AS cargo_id, fm.status AS cargo_status, fm.factura_id AS cargo_factura_id, fm.total_mxn AS cargo_total
+            fm.id AS cargo_id, fm.status AS cargo_status, fm.factura_id AS cargo_factura_id, fm.total_mxn AS cargo_total,
+            -- El consecutivo y el cobro viven en el cargo: la lista los enseña sin
+            -- mandar al súper admin a otra pantalla a averiguar cuál factura fue.
+            fm.factura_folio, fm.factura_uuid, fm.rep_id, fm.rep_folio, fm.rep_uuid,
+            COALESCE(fm.listo_para_facturar, FALSE) AS listo_para_facturar,
+            COALESCE(fm.cobrado_mxn, 0) AS cobrado_mxn, fm.pago_forma,
+            TO_CHAR(fm.pago_fecha,'YYYY-MM-DD') AS pago_fecha,
+            -- El importe REAL del CFDI (con IVA y con los conceptos que se editaron),
+            -- no el cálculo por usuario: es contra esto que se cobra.
+            (SELECT i.total FROM invoices i WHERE i.id = fm.factura_id AND i.deleted_at IS NULL) AS factura_total,
+            (SELECT i.payment_method FROM invoices i WHERE i.id = fm.factura_id AND i.deleted_at IS NULL) AS factura_metodo
        FROM companies c
        LEFT JOIN facturacion_mensual fm ON fm.company_id = c.id AND fm.periodo = $1
       WHERE c.deleted_at IS NULL AND c.is_active = TRUE
@@ -329,6 +340,13 @@ export async function resumenConsolidado(periodoInput?: string) {
       iva_pagado_desde: e.iva_pagado_desde || null, iva_vigencia_fin: e.iva_vigencia_fin || null,
       cargo_id: e.cargo_id || null,
       facturado: !!e.cargo_factura_id, cargo_total: e.cargo_total != null ? Number(e.cargo_total) : null,
+      // Consecutivo del CFDI emitido, su cobro y su complemento de pago.
+      factura_folio: e.factura_folio || null, factura_uuid: e.factura_uuid || null,
+      factura_total: e.factura_total != null ? Number(e.factura_total) : null,
+      factura_metodo: e.factura_metodo || null,
+      listo_para_facturar: e.listo_para_facturar === true,
+      cobrado_mxn: Number(e.cobrado_mxn || 0), pago_fecha: e.pago_fecha || null, pago_forma: e.pago_forma || null,
+      rep_id: e.rep_id || null, rep_folio: e.rep_folio || null, rep_uuid: e.rep_uuid || null,
       status: e.cargo_status || (sinCobro ? 'SIN_COBRO' : 'SIN_GENERAR'),
       servicio_suspendido: e.servicio_suspendido === true,
     };
@@ -341,6 +359,12 @@ export async function resumenConsolidado(periodoInput?: string) {
   // empresas que no tengan «quién factura» capturado.
   const predet = empresas.rows.find((e: any) => e.emisor_predeterminado === true);
   const emisoraPredeterminada = predet ? { id: predet.id, business_name: predet.business_name, rfc: predet.rfc } : null;
+  /* ACUMULADO DEL MES. Lo que se calcula (renta + extra) es la estimación; lo que
+   * se facturó y lo que entró son hechos, y son los que se usan para saber cómo va
+   * el mes. Se suman los importes REALES de los CFDI, con su IVA, no el cálculo. */
+  const conFactura = [...reales, ...prueba].filter((x: any) => x.facturado);
+  const facturado = r2(conFactura.reduce((a: number, x: any) => a + Number(x.factura_total || 0), 0));
+  const cobrado = r2([...reales, ...prueba].reduce((a: number, x: any) => a + Number(x.cobrado_mxn || 0), 0));
   return {
     periodo, prueba, reales, emisoraPredeterminada,
     totales: {
@@ -350,18 +374,96 @@ export async function resumenConsolidado(periodoInput?: string) {
       extra: suma(reales, 'extra_mxn'),
       total: suma(reales, 'total_mxn'),
       timbresUsados: timbresTotal,
+      // Acumulado del periodo: cuántas facturas, por cuánto, cuánto entró y qué falta.
+      facturas: conFactura.length,
+      facturado,
+      cobrado,
+      porCobrar: r2(Math.max(0, facturado - cobrado)),
+      marcados: [...reales, ...prueba].filter((x: any) => x.listo_para_facturar && !x.facturado).length,
+      sinComplemento: conFactura.filter((x: any) =>
+        String(x.factura_metodo || '').toUpperCase() !== 'PUE' && Number(x.cobrado_mxn || 0) > 0 && !x.rep_id).length,
     },
   };
 }
 
-/** Marca un cargo como PAGADO (prepago recibido) y reactiva el servicio. */
-export async function marcarPagado(id: string, facturaId?: string) {
+/**
+ * Registra el COBRO de un cargo y reactiva el servicio.
+ *
+ * Antes esto era una bandera: «pagado, sí». Una bandera no sirve para cobrar —
+ * no dice cuánto entró, cuándo ni por dónde— y sin esos tres datos no se puede
+ * emitir el complemento de pago, que el SAT exige para toda factura PPD. Por eso
+ * ahora se guardan importe, fecha y forma de pago del Anexo 20.
+ *
+ * El importe por omisión es el TOTAL CON IVA del cargo (el cargo guarda la base;
+ * lo que el cliente deposita trae el 16 % encima). Si abonó otra cantidad, se
+ * captura y manda la capturada.
+ */
+export async function marcarPagado(
+  id: string,
+  facturaId?: string,
+  cobro?: { monto?: number; fecha?: string; forma?: string; nota?: string },
+) {
+  const prev = await query<any>(
+    `SELECT company_id, total_mxn, status FROM facturacion_mensual WHERE id = $1`, [id]);
+  if (!prev.rows.length) throw new NotFoundError('Cargo no encontrado.');
+  if (prev.rows[0].status === 'PAGADO') throw new ConflictError('Ese cargo ya está pagado.');
+
+  const monto = cobro?.monto != null && Number(cobro.monto) > 0
+    ? r2(Number(cobro.monto))
+    : r2(Number(prev.rows[0].total_mxn || 0) * 1.16);
+  const fecha = cobro?.fecha && /^\d{4}-\d{2}-\d{2}$/.test(cobro.fecha) ? cobro.fecha : iso(new Date());
+  // 03 = transferencia electrónica de fondos: cómo entra el 99 % de los cobros
+  // del despacho. Se puede cambiar en la captura.
+  const forma = (cobro?.forma || '03').padStart(2, '0').slice(0, 2);
+
   const r = await query<{ company_id: string }>(
-    `UPDATE facturacion_mensual SET status='PAGADO', pagado_at=NOW(), factura_id=COALESCE($2, factura_id)
-      WHERE id=$1 AND status <> 'PAGADO' RETURNING company_id`, [id, facturaId || null]);
+    `UPDATE facturacion_mensual
+        SET status='PAGADO', pagado_at=NOW(), factura_id=COALESCE($2, factura_id),
+            cobrado_mxn=$3, pago_fecha=$4, pago_forma=$5, pago_nota=$6
+      WHERE id=$1 AND status <> 'PAGADO' RETURNING company_id`,
+    [id, facturaId || null, monto, fecha, forma, cobro?.nota || null]);
   if (!r.rows.length) throw new NotFoundError('Cargo no encontrado o ya pagado.');
   await query(`UPDATE companies SET servicio_suspendido = FALSE, updated_at = NOW() WHERE id = $1`, [r.rows[0].company_id]);
-  return { pagado: true };
+  return { pagado: true, cobrado: monto, fecha, forma };
+}
+
+/**
+ * El CHECK de control de la lista: «a éste ya le cobré, se le puede facturar».
+ *
+ * Vivía en la memoria del navegador, así que se borraba al recargar y no sabía
+ * de meses. Vive en el cargo del periodo: se conserva dentro del mes y queda
+ * LIMPIO solo al cambiar de mes, porque el mes nuevo es otro renglón. No hay
+ * nada que vaciar a mano ni un día en que alguien tenga que acordarse.
+ */
+export async function setListoParaFacturar(companyId: string, periodoInput: string, listo: boolean) {
+  if (!companyId) throw new ValidationError('Falta la empresa.');
+  const { anio, mes } = primerDia(periodoInput);
+  const periodo = iso(new Date(anio, mes, 1));
+  const cargoId = await asegurarCargo(companyId, periodo);
+  await query(`UPDATE facturacion_mensual SET listo_para_facturar = $2 WHERE id = $1`, [cargoId, listo === true]);
+  return { companyId, periodo, listo: listo === true, cargoId };
+}
+
+/**
+ * El cargo del periodo, creándolo vacío si no existe.
+ *
+ * Tres caminos lo necesitaban (servicios, IVA y ahora el check) y los tres lo
+ * resolvían por su cuenta con el mismo INSERT copiado. El cargo es el gancho
+ * donde cuelgan el CFDI, el cobro y el complemento: si no existe, no hay dónde
+ * guardar nada.
+ */
+async function asegurarCargo(companyId: string, periodo: string): Promise<string> {
+  const ex = await query<{ id: string }>(
+    `SELECT id FROM facturacion_mensual WHERE company_id = $1 AND periodo = $2`, [companyId, periodo]);
+  if (ex.rows.length) return ex.rows[0].id;
+  const d = new Date(periodo + 'T00:00:00');
+  const diasMes = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  const ins = await query<{ id: string }>(
+    `INSERT INTO facturacion_mensual
+       (company_id, periodo, usuarios, dias_cobrados, dias_mes, prorrateado, precio_usuario_mxn, renta_mxn,
+        timbres_usados, timbres_incluidos, timbres_extra, timbre_extra_mxn, extra_mxn, total_mxn)
+     VALUES ($1,$2,0,$3,$3,false,0,0,0,0,0,0,0,0) RETURNING id`, [companyId, periodo, diasMes]);
+  return ins.rows[0].id;
 }
 
 /** Suspende el servicio de la empresa por falta de pago (corte del día 5). */
@@ -424,7 +526,13 @@ export async function emitirFacturaMensual(cargoId: string, emisoraId?: string, 
   const stamp = await pacService.stampInvoice(platform.id, invoice.id);
   const folio = `${invoice.serie || 'FAC'}-${String(invoice.folio).padStart(6, '0')}`;
 
-  await query(`UPDATE facturacion_mensual SET factura_id = $2 WHERE id = $1`, [cargoId, invoice.id]);
+  // Se guarda el CONSECUTIVO (serie-folio) y el UUID junto al cargo: la lista del
+  // súper admin enseña «Facturado» y hay que poder decir CUÁL factura, sin ir a
+  // buscarla a otra pantalla. La emisora también, porque el complemento de pago
+  // tiene que salir de la MISMA empresa que emitió la factura.
+  await query(
+    `UPDATE facturacion_mensual SET factura_id = $2, factura_folio = $3, factura_uuid = $4, emisora_id = $5 WHERE id = $1`,
+    [cargoId, invoice.id, folio, stamp.uuid || null, platform.id]);
   logger.info(`[facturacion] CFDI de cobro emitido: ${folio} (${stamp.uuid}) desde ${platform.rfc} → ${fm.client_rfc} [${fm.periodo_label}]`);
   return { folio, uuid: stamp.uuid, emisora: platform.business_name };
 }
@@ -503,16 +611,7 @@ export async function emitirFacturaServicios(
   // por usuario, el cargo nace en 0 (sólo sirve de contenedor del CFDI de servicios).
   const ex = await query<any>(`SELECT id, factura_id FROM facturacion_mensual WHERE company_id = $1 AND periodo = $2`, [companyId, periodo]);
   if (ex.rows[0]?.factura_id) throw new ConflictError('Este cliente ya tiene una factura emitida en el periodo.');
-  let cargoId: string;
-  if (ex.rows.length) cargoId = ex.rows[0].id;
-  else {
-    const ins = await query<{ id: string }>(
-      `INSERT INTO facturacion_mensual
-         (company_id, periodo, usuarios, dias_cobrados, dias_mes, prorrateado, precio_usuario_mxn, renta_mxn,
-          timbres_usados, timbres_incluidos, timbres_extra, timbre_extra_mxn, extra_mxn, total_mxn)
-       VALUES ($1,$2,0,$3,$3,false,0,0,0,0,0,0,0,0) RETURNING id`, [companyId, periodo, diasMes]);
-    cargoId = ins.rows[0].id;
-  }
+  const cargoId = await asegurarCargo(companyId, periodo);
 
   const customerId = await upsertPlatformCustomer(platform.id, {
     rfc: cli.client_rfc, business_name: cli.client_name,
@@ -529,7 +628,9 @@ export async function emitirFacturaServicios(
   });
   const stamp = await pacService.stampInvoice(platform.id, invoice.id);
   const folio = `${invoice.serie || 'FAC'}-${String(invoice.folio).padStart(6, '0')}`;
-  await query(`UPDATE facturacion_mensual SET factura_id = $2 WHERE id = $1`, [cargoId, invoice.id]);
+  await query(
+    `UPDATE facturacion_mensual SET factura_id = $2, factura_folio = $3, factura_uuid = $4, emisora_id = $5 WHERE id = $1`,
+    [cargoId, invoice.id, folio, stamp.uuid || null, platform.id]);
   logger.info(`[facturacion] CFDI de servicios emitido: ${folio} (${stamp.uuid}) desde ${platform.rfc} → ${cli.client_rfc} [${items.length} concepto(s)]`);
   return { folio, uuid: stamp.uuid, emisora: platform.business_name };
 }
@@ -547,19 +648,98 @@ export async function cobrarIva(companyId: string, monto: number, emisoraId: str
   const diasMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
   const ex = await query<any>(`SELECT id, factura_id FROM facturacion_mensual WHERE company_id = $1 AND periodo = $2`, [companyId, periodo]);
   if (ex.rows[0]?.factura_id) throw new ConflictError('Este cliente ya tiene una factura emitida en el periodo.');
-  let cargoId: string;
-  if (ex.rows.length) {
-    cargoId = ex.rows[0].id;
-    await query(`UPDATE facturacion_mensual SET renta_mxn = $2, total_mxn = $2, extra_mxn = 0, status = 'PENDIENTE' WHERE id = $1`, [cargoId, r2(monto)]);
-  } else {
-    const r = await query<{ id: string }>(
-      `INSERT INTO facturacion_mensual
-         (company_id, periodo, usuarios, dias_cobrados, dias_mes, prorrateado, precio_usuario_mxn, renta_mxn,
-          timbres_usados, timbres_incluidos, timbres_extra, timbre_extra_mxn, extra_mxn, total_mxn)
-       VALUES ($1,$2,0,$3,$3,false,0,$4,0,0,0,0,0,$4) RETURNING id`, [companyId, periodo, diasMes, r2(monto)]);
-    cargoId = r.rows[0].id;
-  }
+  const cargoId = await asegurarCargo(companyId, periodo);
+  await query(
+    `UPDATE facturacion_mensual SET renta_mxn = $2, total_mxn = $2, extra_mxn = 0, status = 'PENDIENTE' WHERE id = $1`,
+    [cargoId, r2(monto)]);
   const desc = (concepto && concepto.trim()) || 'Servicio de consulta y cálculo de IVA mensual (IVA GDM)';
   const data = await emitirFacturaMensual(cargoId, emisoraId, desc);
   return { ...data, cargoId };
+}
+
+/**
+ * COMPLEMENTO DE PAGO (CFDI tipo P) del cobro de un cargo.
+ *
+ * POR QUÉ HACÍA FALTA
+ * Las facturas de cobro se emiten PPD —método «en parcialidades o diferido»—
+ * porque al emitirlas el cliente todavía no ha pagado. El SAT exige que TODA
+ * factura PPD termine en un complemento de pago cuando el dinero entra; sin él
+ * la operación queda abierta ante el SAT aunque en la lista diga «PAGADO».
+ * Marcar pagado era un dato interno; esto es el comprobante.
+ *
+ * SALE DE LA MISMA EMISORA QUE LA FACTURA
+ * Un complemento de pago se refiere a un UUID concreto: lo tiene que emitir
+ * quien emitió esa factura. Por eso la emisora se lee de la factura y no se
+ * elige otra vez —elegirla mal produciría un CFDI que el SAT rechaza.
+ */
+export async function emitirComplementoPago(
+  cargoId: string,
+  datos?: { monto?: number; fecha?: string; forma?: string; nota?: string },
+): Promise<{ folio: string; uuid?: string; monto: number; emisora: string }> {
+  const r = await query<any>(
+    `SELECT fm.id, fm.company_id, fm.factura_id, fm.emisora_id, fm.rep_id, fm.status,
+            fm.total_mxn, fm.cobrado_mxn, fm.factura_folio,
+            TO_CHAR(fm.pago_fecha,'YYYY-MM-DD') AS pago_fecha, fm.pago_forma,
+            c.business_name AS client_name
+       FROM facturacion_mensual fm JOIN companies c ON c.id = fm.company_id
+      WHERE fm.id = $1`, [cargoId]);
+  const fm = r.rows[0];
+  if (!fm) throw new NotFoundError('Cargo mensual no encontrado.');
+  if (fm.rep_id) throw new ConflictError('Ese cobro ya tiene complemento de pago.');
+  if (!fm.factura_id) {
+    throw new ValidationError('Primero emite la FACTURA: un complemento de pago se refiere al UUID de una factura timbrada.');
+  }
+
+  // La emisora se lee de la factura (no del cargo) para que valga también en las
+  // facturas emitidas antes de que el cargo guardara ese dato.
+  const invR = await query<any>(
+    `SELECT i.id, i.company_id, i.total, i.currency, i.payment_method, i.cfdi_uuid, i.status,
+            e.business_name AS emisora_nombre,
+            COALESCE((SELECT SUM(p.payment_amount) FROM payments p
+                       WHERE p.invoice_id = i.id AND p.deleted_at IS NULL
+                         AND p.document_status <> 'CANCELLED'), 0) AS pagado
+       FROM invoices i JOIN companies e ON e.id = i.company_id
+      WHERE i.id = $1 AND i.deleted_at IS NULL`, [fm.factura_id]);
+  const inv = invR.rows[0];
+  if (!inv) throw new NotFoundError('La factura de ese cargo ya no existe.');
+  if (!inv.cfdi_uuid) throw new ValidationError('La factura no está timbrada: sin UUID no hay complemento posible.');
+  if (String(inv.payment_method || '').toUpperCase() === 'PUE') {
+    throw new ValidationError('Esa factura es PUE (pagada en una sola exhibición): el SAT NO pide complemento de pago para ella.');
+  }
+
+  const saldo = r2(Number(inv.total || 0) - Number(inv.pagado || 0));
+  if (saldo <= 0) throw new ConflictError('Esa factura ya está cubierta: no queda saldo que amparar.');
+
+  // Por omisión se ampara TODO el saldo. Si el cliente abonó menos, se captura.
+  const monto = datos?.monto != null && Number(datos.monto) > 0 ? r2(Number(datos.monto)) : saldo;
+  const fecha = datos?.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha)
+    ? datos.fecha : (fm.pago_fecha || iso(new Date()));
+  const forma = (datos?.forma || fm.pago_forma || '03').padStart(2, '0').slice(0, 2);
+
+  const rep = await paymentsService.createPayment(inv.company_id, {
+    invoiceId: inv.id,
+    paymentAmount: monto,
+    paymentDate: fecha,
+    paymentForm: forma,
+    paymentMethod: 'PPD',
+    notes: datos?.nota || `Cobro de servicios ${fm.factura_folio || ''}`.trim(),
+  });
+  const pago = (rep as any).payment;
+  const folio = `${pago.serie || 'P'}-${String(pago.folio).padStart(6, '0')}`;
+
+  await query(
+    `UPDATE facturacion_mensual SET rep_id = $2, rep_folio = $3, rep_uuid = $4 WHERE id = $1`,
+    [cargoId, pago.id, folio, pago.uuid || null]);
+
+  // Emitir el complemento ES afirmar que el dinero entró: si el cargo todavía
+  // decía PENDIENTE, queda cobrado con estos mismos datos. Dejarlo pendiente
+  // mostraría «por cobrar» algo que ya se le comprobó al SAT.
+  if (fm.status !== 'PAGADO') {
+    await marcarPagado(cargoId, undefined, { monto, fecha, forma, nota: datos?.nota })
+      .catch((e) => logger.warn(
+        `[facturacion] complemento ${folio} timbrado pero el cargo ${cargoId} no quedó marcado como pagado: ${e?.message}`));
+  }
+
+  logger.info(`[facturacion] complemento de pago ${folio} (${pago.uuid}) por ${monto} sobre ${fm.factura_folio} → ${fm.client_name}`);
+  return { folio, uuid: pago.uuid, monto, emisora: inv.emisora_nombre };
 }

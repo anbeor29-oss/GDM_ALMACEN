@@ -388,6 +388,8 @@ function DepositoTab({ emisoras, onChange, flash }: any) {
       deposito_banco: em?.deposito_banco || '', deposito_titular: em?.deposito_titular || '',
       deposito_clabe: em?.deposito_clabe || '', deposito_cuenta: em?.deposito_cuenta || '',
       deposito_referencia: em?.deposito_referencia || '', deposito_notas: em?.deposito_notas || '',
+      mail_texto_adicional: em?.mail_texto_adicional || '',
+      mail_incluir_deposito: em?.mail_incluir_deposito === true,
     });
   }, [sel]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -396,7 +398,17 @@ function DepositoTab({ emisoras, onChange, flash }: any) {
 
   const guardar = async () => {
     setBusy(true);
-    try { await api.setEmisorDeposito(sel, f); flash('Datos de depósito guardados.'); onChange(); }
+    try {
+      // Dos cosas distintas con un solo botón: los DATOS del depósito y si esos
+      // datos SALEN en el correo (más el párrafo de la casa). Separar el botón
+      // obligaría a guardar dos veces lo que el admin ve como una pantalla.
+      await api.setEmisorDeposito(sel, f);
+      await api.setEmisorMensaje(sel, {
+        mail_texto_adicional: f.mail_texto_adicional,
+        mail_incluir_deposito: f.mail_incluir_deposito === true,
+      });
+      flash('Datos de depósito y texto del correo guardados.'); onChange();
+    }
     catch (e: any) { flash('', e?.response?.data?.message || 'No se pudo guardar.'); }
     finally { setBusy(false); }
   };
@@ -415,6 +427,32 @@ function DepositoTab({ emisoras, onChange, flash }: any) {
         </div>
         <Campo label="Referencia / concepto sugerido"><input className="input" value={f.deposito_referencia || ''} onChange={(e) => set('deposito_referencia', e.target.value)} placeholder="RFC del cliente + mes" /></Campo>
         <Campo label="Notas (opcional)"><textarea className="input" rows={2} value={f.deposito_notas || ''} onChange={(e) => set('deposito_notas', e.target.value)} placeholder="Instrucciones adicionales para el cliente." /></Campo>
+
+        {/* ── Qué de esto LLEGA al cliente ──────────────────────────────────
+            Los datos de arriba se guardan siempre; esto decide si salen en el
+            correo. Nace APAGADO a propósito: es dato para un cliente nuevo, no
+            algo que repetirle cada mes a uno de años. */}
+        <div className="border-t pt-3 space-y-3">
+          <p className="text-sm font-semibold text-gray-700">Qué lleva el correo</p>
+          <label className={`flex items-start gap-2.5 cursor-pointer rounded-lg border px-3 py-2.5 ${f.mail_incluir_deposito ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'}`}>
+            <input type="checkbox" checked={f.mail_incluir_deposito === true}
+              onChange={(e) => set('mail_incluir_deposito', e.target.checked)}
+              className="w-4 h-4 mt-0.5 accent-emerald-600" />
+            <span className="text-sm">
+              <b>Incluir estos datos de depósito en los correos</b>
+              <span className="block text-xs text-gray-600 mt-0.5">
+                Apagado, el correo sale sin el bloque «Datos para tu pago». En cada envío se puede
+                encender para un cliente en particular.
+              </span>
+            </span>
+          </label>
+          <Campo label="Texto adicional del correo (opcional)">
+            <textarea className="input" rows={3} value={f.mail_texto_adicional || ''}
+              onChange={(e) => set('mail_texto_adicional', e.target.value)}
+              placeholder="El párrafo de la casa: va entre el mensaje y la firma, en facturas y recibos de nómina. Se escribe una vez." />
+          </Campo>
+        </div>
+
         <button onClick={guardar} disabled={busy} className="inline-flex items-center gap-1.5 bg-amber-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-amber-700 disabled:opacity-50">
           {busy ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Guardar
         </button>
