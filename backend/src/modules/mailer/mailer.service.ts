@@ -424,7 +424,23 @@ export async function sendInvoiceMail(input: {
   const quiereDep = input.incluirDeposito !== undefined
     ? input.incluirDeposito === true
     : company.mail_incluir_deposito === true;
-  const dep = quiereDep ? bloqueDeposito(company, input.reference) : null;
+  // La REFERENCIA del depósito (RFC del cliente · folio) sólo la mandaban los
+  // caminos automáticos. En un envío hecho a mano se deduce de la factura que
+  // se está adjuntando: sin ella el cliente deposita «sin concepto» y conciliar
+  // ese abono después cuesta más que calcularlo aquí.
+  let referencia = input.reference;
+  if (quiereDep && !referencia) {
+    const fact = input.attachments.find((a) => a.kind === 'invoice_pdf' || a.kind === 'invoice_xml');
+    if (fact) {
+      const fr = await query<{ rfc: string; serie: string; folio: number }>(
+        `SELECT cu.rfc, i.serie, i.folio
+           FROM invoices i LEFT JOIN customers cu ON cu.id = i.customer_id
+          WHERE i.id = $1 AND i.company_id = $2`, [fact.id, input.companyId]).catch(() => null as any);
+      const f = fr?.rows?.[0];
+      if (f) referencia = { clienteRfc: f.rfc, folio: `${f.serie || ''}-${String(f.folio).padStart(6, '0')}` };
+    }
+  }
+  const dep = quiereDep ? bloqueDeposito(company, referencia) : null;
   // Párrafo de la casa: el del envío manda sobre el guardado de la empresa.
   const adicional = (input.textoAdicional ?? company.mail_texto_adicional ?? '').trim();
   const info = await tx.sendMail({
