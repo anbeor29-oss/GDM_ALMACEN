@@ -874,7 +874,7 @@ notara. La única huella era ese mensaje de consola, que no dice qué script.
 justo lo que existe para evitar: *servir bundles viejos después de un despliegue*. Es el mismo síntoma —«no
 veo los cambios»— que ya había costado días y que motivó poner el commit en `/health`.
 
-**✅ Solución (commit `__HASH__`).** El registro se mudó a `main.tsx`, que es el único lugar donde se conoce
+**✅ Solución (commit `d2f647c`).** El registro se mudó a `main.tsx`, que es el único lugar donde se conoce
 la base real de la app: `` `${import.meta.env.BASE_URL}sw.js` `` → `/sw.js` en desarrollo y `/erp/sw.js` en el
 hosting. Una ruta **relativa** no habría servido: desde una ruta profunda de la SPA (`/erp/facturas`)
 resolvería contra ella. El `catch` ahora deja un `console.warn` con la URL: callar el error es lo que lo
