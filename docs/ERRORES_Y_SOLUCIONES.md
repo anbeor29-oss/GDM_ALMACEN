@@ -622,7 +622,7 @@ metía el **neto** como depósito. El estado real trae **dos**: `amount` (con si
 **Causa raíz.** Se dedujo el formato del encabezado del PDF en vez de preguntarlo. Con el formato real, el
 depósito salía mal y el detalle no se podía cuadrar contra lo facturado.
 
-**✅ Solución (commit `__HASH__`), la regla que fijó el usuario.**
+**✅ Solución (commit `fca6747`), la regla que fijó el usuario.**
 - **DEPÓSITOS**: los importes **positivos se SUMAN por DÍA** — un solo depósito por fecha, que es como
   entra la cobranza del día — y por su **importe**, no por el neto.
 - **RETIROS**: los importes **negativos van UNO POR UNO** con su fecha (cada payout, cada cargo).
@@ -658,7 +658,7 @@ trámite.
   resto: medio y fecha de notificación, estatus, vencimiento, número de documento. Justo lo que hace falta
   para atender una notificación a tiempo.
 
-**✅ Solución (commit `__HASH__`).**
+**✅ Solución (commit `fca6747`).**
 - `notificacionContenido(companyId, id)`: vuelve a preguntar con `descargarNotificaciones:true` a las **dos**
   bolsas (pendientes y notificadas, porque el id puede estar en cualquiera) y entrega **documento
   notificado**, **acuse** y **constancia** como archivos con su etiqueta — probando los varios nombres que
@@ -683,7 +683,7 @@ había que irse al Libro diario y buscarla.
 **Causa raíz.** La pestaña sólo disparaba el generador; nunca listó nada. El control mensual se lleva ahí,
 así que ahí faltaba la póliza.
 
-**✅ Solución (commit `__HASH__`).** La pestaña lista ahora **la póliza del mes** (folio, fecha, concepto,
+**✅ Solución (commit `fca6747`).** La pestaña lista ahora **la póliza del mes** (folio, fecha, concepto,
 estado e importe) y, al hacer clic en el renglón, **sus partidas** (cuenta, nombre, concepto, cargo, abono).
 Se refresca sola al generar. Sin backend nuevo: reusa `GET /accounting/polizas?anio&mes` filtrando
 `origen='DEPRECIACION'`. Cuando no hay, lo dice con su razón («si el mes no tiene activos depreciables, no
