@@ -487,7 +487,7 @@ alguien haya firmado.
 - Las 3 opciones de cámara pasan a **verde fuerte relleno** (`claseOpcionCamara`, green-700) para distinguirlas de
   las pestañas de configuración; con eso el rótulo «Abrir cámara:» salió sobrando. Se quitó el engrane redundante
   de Kiosco, Campo, Enrolar y Registro (todos iban al mismo `/checador` que Salir/Regresar).
-- **Configuración salió de la fila de pastillas** (commit `0bb3fee`): no es trabajo del día a día —se ajusta una
+- **Configuración salió de la fila de pastillas** (commit `a39dea2`): no es trabajo del día a día —se ajusta una
   vez y se olvida—, así que no debe competir con las pestañas que sí se usan a diario. Va como **engrane sin
   apariencia de botón** (ni relleno ni borde; el fondo sólo asoma al pasar el cursor) a la **derecha** de la barra,
   que es donde se busca un engrane. Sigue siendo `role="tab"`, así que su estado activo se ve con azul **+
