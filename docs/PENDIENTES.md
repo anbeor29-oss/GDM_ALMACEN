@@ -4,6 +4,23 @@
 
 ## 🔜 Abierto (2026-11-24)
 
+- **Correo — el bloque de depósito quedó APAGADO para todos.** Era lo pedido («no mandes este texto»), pero
+  eso incluye el correo **automático** del cargo mensual: ya no lleva banco ni CLABE. Para los clientes a los
+  que sí conviene, encenderlo en **Súper Admin → Emisor de facturas → Depósito** («Incluir estos datos de
+  depósito en los correos»), o marcarlo en el envío de cada factura. Ver `ERRORES_Y_SOLUCIONES.md` #20.
+- **Recibos de nómina por correo — PROBAR con un trabajador real.** El envío ya existe (PDF + XML timbrado,
+  uno por trabajador). Lo que hay que ver en vivo: (a) que el SMTP de la empresa —o el del despacho— mande
+  sin rebotar; (b) que los trabajadores **sin correo** salgan como «omitido» y que capturarlo desde el
+  renglón lo guarde también en el expediente; (c) que `enviado_at` se prenda y el reenvío se omita solo.
+  Ver #21.
+- **Complemento de pago del súper admin — PROBAR contra el PAC.** El camino nuevo (cobro → CFDI tipo P desde
+  la emisora que timbró la factura) sólo se ejercitó con `tsc` y las 191 pruebas. Reusa `payments.service`,
+  que ya timbra en producción, pero **este camino** no se ha corrido. Probar primero en una empresa con
+  `timbrado_ambiente = PRUEBAS`. Ver #22 y [[pac-timbrado-produccion]].
+- **Fuga de secretos en `GET /companies/:id`** (hallazgo al paso, no se tocó): devuelve la fila completa de
+  `companies`, incluidas `mail_pass_enc` y la llave del CSD. Está cifrado, pero no tiene por qué salir del
+  servidor. Hay una tarea aparte propuesta para filtrarlo con lista blanca.
+
 - **Notificaciones del SAT — PROBAR contra el buzón real.** Ya se trae el contenido completo de un aviso
   (documento notificado, acuse, constancia y todos los campos del trámite) con su propio endpoint:
   `notificacionContenido`. Falta probarlo con **e.firma vigente**. Si el proveedor nombra el documento de
