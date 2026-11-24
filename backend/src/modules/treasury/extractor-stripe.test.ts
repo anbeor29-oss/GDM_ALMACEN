@@ -76,43 +76,56 @@ describe('Stripe · lo que hay que controlar', () => {
   });
 });
 
-describe('Stripe · el detalle cuando las cifras SÍ se leen', () => {
-  /* Un periodo chico pero consistente: un cobro, un cargo de facturación y un
-   * payout. 1,000.00 + 1,125.20 − 11.60 − 2,000.00 = 113.60 */
+describe('Stripe · el acomodo del detalle (positivos por día, negativos uno por uno)', () => {
+  /* Un periodo chico pero consistente: dos cobros el mismo día, un cargo de
+   * facturación y un payout. 1,000.00 + 1,160.00 − 34.80 − 11.60 − 2,000.00 = 113.60 */
   const CON_CIFRAS = `
 Estado de Cuenta Stripe  Movimientos de Octubre 2026
 FECHACONCEPTOTIPOIMPORTECOMISIÓNNETO
-20261003Plan Profesional  Inglés EjecutivoCobro$1,160.00 $34.80 $1,125.20
+20261003Plan Profesional  Inglés EjecutivoCobro$1,000.00 $30.00 $970.00
+20261003Actualización de suscripciónCobro$160.00 $4.80 $155.20
 20261004Comisión de facturación 03 oct)Comisión Stripe$11.60
 20261005Payout a bancoPago a banco-$2,000.00 -$2,000.00
 Resumen: Saldo inicial $1,000.00  Actividad neta $1,113.60  Pagos a banco $2,000.00  Saldo final $113.60.
 Comisiones Stripe del mes: $46.40 $34.80 por cobros  $11.60 cargos de facturación)
 `;
 
-  test('un COBRO entra al saldo por su NETO, no por el bruto', () => {
+  test('los COBROS del mismo día se suman en UN solo depósito, por su importe (bruto)', () => {
     const r = extraerMovimientos(CON_CIFRAS);
-    const cobro = r.movimientos.find((m) => /Plan Profesional/.test(m.concepto))!;
-    expect(cobro.deposito).toBe(1125.20);
-    expect(cobro.retiro).toBe(0);
+    const dep = r.movimientos.filter((m) => m.deposito > 0);
+    expect(dep).toHaveLength(1);
+    expect(dep[0].fecha).toBe('2026-10-03');
+    expect(dep[0].deposito).toBe(1160);            // 1,000.00 + 160.00, no el neto
+    expect(dep[0].concepto).toMatch(/2 movimientos/);
   });
 
-  test('el cargo de facturación y el payout SALEN del saldo', () => {
+  test('la comisión retenida del día SALE del saldo, en su propio renglón', () => {
+    const r = extraerMovimientos(CON_CIFRAS);
+    const com = r.movimientos.find((m) => /retenida/i.test(m.concepto))!;
+    expect(com.fecha).toBe('2026-10-03');
+    expect(com.retiro).toBe(34.80);                 // 30.00 + 4.80
+    expect(com.deposito).toBe(0);
+  });
+
+  test('los NEGATIVOS van uno por uno, con su fecha', () => {
     const r = extraerMovimientos(CON_CIFRAS);
     const com = r.movimientos.find((m) => /facturación/.test(m.concepto))!;
     const pay = r.movimientos.find((m) => /Payout/.test(m.concepto))!;
-    expect(com.retiro).toBe(11.60);
-    expect(pay.retiro).toBe(2000);
+    expect([com.fecha, com.retiro]).toEqual(['2026-10-04', 11.60]);
+    expect([pay.fecha, pay.retiro]).toEqual(['2026-10-05', 2000]);
     expect(pay.deposito).toBe(0);
   });
 
   test('el arrastre del saldo llega al final declarado', () => {
     const r = extraerMovimientos(CON_CIFRAS);
-    expect(r.movimientos).toHaveLength(3);
+    expect(r.movimientos).toHaveLength(4);          // depósito + comisión + cargo + payout
     expect(r.movimientos[r.movimientos.length - 1].saldoCalculado).toBe(113.60);
+    expect(r.totalDepositos).toBe(1160);
+    expect(r.totalRetiros).toBe(2046.40);
     expect(r.cuadra).toBe(true);
   });
 
-  test('la comisión del cobro (que ya venía descontada del neto) entra al total con su IVA', () => {
+  test('la comisión del cobro y la de facturación suman el total, con su IVA', () => {
     const c = extraerMovimientos(CON_CIFRAS).comisiones!;
     expect(c.total).toBe(46.40);
     expect(c.base).toBe(40);        // 46.40 / 1.16
@@ -127,11 +140,26 @@ COMISIONES STRIPE $0.00
 20261008Otro movimiento raro$2,500.00
 Resumen: Saldo inicial $0.00  Saldo final $1,000.00.
 `);
-    expect(r.movimientos[0].retiro).toBe(1500);
-    expect(r.movimientos[0].deposito).toBe(0);
-    expect(r.movimientos[1].deposito).toBe(2500);
-    /* No se adivinó el lado por el concepto: queda marcado para que lo revisen. */
-    expect(r.movimientos.every((m) => m.duda)).toBe(true);
+    const sale = r.movimientos.find((m) => m.fecha === '2026-10-07')!;
+    const entra = r.movimientos.find((m) => m.fecha === '2026-10-08')!;
+    expect([sale.retiro, sale.deposito]).toEqual([1500, 0]);
+    expect([entra.retiro, entra.deposito]).toEqual([0, 2500]);
+    /* El que SALE sin tipo queda marcado para revisión; el signo dice el lado,
+     * pero no de qué es el cargo. */
+    expect(sale.duda).toBe(true);
+  });
+
+  test('también lee la fecha con guiones (el CSV del portal), no sólo la pegada del PDF', () => {
+    const r = extraerMovimientos(`
+Estado de Cuenta Stripe
+COMISIONES STRIPE $3.00
+2026-10-03,Plan Profesional,Cobro,$100.00,$3.00
+Resumen: Saldo inicial $0.00  Saldo final $97.00.
+`, { anio: 2026 });
+    expect(r.movimientos.length).toBeGreaterThan(0);
+    expect(r.movimientos[0].fecha).toBe('2026-10-03');
+    expect(r.movimientos[0].deposito).toBe(100);
+    expect(r.comisiones!.total).toBe(3);
   });
 });
 
@@ -201,8 +229,10 @@ COMISIONES STRIPE $34.80
 20261003Plan ProfesionalCobro$1,160.00 $34.80 $1,125.20
 Resumen: Saldo inicial $0.00  Saldo final $1,125.20.
 `);
-    expect(r.movimientos).toHaveLength(1);
+    /* Dos renglones: el cobro por su importe y la comisión retenida de ese día. */
+    expect(r.movimientos).toHaveLength(2);
     expect(r.movimientos[0].fecha).toBe('2026-10-03');
-    expect(r.movimientos[0].deposito).toBe(1125.20);
+    expect(r.movimientos[0].deposito).toBe(1160);
+    expect(r.movimientos[1].retiro).toBe(34.80);
   });
 });

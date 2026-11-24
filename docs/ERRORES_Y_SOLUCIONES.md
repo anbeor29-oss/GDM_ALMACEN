@@ -614,6 +614,83 @@ nueva vuelve a escribir su propia barra, el barrido se deshace — la regla es u
 
 ---
 
+## 17. Stripe: el acomodo del detalle (positivos por día, negativos uno por uno)
+
+**Síntoma.** El lector de Stripe suponía tres columnas de dinero por renglón (importe · comisión · neto) y
+metía el **neto** como depósito. El estado real trae **dos**: `amount` (con signo) y `fee`.
+
+**Causa raíz.** Se dedujo el formato del encabezado del PDF en vez de preguntarlo. Con el formato real, el
+depósito salía mal y el detalle no se podía cuadrar contra lo facturado.
+
+**✅ Solución (commit `__HASH__`), la regla que fijó el usuario.**
+- **DEPÓSITOS**: los importes **positivos se SUMAN por DÍA** — un solo depósito por fecha, que es como
+  entra la cobranza del día — y por su **importe**, no por el neto.
+- **RETIROS**: los importes **negativos van UNO POR UNO** con su fecha (cada payout, cada cargo).
+- **COMISIÓN**: la columna `fee` no es un importe aparte, se **retiene** del cobro. Sale del saldo como
+  **un renglón por día** («Comisión Stripe retenida») y se totaliza con su IVA. No es un movimiento
+  inventado: la cifra está en el documento, en su columna — y sin ese renglón el arrastre **no llegaría**
+  al saldo final, porque es dinero que salió aunque el estado no lo imprima como movimiento.
+- Se acepta también la fecha con **guiones** (`2026-10-03`), que es como la trae el CSV del portal; antes
+  sólo se reconocía la pegada del PDF (`20261003`).
+- **Regresión encontrada y tapada en el camino:** al aceptar fechas sueltas, el renglón del **resumen**
+  («Resumen: Saldo inicial $62,241.30 **30 sep**) …») entraba como un movimiento de 62,241.30 y
+  descuadraba todo. Dos candados: la fecha se busca sólo en la **cabeza** del renglón (un movimiento
+  empieza por su fecha) y los renglones de totales se descartan por rótulo (`RX_RESUMEN_STRIPE`).
+
+**Probado.** 19 pruebas en `extractor-stripe.test.ts` (dos cobros del mismo día que se suman en un
+depósito, la comisión del día en su renglón, los negativos por separado, el arrastre al saldo final, la
+fecha con guiones) y la corrida contra el PDF real, que sigue dando 62,241.30 → 15,215.86 y cuadra.
+
+---
+
+## 18. Las notificaciones del SAT llegaban sin contenido (se pedían como si fueran comunicados)
+
+**Síntoma.** Al abrir un aviso del buzón («RESOLUCIÓN DE LA SOLICITUD DE DEVOLUCIÓN») sólo salían el
+título, la fecha y «SERVICIO DE ADMINISTRACIÓN TRIBUTARIA». Ni el documento, ni el acuse, ni los datos del
+trámite.
+
+**Causa raíz.** Dos cosas:
+- La pantalla llamaba **siempre** a `getComunicadoContenido`, también para los avisos. Un aviso **no está**
+  en `comunicadosfiel`: la consulta devolvía el primer comunicado de la lista o nada, así que el modal se
+  quedaba con el encabezado que ya traía del listado. **No había** función de contenido para notificaciones.
+- El listado se pedía con `descargarNotificaciones:false` (correcto: bajar seis meses de PDF tardaría una
+  eternidad) y `mapNotif` se quedaba con **cuatro campos** — acto, autoridad, folio, fecha — y tiraba el
+  resto: medio y fecha de notificación, estatus, vencimiento, número de documento. Justo lo que hace falta
+  para atender una notificación a tiempo.
+
+**✅ Solución (commit `__HASH__`).**
+- `notificacionContenido(companyId, id)`: vuelve a preguntar con `descargarNotificaciones:true` a las **dos**
+  bolsas (pendientes y notificadas, porque el id puede estar en cualquiera) y entrega **documento
+  notificado**, **acuse** y **constancia** como archivos con su etiqueta — probando los varios nombres que
+  usa el proveedor en vez de apostar a uno — más todos los campos del trámite.
+- `datosPlanos()` conserva **todo** lo que mandó el SAT (menos los binarios) en `datos`, tanto en el listado
+  como en el detalle. La pantalla los enseña como lista de rótulo→valor, con nombres legibles, sin tener que
+  adivinar cómo se llama cada campo en el proveedor.
+- El modal elige el endpoint por el **tipo** del renglón (`aviso` o `comunicado`), que ahora viaja desde el
+  backend, y los documentos se abren con `abrirDoc` → quedan en **Descargas** (entrada 15).
+
+**Límite conocido.** Sin probar contra el buzón real: hace falta e.firma vigente y plan de SatGo. Si el
+proveedor nombra el documento de otra forma, el aviso saldrá **con todos sus datos pero sin PDF** — la
+pantalla lo dice en esas palabras en vez de verse vacía, y agregar el alias es una línea.
+
+---
+
+## 19. La póliza de depreciación se generaba pero no se veía
+
+**Síntoma.** Pólizas → Depreciaciones decía «Depreciación generada.» y nada más. Para ver **qué** se asentó
+había que irse al Libro diario y buscarla.
+
+**Causa raíz.** La pestaña sólo disparaba el generador; nunca listó nada. El control mensual se lleva ahí,
+así que ahí faltaba la póliza.
+
+**✅ Solución (commit `__HASH__`).** La pestaña lista ahora **la póliza del mes** (folio, fecha, concepto,
+estado e importe) y, al hacer clic en el renglón, **sus partidas** (cuenta, nombre, concepto, cargo, abono).
+Se refresca sola al generar. Sin backend nuevo: reusa `GET /accounting/polizas?anio&mes` filtrando
+`origen='DEPRECIACION'`. Cuando no hay, lo dice con su razón («si el mes no tiene activos depreciables, no
+se genera ninguna») en vez de quedarse en blanco.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

@@ -87,6 +87,8 @@ export function PolizasHubPage() {
 }
 
 /* ── Depreciaciones: la corrida mensual (reutiliza el generador del motor) ──── */
+const money = (n: any) => Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+
 function DeprecPanel() {
   const qc = useQueryClient();
   const hoy = new Date();
@@ -96,6 +98,21 @@ function DeprecPanel() {
   const [msg, setMsg] = useState('');
   const anios = aniosContables();
 
+  /* LA PÓLIZA, A LA VISTA.
+   * Antes esto sólo decía «Depreciación generada.» y no enseñaba nada: para ver
+   * qué se había asentado había que irse al Libro diario y buscarla. El control
+   * mensual se lleva aquí, así que aquí se lista la póliza del mes con sus
+   * partidas. */
+  const polizasQ = useQuery({
+    queryKey: ['polizas-deprec', anio, mes],
+    queryFn: () => api.getPolizas(anio, mes),
+    enabled: !!mes,
+  });
+  const polizas: any[] = ((polizasQ.data as any)?.data?.polizas || [])
+    .filter((p: any) => String(p.origen).toUpperCase() === 'DEPRECIACION');
+  const [abierta, setAbierta] = useState<string | null>(null);
+  const totalDe = (p: any) => (p.lineas || []).reduce((a: number, l: any) => a + Number(l.cargo || 0), 0);
+
   const correr = async () => {
     if (!mes) { setMsg('Elige un mes concreto: la depreciación es mensual.'); return; }
     setBusy(true); setMsg('');
@@ -104,6 +121,7 @@ function DeprecPanel() {
       const d = r?.data || {};
       setMsg(d.creadas != null ? `${d.creadas} póliza(s) de depreciación generada(s).` : (r?.message || 'Depreciación generada.'));
       qc.invalidateQueries({ queryKey: ['polizas'] });
+      await polizasQ.refetch();          // que la póliza aparezca sin recargar
     } catch (e: any) { setMsg(e?.response?.data?.message || e?.message || 'No se pudo generar la depreciación.'); }
     finally { setBusy(false); }
   };
@@ -132,8 +150,94 @@ function DeprecPanel() {
           className="inline-flex items-center gap-1.5 border px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
           <PlayCircle size={15} /> {busy ? 'Generando pólizas…' : 'Generar pólizas'}
         </button>
+        {polizas.length > 0 && (
+          <span className="text-xs text-gray-500">
+            {polizas.length} póliza(s) de depreciación en {MESES[mes]} {anio}
+          </span>
+        )}
       </div>
       {msg && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{msg}</p>}
+
+      {/* La póliza del mes, con sus partidas: clic en el renglón para abrirla. */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-2.5 border-b bg-gray-50 text-sm font-semibold text-gray-700">
+          Póliza de depreciación de {MESES[mes]} {anio}
+        </div>
+        {polizasQ.isError ? (
+          <p className="p-4 text-sm text-rose-700">
+            No se pudo traer la póliza: {(polizasQ.error as any)?.message || 'el servidor no respondió.'}
+          </p>
+        ) : polizasQ.isLoading ? (
+          <p className="p-4 text-sm text-gray-500" role="status">Cargando…</p>
+        ) : polizas.length === 0 ? (
+          <p className="p-4 text-sm text-gray-500">
+            Todavía no hay póliza de depreciación en este mes. Oprime «Generar pólizas».
+            Si el mes no tiene activos depreciables, no se genera ninguna.
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+              <tr>
+                <th className="px-3 py-2 text-left">Folio</th>
+                <th className="px-3 py-2 text-left">Fecha</th>
+                <th className="px-3 py-2 text-left">Concepto</th>
+                <th className="px-3 py-2">Estado</th>
+                <th className="px-3 py-2 text-right">Importe</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {polizas.map((p) => (
+                <Fragment key={p.id}>
+                  <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => setAbierta(abierta === p.id ? null : p.id)}>
+                    <td className="px-3 py-2 font-mono text-gray-700">{p.folio}</td>
+                    <td className="px-3 py-2 text-gray-600">{fechaMx(p.fecha)}</td>
+                    <td className="px-3 py-2 text-gray-800">{p.concepto}</td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                        p.estado === 'ASENTADA' ? 'bg-emerald-100 text-emerald-800'
+                        : p.estado === 'REVERSADA' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'}`}>
+                        {p.estado}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold">{money(totalDe(p))}</td>
+                    <td className="px-3 py-2 text-right"><Eye size={15} className="inline text-gray-400" /></td>
+                  </tr>
+                  {abierta === p.id && (
+                    <tr>
+                      <td colSpan={6} className="px-3 pb-3 bg-gray-50/60">
+                        <table className="w-full text-xs">
+                          <thead className="text-gray-500">
+                            <tr>
+                              <th className="px-2 py-1 text-left">Cuenta</th>
+                              <th className="px-2 py-1 text-left">Nombre</th>
+                              <th className="px-2 py-1 text-left">Concepto</th>
+                              <th className="px-2 py-1 text-right">Cargo</th>
+                              <th className="px-2 py-1 text-right">Abono</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(p.lineas || []).map((l: any, i: number) => (
+                              <tr key={i} className="border-t border-gray-200">
+                                <td className="px-2 py-1 font-mono">{l.codigo}</td>
+                                <td className="px-2 py-1 text-gray-600">{l.nombre}</td>
+                                <td className="px-2 py-1 text-gray-500">{l.concepto}</td>
+                                <td className="px-2 py-1 text-right tabular-nums">{Number(l.cargo) ? money(l.cargo) : ''}</td>
+                                <td className="px-2 py-1 text-right tabular-nums">{Number(l.abono) ? money(l.abono) : ''}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
       <p className="text-[11px] text-gray-400 px-1">
         La póliza mensual es idempotente (no se duplica). El detalle de activos y su cálculo vive en
         <b> Activo fijo</b>; aquí se corre y se asienta la depreciación del periodo.

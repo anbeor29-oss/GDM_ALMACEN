@@ -299,6 +299,30 @@ function dentro6Meses(f?: string): boolean {
   return date >= corte;
 }
 
+/* Los campos que traen el DOCUMENTO (base64) no se enseñan como dato: pesan y
+ * no se leen. Van por su lado, como archivos. */
+const CAMPO_BINARIO = /^(archivo|documento|acuse|pdf|base64|contenido|constancia)/i;
+
+/**
+ * TODO lo que mandó el SAT de un renglón, sin los binarios: pares rótulo→valor.
+ *
+ * El listado se quedaba con cuatro campos (acto, autoridad, folio, fecha) y
+ * tiraba el resto —medio de notificación, fecha de notificación, estatus,
+ * vencimiento, número de documento—, que es justo lo que se necesita para
+ * atender una notificación a tiempo. Se pasa completo y la pantalla lo enseña
+ * sin tener que adivinar cómo se llama cada campo en el proveedor.
+ */
+function datosPlanos(r: any): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(r || {})) {
+    if (v === null || v === undefined || v === '') continue;
+    if (CAMPO_BINARIO.test(k)) continue;
+    if (typeof v === 'object') continue;
+    out[k] = String(v);
+  }
+  return out;
+}
+
 /**
  * Buzón tributario: **comunicados** y **notificaciones (avisos)** del SAT, por SatGo
  * con la **e.firma** de la empresa (`comunicadosfiel`/`notificacionesfiel`). Trae ~6
@@ -321,11 +345,22 @@ export async function buzonNotificaciones(companyId: string) {
 
   const comunicados = (comRes.comunicados || [])
     .filter((c: any) => dentro6Meses(c.fechaComunicado))
-    .map((c: any) => { const f = parseFechaSat(c.fechaComunicado); return { id: c.id, asunto: c.titulo, fecha: f.display, fechaOrden: f.iso, leido: !!c.esLeido }; });
+    .map((c: any) => {
+      const f = parseFechaSat(c.fechaComunicado);
+      return { tipo: 'comunicado', id: c.id, asunto: c.titulo, fecha: f.display, fechaOrden: f.iso, leido: !!c.esLeido, datos: datosPlanos(c) };
+    });
 
   const mapNotif = (arr: any[] | undefined, leido: boolean) => (arr || [])
     .filter((r: any) => dentro6Meses(r.fecha))
-    .map((r: any) => { const f = parseFechaSat(r.fecha); return { id: r.rowKey || r.folio, asunto: r.acto || 'Notificación', fecha: f.display, fechaOrden: f.iso, texto: r.autoridad, folio: r.folio, leido }; });
+    .map((r: any) => {
+      const f = parseFechaSat(r.fecha);
+      return {
+        tipo: 'aviso',
+        id: r.rowKey || r.folio, asunto: r.acto || r.asunto || 'Notificación',
+        fecha: f.display, fechaOrden: f.iso, texto: r.autoridad, folio: r.folio, leido,
+        datos: datosPlanos(r),
+      };
+    });
 
   const avisos = [...mapNotif(pendRes.notificaciones, false), ...mapNotif(notifRes.notificaciones, true)];
 
@@ -351,12 +386,79 @@ export async function comunicadoContenido(companyId: string, id: string) {
   const texto = c.texto || c.cuerpo || c.mensaje || c.descripcion || c.Texto || null;
   return {
     id,
+    tipo: 'comunicado',
     asunto: c.titulo || c.Titulo || null,
     fecha: String(c.fechaComunicado || c.fecha || '').slice(0, 10) || null,
     base64,
+    archivos: base64 ? [{ nombre: 'Comunicado', base64 }] : [],
     texto,
+    datos: datosPlanos(c),
   };
 }
+/**
+ * El contenido COMPLETO de UNA notificación del buzón.
+ *
+ * El listado sólo trae el encabezado (acto, autoridad, fecha) porque se pide con
+ * `descargarNotificaciones:false` —si no, bajar seis meses de PDF tardaría una
+ * eternidad—. Para LEER una, se vuelve a preguntar con `descargarNotificaciones:
+ * true`: ahí vienen el documento notificado, su acuse y los campos del trámite.
+ *
+ * Se consultan las DOS bolsas (pendientes y notificadas) porque el id puede
+ * estar en cualquiera y el proveedor no dice en cuál.
+ *
+ * ANTES ESTA PANTALLA PEDÍA EL CONTENIDO DE UN **COMUNICADO** PARA UN AVISO:
+ * `comunicadosfiel` no lo encontraba y devolvía el primer comunicado o nada, así
+ * que la notificación se veía siempre con el puro encabezado.
+ */
+export async function notificacionContenido(companyId: string, id: string) {
+  const cred = await credencialUsable(companyId);
+  const [pend, notif] = await Promise.all([
+    postFiel('/api/v2/Consultar/notificacionesfiel', cred.rfc, cred,
+      { tipoNotificacion: 'pendientes', descargarNotificaciones: true, id }).catch(() => ({} as any)),
+    postFiel('/api/v2/Consultar/notificacionesfiel', cred.rfc, cred,
+      { tipoNotificacion: 'notificadas', descargarNotificaciones: true, id }).catch(() => ({} as any)),
+  ]);
+
+  const todas: any[] = [...(pend.notificaciones || pend.Notificaciones || []), ...(notif.notificaciones || notif.Notificaciones || [])];
+  const r = todas.find((x: any) => String(x.rowKey ?? x.folio ?? '') === String(id)) || todas[0] || {};
+
+  /* El proveedor nombra el documento de varias formas según el acto; se recogen
+   * TODAS las que traigan algo, cada una con su etiqueta, en vez de apostar a un
+   * solo nombre y quedarse sin nada. */
+  const ALIAS: Array<[string, string[]]> = [
+    ['Documento notificado', ['documento', 'documentoNotificado', 'archivo', 'pdf', 'Documento']],
+    ['Acuse de notificación', ['acuse', 'acuseNotificacion', 'Acuse']],
+    ['Constancia', ['constancia', 'constanciaNotificacion']],
+  ];
+  const archivos: Array<{ nombre: string; base64: string }> = [];
+  for (const [nombre, llaves] of ALIAS) {
+    for (const k of llaves) {
+      const v = (r as any)[k];
+      // Un base64 de verdad pesa; una cadena corta es un nombre de archivo o una clave.
+      if (typeof v !== 'string' || v.length < 100) continue;
+      archivos.push({
+        nombre,
+        base64: v.startsWith('data:') ? v : `data:application/pdf;base64,${v.replace(/^data:[^,]*,/, '')}`,
+      });
+      break;
+    }
+  }
+
+  const f = parseFechaSat(r.fecha);
+  return {
+    id,
+    tipo: 'aviso',
+    asunto: r.acto || r.asunto || 'Notificación',
+    fecha: f.display || null,
+    texto: r.descripcion || r.mensaje || r.texto || r.autoridad || null,
+    archivos,
+    /** El primero, para la pantalla que sólo sabe de un documento. */
+    base64: archivos.length ? archivos[0].base64 : null,
+    /** TODO lo demás que mandó el SAT. */
+    datos: datosPlanos(r),
+  };
+}
+
 
 /**
  * VERIFICA por SatGo el estatus de los CFDI almacenados y marca los CANCELADOS en la

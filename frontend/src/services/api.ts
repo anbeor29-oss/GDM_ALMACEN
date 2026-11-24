@@ -1449,6 +1449,12 @@ class APIClient {
     const r = await this.client.get<APIResponse<any>>(`/satgo/consultas/buzon/comunicado/${encodeURIComponent(id)}`, { timeout: 120000 });
     return r.data;
   }
+  /** Contenido de una NOTIFICACIÓN del buzón: documento, acuse y todos sus campos.
+   *  Es otro endpoint: el de comunicados no encuentra los avisos. */
+  async getNotificacionContenido(id: string) {
+    const r = await this.client.get<APIResponse<any>>(`/satgo/consultas/buzon/notificacion/${encodeURIComponent(id)}`, { timeout: 120000 });
+    return r.data;
+  }
   // ── PLD / antilavado (LFPIORPI) ──
   async getPldActividades() {
     return (await this.client.get<APIResponse<any>>('/pld/actividades')).data;

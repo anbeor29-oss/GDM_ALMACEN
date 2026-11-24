@@ -4,7 +4,7 @@
  * ya retirado); ahora se consultan en VENTANAS EMERGENTES desde el Panel fiscal.
  * Consultas en línea con la CIEC de la empresa (salvo Validar CFDI, que sólo usa el RFC).
  */
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, Fragment, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileSearch, BadgeCheck, AlertTriangle, Loader2, FileText, Mail, MailOpen, RefreshCw, Upload, X } from 'lucide-react';
 import api from '@/services/api';
@@ -34,7 +34,14 @@ function abrirDoc(dataUrl: string, nombre = 'Documento_SAT') {
 }
 
 /* ═══════════════ Notificaciones y comunicados ═══════════════ */
-interface Notif { id?: string; asunto?: string; titulo?: string; fecha?: string; fechaOrden?: string; leido?: boolean; texto?: string }
+interface Notif {
+  id?: string; asunto?: string; titulo?: string; fecha?: string; fechaOrden?: string;
+  leido?: boolean; texto?: string; folio?: string;
+  /** 'comunicado' | 'aviso' — cada uno se lee con su propio endpoint. */
+  tipo?: string;
+  /** Todo lo que mandó el SAT de ese renglón (rótulo → valor). */
+  datos?: Record<string, string>;
+}
 
 function ItemNotif({ n, onOpen }: { n: Notif; onOpen: (n: Notif) => void }) {
   const leido = !!n.leido;
@@ -69,32 +76,61 @@ function ColumnaNotif({ titulo, items, onOpen }: { titulo: string; items: Notif[
   );
 }
 
-/** Modal para LEER un comunicado/aviso: trae su PDF y/o texto del SAT (vía SatGo). */
+/** Rótulos legibles para los campos que manda el SAT (los nombra en camelCase). */
+const ROTULO_SAT: Record<string, string> = {
+  acto: 'Acto', autoridad: 'Autoridad', folio: 'Folio', fecha: 'Fecha',
+  estatus: 'Estatus', estado: 'Estado', tipoNotificacion: 'Tipo de notificación',
+  medioNotificacion: 'Medio de notificación', fechaNotificacion: 'Fecha de notificación',
+  fechaVencimiento: 'Vence', fechaPublicacion: 'Publicado', numeroDocumento: 'Número de documento',
+  rfc: 'RFC', titulo: 'Título', esLeido: 'Leído', id: 'Id', rowKey: 'Clave',
+};
+/** camelCase → «Camel case», para lo que no esté en la tabla de arriba. */
+const rotulo = (k: string) =>
+  ROTULO_SAT[k] || k.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
+
+/* No se repite arriba y abajo lo que ya va en el encabezado del modal. */
+const EN_ENCABEZADO = new Set(['acto', 'asunto', 'titulo', 'fecha', 'id', 'rowKey']);
+
+/** Modal para LEER un comunicado/aviso: trae del SAT (vía SatGo) su documento,
+ *  su texto y TODOS los campos del trámite. */
 function ModalComunicado({ item, onClose }: { item: Notif; onClose: () => void }) {
   const [det, setDet] = useState<any>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
+  const esAviso = item.tipo === 'aviso';
   useEffect(() => {
     let vivo = true;
     (async () => {
       setCargando(true); setError('');
       try {
         if (item.id) {
-          const r: any = await api.getComunicadoContenido(item.id);
+          /* Cada cosa por su endpoint: un AVISO no está en «comunicados», y
+             pedirlo ahí devolvía el encabezado y nada más. */
+          const r: any = esAviso
+            ? await api.getNotificacionContenido(item.id)
+            : await api.getComunicadoContenido(item.id);
           if (vivo) setDet(r?.data || {});
         } else if (vivo) setDet({});
       } catch (e: any) { if (vivo) setError(e?.response?.data?.message || 'No se pudo traer el contenido del SAT.'); }
       finally { if (vivo) setCargando(false); }
     })();
     return () => { vivo = false; };
-  }, [item.id]);
+  }, [item.id, esAviso]);
+
   const texto = det?.texto || item.texto;
+  /* Los archivos del detalle; si el proveedor sólo mandó uno suelto, ése. */
+  const archivos: Array<{ nombre: string; base64: string }> =
+    det?.archivos?.length ? det.archivos : (det?.base64 ? [{ nombre: 'Documento', base64: det.base64 }] : []);
+  /* Todos los campos: los del detalle mandan sobre los del listado. */
+  const datos: Record<string, string> = { ...(item.datos || {}), ...(det?.datos || {}) };
+  const campos = Object.entries(datos).filter(([k, v]) => !EN_ENCABEZADO.has(k) && String(v).trim() !== '');
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 px-5 py-3 border-b">
           <div className="min-w-0">
-            <h3 className="font-bold text-gray-900">{item.asunto || item.titulo || 'Comunicado'}</h3>
+            <h3 className="font-bold text-gray-900">{item.asunto || item.titulo || (esAviso ? 'Notificación' : 'Comunicado')}</h3>
             {item.fecha && <p className="text-xs text-gray-400">{item.fecha}</p>}
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 shrink-0"><X size={18} /></button>
@@ -104,16 +140,39 @@ function ModalComunicado({ item, onClose }: { item: Notif; onClose: () => void }
           {error && <p className="text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{error}</p>}
           {!cargando && !error && (
             <>
-              {det?.base64 && (
-                <button onClick={() => abrirDoc(det.base64, det?.asunto || det?.titulo || 'Documento_SAT')}
+              {archivos.map((a, i) => (
+                <button key={i} onClick={() => abrirDoc(a.base64, `${a.nombre}_${item.asunto || ''}`)}
                   title="Se abre para verlo y queda guardado en Descargas"
-                  className="inline-flex items-center gap-2 bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 text-sm font-semibold">
-                  <FileText size={16} /> Abrir el documento (PDF)
+                  className="inline-flex items-center gap-2 bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 text-sm font-semibold mr-2">
+                  <FileText size={16} /> {a.nombre} (PDF)
                 </button>
-              )}
+              ))}
               {texto && <p className="text-gray-700 whitespace-pre-wrap">{texto}</p>}
-              {!det?.base64 && !texto && (
-                <p className="text-gray-500 italic">El SAT no devolvió el contenido de este comunicado (sólo el encabezado). Ábrelo en el buzón tributario del SAT si necesitas el detalle.</p>
+
+              {/* TODOS los campos del trámite: medio y fecha de notificación,
+                  estatus, vencimiento, número de documento… El listado sólo
+                  enseñaba el acto y la autoridad, que no alcanza para atenderla. */}
+              {campos.length > 0 && (
+                <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 border-t pt-3 text-xs">
+                  {campos.map(([k, v]) => (
+                    <Fragment key={k}>
+                      <dt className="text-gray-500 whitespace-nowrap">{rotulo(k)}</dt>
+                      <dd className="text-gray-800 break-words">{String(v)}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+              )}
+
+              {!archivos.length && !texto && campos.length === 0 && (
+                <p className="text-gray-500 italic">
+                  El SAT no devolvió el contenido de este {esAviso ? 'aviso' : 'comunicado'} (sólo el encabezado).
+                  Ábrelo en el buzón tributario del SAT si necesitas el detalle.
+                </p>
+              )}
+              {!archivos.length && (texto || campos.length > 0) && (
+                <p className="text-[11px] text-gray-400">
+                  Sin documento adjunto: el SAT mandó los datos pero no el PDF de este {esAviso ? 'aviso' : 'comunicado'}.
+                </p>
               )}
             </>
           )}
@@ -140,7 +199,7 @@ export function PanelNotificaciones() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[11px] text-gray-500 bg-gray-50 border rounded px-3 py-1.5 flex items-center gap-2 flex-1 min-w-[16rem]">
           <Mail size={13} className="text-rose-500" /> Sin leer &nbsp;·&nbsp; <MailOpen size={13} className="text-emerald-500" /> Leído
-          &nbsp;— el más reciente arriba.{!conectado && ' El buzón se conectará con el servicio fiscal; por ahora se actualiza vacío.'}
+          &nbsp;— el más reciente arriba.{!conectado && ' Sin e.firma vigente no se puede consultar el buzón.'}
         </p>
         <button onClick={() => q.refetch()} disabled={q.isFetching}
           title="Trae los comunicados y avisos más recientes del buzón"

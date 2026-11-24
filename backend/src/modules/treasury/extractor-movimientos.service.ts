@@ -1493,6 +1493,10 @@ export function limpiarPua(texto: string): { texto: string; quitados: number } {
   return { texto: quitados ? texto.replace(rx, '') : texto, quitados };
 }
 
+/** Renglones de TOTALES/resumen: nunca son movimientos, aunque traigan cifras. */
+const RX_RESUMEN_STRIPE =
+  /RESUMEN|SALDO\s*(INICIAL|FINAL)|ACTIVIDAD\s*NETA|PAGOS?\s*A\s*BANCO\s*$|COBROS\s*\(|COMISIONES\s*STRIPE|^TOTAL/i;
+
 /** El IVA va con la comisión incluida: base = total / (1 + tasa). */
 const IVA_COMISION = 0.16;
 
@@ -1535,19 +1539,50 @@ function extraerStripe(
     if (ms.length >= 3) { comPorCobros = aNumero(ms[1]); comPorFacturacion = aNumero(ms[2]); }
   }
 
-  /* ── El detalle, renglón por renglón ── */
-  const movimientos: MovimientoExtraido[] = [];
-  let sumComisionCobros = 0, sumComisionFacturacion = 0, sinCifras = 0, orden = 1;
+  /* ── El detalle ──
+   *
+   * El estado trae DOS columnas de dinero: IMPORTE (con signo) y COMISIÓN. El
+   * acomodo es el que fijó el usuario:
+   *   · DEPÓSITOS — los importes POSITIVOS se SUMAN por DÍA: un solo depósito
+   *     por fecha, que es como entra la cobranza del día a la cuenta.
+   *   · RETIROS   — los importes NEGATIVOS van UNO POR UNO con su fecha: cada
+   *     payout a otro banco y cada cargo se ve por separado.
+   *   · COMISIÓN  — la columna de comisión no es un importe aparte: se RETIENE
+   *     del cobro. Sale del saldo como UN renglón por día y se totaliza con su
+   *     IVA, que es lo que la vuelve gasto deducible e IVA acreditable.
+   *
+   * Ese renglón de comisión no es invento: la cifra está en el documento, en su
+   * columna. Sin él el arrastre no llegaría al saldo final —es dinero que salió
+   * aunque el estado no lo imprima como movimiento— y el depósito del día
+   * dejaría de coincidir con lo facturado, que es contra lo que se concilia.
+   */
+  type FilaStripe = { fecha: string; concepto: string; tipo: string; amount: number; fee: number; linea: string };
+  const filas: FilaStripe[] = [];
+  let sinCifras = 0;
 
   for (const cruda of texto.split(/\r?\n/)) {
     const linea = cruda.trim();
-    /* La fecha va PEGADA al concepto y sin separadores: «20261003Plan…». */
+    if (!linea) continue;
+
+    /* La fecha va PEGADA al concepto y sin separadores («20261003Plan…») en el
+     * PDF; del CSV del portal llega con guiones. Se aceptan las dos. */
+    let fecha = '';
+    let cola = linea;
     const m = /^(\d{4})(\d{2})(\d{2})(.*)$/.exec(linea);
-    if (!m) continue;
-    const mes = Number(m[2]), dia = Number(m[3]);
-    if (mes < 1 || mes > 12 || dia < 1 || dia > 31) continue;
-    const fecha = `${m[1]}-${m[2]}-${m[3]}`;
-    const cola = m[4];
+    if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12 && Number(m[3]) >= 1 && Number(m[3]) <= 31) {
+      fecha = `${m[1]}-${m[2]}-${m[3]}`;
+      cola = m[4];
+    } else {
+      /* Sólo se mira la CABEZA del renglón: un movimiento empieza por su fecha.
+       * Si se busca en toda la línea, el renglón del RESUMEN —«Resumen: Saldo
+       * inicial $62,241.30 30 sep) …»— pesca su «30 sep» y entra como un
+       * movimiento de 62,241.30 que descuadra todo. Pasó. */
+      const iso = fechaDeLinea(linea.slice(0, 14), _opciones.anio);
+      if (!iso) continue;
+      fecha = iso;
+    }
+    /* Los renglones de TOTALES no son movimientos aunque traigan fecha e importe. */
+    if (RX_RESUMEN_STRIPE.test(linea)) continue;
 
     const tipo = TIPOS_STRIPE.find((t) => cola.toUpperCase().includes(t)) || '';
     const importes = (cola.match(RX_MONTO) || []).map(aNumero);
@@ -1559,39 +1594,72 @@ function extraerStripe(
       continue;
     }
 
-    const concepto = cola.replace(RX_MONTO, '').replace(/\$/g, '').trim();
-    let deposito = 0, retiro = 0;
-
+    /* IMPORTE y COMISIÓN. El TIPO manda cuando está —el PDF imprime los cargos
+     * en positivo aunque salgan—; si no está, manda el SIGNO. La tercera cifra
+     * del PDF es el NETO (importe − comisión): no se usa, sería contarla dos
+     * veces. Una comisión nunca llega a la mitad del cobro, y eso distingue la
+     * columna de comisión de una de neto cuando sólo vienen dos cifras. */
+    let amount = importes[0];
+    let fee = 0;
+    const comisionPosible = (i: number) => importes.length > i && Math.abs(importes[i]) < Math.abs(importes[0]) / 2;
     if (tipo === 'COBRO' || tipo === 'AJUSTE') {
-      /* [bruto · comisión · neto]: al saldo entra el NETO. Con dos importes se
-       * asume [bruto · neto] y la comisión es la diferencia. */
-      if (importes.length >= 3) {
-        deposito = Math.abs(importes[importes.length - 1]);
-        sumComisionCobros = pesos(sumComisionCobros + Math.abs(importes[importes.length - 2]));
-      } else if (importes.length === 2) {
-        const bruto = Math.abs(importes[0]), neto = Math.abs(importes[1]);
-        deposito = neto;
-        sumComisionCobros = pesos(sumComisionCobros + Math.max(0, pesos(bruto - neto)));
-      } else {
-        deposito = Math.abs(importes[0]);
-      }
-    } else if (tipo.startsWith('COMISI')) {
-      retiro = Math.abs(importes[0]);
-      sumComisionFacturacion = pesos(sumComisionFacturacion + retiro);
-    } else if (tipo === 'PAGO A BANCO' || tipo === 'REEMBOLSO' || tipo === 'CONTRACARGO') {
-      retiro = Math.abs(importes[0]);
-    } else {
-      /* Sin TIPO reconocible manda el SIGNO, que es la regla del documento:
-       * «-$12,345.67» sale a otro banco, «$1,234.56» es cobranza que entra. */
-      const v = importes[0];
-      if (v < 0) retiro = Math.abs(v); else deposito = v;
+      amount = Math.abs(importes[0]);
+      if (importes.length >= 3 || comisionPosible(1)) fee = Math.abs(importes[1]);
+    } else if (tipo) {
+      // Comisión de facturación, payout, reembolso, contracargo: SALEN del saldo.
+      amount = -Math.abs(importes[0]);
+    } else if (comisionPosible(1)) {
+      fee = Math.abs(importes[1]);
     }
 
-    movimientos.push({
-      fecha, concepto: concepto.slice(0, 140), referencia: '', retiro, deposito,
-      saldo: null, saldoCalculado: 0, advertencia: '', inferido: false,
-      duda: !tipo, orden: orden++, lineaOrigen: linea,
-    });
+    const concepto = cola.replace(RX_MONTO, '').replace(/\$/g, '').replace(/\s{2,}/g, ' ').trim();
+    filas.push({ fecha, concepto: concepto.slice(0, 140), tipo, amount, fee, linea });
+  }
+
+  /* ── El acomodo: positivos SUMADOS por día, negativos uno por uno ── */
+  const movimientos: MovimientoExtraido[] = [];
+  let sumComisionCobros = 0, sumComisionFacturacion = 0, orden = 1;
+
+  for (const dia of Array.from(new Set(filas.map((f) => f.fecha))).sort()) {
+    const delDia = filas.filter((f) => f.fecha === dia);
+    const entran = delDia.filter((f) => f.amount > 0);
+    const salen = delDia.filter((f) => f.amount < 0);
+
+    if (entran.length) {
+      movimientos.push({
+        fecha: dia,
+        concepto: entran.length === 1
+          ? (entran[0].concepto || 'Cobro')
+          : `Cobros del día (${entran.length} movimientos)`,
+        referencia: '', retiro: 0,
+        deposito: pesos(entran.reduce((a, f) => a + f.amount, 0)),
+        saldo: null, saldoCalculado: 0, advertencia: '', inferido: false, duda: false,
+        orden: orden++, lineaOrigen: entran.map((f) => f.linea).join(' | ').slice(0, 400),
+      });
+
+      const com = pesos(entran.reduce((a, f) => a + f.fee, 0));
+      if (com > 0) {
+        sumComisionCobros = pesos(sumComisionCobros + com);
+        movimientos.push({
+          fecha: dia,
+          concepto: `Comisión Stripe retenida (${entran.length} cobro${entran.length === 1 ? '' : 's'})`,
+          referencia: '', retiro: com, deposito: 0, saldo: null, saldoCalculado: 0,
+          advertencia: '', inferido: false, duda: false, orden: orden++, lineaOrigen: '',
+        });
+      }
+    }
+
+    for (const f of salen) {
+      if (f.tipo.startsWith('COMISI')) {
+        sumComisionFacturacion = pesos(sumComisionFacturacion + Math.abs(f.amount));
+      }
+      movimientos.push({
+        fecha: dia, concepto: f.concepto || 'Movimiento', referencia: '',
+        retiro: pesos(Math.abs(f.amount) + f.fee), deposito: 0,
+        saldo: null, saldoCalculado: 0, advertencia: '', inferido: false,
+        duda: !f.tipo, orden: orden++, lineaOrigen: f.linea,
+      });
+    }
   }
 
   let corr = saldoInicial ?? 0;

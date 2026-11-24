@@ -61,6 +61,13 @@ router.get('/buzon/comunicado/:id', asyncHandler(async (req: Request, res: Respo
   res.json({ success: true, data: await consultas.comunicadoContenido(companyId(req), String(req.params.id)) });
 }));
 
+// Contenido de una NOTIFICACIÓN (aviso): documento notificado, acuse y todos los
+// campos del trámite. Es otra consulta distinta a la de comunicados — pedirle a
+// `comunicadosfiel` un aviso no devuelve nada, que es lo que pasaba.
+router.get('/buzon/notificacion/:id', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await consultas.notificacionContenido(companyId(req), String(req.params.id)) });
+}));
+
 router.get('/validar-cfdi', asyncHandler(async (req: Request, res: Response) => {
   const data = await consultas.validarCfdi(companyId(req), {
     re: req.query.re as string, rr: req.query.rr as string,
