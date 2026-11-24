@@ -2,6 +2,18 @@
 
 > Lista viva de lo que falta. Actualizada 2026-11-23. Lo hecho se documenta en `BITACORA.md`.
 
+## 🔜 Abierto (2026-11-24)
+
+- **Notificaciones del SAT — PROBAR contra el buzón real.** Ya se trae el contenido completo de un aviso
+  (documento notificado, acuse, constancia y todos los campos del trámite) con su propio endpoint:
+  `notificacionContenido`. Falta probarlo con **e.firma vigente**. Si el proveedor nombra el documento de
+  otra forma, el aviso saldrá **con sus datos pero sin PDF** —la pantalla lo dice así— y agregar el alias
+  en `ALIAS` es una línea. Ver `ERRORES_Y_SOLUCIONES.md` #18.
+- **Stripe — el detalle sigue dependiendo del CSV.** El acomodo ya está (positivos sumados por día,
+  negativos uno por uno, comisión retenida en su renglón), pero del **PDF** no se pueden leer las cifras
+  de la tabla (fuente sin mapa a Unicode). Para el detalle: **CSV de «balance transactions»**, texto
+  pegado, o `ENABLE_OCR=true`. Ver #14 y #17.
+
 ## 🔜 Para mañana (2026-11-24)
 
 - **PROBAR STRIPE EN VIVO (lo pidió el usuario para mañana).** Cargar el estado de cuenta de octubre 2026 en
