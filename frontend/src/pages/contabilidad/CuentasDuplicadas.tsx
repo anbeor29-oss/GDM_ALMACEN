@@ -13,6 +13,7 @@ import { Copy, CheckCircle2, AlertTriangle, Merge } from 'lucide-react';
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 import { confirmar } from '@/utils/avisos';
+import { claseOpcion } from '@/utils/coloresOpciones';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -58,11 +59,11 @@ export function CuentasDuplicadasPage() {
     } finally { setBusy(false); }
   };
 
+  /* Mismo esquema de opciones que el resto del ERP (verde claro / activa azul). */
   const Tab = ({ v, children }: { v: Modo; children: any }) => (
-    <button onClick={() => { setModo(v); setMsg(''); }}
-      className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${modo === v
-        ? 'bg-primary text-white border-primary'
-        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+    <button onClick={() => { setModo(v); setMsg(''); }} role="tab" aria-selected={modo === v}
+      className={`transition active:scale-[.97] focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300
+        ${modo === v ? '' : 'hover:-translate-y-px hover:shadow-sm'} ${claseOpcion(0, modo === v)}`}>
       {children}
     </button>
   );

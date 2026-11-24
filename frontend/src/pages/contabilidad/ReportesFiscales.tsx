@@ -12,6 +12,7 @@ import { FileText, Download, ScrollText, AlertCircle, FileArchive } from 'lucide
 import { api } from '@/services/api';
 import { aniosContables } from '@/utils/anios';
 import { usePeriodoTrabajo } from '@/utils/periodoActivo';
+import { claseOpcion } from '@/utils/coloresOpciones';
 
 const money = (n: any) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
@@ -47,10 +48,12 @@ export function ReportesFiscalesPage() {
             {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
           </select>
         </div>
-        <div className="ml-auto flex gap-1 border rounded-lg p-0.5 bg-gray-50">
+        {/* Mismo esquema de opciones que el resto del ERP (verde claro / azul). */}
+        <div role="tablist" aria-label="Reportes del SAT" className="ml-auto flex flex-wrap gap-1.5">
           {([['diot', 'DIOT'], ['electronica', 'Contabilidad Electrónica']] as const).map(([k, label]) => (
-            <button key={k} onClick={() => setTab(k)}
-              className={`px-3 py-1.5 rounded-md text-sm ${tab === k ? 'bg-white shadow font-medium text-violet-700' : 'text-gray-600'}`}>
+            <button key={k} onClick={() => setTab(k)} role="tab" aria-selected={tab === k}
+              className={`transition active:scale-[.97] focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300
+                ${tab === k ? '' : 'hover:-translate-y-px hover:shadow-sm'} ${claseOpcion(0, tab === k)}`}>
               {label}
             </button>
           ))}

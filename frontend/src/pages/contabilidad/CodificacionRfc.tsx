@@ -22,6 +22,7 @@ import {
 import api from '@/services/api';
 import { useMascara } from '@/utils/cuenta';
 import { fechaMx } from '@/utils/fecha';
+import { claseOpcion } from '@/utils/coloresOpciones';
 import { SelectorCuenta } from '@/components/SelectorCuenta';
 import { AsientoModal, ComprobanteModal } from '@/components/TablaComprobantesSat';
 
@@ -588,10 +589,13 @@ export function MemoriaRfc({ cuentas }: { cuentas: any[] }) {
 
       <RepararEnlaces />
 
-      <div className="flex flex-wrap gap-1.5">
+      {/* Por el helper y no con las clases a mano: era el MISMO color, escrito
+          aparte — y así se desincroniza el día que el esquema cambie. */}
+      <div role="tablist" aria-label="Memoria del motor" className="flex flex-wrap gap-1.5">
         {([['propuestas', 'Reglas propuestas'], ['proveedores', 'Proveedores aprendidos'], ['reglas', 'Reglas e historial'], ['auditoria', 'Auditoría']] as const).map(([k, t]) => (
-          <button key={k} onClick={() => setSec(k)}
-            className={`px-3 py-1.5 rounded-lg text-sm border ${sec === k ? 'bg-blue-600 text-white border-blue-600' : 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'}`}>{t}</button>
+          <button key={k} onClick={() => setSec(k)} role="tab" aria-selected={sec === k}
+            className={`transition active:scale-[.97] focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300
+              ${sec === k ? '' : 'hover:-translate-y-px hover:shadow-sm'} ${claseOpcion(0, sec === k)}`}>{t}</button>
         ))}
       </div>
 

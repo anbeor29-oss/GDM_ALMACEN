@@ -11,12 +11,15 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Building2, Mail, Landmark, Star, Check, Loader2, Send, Save, AlertTriangle, Plus, KeyRound, X, Upload } from 'lucide-react';
 import api from '@/services/api';
+import { claseOpcion } from '@/utils/coloresOpciones';
 
 type Tab = 'emisoras' | 'smtp' | 'deposito';
-const TABS: Array<{ k: Tab; label: string; icon: any; color: string }> = [
-  { k: 'emisoras', label: 'Emisoras', icon: Building2, color: 'bg-sky-100 text-sky-700 border-sky-200' },
-  { k: 'smtp', label: 'Correo (SMTP)', icon: Mail, color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-  { k: 'deposito', label: 'Depósito', icon: Landmark, color: 'bg-amber-100 text-amber-700 border-amber-200' },
+/* El color por opción se quitó: TODAS las pantallas del ERP usan el mismo
+ * esquema (inactiva verde claro, activa azul; ver utils/coloresOpciones). */
+const TABS: Array<{ k: Tab; label: string; icon: any }> = [
+  { k: 'emisoras', label: 'Emisoras', icon: Building2 },
+  { k: 'smtp', label: 'Correo (SMTP)', icon: Mail },
+  { k: 'deposito', label: 'Depósito', icon: Landmark },
 ];
 
 export function AdminEmisoresPage() {
@@ -45,12 +48,14 @@ export function AdminEmisoresPage() {
       </p>
 
       {/* Pestañas en pastillas de colores */}
-      <div className="flex flex-wrap gap-2 mb-5">
+      <div role="tablist" aria-label="Secciones del emisor" className="flex flex-wrap gap-1.5 mb-5">
         {TABS.map(({ k, label, icon: Ic }) => (
           <button key={k} onClick={() => { setTab(k); setErr(''); }}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium border transition-colors ${
-              tab === k ? 'bg-sky-600 text-white border-sky-600 shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-            <Ic size={15} /> {label}
+            role="tab" aria-selected={tab === k}
+            className={`inline-flex items-center gap-1.5 transition active:scale-[.97]
+              focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300
+              ${tab === k ? '' : 'hover:-translate-y-px hover:shadow-sm'} ${claseOpcion(0, tab === k)}`}>
+            <Ic size={15} aria-hidden="true" /> {label}
           </button>
         ))}
       </div>

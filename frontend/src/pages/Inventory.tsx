@@ -17,6 +17,7 @@ import api from '@/services/api';
 import { useAuthStore } from '@/store/auth';
 import { fechaMx, fechaHoraMx } from '@/utils/fecha';
 import { CampoFecha } from '@/components/CampoFecha';
+import { claseOpcion } from '@/utils/coloresOpciones';
 
 interface StockRow {
   id: string;
@@ -91,7 +92,10 @@ export function InventoryPage() {
             Existencias por almacén · ajustes autorizados · traspasos · kardex
           </p>
         </div>
-        <div className="flex bg-gray-200/70 rounded-lg p-1">
+        {/* Opciones: el mismo esquema uniforme de todo el ERP (verde claro /
+            activa en azul). Antes era una bandeja gris con la activa en blanco:
+            un cuarto estilo de pestaña, y la activa casi no se distinguía. */}
+        <div role="tablist" aria-label="Secciones de inventario" className="flex flex-wrap gap-1.5">
           <TabButton active={tab === 'stock'} onClick={() => setTab('stock')}
             icon={<Boxes size={16} />} label="Existencias" />
           <TabButton active={tab === 'kardex'} onClick={() => setTab('kardex')}
@@ -112,10 +116,10 @@ function TabButton({ active, onClick, icon, label }: {
   active: boolean; onClick: () => void; icon: React.ReactNode; label: string;
 }) {
   return (
-    <button onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-        active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-      }`}>
+    <button onClick={onClick} role="tab" aria-selected={active}
+      className={`inline-flex items-center gap-2 transition active:scale-[.97]
+        focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300
+        ${active ? '' : 'hover:-translate-y-px hover:shadow-sm'} ${claseOpcion(0, active)}`}>
       {icon}{label}
     </button>
   );

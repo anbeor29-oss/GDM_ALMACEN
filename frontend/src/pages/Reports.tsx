@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import api from '@/services/api';
 import { fechaMx } from '@/utils/fecha';
+import { claseOpcion } from '@/utils/coloresOpciones';
 
 type Tab = 'collections' | 'receivables' | 'sales' | 'tax';
 
@@ -35,8 +36,8 @@ export function ReportsPage() {
         <p className="text-gray-600 mt-2">Cobranza detallada</p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-200">
+      {/* Opciones: el mismo esquema uniforme de todo el ERP. */}
+      <div role="tablist" aria-label="Secciones de reportes" className="flex flex-wrap gap-1.5">
         <TabButton
           active={tab === 'receivables'}
           onClick={() => setTab('receivables')}
@@ -233,11 +234,14 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-        active
-          ? 'border-blue-600 text-blue-600 font-semibold'
-          : 'border-transparent text-gray-600 hover:text-gray-900'
-      }`}
+      role="tab"
+      aria-selected={active}
+      /* Mismo esquema que el resto del ERP: inactiva en verde claro, activa en
+         azul (ver utils/coloresOpciones). Antes eran pestañas subrayadas, un
+         tercer estilo distinto que hacía ver cada pantalla como otro programa. */
+      className={`inline-flex items-center gap-2 transition active:scale-[.97]
+        focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300
+        ${active ? '' : 'hover:-translate-y-px hover:shadow-sm'} ${claseOpcion(0, active)}`}
     >
       {icon}
       {label}
