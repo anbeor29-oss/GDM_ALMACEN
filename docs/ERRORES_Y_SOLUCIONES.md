@@ -940,7 +940,7 @@ lo mismo. Un comentario no protege nada: sólo avisa a quien lo lee.
 **❌ Lo que NO hay que hacer.** Subir el montaje del storefront por encima de la línea 214. Funciona, y
 deja la trampa armada para la siguiente ruta pública que alguien añada abajo.
 
-**✅ Solución (commit `__HASH__`).** El auth de esos dos routers pasó a ir **ruta por ruta**
+**✅ Solución (commit `d488701`).** El auth de esos dos routers pasó a ir **ruta por ruta**
 (`router.post('/invoices/:id/send-email', authenticateToken, …)`), que son 7 rutas en total. Un router
 montado en la raíz ya no decide por los demás: lo que no casa con sus rutas **sigue su camino**.
 
