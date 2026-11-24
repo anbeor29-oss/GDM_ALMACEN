@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText, ArrowLeft, Download } from 'lucide-react';
 import { GdmLogo } from '@/components/GdmLogo';
+import api from '@/services/api';
 
 interface Props {
   /** Ruta relativa bajo /api/v1/legal/ — 'terms' o 'privacy-notice'. */
@@ -46,13 +47,12 @@ export function LegalDoc({ endpoint, title, subtitle }: Props) {
   }, [endpoint]);
 
   const downloadTxt = () => {
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${endpoint}-${version || 'v1'}.txt`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    /* Por `api.downloadFile`: mete el enlace al documento antes de pulsarlo.
+     * A mano —como estaba— Firefox se queda sin descargar nada. */
+    void api.downloadFile(
+      new Blob([text], { type: 'text/plain;charset=utf-8' }),
+      `${endpoint}-${version || 'v1'}.txt`,
+    );
   };
 
   return (

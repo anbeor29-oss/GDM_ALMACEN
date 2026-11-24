@@ -13,17 +13,23 @@ import { aTextoMx } from '@/components/CampoFecha';
 
 const Q_INFO = ['cumpl-info-fiscal'];
 
-/** Abre un documento (data-URL base64) en pestaña nueva vía blob. */
-function abrirDoc(dataUrl: string) {
+/**
+ * Abre un documento (data-URL base64) y lo DEJA EN «Descargas».
+ *
+ * Antes sólo se abría en una pestaña: el acuse o la declaración se veían pero
+ * no quedaban guardados, y había que volver a consultarlos al SAT para
+ * archivarlos. Ahora se descarga siempre y además se abre para verlo.
+ */
+function abrirDoc(dataUrl: string, nombre = 'Documento_SAT') {
   try {
     const [meta, b64] = dataUrl.split(',');
     const mime = meta.match(/data:(.*?);/)?.[1] || 'application/pdf';
     const bin = atob(b64);
     const arr = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    const url = URL.createObjectURL(new Blob([arr], { type: mime }));
-    window.open(url, '_blank');
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    const blob = new Blob([arr], { type: mime });
+    const ext = mime.includes('pdf') ? 'pdf' : mime.includes('xml') ? 'xml' : mime.includes('zip') ? 'zip' : 'bin';
+    void api.verYDescargar(blob, `${nombre.replace(/[^\w.-]+/g, '_').slice(0, 80)}.${ext}`);
   } catch { /* noop */ }
 }
 
@@ -99,7 +105,8 @@ function ModalComunicado({ item, onClose }: { item: Notif; onClose: () => void }
           {!cargando && !error && (
             <>
               {det?.base64 && (
-                <button onClick={() => abrirDoc(det.base64)}
+                <button onClick={() => abrirDoc(det.base64, det?.asunto || det?.titulo || 'Documento_SAT')}
+                  title="Se abre para verlo y queda guardado en Descargas"
                   className="inline-flex items-center gap-2 bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 text-sm font-semibold">
                   <FileText size={16} /> Abrir el documento (PDF)
                 </button>
@@ -309,7 +316,9 @@ export function PanelDeclaraciones() {
                       {f.tipo && <span className={`text-[10px] px-1.5 py-0.5 rounded ${/complementaria/i.test(f.tipo) ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{f.tipo}</span>}
                       {f.nombre}
                     </span>
-                    <button onClick={() => abrirDoc(f.base64)} className="text-xs text-primary hover:underline shrink-0 ml-3">Abrir</button>
+                    <button onClick={() => abrirDoc(f.base64, f.nombre || 'Declaracion')}
+                      title="Se abre para verlo y queda guardado en Descargas"
+                      className="text-xs text-primary hover:underline shrink-0 ml-3">Abrir</button>
                   </li>
                 ))}
               </ul>

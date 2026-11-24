@@ -597,6 +597,35 @@ function ModalCargarEstado({ cuenta, mesInicial, anioInicial, onCerrar, onListo 
                 )}
               </div>
 
+              {/* ── COBRADOR DE PAGOS (Stripe y parecidos) ──
+                  No es un banco: recibe el ingreso, se queda su comisión CON IVA
+                  y lo que resta lo manda a un banco de verdad. La comisión es un
+                  gasto con IVA ACREDITABLE, así que se desglosa (÷1.16) en vez de
+                  dejarla metida en el neto depositado, donde se perdería. */}
+              {ext.comisiones && (
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3">
+                  <p className="font-semibold text-indigo-900 text-sm">
+                    Comisión del cobrador en el periodo
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2 text-sm">
+                    <Cifra r="Comisión (con IVA)" v={money(ext.comisiones.total)} />
+                    <Cifra r="Base (gasto)" v={money(ext.comisiones.base)} />
+                    <Cifra r={`IVA acreditable (${Math.round(ext.comisiones.tasa * 100)}%)`} v={money(ext.comisiones.iva)} />
+                    {ext.comisiones.porCobros != null && (
+                      <Cifra r="Retenida en los cobros" v={money(ext.comisiones.porCobros)} />
+                    )}
+                    {ext.comisiones.porFacturacion != null && (
+                      <Cifra r="Cargos de facturación" v={money(ext.comisiones.porFacturacion)} />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-indigo-800 mt-2">
+                    La comisión viene con IVA incluido: la base es <b>comisión ÷ 1.16</b> y el IVA la
+                    diferencia. Este desglose es el papel de trabajo —para <b>acreditar</b> el IVA hace
+                    falta el CFDI que el cobrador emite por sus comisiones—.
+                  </p>
+                </div>
+              )}
+
               {ext.avisos.map((a: string, i: number) => (
                 <p key={i} className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
                   {a}

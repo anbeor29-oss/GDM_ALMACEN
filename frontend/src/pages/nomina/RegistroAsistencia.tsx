@@ -110,10 +110,10 @@ function VistaHistorial() {
     const cuerpo = filas.map((f) =>
       [f.fecha, f.hora, f.nombre, f.num_empleado || '', f.tipo, f.origen, f.kiosco || '', f.estado, f.lat ?? '', f.lng ?? ''].map(esc).join(','));
     const blob = new Blob(['﻿' + [cab.join(','), ...cuerpo].join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `asistencia_${desde}_a_${hasta}.csv`; a.click();
-    URL.revokeObjectURL(url);
+    /* Por `api.downloadFile`: mete el enlace al documento antes de pulsarlo y
+     * espera para liberar el blob. Hecho a mano —como estaba— Firefox no
+     * descarga nada y Chrome a veces aborta el archivo a medias. */
+    void api.downloadFile(blob, `asistencia_${desde}_a_${hasta}.csv`);
   };
 
   return (

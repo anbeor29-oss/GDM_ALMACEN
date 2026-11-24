@@ -441,18 +441,25 @@ export async function cargarEstadoDeCuenta(
 
     const est = await transactionQuery<any>(
       client,
+      /* La COMISIÓN del cobrador de pagos (Stripe y parecidos) se guarda ya
+       * desglosada: sin eso se queda metida en el neto depositado y ni el gasto
+       * ni el IVA acreditable aparecen en ningún lado. NULL en una chequera. */
       `INSERT INTO bancos_estados_cuenta
          (company_id, cuenta_id, anio, mes, saldo_inicial, saldo_final, origen,
           archivo_nombre, banco_detectado, movimientos_total, total_retiros,
-          total_depositos, con_advertencia, cuadra, procesado_por)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          total_depositos, con_advertencia, cuadra, procesado_por,
+          comision_total, comision_base, comision_iva)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        RETURNING *`,
       [companyId, d.cuentaId, anio, mes,
        extraccion.saldoInicial, extraccion.saldoFinal,
        d.origen || 'TEXTO', d.archivoNombre || null, extraccion.banco,
        extraccion.movimientos.length, extraccion.totalRetiros,
        extraccion.totalDepositos, extraccion.conAdvertencia,
-       extraccion.cuadra, userId || null]
+       extraccion.cuadra, userId || null,
+       extraccion.comisiones?.total ?? null,
+       extraccion.comisiones?.base ?? null,
+       extraccion.comisiones?.iva ?? null]
     );
     const estadoId = est.rows[0].id;
 

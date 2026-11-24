@@ -48,12 +48,9 @@ export function ManifestSigner() {
   const downloadPdf = async () => {
     try {
       const blob = await api.manifestPdf();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'manifiesto-firmado.pdf';
-      a.click();
-      URL.revokeObjectURL(url);
+      /* Por `api.downloadFile`: mete el enlace al documento y espera para
+       * liberar el blob. A mano, Firefox no descarga nada. */
+      await api.downloadFile(blob, 'manifiesto-firmado.pdf');
     } catch (e: any) {
       alert(e.response?.data?.message || e.message);
     }

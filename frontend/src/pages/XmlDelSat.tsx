@@ -138,10 +138,12 @@ function NominaPFPanel() {
     const filas = det.map((n) => [n.fecha, n.nombreEmisor, n.rfcEmisor, CLASE_NOM[n.clase]?.label || n.clase,
       n.totalPercepciones, n.gravado, n.exento, n.isr, n.imss, n.subsidio, n.neto]);
     const csv = '﻿' + [cols.join(','), ...filas.map((f) => f.map(esc).join(','))].join('\r\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    a.download = `nomina_pf_${anio}${mes ? '-' + String(mes).padStart(2, '0') : ''}.csv`;
-    a.click(); URL.revokeObjectURL(a.href);
+    /* Por `api.downloadFile`: mete el enlace al documento y espera para liberar
+     * el blob. A mano, Firefox no descarga nada. */
+    void api.downloadFile(
+      new Blob([csv], { type: 'text/csv;charset=utf-8' }),
+      `nomina_pf_${anio}${mes ? '-' + String(mes).padStart(2, '0') : ''}.csv`,
+    );
   };
 
   return (

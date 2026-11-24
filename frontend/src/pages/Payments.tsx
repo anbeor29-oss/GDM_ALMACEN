@@ -38,13 +38,13 @@ export default function Payments() {
   const handlePDF = async (p: any, inline = false) => {
     try {
       const blob = await api.paymentPDF(p.id, inline);
-      const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
-      if (inline) { window.open(url, '_blank'); return; }
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `complemento-pago-${etiqueta(p)}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      /* Aunque sólo se quiera VER, el PDF se descarga: un complemento de pago
+       * que se abría en una pestaña y se cerraba no quedaba en ningún lado. */
+      await api.verYDescargar(
+        new Blob([blob], { type: 'application/pdf' }),
+        `complemento-pago-${etiqueta(p)}.pdf`,
+        inline,
+      );
     } catch (e: any) {
       alert(`No se pudo generar el PDF.\n\n${e.response?.data?.message || e.message}`);
     }
@@ -53,12 +53,10 @@ export default function Payments() {
   const handleXML = async (p: any) => {
     try {
       const xml = await api.paymentXML(p.id);
-      const url = URL.createObjectURL(new Blob([xml as any], { type: 'application/xml' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `complemento-pago-${etiqueta(p)}.xml`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await api.downloadFile(
+        new Blob([xml as any], { type: 'application/xml' }),
+        `complemento-pago-${etiqueta(p)}.xml`,
+      );
     } catch (e: any) {
       alert(`No se pudo descargar el XML.\n\n${e.response?.data?.message || e.message}`);
     }

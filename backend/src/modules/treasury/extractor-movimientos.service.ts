@@ -70,6 +70,21 @@ export interface ResultadoExtraccion {
    *  tarjeta: saldoInicial = adeudo anterior, saldoFinal = adeudo actual, y en
    *  cada movimiento deposito = CARGO (compra) y retiro = ABONO (pago). */
   esTarjeta?: boolean;
+  /** COBRADOR DE PAGOS (Stripe y parecidos): la comisión del periodo con su IVA
+   *  desglosado. La comisión se cobra con IVA INCLUIDO, así que la base es
+   *  `total / 1.16` y el IVA la diferencia. El desglose es papel de trabajo: el
+   *  respaldo para acreditar el IVA es el CFDI que emite el cobrador. */
+  comisiones?: {
+    /** Lo que cobró de comisión en el periodo, CON IVA. */
+    total: number;
+    base: number;
+    iva: number;
+    tasa: number;
+    /** Comisión retenida en cada cobro (ya descontada del neto depositado). */
+    porCobros?: number;
+    /** Cargos de facturación, que salen del saldo como movimiento aparte. */
+    porFacturacion?: number;
+  };
 }
 
 /* ══════════════════ UTILIDADES ══════════════════ */
@@ -396,6 +411,14 @@ function detectarBanco(texto: string): string {
    * contrapartes —el otro banco de un SPEI— van en los renglones, más abajo, y
    * son las que confundían la detección. */
   const t = texto.toUpperCase().slice(0, 3500);
+  /* STRIPE va primero y con DOS marcas a la vez: la palabra «Stripe» sola
+   * aparece como contraparte en los renglones de cualquier banco («SPEI STRIPE
+   * PAYMENTS»), así que por sí misma no identifica al emisor. Se exige el
+   * encabezado del estado o su vocabulario propio (comisiones + payout). */
+  if (/ESTADO\s*DE\s*CUENTA\s*STRIPE/.test(t)
+      || (/STRIPE/.test(t) && /(COMISIONES\s*STRIPE|BALANCE\s*TRANSACTIONS|PAGOS?\s*A\s*BANCO|PAYOUT)/.test(t))) {
+    return 'Stripe';
+  }
   if (/BBA130722BR7|MULTIPLE,?\s*BANCREA|SOYBANCREA/.test(t))            return 'Bancrea';
   if (/BBA830831LJ2|MAESTRA\s*PYME|BBVA\s*M[ÉE]XICO,?\s*S/.test(t))      return 'BBVA';
   if (/BRM940216|BANREGIO\s*GRUPO|BANCO\s*REGIONAL/.test(t))             return 'BanRegio';
@@ -1420,6 +1443,242 @@ function extraerHSBC(
   };
 }
 
+/* ══════════════════ STRIPE (cobrador de pagos) ══════════════════ */
+
+/**
+ * Stripe NO es un banco: es un COBRADOR de pagos. Recibe el ingreso del cliente,
+ * se queda su comisión —con IVA incluido— y lo que resta se acumula en un saldo
+ * que después se manda («payout») a un banco de verdad.
+ *
+ * ── QUÉ HAY QUE CONTROLAR (regla del usuario) ──
+ * El SALDO INICIAL y el FINAL, y la COMISIÓN del periodo con su IVA desglosado.
+ * Los cobros uno por uno se cuadran por el lado de la cobranza (CFDI) en la
+ * conciliación bancaria, como cualquier depósito; no es aquí donde se amarran.
+ *
+ * ── LOS RENGLONES Y DE QUÉ LADO VAN ──
+ *   · Cobro            — IMPORTE (bruto) · COMISIÓN · NETO. Al saldo entra el
+ *                        NETO: la comisión nunca llegó a la cuenta. Así cuadra
+ *                        el arrastre y la comisión queda como gasto aparte.
+ *   · Comisión Stripe  — cargo de facturación; sale del saldo (retiro).
+ *   · Pago a banco     — el payout; sale del saldo hacia otro banco (retiro).
+ * En el documento los payouts vienen con signo NEGATIVO (-$12,345.67) y los
+ * cobros en positivo. Cuando el signo está, manda el signo; cuando no, el TIPO.
+ *
+ * ── EL IVA DE LA COMISIÓN ──
+ * Stripe la cobra con IVA INCLUIDO, así que la base es `comisión / 1.16` y el
+ * IVA es la diferencia. Se desglosa para poder acreditarlo. Ojo: el respaldo
+ * formal del acreditamiento es el CFDI que Stripe emite por sus comisiones —la
+ * división es el papel de trabajo, no el comprobante—.
+ */
+const TIPOS_STRIPE = ['COMISIÓN STRIPE', 'COMISION STRIPE', 'PAGO A BANCO', 'COBRO', 'REEMBOLSO', 'CONTRACARGO', 'AJUSTE'];
+
+/**
+ * Quita los caracteres del ÁREA DE USO PRIVADO (U+E000–U+F8FF).
+ *
+ * Hay PDF que escriben parte del texto con una fuente cuyo subconjunto de
+ * glifos NO trae mapa a Unicode: cada carácter llega como un código del área
+ * privada. En el estado de Stripe pasa justo con la tabla: la fecha
+ * «2026-10-01» llega como `2026·10·01` con los guiones en U+E088, y las CIFRAS
+ * de los importes llegan completas en esa área —de ahí que sólo se vean los
+ * «$»—. Quitándolos, la fecha queda «20261001» y el concepto legible; los
+ * importes NO se recuperan, y eso se avisa en vez de inventarlos.
+ *
+ * NO se intenta adivinar qué dígito es cada glifo: el orden del subconjunto
+ * depende de cómo se generó el PDF, y una cifra adivinada en contabilidad es
+ * peor que una cifra ausente.
+ */
+export function limpiarPua(texto: string): { texto: string; quitados: number } {
+  const rx = /[-]/g;
+  const quitados = (texto.match(rx) || []).length;
+  return { texto: quitados ? texto.replace(rx, '') : texto, quitados };
+}
+
+/** El IVA va con la comisión incluida: base = total / (1 + tasa). */
+const IVA_COMISION = 0.16;
+
+function desglosarIva(total: number, tasa = IVA_COMISION) {
+  const base = pesos(total / (1 + tasa));
+  return { total: pesos(total), base, iva: pesos(total - base), tasa };
+}
+
+function extraerStripe(
+  texto: string, _opciones: { anio?: number; mes?: number }, avisos: string[]
+): ResultadoExtraccion {
+  /* Primero se limpian los glifos de uso privado: sin esto la fecha de cada
+   * renglón («2026·10·01», con los guiones sin mapa Unicode) no se reconoce y
+   * el detalle entero se pierde en silencio. */
+  const pua = limpiarPua(texto);
+  texto = pua.texto;
+
+  const montoTras = (rx: RegExp): number | null => {
+    const m = rx.exec(texto);
+    return m ? aNumero(m[1]) : null;
+  };
+  /* El resumen es la parte FIABLE del documento: son rótulo + importe, en la
+   * fuente normal. (Las cifras de la tabla a veces vienen en una fuente que el
+   * lector de PDF no sabe mapear; eso se detecta abajo.) */
+  const saldoInicial  = montoTras(RX_SALDO_INICIAL);
+  const saldoFinal    = montoTras(RX_SALDO_FINAL);
+  const cobrosBruto   = montoTras(/COBROS\s*\(?\s*BRUTO\s*\)?[^\d]{0,12}(-?[\d,]+\.\d{2})/i);
+  const actividadNeta = montoTras(/ACTIVIDAD\s*NETA[^\d]{0,12}(-?[\d,]+\.\d{2})/i);
+  const pagosABanco   = montoTras(/PAGOS\s*A\s*BANCO[^\d]{0,12}(-?[\d,]+\.\d{2})/i);
+
+  /* El renglón «Comisiones Stripe del mes: $T $A por cobros · $B cargos de
+   * facturación» trae el total Y su partición. Se prefiere a la tarjeta suelta. */
+  let comTotal = montoTras(/COMISIONES\s*STRIPE[^\d]{0,12}(-?[\d,]+\.\d{2})/i);
+  let comPorCobros: number | null = null;
+  let comPorFacturacion: number | null = null;
+  const lineaCom = texto.split(/\r?\n/).find((l) => /COMISIONES\s*STRIPE\s*DEL\s*MES/i.test(l));
+  if (lineaCom) {
+    const ms = (lineaCom.match(RX_MONTO) || []).map(String);
+    if (ms.length >= 1) comTotal = aNumero(ms[0]);
+    if (ms.length >= 3) { comPorCobros = aNumero(ms[1]); comPorFacturacion = aNumero(ms[2]); }
+  }
+
+  /* ── El detalle, renglón por renglón ── */
+  const movimientos: MovimientoExtraido[] = [];
+  let sumComisionCobros = 0, sumComisionFacturacion = 0, sinCifras = 0, orden = 1;
+
+  for (const cruda of texto.split(/\r?\n/)) {
+    const linea = cruda.trim();
+    /* La fecha va PEGADA al concepto y sin separadores: «20261003Plan…». */
+    const m = /^(\d{4})(\d{2})(\d{2})(.*)$/.exec(linea);
+    if (!m) continue;
+    const mes = Number(m[2]), dia = Number(m[3]);
+    if (mes < 1 || mes > 12 || dia < 1 || dia > 31) continue;
+    const fecha = `${m[1]}-${m[2]}-${m[3]}`;
+    const cola = m[4];
+
+    const tipo = TIPOS_STRIPE.find((t) => cola.toUpperCase().includes(t)) || '';
+    const importes = (cola.match(RX_MONTO) || []).map(aNumero);
+
+    /* La firma de la fuente ilegible: hay columnas de importe (los «$») pero sin
+     * una sola cifra. Inventar un cero aquí sería meter un movimiento falso. */
+    if (importes.length === 0) {
+      if (/\$/.test(cola)) sinCifras++;
+      continue;
+    }
+
+    const concepto = cola.replace(RX_MONTO, '').replace(/\$/g, '').trim();
+    let deposito = 0, retiro = 0;
+
+    if (tipo === 'COBRO' || tipo === 'AJUSTE') {
+      /* [bruto · comisión · neto]: al saldo entra el NETO. Con dos importes se
+       * asume [bruto · neto] y la comisión es la diferencia. */
+      if (importes.length >= 3) {
+        deposito = Math.abs(importes[importes.length - 1]);
+        sumComisionCobros = pesos(sumComisionCobros + Math.abs(importes[importes.length - 2]));
+      } else if (importes.length === 2) {
+        const bruto = Math.abs(importes[0]), neto = Math.abs(importes[1]);
+        deposito = neto;
+        sumComisionCobros = pesos(sumComisionCobros + Math.max(0, pesos(bruto - neto)));
+      } else {
+        deposito = Math.abs(importes[0]);
+      }
+    } else if (tipo.startsWith('COMISI')) {
+      retiro = Math.abs(importes[0]);
+      sumComisionFacturacion = pesos(sumComisionFacturacion + retiro);
+    } else if (tipo === 'PAGO A BANCO' || tipo === 'REEMBOLSO' || tipo === 'CONTRACARGO') {
+      retiro = Math.abs(importes[0]);
+    } else {
+      /* Sin TIPO reconocible manda el SIGNO, que es la regla del documento:
+       * «-$12,345.67» sale a otro banco, «$1,234.56» es cobranza que entra. */
+      const v = importes[0];
+      if (v < 0) retiro = Math.abs(v); else deposito = v;
+    }
+
+    movimientos.push({
+      fecha, concepto: concepto.slice(0, 140), referencia: '', retiro, deposito,
+      saldo: null, saldoCalculado: 0, advertencia: '', inferido: false,
+      duda: !tipo, orden: orden++, lineaOrigen: linea,
+    });
+  }
+
+  let corr = saldoInicial ?? 0;
+  for (const mv of movimientos) { corr = pesos(corr - mv.retiro + mv.deposito); mv.saldoCalculado = corr; }
+  const totalRetiros   = pesos(movimientos.reduce((a, x) => a + x.retiro, 0));
+  const totalDepositos = pesos(movimientos.reduce((a, x) => a + x.deposito, 0));
+
+  /* La comisión declarada manda sobre la sumada: el documento la totaliza él
+   * mismo y así el IVA no depende de que se hayan podido leer los renglones. */
+  const sumada = pesos(sumComisionCobros + sumComisionFacturacion);
+  const total = comTotal ?? (sumada || null);
+  const comisiones = total !== null ? {
+    ...desglosarIva(total),
+    porCobros: comPorCobros ?? (sumComisionCobros || undefined),
+    porFacturacion: comPorFacturacion ?? (sumComisionFacturacion || undefined),
+  } : undefined;
+
+  /* ── EL CUADRE ──
+   * Con movimientos legibles se valida el ARRASTRE, como en cualquier banco.
+   * Sin ellos se valida la IDENTIDAD DEL RESUMEN —inicial + neta − payouts =
+   * final—, que es justo lo que el usuario pide controlar. */
+  const finalCalc = pesos((saldoInicial ?? 0) - totalRetiros + totalDepositos);
+  const porResumen = saldoInicial !== null && saldoFinal !== null && actividadNeta !== null && pagosABanco !== null
+    ? Math.abs(pesos(saldoInicial + actividadNeta - pagosABanco) - saldoFinal) <= 0.02
+    : null;
+  const cuadra = movimientos.length
+    ? saldoFinal !== null && Math.abs(saldoFinal - finalCalc) <= 0.02
+    : porResumen === true;
+
+  if (sinCifras > 0) {
+    avisos.push(
+      `Stripe: ${sinCifras} renglón(es) traen las columnas de importe pero SIN cifras — este PDF ` +
+      'escribe los números con una fuente sin mapa a Unicode' +
+      (pua.quitados ? ` (${pua.quitados} glifos de uso privado)` : '') +
+      ', así que las cifras de la tabla no se pueden leer y NO se inventan. Los SALDOS y los ' +
+      'totales sí se leyeron (van en la fuente normal). Para tener el detalle movimiento por ' +
+      'movimiento, pega el texto del estado o sube el CSV de «balance transactions» del portal ' +
+      'de Stripe, que no hay nada que adivinar.'
+    );
+  }
+  if (saldoInicial === null || saldoFinal === null) {
+    avisos.push('Stripe: no se encontró el saldo inicial y/o final en el resumen; sin ellos no hay contra qué cuadrar.');
+  }
+  if (porResumen === false) {
+    avisos.push(
+      `NO CUADRA EL RESUMEN: saldo inicial ${(saldoInicial ?? 0).toFixed(2)} + actividad neta ` +
+      `${(actividadNeta ?? 0).toFixed(2)} − pagos a banco ${(pagosABanco ?? 0).toFixed(2)} = ` +
+      `${pesos((saldoInicial ?? 0) + (actividadNeta ?? 0) - (pagosABanco ?? 0)).toFixed(2)}, ` +
+      `pero declara saldo final ${(saldoFinal ?? 0).toFixed(2)}.`
+    );
+  }
+  if (cobrosBruto !== null && total !== null && actividadNeta !== null
+      && Math.abs(pesos(cobrosBruto - total) - actividadNeta) > 0.02) {
+    avisos.push(
+      `Los cobros brutos (${cobrosBruto.toFixed(2)}) menos las comisiones (${total.toFixed(2)}) dan ` +
+      `${pesos(cobrosBruto - total).toFixed(2)}, pero el documento declara actividad neta ` +
+      `${actividadNeta.toFixed(2)}. Revisa si hubo reembolsos o contracargos en el periodo.`
+    );
+  }
+  if (comTotal !== null && sumada > 0 && Math.abs(comTotal - sumada) > 0.02) {
+    avisos.push(
+      `Las comisiones de los renglones suman ${sumada.toFixed(2)} y el documento declara ` +
+      `${comTotal.toFixed(2)}. Se usó la DECLARADA para el IVA.`
+    );
+  }
+  if (comisiones) {
+    avisos.push(
+      `Comisión Stripe del periodo ${comisiones.total.toFixed(2)} = base ${comisiones.base.toFixed(2)} ` +
+      `+ IVA ${comisiones.iva.toFixed(2)} (IVA incluido, ÷1.16). Acredita el IVA con el CFDI que ` +
+      'Stripe emite por sus comisiones, no con este desglose.'
+    );
+  }
+  if (movimientos.length === 0) {
+    avisos.push(
+      'No se cargó ningún movimiento: de este estado quedan los SALDOS y la COMISIÓN del periodo. ' +
+      'La cobranza se cuadra por el lado del CFDI en la conciliación bancaria.'
+    );
+  }
+
+  return {
+    banco: 'Stripe',
+    saldoInicial, saldoFinal, movimientos, totalRetiros, totalDepositos,
+    conAdvertencia: movimientos.filter((x) => x.duda).length,
+    inferidos: 0, cuadra, avisos, comisiones,
+  };
+}
+
 export function extraerMovimientos(
   texto: string,
   opciones: { anio?: number; mes?: number } = {}
@@ -1471,6 +1730,12 @@ export function extraerMovimientos(
   }
 
   const banco = detectarBanco(texto);
+
+  /* Stripe no es un banco sino un COBRADOR: la fecha va pegada al concepto sin
+   * separadores («20261003Plan Profesional…Cobro») y cada cobro trae tres
+   * columnas (bruto · comisión · neto). Lo que hay que controlar son los saldos
+   * y la comisión con su IVA; tiene su propio lector. */
+  if (banco === 'Stripe') return extraerStripe(texto, opciones, avisos);
 
   /* Nu no es tabular: no trae columnas ni saldo por movimiento. La fecha, el
    * concepto y el importe FIRMADO van en renglones distintos. Se lee con su

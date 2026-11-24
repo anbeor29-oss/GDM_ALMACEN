@@ -93,11 +93,10 @@ function Diot({ anio, mes }: { anio: number; mes: number }) {
       p.comprobantes, p.base16, p.iva16, p.base8, p.iva8, p.base0, p.exento, p.ivaRet].join(',');
     const csv = [enc.join(','), ...d.proveedores.map(linea)].join('\r\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `DIOT_${anio}-${String(mes).padStart(2, '0')}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    /* Por `api.downloadFile` y no a mano: ése mete el enlace al documento antes
+     * de pulsarlo y espera para liberar el blob. Hecho a mano, Firefox ignora
+     * la descarga y Chrome a veces la aborta. */
+    void api.downloadFile(blob, `DIOT_${anio}-${String(mes).padStart(2, '0')}.csv`);
   };
 
   if (q.isLoading) return <p className="text-sm text-gray-500">Cargando…</p>;

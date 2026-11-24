@@ -25,12 +25,12 @@ export function CreditNotesPage() {
   const handleDownload = async (n: any) => {
     try {
       const blob = await api.creditNotePDF(n.id);
-      const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `nota-credito-${n.serie}-${String(n.folio).padStart(6, '0')}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      /* Por `api.downloadFile`: mete el enlace al documento antes de pulsarlo y
+       * espera para liberar el blob. A mano, Firefox no descarga nada. */
+      await api.downloadFile(
+        new Blob([blob], { type: 'application/pdf' }),
+        `nota-credito-${n.serie}-${String(n.folio).padStart(6, '0')}.pdf`,
+      );
     } catch (e: any) {
       alert(`No se pudo generar el PDF.\n\n${e.response?.data?.message || e.message}`);
     }
@@ -45,12 +45,10 @@ export function CreditNotesPage() {
   const handleXML = async (n: any) => {
     try {
       const xml = await api.creditNoteXML(n.id);
-      const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `nota-credito-${n.serie}-${String(n.folio).padStart(6, '0')}.xml`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await api.downloadFile(
+        new Blob([xml], { type: 'application/xml' }),
+        `nota-credito-${n.serie}-${String(n.folio).padStart(6, '0')}.xml`,
+      );
     } catch (e: any) {
       alert(`No se pudo descargar el XML.
 

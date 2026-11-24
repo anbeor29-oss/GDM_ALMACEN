@@ -504,6 +504,88 @@ convenio firmado; los rostros YA enrolados siguen checando normal (la identifica
 
 ---
 
+## 14. Estado de cuenta de Stripe: cifras invisibles y comisión sin IVA desglosado
+
+**Síntoma.** Al cargar el estado de cuenta de Stripe (cobrador de pagos) no salía ningún movimiento y el
+documento parecía ilegible, aunque abierto en un visor se ve perfecto. Y la **comisión** —que Stripe cobra
+con IVA incluido y descuenta del depósito— no aparecía en ninguna parte: se quedaba dentro del neto, así
+que ni el gasto ni el IVA acreditable existían para la contabilidad.
+
+**Cómo diagnosticar.** Volcar el texto del PDF e imprimir los **códigos de carácter**, no el texto:
+`[...linea].map(c => c.charCodeAt(0))`. Si salen valores de **57344 a 63743** (U+E000–U+F8FF), el PDF
+escribe con una fuente cuyo subconjunto de glifos no trae mapa a Unicode.
+
+**Causa raíz.** DOS cosas distintas:
+- El PDF de Stripe escribe la tabla con una fuente **sin `ToUnicode`**: cada cifra llega como un carácter
+  del **área de uso privado**. La fecha «2026-10-01» llegaba como `2026·10·01` con los guiones en U+E088
+  (506 glifos en el estado de octubre), y las cifras de los importes llegaban enteras en esa área — por eso
+  sólo se veían los «$» sueltos. El renglón no empataba con ningún patrón y **el detalle se perdía en
+  silencio**: nada avisaba. Los **saldos y los totales** sí se leen, porque van en la fuente normal.
+- Stripe no es un banco y no se había modelado: no tenía lector propio, así que caía en el genérico.
+
+**❌ Lo que NO hay que hacer.** Deducir qué dígito es cada glifo de uso privado: el orden del subconjunto
+depende de cómo se generó el PDF, y **una cifra adivinada en contabilidad es peor que una cifra ausente**.
+Tampoco meter movimientos en cero para «no dejarlo vacío»: eso ensucia la cuenta y descuadra el arrastre.
+
+**✅ Solución (commit `__HASH__`).**
+- `limpiarPua()` quita los caracteres U+E000–U+F8FF y los **cuenta**. Con eso la fecha vuelve a ser legible
+  («20261001») y el concepto y el tipo también; las cifras no se recuperan y **se avisa cuántos renglones
+  se perdieron y qué hacer** (pegar el texto, o subir el CSV de «balance transactions» del portal).
+- `extraerStripe()`, lector propio, con la regla que dio el usuario: lo que hay que **controlar** son el
+  **saldo inicial y el final** y la **comisión con su IVA**; la cobranza se cuadra por el lado del CFDI en
+  la conciliación bancaria. Los payouts vienen en **negativo** (salen a otro banco) y los cobros en
+  positivo; cuando el signo está manda el signo, cuando no manda el TIPO.
+- Un **cobro entra al saldo por su NETO**, no por el bruto: la comisión nunca llegó a la cuenta. Así cuadra
+  el arrastre *y* la comisión queda como gasto aparte.
+- **IVA de la comisión**: base = `total / 1.16`, IVA = la diferencia. Se guarda por mes en
+  `bancos_estados_cuenta.comision_{total,base,iva}` (migración `2026-11-23b`) y se muestra al cargar. El
+  desglose es **papel de trabajo**: para acreditar el IVA hace falta el CFDI que emite el cobrador.
+- **Dos cuadres**: con movimientos legibles se valida el arrastre; sin ellos, la identidad del resumen
+  (`inicial + actividad neta − pagos a banco = final`), que es justo lo que se pidió controlar.
+- La detección exige **dos marcas** («Estado de Cuenta Stripe», o «Stripe» + comisiones/payout): la palabra
+  «Stripe» sola aparece como contraparte de un SPEI en cualquier estado bancario.
+
+**Probado.** 17 pruebas (`extractor-stripe.test.ts`), incluidas las de los glifos de uso privado, y una
+corrida de punta a punta contra el PDF real de octubre 2026: detecta Stripe, saca 62,241.30 → 15,215.86,
+desglosa 2,913.15 = 2,511.34 + 401.81 y cuadra.
+
+**Límite conocido.** Del PDF con la fuente rota **no se recupera el detalle**: quedan saldos y comisión (y
+los 27 renglones contados en el aviso). Para el movimiento por movimiento hace falta el CSV de Stripe, el
+texto pegado, o encender `ENABLE_OCR` en el servidor.
+
+---
+
+## 15. Documentos que se abrían en una pestaña y no quedaban en «Descargas»
+
+**Síntoma.** Varios documentos que genera NEXO se veían pero no se guardaban: la opinión de cumplimiento,
+el documento legal de la baja, los acuses y declaraciones del SAT, la remesa y el complemento de pago se
+abrían en una pestaña y, al cerrarla, había que volver a generarlos para archivarlos. Otros «descargaban»
+pero el archivo a veces no aparecía.
+
+**Causa raíz.** Dos patrones:
+- `window.open(URL.createObjectURL(blob))`: eso **muestra** el documento, no lo guarda. Y si el navegador
+  bloquea las ventanas emergentes, el botón parece no hacer nada.
+- Descargas hechas a mano: `a.click()` **sin meter el enlace al documento** y con
+  `URL.revokeObjectURL()` inmediatamente después. Firefox exige que el `<a>` esté en el DOM —si no, no
+  descarga nada— y liberar el blob en el mismo instante puede abortar el archivo a medias. Ya existía
+  `api.downloadFile`, que hace las dos cosas bien, pero diez sitios no lo usaban.
+
+**✅ Solución (commit `__HASH__`).** `api.verYDescargar(blob, nombre, ver)`: **siempre descarga** y además
+abre la pestaña cuando la acción es «ver», así el archivo existe aunque la ventana se bloquee. Se barrieron
+los sitios que abrían documentos (opinión, documento de baja, acuse IDSE, remesa, complemento de pago,
+declaraciones y notificaciones del SAT) y los que descargaban a mano (notas de crédito PDF/XML, XML del
+complemento, DIOT, nómina PF, diferencia cambiaria, asistencia, manifiesto, documentos legales, ZIP de
+declaraciones, registro de asistencia) para que todos pasen por `downloadFile`.
+
+**Lo que NO se tocó.** Las ventanas de **impresión** (ticket del POS, remesa en hoja, pólizas, convenio
+biométrico): ahí abrir una ventana es el objetivo, no hay archivo que guardar.
+
+**Límite conocido.** La **carpeta** la decide el navegador: ningún sitio web puede elegirla. Es «Descargas»
+salvo que el usuario la haya cambiado o tenga activado «Preguntar dónde guardar cada archivo» — eso se
+configura en cada equipo, no desde NEXO.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

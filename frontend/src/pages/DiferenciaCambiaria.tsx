@@ -57,11 +57,9 @@ export function DiferenciaCambiariaPage() {
     ].join('\n');
     // BOM para que Excel en Windows respete los acentos.
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `diferencia-cambiaria_${desde}_${hasta}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    /* Por `api.downloadFile`: mete el enlace al documento y espera para liberar
+     * el blob. A mano, Firefox no descarga nada. */
+    void api.downloadFile(blob, `diferencia-cambiaria_${desde}_${hasta}.csv`);
   };
 
   const g = data?.global;

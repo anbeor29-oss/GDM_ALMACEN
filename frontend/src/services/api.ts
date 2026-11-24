@@ -1021,16 +1021,14 @@ class APIClient {
       `/treasury/payment-runs/${runId}/pdf`,
       { params: { inline: inline ? 1 : 0 }, responseType: 'blob' }
     );
-    const url = URL.createObjectURL(new Blob([r.data as Blob], { type: 'application/pdf' }));
-    if (inline) {
-      const w = window.open(url, '_blank');
-      /* Si el navegador bloquea la ventana, se descarga: peor es no dar nada
-       * y que parezca que el botón no hace nada. */
-      if (!w) await this.downloadFile(new Blob([r.data as Blob]), `remesa-${runId.slice(0, 8)}.pdf`);
-      else setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } else {
-      await this.downloadFile(new Blob([r.data as Blob]), `remesa-${runId.slice(0, 8)}.pdf`);
-    }
+    /* Siempre se descarga; con `inline` además se abre para imprimirla. Antes
+     * sólo se descargaba cuando el navegador bloqueaba la ventana, así que la
+     * remesa que se imprimía no quedaba archivada en ningún lado. */
+    await this.verYDescargar(
+      new Blob([r.data as Blob], { type: 'application/pdf' }),
+      `Remesa_${runId.slice(0, 8)}.pdf`,
+      inline,
+    );
   }
 
   /** Qué puede HACER el usuario actual: rol + grupo + otorgamientos. */
@@ -1387,7 +1385,11 @@ class APIClient {
     // Antes leía el token SOLO de localStorage y, como la sesión vive en sessionStorage,
     // salía 401 → «No se pudo abrir el PDF».
     const r = await this.client.get(`/accounting/opinion-cumplimiento/${id}/pdf`, { responseType: 'blob' });
-    window.open(URL.createObjectURL(r.data as Blob), '_blank');
+    /* Se descarga Y se abre: la opinión es un documento que se archiva. */
+    await this.verYDescargar(
+      new Blob([r.data as Blob], { type: 'application/pdf' }),
+      `Opinion_cumplimiento_${id.slice(0, 8)}.pdf`,
+    );
   }
   async getConfigCumplimiento() {
     const r = await this.client.get<APIResponse<any>>('/accounting/opinion-cumplimiento/config');
@@ -1423,9 +1425,7 @@ class APIClient {
     const cd = String((r.headers as any)?.['content-disposition'] || '');
     const m = cd.match(/filename="?([^"]+)"?/);
     const nombre = m ? m[1] : `Declaraciones_${ejercicio}.zip`;
-    const url = URL.createObjectURL(r.data as Blob);
-    const a = document.createElement('a'); a.href = url; a.download = nombre; a.click();
-    URL.revokeObjectURL(url);
+    await this.downloadFile(new Blob([r.data as Blob], { type: 'application/zip' }), nombre);
   }
   /** Declaraciones descomprimidas de un (ejercicio, mes): PDFs/acuses como data-URL base64.
    *  forzar=true vuelve a bajar de SatGo y sustituye el respaldo (clic en el año). */
@@ -2910,13 +2910,14 @@ class APIClient {
       `/nomina/imss/idse/lotes/${loteId}/acuse`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
     return r.data;
   }
-  /** Abre el acuse guardado de un lote en una pestaña (o lo descarga si el navegador la bloquea). */
+  /** El acuse del IMSS: se guarda en «Descargas» y además se abre para verlo. */
   async verIdseAcuse(loteId: string) {
     const r = await this.client.get(`/nomina/imss/idse/lotes/${loteId}/acuse`, { responseType: 'blob' });
     const blob = r.data as Blob;
-    const url = URL.createObjectURL(new Blob([blob], { type: blob.type || 'application/pdf' }));
-    const w = window.open(url, '_blank');
-    if (!w) await this.downloadFile(new Blob([blob]), 'acuse-idse.pdf');
+    await this.verYDescargar(
+      new Blob([blob], { type: blob.type || 'application/pdf' }),
+      `Acuse_IDSE_${loteId.slice(0, 8)}.pdf`,
+    );
   }
   async borrarIdseLote(loteId: string) {
     const r = await this.client.delete<APIResponse<any>>(`/nomina/imss/idse/lotes/${loteId}`);
@@ -3181,7 +3182,11 @@ class APIClient {
     // Mismo arreglo que verOpinionPdf: el token sale del interceptor (sessionStorage),
     // no de localStorage (que salía null → 401).
     const r = await this.client.get(`/nomina/baja/${reciboId}/documento`, { params: { variante }, responseType: 'blob' });
-    window.open(URL.createObjectURL(r.data as Blob), '_blank');
+    /* Es el documento que se imprime y se FIRMA: tiene que quedar guardado. */
+    await this.verYDescargar(
+      new Blob([r.data as Blob], { type: 'application/pdf' }),
+      `${String(variante || 'finiquito').toUpperCase()}_${reciboId.slice(0, 8)}.pdf`,
+    );
   }
   async recalcularPrenomina(periodoId: string, captura: any[]) {
     const r = await this.client.post<APIResponse<any>>(
@@ -4328,6 +4333,30 @@ class APIClient {
   /**
    * Utility methods
    */
+  /**
+   * TODO documento que NEXO genera tiene que QUEDAR EN «Descargas».
+   *
+   * Varias pantallas lo abrían sólo en una pestaña (`window.open` de un blob):
+   * ahí se ve, pero no se guarda en ningún lado —y cuando el usuario cierra la
+   * pestaña, para archivarlo tiene que volver a generarlo—. Peor: si el
+   * navegador bloquea las ventanas emergentes, el botón parecía no hacer nada.
+   *
+   * Por eso el orden es: SIEMPRE se descarga, y además se abre para verlo si la
+   * acción es «ver». Así el archivo existe aunque la pestaña no se abra.
+   *
+   * La carpeta la decide el navegador (ningún sitio web puede elegirla): es
+   * «Descargas» salvo que el usuario la haya cambiado, o que tenga activado
+   * «Preguntar dónde guardar cada archivo».
+   */
+  async verYDescargar(blob: Blob, filename: string, ver = true) {
+    await this.downloadFile(blob, filename);
+    if (!ver) return;
+    const url = window.URL.createObjectURL(blob);
+    const w = window.open(url, '_blank', 'noopener');
+    /* Si lo bloquearon no pasa nada: el archivo ya se descargó. */
+    setTimeout(() => window.URL.revokeObjectURL(url), w ? 60_000 : 4000);
+  }
+
   async downloadFile(blob: Blob, filename: string) {
     // Aseguramos un tipo MIME válido — algunos navegadores ignoran download
     // si el Blob viene sin type (lo tratan como "navigate" en el mismo tab).
@@ -4509,10 +4538,7 @@ class APIClient {
     const tipo = formato === 'pdf'
       ? 'application/pdf'
       : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    const url = window.URL.createObjectURL(new Blob([r.data], { type: tipo }));
-    const a = document.createElement('a');
-    a.href = url; a.download = `Registro_asistencia.${formato}`; a.click();
-    window.URL.revokeObjectURL(url);
+    await this.downloadFile(new Blob([r.data], { type: tipo }), `Registro_asistencia.${formato}`);
   }
 }
 
