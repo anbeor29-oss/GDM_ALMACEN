@@ -8513,3 +8513,105 @@ Lote de arreglos y una función nueva:
   Backend `historial-facturas.service` + rutas `GET /reports/invoices-history(.xlsx)`. Ver [[reportes-excel-pdf-nexo]],
   [[pue-ppd-cobranza-regla]].
 - **Pendiente e-commerce:** fotos de producto salen rotas (código OK; falta ver qué responde `/storefront/img/:id`).
+
+---
+
+## 2026-11-23 (checador) — El convenio FIRMADO libera el enrolamiento; la cámara ya dice qué pasa
+
+Tres cosas en el Checador, en dos tandas.
+
+**(1) La cámara y las pestañas atoradas (commits `233f7b3`, `79401e6`).** Las tres pantallas de cámara
+pintaban el `e.message` CRUDO del navegador («Permission denied»), que no dice la causa —son cinco
+distintas— ni deja reintentar. `components/CamaraAviso.tsx` revisa el **contexto seguro ANTES** de pedir
+la cámara (sin `https` el navegador ni pregunta y el error sale igual como «permiso denegado», que es
+mentira) y traduce `NotAllowedError`/`NotFoundError`/`OverconstrainedError`/`NotReadableError` a causa +
+pasos, con Reintentar de 44 px. `BotonSalirPantalla` le dio salida al kiosco y a campo, que ocupaban toda
+la pantalla **sin forma de volver** (heurística #3 de Nielsen); en el kiosco va con confirmación porque es
+equipo compartido. Configuración, Kioscos y Registro se quedaban en «Cargando…» para siempre por
+`if (!f) return <p>Cargando…</p>` sin rama de error. Detalle en `ERRORES_Y_SOLUCIONES.md` #12.
+
+**(2) EL CONVENIO FIRMADO LIBERA EL ROSTRO (commit `fa3c821`, migración `2026-11-23`).** El consentimiento
+biométrico se otorgaba con **una palomita**. El rostro es dato personal SENSIBLE (art. 3 fr. VI LFPDPPP) y
+la ley pide consentimiento **expreso y por escrito**: una palomita no prueba nada ante el INAI. Ahora el
+orden es físico y el sistema lo impone — **imprimir** (`impreso_at`) → **firma autógrafa en papel** →
+**FOTO del convenio firmado** (`checador_consentimiento.documento`, data-URL en TEXT) **= eso libera el
+enrolamiento**. `enrolarRostros` rechaza sin foto y si el consentimiento se revocó. `setConsentimiento`
+pasó a actualización **por partes**: el upsert viejo pisaba `metodo`/`notas` en cada llamada y un PUT sin
+`aceptado` lo apagaba (`!!undefined`). **Otorgar sin foto se rechaza; revocar siempre se puede** (es
+derecho del trabajador) y conserva el convenio como constancia. UI: `ConsentimientoFirmado.tsx`, 3 pasos
+numerados, foto con la cámara abierta o con `capture="environment"` (en celular/tableta abre la cámara
+**trasera**, la buena para un papel), reducida a 1600 px/~1.4 MB. **Consecuencia:** a quien ya tenía
+`aceptado=true` por la palomita vieja **no se le puede re-enrolar** hasta subir su foto; los rostros ya
+enrolados siguen checando. Detalle en `ERRORES_Y_SOLUCIONES.md` #13.
+
+**(3) Colores y engrane (commits `fa3c821`, `a39dea2`).** Las 3 opciones de cámara pasan a **verde fuerte**
+(`claseOpcionCamara`, green-700) para distinguirlas de las pestañas de configuración; con eso sobró el
+rótulo «Abrir cámara:». Se quitó el **engrane redundante** de Kiosco, Campo, Enrolar y Registro (iba al
+mismo `/checador` que Salir/Regresar). **Configuración** salió de la fila de pastillas: no es trabajo del
+día a día, así que va como **engrane sin apariencia de botón** a la derecha, con su estado activo en azul
+**+ subrayado + fondo tenue** (color solo no basta, WCAG 1.4.1). **Contrastes medidos, no supuestos:**
+green-600 con texto blanco de 14 px da **3.3:1** y NO pasa AA; green-700 da 5.0:1. Igual emerald-600 →
+emerald-700 en los botones y la palomita de cada paso 500 → 600.
+
+**Sin verificar en ejecución:** las pantallas están detrás del login y el frontend no tiene corredor de
+pruebas — sólo `tsc` de backend y frontend + build. **Falta probarlo en la tableta real**, y saber con qué
+dirección abren el checador (si es `http://` o una IP, ésa es la causa del «permiso denegado»).
+
+---
+
+## 2026-11-23 (tesorería) — Stripe: cobrador de pagos, cifras invisibles y la comisión con su IVA
+
+**El estado de cuenta de Stripe no daba un solo movimiento.** La causa no era el parser: el PDF escribe la
+tabla con una fuente **sin mapa a Unicode** y cada cifra llega como carácter del **área de uso privado**
+(506 glifos en el de octubre 2026). La fecha `2026-10-01` llegaba como `2026·10·01` con los guiones en
+U+E088 y de los importes sólo sobrevivían los «$». El renglón no empataba con nada y **el detalle se
+perdía en silencio**. Los saldos y los totales sí se leen: van en la fuente normal.
+
+`limpiarPua()` quita U+E000–U+F8FF y los **cuenta**; con eso la fecha y el concepto vuelven a leerse y se
+avisa cuántos renglones se perdieron y qué hacer (pegar el texto o subir el CSV de «balance transactions»).
+**No se adivina qué dígito es cada glifo:** el orden del subconjunto depende de cómo se generó el PDF, y
+una cifra inventada en contabilidad es peor que una cifra ausente.
+
+**Stripe no es un banco: es un COBRADOR.** Recibe el ingreso, se queda su comisión con IVA incluido y lo
+que resta lo manda después a un banco de verdad. Reglas que fijó el usuario y que ahora están en el código
+(`extraerStripe`): lo que se **controla** son el **saldo inicial y el final** y la **comisión con su IVA**;
+la cobranza se cuadra por el lado del CFDI en la conciliación bancaria. Los **payouts vienen en negativo**
+(salen a otro banco) y los cobros en positivo — manda el signo, y si no hay signo manda el TIPO. Un
+**cobro entra al saldo por su NETO**, no por el bruto: la comisión nunca llegó a la cuenta, así cuadra el
+arrastre *y* la comisión queda como gasto aparte. **IVA:** base = `total / 1.16`, IVA la diferencia; se
+guarda por mes en `bancos_estados_cuenta.comision_{total,base,iva}` (migración `2026-11-23b`). El desglose
+es **papel de trabajo**: para acreditar hace falta el **CFDI que emite el cobrador**. Dos cuadres: con
+movimientos legibles se valida el arrastre; sin ellos, la identidad del resumen
+(`inicial + actividad neta − pagos a banco = final`). La detección exige **dos marcas**: «Stripe» sola
+aparece como contraparte de un SPEI en cualquier estado bancario.
+
+**Probado:** 17 pruebas (`extractor-stripe.test.ts`) y una corrida de punta a punta contra el PDF real de
+octubre 2026 — 62,241.30 → 15,215.86, comisión 2,913.15 = base 2,511.34 + IVA 401.81, cuadra. Commit
+`679ea08`. Detalle en `ERRORES_Y_SOLUCIONES.md` #14. Ver [[stripe-cobrador-pagos]].
+
+---
+
+## 2026-11-23 (app-wide) — Dos barridos: todo documento a «Descargas» y todas las opciones iguales
+
+**Barrido 1 — todo documento queda en «Descargas» (commit `679ea08`).** Varios documentos **se veían pero
+no se guardaban**: opinión de cumplimiento, documento legal de la baja, acuses y declaraciones del SAT,
+remesa y complemento de pago abrían una pestaña (`window.open` de un blob) y al cerrarla había que volver
+a generarlos; y si el navegador bloqueaba las emergentes, el botón parecía no hacer nada.
+`api.verYDescargar(blob, nombre, ver)` **siempre descarga** y además abre la pestaña cuando la acción es
+«ver». Segundo defecto encontrado de paso: **diez** sitios descargaban a mano, sin meter el `<a>` al
+documento y liberando el blob de inmediato — **Firefox no descarga nada así** y Chrome a veces aborta el
+archivo a medias; todos pasan ya por `downloadFile` (notas de crédito PDF/XML, XML del complemento, DIOT,
+nómina PF, diferencia cambiaria, asistencia, manifiesto, documentos legales, ZIP de declaraciones). **No se
+tocaron** las ventanas de **impresión** (ticket del POS, remesa en hoja, pólizas, convenio biométrico): ahí
+abrir una ventana es el objetivo. **Límite:** la **carpeta** la decide el navegador, ningún sitio web puede
+elegirla. Detalle en `ERRORES_Y_SOLUCIONES.md` #15.
+
+**Barrido 2 — todas las opciones con el mismo esquema (commit `3c1b4a9`).** `claseOpcion` lo usaban 28
+pantallas, pero siete se habían escrito antes o a mano: subrayado azul, bandeja gris con la activa en
+blanco, pastillas azul cielo, pastillas violeta. Una repetía las clases **literales** del helper — mismo
+color escrito aparte, la forma segura de desincronizarse cuando el esquema cambie. Convertidas: `Reports`,
+`Inventory`, `AdminEmisores`, `ReportesFiscales`, `ReportesEspeciales`, `CuentasDuplicadas` y
+`CodificacionRfc`, todas con `role="tablist"`/`aria-selected` y foco visible. **NO se tocaron los
+conmutadores y filtros** (Mensual/Anual, «Ver: factura por factura», pastillas de filtro con contador,
+Acumulado/Por periodo, orden del reporte de rotación): no son opciones de menú y pintarlos de verde los
+haría leer como navegación. Detalle en `ERRORES_Y_SOLUCIONES.md` #16. Ver [[opciones-menu-colores]].

@@ -1,6 +1,44 @@
 # Pendientes — GDM NEXO
 
-> Lista viva de lo que falta. Actualizada 2026-11-18. Lo hecho se documenta en `BITACORA.md`.
+> Lista viva de lo que falta. Actualizada 2026-11-23. Lo hecho se documenta en `BITACORA.md`.
+
+## 🔜 Para mañana (2026-11-24)
+
+- **PROBAR STRIPE EN VIVO (lo pidió el usuario para mañana).** Cargar el estado de cuenta de octubre 2026 en
+  Tesorería. Lo que hay que verificar: (a) que la cuenta de **Stripe exista en Tesorería** con su **cuenta 102
+  ligada** —si no, la conciliación no lo toma—; (b) que se detecte como «Stripe» y salgan **saldo inicial
+  62,241.30 y final 15,215.86**; (c) que la tarjeta morada muestre **comisión 2,913.15 = base 2,511.34 + IVA
+  401.81**; (d) que el aviso diga que **27 renglones** traen las columnas sin cifras. **El PDF NO da el detalle
+  movimiento por movimiento** (fuente sin mapa a Unicode): para tenerlo hay que subir el **CSV de «balance
+  transactions»** del portal de Stripe, o pegar el texto, o encender `ENABLE_OCR=true` en Render. Ver
+  [[stripe-cobrador-pagos]] y `ERRORES_Y_SOLUCIONES.md` #14.
+- **PROBAR EL CHECADOR EN LA TABLETA REAL.** Nada de lo del 2026-11-23 se pudo verificar en ejecución (las
+  pantallas están detrás del login y el frontend no tiene corredor de pruebas): sólo `tsc` + build. Revisar:
+  (a) el flujo **imprimir → firmar → fotografiar el convenio → se libera el enrolamiento**; (b) que el aviso de
+  cámara diga la causa y que **Reintentar** funcione sin recargar; (c) el botón **Salir** del kiosco (con
+  confirmación) y de campo; (d) Configuración/Kioscos/Registro ya no se quedan en «Cargando…».
+- **DATO QUE FALTA — ¿con qué dirección abren el checador?** Si la barra dice `http://` o una **IP de red local**
+  (`192.168.x.x`), **ésa** es la causa del «permiso denegado» de la cámara: `getUserMedia` sólo corre en
+  **contexto seguro** (https o localhost) y el navegador ni siquiera pregunta. La solución de fondo es servir el
+  checador por **https**. Ver `ERRORES_Y_SOLUCIONES.md` #12.
+- **Consecuencia del nuevo candado del checador.** A quien ya tenía el consentimiento marcado con la **palomita
+  vieja** NO se le puede **re-enrolar** hasta subir la **foto de su convenio firmado**. Los rostros **ya
+  enrolados siguen checando** normal (la identificación no se tocó). Si hay plantilla grande, conviene imprimir
+  los convenios en lote antes de necesitar re-enrolar a alguien.
+- **Orden del despliegue del 2026-11-23: BACKEND PRIMERO.** Lleva dos migraciones
+  (`2026-11-23_checador_consentimiento_firmado`, `2026-11-23b_bancos_comision_cobrador`) y el lector de Stripe;
+  con el backend viejo, un PUT sin `aceptado` **apagaría** el consentimiento. Después el ZIP del frontend.
+
+## 🟣 Abierto de antes (sigue sin respuesta del usuario)
+
+- **E-commerce · foto de producto rota.** El código está bien (subida multer→sharp→bytea, ruta pública sin auth,
+  mismo `VITE_API_BASE`, sin helmet). Se agregó un enlace **«No cargó — clic para ver»** en la miniatura: falta
+  que el usuario lo oprima y diga **qué responde el servidor** (404 / 401 / en blanco / error de Render).
+- **E-commerce · logo de la tienda.** La URL capturada es la de un **artículo de GQ**, no una imagen — además de
+  que usar una foto de ese medio es problema de derechos. Falta que el usuario ponga la **URL directa de su
+  propio logo** (o que se construya la subida de archivo, ya listada abajo en los pendientes de e-commerce).
+- **Catálogo de conceptos de nómina vs. claves del motor.** Quedó una tarea de fondo sugerida y **nunca
+  arrancada** (chip `task_bef07d06`): cotejar los conceptos del catálogo contra las claves que usa el motor.
 
 ## 🛒 E-commerce — pendientes (2026-11-18)
 
