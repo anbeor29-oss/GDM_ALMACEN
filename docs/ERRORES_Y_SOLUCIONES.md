@@ -702,7 +702,7 @@ del sistema y lo que se escribiera en ese envío, nada más.
 `reference`, y `sendTestMail` lo enseñaba siempre. No existía ninguna bandera que dijera «este cliente ya
 sabe dónde depositar», ni campo para un texto de la casa.
 
-**✅ Solución (commit `__HASH__`).** Dos columnas en `companies` y dos controles donde se administran:
+**✅ Solución (commit `80ebed6`).** Dos columnas en `companies` y dos controles donde se administran:
 - `mail_incluir_deposito` — nace **APAGADA**, así que el bloque deja de salir. Se enciende por empresa
   (Datos de mi empresa → Texto de los correos, y Súper Admin → Emisor de facturas) y también **por envío**,
   en el modal de «Enviar por correo» de la factura: es dato para un cliente nuevo, no para repetírselo.
@@ -730,7 +730,7 @@ lados (listados, Excel, PDF) y **no lo escribía nadie**. No había ninguna ruta
 **Causa raíz.** Sólo existía la mitad del flujo: `marcarEnvioPorCorreo` guardaba la decisión. El envío
 «ocurre después», decía el comentario, pero ese después nunca se escribió.
 
-**✅ Solución (commit `__HASH__`).** `envio-recibos.service` manda el recibo **TIMBRADO** con su PDF y su
+**✅ Solución (commit `80ebed6`).** `envio-recibos.service` manda el recibo **TIMBRADO** con su PDF y su
 XML, un correo por trabajador:
 - Sólo lo timbrado. Un pre-timbre no ampara ningún pago y mandarlo invita al trabajador a guardarlo como si
   sí lo amparara.
@@ -760,7 +760,7 @@ emitir el complemento de pago.
 - El cargo guardaba `factura_id` pero no el **consecutivo**: la lista decía «Facturado» y para saber cuál
   factura era había que irse a otra pantalla.
 
-**✅ Solución (commit `__HASH__`).** Todo cuelga del cargo del periodo (`facturacion_mensual`):
+**✅ Solución (commit `80ebed6`).** Todo cuelga del cargo del periodo (`facturacion_mensual`):
 - `listo_para_facturar` por (empresa, periodo). Se conserva dentro del mes y queda **limpio solo al cambiar
   de mes**, porque el mes nuevo es otro renglón: no hay nada que vaciar a mano ni un día en que alguien
   tenga que acordarse.
