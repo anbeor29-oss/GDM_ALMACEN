@@ -1093,6 +1093,75 @@ de la tienda tendrá que ser ADMIN de su empresa.
 
 ---
 
+## 30. El checador no se podía contratar: faltaba en cuatro listas escritas a mano
+
+**Síntoma.** En Checador → Turnos, al dar «Agregar turno»:
+
+> Esta empresa no tiene habilitado este módulo (servicios contratados).
+
+Y en Súper Admin no había dónde habilitarlo.
+
+**Cómo diagnosticar.** El mensaje sale de un solo lugar, `requireModule` en
+`backend/src/middleware/permissions.ts`:
+
+```ts
+const empMods = req.user.empresaModulos as ModuleKey[] | undefined;
+if (empMods && empMods.length && !SIEMPRE.includes(String(mod)) && !empMods.includes(mod)) { … 403 }
+```
+
+Es decir: la empresa **restringe** sus módulos y `checador` no está en la lista. La pregunta deja de ser
+«¿por qué falla?» y pasa a ser **«¿dónde se agrega?»**. Ahí apareció el problema real: en ningún lado.
+
+**Causa raíz.** `checador` es un `ModuleKey` legítimo del backend —con gate propio y con grupo
+`RECURSOS_HUMANOS`/`CHECADOR`— pero faltaba en **cuatro listas copiadas a mano**, en dos compilaciones
+distintas:
+
+| # | Lista | Dónde | Qué provocaba |
+|---|---|---|---|
+| 1 | `MODULOS_VALIDOS` | `admin-companies.routes.ts` | **la decisiva**: filtraba la clave AL GUARDAR |
+| 2 | `MODS_TOGGLE` | `AdminCompanies.tsx` | sin casilla en la columna de módulos |
+| 3 | `MODULE_LABELS` | `permissions.ts` (front) | sin casilla en el modal «Editar empresa» |
+| 4 | `ModuleKey` / `ALL_MODULES` | `permissions.ts` (front) | la clave no existía en el vocabulario |
+
+La número 1 es la que hacía el caso imposible de resolver por cualquier camino: aunque alguien mandara
+`checador` por API, `modulosHabilitados.filter(m => MODULOS_VALIDOS.includes(m))` lo tiraba **y el
+guardado contestaba éxito**. Un borrado silencioso disfrazado de validación.
+
+**Dos agravantes que encontró el mismo repaso.**
+
+- **La tabla borraba lo que no conocía.** Guardar los módulos reconstruía el arreglo con
+  `MODS_TOGGLE_KEYS.filter(...)`, así que cualquier clave guardada que no estuviera en esa lista se
+  **borraba al tocar cualquier casilla**. Si alguien hubiera metido `checador` por SQL, el primer clic
+  del Súper Admin lo quitaba.
+- **El menú ofrecía una pantalla condenada.** La entrada «Checador · Asistencia» colgaba del grupo
+  **Nómina** sin consultar `show('checador')`. Una empresa con nómina y sin checador veía la pantalla,
+  llenaba el formulario completo y el backend lo rechazaba al guardar. Eso es exactamente lo que se
+  reportó.
+
+**✅ Solución (commit `__HASH__`).**
+
+- `ALL_MODULES` se **exporta** desde `middleware/permissions.ts` y `MODULOS_VALIDOS` pasa a ser
+  `['dashboard', ...ALL_MODULES]`. Copiar la lista era el error; ahora no hay copia.
+- `checador` entra en las tres listas del frontend (`ModuleKey`, `ALL_MODULES`, `MODULE_LABELS`) y en
+  `MODS_TOGGLE`; `RECURSOS_HUMANOS` del front se alinea con el backend.
+- La tabla **conserva** las claves que no conoce al guardar (`ajenos`), en vez de borrarlas.
+- La entrada del menú respeta `show('checador')`: si no está contratado, no se ofrece.
+
+**Prueba que lo sostiene.** `backend/src/modulos-contratables.test.ts` recorre cada `ModuleKey` que el
+gate puede bloquear —todos menos `dashboard` y `xml_reader`, que nunca se restringen— y falla si falta
+en el `ALL_MODULES`, el `MODULE_LABELS` o el `MODS_TOGGLE` del frontend. Es estructural: lee los
+archivos del otro repo, no levanta nada. Comprobado que detecta la regresión: quitada la casilla a
+propósito, falla.
+
+**Dónde se habilita, ya con el arreglo.**
+- **Empresa (servicios contratados):** Súper Admin → **Empresas** → columna de módulos (o Editar
+  empresa → Módulos habilitados) → **Checador · Asistencia**.
+- **Usuario (permiso fino):** Súper Admin → **Usuarios** → editar → módulos extra.
+- El acceso real es la **intersección** de los dos. La pantalla de Usuarios ya lo advertía y mandaba a
+  «Empresas → Editar empresa → Módulos» — que hasta hoy era un callejón sin salida.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

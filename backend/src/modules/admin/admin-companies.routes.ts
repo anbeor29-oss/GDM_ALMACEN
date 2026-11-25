@@ -24,6 +24,7 @@ import { authenticateToken } from '../../middleware/authentication';
 import { asyncHandler, ValidationError, NotFoundError, ConflictError } from '../../middleware/errorHandler';
 import { query } from '../../config/database';
 import { requireSuperAdmin, audit } from './admin.middleware';
+import { ALL_MODULES } from '../../middleware/permissions';
 import { invalidarModulosEmpresa } from '../../middleware/authentication';
 import * as promo from '../billing/prueba-y-prorrateo.service';
 import * as resetContab from '../accounting/reset-contabilidad.service';
@@ -40,12 +41,14 @@ router.use(requireSuperAdmin);
 
 /* Claves de módulo válidas para «servicios contratados» por empresa (espejo de
  * ModuleKey del front y de permissions.ts). 'dashboard' se incluye siempre. */
-const MODULOS_VALIDOS = [
-  'dashboard', 'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
-  'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos', 'treasury',
-  'reports', 'exchange_rates', 'auditoria', 'mensajes', 'nomina', 'contabilidad',
-  'ecommerce',
-];
+/* Se deriva de ALL_MODULES (la lista que usa el gate `requireModule`), mas
+ * 'dashboard', que no es un modulo contratable sino la casa de todos.
+ *
+ * Era una copia escrita a mano y se quedo sin 'checador': al guardar los
+ * modulos de una empresa, el filtro de abajo eliminaba esa clave SIN avisar,
+ * asi que el checador no se podia contratar por ningun camino y el guardado
+ * contestaba exito. Copiar la lista fue el error; ahora no hay copia. */
+const MODULOS_VALIDOS: string[] = ['dashboard', ...ALL_MODULES];
 
 const CSD_MASTER_KEY = process.env.CSD_MASTER_KEY || 'change-me-in-prod-' + crypto.randomBytes(8).toString('hex');
 if (CSD_MASTER_KEY.startsWith('change-me-in-prod-')) {

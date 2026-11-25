@@ -34,7 +34,11 @@ export type ModuleKey =
   | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria' | 'mensajes'
   | 'nomina' | 'contabilidad' | 'checador' | 'ecommerce';
 
-const ALL_MODULES: ModuleKey[] = [
+/** La lista COMPLETA de modulos. Se exporta para que nadie vuelva a copiarla a
+ *  mano: `admin-companies.routes` validaba contra una copia que se quedo sin
+ *  'checador', y filtraba esa clave al guardar —la empresa nunca podia
+ *  contratar el checador y el guardado no se quejaba. */
+export const ALL_MODULES: ModuleKey[] = [
   'invoices', 'carta_porte', 'credit_notes', 'customers', 'products',
   'xml_reader', 'inventory', 'purchasing', 'suppliers', 'pos',
   'treasury', 'reports', 'exchange_rates', 'auditoria', 'mensajes',

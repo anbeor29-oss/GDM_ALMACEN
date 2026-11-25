@@ -22,7 +22,7 @@ export type ModuleKey =
   | 'invoices' | 'carta_porte' | 'credit_notes' | 'customers' | 'products'
   | 'xml_reader' | 'inventory' | 'purchasing' | 'suppliers' | 'pos'
   | 'treasury' | 'reports' | 'exchange_rates' | 'auditoria' | 'mensajes'
-  | 'nomina' | 'contabilidad' | 'ecommerce';
+  | 'nomina' | 'contabilidad' | 'checador' | 'ecommerce';
 
 const ALL_MODULES: ModuleKey[] = [
   'dashboard',
@@ -32,7 +32,7 @@ const ALL_MODULES: ModuleKey[] = [
   /* Nómina sólo la alcanzan ADMIN_ALL y RECURSOS_HUMANOS: sueldos, CURP,
    * cuentas bancarias y órdenes de pensión alimenticia no son "un módulo
    * más". */
-  'nomina', 'contabilidad', 'ecommerce',
+  'nomina', 'contabilidad', 'checador', 'ecommerce',
 ];
 
 /** Etiquetas legibles de cada módulo (para elegir módulos EXTRA de un usuario). */
@@ -43,7 +43,7 @@ export const MODULE_LABELS: Record<string, string> = {
   suppliers: 'Proveedores', pos: 'Punto de venta', treasury: 'Tesorería',
   reports: 'Reportes', exchange_rates: 'Tipos de cambio', auditoria: 'Auditoría',
   mensajes: 'Mensajes', nomina: 'Nómina', contabilidad: 'Contabilidad',
-  ecommerce: 'Comercio Electrónico',
+  checador: 'Checador · Asistencia', ecommerce: 'Comercio Electrónico',
 };
 
 /**
@@ -79,7 +79,10 @@ export const GROUP_MODULES: Record<WorkGroup, ModuleKey[]> = {
   PUNTO_VENTA: ['pos', 'mensajes'],
   /* Recursos Humanos: la nómina y nada más. Lleva 'xml_reader' porque el
    * expediente del personal se rescata de los recibos ya timbrados. */
-  RECURSOS_HUMANOS: ['nomina', 'xml_reader', 'mensajes'],
+  /* 'checador' va APARTE de 'nomina' porque se contrata aparte: hay empresas
+   * con nómina y sin reloj checador. RH administra los dos (igual que en
+   * `backend/src/middleware/permissions.ts`, que es quien manda). */
+  RECURSOS_HUMANOS: ['nomina', 'checador', 'xml_reader', 'mensajes'],
   /* Contabilidad ve de dónde salen las cifras que tiene que explicar, pero
    * NO ve nómina: el asiento le llega en totales por concepto, que es lo que
    * necesita. El sueldo con nombre y apellido, no. */

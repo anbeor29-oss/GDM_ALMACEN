@@ -608,7 +608,15 @@ export function Layout() {
                     children={[
                       { to: '/nomina',            icon: emoji3D('🏠'), label: 'Dashboard' },
                       { to: '/nomina/empleados',  icon: emoji3D('👥'), label: 'Empleados' },
-                      { to: '/checador',          icon: emoji3D('🗓️'), label: 'Checador · Asistencia' },
+                      /* El checador se contrata APARTE de la nómina. Colgaba de
+                       * este grupo sin consultar su propio módulo, así que una
+                       * empresa con nómina y sin checador veía la pantalla, la
+                       * llenaba y el backend la rechazaba con «Esta empresa no
+                       * tiene habilitado este módulo». Si no está contratado, no
+                       * se ofrece. */
+                      ...(show('checador')
+                        ? [{ to: '/checador', icon: emoji3D('🗓️'), label: 'Checador · Asistencia' }]
+                        : []),
                       { to: '/nomina/calculo',    icon: emoji3D('🧮'), label: 'Nómina' },
                       { to: '/nomina/cfdi',       icon: emoji3D('🧾'), label: 'CFDI' },
                       { to: '/nomina/revision',   icon: emoji3D('🔎'), label: 'Revisión' },

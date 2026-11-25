@@ -8618,6 +8618,43 @@ haría leer como navegación. Detalle en `ERRORES_Y_SOLUCIONES.md` #16. Ver [[op
 
 ---
 
+## 2026-11-25 — El checador no se podía contratar: faltaba en cuatro listas escritas a mano
+
+Al crear un turno salía «Esta empresa no tiene habilitado este módulo (servicios contratados)», y en
+Súper Admin no había dónde habilitarlo. No era un permiso mal puesto: **no existía la casilla**.
+
+`checador` es un `ModuleKey` legítimo del backend —con gate propio y con grupo— pero faltaba en cuatro
+listas copiadas a mano, en dos compilaciones:
+
+1. **`MODULOS_VALIDOS`** (`admin-companies.routes`) — la decisiva. Filtraba la clave **al guardar**:
+   aunque alguien mandara `checador` por API, se tiraba y el guardado contestaba éxito. Un borrado
+   silencioso disfrazado de validación.
+2. **`MODS_TOGGLE`** (`AdminCompanies.tsx`) — sin casilla en la columna de módulos.
+3. **`MODULE_LABELS`** (`permissions.ts` del front) — sin casilla en el modal «Editar empresa».
+4. **`ModuleKey`/`ALL_MODULES`** del front — la clave no existía en el vocabulario de la interfaz.
+
+Dos agravantes del mismo repaso. La tabla **borraba lo que no conocía**: guardar reconstruía el arreglo
+con `MODS_TOGGLE_KEYS.filter(...)`, así que una clave guardada por fuera se perdía al tocar cualquier
+casilla. Y el menú **ofrecía una pantalla condenada**: «Checador · Asistencia» colgaba del grupo Nómina
+sin consultar su propio módulo, así que una empresa con nómina y sin checador veía la pantalla, llenaba
+el formulario entero y el backend lo rechazaba al guardar. Eso fue lo que se reportó.
+
+**Arreglo.** `ALL_MODULES` se exporta desde `middleware/permissions.ts` y `MODULOS_VALIDOS` pasa a ser
+`['dashboard', ...ALL_MODULES]` — copiar la lista era el error, ahora no hay copia. `checador` entra en
+las tres listas del frontend y en `MODS_TOGGLE`; `RECURSOS_HUMANOS` del front se alinea con el backend.
+La tabla conserva las claves que no conoce. Y la entrada del menú respeta `show('checador')`.
+
+Lo sostiene `backend/src/modulos-contratables.test.ts`: recorre cada `ModuleKey` que el gate puede
+bloquear y falla si falta en el `ALL_MODULES`, el `MODULE_LABELS` o el `MODS_TOGGLE` del frontend.
+Estructural —lee los archivos del otro repo— y comprobado que detecta la regresión.
+
+**Dónde se habilita:** Súper Admin → **Empresas** → módulos → «Checador · Asistencia» (la empresa, que
+es el servicio contratado) y Súper Admin → **Usuarios** → módulos extra (el permiso fino del usuario).
+El acceso real es la **intersección** de los dos.
+
+252 pruebas verdes (197 + 55 nuevas), `tsc` de backend y frontend, build de producción. Entrada 30 de
+`ERRORES_Y_SOLUCIONES.md`.
+
 ## 2026-11-24 (e-commerce) — Datos del emisor y catálogo de clientes dentro de la tienda
 
 El módulo ya emitía CFDI por cada pedido, pero el usuario de la tienda no tenía dónde poner sus datos

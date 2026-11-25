@@ -25,6 +25,7 @@ const MODS_TOGGLE: Array<{ k: string; label: string }> = [
   { k: 'carta_porte', label: 'Carta Porte' }, { k: 'credit_notes', label: 'Notas de crédito' },
   { k: 'exchange_rates', label: 'Tipos de cambio' }, { k: 'auditoria', label: 'Auditoría' },
   { k: 'reports', label: 'Reportes' }, { k: 'mensajes', label: 'Mensajes' },
+  { k: 'checador', label: 'Checador · Asistencia' },
   { k: 'ecommerce', label: 'Comercio Electrónico' },
 ];
 const MODS_TOGGLE_KEYS = MODS_TOGGLE.map((m) => m.k);
@@ -280,6 +281,13 @@ export function AdminCompaniesPage() {
                     const actuales = (Array.isArray(c.modulos_habilitados) && c.modulos_habilitados.length)
                       ? MODS_TOGGLE_KEYS.filter((k) => c.modulos_habilitados.includes(k))
                       : [...MODS_TOGGLE_KEYS];
+                    /* Claves guardadas que esta lista NO conoce. Se conservan al
+                     * guardar: antes se reconstruía el arreglo sólo con
+                     * MODS_TOGGLE_KEYS, así que un módulo que faltara aquí se
+                     * BORRABA en silencio al tocar cualquier casilla. Fue lo que
+                     * pasó con el checador. */
+                    const ajenos = (Array.isArray(c.modulos_habilitados) ? c.modulos_habilitados : [])
+                      .filter((k: string) => !MODS_TOGGLE_KEYS.includes(k));
                     const todos = !(Array.isArray(c.modulos_habilitados) && c.modulos_habilitados.length);
                     const guardando = guardandoMods === c.id;
                     const toggle = (k: string, on: boolean) => {
@@ -287,7 +295,7 @@ export function AdminCompaniesPage() {
                       if (on) s.add(k); else s.delete(k);
                       const arr = MODS_TOGGLE_KEYS.filter((x) => s.has(x));
                       // Si quedaron TODOS, se vuelve a «sin restricción» (null).
-                      guardarMods(c.id, arr.length === MODS_TOGGLE_KEYS.length ? null : arr);
+                      guardarMods(c.id, arr.length === MODS_TOGGLE_KEYS.length ? null : [...arr, ...ajenos]);
                     };
                     return (
                       <div className={`space-y-1 ${guardando ? 'opacity-50 pointer-events-none' : ''}`}>
