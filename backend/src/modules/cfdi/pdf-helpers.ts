@@ -26,6 +26,19 @@ export function fmtMoney(n: any): string {
   return v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/**
+ * Precio unitario: hasta 6 decimales, como el XML.
+ *
+ * No es cosmetica. Si el XML declara ValorUnitario 32.219827 y el PDF imprime
+ * 32.22, el cliente que multiplica 400 x 32.22 obtiene 12,888.00 y ve un
+ * importe de 12,887.93: parece un error de la factura. El papel tiene que
+ * decir lo mismo que el comprobante.
+ */
+export function fmtPrecio(n: any): string {
+  const v = Number(n) || 0;
+  return v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+}
+
 export function fmtQty(n: any): string {
   const v = Number(n) || 0;
   return v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

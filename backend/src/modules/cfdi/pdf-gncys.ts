@@ -15,7 +15,7 @@
  * ningún proveedor (sólo los datos del emisor real).
  */
 import {
-  PDFDoc, PAGE_LEFT, PAGE_RIGHT, PAGE_TOP, fmtMoney, montoEnLetra,
+  PDFDoc, PAGE_LEFT, PAGE_RIGHT, PAGE_TOP, fmtMoney, fmtPrecio, montoEnLetra,
   FORMA_PAGO, METODO_PAGO,
 } from './pdf-helpers';
 import { NEXO_LOGO_PNG } from './nexo-logo.data';
@@ -146,7 +146,7 @@ export function renderFacturaGncys(doc: PDFDoc, ctx: CtxGncys): void {
       claveu: it.unit_code || '',
       unidad: it.unit_code === 'H87' ? 'Pieza' : (it.unit_code === 'E48' ? 'Unidad de servicio' : ''),
       desc,
-      vu: fmtMoney(it.unit_price),
+      vu: fmtPrecio(it.unit_price),
       imp: fmtMoney(it.subtotal != null ? it.subtotal : Number(it.quantity) * Number(it.unit_price)),
     };
     for (const c of cols) doc.text(vals[c.k], c.x + 3, y + 3, { width: c.w - 6, align: c.a });

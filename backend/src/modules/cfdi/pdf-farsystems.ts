@@ -13,7 +13,7 @@
  * El LAYOUT cambia, pero el contenido es el mismo CFDI válido (mismos datos).
  */
 import {
-  PDFDoc, PAGE_LEFT, PAGE_RIGHT, PAGE_TOP, fmtMoney, montoEnLetra,
+  PDFDoc, PAGE_LEFT, PAGE_RIGHT, PAGE_TOP, fmtMoney, fmtPrecio, montoEnLetra,
   FORMA_PAGO, METODO_PAGO,
 } from './pdf-helpers';
 import { NEXO_LOGO_PNG } from './nexo-logo.data';
@@ -176,7 +176,7 @@ export function renderFacturaFarsystems(doc: PDFDoc, ctx: CtxFarsystems): void {
       codigo: (it as any).no_identificacion || (it as any).sku || String(idx + 1).padStart(10, '0'),
       cant: Number(it.quantity || 0).toFixed(2),
       unidad: it.unit_code || '',
-      pu: `$${fmtMoney(it.unit_price)}`,
+      pu: `$${fmtPrecio(it.unit_price)}`,
       imp: `$${fmtMoney(it.tax_amount)}`,
       importe: `$${fmtMoney(it.subtotal != null ? it.subtotal : Number(it.quantity) * Number(it.unit_price))}`,
     };

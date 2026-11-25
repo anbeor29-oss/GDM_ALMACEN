@@ -8618,6 +8618,62 @@ haría leer como navegación. Detalle en `ERRORES_Y_SOLUCIONES.md` #16. Ver [[op
 
 ---
 
+## 2026-11-25 (facturación) — El precio de 6 decimales no cabía en la columna, y el PAC rechazaba
+
+Una factura de 400 piezas a **32.219827** —precio escogido a propósito para que el total cierre en
+**$14,950.00** redondos— no se dejaba timbrar. En pantalla todo cuadraba.
+
+**La columna guardaba 2 decimales.** `invoice_items.unit_price` era `DECIMAL(15,2)`: Postgres
+**redondeaba al guardar**, sin avisar y sin fallar. `32.219827` se escribía `32.22`. El subtotal sí
+quedaba bien (12,887.93, porque se calcula con el precio completo *antes* de insertar), así que la
+factura terminaba con dos cifras que ya no se correspondían. Al timbrar, el XML decía
+`ValorUnitario="32.220000"` e `Importe="12887.930000"`, y `400 × 32.22 = 12,888.00`: **siete centavos
+contra una tolerancia de uno**. Rechazo.
+
+La pantalla llevaba meses pidiendo los 6 decimales —con comentario y todo explicando que «el total
+cierra a 2 al timbrar»—. Sólo faltaba que la columna los aguantara. Cada capa, por separado, parecía
+correcta.
+
+**Decisión: los 6 decimales son del PRECIO; los importes son de la MONEDA.** El Anexo 20 permite hasta
+6 decimales en `ValorUnitario`, y es justo eso lo que deja cerrar un total redondo. Los importes
+(importe del concepto, bases, impuestos, subtotal, total) van con los decimales de la moneda —2 en
+pesos—. El código declaraba el `Importe` con 6, y eso **encoge la tolerancia del SAT a una millonésima**:
+aunque el precio se hubiera guardado completo, cualquier arrastre del redondeo tumbaba el timbre.
+
+**Un solo redondeo para todo el sistema** (`modules/cfdi/decimales.ts`). El `money`/`qty` del
+constructor del CFDI y el `r2` de `invoices.service` delegan ahí. Si cada uno redondeara por su cuenta,
+el importe guardado y el declarado se separarían un centavo en los casos de borde. De paso queda
+corregido el clásico: `Math.round(1.005 * 100) / 100` da **1.00**, no 1.01.
+
+**Guardias que hablan claro, antes del PAC.** Se revisa —sobre los mismos textos que se van a enviar—
+que cada concepto cumpla `Importe = Cantidad × ValorUnitario`, que el `SubTotal` sea la suma de los
+conceptos y que el `Total` cuadre con sus impuestos. Si no, se detiene **aquí**, con el nombre del
+concepto, las dos cifras y qué hacer. Antes eso lo contestaba el PAC con un código que no decía ni qué
+línea era.
+
+**El PDF imprime el precio completo** en los tres formatos. No es cosmética: si el XML dice `32.219827`
+y el papel dice `32.22`, el cliente multiplica, le da 12,888.00 y ve 12,887.93 — parece un error de la
+factura.
+
+**Lo que no se puede arreglar:** los decimales ya perdidos no se recuperan. Una factura capturada antes
+de hoy hay que abrirla y **volver a teclear el precio** (volver a guardarla sin tocarlo no sirve:
+recargaría el 32.22 truncado y cambiaría el total). El guardia lo detecta y lo dice con esas palabras.
+
+**Y la pantalla ya no miente sobre el timbrado.** Decía siempre «modo simulación con PAC MOCK», texto
+fijo de cuando el único proveedor era el simulado. Borrarlo a secas sería peor: una empresa en PRUEBAS
+se quedaría sin aviso, y un timbre de pruebas **no existe ante el SAT**. Ahora `GET /pac/providers`
+contesta el ambiente de **esa** empresa, y hacen falta las dos cosas —PAC real **y**
+`timbrado_ambiente = 'PRODUCCION'`— para que diga «la timbras ante el SAT»; si no, sale aviso ámbar. El
+ambiente se cambia donde siempre: Súper Admin → Empresas.
+
+Migración `2026-11-25_precio_unitario_6_decimales.sql` (amplía a `NUMERIC(15,6)`; corrige de paso la
+importación de CFDI ajenos, que truncaba el `ValorUnitario` recibido por la misma columna). 293 pruebas
+verdes —25 nuevas, 9 de ellas corriendo el constructor del CFDI completo con las cifras reales de esa
+factura—, `tsc` de backend y frontend, build de producción. **Sin probar contra el PAC real**: eso se
+valida en PRUEBAS antes de emitir.
+
+---
+
 ## 2026-11-25 — El checador no se podía contratar: faltaba en cuatro listas escritas a mano
 
 Al crear un turno salía «Esta empresa no tiene habilitado este módulo (servicios contratados)», y en

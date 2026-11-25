@@ -39,7 +39,7 @@ import { renderFacturaFarsystems } from './pdf-farsystems';
 import { renderFacturaGncys } from './pdf-gncys';
 import {
   drawTimbreFiscal, drawPageNumbers, extractNoCertificado, montoEnLetra,
-  extractTimbreData, buildQrSatPng, drawCancelledWatermark,
+  extractTimbreData, buildQrSatPng, drawCancelledWatermark, fmtPrecio,
 } from './pdf-helpers';
 
 type PDFDoc = InstanceType<typeof PDFDocument>;
@@ -565,7 +565,7 @@ function generateItems(doc: PDFDoc, items: any[]) {
       .text(it.unit_code || '—', cols.unidad.x, y, { width: cols.unidad.w, lineBreak: false, ellipsis: true });
     doc.text(it.clave_sat || '—',  cols.clave.x,  y, { width: cols.clave.w,  lineBreak: false, ellipsis: true });
     doc.font('Helvetica').fontSize(9).fillColor('#0f172a')
-      .text(`$ ${fmtMoney(it.unit_price)}`, cols.pu.x, y, { width: cols.pu.w, align: 'right' });
+      .text(`$ ${fmtPrecio(it.unit_price)}`, cols.pu.x, y, { width: cols.pu.w, align: 'right' });
     const r = Number(it.tax_rate) || 0;
     const ivaLabel = it.is_exempt ? 'Ex.' : (r > 0 ? `${(r * 100).toFixed(0)}%` : '0%');
     doc.font('Helvetica').fontSize(8.5).fillColor('#475569')

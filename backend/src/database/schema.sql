@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   product_id UUID REFERENCES products(id),
   line_number INTEGER NOT NULL,
   quantity DECIMAL(15,4) NOT NULL,
-  unit_price DECIMAL(15,2) NOT NULL,
+  unit_price DECIMAL(15,6) NOT NULL,   -- 6 decimales: el Anexo 20 los permite en ValorUnitario y son los que dejan cerrar el total a 2
   subtotal DECIMAL(15,2) NOT NULL,
   tax_amount DECIMAL(15,2) DEFAULT 0,
   total DECIMAL(15,2) NOT NULL,

@@ -11,8 +11,12 @@ import * as customersService from '../customers/customers.service';
 import * as productsService from '../products/products.service';
 import * as companiesService from '../companies/companies.service';
 import { getExchangeRate } from '../exchange-rates/exchange-rate.service';
+import { redondea } from '../cfdi/decimales';
 
-const redondea = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+/* redondea vive en modules/cfdi/decimales: es EL MISMO redondeo que usa el
+ * constructor del CFDI. Tienen que ser el mismo o el importe que se guarda y
+ * el que se declara al SAT se separan por un centavo en los casos de borde
+ * (Math.round(1.005 * 100) / 100 da 1.00, no 1.01) y el PAC rechaza. */
 
 /**
  * Tipo de cambio a congelar en la factura.
@@ -100,7 +104,7 @@ function resolveTaxPreset(presetId: string | undefined, product: any): TaxPreset
 }
 
 function r2(n: number): number {
-  return Math.round(n * 100) / 100;
+  return redondea(n, 2);
 }
 
 /**

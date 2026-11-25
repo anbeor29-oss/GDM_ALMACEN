@@ -21,6 +21,7 @@
 
 import { query } from '../../config/database';
 import { NotFoundError, ValidationError } from '../../middleware/errorHandler';
+import { decimalesDeMoneda, redondea, conDecimales, dentroDeTolerancia } from './decimales';
 
 interface CFDIJson {
   Version: '4.0';
@@ -173,14 +174,16 @@ const IMPUESTO_CODE: Record<string, string> = { IVA: '002', IEPS: '003', ISR: '0
 /** RFC genérico nacional: receptor de las facturas globales (público en general). */
 const RFC_GENERICO_NACIONAL = 'XAXX010101000';
 
+/* money y qty delegan en modules/cfdi/decimales para que el XML redondee
+ * EXACTAMENTE igual que el servicio que guardo la factura. Si cada uno
+ * redondeara por su cuenta, el importe guardado y el declarado se separarian
+ * por un centavo en los casos de borde y el PAC rechazaria. */
 function money(n: number | string | null | undefined, decimals = 2): string {
-  const v = Number(n) || 0;
-  return v.toFixed(decimals);
+  return conDecimales(n, decimals);
 }
 
 function qty(n: number | string | null | undefined): string {
-  const v = Number(n) || 0;
-  return v.toFixed(6);
+  return conDecimales(n, 6);
 }
 
 /**
@@ -242,6 +245,13 @@ export async function buildCFDIJson(companyId: string, invoiceId: string): Promi
   if (!comp.postal_code)     throw new ValidationError('La empresa emisora no tiene CP fiscal (Datos del Emisor)');
   if (!comp.fiscal_regime)   throw new ValidationError('La empresa emisora no tiene régimen fiscal');
 
+  /* Decimales que soporta la MONEDA de esta factura (2 en pesos). El precio
+   * unitario puede llevar hasta 6 —el Anexo 20 lo permite y es lo que deja
+   * cerrar el total en una cifra redonda—, pero los IMPORTES van con los de la
+   * moneda: a 6 decimales la tolerancia del SAT se encoge a una millonesima y
+   * cualquier arrastre del redondeo tumba el timbre. */
+  const dec = decimalesDeMoneda(inv.currency);
+
   // 4) Construir conceptos con sus impuestos
   const conceptos: Concepto[] = [];
   let totalTraslado = 0;
@@ -254,6 +264,27 @@ export async function buildCFDIJson(companyId: string, invoiceId: string): Promi
 
   for (const it of items) {
     const base = Number(it.subtotal) || 0;
+
+    /* GUARDIA: el SAT exige Importe = Cantidad x ValorUnitario, con una
+     * tolerancia de una unidad en la ultima posicion decimal declarada (un
+     * centavo en pesos). Si no cuadra, el PAC rechaza con un mensaje que no
+     * dice cual linea ni por que. Lo revisamos AQUI para decirlo claro.
+     *
+     * El caso real que esto atrapa: hasta el 25/11/2026 invoice_items.unit_price
+     * era DECIMAL(15,2) y Postgres redondeaba el precio al guardar (32.219827
+     * quedaba 32.22), asi que 400 x 32.22 = 12,888.00 contra un importe
+     * guardado de 12,887.93. Esos decimales NO se pueden recuperar: hay que
+     * volver a capturar el precio. */
+    const calculado = redondea(Number(it.quantity) * Number(it.unit_price), dec);
+    if (!dentroDeTolerancia(calculado, redondea(base, dec), dec)) {
+      throw new ValidationError(
+        `El concepto «${(it.description || '').substring(0, 40) || 'sin descripcion'}» no cuadra: ` +
+        `${conDecimales(it.quantity, 3)} x ${conDecimales(it.unit_price, 6)} da ${conDecimales(calculado, dec)}, ` +
+        `pero el importe guardado es ${conDecimales(base, dec)}. ` +
+        `Si esta factura se capturo antes del 25/11/2026, el precio unitario perdio sus decimales al guardarse: ` +
+        `abrela, vuelve a teclear el precio completo y guarda otra vez.`
+      );
+    }
     const rateIva = Number(it.tax_rate) || 0;
     const retIva = Number(it.ret_iva_rate) || 0;
     const retIsr = Number(it.ret_isr_rate) || 0;
@@ -267,8 +298,9 @@ export async function buildCFDIJson(companyId: string, invoiceId: string): Promi
       Cantidad: qty(it.quantity),
       ClaveUnidad: it.unit_code || 'H87',
       Descripcion: (it.description || 'Servicio').substring(0, 1000),
+      // Precio hasta 6 decimales; importe con los de la moneda (ver decimales.ts).
       ValorUnitario: money(it.unit_price, 6),
-      Importe: money(base, 6),
+      Importe: money(base, dec),
       Descuento: undefined,
       ObjetoImp: objetoImp,
     };
@@ -414,6 +446,33 @@ export async function buildCFDIJson(companyId: string, invoiceId: string): Promi
 
   const disc = Number(inv.discount) || 0;
   if (disc > 0) doc.Descuento = money(disc, 2);
+
+  /* GUARDIA DE TOTALES — el XML tiene que cuadrar CONTRA SI MISMO.
+   *
+   * El SAT revisa dos sumas: SubTotal = suma de los importes de los conceptos,
+   * y Total = SubTotal - Descuento + trasladados - retenidos. Si no cuadran,
+   * el PAC rechaza sin decir cual de las dos fallo. Se revisan sobre los
+   * MISMOS textos que se van a enviar (no sobre los numeros de la base), que
+   * es justo lo que el SAT va a leer. */
+  const sumaConceptos = conceptos.reduce((a, c) => a + Number(c.Importe), 0);
+  if (!dentroDeTolerancia(sumaConceptos, Number(doc.SubTotal), dec)) {
+    throw new ValidationError(
+      `El subtotal de la factura (${doc.SubTotal}) no coincide con la suma de sus conceptos ` +
+      `(${conDecimales(sumaConceptos, dec)}). Vuelve a abrir la factura y guardala para recalcularla.`
+    );
+  }
+
+  const trasladado = Number(doc.Impuestos?.TotalImpuestosTrasladados || 0);
+  const retenido   = Number(doc.Impuestos?.TotalImpuestosRetenidos || 0);
+  const totalCalc  = redondea(Number(doc.SubTotal) - disc + trasladado - retenido, dec);
+  if (!dentroDeTolerancia(totalCalc, Number(doc.Total), dec)) {
+    throw new ValidationError(
+      `El total de la factura (${doc.Total}) no cuadra: subtotal ${doc.SubTotal} ` +
+      `${disc > 0 ? `- descuento ${conDecimales(disc, dec)} ` : ''}` +
+      `+ impuestos ${conDecimales(trasladado, dec)} - retenciones ${conDecimales(retenido, dec)} ` +
+      `da ${conDecimales(totalCalc, dec)}. Vuelve a abrir la factura y guardala para recalcularla.`
+    );
+  }
 
   // 7) Factura global al público en general (RFC genérico nacional).
   //    El SAT valida cuatro reglas EN CONJUNTO para el receptor genérico; se

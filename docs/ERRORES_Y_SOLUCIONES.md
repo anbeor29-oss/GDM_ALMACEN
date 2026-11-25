@@ -1303,6 +1303,94 @@ tipo `…?.data || []` contra la forma que devuelve su ruta del backend. Un solo
 lo atrapó, lo mostró y dejó copiarlo. Por eso llegó el stack completo y el diagnóstico fue directo.
 
 ---
+## 34. El PAC rechazaba las facturas con precio de 6 decimales: la columna sólo guardaba 2
+
+**Síntoma.** Una factura de 400 piezas a **32.219827** —precio calculado a propósito para que el total
+cierre en **$14,950.00** exactos— no se podía timbrar. En pantalla todo cuadraba: subtotal 12,887.93,
+IVA 2,062.07, total 14,950.00.
+
+**Causa raíz.** `invoice_items.unit_price` era **`DECIMAL(15,2)`**. Postgres **redondea al guardar**, sin
+avisar y sin fallar: `32.219827` se escribía como `32.22`. El subtotal sí se guardaba bien (12,887.93,
+porque el servicio lo calcula con el precio completo *antes* de insertar), así que la factura quedaba con
+dos cifras que ya no se correspondían.
+
+Al timbrar, el XML declaraba:
+
+```
+Cantidad="400.000000"  ValorUnitario="32.220000"  Importe="12887.930000"
+```
+
+El SAT valida que **Importe = Cantidad × ValorUnitario**, con una tolerancia de **una unidad en la última
+posición decimal declarada**. Aquí `400 × 32.22 = 12,888.00` contra un importe de `12,887.93`: **siete
+centavos de diferencia contra una tolerancia de uno**. Rechazo.
+
+La pantalla llevaba **meses pidiendo los 6 decimales** —`fmtPrecio` con `maximumFractionDigits: 6`, y
+hasta un comentario explicando que «el total cierra a 2 al timbrar»—. Lo único que faltaba era que la
+columna los aguantara. Es el peor tipo de error: cada capa por separado parece correcta.
+
+**Agravante.** `Importe` se declaraba con **6 decimales** (`money(base, 6)` → `"12887.930000"`). Eso
+**encoge la tolerancia a una millonésima**: aunque el precio se hubiera guardado completo, cualquier
+arrastre del redondeo tumbaba el timbre. Los importes van con los decimales de la **moneda** (2 en pesos);
+los 6 decimales son del **precio unitario**, que es justo lo que permite cerrar un total redondo.
+
+**✅ Solución (commit `__HASH__`).** Cuatro piezas:
+
+1. **Migración `2026-11-25_precio_unitario_6_decimales.sql`**: `invoice_items.unit_price` →
+   `NUMERIC(15,6)`. También en `schema.sql` para instalaciones nuevas. Esto arregla de paso la
+   **importación de CFDI ajenos** (`cfdi-parser`), que guardaba el `ValorUnitario` del XML recibido por la
+   misma columna y lo truncaba igual.
+
+2. **`modules/cfdi/decimales.ts`** — una sola regla de redondeo para todo el sistema. `money`/`qty` del
+   constructor del CFDI y el `r2` de `invoices.service` **delegan ahí**. Si cada uno redondeara por su
+   cuenta, el importe guardado y el declarado se separarían un centavo en los casos de borde y el PAC
+   rechazaría. De paso corrige el clásico: `Math.round(1.005 * 100) / 100` da **1.00**, no 1.01, porque en
+   binario 1.005 es 1.00499999999999989. Ahora se limpia el ruido antes de redondear.
+
+3. **Guardias que hablan claro.** Antes de mandar nada al PAC se revisa, sobre **los mismos textos que se
+   van a enviar**: que cada concepto cumpla `Importe = Cantidad × ValorUnitario`, que `SubTotal` sea la
+   suma de los conceptos y que `Total` cuadre con sus impuestos. Si no, se detiene **aquí** con el nombre
+   del concepto, las dos cifras y qué hacer — en vez de dejar que el PAC conteste un código que no dice
+   ni qué línea era.
+
+4. **El PDF imprime el precio completo** (`fmtPrecio`, hasta 6 decimales) en los tres formatos. No es
+   cosmética: si el XML dice `32.219827` y el papel dice `32.22`, el cliente multiplica `400 × 32.22`,
+   le da 12,888.00 y ve un importe de 12,887.93 — parece un error de la factura.
+
+**⚠️ Lo que NO se puede arreglar.** Los decimales que ya se perdieron **no se recuperan**: no quedó
+rastro de ellos en ninguna parte. Una factura capturada antes de esta fecha hay que **abrirla y volver a
+teclear el precio unitario** (volver a guardarla sin retocar el precio no sirve: recargaría el 32.22 ya
+truncado y cambiaría el total). El guardia del punto 3 lo detecta y lo dice con esas palabras.
+
+9 pruebas que corren el constructor completo con las cifras reales de esa factura (sin base: se le ponen
+a `query` las filas que devolvería) + 16 del módulo de decimales.
+
+---
+
+## 35. La pantalla de factura decía «PAC MOCK» aunque el timbrado fuera real
+
+**Síntoma.** Al pie del botón de crear factura: *«Después puedes timbrarla (modo simulación con PAC
+MOCK)»*. Texto **fijo en el código**, puesto cuando el único proveedor era el simulado.
+
+**Por qué importa en los dos sentidos.** Dicho en una empresa que ya timbra de verdad, es falso y quita
+confianza. Pero borrarlo a secas sería peor: una empresa **en PRUEBAS** se quedaría sin nada en pantalla
+que lo advirtiera, y un timbre de pruebas **no existe ante el SAT**.
+
+**El dato no es global.** Hacen falta **dos** cosas para que un timbre sea real: un PAC real
+(`PAC_PROVIDER=SW_SAPIEN` + token, que es configuración del servidor) **y** la empresa en
+`companies.timbrado_ambiente = 'PRODUCCION'` (que es por empresa). El navegador no puede saber ninguna de
+las dos.
+
+**✅ Solución (commit `__HASH__`).** `GET /pac/providers` ahora contesta también el ambiente de **esa**
+empresa y un `timbrado_real` que ya combina las dos condiciones. La pantalla muestra lo que de verdad
+pasa:
+
+- timbrado real → *«Se guardará en estado DRAFT. Después la timbras ante el SAT.»*
+- PAC real pero empresa en PRUEBAS, o PAC simulado → aviso **ámbar**: *«Timbrado en PRUEBAS: el timbre no
+  tiene validez fiscal.»*
+
+El ambiente se cambia donde siempre: Súper Admin → Empresas. Esto sólo lo **reporta**.
+
+---
 
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>

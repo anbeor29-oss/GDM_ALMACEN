@@ -228,6 +228,18 @@ export function NewInvoicePage() {
     staleTime: Infinity,
   });
 
+  /* Ambiente de timbrado REAL, preguntado al backend. Antes esta pantalla
+   * decía siempre «modo simulación con PAC MOCK», aunque la empresa estuviera
+   * timbrando de verdad. El dato no es global: depende del PAC configurado Y
+   * de companies.timbrado_ambiente, así que lo contesta el servidor. */
+  const { data: pacInfo } = useQuery({
+    queryKey: ['pac-ambiente'],
+    queryFn: () => api.getPACProviders(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const timbradoReal = pacInfo?.data?.timbrado_real === true;
+  const ambientePac: string = pacInfo?.data?.ambiente || '';
+
   // Precarga en modo edición: trae la factura y llena cliente, líneas y campos
   // fiscales. Solo se dispara una vez cuando ya cargaron productos + catálogos
   // (así los presets y unidades quedan resueltos).
@@ -757,9 +769,23 @@ export function NewInvoicePage() {
               ? 'Guardando…'
               : isEditing ? 'Guardar cambios' : 'Crear factura (borrador)'}
           </button>
-          <p className="text-xs text-gray-500">
-            Se guardará en estado <b>DRAFT</b>. Después puedes timbrarla (modo simulación con PAC MOCK).
-          </p>
+          {/* El aviso dice lo que de verdad pasa. Si la empresa está en PRUEBAS hay
+            * que verlo: un timbre de pruebas NO existe ante el SAT, y nada más en
+            * la pantalla lo delata. */}
+          {timbradoReal ? (
+            <p className="text-xs text-gray-500">
+              Se guardará en estado <b>DRAFT</b>. Después la timbras ante el SAT.
+            </p>
+          ) : ambientePac ? (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+              Se guardará en estado <b>DRAFT</b>. Timbrado en <b>PRUEBAS</b>: el timbre
+              no tiene validez fiscal.
+            </p>
+          ) : (
+            <p className="text-xs text-gray-500">
+              Se guardará en estado <b>DRAFT</b>. Después puedes timbrarla.
+            </p>
+          )}
         </div>
       </div>
     </form>

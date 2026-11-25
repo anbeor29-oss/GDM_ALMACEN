@@ -126,18 +126,30 @@ export async function registrarCsd(req: Request, res: Response) {
  * GET /api/v1/pac/providers
  * Listar proveedores PAC disponibles
  */
-export async function providers(_req: Request, res: Response) {
+export async function providers(req: Request, res: Response) {
   const list = pacService.listProviders();
   const isMock = list.active === 'MOCK';
 
+  /* El ambiente NO es global: vive por empresa en companies.timbrado_ambiente.
+   * Hacen falta las DOS cosas para que un timbre sea real —un PAC real y la
+   * empresa en PRODUCCION—, así que las dos se devuelven y la pantalla dice la
+   * verdad en vez de un texto fijo. Una empresa en PRUEBAS con PAC real sigue
+   * sin emitir ante el SAT, y eso tiene que verse. */
+  const ambiente = await pacService.ambienteEmpresa(getCompanyId(req));
+  const esReal = !isMock && ambiente === 'production';
+
   res.status(200).json({
     success: true,
-    message: isMock
-      ? 'PAC en modo MOCK — los timbres NO tienen validez fiscal.'
-      : `PAC real activo: ${list.active}. Los timbres son reales.`,
+    message: esReal
+      ? `Timbrado REAL ante el SAT (${list.active}).`
+      : isMock
+        ? 'PAC en modo MOCK — los timbres NO tienen validez fiscal.'
+        : `PAC real (${list.active}) pero la empresa está en PRUEBAS: los timbres NO tienen validez fiscal.`,
     data: {
       ...list,
       is_mock: isMock,
+      ambiente: ambiente === 'production' ? 'PRODUCCION' : 'PRUEBAS',
+      timbrado_real: esReal,
       env_pac_provider: process.env.PAC_PROVIDER || '(no configurado)',
       env_sw_env: process.env.SW_SAPIEN_ENV || '(no configurado)',
       env_sw_token_present: !!process.env.SW_SAPIEN_TOKEN,

@@ -78,7 +78,7 @@ function getProvider(providerName?: string): IPACProvider {
  */
 /** Ambiente de timbrado de la empresa: PRODUCCION → 'production', si no 'sandbox'
  *  (por defecto y ante cualquier duda, PRUEBAS: nunca emite real sin activarlo). */
-async function ambienteEmpresa(companyId: string): Promise<'sandbox' | 'production'> {
+export async function ambienteEmpresa(companyId: string): Promise<'sandbox' | 'production'> {
   try {
     const r = await query<any>(`SELECT timbrado_ambiente FROM companies WHERE id=$1`, [companyId]);
     return r.rows[0]?.timbrado_ambiente === 'PRODUCCION' ? 'production' : 'sandbox';
