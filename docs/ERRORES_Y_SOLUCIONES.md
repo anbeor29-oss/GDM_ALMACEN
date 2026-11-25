@@ -1333,7 +1333,7 @@ columna los aguantara. Es el peor tipo de error: cada capa por separado parece c
 arrastre del redondeo tumbaba el timbre. Los importes van con los decimales de la **moneda** (2 en pesos);
 los 6 decimales son del **precio unitario**, que es justo lo que permite cerrar un total redondo.
 
-**✅ Solución (commit `__HASH__`).** Cuatro piezas:
+**✅ Solución (commit `df5d118`).** Cuatro piezas:
 
 1. **Migración `2026-11-25_precio_unitario_6_decimales.sql`**: `invoice_items.unit_price` →
    `NUMERIC(15,6)`. También en `schema.sql` para instalaciones nuevas. Esto arregla de paso la
@@ -1380,7 +1380,7 @@ que lo advirtiera, y un timbre de pruebas **no existe ante el SAT**.
 `companies.timbrado_ambiente = 'PRODUCCION'` (que es por empresa). El navegador no puede saber ninguna de
 las dos.
 
-**✅ Solución (commit `__HASH__`).** `GET /pac/providers` ahora contesta también el ambiente de **esa**
+**✅ Solución (commit `df5d118`).** `GET /pac/providers` ahora contesta también el ambiente de **esa**
 empresa y un `timbrado_real` que ya combina las dos condiciones. La pantalla muestra lo que de verdad
 pasa:
 
