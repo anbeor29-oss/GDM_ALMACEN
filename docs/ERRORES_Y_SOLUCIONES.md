@@ -1288,7 +1288,7 @@ palomea la casilla**. Un bug detrás de una casilla que casi nadie prende puede 
 aparezca. Ésa es la clase de lectura que hay que mirar con lupa, no las de la pantalla principal —ésas
 truenan el primer día.
 
-**✅ Solución (commit `__HASH__`).** Se lee `?.data?.trabajos`, y se envuelve en `Array.isArray`. El
+**✅ Solución (commit `e4f97de`).** Se lee `?.data?.trabajos`, y se envuelve en `Array.isArray`. El
 guardia **no sobra y tampoco es de aplicación general**: esto alimenta el *indicador de avance* de la
 descarga del SAT, donde «vacío» es una respuesta honesta —si la forma vuelve a cambiar, que se quede sin
 barra de progreso y no que se caiga la revisión entera—. **En una cifra contable NO valdría**: ahí un
