@@ -8618,6 +8618,50 @@ haría leer como navegación. Detalle en `ERRORES_Y_SOLUCIONES.md` #16. Ver [[op
 
 ---
 
+## 2026-11-24 (e-commerce) — La tienda ya decía quién vende; el menú bajó al sidebar y el hub se volvió vitrina
+
+Cuatro cosas en el mismo lote, todas salidas de abrir la tienda recién revivida y mirarla como la mira
+un comprador.
+
+**1. La tienda sí tenía políticas: no había dónde verlas.** Las cuatro —envío, devoluciones, privacidad,
+términos— se capturan en Tiendas desde hace semanas y el API ya las mandaba en cada carga. El storefront
+las recibía y las tiraba: `grep` de «politica|terminos|footer» en la pantalla devolvía **cero**. La
+migración de la tabla hasta lo daba por hecho («el storefront las muestra»); describía la intención, no
+el código. Ahora hay **barra de confianza** bajo el encabezado y **pie de tienda**: quién vende y
+factura (razón social, RFC, estado, contactos —la misma empresa que irá de emisor en el CFDI, así que no
+se promete nada que el sistema no cumpla), los métodos de envío con su costo, y las cuatro políticas en
+un modal que se lee sin salir de la tienda. Si un dato no está capturado, el bloque **no sale**: un
+apartado vacío es peor que no tenerlo.
+
+**2. El menú bajó al sidebar.** El hub eran diez tarjetas que repetían un menú que no existía: la
+entrada «Comercio Electrónico» era una hoja suelta, sin submenú, mientras el resto de NEXO se navega por
+el costado. Ahora es un `NavGroup` con sus nueve destinos, como Facturas o Contabilidad.
+
+**3. El hub se volvió VISTA PREVIA.** Liberado del folleto, el cuerpo hace lo único que esa pantalla
+puede hacer y ninguna otra: **enseñar la tienda como la ve el comprador**, dentro del sistema, con
+selector de tienda, escritorio/teléfono, actualizar, copiar liga y abrir en pestaña. Al lado, una
+**revisión de la vitrina** calculada sobre los datos reales —tienda activa, productos publicados, logo,
+políticas, aviso de privacidad, métodos de envío— donde cada «falta» es una razón concreta por la que un
+comprador se va, con su liga para arreglarlo.
+
+**4. El borrador de «Pagar y facturar» ya dice por qué.** Si el PAC no responde (empresa en PRUEBAS, CSD
+sin cargar, contraseña que no abre la `.key`), la factura queda en DRAFT ligada al pedido y el motivo
+**se iba al log del servidor**. El merchant veía «(borrador)» y ningún porqué —y el inquilino de
+sólo-ecommerce no puede abrir Facturas para averiguarlo. Ahora el motivo se guarda
+(`ec_order.factura_error`) y se lee bajo el folio, con un botón **«Timbrar»** que reintenta sólo el
+timbrado sin recapturar nada.
+
+**De paso:** `Tiendas` enseñaba la liga como `tienda.hcgm.com.mx/<slug>`, un subdominio **que no
+existe**; el merchant la copiaba a WhatsApp y no abría. Ahora enseña la que funciona, armada con
+`import.meta.env.BASE_URL` igual que el botón.
+
+Comprobado contra la tienda real con el servidor de desarrollo apuntado al backend vivo: pie correcto en
+escritorio y en teléfono, modal con el texto que el merchant escribió, consola sin errores. Lo que vive
+detrás del login —sidebar, hub, botón «Timbrar»— quedó verificado sólo por `tsc` y por el build.
+
+Migración `2026-11-24b_ecommerce_pedido_factura.sql`. 197 pruebas verdes, `tsc` de backend y frontend,
+build de producción. Entradas 27 y 28 de `ERRORES_Y_SOLUCIONES.md`.
+
 ## 2026-11-24 (storefront) — La tienda pública estaba muerta: un router de en medio pedía token por toda la API
 
 La URL de la imagen de un producto —la que va dentro de un `<img src>`— contestaba

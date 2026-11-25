@@ -61,6 +61,8 @@ router.get('/:slug', asyncHandler(async (req, res) => {
         envio: t.politica_envio, devolucion: t.politica_devolucion,
         privacidad: t.politica_privacidad, terminos: t.terminos,
       },
+      // Quién vende y factura: el comprador tiene derecho a saberlo antes de pagar.
+      vendedor: await sf.vendedorDeTienda(t.company_id),
     },
   });
 }));

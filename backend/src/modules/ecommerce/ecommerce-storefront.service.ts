@@ -34,6 +34,27 @@ export async function tiendaPorSlug(slug: string): Promise<TiendaPublica> {
   return r.rows[0];
 }
 
+/** Quién vende y factura. En una tienda mexicana esto NO es adorno: la
+ *  identificación del vendedor es lo que separa un comercio de una pantalla
+ *  cualquiera, y es el dato que el comprador busca antes de dejar su dinero.
+ *  Sale de la empresa dueña de la tienda; es el mismo emisor que irá en el
+ *  CFDI, así que no se inventa nada. */
+export async function vendedorDeTienda(companyId: string): Promise<{
+  razonSocial: string | null; rfc: string | null; email: string | null;
+  telefono: string | null; estado: string | null;
+}> {
+  const r = await query<any>(
+    `SELECT business_name, rfc, email, phone, state FROM companies WHERE id = $1`, [companyId]);
+  const c = r.rows[0] || {};
+  return {
+    razonSocial: c.business_name || null,
+    rfc: c.rfc || null,
+    email: c.email || null,
+    telefono: c.phone || null,
+    estado: c.state || null,
+  };
+}
+
 const r2 = (n: number) => Math.round(n * 100) / 100;
 function tasaDe(p: { is_exempt?: boolean; tax_rate?: any }): number {
   if (p.is_exempt) return 0;

@@ -33,6 +33,22 @@ export function PedidosEcPage() {
   const { data, isLoading } = useQuery({ queryKey: ['ec-pedidos'], queryFn: () => api.getPedidosEc() });
   const pedidos: any[] = data?.data?.pedidos || [];
 
+  /* Rematar el timbrado de una factura que quedo en BORRADOR.
+   * El borrador casi nunca es culpa del pedido: es el CSD sin cargar, la
+   * empresa en PRUEBAS o el PAC caido. Arreglado eso, hay que poder cerrar
+   * desde aqui —el inquilino de solo-ecommerce no entra a Facturas— sin
+   * recapturar nada. */
+  const timbrar = async (id: string) => {
+    setProcesando(id); setMsg(null);
+    try {
+      const r = await api.timbrarPedidoEc(id);
+      setMsg({ type: 'ok', text: r.message || 'Factura timbrada.' });
+      qc.invalidateQueries({ queryKey: ['ec-pedidos'] });
+    } catch (e: any) {
+      setMsg({ type: 'err', text: e.response?.data?.message || e.message });
+    } finally { setProcesando(''); }
+  };
+
   const pagarFacturar = async (id: string) => {
     setProcesando(id); setMsg(null);
     try {
@@ -99,9 +115,24 @@ export function PedidosEcPage() {
                     {p.guia && <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-0.5"><Package size={10} /> {p.paqueteria || 'Guía'} {p.guia}</div>}
                   </td>
                   <td className="px-4 py-2.5 text-xs text-gray-600">
-                    {p.invoice_id
-                      ? <span className="inline-flex items-center gap-1 text-emerald-700"><Receipt size={13} /> {p.serie || 'FAC'}-{String(p.folio).padStart(6, '0')}{p.cfdi_uuid ? ' ✓' : ' (borrador)'}</span>
-                      : <span className="text-gray-400">—</span>}
+                    {p.invoice_id ? (
+                      <div className="min-w-0">
+                        <span className={`inline-flex items-center gap-1 ${p.cfdi_uuid ? 'text-emerald-700' : 'text-amber-700'}`}>
+                          <Receipt size={13} /> {p.serie || 'FAC'}-{String(p.folio).padStart(6, '0')}
+                          {p.cfdi_uuid ? ' ✓' : ' (borrador)'}
+                        </span>
+                        {/* El PORQUE del borrador, no sólo la etiqueta: sin esto
+                            el merchant no sabe qué arreglar para timbrarla. */}
+                        {!p.cfdi_uuid && p.factura_error && (
+                          <div className="text-[10px] text-amber-700/90 mt-0.5 max-w-[16rem] leading-snug" title={p.factura_error}>
+                            {p.factura_error}
+                          </div>
+                        )}
+                        {!p.cfdi_uuid && !p.factura_error && (
+                          <div className="text-[10px] text-gray-400 mt-0.5">Sin timbrar.</div>
+                        )}
+                      </div>
+                    ) : <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     {!p.invoice_id && p.estado !== 'CANCELADO' && (
@@ -109,6 +140,14 @@ export function PedidosEcPage() {
                         className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs px-3 py-1.5 rounded-lg">
                         {procesando === p.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
                         Pagar y facturar
+                      </button>
+                    )}
+                    {p.invoice_id && !p.cfdi_uuid && (
+                      <button onClick={() => timbrar(p.id)} disabled={procesando === p.id}
+                        className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs px-3 py-1.5 rounded-lg"
+                        title="Reintenta el timbrado de la factura que quedó en borrador">
+                        {procesando === p.id ? <Loader2 size={14} className="animate-spin" /> : <Receipt size={14} />}
+                        Timbrar
                       </button>
                     )}
                     {p.estado !== 'PENDIENTE_PAGO' && p.estado !== 'CANCELADO' && (

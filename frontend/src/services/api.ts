@@ -3955,6 +3955,10 @@ class APIClient {
   async getPedidosEc() {
     return (await this.client.get('/ecommerce/pedidos')).data;
   }
+  /** Reintenta timbrar la factura que quedo en BORRADOR (CSD, ambiente, PAC). */
+  async timbrarPedidoEc(id: string) {
+    return (await this.client.post(`/ecommerce/pedidos/${id}/timbrar`)).data;
+  }
   async pagarYFacturarPedidoEc(id: string) {
     return (await this.client.post(`/ecommerce/pedidos/${id}/pagar-y-facturar`)).data;
   }

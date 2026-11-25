@@ -78,10 +78,15 @@ export async function facturarPedido(
   // Timbrar — stampInvoice ya indexa en la bóveda y genera la póliza de venta.
   let uuid: string | undefined;
   let timbrada = false;
+  let motivo: string | null = null;
   try {
     const r = await pacService.stampInvoice(companyId, factura.id);
     uuid = r.uuid; timbrada = !!r.uuid;
   } catch (e: any) {
+    /* El motivo se GUARDA, no sólo se registra en el log: el merchant ve
+     * «(borrador)» en su pedido y necesita saber por qué —y el inquilino de
+     * solo-ecommerce no puede abrir la pantalla de Facturas a averiguarlo. */
+    motivo = String(e?.message || 'El PAC no devolvió UUID.').slice(0, 500);
     logger.warn(`[ec-fulfillment] pedido ${order.numero}: factura ${factura.id} creada pero no timbró: ${e.message}`);
   }
 
@@ -89,15 +94,50 @@ export async function facturarPedido(
   await transaction(async (client) => {
     await transactionQuery(client,
       `UPDATE ec_order
-          SET invoice_id=$1, facturado_at=NOW(), updated_at=NOW(),
+          SET invoice_id=$1, facturado_at=NOW(), updated_at=NOW(), factura_error=$3,
               estado = CASE WHEN estado='PENDIENTE_PAGO' THEN 'PAGADO' ELSE estado END
-        WHERE id=$2`, [factura.id, orderId]);
+        WHERE id=$2`, [factura.id, orderId, motivo]);
     await transactionQuery(client,
       `UPDATE ec_inventory_reservation SET estado='CONSUMIDA'
         WHERE order_id=$1 AND estado='ACTIVA'`, [orderId]);
   });
 
   return { invoiceId: factura.id, uuid, timbrada, yaExistia: false };
+}
+
+/**
+ * Reintenta timbrar la factura BORRADOR de un pedido ya facturado.
+ *
+ * Existe porque el borrador casi nunca es culpa del pedido: es el CSD sin
+ * cargar, la empresa en PRUEBAS o el PAC caído. Arreglado eso, el merchant
+ * necesita rematar desde su propia pantalla —el inquilino de sólo-ecommerce no
+ * tiene acceso a Facturas— sin volver a capturar nada.
+ */
+export async function timbrarFacturaDePedido(
+  companyId: string, orderId: string,
+): Promise<{ invoiceId: string; uuid?: string; timbrada: boolean }> {
+  const r = await query<any>(
+    `SELECT o.invoice_id, o.numero, i.cfdi_uuid
+       FROM ec_order o LEFT JOIN invoices i ON i.id = o.invoice_id
+      WHERE o.id=$1 AND o.company_id=$2`, [orderId, companyId]);
+  const row = r.rows[0];
+  if (!row) throw new ValidationError('Pedido no encontrado.');
+  if (!row.invoice_id) throw new ValidationError('El pedido todavía no tiene factura: usa «Pagar y facturar».');
+  if (row.cfdi_uuid) {
+    await query(`UPDATE ec_order SET factura_error=NULL WHERE id=$1`, [orderId]);
+    return { invoiceId: row.invoice_id, uuid: row.cfdi_uuid, timbrada: true };
+  }
+
+  try {
+    const t = await pacService.stampInvoice(companyId, row.invoice_id);
+    await query(`UPDATE ec_order SET factura_error=NULL, updated_at=NOW() WHERE id=$1`, [orderId]);
+    return { invoiceId: row.invoice_id, uuid: t.uuid, timbrada: !!t.uuid };
+  } catch (e: any) {
+    const motivo = String(e?.message || 'El PAC no devolvió UUID.').slice(0, 500);
+    await query(`UPDATE ec_order SET factura_error=$2, updated_at=NOW() WHERE id=$1`, [orderId, motivo]);
+    logger.warn(`[ec-fulfillment] pedido ${row.numero}: reintento de timbrado falló: ${motivo}`);
+    throw new ValidationError(`No se pudo timbrar: ${motivo}`);
+  }
 }
 
 /** Marca el pedido PAGADO (si no lo estaba) y lo factura. */
@@ -172,6 +212,7 @@ export async function listarPedidos(companyId: string) {
             o.envio_metodo, (o.envio_base + o.envio_iva)::float AS envio_total,
             o.cupon_codigo, o.descuento::float AS descuento,
             o.paqueteria, o.guia, o.surtido_at, o.enviado_at, o.entregado_at,
+            o.factura_error,
             i.cfdi_uuid, i.serie, i.folio,
             s.nombre AS tienda
        FROM ec_order o

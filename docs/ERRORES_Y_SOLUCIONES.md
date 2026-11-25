@@ -958,6 +958,88 @@ las notas que explican precisamente por qué no se usa `router.use(authenticateT
 
 ---
 
+## 27. La tienda sí tenía políticas: nunca hubo dónde verlas
+
+**Síntoma.** La tienda pública se veía pelona: encabezado, rejilla de productos, botón «Agregar». Nada
+más. «¿El mismo diseño de página no tiene más opciones?»
+
+**Lo que se encontró.** La tienda **sí** tenía las cuatro políticas capturadas —se escriben en
+Comercio Electrónico → Tiendas— y el API **ya las mandaba**:
+
+```
+GET /api/v1/storefront/tenis-don-chuy
+  "politicas":{"envio":"En la compra de 10 te regalo el envio",
+               "devolucion":"No hay devouciones)si no es por defecto)",
+               "privacidad":"…","terminos":"…"}
+```
+
+En `Storefront.tsx`, `grep -n "politica|terminos|footer"` devolvía **cero**. La pantalla recibía esos
+textos y los tiraba a la basura. Peor: la migración que creó la tabla lo daba por hecho desde el
+principio —`-- Políticas (texto por ahora; el storefront las muestra)`—. El comentario describía una
+intención, no el código.
+
+**Causa raíz.** El storefront se construyó de arriba hacia abajo (encabezado → catálogo → carrito →
+checkout → cuenta) y el **pie nunca se escribió**. Como el carrito sí funcionaba, nadie notó el hueco:
+la tienda *vendía*, sólo que no decía quién vendía, cuánto costaba el envío ni qué pasaba con una
+devolución. Eso es justo lo que un comprador que no te conoce busca antes de soltar su dinero.
+
+**✅ Solución (commit `__HASH__`).** Dos bloques, los dos alimentados de datos **reales**; si la tienda
+no los tiene capturados, el bloque no sale —un apartado vacío es peor que no tenerlo—:
+
+- **Barra de confianza** bajo el encabezado: quién vende, desde cuánto es el envío, si hay políticas.
+- **Pie**: «Vendido y facturado por» con la razón social, el RFC, el estado y los contactos de la
+  empresa dueña de la tienda; los métodos de envío con su costo; y las cuatro políticas, cada una en un
+  modal que se lee sin salir de la tienda.
+
+El vendedor es un dato **nuevo** en el API (`vendedorDeTienda`): sale de `companies`, que es el **mismo
+emisor que irá en el CFDI**, así que la tienda no promete nada que el sistema no vaya a cumplir.
+
+**Comprobado contra la tienda real** (servidor de desarrollo apuntado al backend vivo): el pie sale en
+escritorio y en teléfono, el modal abre con el texto que el merchant escribió hace semanas y la consola
+no tira un solo error.
+
+**De paso, dos cosas que se vieron al comprobar.**
+- `Tiendas` enseñaba la liga como `tienda.hcgm.com.mx/<slug>`, un subdominio **que no existe**. El
+  merchant la copiaba a WhatsApp y no abría. Ahora enseña la que de verdad funciona, armada con
+  `import.meta.env.BASE_URL` igual que el enlace del botón (ver entrada 25).
+- El logo de la tienda de prueba apunta a un **artículo de revista**, no a una imagen: por eso el
+  encabezado sale con el ícono roto. Es dato capturado, no código.
+
+---
+
+## 28. «Pagar y facturar» dejaba un borrador y el porqué sólo vivía en el log
+
+**Síntoma.** Se hizo el ejercicio completo —pedido web → «Pagar y facturar»— y salió una **factura
+borrador**. ¿Dónde quedó, y por qué no se timbró?
+
+**Dónde quedó.** En el renglón del pedido: `ec_order.invoice_id` apunta a la factura y la pantalla
+mostraba `FAC-000001 (borrador)`. La factura existe, con sus renglones y su cliente PÚBLICO EN GENERAL;
+lo único que le falta es el UUID del SAT.
+
+**Causa raíz.** `facturarPedido` crea el CFDI y lo manda timbrar. Si el PAC no responde —empresa en
+PRUEBAS, CSD sin cargar, contraseña que no abre la `.key` (ver entrada de `CSD_TIMBRADO`)— se atrapa la
+excepción, se deja la factura en DRAFT y **el motivo se va al log del servidor**:
+
+```ts
+} catch (e: any) {
+  logger.warn(`[ec-fulfillment] … creada pero no timbró: ${e.message}`);
+}
+```
+
+El merchant veía la etiqueta «(borrador)» y ningún porqué. Y el inquilino de **sólo-ecommerce** no puede
+abrir la pantalla de Facturas —su sidebar es únicamente la tienda—, así que no tenía forma de
+averiguarlo ni de rematar el timbrado.
+
+**✅ Solución (commit `__HASH__`).** El motivo se **guarda** (`ec_order.factura_error`, migración
+`2026-11-24b_ecommerce_pedido_factura.sql`) y se enseña bajo el folio, en el mismo renglón. Junto a él,
+un botón **«Timbrar»** que reintenta sólo el timbrado (`POST /ecommerce/pedidos/:id/timbrar`) sin
+recapturar nada; si vuelve a fallar, actualiza el motivo. Al timbrar bien, el motivo se borra.
+
+El borrador casi nunca es culpa del pedido: es el CSD o el ambiente. Lo que faltaba era **decirlo** y
+dar dónde rematar.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

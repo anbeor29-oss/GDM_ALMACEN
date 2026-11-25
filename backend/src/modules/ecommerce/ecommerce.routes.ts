@@ -291,4 +291,13 @@ router.post('/pedidos/:id/pagar-y-facturar', asyncHandler(async (req, res) => {
   });
 }));
 
+/** Reintenta timbrar la factura que quedó en BORRADOR, sin recapturar el pedido. */
+router.post('/pedidos/:id/timbrar', asyncHandler(async (req, res) => {
+  const r = await fulfillment.timbrarFacturaDePedido(companyId(req), req.params.id);
+  res.json({
+    success: true, data: r,
+    message: r.timbrada ? `Factura timbrada (UUID ${r.uuid}).` : 'La factura sigue en borrador.',
+  });
+}));
+
 export default router;

@@ -11,8 +11,14 @@ import { Store, Plus, Pencil, Trash2, Loader2, Save, X, ArrowLeft, ExternalLink,
 import { Link } from 'react-router-dom';
 import api from '@/services/api';
 
-/** Base visible del subdominio (sólo preview por ahora; el ruteo real llega luego). */
-const BASE_DOMINIO = 'tienda.hcgm.com.mx/';
+/** Base VISIBLE de la liga de la tienda.
+ *
+ * Decia `tienda.hcgm.com.mx/`, un subdominio que no existe: el merchant leia
+ * esa liga, la copiaba a WhatsApp y no abria. La liga que de verdad funciona es
+ * la ruta publica de la app, `/t/<slug>` bajo su base (`/` en desarrollo,
+ * `/erp/` en el hosting). Si algun dia hay subdominio propio, se cambia AQUI y
+ * en `urlTienda` del hub. */
+const BASE_DOMINIO = `${window.location.host}${import.meta.env.BASE_URL}t/`;
 
 export function TiendasPage() {
   const qc = useQueryClient();

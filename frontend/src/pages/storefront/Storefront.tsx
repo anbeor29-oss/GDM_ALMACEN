@@ -8,7 +8,8 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { ShoppingCart, Plus, Minus, X, Loader2, CheckCircle, Store, PackageX, User, LogOut, Receipt, Package } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, X, Loader2, CheckCircle, Store, PackageX, User, LogOut, Receipt, Package,
+  Building2, Truck, ShieldCheck, FileText, Mail, Phone } from 'lucide-react';
 
 const SF_BASE = (import.meta.env.VITE_API_BASE
   ? String(import.meta.env.VITE_API_BASE).replace(/\/+$/, '') + '/api/v1'
@@ -23,9 +24,21 @@ type Producto = {
 };
 type Categoria = { id: string; nombre: string; slug: string; productos: number };
 type Metodo = { id: string; nombre: string; tipo: string; costo: number; costoConIva: number; gratisDesde: number | null };
+type Politicas = {
+  envio: string | null; devolucion: string | null;
+  privacidad: string | null; terminos: string | null;
+};
+/** Quien vende y factura. Sale de la empresa duena de la tienda: es el MISMO
+ *  emisor que ira en el CFDI, asi que aqui no se promete nada que el sistema
+ *  no vaya a cumplir. */
+type Vendedor = {
+  razonSocial: string | null; rfc: string | null;
+  email: string | null; telefono: string | null; estado: string | null;
+};
 type Tienda = {
   nombre: string; slug: string; moneda: string; logoUrl: string | null;
   colorPrimario: string; colorSecundario: string;
+  politicas?: Politicas; vendedor?: Vendedor;
 };
 
 const fmt = (n: number) => n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -63,6 +76,8 @@ export function StorefrontPage() {
   const [enviando, setEnviando] = useState(false);
   const [errorPedido, setErrorPedido] = useState('');
   const [confirmado, setConfirmado] = useState<{ numero: string; total: number; moneda: string } | null>(null);
+  // Politica abierta al pie (titulo + texto). Se lee sin salir de la tienda.
+  const [politica, setPolitica] = useState<{ titulo: string; texto: string } | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -93,6 +108,15 @@ export function StorefrontPage() {
   }, [slug]);
 
   const marca = tienda?.colorPrimario || '#059669';
+  /* Datos de confianza. Se derivan de lo que de verdad vino del API: si la
+   * tienda no los tiene capturados, el bloque simplemente no sale —antes que
+   * ensenar un apartado vacio, que es peor que no tenerlo. */
+  const vendedor = tienda?.vendedor || null;
+  const pol = tienda?.politicas || null;
+  const hayPoliticas = !!(pol && (pol.envio || pol.devolucion || pol.privacidad || pol.terminos));
+  const envioMinimo = metodos.length
+    ? Math.min(...metodos.map((m) => Number(m.costoConIva) || 0))
+    : 0;
   const prodById = useMemo(() => {
     const m: Record<string, Producto> = {};
     for (const p of productos) m[p.productId] = p;
@@ -305,6 +329,38 @@ export function StorefrontPage() {
         </div>
       </header>
 
+      {/* BARRA DE CONFIANZA.
+          Quien no conoce la tienda decide aqui. Sólo se enseña lo que es CIERTO
+          y se puede comprobar: quién vende (el mismo emisor del CFDI), si hay
+          envío con costo a la vista y si las políticas están publicadas. Nada de
+          sellos de garantía inventados. */}
+      {(vendedor?.razonSocial || metodos.length > 0 || hayPoliticas) && (
+        <div className="bg-white border-b border-gray-200">
+          <div className="max-w-5xl mx-auto px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-gray-600">
+            {vendedor?.razonSocial && (
+              <span className="flex items-center gap-1.5 min-w-0">
+                <Building2 size={14} className="shrink-0" style={{ color: marca }} />
+                <span className="truncate">Vendido por <b className="text-gray-800">{vendedor.razonSocial}</b></span>
+              </span>
+            )}
+            {metodos.length > 0 && (
+              <span className="flex items-center gap-1.5">
+                <Truck size={14} className="shrink-0" style={{ color: marca }} />
+                {envioMinimo === 0
+                  ? 'Envío gratis'
+                  : <>Envío desde <b className="text-gray-800">${fmt(envioMinimo)}</b></>}
+              </span>
+            )}
+            {hayPoliticas && (
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck size={14} className="shrink-0" style={{ color: marca }} />
+                Políticas publicadas
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Catálogo */}
       <main className="max-w-5xl mx-auto px-4 py-5">
         {/* Filtro por categoría (secciones de la tienda) */}
@@ -377,6 +433,118 @@ export function StorefrontPage() {
           </div>
         )}
       </main>
+
+      {/* PIE DE LA TIENDA.
+          Los cuatro textos de politica ya se capturaban en Tiendas y el API ya
+          los mandaba; no habia donde se vieran, asi que el comprador nunca supo
+          cuando le llega, que pasa si devuelve, ni quien se queda con sus datos.
+          Aqui se publican, junto a la identificacion del vendedor. */}
+      <footer className="mt-8 border-t border-gray-200 bg-white">
+        <div className="max-w-5xl mx-auto px-4 py-6 grid gap-6 sm:grid-cols-3 text-sm">
+          {/* Quién vende */}
+          <div>
+            <h3 className="font-semibold text-gray-900 text-[13px] uppercase tracking-wide">Vendido y facturado por</h3>
+            {vendedor?.razonSocial
+              ? (
+                <div className="mt-2 space-y-1 text-gray-600 text-[13px]">
+                  <p className="font-medium text-gray-800">{vendedor.razonSocial}</p>
+                  {vendedor.rfc && <p>RFC {vendedor.rfc}</p>}
+                  {vendedor.estado && <p>{vendedor.estado}, México</p>}
+                  {vendedor.email && (
+                    <p className="flex items-center gap-1.5">
+                      <Mail size={13} className="text-gray-400" />
+                      <a href={`mailto:${vendedor.email}`} className="hover:underline break-all">{vendedor.email}</a>
+                    </p>
+                  )}
+                  {vendedor.telefono && (
+                    <p className="flex items-center gap-1.5">
+                      <Phone size={13} className="text-gray-400" />
+                      <a href={`tel:${vendedor.telefono}`} className="hover:underline">{vendedor.telefono}</a>
+                    </p>
+                  )}
+                </div>
+              )
+              : <p className="mt-2 text-gray-500 text-[13px]">{tienda.nombre}</p>}
+          </div>
+
+          {/* Envíos: el costo a la vista ANTES de llegar al carrito */}
+          <div>
+            <h3 className="font-semibold text-gray-900 text-[13px] uppercase tracking-wide">Envíos</h3>
+            {metodos.length === 0
+              ? <p className="mt-2 text-gray-500 text-[13px]">Consulta las opciones al confirmar tu pedido.</p>
+              : (
+                <ul className="mt-2 space-y-1 text-gray-600 text-[13px]">
+                  {metodos.map((m) => (
+                    <li key={m.id} className="flex items-baseline justify-between gap-2">
+                      <span className="truncate">{m.nombre}</span>
+                      <span className="shrink-0 font-medium text-gray-800">
+                        {m.costoConIva === 0 ? 'Gratis' : `$${fmt(m.costoConIva)}`}
+                      </span>
+                    </li>
+                  ))}
+                  {metodos.some((m) => m.gratisDesde) && (
+                    <li className="text-[12px] text-gray-500 pt-0.5">
+                      Envío gratis a partir de ${fmt(Math.min(...metodos.filter((m) => m.gratisDesde).map((m) => Number(m.gratisDesde))))}.
+                    </li>
+                  )}
+                </ul>
+              )}
+          </div>
+
+          {/* Políticas */}
+          <div>
+            <h3 className="font-semibold text-gray-900 text-[13px] uppercase tracking-wide">Información</h3>
+            {hayPoliticas ? (
+              <ul className="mt-2 space-y-1">
+                {([
+                  ['Política de envío', pol?.envio],
+                  ['Cambios y devoluciones', pol?.devolucion],
+                  ['Aviso de privacidad', pol?.privacidad],
+                  ['Términos y condiciones', pol?.terminos],
+                ] as [string, string | null | undefined][])
+                  .filter(([, texto]) => !!texto)
+                  .map(([titulo, texto]) => (
+                    <li key={titulo}>
+                      <button onClick={() => setPolitica({ titulo, texto: texto as string })}
+                        className="flex items-center gap-1.5 text-[13px] text-gray-600 hover:text-gray-900 hover:underline">
+                        <FileText size={13} className="text-gray-400" /> {titulo}
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-gray-500 text-[13px]">
+                Esta tienda aún no publica sus políticas.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100">
+          <div className="max-w-5xl mx-auto px-4 py-3 text-[12px] text-gray-400">
+            © {new Date().getFullYear()} {vendedor?.razonSocial || tienda.nombre}. Precios en {tienda.moneda} con IVA incluido.
+          </div>
+        </div>
+      </footer>
+
+      {/* Lectura de una política, sin salir de la tienda */}
+      {politica && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50"
+          onClick={() => setPolitica(null)}>
+          <div className="bg-white rounded-xl max-w-xl w-full max-h-[80vh] flex flex-col shadow-xl"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <h3 className="font-semibold text-gray-900">{politica.titulo}</h3>
+              <button onClick={() => setPolitica(null)} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-50">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+              {politica.texto}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Carrito / Checkout (panel lateral) */}
       {abierto && (

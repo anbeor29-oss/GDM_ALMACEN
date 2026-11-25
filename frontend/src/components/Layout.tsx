@@ -441,7 +441,27 @@ export function Layout() {
                 {show('pos')          && <NavItem to="/pos"          icon={emoji3D('🧮')} accent="rose"    label="Punto de Venta"   open={sidebarOpen} />}
                 {/* Comercio Electrónico: módulo contratable aparte. La empresa que lo
                     tiene (modulos_habilitados=['ecommerce']) ve SÓLO esta entrada. */}
-                {show('ecommerce')    && <NavItem to="/ecommerce"    icon={emoji3D('🛒')} accent="emerald" label="Comercio Electrónico" open={sidebarOpen} />}
+                {show('ecommerce')    && (
+                  <NavGroup
+                    to="/ecommerce"
+                    icon={emoji3D('🛒')}
+                    label="Comercio Electrónico"
+                    accent="emerald"
+                    open={sidebarOpen}
+                    pathPrefix="/ecommerce"
+                    children={[
+                      { to: '/ecommerce',              icon: emoji3D('👁️'), label: 'Vista previa' },
+                      { to: '/ecommerce/tiendas',      icon: emoji3D('🏪'), label: 'Tiendas' },
+                      { to: '/ecommerce/catalogo',     icon: emoji3D('🌐'), label: 'Catálogo web' },
+                      { to: '/ecommerce/productos',    icon: emoji3D('📦'), label: 'Productos' },
+                      { to: '/ecommerce/inventario',   icon: emoji3D('🗃️'), label: 'Inventario' },
+                      { to: '/ecommerce/pedidos',      icon: emoji3D('📋'), label: 'Pedidos' },
+                      { to: '/ecommerce/cupones',      icon: emoji3D('🏷️'), label: 'Promociones' },
+                      { to: '/ecommerce/compradores',  icon: emoji3D('👥'), label: 'Clientes web' },
+                      { to: '/ecommerce/reportes',     icon: emoji3D('📊'), label: 'Reportes' },
+                    ]}
+                  />
+                )}
                 {/* FACTURAS COMO AGRUPADOR.
                      Facturas, notas de crédito, complementos de pago, clientes y
                      monedas son partes del MISMO ciclo: se factura, se corrige,
