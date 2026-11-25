@@ -16,6 +16,7 @@ import nodemailer, { Transporter } from 'nodemailer';
 import { query } from '../../config/database';
 import logger from '../../middleware/logger';
 import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
+import { revisarDireccion } from './direccion-correo';
 import { generateInvoicePDF } from '../cfdi/pdf.service';
 import { generateCreditNotePDF } from '../cfdi/pdf-credit-note.service';
 import { generatePaymentPDF } from '../cfdi/pdf-payment.service';
@@ -245,7 +246,7 @@ export async function sendTestMail(companyId: string, to: string): Promise<{ des
 
 /** Traduce los errores crudos de SMTP a una pista accionable (host mal escrito,
  *  puerto, credenciales…), en vez de mostrar «getaddrinfo ENOTFOUND …» a secas. */
-function explicarErrorSmtp(e: any): string {
+export function explicarErrorSmtp(e: any): string {
   const code = String(e?.code || '').toUpperCase();
   const host = e?.hostname || e?.address || '';
   if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
@@ -424,6 +425,15 @@ export async function sendInvoiceMail(input: {
 }> {
   if (!input.to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.to.trim())) {
     throw new ValidationError('El correo destino no es válido');
+  }
+  /* El dominio del destinatario tiene que EXISTIR. Mandar a uno que no existe
+   * gasta el envío y le regala un rebote al buzón de la empresa —y los rebotes
+   * le cuestan reputación al remitente, que es lo que decide si los DEMÁS
+   * correos caen en bandeja o en spam. Sólo detiene cuando el DNS afirma que el
+   * dominio no existe; si el DNS no contesta, el correo sale igual. */
+  {
+    const rev = await revisarDireccion(input.to.trim());
+    if (!rev.ok) throw new ValidationError(rev.motivo || 'El correo destino no es válido');
   }
   if (input.attachments.length === 0) {
     throw new ValidationError('Selecciona al menos un archivo para enviar');

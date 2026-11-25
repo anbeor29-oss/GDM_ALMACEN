@@ -20,7 +20,8 @@
 import { query } from '../../config/database';
 import { ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import logger from '../../middleware/logger';
-import { sendInvoiceMail } from '../mailer/mailer.service';
+import { sendInvoiceMail, explicarErrorSmtp } from '../mailer/mailer.service';
+import { revisarDireccion } from '../mailer/direccion-correo';
 import { fechaMx } from '../../utils/fecha-mx';
 
 const CORREO_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -96,6 +97,14 @@ export async function listaDeEnvio(companyId: string, periodoId?: string): Promi
 export async function setCorreoTrabajador(companyId: string, reciboId: string, correo: string) {
   const c = String(correo || '').trim().toLowerCase();
   if (c && !CORREO_OK.test(c)) throw new ValidationError('Ese correo no es válido.');
+  /* Se revisa AL CAPTURAR, que es cuando la persona lo tiene enfrente y puede
+   * corregirlo. Descubrirlo hasta el envío significa un recibo que no salió y
+   * un rebote. `hotmail.ocm` pasa la sintaxis sin problema: el dedazo sólo se
+   * ve preguntándole al DNS si ese dominio existe. */
+  if (c) {
+    const rev = await revisarDireccion(c);
+    if (!rev.ok) throw new ValidationError(rev.motivo || 'Ese correo no es válido.');
+  }
   const r = await query<{ empleado_id: string }>(
     `UPDATE nomina_recibos SET correo = $3 WHERE id = $1 AND company_id = $2 RETURNING empleado_id`,
     [reciboId, companyId, c || null]);
@@ -183,6 +192,20 @@ export async function enviarRecibos(
       continue;
     }
 
+    /* Antes de gastar el envío: si el dominio no existe, no hay a dónde
+     * entregar. Se marca como FALLO con el motivo en claro —y con la corrección
+     * si el dominio se parece a uno conocido— en vez de dejar que el servidor
+     * conteste un 550 de cuatro renglones que nadie descifra. */
+    const rev = await revisarDireccion(correo);
+    if (!rev.ok) {
+      const msg = rev.motivo || 'El correo no es válido.';
+      await query(`UPDATE nomina_recibos SET enviado_error = $2 WHERE id = $1`, [rec.id, msg]);
+      out.fallidos++;
+      out.detalle.push({ ...base, correo, estado: 'FALLO', mensaje: msg });
+      logger.warn(`[nomina] recibo ${rec.num_empleado}: ${correo} no se intentó - ${msg}`);
+      continue;
+    }
+
     const etiqueta = etiquetaPeriodo(rec);
     const saludo = `Hola ${rec.nombre}:`;
     const cuerpo =
@@ -211,7 +234,9 @@ export async function enviarRecibos(
       out.enviados++;
       out.detalle.push({ ...base, correo, estado: 'ENVIADO' });
     } catch (e: any) {
-      const msg = e?.message || 'No se pudo enviar.';
+      /* Traducido, no crudo: el 550 de un servidor viene en inglés y en cuatro
+       * renglones de jerga. Quien manda la nómina necesita saber QUÉ ARREGLAR. */
+      const msg = explicarErrorSmtp(e) || e?.message || 'No se pudo enviar.';
       // Se guarda el porqué: sin esto, el siguiente intento repite el error a ciegas.
       await query(`UPDATE nomina_recibos SET enviado_error = $2 WHERE id = $1`, [rec.id, msg]);
       out.fallidos++;

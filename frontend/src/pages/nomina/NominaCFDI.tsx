@@ -46,11 +46,12 @@ const ESTATUS: Record<string, { label: string; cls: string }> = {
  * lados (recibo y expediente) para no volver a capturarlo el mes que entra.
  */
 function CapturaCorreo({ id, marcado, onSave }: {
-  id: string; marcado: boolean; onSave: (id: string, correo: string) => Promise<void>;
+  id: string; marcado: boolean; onSave: (id: string, correo: string) => Promise<string | null>;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [valor, setValor] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [motivo, setMotivo] = useState('');
 
   if (!abierto) {
     return (
@@ -62,17 +63,31 @@ function CapturaCorreo({ id, marcado, onSave }: {
     );
   }
   return (
-    <span className="flex items-center gap-1 mt-0.5">
-      <input autoFocus type="email" value={valor} onChange={(e) => setValor(e.target.value)}
-        placeholder="correo@dominio.com"
-        className="text-[11px] border border-gray-300 rounded px-1.5 py-0.5 w-52"
-        onKeyDown={(e) => { if (e.key === 'Escape') setAbierto(false); }} />
-      <button disabled={guardando || !valor.trim()}
-        onClick={async () => { setGuardando(true); await onSave(id, valor.trim()); setGuardando(false); setAbierto(false); }}
-        className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-600 text-white disabled:opacity-40">
-        {guardando ? '…' : 'Guardar'}
-      </button>
-      <button onClick={() => setAbierto(false)} className="text-[11px] text-gray-400 hover:text-gray-600">cancelar</button>
+    <span className="block mt-0.5">
+      <span className="flex items-center gap-1">
+        <input autoFocus type="email" value={valor}
+          onChange={(e) => { setValor(e.target.value); setMotivo(''); }}
+          placeholder="correo@dominio.com"
+          className={`text-[11px] border rounded px-1.5 py-0.5 w-52 ${motivo ? 'border-rose-400' : 'border-gray-300'}`}
+          onKeyDown={(e) => { if (e.key === 'Escape') setAbierto(false); }} />
+        <button disabled={guardando || !valor.trim()}
+          onClick={async () => {
+            setGuardando(true);
+            const err = await onSave(id, valor.trim());
+            setGuardando(false);
+            // Sólo se cierra si de verdad guardó: cerrar con el correo rechazado
+            // es decirle al usuario que quedó cuando no quedó.
+            if (err) setMotivo(err); else { setMotivo(''); setAbierto(false); }
+          }}
+          className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-600 text-white disabled:opacity-40">
+          {guardando ? '…' : 'Guardar'}
+        </button>
+        <button onClick={() => { setMotivo(''); setAbierto(false); }}
+          className="text-[11px] text-gray-400 hover:text-gray-600">cancelar</button>
+      </span>
+      {motivo && (
+        <span className="block text-[11px] text-rose-700 mt-0.5 max-w-xs leading-snug">{motivo}</span>
+      )}
     </span>
   );
 }
@@ -288,13 +303,18 @@ export function NominaCFDIPage() {
   /* El correo del trabajador se captura AQUÍ, que es donde se descubre que
    * falta. Se guarda también en el expediente para que el mes que entra ya no
    * falte: corregirlo sólo en el recibo es volver a capturarlo cada periodo. */
-  const guardarCorreo = async (id: string, correo: string) => {
+  /* Devuelve `null` si guardó, o el MOTIVO si no. El motivo se enseña dentro
+   * de la cajita —no arriba de la pantalla— porque ahí está la vista puesta y
+   * ahí es donde se corrige. Antes el error se tragaba: la cajita se cerraba
+   * como si hubiera guardado y el correo malo seguía igual. */
+  const guardarCorreo = async (id: string, correo: string): Promise<string | null> => {
     setError('');
     try {
       await api.setCorreoRecibo(id, correo);
       q.refetch();
+      return null;
     } catch (e: any) {
-      setError(e?.response?.data?.message || 'No se pudo guardar el correo');
+      return e?.response?.data?.message || 'No se pudo guardar el correo';
     }
   };
 
