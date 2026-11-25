@@ -983,7 +983,7 @@ checkout → cuenta) y el **pie nunca se escribió**. Como el carrito sí funcio
 la tienda *vendía*, sólo que no decía quién vendía, cuánto costaba el envío ni qué pasaba con una
 devolución. Eso es justo lo que un comprador que no te conoce busca antes de soltar su dinero.
 
-**✅ Solución (commit `__HASH__`).** Dos bloques, los dos alimentados de datos **reales**; si la tienda
+**✅ Solución (commit `78215e5`).** Dos bloques, los dos alimentados de datos **reales**; si la tienda
 no los tiene capturados, el bloque no sale —un apartado vacío es peor que no tenerlo—:
 
 - **Barra de confianza** bajo el encabezado: quién vende, desde cuánto es el envío, si hay políticas.
@@ -1030,7 +1030,7 @@ El merchant veía la etiqueta «(borrador)» y ningún porqué. Y el inquilino d
 abrir la pantalla de Facturas —su sidebar es únicamente la tienda—, así que no tenía forma de
 averiguarlo ni de rematar el timbrado.
 
-**✅ Solución (commit `__HASH__`).** El motivo se **guarda** (`ec_order.factura_error`, migración
+**✅ Solución (commit `78215e5`).** El motivo se **guarda** (`ec_order.factura_error`, migración
 `2026-11-24b_ecommerce_pedido_factura.sql`) y se enseña bajo el folio, en el mismo renglón. Junto a él,
 un botón **«Timbrar»** que reintenta sólo el timbrado (`POST /ecommerce/pedidos/:id/timbrar`) sin
 recapturar nada; si vuelve a fallar, actualiza el motivo. Al timbrar bien, el motivo se borra.
