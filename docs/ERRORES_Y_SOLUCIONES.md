@@ -1182,7 +1182,7 @@ patrón puede saber qué dominios existen. Sólo el DNS lo sabe.
 le cuestan **reputación al remitente**, que es lo que decide si los DEMÁS correos caen en bandeja o en
 spam. Y el mensaje que vio el usuario no decía lo único que importaba: *le faltó una letra al dominio*.
 
-**✅ Solución (commit `__HASH31__`).** `modules/mailer/direccion-correo.ts` revisa la dirección **antes**
+**✅ Solución (commit `7be11d1`).** `modules/mailer/direccion-correo.ts` revisa la dirección **antes**
 de gastar el envío:
 
 - **El DNS decide si se bloquea.** Un dominio sin MX y sin A no puede recibir nada: eso es un hecho.
