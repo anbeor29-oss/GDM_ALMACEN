@@ -15,7 +15,14 @@ import { leerCfdiXml, ladoParaRfc } from '@/utils/leerCfdiXml';
 import api from '@/services/api';
 import { formatCuenta, useMascara } from '@/utils/cuenta';
 
-export function CustomersPage() {
+/**
+ * `contable=false` esconde lo que necesita el modulo de Contabilidad: la
+ * columna de cuenta, los dos botones que la generan o la traen del catalogo, y
+ * el campo del modal. Se usa desde Comercio Electronico, donde el inquilino NO
+ * tiene contratada la contabilidad: esas llamadas le contestarian 403 y ademas
+ * no significan nada para quien solo vende en linea.
+ */
+export function CustomersPage({ contable = true }: { contable?: boolean } = {}) {
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -44,6 +51,7 @@ export function CustomersPage() {
   const { data: subctasData } = useQuery({
     queryKey: ['subcuentas-cliente'],
     queryFn: () => api.getSubcuentasTercero('cliente'),
+    enabled: contable,
   });
   const cuentaPorRfc = useMemo(() => {
     const m = new Map<string, string>();
@@ -85,6 +93,8 @@ export function CustomersPage() {
           <p className="text-gray-600 mt-2">Receptores conforme a CFDI 4.0 (CFF Art. 29-A)</p>
         </div>
         <div className="flex items-center gap-2">
+          {contable && (
+          <>
           <button
             onClick={traerDelCatalogo}
             disabled={trayendo}
@@ -103,6 +113,8 @@ export function CustomersPage() {
             {generando ? <Loader2 size={18} className="animate-spin" /> : null}
             Generar cuentas contables
           </button>
+          </>
+          )}
           <button
             onClick={() => setCreateOpen(true)}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors shadow"
@@ -119,7 +131,7 @@ export function CustomersPage() {
             <tr>
               <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Nombre</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">RFC</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Cuenta contable</th>
+              {contable && <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Cuenta contable</th>}
               <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Régimen</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">CP</th>
               <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Saldo</th>
@@ -128,20 +140,22 @@ export function CustomersPage() {
           </thead>
           <tbody className="divide-y divide-gray-200">
             {isLoading ? (
-              <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-600">Cargando…</td></tr>
+              <tr><td colSpan={contable ? 7 : 6} className="px-6 py-8 text-center text-gray-600">Cargando…</td></tr>
             ) : customersData?.data?.customers?.length === 0 ? (
-              <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-600">No hay clientes</td></tr>
+              <tr><td colSpan={contable ? 7 : 6} className="px-6 py-8 text-center text-gray-600">No hay clientes</td></tr>
             ) : (
               customersData?.data?.customers?.map((c: any) => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm font-medium text-gray-900 uppercase">{c.business_name}</td>
                   <td className="px-6 py-4 text-sm text-gray-600 font-mono">{c.rfc}</td>
+                  {contable && (
                   <td className="px-6 py-4 text-sm text-gray-700 font-mono">
                     {(() => {
                       const cta = c.cuenta_contable || cuentaPorRfc.get(String(c.rfc || '').toUpperCase());
                       return cta ? formatCuenta(cta, mascara) : <span className="text-gray-400" title="Usa «Generar cuentas contables»">—</span>;
                     })()}
                   </td>
+                  )}
                   <td className="px-6 py-4 text-sm text-gray-600 font-mono">{c.fiscal_regime || '—'}</td>
                   <td className="px-6 py-4 text-sm text-gray-600 font-mono">{c.postal_code || '—'}</td>
                   <td className="px-6 py-4 text-right">
@@ -197,6 +211,7 @@ export function CustomersPage() {
       {createOpen && (
         <CustomerModal
           mode="create"
+          contable={contable}
           onClose={() => setCreateOpen(false)}
           onSaved={() => { setCreateOpen(false); refresh(); }}
         />
@@ -205,6 +220,7 @@ export function CustomersPage() {
       {editingId && (
         <CustomerModal
           mode="edit"
+          contable={contable}
           customerId={editingId}
           onClose={() => setEditingId(null)}
           onSaved={() => { setEditingId(null); refresh(); }}
@@ -261,11 +277,13 @@ function CustomerModal({
   customerId,
   onClose,
   onSaved,
+  contable = true,
 }: {
   mode: 'create' | 'edit';
   customerId?: string;
   onClose: () => void;
   onSaved: () => void;
+  contable?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CustomerForm>(emptyForm);
@@ -699,6 +717,7 @@ function CustomerModal({
                 className="input"
               />
             </Field>
+            {contable && (
             <Field label="Cuenta contable">
               <input
                 type="text"
@@ -708,6 +727,7 @@ function CustomerModal({
                 className="input font-mono"
               />
             </Field>
+            )}
           </div>
 
           <div className="flex gap-3 pt-4 border-t border-gray-200 sticky bottom-0 bg-white">

@@ -1040,6 +1040,59 @@ dar dónde rematar.
 
 ---
 
+## 29. «El inquilino de sólo-ecommerce no factura con CSD»: sí factura, y no tenía dónde cargarlo
+
+**Síntoma.** La tienda genera CFDI por cada pedido, pero el usuario de la tienda no tiene pantalla para
+sus datos fiscales ni para dar de alta a quien le compra con RFC. Su factura de prueba se quedó en
+borrador (entrada 28) y no había manera de arreglarlo desde su sesión.
+
+**Causa raíz.** Una suposición escrita en el código, en `Layout.tsx`:
+
+```tsx
+{/* Emisor (datos de la empresa que factura). El inquilino de sólo-ecommerce
+    no factura con CSD: no se le ofrece este bloque. */}
+{!soloEcommerce && ( … )}
+```
+
+Era cierto cuando el módulo sólo tenía tiendas y catálogo. Dejó de serlo al llegar la rebanada de
+fulfillment: `facturarPedido` crea el CFDI del pedido y llama a `stampInvoice` **con el CSD de la
+empresa**. El inquilino factura igual que cualquiera; lo que no tiene es por dónde.
+
+Lo mismo con los clientes: `/customers` existe, lee el **CIF en PDF**, lee un XML de factura y captura a
+mano en una ventana — pero su sidebar es únicamente la tienda, así que nunca llegaba.
+
+**❌ Lo que NO hay que hacer.** Escribir una pantalla de emisor y un catálogo de clientes *para
+e-commerce*. Serían dos copias de algo que ya existe, y el día que cambie el CFDI habría que acordarse
+de las dos.
+
+**✅ Solución (commit `__HASH__`).** Dos rutas nuevas dentro del módulo que **reusan** las pantallas de
+siempre:
+
+- `/ecommerce/emisor` → `IssuerModal`, la misma «Datos de mi empresa»: identificación fiscal, domicilio
+  (lugar de expedición), contacto, logo, formato del PDF, **CSD**, manifiesto del PAC y correo, con
+  lectura de CIF para autollenar.
+- `/ecommerce/clientes` → `CustomersPage`, el mismo catálogo de receptores (CFF Art. 29-A), con CIF en
+  PDF, XML de factura y captura a mano.
+
+Las dos entradas salen en el submenú **sólo cuando `soloEcommerce`**: el usuario de NEXO completo ya
+tiene Clientes bajo Facturas y el Emisor al pie del sidebar, y repetirlos sería menú duplicado.
+
+`CustomersPage` acepta `contable={false}`, que esconde la columna de cuenta contable, los dos botones
+que la generan y el campo del modal. No es cosmético: esas llamadas pegan a `/accounting`, que está
+gateado por `requireModule('contabilidad')` — a este inquilino le contestarían **403**.
+
+**Y en el hub**, la revisión de la vitrina gana el renglón que de verdad explica el borrador: *«Sello
+digital (CSD) para facturar»*, leído de `/vigencias` (cargado y días de vigencia), con su liga a
+`/ecommerce/emisor`.
+
+**Nota de permisos.** Esto funciona porque `PUT /companies/:id` **no exige ADMIN**: el controlador deja
+pasar a cualquiera cuyo `companyId` sea el de la empresa, y el usuario de la tienda es `role='USER'`.
+Es comportamiento previo, no de este cambio, pero ahora se depende de él: cualquier usuario de cualquier
+empresa puede cambiar los datos del emisor y subir un CSD. Si se decide restringirlo a ADMIN, el usuario
+de la tienda tendrá que ser ADMIN de su empresa.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …

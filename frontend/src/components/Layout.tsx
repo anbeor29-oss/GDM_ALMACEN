@@ -459,6 +459,19 @@ export function Layout() {
                       { to: '/ecommerce/cupones',      icon: emoji3D('🏷️'), label: 'Promociones' },
                       { to: '/ecommerce/compradores',  icon: emoji3D('👥'), label: 'Clientes web' },
                       { to: '/ecommerce/reportes',     icon: emoji3D('📊'), label: 'Reportes' },
+                      /* Clientes (receptores del CFDI) y Datos del emisor SOLO
+                       * para el inquilino de solo-ecommerce: el usuario de NEXO
+                       * completo ya los tiene en Facturas -> Clientes y en el
+                       * bloque «Datos de mi empresa» del pie del sidebar, y
+                       * repetirlos aqui seria menu duplicado.
+                       *
+                       * Al de solo-ecommerce no le llegaba ninguno de los dos, y
+                       * los necesita: cada pedido web genera un CFDI, con su
+                       * receptor y con el CSD del emisor. */
+                      ...(soloEcommerce ? [
+                        { to: '/ecommerce/clientes', icon: emoji3D('🧾'), label: 'Clientes (facturación)' },
+                        { to: '/ecommerce/emisor',   icon: emoji3D('🏛️'), label: 'Datos del emisor' },
+                      ] : []),
                     ]}
                   />
                 )}

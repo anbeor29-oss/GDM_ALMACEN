@@ -39,6 +39,8 @@ import { PedidosEcPage } from '@/pages/ecommerce/Pedidos';
 import { CuponesEcPage } from '@/pages/ecommerce/Cupones';
 import { CompradoresEcPage } from '@/pages/ecommerce/Compradores';
 import { ReportesEcPage } from '@/pages/ecommerce/ReportesEc';
+import { ClientesEcPage } from '@/pages/ecommerce/ClientesEc';
+import { EmisorEcPage } from '@/pages/ecommerce/EmisorEc';
 import { AdminSatgoPage } from '@/pages/AdminSatgo';
 import { AdminRendimientoPage } from '@/pages/AdminRendimiento';
 import { AdminDemosPage } from '@/pages/AdminDemos';
@@ -144,6 +146,11 @@ export default function ErpPrivado() {
         <Route path="ecommerce/cupones" element={<ModuleRoute module="ecommerce"><CuponesEcPage /></ModuleRoute>} />
         <Route path="ecommerce/compradores" element={<ModuleRoute module="ecommerce"><CompradoresEcPage /></ModuleRoute>} />
         <Route path="ecommerce/reportes" element={<ModuleRoute module="ecommerce"><ReportesEcPage /></ModuleRoute>} />
+        {/* Clientes y Emisor DENTRO del modulo: el inquilino de solo-ecommerce
+            factura con CSD igual que cualquiera, pero su sidebar es unicamente
+            la tienda, asi que no llegaba a /customers ni al modal del Emisor. */}
+        <Route path="ecommerce/clientes" element={<ModuleRoute module="ecommerce"><ClientesEcPage /></ModuleRoute>} />
+        <Route path="ecommerce/emisor" element={<ModuleRoute module="ecommerce"><EmisorEcPage /></ModuleRoute>} />
         <Route path="team" element={<CompanyOnlyRoute><CompanyAdminRoute><TeamPage /></CompanyAdminRoute></CompanyOnlyRoute>} />
         <Route path="contract" element={<CompanyOnlyRoute><CompanyAdminRoute><ModuleRoute module="dashboard"><ContractPage /></ModuleRoute></CompanyAdminRoute></CompanyOnlyRoute>} />
         <Route path="carta-porte"                     element={<ModuleRoute module="carta_porte"><CartaPortePage /></ModuleRoute>} />

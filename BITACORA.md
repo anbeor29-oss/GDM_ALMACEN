@@ -8618,6 +8618,43 @@ haría leer como navegación. Detalle en `ERRORES_Y_SOLUCIONES.md` #16. Ver [[op
 
 ---
 
+## 2026-11-24 (e-commerce) — Datos del emisor y catálogo de clientes dentro de la tienda
+
+El módulo ya emitía CFDI por cada pedido, pero el usuario de la tienda no tenía dónde poner sus datos
+fiscales ni a quién le factura. Lo impedía una suposición escrita en el sidebar:
+
+> «El inquilino de sólo-ecommerce no factura con CSD: no se le ofrece este bloque.»
+
+Era cierto cuando el módulo sólo tenía tiendas y catálogo. Dejó de serlo con el fulfillment:
+`facturarPedido` crea el CFDI del pedido y lo timbra **con el CSD de la empresa**. El inquilino factura
+igual que cualquiera; lo que no tenía era por dónde. De ahí salió el borrador de la primera prueba.
+
+**Dos rutas nuevas que REUSAN las pantallas de siempre**, no copias:
+
+- **Datos del emisor** (`/ecommerce/emisor`) — la misma «Datos de mi empresa»: identificación fiscal,
+  domicilio (lugar de expedición), contacto, logo, formato del PDF, **CSD**, manifiesto del PAC y
+  correo. Lee el **CIF en PDF** y autollena.
+- **Clientes (facturación)** (`/ecommerce/clientes`) — el mismo catálogo de receptores conforme al CFF
+  Art. 29-A, con **CIF en PDF**, lectura de un XML de factura y captura a mano en una ventana.
+
+Las dos entradas salen en el submenú **sólo** para el inquilino de sólo-ecommerce: quien usa NEXO
+completo ya tiene Clientes bajo Facturas y el Emisor al pie del sidebar, y repetirlos sería menú
+duplicado.
+
+`CustomersPage` estrena `contable={false}`, que esconde la cuenta contable, los dos botones que la
+generan y el campo del modal. No es cosmético: esas llamadas pegan a `/accounting`, gateado por
+`requireModule('contabilidad')`, y a este inquilino le contestarían **403**.
+
+En el hub, la revisión de la vitrina gana el renglón que explica el borrador: **«Sello digital (CSD)
+para facturar»**, leído de `/vigencias`, con su liga para ir a cargarlo.
+
+**Permisos, para que conste:** esto funciona porque `PUT /companies/:id` no exige ADMIN —deja pasar a
+cualquiera cuyo `companyId` sea el de la empresa, y el usuario de la tienda es `role='USER'`. Es
+comportamiento previo, pero ahora se depende de él.
+
+`tsc` de backend y frontend, 197 pruebas verdes, build de producción. Entrada 29 de
+`ERRORES_Y_SOLUCIONES.md`.
+
 ## 2026-11-24 (e-commerce) — La tienda ya decía quién vende; el menú bajó al sidebar y el hub se volvió vitrina
 
 Cuatro cosas en el mismo lote, todas salidas de abrir la tienda recién revivida y mirarla como la mira

@@ -54,6 +54,13 @@ export function EcommerceHubPage() {
   });
   const metodos: any[] = (qEnvios.data as any)?.data?.metodos || [];
 
+  /* Sello digital de la empresa. Va en la revision porque es LO QUE DECIDE si
+   * la factura del pedido sale timbrada o se queda en borrador: sin CSD,
+   * `facturarPedido` crea el CFDI y el PAC lo rechaza. */
+  const qVig = useQuery({ queryKey: ['vigencias-sellos-ec'], queryFn: () => api.getVigencias() });
+  const sellos: any[] = (qVig.data as any)?.data?.sellos || [];
+  const csd = sellos.find((x) => x.tipo === 'CSD') || null;
+
   const copiar = async () => {
     if (!tienda) return;
     try {
@@ -101,6 +108,15 @@ export function EcommerceHubPage() {
       bien: 'Publicados al pie de la tienda.',
       mal: 'Faltan. Además de confianza, la LFPDPPP pide el aviso de privacidad.',
       to: '/ecommerce/tiendas',
+    },
+    {
+      ok: !!csd?.cargado && (csd.dias == null || csd.dias > 0),
+      titulo: 'Sello digital (CSD) para facturar',
+      bien: csd?.dias != null ? `Cargado y vigente ${csd.dias} día(s).` : 'Cargado.',
+      mal: csd?.cargado
+        ? 'El sello está vencido: la factura de cada pedido se quedará en borrador.'
+        : 'Sin sello cargado: la factura de cada pedido se queda en BORRADOR, sin UUID.',
+      to: '/ecommerce/emisor',
     },
     {
       ok: metodos.length > 0,
