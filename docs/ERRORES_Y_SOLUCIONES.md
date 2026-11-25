@@ -1065,7 +1065,7 @@ mano en una ventana — pero su sidebar es únicamente la tienda, así que nunca
 e-commerce*. Serían dos copias de algo que ya existe, y el día que cambie el CFDI habría que acordarse
 de las dos.
 
-**✅ Solución (commit `__HASH__`).** Dos rutas nuevas dentro del módulo que **reusan** las pantallas de
+**✅ Solución (commit `20e8a93`).** Dos rutas nuevas dentro del módulo que **reusan** las pantallas de
 siempre:
 
 - `/ecommerce/emisor` → `IssuerModal`, la misma «Datos de mi empresa»: identificación fiscal, domicilio
