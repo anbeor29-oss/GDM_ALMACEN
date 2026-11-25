@@ -1138,7 +1138,7 @@ guardado contestaba éxito**. Un borrado silencioso disfrazado de validación.
   llenaba el formulario completo y el backend lo rechazaba al guardar. Eso es exactamente lo que se
   reportó.
 
-**✅ Solución (commit `__HASH__`).**
+**✅ Solución (commit `4a244de`).**
 
 - `ALL_MODULES` se **exporta** desde `middleware/permissions.ts` y `MODULOS_VALIDOS` pasa a ser
   `['dashboard', ...ALL_MODULES]`. Copiar la lista era el error; ahora no hay copia.
