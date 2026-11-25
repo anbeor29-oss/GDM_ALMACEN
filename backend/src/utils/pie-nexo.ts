@@ -21,7 +21,7 @@
  * página de más —en blanco, con su propio pie— al final de cada reporte.
  */
 
-import { NEXO_LOGO_PLATA_PNG, NEXO_LOGO_PLATA_RATIO } from './nexo-logo-plata.data';
+import { NEXO_LOGO_MARCA_PNG, NEXO_LOGO_MARCA_RATIO } from './nexo-logo-marca.data';
 
 const LEYENDA = 'Reporte emitido por GDM NEXO';
 const GRIS = '#8a94a6';
@@ -37,13 +37,13 @@ export function pieNexo(doc: any): void {
   const margenes = { ...doc.page.margins };
   doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
   try {
-    const anchoLogo = ALTO_LOGO * NEXO_LOGO_PLATA_RATIO;
+    const anchoLogo = ALTO_LOGO * NEXO_LOGO_MARCA_RATIO;
     const y = doc.page.height - DESDE_ABAJO;
     doc.font('Helvetica').fontSize(7.5);
     const anchoTexto = doc.widthOfString(LEYENDA);
     const x = (doc.page.width - (anchoLogo + HUECO + anchoTexto)) / 2;
 
-    doc.image(NEXO_LOGO_PLATA_PNG, x, y, { width: anchoLogo, height: ALTO_LOGO });
+    doc.image(NEXO_LOGO_MARCA_PNG, x, y, { width: anchoLogo, height: ALTO_LOGO });
     doc.fillColor(GRIS).text(LEYENDA, x + anchoLogo + HUECO, y + ALTO_LOGO / 2 - 4, { lineBreak: false });
     doc.fillColor('#000000');
   } catch {

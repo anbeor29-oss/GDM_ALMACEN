@@ -19,7 +19,7 @@
 import PDFDocument from 'pdfkit';
 import { fmtMoney, montoEnLetra, buildQrSatPng } from '../cfdi/pdf-helpers';
 import { fechaMx } from '../../utils/fecha-mx';
-import { NEXO_LOGO_PLATA_PNG, NEXO_LOGO_PLATA_RATIO } from '../../utils/nexo-logo-plata.data';
+import { NEXO_LOGO_MARCA_PNG, NEXO_LOGO_MARCA_RATIO } from '../../utils/nexo-logo-marca.data';
 
 type Doc = InstanceType<typeof PDFDocument>;
 
@@ -293,8 +293,8 @@ export async function renderReciboDetallado(d: DatosRecibo): Promise<Buffer> {
   doc.font('Helvetica').fontSize(7.5).fillColor(GRIS)
     .text('Emitido desde:', cx + 6, y + 23, { width: 70, align: 'right', lineBreak: false });
   try {
-    const hl = 13, wl = hl * NEXO_LOGO_PLATA_RATIO;
-    doc.image(NEXO_LOGO_PLATA_PNG, cx + 82, y + 20, { width: wl, height: hl });
+    const hl = 13, wl = hl * NEXO_LOGO_MARCA_RATIO;
+    doc.image(NEXO_LOGO_MARCA_PNG, cx + 82, y + 20, { width: wl, height: hl });
     doc.font('Helvetica-Bold').fontSize(8.5).fillColor(AZUL)
       .text(etiqueta, cx + 82 + wl + 4, y + 23, { lineBreak: false });
   } catch {

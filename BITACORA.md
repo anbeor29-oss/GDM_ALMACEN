@@ -8664,8 +8664,11 @@ abajo, QR y recuadro de certificación. Donde los recibos de otros sistemas pone
 empresa, el documento lo genera NEXO. Se elige por empresa y **por omisión queda el clásico**: nadie
 cambia de formato por desplegar.
 
-**El sello de la casa en los reportes** (`utils/pie-nexo`): el logo de NEXO en plata y, a su derecha,
-«Reporte emitido por GDM NEXO», centrado al pie de **todas** las páginas. Lo llevan los REPORTES —lo que
+**El sello de la casa en los reportes** (`utils/pie-nexo`): el logo de NEXO y, a su derecha, «Reporte
+emitido por GDM NEXO», centrado al pie de **todas** las páginas. Va la versión de **tinta plana**, no la
+metálica: reducida a los ~16 pt que mide un pie, el degradado se pierde y lo que queda es una mancha
+gris. Un solo tono aguanta cualquier tamaño, y además permite recortar el fondo limpio —el hueco
+interior del chevron deja ver la hoja—. Lo llevan los REPORTES —lo que
 alguien descarga para leer o analizar—, no los comprobantes fiscales ni los documentos firmados:
 meterle marca de software a un papel que alguien firma o presenta ante una autoridad es ruido en el peor
 sitio.
