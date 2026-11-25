@@ -89,7 +89,18 @@ export function RevisionNominaPage() {
     enabled: integral,
     refetchInterval: integral ? 5000 : false,
   });
-  const trabajosAnio: any[] = ((trabajosQ.data as any)?.data || [])
+  /* OJO CON LA FORMA: el endpoint contesta { data: { trabajos: [...] } }, no
+   * { data: [...] }. Leerlo sin el `.trabajos` devolvia el OBJETO, que es
+   * truthy —asi que el `|| []` nunca entraba— y `.filter` reventaba la pantalla
+   * entera con un «filter is not a function» minificado. `XmlRecibidos` ya lo
+   * leia bien; aqui se copio el patron a medias.
+   *
+   * El `Array.isArray` no sobra: esto alimenta el INDICADOR DE AVANCE de la
+   * descarga del SAT. Si la forma vuelve a cambiar, que se quede sin barra de
+   * progreso, no que se caiga la revision completa. Vale aqui porque «vacio» es
+   * una respuesta honesta para un avance; en una cifra contable NO lo seria. */
+  const trabajosCrudos = (trabajosQ.data as any)?.data?.trabajos;
+  const trabajosAnio: any[] = (Array.isArray(trabajosCrudos) ? trabajosCrudos : [])
     .filter((x: any) => x?.direccion === 'emitidos' && String(x?.fecha_desde || '').slice(0, 4) === String(anioIntegral));
   const hayDescargaActiva = trabajosAnio.some((x) => x.estado === 'CREADO' || x.estado === 'EN_PROCESO');
   const partsTotal = trabajosAnio.reduce((s, x) => s + (Number(x.particiones_total) || 0), 0);

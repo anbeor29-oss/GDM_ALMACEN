@@ -1255,6 +1255,55 @@ no de la empresa ni del usuario.
 
 ---
 
+## 33. «filter is not a function» al activar la Revisión integral de nómina
+
+**Síntoma.** Al palomear «Revisión integral» la pantalla se cae:
+
+```
+TypeError: ((intermediate value)(intermediate value)(intermediate value) || []).filter is not a function
+```
+
+**Cómo leer ese error.** Está minificado, pero dice lo esencial: el `|| []` **no sirvió de nada**. Ese
+operador sólo entra cuando lo de la izquierda es *falsy*; si revienta el `.filter`, es porque lo de la
+izquierda era **truthy pero no un arreglo**. Casi siempre: un objeto.
+
+**Causa raíz.** `RevisionNomina.tsx` leía los trabajos del SAT así:
+
+```ts
+const trabajosAnio: any[] = ((trabajosQ.data as any)?.data || []).filter(…)
+```
+
+y el endpoint contesta **envuelto**:
+
+```ts
+res.json({ success: true, data: { trabajos } });   // GET /sat-descarga/trabajos
+```
+
+Así que `?.data` era `{ trabajos: [...] }` —un objeto, truthy— el `|| []` nunca entraba y `.filter`
+tronaba. `XmlRecibidos.tsx` lee el MISMO endpoint bien (`?.data?.trabajos || []`): aquí se copió el
+patrón a medias.
+
+**Por qué nadie lo había visto.** La consulta tiene `enabled: integral`: **sólo corre cuando se
+palomea la casilla**. Un bug detrás de una casilla que casi nadie prende puede vivir meses sin que
+aparezca. Ésa es la clase de lectura que hay que mirar con lupa, no las de la pantalla principal —ésas
+truenan el primer día.
+
+**✅ Solución (commit `__HASH__`).** Se lee `?.data?.trabajos`, y se envuelve en `Array.isArray`. El
+guardia **no sobra y tampoco es de aplicación general**: esto alimenta el *indicador de avance* de la
+descarga del SAT, donde «vacío» es una respuesta honesta —si la forma vuelve a cambiar, que se quede sin
+barra de progreso y no que se caiga la revisión entera—. **En una cifra contable NO valdría**: ahí un
+arreglo vacío se leería como «no hay nada», que es peor que el error.
+
+**Barrido.** Se revisó si el mismo error estaba en otra parte, cruzando cada lectura del frontend del
+tipo `…?.data || []` contra la forma que devuelve su ruta del backend. Un solo candidato más
+(`AdminAccesos.tsx`, `/admin/users`, que contesta `data: { users }`) y al abrirlo está **bien**: intenta
+`?.data?.users` primero y el `?.data` es sólo respaldo. No hay más casos.
+
+**Lo que sí funcionó.** El error no cerró la sesión ni dejó la pantalla en blanco: la frontera de error
+lo atrapó, lo mostró y dejó copiarlo. Por eso llegó el stack completo y el diagnóstico fue directo.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …
