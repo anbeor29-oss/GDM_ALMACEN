@@ -8,6 +8,7 @@ import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { query } from '../../config/database';
 import logger from '../../middleware/logger';
+import { marcaNexo, LEYENDA_COMPROBANTE } from '../../utils/pie-nexo';
 
 export type PDFDoc = InstanceType<typeof PDFDocument>;
 
@@ -590,6 +591,11 @@ export function drawFooter(doc: PDFDoc, leyenda: string) {
 
   doc.page.margins = origMargins;
   doc.fillColor('#000000');
+
+  // Marca de la casa bajo la leyenda: la misma que llevan la factura y los
+  // reportes, para que los tres salgan iguales (ver utils/pie-nexo).
+  marcaNexo(doc, { y: y + 16, alto: 12, leyenda: LEYENDA_COMPROBANTE, color: '#64748b',
+                   x: PAGE_LEFT, ancho: PAGE_RIGHT - PAGE_LEFT });
 }
 
 /**

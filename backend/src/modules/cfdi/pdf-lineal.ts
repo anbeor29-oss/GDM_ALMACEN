@@ -20,6 +20,7 @@ import {
   FORMA_PAGO, METODO_PAGO,
 } from './pdf-helpers';
 import { getTema } from './pdf-temas';
+import { marcaNexo, LEYENDA_COMPROBANTE } from '../../utils/pie-nexo';
 import { objetoImpuesto, trasladosDeLinea, retencionesDeLinea, resumenTraslados, resumenRetenciones, etiquetaTasa } from './pdf-impuestos';
 
 const TXT = '#1f2937';
@@ -297,4 +298,6 @@ function pieLineal(doc: PDFDoc, timbrada: boolean): void {
   );
   doc.page.margins = m;
   doc.fillColor('#000000');
+  marcaNexo(doc, { y: y + 11, alto: 12, leyenda: LEYENDA_COMPROBANTE, color: '#64748b',
+                   x: PAGE_LEFT, ancho: PAGE_RIGHT - PAGE_LEFT });
 }

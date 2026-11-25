@@ -18,7 +18,7 @@ import {
   PDFDoc, PAGE_LEFT, PAGE_RIGHT, PAGE_TOP, fmtMoney, fmtPrecio, montoEnLetra,
   FORMA_PAGO, METODO_PAGO,
 } from './pdf-helpers';
-import { NEXO_LOGO_PNG } from './nexo-logo.data';
+import { marcaNexo, LEYENDA_COMPROBANTE } from '../../utils/pie-nexo';
 
 const TINTA = '#1e3a8a';   // azul marino sobrio (encabezados/etiquetas)
 const TXT = '#1f2937';
@@ -224,19 +224,6 @@ export function renderFacturaGncys(doc: PDFDoc, ctx: CtxGncys): void {
   doc.font('Helvetica').fontSize(7).fillColor(GRIS)
     .text('Este documento es una representación impresa de un CFDI', PAGE_LEFT, legY, { width: W, align: 'center' });
 
-  // Logo de GDM NEXO + «Sistema de GDM NEXO», centrado bajo la leyenda.
-  try {
-    const m = { ...doc.page.margins };
-    doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
-    const lh = 10;
-    const label = 'Sistema de GDM NEXO';
-    doc.font('Helvetica').fontSize(7.5);
-    const tw = doc.widthOfString(label);
-    const gap = 4;
-    const sx = PAGE_LEFT + (W - (lh + gap + tw)) / 2;
-    const ly = legY + 12;
-    doc.image(NEXO_LOGO_PNG, sx, ly, { width: lh, height: lh });
-    doc.fillColor('#64748b').text(label, sx + lh + gap, ly + 1.5, { lineBreak: false });
-    doc.page.margins = m;
-  } catch { /* si el logo falla, no bloquea el PDF */ }
+  // Marca de la casa bajo la leyenda (la pieza vive en utils/pie-nexo).
+  marcaNexo(doc, { y: legY + 11, alto: 12, leyenda: LEYENDA_COMPROBANTE, color: '#64748b', x: PAGE_LEFT, ancho: W });
 }

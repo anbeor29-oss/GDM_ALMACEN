@@ -3,9 +3,11 @@
  *
  * Va en el PIE de todo reporte (utils/pie-nexo) con la leyenda «Reporte emitido
  * por GDM NEXO», y en el recuadro «Emitido desde» del recibo de nomina
- * detallado. Se EMBEBE en vez de leerse de disco para que funcione en cualquier
- * despliegue sin copiar archivos estaticos al build —es la misma razon por la
- * que nexo-logo.data.ts hace lo mismo con el logo oscuro del pie del CFDI—.
+ * detallado, y en el pie de los COMPROBANTES: factura en sus seis formatos,
+ * nota de credito y complemento de pago. Es el unico logo de la casa que queda:
+ * el oscuro de 44x44 que llevaba antes el pie del CFDI se retiro al unificarlos.
+ * Se EMBEBE en vez de leerse de disco para que funcione en cualquier despliegue
+ * sin copiar archivos estaticos al build.
  *
  * ES LA VERSION DE TINTA PLANA, no la metalica. La metalica, reducida a los
  * ~16 pt que mide un pie, se leia como una mancha gris: el degradado se pierde
