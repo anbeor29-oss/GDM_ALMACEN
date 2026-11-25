@@ -21,6 +21,7 @@ import PDFDocument from 'pdfkit';
 import { query } from '../../config/database';
 import { balanzaDelPeriodo } from './periodos.service';
 import { listarCuentas } from './catalogo.service';
+import { pieNexoEnTodasLasPaginas } from '../../utils/pie-nexo';
 import {
   ExcelJS, C, titulo, dato, encabezado, celda, anchos, aBuffer,
 } from '../nomina/estilo-excel';
@@ -375,6 +376,7 @@ export async function balanceGeneralPdf(companyId: string, anio: number, mes: nu
   doc.text('Representante Legal', M + 20, yFirmas + 4, { width: anchoFirma, align: 'center' });
   doc.text('Contador Público', rightX + 10, yFirmas + 4, { width: anchoFirma, align: 'center' });
 
+  pieNexoEnTodasLasPaginas(doc);
   doc.end();
   return {
     buffer: await listo,

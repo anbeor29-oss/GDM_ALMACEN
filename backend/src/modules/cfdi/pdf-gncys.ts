@@ -27,7 +27,7 @@ const LINEA = '#9ca3af';
 
 export interface CtxGncys {
   company: any; customer: any; invoice: any;
-  cat: { regE: string; regR: string; uso: string };
+  cat: { regE: string; regR: string; uso: string; unidades?: Record<string, string> };
   logoBuf: Buffer | null;
   t: any;
   qrPng: Buffer | null;
@@ -144,7 +144,7 @@ export function renderFacturaGncys(doc: PDFDoc, ctx: CtxGncys): void {
       noid: (it as any).no_identificacion || (it as any).sku || String(idx + 1).padStart(10, '0'),
       cant: Number(it.quantity || 0).toLocaleString('es-MX', { minimumFractionDigits: 6, maximumFractionDigits: 6 }),
       claveu: it.unit_code || '',
-      unidad: it.unit_code === 'H87' ? 'Pieza' : (it.unit_code === 'E48' ? 'Unidad de servicio' : ''),
+      unidad: cat.unidades?.[String(it.unit_code || '')] || '',
       desc,
       vu: fmtPrecio(it.unit_price),
       imp: fmtMoney(it.subtotal != null ? it.subtotal : Number(it.quantity) * Number(it.unit_price)),

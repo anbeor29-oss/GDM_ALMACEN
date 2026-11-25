@@ -37,6 +37,8 @@ import { NEXO_LOGO_PNG } from './nexo-logo.data';
 import { getTema } from './pdf-temas';
 import { renderFacturaFarsystems } from './pdf-farsystems';
 import { renderFacturaGncys } from './pdf-gncys';
+import { renderFacturaLineal } from './pdf-lineal';
+import { renderFacturaBandas } from './pdf-bandas';
 import {
   drawTimbreFiscal, drawPageNumbers, extractNoCertificado, montoEnLetra,
   extractTimbreData, buildQrSatPng, drawCancelledWatermark, fmtPrecio,
@@ -89,12 +91,21 @@ const METODO_PAGO: Record<string, string> = {
 async function loadDescriptions(
   regimenEmisor: string | null,
   regimenReceptor: string | null,
-  usoCfdi: string | null
-): Promise<{ regE: string; regR: string; uso: string }> {
+  usoCfdi: string | null,
+  clavesUnidad: Array<string | null | undefined> = []
+): Promise<{ regE: string; regR: string; uso: string; unidades: Record<string, string> }> {
   const want = new Set<string>();
   if (regimenEmisor)   want.add(`c_RegimenFiscal|${regimenEmisor}`);
   if (regimenReceptor) want.add(`c_RegimenFiscal|${regimenReceptor}`);
   if (usoCfdi)         want.add(`c_UsoCFDI|${usoCfdi}`);
+  /* Nombre de la unidad (E48 -> «Unidad de servicio»). Se LEE del catálogo del
+   * SAT que ya vive en la base, no de un mapa escrito a mano: un mapa sólo
+   * acierta con las cuatro claves de siempre y miente con el resto. */
+  const unidadesPedidas = new Set<string>();
+  for (const cu of clavesUnidad) {
+    const k = String(cu || '').trim();
+    if (k) { unidadesPedidas.add(k); want.add(`c_ClaveUnidad|${k}`); }
+  }
 
   const map = new Map<string, string>();
   if (want.size > 0) {
@@ -112,10 +123,13 @@ async function loadDescriptions(
       map.set(`${row.catalog_name}|${row.catalog_key}`, row.description);
     }
   }
+  const unidades: Record<string, string> = {};
+  for (const k of unidadesPedidas) unidades[k] = map.get(`c_ClaveUnidad|${k}`) || '';
   return {
     regE: regimenEmisor   ? (map.get(`c_RegimenFiscal|${regimenEmisor}`)   || '') : '',
     regR: regimenReceptor ? (map.get(`c_RegimenFiscal|${regimenReceptor}`) || '') : '',
     uso:  usoCfdi         ? (map.get(`c_UsoCFDI|${usoCfdi}`)               || '') : '',
+    unidades,
   };
 }
 
@@ -131,7 +145,8 @@ export async function generateInvoicePDF(data: PDFGenerationData): Promise<Buffe
   const cat = await loadDescriptions(
     company.fiscal_regime,
     customer.fiscal_regime || invoice.regimen_fiscal_receptor,
-    invoice.cfdi_use
+    invoice.cfdi_use,
+    (invoice.items || []).map((it: any) => it.unit_code)
   );
 
   const logoBuf = await getCompanyLogo((company as any).id);
@@ -245,26 +260,29 @@ export async function generateInvoicePDF(data: PDFGenerationData): Promise<Buffe
   // todas las secciones lo usen sin cambiar cada firma (como _nextY).
   (doc as any)._tema = getTema(formatoPdf);
 
-  if (formatoPdf === 'farsystems' || formatoPdf === 'gncys') {
-    // Réplicas con layout propio (FarSystems / GNcys).
-    if (formatoPdf === 'gncys') renderFacturaGncys(doc, { company, customer, invoice, cat, logoBuf, t, qrPng });
-    else renderFacturaFarsystems(doc, { company, customer, invoice, cat, logoBuf, t, qrPng });
+  /* Formatos con LAYOUT propio. Los que no están aquí (esmeralda, carbón) usan
+   * el layout de la casa y sólo cambian de color. */
+  const conLayoutPropio: Record<string, (d: any, c: any) => void> = {
+    farsystems: renderFacturaFarsystems,
+    gncys: renderFacturaGncys,
+    lineal: renderFacturaLineal,
+    bandas: renderFacturaBandas,
+  };
+  const propio = conLayoutPropio[String(formatoPdf || '')];
+  if (propio) {
+    propio(doc, { company, customer, invoice, cat, logoBuf, t, qrPng });
     if (cp) {
       (doc as any)._nextY = doc.y + 12;
       generateCartaPorteSection(doc, cp, invoice, company, qrPng, cpSat);
       generateCartaPorteContract(doc);
     }
   } else {
-    generateHeader(doc, company, invoice, cat.regE, logoBuf);
-    generateReceptor(doc, customer, invoice, cat.regR, cat.uso);
-    generateItems(doc, invoice.items);
-    generateTotals(doc, invoice);
-    generateStampedSection(doc, invoice, qrPng);
+    renderFacturaPropio(doc, { company, customer, invoice, cat, logoBuf, t, qrPng }, { conPie: !cp });
     if (cp) {
       generateCartaPorteSection(doc, cp, invoice, company, qrPng, cpSat);
       generateCartaPorteContract(doc);
+      generateFooter(doc, invoice);
     }
-    generateFooter(doc, invoice);
   }
   drawPageNumbers(doc);
   if (invoice.status === 'CANCELLED') {
@@ -279,6 +297,27 @@ export async function generateInvoicePDF(data: PDFGenerationData): Promise<Buffe
     doc.on('error', reject);
     doc.end();
   });
+}
+
+/**
+ * Formato PROPIO (esmeralda / carbon) sobre un doc ya abierto.
+ *
+ * Se exporta para poder VERLO sin base de datos: scripts/muestra-formatos.ts
+ * genera una muestra de cada formato con datos inventados. Un formato se
+ * disena mirandolo, y antes la unica forma de verlo era timbrar algo real.
+ */
+export function renderFacturaPropio(
+  doc: PDFDoc,
+  ctx: { company: any; customer: any; invoice: any; cat: { regE: string; regR: string; uso: string; unidades?: Record<string, string> }; logoBuf: Buffer | null; t?: any; qrPng: Buffer | null },
+  opts: { conPie?: boolean } = {}
+): void {
+  const { company, customer, invoice, cat, logoBuf, qrPng } = ctx;
+  generateHeader(doc, company, invoice, cat.regE, logoBuf);
+  generateReceptor(doc, customer, invoice, cat.regR, cat.uso);
+  generateItems(doc, invoice.items);
+  generateTotals(doc, invoice);
+  generateStampedSection(doc, invoice, qrPng);
+  if (opts.conPie !== false) generateFooter(doc, invoice);
 }
 
 /* ──────────────────────── secciones ──────────────────────── */
@@ -308,18 +347,18 @@ function generateHeader(doc: PDFDoc, company: any, invoice: any, regimenDesc: st
 
   // 2) Bloque emisor (centro) — debajo del logo cuando hay, o desde el margen
   const emisorX = hasLogo ? PAGE_LEFT + LOGO_SIZE + 14 : PAGE_LEFT;
-  doc.fontSize(22).font('Helvetica-Bold').fillColor(tema.titulo).text('FACTURA', emisorX, PAGE_TOP);
+  doc.fontSize(15).font('Helvetica-Bold').fillColor(tema.titulo).text('FACTURA', emisorX, PAGE_TOP);
 
   // El bloque emisor debe terminar ANTES de la caja de folio (boxX=345): antes
   // se extendía hasta x=380 y se ENCIMABA con esa caja (y el nombre, sin ancho,
   // la invadía de lleno). 12 pt de respiro antes de la caja.
   const emisorBlockW = 345 - emisorX - 12;
   const nombreEmisor = (company.business_name || '').toUpperCase();
-  doc.fontSize(9).font('Helvetica-Bold').fillColor('#374151');
+  doc.fontSize(8).font('Helvetica-Bold').fillColor('#374151');
   const nombreH = doc.heightOfString(nombreEmisor, { width: emisorBlockW });
   doc.text(nombreEmisor, emisorX, PAGE_TOP + 28, { width: emisorBlockW });
   // Letra un punto más chica (8 en vez de 9) para que el domicilio quepa cómodo.
-  doc.font('Helvetica').fillColor('#374151').fontSize(8);
+  doc.font('Helvetica').fillColor('#374151').fontSize(7.5);
   // La dirección arranca DEBAJO del nombre real (que puede ocupar 2 líneas).
   let y = PAGE_TOP + 28 + Math.max(12, nombreH);
   doc.text(`RFC: ${company.rfc || '—'}`, emisorX, y, { width: emisorBlockW }); y += 11;
@@ -371,7 +410,7 @@ function generateHeader(doc: PDFDoc, company: any, invoice: any, regimenDesc: st
     company.csd_no_certificado ||
     '— pendiente —';
 
-  doc.font('Courier').fontSize(8);
+  doc.font('Courier').fontSize(7.5);
   const uuidH = doc.heightOfString(uuidStr, { width: innerW });
   const certH = doc.heightOfString(noCert, { width: innerW });
 
@@ -391,7 +430,7 @@ function generateHeader(doc: PDFDoc, company: any, invoice: any, regimenDesc: st
     `${invoice.payment_method || '—'} — ${mpDesc}`,
     `${moneda}${tc}`,
   ];
-  doc.font('Helvetica-Bold').fontSize(9);
+  doc.font('Helvetica-Bold').fontSize(8);
   const valuesW = boxW - labelW - 16;
   const simpleRowsH = simpleValues.reduce(
     (acc, v) => acc + Math.max(lh, doc.heightOfString(v, { width: valuesW }) + 1),
@@ -405,7 +444,9 @@ function generateHeader(doc: PDFDoc, company: any, invoice: any, regimenDesc: st
     sectionGap + stackedLabelH + certH + 2 +
     6;                                                  // padding bottom
 
-  const boxH = Math.max(150, Math.ceil(computedH));
+  // El piso sólo evita que la caja se vea aplastada cuando trae poco; con la
+  // tipografía de 8 pt el contenido mide ~122, así que 150 dejaba un hueco.
+  const boxH = Math.max(118, Math.ceil(computedH));
   doc.roundedRect(boxX, boxY, boxW, boxH, 6).fillAndStroke(tema.boxBg, tema.boxBorder);
 
   let by = boxY + 8;
@@ -413,7 +454,7 @@ function generateHeader(doc: PDFDoc, company: any, invoice: any, regimenDesc: st
   function row(label: string, value: string) {
     doc.font('Helvetica').fillColor('#64748b').fontSize(7).text(label, boxX + 8, by + 1);
     const vW = boxW - labelW - 16;
-    doc.font('Helvetica-Bold').fillColor('#0f172a').fontSize(9);
+    doc.font('Helvetica-Bold').fillColor('#0f172a').fontSize(8);
     // Medimos la altura real del valor (puede wrappear) para que la siguiente
     // fila no se monte encima — bug visible con "PUE — Pago en una sola exhibición".
     const vH = doc.heightOfString(value, { width: vW });
@@ -429,10 +470,10 @@ function generateHeader(doc: PDFDoc, company: any, invoice: any, regimenDesc: st
       .text(label, boxX + 8, by);
     by += stackedLabelH;
     if (opts.mono) {
-      doc.font('Courier').fillColor(opts.muted ? '#94a3b8' : '#1e3a8a').fontSize(8)
+      doc.font('Courier').fillColor(opts.muted ? '#94a3b8' : '#1e3a8a').fontSize(7.5)
         .text(value, boxX + 8, by, { width: innerW });
     } else {
-      doc.font('Helvetica-Bold').fillColor('#0f172a').fontSize(8.5)
+      doc.font('Helvetica-Bold').fillColor('#0f172a').fontSize(7.5)
         .text(value, boxX + 8, by, { width: innerW });
     }
     const h = doc.heightOfString(value, { width: innerW });
@@ -463,15 +504,15 @@ function generateHeader(doc: PDFDoc, company: any, invoice: any, regimenDesc: st
 function generateReceptor(doc: PDFDoc, customer: any, invoice: any, regimenDesc: string, usoDesc: string) {
   const y0 = (doc as any)._nextY || 180;
 
-  doc.font('Helvetica-Bold').fontSize(8).fillColor('#64748b')
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#64748b')
     .text('RECEPTOR', PAGE_LEFT, y0);
 
-  doc.font('Helvetica-Bold').fontSize(11).fillColor('#0f172a')
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#0f172a')
     .text((customer.business_name || '').toUpperCase(), PAGE_LEFT, y0 + 12);
 
   // Letra un punto más chica para el cuerpo del receptor
   let y = y0 + 28;
-  doc.font('Helvetica').fontSize(8).fillColor('#374151');
+  doc.font('Helvetica').fontSize(7.5).fillColor('#374151');
 
   // dos columnas para identificación
   const col1X = PAGE_LEFT;
@@ -513,13 +554,13 @@ function generateReceptor(doc: PDFDoc, customer: any, invoice: any, regimenDesc:
 function generateItems(doc: PDFDoc, items: any[]) {
   const tema = (doc as any)._tema || getTema();
   const y0 = (doc as any)._nextY || 280;
-  doc.font('Helvetica-Bold').fontSize(8).fillColor('#64748b')
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#64748b')
     .text('CONCEPTOS', PAGE_LEFT, y0);
 
   // encabezados de tabla — color del tema elegido
   const headerY = y0 + 14;
   doc.rect(PAGE_LEFT, headerY, PAGE_RIGHT - PAGE_LEFT, 18).fill(tema.tablaHeaderBg);
-  doc.fillColor(tema.tablaHeaderText).font('Helvetica-Bold').fontSize(8);
+  doc.fillColor(tema.tablaHeaderText).font('Helvetica-Bold').fontSize(7.5);
 
   // Orden: CANT · DESCRIPCIÓN · UNIDAD · CLAVE SAT · P. UNIT · IVA · IMPORTE
   const cols = {
@@ -539,15 +580,15 @@ function generateItems(doc: PDFDoc, items: any[]) {
   doc.text('IVA',         cols.iva.x,    headerY + 5, { width: cols.iva.w,    align: 'right' });
   doc.text('IMPORTE',     cols.imp.x,    headerY + 5, { width: cols.imp.w,    align: 'right' });
 
-  doc.fillColor('#0f172a').font('Helvetica').fontSize(8.5);
+  doc.fillColor('#0f172a').font('Helvetica').fontSize(7.5);
 
   let y = headerY + 22;
   let idx = 0;
   for (const it of items || []) {
     // Medimos primero la altura real de la fila ANTES de pintar el zebra,
     // para que el fondo cubra exactamente lo que ocupa la descripción wrap.
-    doc.font('Helvetica').fontSize(9);
-    const descHeight = doc.heightOfString((it.description || '').toUpperCase(),
+    doc.font('Helvetica').fontSize(8);
+    const descHeight = doc.heightOfString(String(it.description || ''),
       { width: cols.desc.w });
     const rowH = Math.max(20, descHeight + 6);
 
@@ -556,21 +597,21 @@ function generateItems(doc: PDFDoc, items: any[]) {
       doc.fillColor('#0f172a');
     }
 
-    doc.font('Helvetica').fontSize(9).fillColor('#0f172a')
+    doc.font('Helvetica').fontSize(8).fillColor('#0f172a')
       .text(fmtQty(it.quantity), cols.cant.x, y, { width: cols.cant.w, align: 'right' });
-    doc.text((it.description || '').toUpperCase(), cols.desc.x, y, { width: cols.desc.w });
+    doc.text(String(it.description || ''), cols.desc.x, y, { width: cols.desc.w });
     // unit_code y clave_sat ACOTADOS por width + sin saltos, para que no
     // se desborden a las columnas vecinas (precio, IVA, importe).
     doc.font('Courier').fontSize(7.5).fillColor('#475569')
       .text(it.unit_code || '—', cols.unidad.x, y, { width: cols.unidad.w, lineBreak: false, ellipsis: true });
     doc.text(it.clave_sat || '—',  cols.clave.x,  y, { width: cols.clave.w,  lineBreak: false, ellipsis: true });
-    doc.font('Helvetica').fontSize(9).fillColor('#0f172a')
+    doc.font('Helvetica').fontSize(8).fillColor('#0f172a')
       .text(`$ ${fmtPrecio(it.unit_price)}`, cols.pu.x, y, { width: cols.pu.w, align: 'right' });
     const r = Number(it.tax_rate) || 0;
     const ivaLabel = it.is_exempt ? 'Ex.' : (r > 0 ? `${(r * 100).toFixed(0)}%` : '0%');
-    doc.font('Helvetica').fontSize(8.5).fillColor('#475569')
+    doc.font('Helvetica').fontSize(7.5).fillColor('#475569')
       .text(ivaLabel, cols.iva.x, y, { width: cols.iva.w, align: 'right' });
-    doc.font('Helvetica-Bold').fontSize(9).fillColor('#0f172a')
+    doc.font('Helvetica-Bold').fontSize(8).fillColor('#0f172a')
       .text(`$ ${fmtMoney(it.subtotal)}`, cols.imp.x, y, { width: cols.imp.w, align: 'right' });
 
     y += rowH;
@@ -594,15 +635,15 @@ function generateTotals(doc: PDFDoc, invoice: any) {
   const valueX = boxX + 110;
   const valueW = PAGE_RIGHT - valueX - 8;
 
-  doc.font('Helvetica').fontSize(9).fillColor('#374151');
+  doc.font('Helvetica').fontSize(8).fillColor('#374151');
   let y = y0;
   function line(label: string, value: string, bold = false, big = false) {
     if (big) {
-      doc.rect(boxX, y - 2, PAGE_RIGHT - boxX, 24).fill('#1d4ed8');
-      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(11);
+      doc.rect(boxX, y - 2, PAGE_RIGHT - boxX, 20).fill('#1d4ed8');
+      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(9);
     } else {
       doc.fillColor(bold ? '#0f172a' : '#374151')
-        .font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9);
+        .font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8);
     }
     doc.text(label, labelX, y + (big ? 5 : 0));
     // lineBreak:false fuerza una sola línea — el texto se trunca con ellipsis
@@ -610,7 +651,7 @@ function generateTotals(doc: PDFDoc, invoice: any) {
     doc.text(value, valueX, y + (big ? 5 : 0), {
       width: valueW, align: 'right', lineBreak: false, ellipsis: true,
     });
-    y += big ? 28 : 14;
+    y += big ? 24 : 12;
   }
   line('Subtotal',  `$ ${fmtMoney(invoice.subtotal)}`);
   if (Number(invoice.discount) > 0) {
@@ -651,9 +692,9 @@ function generateTotals(doc: PDFDoc, invoice: any) {
   // Usamos la moneda de la factura: MXN→"PESOS", USD→"DÓLARES", EUR→"EUROS"...
   const moneda = invoice.currency || 'MXN';
   const enLetra = montoEnLetra(Number(invoice.total) || 0, moneda);
-  doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#475569')
+  doc.font('Helvetica-Oblique').fontSize(7.5).fillColor('#475569')
     .text('Importe con letra:', PAGE_LEFT, y);
-  doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#0f172a')
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a')
     .text(enLetra, PAGE_LEFT + 90, y, { width: PAGE_RIGHT - PAGE_LEFT - 90 });
   // Calculamos la altura real consumida por el bloque de letra (puede ser >1 línea)
   const lineaH = doc.heightOfString(enLetra, { width: PAGE_RIGHT - PAGE_LEFT - 90 });
@@ -711,7 +752,7 @@ function generateCartaPorteSection(doc: PDFDoc, cp: any, invoice: any, company: 
 
   // ── Título "Complemento Carta Porte" con fondo celeste ─────────────
   doc.rect(PAGE_LEFT, y, 220, 18).fill(TITLE_BG);
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(DARK).text('Complemento Carta Porte', PAGE_LEFT + 6, y + 3.5);
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(DARK).text('Complemento Carta Porte', PAGE_LEFT + 6, y + 3.5);
   y += 24;
 
   // ── QR + tabla de datos del complemento ────────────────────────────
@@ -725,8 +766,8 @@ function generateCartaPorteSection(doc: PDFDoc, cp: any, invoice: any, company: 
   const infoStartY = y;
   const rowH = 13;
   const infoRow = (label: string, val: string, opts?: { valColor?: string; bold?: boolean }) => {
-    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(DARK).text(label, infoX, y);
-    doc.font(opts?.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9).fillColor(opts?.valColor || DARK)
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(DARK).text(label, infoX, y);
+    doc.font(opts?.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8).fillColor(opts?.valColor || DARK)
       .text(val || '—', valX, y, { width: PAGE_RIGHT - valX });
     y += rowH;
   };
@@ -746,7 +787,7 @@ function generateCartaPorteSection(doc: PDFDoc, cp: any, invoice: any, company: 
    *  el valor a un costado (después del label). Devuelve el nuevo y. */
   const darkLabel = (label: string, x: number, w: number, yy: number) => {
     doc.rect(x, yy, w, 14).fill(DARK);
-    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(TXT_WHITE).text(label, x + 5, yy + 3, { width: w - 8, lineBreak: false });
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(TXT_WHITE).text(label, x + 5, yy + 3, { width: w - 8, lineBreak: false });
   };
   /** Dos pares label-value en línea (barra oscura para labels, texto negro
    *  fuera de la barra para los valores). w es el ancho del label. */
@@ -755,14 +796,14 @@ function generateCartaPorteSection(doc: PDFDoc, cp: any, invoice: any, company: 
     const w2 = opts?.w2 ?? 130;
     const half = W / 2;
     darkLabel(l1, PAGE_LEFT, w1, yy);
-    doc.font('Helvetica').fontSize(8.5).fillColor(DARK).text(v1 || '—', PAGE_LEFT + w1 + 6, yy + 3, { width: half - w1 - 10, lineBreak: false });
+    doc.font('Helvetica').fontSize(7.5).fillColor(DARK).text(v1 || '—', PAGE_LEFT + w1 + 6, yy + 3, { width: half - w1 - 10, lineBreak: false });
     darkLabel(l2, PAGE_LEFT + half, w2, yy);
-    doc.font('Helvetica').fontSize(8.5).fillColor(DARK).text(v2 || '—', PAGE_LEFT + half + w2 + 6, yy + 3, { width: half - w2 - 10, lineBreak: false });
+    doc.font('Helvetica').fontSize(7.5).fillColor(DARK).text(v2 || '—', PAGE_LEFT + half + w2 + 6, yy + 3, { width: half - w2 - 10, lineBreak: false });
     return yy + 18;
   };
   /** Sección con título en gris pequeño + una o varias barras oscuras. */
   const sectionTitle = (title: string, yy: number) => {
-    doc.font('Helvetica-Bold').fontSize(9.5).fillColor(DARK).text(title, PAGE_LEFT, yy);
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(DARK).text(title, PAGE_LEFT, yy);
     return yy + 12;
   };
 
@@ -930,7 +971,7 @@ function renderDarkHeaderRow(
   const totalW = cols.reduce((a, c) => a + c.w, 0);
   doc.rect(x0, y, totalW, 14).fill(dark);
   let x = x0 + 5;
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(white);
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(white);
   for (const c of cols) {
     doc.text(c.label, x, y + 3, { width: c.w - 10, align: c.align, lineBreak: false });
     x += c.w;
@@ -952,7 +993,7 @@ function renderDataRow(
     if (h > maxH) maxH = h;
   }
   let x = x0 + 5;
-  doc.fontSize(8).fillColor(dark);
+  doc.fontSize(7.5).fillColor(dark);
   for (let i = 0; i < cols.length; i++) {
     const c = cols[i];
     doc.font(opts?.boldFirst && i === 0 ? 'Helvetica-Bold' : 'Helvetica');
@@ -970,7 +1011,7 @@ function generateCartaPorteContract(doc: PDFDoc) {
 
   // Encabezado enmarcado
   doc.rect(PAGE_LEFT, y, W, 20).stroke('#0f172a');
-  doc.font('Helvetica-Bold').fontSize(10).fillColor('#0f172a')
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a')
     .text('CONDICIONES DEL CONTRATO DE TRANSPORTE QUE AMPARA ESTA CARTA PORTE', PAGE_LEFT, y + 5.5, { width: W, align: 'center', lineBreak: false });
   y += 26;
 
@@ -991,7 +1032,7 @@ function generateCartaPorteContract(doc: PDFDoc) {
     ['DÉCIMA CUARTA.-', 'Los casos no previstos en las presentes condiciones y las quejas derivadas de su aplicación, se someterán por la vía administrativa a la Secretaría de Comunicaciones y Transportes.'],
   ];
 
-  doc.fontSize(8.5).fillColor('#0f172a');
+  doc.fontSize(7.5).fillColor('#0f172a');
   for (const [head, body] of clausulas) {
     if (y > 740) { doc.addPage(); y = PAGE_TOP; }
     doc.font('Helvetica-Bold').text(head, PAGE_LEFT, y, { continued: true });

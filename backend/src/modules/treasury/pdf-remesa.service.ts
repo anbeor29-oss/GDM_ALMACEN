@@ -29,6 +29,7 @@ import { query } from '../../config/database';
 import { NotFoundError } from '../../middleware/errorHandler';
 import { getCompanyLogo } from '../cfdi/logo-cache';
 import * as remesas from './remesas.service';
+import { pieNexoEnTodasLasPaginas } from '../../utils/pie-nexo';
 
 const PAGE_LEFT = 40;
 const PAGE_RIGHT = 555;
@@ -73,7 +74,8 @@ export async function generarPdfRemesa(companyId: string, runId: string): Promis
     porProveedor.set(r.supplier_id, l);
   }
 
-  const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
+  // bufferPages: para poder estampar el pie de NEXO en todas las páginas al final.
+  const doc = new PDFDocument({ size: 'LETTER', margin: 40, bufferPages: true });
   const trozos: Buffer[] = [];
   doc.on('data', (c: Buffer) => trozos.push(c));
   const listo = new Promise<Buffer>((res) => doc.on('end', () => res(Buffer.concat(trozos))));
@@ -224,6 +226,7 @@ export async function generarPdfRemesa(companyId: string, runId: string): Promis
        'ampara deducción ni acreditamiento.',
        PAGE_LEFT, y, { width: ANCHO, align: 'center' });
 
+  pieNexoEnTodasLasPaginas(doc);
   doc.end();
   return listo;
 }

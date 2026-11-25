@@ -116,6 +116,7 @@ export function IssuerModal({ companyId, onClose }: Props) {
       default_invoice_series: form.default_invoice_series,
       next_invoice_folio: form.next_invoice_folio,
       pdf_formato: form.pdf_formato || 'clasico',
+      recibo_formato: form.recibo_formato || 'clasico',
     });
   };
 
@@ -351,12 +352,19 @@ export function IssuerModal({ companyId, onClose }: Props) {
             <LogoUploader companyId={companyId} />
 
             <Section>Formato de impresión (PDF) — Factura, Timbre de pago y Nota de crédito</Section>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {/* OJO: esta lista tiene que coincidir con FORMATOS_PDF del backend
+              * (backend/src/modules/cfdi/pdf-temas.ts). Si aquí falta una clave,
+              * el formato existe pero NADIE puede elegirlo; si sobra, se guarda
+              * una clave que el backend no conoce y el PDF sale con el tema por
+              * omisión. Hay una prueba que compara las dos listas. */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {[
-                { key: 'esmeralda',  nombre: 'Esmeralda',  sub: 'Verde',        color: '#047857' },
-                { key: 'carbon',     nombre: 'Carbón',     sub: 'Gris · rojo',  color: '#b91c1c' },
-                { key: 'farsystems', nombre: 'FarSystems', sub: 'Réplica',      color: '#1d4ed8' },
-                { key: 'gncys',      nombre: 'GNcys',      sub: 'Réplica',      color: '#1e3a8a' },
+                { key: 'esmeralda',  nombre: 'Esmeralda',  sub: 'Verde',             color: '#047857' },
+                { key: 'carbon',     nombre: 'Carbón',     sub: 'Gris · rojo',       color: '#b91c1c' },
+                { key: 'lineal',     nombre: 'Lineal',     sub: 'Compacto',          color: '#1E3D6E' },
+                { key: 'bandas',     nombre: 'Bandas',     sub: 'Etiquetas de color', color: '#0f766e' },
+                { key: 'farsystems', nombre: 'FarSystems', sub: 'Réplica',           color: '#1d4ed8' },
+                { key: 'gncys',      nombre: 'GNcys',      sub: 'Réplica',           color: '#1e3a8a' },
               ].map((f) => {
                 const sel = (form.pdf_formato || 'esmeralda') === f.key;
                 return (
@@ -373,6 +381,24 @@ export function IssuerModal({ companyId, onClose }: Props) {
               })}
             </div>
             <p className="text-xs text-gray-500">El color elegido se aplica a los tres comprobantes. Pulsa «Guardar» para aplicarlo.</p>
+
+            <Section>Formato del recibo de nómina</Section>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { key: 'clasico',   nombre: 'Clásico',   sub: 'Percepciones y deducciones corridas' },
+                { key: 'detallado', nombre: 'Detallado', sub: 'Dos tablas, neto destacado y firma' },
+              ].map((f) => {
+                const sel = (form.recibo_formato || 'clasico') === f.key;
+                return (
+                  <button type="button" key={f.key}
+                    onClick={() => setForm((p) => ({ ...p, recibo_formato: f.key }))}
+                    className={`text-left rounded-lg p-2.5 transition ${sel ? 'border-2 border-blue-500 bg-blue-50' : 'border border-gray-200 hover:bg-gray-50'}`}>
+                    <div className="text-sm font-medium text-gray-800">{f.nombre}</div>
+                    <p className="text-[11px] text-gray-500 mt-0.5">{f.sub}</p>
+                  </button>
+                );
+              })}
+            </div>
 
             <Section>CSD — Certificado de Sello Digital (para timbrar)</Section>
             <CSDUploader companyId={companyId} />

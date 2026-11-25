@@ -14,6 +14,7 @@
 
 import PDFDocument from 'pdfkit';
 import { fechaHoraMx, fechaMx } from './fecha-mx';
+import { pieNexo } from './pie-nexo';
 
 export interface ColumnaPdf {
   titulo: string;
@@ -138,14 +139,26 @@ export async function reporteTablaPdf(o: ReportePdfOpts): Promise<Buffer> {
     });
   }
 
-  // Número de página al pie, en la parte inferior DERECHA: "1/5", "2/5", … El
-  // total se conoce hasta el final gracias a bufferPages: se recorre cada página
-  // ya dibujada y se estampa "actual/total".
+  /* Pie de cada página: número de página a la derecha y el sello de GDM NEXO
+   * centrado. El total se conoce hasta el final gracias a bufferPages.
+   *
+   * ⚠ LOS MÁRGENES SE ANULAN MIENTRAS SE ESCRIBE. PDFKit con bufferPages tiene
+   * un defecto conocido: switchToPage() no reinicia el control del margen
+   * inferior, así que un text() por debajo de ese margen —aunque lleve Y
+   * explícito y lineBreak:false— dispara addPage() antes de escribir. Sin esto
+   * CADA reporte salía con tantas páginas EN BLANCO al final como páginas de
+   * contenido tenía: una balanza de dos hojas se imprimía en cuatro. Estaba así
+   * desde que existe este archivo; se vio al montar el pie de la casa.
+   * (drawPageNumbers, en modules/cfdi/pdf-helpers, ya hacía este mismo truco.) */
   const paginas = doc.bufferedPageRange();   // { start, count }
   for (let i = 0; i < paginas.count; i++) {
     doc.switchToPage(paginas.start + i);
+    const margenes = { ...doc.page.margins };
+    doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
     doc.font('Helvetica').fontSize(8).fillColor(GRIS)
       .text(`${i + 1}/${paginas.count}`, M, doc.page.height - 26, { width: contentW, align: 'right', lineBreak: false });
+    doc.page.margins = margenes;
+    pieNexo(doc);
   }
 
   doc.end();

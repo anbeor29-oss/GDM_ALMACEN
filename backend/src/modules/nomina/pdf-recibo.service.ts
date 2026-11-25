@@ -26,6 +26,7 @@ import { query } from '../../config/database';
 import { NotFoundError } from '../../middleware/errorHandler';
 import { fmtMoney, montoEnLetra } from '../cfdi/pdf-helpers';
 import { getCompanyLogo } from '../cfdi/logo-cache';
+import { renderReciboDetallado } from './pdf-recibo-detallado';
 
 type Doc = PDFKit.PDFDocument;
 
@@ -167,7 +168,8 @@ export async function generarReciboPDF(
 
   const emp = await query<any>(
     `SELECT business_name, rfc, fiscal_regime, postal_code, registro_patronal,
-            street, ext_number, neighborhood, municipality, city, state
+            street, ext_number, neighborhood, municipality, city, state,
+            recibo_formato
        FROM companies WHERE id = $1`,
     [companyId]
   );
@@ -192,17 +194,20 @@ export async function generarReciboPDF(
   const emin = nodos(xml, 'nomina12:Emisor')[0] || {};
 
   const percepciones = nodos(xml, 'nomina12:Percepcion').map((p) => ({
+    tipo: p.TipoPercepcion || '',          // agrupador del SAT (c_TipoPercepcion)
     clave: p.Clave || p.TipoPercepcion || '',
     concepto: p.Concepto || '',
     gravado: n2(p.ImporteGravado), exento: n2(p.ImporteExento),
     importe: n2(p.ImporteGravado) + n2(p.ImporteExento),
   }));
   const deducciones = nodos(xml, 'nomina12:Deduccion').map((d) => ({
+    tipo: d.TipoDeduccion || '',           // 002 = ISR retenido
     clave: d.Clave || d.TipoDeduccion || '',
     concepto: d.Concepto || '',
     importe: n2(d.Importe),
   }));
   const otrosPagos = nodos(xml, 'nomina12:OtroPago').map((o) => ({
+    tipo: o.TipoOtroPago || '',
     clave: o.Clave || o.TipoOtroPago || '',
     concepto: o.Concepto || '',
     gravado: 0, exento: n2(o.Importe),
@@ -213,7 +218,39 @@ export async function generarReciboPDF(
    * pedirlo por recibo no cuesta una consulta por hoja. */
   const logo = await getCompanyLogo(companyId);
 
-  /* ── El papel ── */
+  const nombreArchivo =
+    `recibo-${rec.num_empleado}-${rec.tipo.toLowerCase()}` +
+    `${String(rec.periodo_numero).padStart(2, '0')}-${rec.anio}` +
+    `${timbrado ? '' : '-sin-timbrar'}.pdf`;
+
+  /* ── Formato elegido por la empresa ──
+   * 'detallado' tiene layout propio (pdf-recibo-detallado) y arma su propio
+   * documento, así que se sale aquí. Cualquier otro valor —incluido el vacío
+   * de las empresas que nunca lo eligieron— cae en el clásico de abajo. */
+  if (e.recibo_formato === 'detallado') {
+    const tfdDet = nodos(xml, 'tfd:TimbreFiscalDigital')[0] || {};
+    const buffer = await renderReciboDetallado({
+      emisorNom, emisorRfc, emisorReg,
+      registroPatronal: emin.RegistroPatronal || e.registro_patronal || '',
+      receptorNom, receptorRfc,
+      serieFolio, fechaComp, lugarExp, metodoPago,
+      subTotal, descuento, total,
+      percepciones, deducciones, otrosPagos,
+      nom, recp, rec,
+      timbrado,
+      uuid: tfdDet.UUID || rec.uuid || '',
+      fechaTimbrado: tfdDet.FechaTimbrado || '',
+      noCertificado: attr(xml, 'cfdi:Comprobante', 'NoCertificado') || '',
+      noCertificadoSat: tfdDet.NoCertificadoSAT || '',
+      rfcProvCertif: tfdDet.RfcProvCertif || '',
+      selloCfd: tfdDet.SelloCFD || attr(xml, 'cfdi:Comprobante', 'Sello') || '',
+      selloSat: tfdDet.SelloSAT || '',
+      logo,
+    });
+    return { buffer, nombre: nombreArchivo, timbrado };
+  }
+
+  /* ── El papel (formato clásico) ── */
   const doc = new PDFDocument({ size: 'LETTER', margin: M, bufferPages: true });
   const trozos: Buffer[] = [];
   doc.on('data', (c: Buffer) => trozos.push(c));
@@ -400,10 +437,5 @@ export async function generarReciboPDF(
   doc.end();
   const buffer = await listo;
 
-  const nombre =
-    `recibo-${rec.num_empleado}-${rec.tipo.toLowerCase()}` +
-    `${String(rec.periodo_numero).padStart(2, '0')}-${rec.anio}` +
-    `${timbrado ? '' : '-sin-timbrar'}.pdf`;
-
-  return { buffer, nombre, timbrado };
+  return { buffer, nombre: nombreArchivo, timbrado };
 }

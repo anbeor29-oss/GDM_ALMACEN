@@ -15,6 +15,7 @@ import { getOptimizedLogo } from '../cfdi/logo-cache';
 import { drawPageNumbers, fmtMoney, PAGE_LEFT, PAGE_RIGHT, PAGE_TOP } from '../cfdi/pdf-helpers';
 import * as reportsService from './reports.service';
 import logger from '../../middleware/logger';
+import { pieNexoEnTodasLasPaginas } from '../../utils/pie-nexo';
 
 const BOTTOM_MARGIN = 60; // reservado para paginación
 
@@ -178,6 +179,7 @@ export async function generateReceivablesReportPDF(
   }
 
   drawPageNumbers(doc);
+  pieNexoEnTodasLasPaginas(doc);
   doc.end();
   return new Promise((resolve, reject) => {
     doc.on('end', () => {

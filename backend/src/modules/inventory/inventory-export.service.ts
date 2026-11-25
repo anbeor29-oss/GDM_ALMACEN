@@ -15,6 +15,7 @@ import * as companiesService from '../companies/companies.service';
 import { getOptimizedLogo } from '../cfdi/logo-cache';
 import { drawPageNumbers, fmtMoney, PAGE_TOP } from '../cfdi/pdf-helpers';
 import { fechaMx, fechaHoraMx } from '../../utils/fecha-mx';
+import { pieNexoEnTodasLasPaginas } from '../../utils/pie-nexo';
 
 type ColType = 'text' | 'money' | 'qty' | 'int' | 'date' | 'pct';
 
@@ -390,6 +391,7 @@ export async function toPdf(reportKey: string, companyId: string, params: Export
   }
 
   drawPageNumbers(doc);
+  pieNexoEnTodasLasPaginas(doc);
   doc.end();
   await new Promise<void>((resolve) => doc.on('end', () => resolve()));
   return Buffer.concat(chunks);

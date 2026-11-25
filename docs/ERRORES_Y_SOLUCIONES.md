@@ -1391,6 +1391,39 @@ pasa:
 El ambiente se cambia donde siempre: Súper Admin → Empresas. Esto sólo lo **reporta**.
 
 ---
+## 36. Todos los reportes salían con el doble de hojas: la mitad en blanco
+
+**Síntoma.** Una balanza de dos páginas se imprimía en **cuatro**: dos con datos y dos en blanco. Y el
+número de página («1/2», «2/2») aparecía **en las hojas vacías**, no en las de contenido.
+
+**Cómo se encontró.** No se buscaba. Al montar el pie de GDM NEXO en `utils/reporte-pdf` el reporte de
+prueba salió con cuatro hojas, así que lo primero fue comprobar si el pie las traía: se generó el mismo
+reporte **con y sin** el pie. Cuatro hojas en los dos casos. El pie no tenía nada que ver; el defecto
+llevaba ahí desde que existe el archivo.
+
+**Causa raíz.** PDFKit con `bufferPages: true` tiene un defecto conocido: `switchToPage()` **no
+reinicia** el control del margen inferior de la página. Cualquier `text()` por debajo de ese margen
+—aunque lleve Y explícito y `lineBreak: false`— dispara `addPage()` **antes** de escribir. El numerador
+de páginas escribía en `height - 26`, con margen de 36: siempre por debajo. Resultado: por cada página de
+contenido nacía una página nueva, y el número se estampaba en ella.
+
+Es un defecto que se esconde solo: la hoja de más está **vacía**, así que no se ve nada raro en pantalla
+—sólo al imprimir—, y el número de página, que es lo que delataría el problema, es justo lo que se va a
+la hoja fantasma.
+
+**✅ Solución (commit `__HASH__`).** Anular los márgenes de la página **mientras** se escribe el pie, y
+restaurarlos después. No es un truco nuevo en este repositorio: `drawPageNumbers`, en
+`modules/cfdi/pdf-helpers`, ya lo hacía —con el comentario que explica el defecto— desde que se armó el
+PDF de la factura. Lo que faltaba era que `reporte-pdf` hiciera lo mismo. Una balanza de dos páginas sale
+ahora en dos, con su «1/2» y «2/2» donde tienen que estar.
+
+**Alcance.** `utils/reporte-pdf` es la base de los reportes de Contabilidad, Nómina, Tesorería,
+e-commerce y checador: diez módulos. Todos salían así.
+
+**Lo que deja de regalo.** `scripts/muestra-reporte.ts` genera un reporte de ejemplo —40 renglones, para
+que corte en dos páginas— sin tocar la base. Sin eso, comprobar esto exigía armar una balanza real.
+
+---
 
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>

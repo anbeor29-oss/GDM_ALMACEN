@@ -6,14 +6,20 @@
  * el LAYOUT no cambia (sigue siendo un CFDI válido), sólo los colores/acentos.
  */
 
-export type FormatoPdf = 'clasico' | 'esmeralda' | 'carbon' | 'cielo' | 'farsystems' | 'gncys';
+export type FormatoPdf = 'clasico' | 'esmeralda' | 'carbon' | 'cielo' | 'farsystems' | 'gncys' | 'lineal' | 'bandas';
 
-/** Catálogo para el selector (4 formatos). 'farsystems' y 'gncys' NO son sólo
- *  color: usan un LAYOUT propio (réplica), ver pdf-farsystems / pdf-gncys.
- *  'clasico' y 'cielo' se retiraron del selector (quedan como respaldo interno). */
+/** Catálogo para el selector (6 formatos). 'esmeralda' y 'carbon' comparten el
+ *  layout PROPIO y sólo cambian de color; los otros cuatro tienen LAYOUT propio
+ *  (ver pdf-farsystems / pdf-gncys / pdf-lineal / pdf-bandas).
+ *  'clasico' y 'cielo' se retiraron del selector (quedan como respaldo interno).
+ *
+ *  Para verlos los seis con la misma factura de ejemplo, sin base de datos:
+ *      npx ts-node scripts/muestra-formatos.ts                                */
 export const FORMATOS_PDF: Array<{ key: FormatoPdf; nombre: string; muestra: string }> = [
   { key: 'esmeralda',  nombre: 'Esmeralda (verde)',    muestra: '#047857' },
   { key: 'carbon',     nombre: 'Carbón (gris · rojo)', muestra: '#b91c1c' },
+  { key: 'lineal',     nombre: 'Lineal (compacto)',    muestra: '#1E3D6E' },
+  { key: 'bandas',     nombre: 'Bandas (etiquetas de color)', muestra: '#0f766e' },
   { key: 'farsystems', nombre: 'FarSystems (réplica)', muestra: '#1d4ed8' },
   { key: 'gncys',      nombre: 'GNcys (réplica)',      muestra: '#1e3a8a' },
 ];
@@ -37,6 +43,10 @@ const TEMAS: Record<FormatoPdf, TemaPdf> = {
   farsystems: { titulo: '#1d4ed8', tablaHeaderBg: '#1d4ed8', tablaHeaderText: '#ffffff', boxBg: '#eff6ff', boxBorder: '#93c5fd', acento: '#1e3a8a' },
   // GNcys: layout propio en pdf-gncys; colores de respaldo (azul marino sobrio).
   gncys:      { titulo: '#1e3a8a', tablaHeaderBg: '#1e3a8a', tablaHeaderText: '#ffffff', boxBg: '#eef2ff', boxBorder: '#c7d2fe', acento: '#1e3a8a' },
+  // Lineal: filetes finos, sin fondos. El azul de la casa como único acento.
+  lineal:     { titulo: '#1E3D6E', tablaHeaderBg: '#1E3D6E', tablaHeaderText: '#ffffff', boxBg: '#f8fafc', boxBorder: '#1E3D6E', acento: '#1E3D6E' },
+  // Bandas: el color ES la estructura, así que va con cuerpo y texto blanco.
+  bandas:     { titulo: '#0f766e', tablaHeaderBg: '#0f766e', tablaHeaderText: '#ffffff', boxBg: '#f0fdfa', boxBorder: '#5eead4', acento: '#115e59' },
 };
 
 /** Tema por clave; ante cualquier valor desconocido o vacío, el clásico. */

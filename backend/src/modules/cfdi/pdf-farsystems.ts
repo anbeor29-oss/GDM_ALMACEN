@@ -27,7 +27,7 @@ const GRIS = '#6b7280';
 
 export interface CtxFarsystems {
   company: any; customer: any; invoice: any;
-  cat: { regE: string; regR: string; uso: string };
+  cat: { regE: string; regR: string; uso: string; unidades?: Record<string, string> };
   logoBuf: Buffer | null;
   t: any;                   // extractTimbreData(xml)
   qrPng: Buffer | null;

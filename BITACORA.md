@@ -8618,6 +8618,74 @@ haría leer como navegación. Detalle en `ERRORES_Y_SOLUCIONES.md` #16. Ver [[op
 
 ---
 
+## 2026-11-25 (impresión) — Dos formatos de factura más, la letra a su tamaño, segundo recibo de nómina y el sello de la casa en los reportes
+
+Cuatro cosas del mismo tema: cómo se ve lo que NEXO imprime.
+
+**Lo primero fue poder VERLO.** Un formato se diseña mirándolo, y hasta hoy la única manera de ver uno
+era timbrar una factura de prueba, bajar el PDF y abrirlo. Ahora `scripts/muestra-formatos.ts` genera
+**los seis formatos con la misma factura de ejemplo** —tres conceptos, uno con precio de seis decimales—
+sin tocar la base; `scripts/muestra-reporte.ts` y `scripts/muestra-recibo.ts` hacen lo propio con un
+reporte y con el recibo de nómina. Los datos son inventados a propósito: un PDF de muestra no debe
+poder confundirse con un comprobante.
+
+**Dos formatos de factura nuevos**, sacados de los que el usuario pasó como referencia:
+
+- **Lineal** (`pdf-lineal`): emisor arriba-izquierda y logo centrado; una caja con filete de color que
+  reúne receptor, tipo de comprobante, serie/folio y lugar y fechas; tira de tres columnas con folio
+  fiscal y los dos certificados; tabla a filete fino con el desglose de impuestos **debajo de cada
+  descripción**; abajo QR, datos de pago y totales; al final cadena original y los dos sellos. Es el más
+  denso de los seis: cabe mucho concepto en una hoja.
+- **Bandas** (`pdf-bandas`): cada dato va en una pareja **banda de color** (la etiqueta) + **celda
+  blanca** (el valor). Es el más legible a distancia: la etiqueta se distingue del valor por el fondo, no
+  por el tamaño de la letra.
+
+Los dos toman el color del **tema de la empresa**, no de quien los inspiró. Van en el mismo selector de
+«Datos de mi empresa», que ahora tiene seis.
+
+**Las tasas de impuesto se leen de la factura, no se escriben a mano** (`pdf-impuestos`). Los formatos
+impresos tienden a traer «16.0000» fijo porque casi todas las facturas son al 16%: eso imprime una cifra
+**falsa** en cuanto aparece una de zona fronteriza al 8%, una exenta o una con retención. Aquí los
+traslados y las retenciones salen de las tasas de cada línea, agrupadas igual que en el XML —dos líneas
+al 16% son un renglón; una al 16% y otra al 8% son dos—. El nombre de la unidad («E48 → Unidad de
+servicio») también se **lee del catálogo c_ClaveUnidad** de la base, no de un mapa escrito a mano que
+sólo acierta con las cuatro claves de siempre.
+
+**La letra del formato propio bajó un escalón.** Era el reclamo: el título iba a 22 pt y el cuerpo a
+9–11, contra 7–7.5 de los formatos de referencia. Con tres conceptos la hoja ya se veía medio vacía y
+con diez se desbordaba. Ahora el título va a 15 y el cuerpo a 7.5–8, y la descripción dejó de
+imprimirse EN MAYÚSCULAS —ocupa más y se lee peor—. Nada por debajo de 8 pt se tocó.
+
+**Segundo formato de recibo de nómina** (`pdf-recibo-detallado`, `companies.recibo_formato`):
+percepciones y deducciones en **dos tablas lado a lado** con el agrupador del SAT y la clave de la
+empresa, caja de totales con el **neto destacado**, leyenda de recibí, línea de firma del trabajador y,
+abajo, QR y recuadro de certificación. Donde los recibos de otros sistemas ponen «Emitido desde:
+<nombre de su programa>», éste dice **«Emitido desde: GDM NEXO · NÓMINA»**: el comprobante lo emite la
+empresa, el documento lo genera NEXO. Se elige por empresa y **por omisión queda el clásico**: nadie
+cambia de formato por desplegar.
+
+**El sello de la casa en los reportes** (`utils/pie-nexo`): el logo de NEXO en plata y, a su derecha,
+«Reporte emitido por GDM NEXO», centrado al pie de **todas** las páginas. Lo llevan los REPORTES —lo que
+alguien descarga para leer o analizar—, no los comprobantes fiscales ni los documentos firmados:
+meterle marca de software a un papel que alguien firma o presenta ante una autoridad es ruido en el peor
+sitio.
+
+**Y en el camino apareció un defecto viejo:** *todos* los reportes salían con el doble de hojas, la
+mitad en blanco, y el número de página se estampaba en las vacías. No lo causaba el pie —se comprobó
+generando el mismo reporte con y sin él—: era el numerador de páginas escribiendo por debajo del margen
+inferior, que con `bufferPages` hace que PDFKit cree una página nueva. Detalle en
+`docs/ERRORES_Y_SOLUCIONES.md` #36.
+
+**Una lista menos escrita a mano.** El selector de formatos del frontend tenía su propia copia de la
+lista, que es exactamente lo que hizo que el checador no se pudiera contratar. Hay una prueba que
+compara las dos listas y falla si se separan.
+
+Migración `2026-11-25b_recibo_formato.sql`. 297 pruebas verdes (4 nuevas), `tsc` de backend y frontend,
+build de producción. **Los formatos nuevos no se han probado con una factura timbrada real**: se
+revisaron contra las muestras generadas.
+
+---
+
 ## 2026-11-25 (facturación) — El precio de 6 decimales no cabía en la columna, y el PAC rechazaba
 
 Una factura de 400 piezas a **32.219827** —precio escogido a propósito para que el total cierre en

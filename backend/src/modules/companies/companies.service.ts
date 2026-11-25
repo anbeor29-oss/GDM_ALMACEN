@@ -177,7 +177,8 @@ export async function updateCompany(id: string, data: Partial<Company>): Promise
   }
   // Configuración de folios/series por empresa (lo puede personalizar el admin)
   // + pdf_formato = tema de color de la representación impresa (vanity).
-  for (const f of ['default_invoice_series','next_invoice_folio','pdf_formato']) {
+  // + recibo_formato = formato del recibo de nomina ('clasico' | 'detallado').
+  for (const f of ['default_invoice_series','next_invoice_folio','pdf_formato','recibo_formato']) {
     if ((data as any)[f] !== undefined) {
       fields.push(`${f} = $${paramCount++}`);
       values.push((data as any)[f]);

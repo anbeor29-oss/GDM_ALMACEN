@@ -15,6 +15,7 @@ import * as companiesService from '../companies/companies.service';
 import { getOptimizedLogo } from '../cfdi/logo-cache';
 import { drawPageNumbers, fmtMoney, PAGE_LEFT, PAGE_RIGHT, PAGE_TOP } from '../cfdi/pdf-helpers';
 import * as reportsService from './reports.service';
+import { pieNexoEnTodasLasPaginas } from '../../utils/pie-nexo';
 
 const BOTTOM_MARGIN = 60; // reservado para la paginación
 
@@ -188,6 +189,7 @@ export async function generateSalesSummaryPDF(companyId: string): Promise<Buffer
   }
 
   drawPageNumbers(doc);
+  pieNexoEnTodasLasPaginas(doc);
   doc.end();
   return new Promise((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
 }
@@ -305,6 +307,7 @@ export async function generateUnpaidInvoicesPDF(companyId: string): Promise<Buff
   }
 
   drawPageNumbers(doc);
+  pieNexoEnTodasLasPaginas(doc);
   doc.end();
   return new Promise((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
 }
