@@ -12,6 +12,7 @@ import {
   Factory, BarChart3, Store, BookOpen, BookText, AlertTriangle, AlertCircle,
   FileText, FileDown, FileUp, Wallet, HeartPulse, Settings, BookMarked, Building,
   Building2, Tags, Shuffle, Landmark, PenLine, CalendarClock, Calendar, Droplets,
+  FolderDown,
   Search, Microscope, FolderOpen, Satellite, Mail, ScrollText, ArrowUpFromLine,
   ArrowDownToLine, ArrowRightLeft, CircleDot, ShoppingCart,
   Link2, CreditCard, DollarSign, Gift, Lock, Clock, X,
@@ -23,6 +24,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import api from '@/services/api';
 import { IssuerModal } from './IssuerModal';
+import { navegadorSoportaCarpeta, nombreCarpeta, elegirCarpeta, olvidarCarpeta } from '@/utils/carpeta-descargas';
 import { ForcePasswordChange } from './ForcePasswordChange';
 import { ImpersonationBanner } from './ImpersonationBanner';
 import { QueVersionEstoyViendo } from './QueVersionEstoyViendo';
@@ -201,6 +203,12 @@ function AvisoVigencias({ nivel, sellos, minDias, onIrCertificados }: { nivel: s
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showIssuer, setShowIssuer] = useState(false);
+  /* Carpeta de reportes: es ajuste DE ESTA MÁQUINA (y de este navegador), no de
+   * la empresa ni del usuario — por eso vive aquí y no en «Datos de mi
+   * empresa». El nombre se relee al montar porque el permiso puede haberse
+   * revocado desde el navegador sin que la app se entere. */
+  const [carpeta, setCarpeta] = useState<string | null>(null);
+  useEffect(() => { void nombreCarpeta().then(setCarpeta); }, []);
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -830,6 +838,45 @@ export function Layout() {
               </div>
             )}
           </button>
+          )}
+
+          {/* CARPETA DE REPORTES.
+              Una página web NO puede cambiar la carpeta de descargas del
+              navegador —eso es del navegador, en cada máquina—. Lo que sí
+              puede: que la persona elija una carpeta UNA VEZ y de ahí en
+              adelante los Excel y PDF se escriban ahí directo. Sólo lo traen
+              los navegadores Chromium; en los demás ni se ofrece, para no
+              prometer lo que no se va a cumplir. */}
+          {navegadorSoportaCarpeta() && (
+            <div className="px-3 py-2 border-t border-slate-200">
+              <button
+                onClick={async () => { const n = await elegirCarpeta(); if (n) setCarpeta(n); }}
+                title={carpeta
+                  ? `Los Excel y PDF se guardan en «${carpeta}». Clic para cambiarla.`
+                  : 'Elige una carpeta y todos los Excel y PDF se guardarán ahí, sin pasar por Descargas.'}
+                className="w-full flex items-center gap-3 text-left group"
+              >
+                <div className="w-9 h-9 bg-amber-50 rounded-lg flex items-center justify-center flex-shrink-0 ring-1 ring-amber-100">
+                  <FolderDown size={18} className="text-amber-600" />
+                </div>
+                {sidebarOpen && (
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Reportes</p>
+                    <p className="text-sm text-slate-700 truncate group-hover:text-amber-700">
+                      {carpeta || 'Elegir carpeta…'}
+                    </p>
+                  </div>
+                )}
+              </button>
+              {sidebarOpen && carpeta && (
+                <button
+                  onClick={async () => { await olvidarCarpeta(); setCarpeta(null); }}
+                  className="mt-1 ml-12 text-[11px] text-slate-400 hover:text-slate-600 underline decoration-dotted"
+                >
+                  volver a la carpeta de descargas
+                </button>
+              )}
+            </div>
           )}
 
           {/* Sesión + Salir */}

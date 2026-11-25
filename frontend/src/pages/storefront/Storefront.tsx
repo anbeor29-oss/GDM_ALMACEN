@@ -107,6 +107,44 @@ export function StorefrontPage() {
     return () => { vivo = false; };
   }, [slug]);
 
+  /* LA PESTAÑA ES DE LA TIENDA, NO DE NEXO.
+   *
+   * `index.html` fija <title>GDM NEXO</title> y el ícono del ERP para toda la
+   * app. En la tienda pública eso está mal: quien la abre es un COMPRADOR que
+   * no sabe —ni tiene por qué saber— con qué sistema está hecha. En la pestaña
+   * tiene que leerse el nombre del comercio, y verse su logo.
+   *
+   * El logo se PRUEBA antes de ponerlo: `ec_store.logo_url` es una URL que el
+   * merchant escribe a mano, y bien puede apuntar a una página en vez de a una
+   * imagen (pasó: apuntaba a un artículo de revista). Si no carga como imagen,
+   * se deja el ícono de siempre en vez de dejar la pestaña con el ícono roto.
+   *
+   * Al salir se devuelve todo a como estaba: el storefront vive dentro de la
+   * misma SPA que el ERP, y sin restaurar, el título de la tienda se quedaría
+   * pegado al navegar de regreso.
+   */
+  useEffect(() => {
+    if (!tienda?.nombre) return;
+    const tituloPrevio = document.title;
+    document.title = tienda.nombre;
+
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    const iconoPrevio = link?.getAttribute('href') || null;
+    let cancelado = false;
+
+    if (link && tienda.logoUrl) {
+      const prueba = new Image();
+      prueba.onload = () => { if (!cancelado) link.setAttribute('href', tienda.logoUrl as string); };
+      prueba.src = tienda.logoUrl;   // si falla, onload nunca corre y el ícono se queda
+    }
+
+    return () => {
+      cancelado = true;
+      document.title = tituloPrevio;
+      if (link && iconoPrevio) link.setAttribute('href', iconoPrevio);
+    };
+  }, [tienda?.nombre, tienda?.logoUrl]);
+
   const marca = tienda?.colorPrimario || '#059669';
   /* Datos de confianza. Se derivan de lo que de verdad vino del API: si la
    * tienda no los tiene capturados, el bloque simplemente no sale —antes que

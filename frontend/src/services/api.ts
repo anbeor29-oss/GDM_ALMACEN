@@ -3,6 +3,7 @@
  * Centralized API client for all backend calls
  */
 
+import { guardarEnCarpeta } from '@/utils/carpeta-descargas';
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { APIResponse, Invoice, Customer, Product } from '@/types';
 import { getToken, getRefreshToken, setToken, clearSession } from '@/utils/authStorage';
@@ -506,14 +507,8 @@ class APIClient {
         ? 'application/pdf'
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${report}-${new Date().toISOString().slice(0, 10)}.${format}`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
+    // Por el helper: así respeta la carpeta de reportes como todo lo demás.
+    await this.downloadFile(blob, `${report}-${new Date().toISOString().slice(0, 10)}.${format}`);
   }
 
   /**
@@ -1891,11 +1886,7 @@ class APIClient {
   async exportarLibroDiarioExcel(desde: string, hasta: string) {
     const r = await this.client.get('/accounting/polizas/excel', { params: { desde, hasta }, responseType: 'blob' });
     const blob = new Blob([r.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `libro-diario_${desde}_${hasta}.xlsx`;
-    document.body.appendChild(a); a.click(); a.remove();
-    window.URL.revokeObjectURL(url);
+    await this.downloadFile(blob, `libro-diario_${desde}_${hasta}.xlsx`);
   }
   async getPolizasConCuadre(anio: number, mes: number) {
     const r = await this.client.get<APIResponse<any>>('/accounting/polizas/con-cuadre', { params: { anio, mes } });
@@ -3945,11 +3936,7 @@ class APIClient {
     const blob = new Blob([r.data as BlobPart], {
       type: formato === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `Ventas_web.${formato}`;
-    document.body.appendChild(a); a.click(); a.remove();
-    window.URL.revokeObjectURL(url);
+    await this.downloadFile(blob, `Ventas_web.${formato}`);
   }
   // Pedidos de la tienda (rebanada 5)
   async getPedidosEc() {
@@ -4414,7 +4401,18 @@ class APIClient {
     setTimeout(() => window.URL.revokeObjectURL(url), w ? 60_000 : 4000);
   }
 
-  async downloadFile(blob: Blob, filename: string) {
+  /**
+   * TODA descarga de NEXO pasa por aquí — Excel, PDF, XML, ZIP.
+   *
+   * Si el usuario eligió una CARPETA DE REPORTES (Chrome/Edge/Vivaldi/Brave),
+   * el archivo se escribe ahí directo y no pasa por la carpeta de descargas del
+   * navegador. Si no eligió ninguna, si el navegador no lo soporta (Firefox,
+   * Safari) o si el permiso ya no está, baja como siempre. El usuario nunca se
+   * queda sin su archivo por culpa de esto.
+   *
+   * Devuelve dónde quedó, para que quien llame pueda decirlo.
+   */
+  async downloadFile(blob: Blob, filename: string): Promise<{ enCarpeta: string | null }> {
     // Aseguramos un tipo MIME válido — algunos navegadores ignoran download
     // si el Blob viene sin type (lo tratan como "navigate" en el mismo tab).
     const fixed = blob.type
@@ -4426,6 +4424,10 @@ class APIClient {
               ? 'application/pdf'
               : 'application/octet-stream',
         });
+
+    const enCarpeta = await guardarEnCarpeta(fixed, filename);
+    if (enCarpeta) return { enCarpeta };
+
     const url = window.URL.createObjectURL(fixed);
     const link = document.createElement('a');
     link.href = url;
@@ -4436,6 +4438,7 @@ class APIClient {
     document.body.removeChild(link);
     // Liberamos el ObjectURL tras un breve delay para no abortar la descarga
     setTimeout(() => window.URL.revokeObjectURL(url), 4000);
+    return { enCarpeta: null };
   }
 
   /* ─── Checador (control de asistencia) ─── */

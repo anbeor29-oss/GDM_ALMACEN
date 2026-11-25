@@ -1162,6 +1162,99 @@ propósito, falla.
 
 ---
 
+## 31. Un recibo de nómina a un dominio que no existe: el 550 no decía qué arreglar
+
+**Síntoma.** Al mandar los recibos: *0 enviados, 1 con error, 1 omitido*. El renglón del error traía el
+servidor SMTP en crudo:
+
+> Can't send mail - all recipients were rejected: 550-The mail server could not deliver mail to
+> anbeor@hotmail.ocm. The account 550-or domain may not exist, they may be blacklisted, or missing the
+> proper dns 550 entries.
+
+**Causa raíz.** `hotmail.**ocm**`. Son las letras de `.com` cambiadas de lugar. El dominio no existe, así
+que no hay servidor al que entregar.
+
+Lo delicado es que **pasa cualquier validación de sintaxis**: tiene `@`, tiene punto, tiene letras
+después. `CORREO_OK` (`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`) lo aprueba, y es correcto que lo apruebe — ningún
+patrón puede saber qué dominios existen. Sólo el DNS lo sabe.
+
+**Tres cosas malas en una.** El envío se gastó. El buzón de la empresa se comió un rebote —y los rebotes
+le cuestan **reputación al remitente**, que es lo que decide si los DEMÁS correos caen en bandeja o en
+spam. Y el mensaje que vio el usuario no decía lo único que importaba: *le faltó una letra al dominio*.
+
+**✅ Solución (commit `__HASH31__`).** `modules/mailer/direccion-correo.ts` revisa la dirección **antes**
+de gastar el envío:
+
+- **El DNS decide si se bloquea.** Un dominio sin MX y sin A no puede recibir nada: eso es un hecho.
+  Sólo con esa certeza se detiene el envío.
+- **Ante la duda, pasa.** Si el DNS no contesta (red caída, tiempo agotado) el correo sale igual. Un
+  correo que quizá rebota es mejor que un recibo que no sale por un tropiezo de red.
+- **La tabla de dedazos sólo SUGIERE, nunca bloquea.** Distancia de edición **con transposición**
+  (Damerau), que es la que hace falta: `ocm`→`com` cuesta 1, no 2, y así no se confunde con un dominio
+  ajeno. El día que alguien tenga un dominio parecido a `gmail.com` de verdad, su correo sale.
+
+El caso exacto, comprobado contra DNS real:
+
+> El dominio «hotmail.ocm» no existe, así que nadie puede recibir ahí. ¿Será «anbeor@hotmail.com»?
+
+Se revisa en tres puntos: al **capturar** el correo del trabajador (que es cuando la persona lo tiene
+enfrente y puede corregirlo), **antes de cada envío** de nómina, y en `sendInvoiceMail`, que es por donde
+sale todo correo de NEXO. Y el 550 que llegue por otra causa ya sale **traducido** (`explicarErrorSmtp`),
+no en inglés y en cuatro renglones.
+
+**Agravante que salió en el mismo repaso.** La cajita de captura **se cerraba aunque el correo fuera
+rechazado**: `onSave` se tragaba el error y `setAbierto(false)` corría igual, así que parecía guardado.
+Ahora sólo cierra si de verdad guardó, y el motivo se lee ahí mismo.
+
+16 pruebas en `direccion-correo.test.ts` (la parte pura; el DNS no se prueba porque esta suite corre sin
+red).
+
+---
+
+## 32. La pestaña de la tienda decía «GDM NEXO», y los reportes caían donde el navegador quisiera
+
+Dos cosas distintas, el mismo lote.
+
+**La pestaña.** `index.html` fija `<title>GDM NEXO</title>` y el ícono del ERP para toda la aplicación, y
+**nadie tocaba `document.title`**. En la tienda pública eso está mal: quien la abre es un **comprador**
+que no sabe —ni tiene por qué saber— con qué sistema está hecha. En la pestaña tiene que leerse el
+nombre del comercio.
+
+✅ `Storefront.tsx` pone el nombre de la tienda y su logo, y los **devuelve** al salir (el storefront vive
+dentro de la misma SPA que el ERP: sin restaurar, el título se quedaría pegado al navegar de regreso).
+
+El logo se **prueba antes de ponerlo**: `ec_store.logo_url` es una URL que el merchant escribe a mano y
+bien puede apuntar a una página en vez de a una imagen. En la tienda de prueba apunta a un **artículo de
+revista** —comprobado: carga como imagen *FALLA*—, así que el ícono no se cambia en vez de dejar la
+pestaña rota. El título sí cambia, y se verificó contra la tienda real: la pestaña dice **«Tenis Don
+Chuy2»**.
+
+**Los reportes.** Petición: que los Excel y PDF caigan siempre en la misma carpeta.
+
+**Lo que una página web NO puede hacer:** cambiar la carpeta de descargas del navegador. Es una
+preferencia del navegador en cada máquina y ningún sitio la puede tocar — y está bien que así sea.
+
+**Lo que sí se puede** (`utils/carpeta-descargas.ts`): la File System Access API. La persona escoge una
+carpeta **una vez**, el navegador guarda el permiso, y de ahí en adelante NEXO escribe ahí directo sin
+pasar por Descargas. Detalles que importan:
+
+- El «asa» (handle) **no cabe en localStorage** (no sobrevive a `JSON.stringify`): va en IndexedDB.
+- **Nunca pisa un archivo existente**: le agrega «(2)», como hace el navegador.
+- **Sólo navegadores Chromium** (Chrome, Edge, Vivaldi, Brave, Opera). En Firefox y Safari el control ni
+  se ofrece —no se promete lo que no se va a cumplir— y la descarga sale como siempre.
+- Si el permiso se revocó, la carpeta se borró o el disco está lleno, **baja normal**. Nadie se queda sin
+  su archivo por culpa de esto.
+
+Para que valiera para **todo**, las tres descargas que armaban su propio `<a download>` (`downloadReport`,
+`exportarLibroDiarioExcel`, `descargarReporteVentasEc`) pasaron por el helper `downloadFile`, por donde ya
+iban las otras 52. Las vistas previas (`Invoices`, `CreditNotes`, expediente) **no** se tocaron: ésas
+abren un visor, no descargan.
+
+El control vive en el sidebar, bajo «Datos de mi empresa»: es ajuste **de esta máquina y este navegador**,
+no de la empresa ni del usuario.
+
+---
+
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>
 **Síntoma.** …
