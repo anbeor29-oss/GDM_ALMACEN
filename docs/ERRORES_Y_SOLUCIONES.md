@@ -1411,7 +1411,7 @@ Es un defecto que se esconde solo: la hoja de más está **vacía**, así que no
 —sólo al imprimir—, y el número de página, que es lo que delataría el problema, es justo lo que se va a
 la hoja fantasma.
 
-**✅ Solución (commit `__HASH__`).** Anular los márgenes de la página **mientras** se escribe el pie, y
+**✅ Solución (commit `5257dd1`).** Anular los márgenes de la página **mientras** se escribe el pie, y
 restaurarlos después. No es un truco nuevo en este repositorio: `drawPageNumbers`, en
 `modules/cfdi/pdf-helpers`, ya lo hacía —con el comentario que explica el defecto— desde que se armó el
 PDF de la factura. Lo que faltaba era que `reporte-pdf` hiciera lo mismo. Una balanza de dos páginas sale
