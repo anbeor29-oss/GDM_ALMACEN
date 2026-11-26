@@ -220,16 +220,34 @@ export async function cedulaIva(companyId: string, anio: number) {
   return { anio, filas };
 }
 
-/* Tarifa mensual del RESICO (Art. 113-E LISR): tasa sobre ingresos cobrados. */
-const TABLA_RESICO: Array<{ hasta: number; tasa: number }> = [
+/* Tarifa mensual del RESICO (Art. 113-E LISR): tasa sobre ingresos cobrados.
+ *
+ * Las tasas (1.00 % a 2.50 %) no se han movido nunca. Lo que cambia es el ÚLTIMO
+ * escalón, que es el tope de ingresos del régimen: 3,500,000 hasta 2026 y
+ * 5,000,000 a partir de 2027 (reforma DOF 13-11-2026, en vigor el 1-ene-2027).
+ *
+ * Va POR AÑO a propósito: la cédula se consulta de ejercicios viejos, así que un
+ * solo número falsearía el papel de trabajo de 2026 y anteriores. Cuando la LISR
+ * vuelva a mover el tope, se agrega un renglón arriba y ya.
+ */
+const TOPES_RESICO: Array<{ desde: number; tope: number; fundamento: string }> = [
+  { desde: 2027, tope: 5000000, fundamento: 'Art. 113-E LISR reformado (DOF 13-11-2026)' },
+  { desde: 2022, tope: 3500000, fundamento: 'Art. 113-E LISR (DOF 12-11-2021)' },
+];
+const topeResico = (anio: number) =>
+  (TOPES_RESICO.find((t) => anio >= t.desde) || TOPES_RESICO[TOPES_RESICO.length - 1]).tope;
+
+const tablaResico = (anio: number): Array<{ hasta: number; tasa: number }> => [
   { hasta: 25000, tasa: 0.01 },
   { hasta: 50000, tasa: 0.011 },
   { hasta: 83333.33, tasa: 0.015 },
   { hasta: 208333.33, tasa: 0.02 },
-  { hasta: 3500000, tasa: 0.025 },
+  { hasta: topeResico(anio), tasa: 0.025 },
 ];
-const tasaResico = (ingreso: number) =>
-  (TABLA_RESICO.find((t) => ingreso <= t.hasta) || TABLA_RESICO[TABLA_RESICO.length - 1]).tasa;
+const tasaResico = (ingreso: number, anio: number) => {
+  const tabla = tablaResico(anio);
+  return (tabla.find((t) => ingreso <= t.hasta) || tabla[tabla.length - 1]).tasa;
+};
 
 /**
  * Cédula de ISR — Régimen Simplificado de Confianza (626, PF): el ISR del mes es
@@ -241,7 +259,7 @@ export async function cedulaResico(companyId: string, anio: number) {
   const filas: any[] = [];
   for (let i = 0; i < 12; i++) {
     const ingreso = ing[i].subtotal;
-    const tasa = tasaResico(ingreso);
+    const tasa = tasaResico(ingreso, anio);
     const determinado = r2(ingreso * tasa);
     const isrRet = ing[i].isrRet;
     const porPagar = Math.max(0, r2(determinado - isrRet));
