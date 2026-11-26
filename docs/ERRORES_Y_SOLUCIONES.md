@@ -1449,7 +1449,7 @@ sitio donde nadie lo valida—.
 de formato, no como un cálculo. Sólo salta cuando alguien pone enfrente una factura que no es al 16 %, y
 en el día a día no hay ninguna.
 
-**✅ Solución (commit `__HASH__`).** Las tasas salen de `modules/cfdi/pdf-impuestos` —el módulo que ya
+**✅ Solución (commit `f95cc60`).** Las tasas salen de `modules/cfdi/pdf-impuestos` —el módulo que ya
 alimentaba a los formatos Lineal y Bandas—, que las deriva de cada línea y las agrupa **igual que el
 XML** (impuesto + tipo factor + tasa):
 
