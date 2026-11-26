@@ -16,7 +16,8 @@ import {
   PDFDoc, PAGE_LEFT, PAGE_RIGHT, PAGE_TOP, fmtMoney, fmtPrecio, montoEnLetra,
   FORMA_PAGO, METODO_PAGO,
 } from './pdf-helpers';
-import { marcaNexo, LEYENDA_COMPROBANTE } from '../../utils/pie-nexo';
+import { marcaNexo, lineaAlPie, LEYENDA_COMPROBANTE } from '../../utils/pie-nexo';
+import { resumenTraslados, resumenRetenciones, etiquetaImpuesto } from './pdf-impuestos';
 
 const AZUL = '#1d4ed8';     // azul FarSystems (cabeceras)
 const AZUL_SUAVE = '#dbeafe';
@@ -193,11 +194,18 @@ export function renderFacturaFarsystems(doc: PDFDoc, ctx: CtxFarsystems): void {
   doc.font('Helvetica-Bold').fontSize(7.5).fillColor(TXT)
     .text(`SON: ${montoEnLetra(Number(invoice.total), invoice.currency || 'MXN')}`, PAGE_LEFT, y, { width: totX - PAGE_LEFT - 10 });
 
+  /* Un renglon por TASA REAL. El literal «IVA 16%» que habia aqui mentia en
+   * cuanto la factura no era al 16 % (frontera al 8 %, exenta, IEPS). */
+  const trasladosF = resumenTraslados(invoice.items || []);
+  const retenidosF = resumenRetenciones(invoice.items || []);
   const totales: Array<[string, number, boolean]> = [
     ['Suma', Number(invoice.subtotal || 0), false],
     ['Descuento', Number(invoice.discount || 0), false],
     ['Subtotal', Number(invoice.subtotal || 0) - Number(invoice.discount || 0), false],
-    ['IVA 16%', Number(invoice.tax_transferred || invoice.iva || 0), false],
+    ...trasladosF
+      .filter((t2) => t2.tipoFactor !== 'Exento')
+      .map((t2) => [etiquetaImpuesto(t2), t2.importe, false] as [string, number, boolean]),
+    ...retenidosF.map((r2) => [etiquetaImpuesto(r2, true), -r2.importe, false] as [string, number, boolean]),
     ['Total', Number(invoice.total || 0), true],
   ];
   let ty = y;
@@ -239,8 +247,8 @@ export function renderFacturaFarsystems(doc: PDFDoc, ctx: CtxFarsystems): void {
     .text(`Fecha y hora de certificación: ${t.fechaTimbrado ? String(t.fechaTimbrado).replace('T', ' ') : '—'}`, PAGE_LEFT + 88, doc.y, { width: W - 88 });
 
   const legY = Math.max(doc.y, y + 82) + 6;
-  doc.font('Helvetica-Bold').fontSize(7).fillColor(GRIS)
-    .text('ESTE DOCUMENTO ES UNA REPRESENTACIÓN IMPRESA DE UN CFDI', PAGE_LEFT, legY, { width: W, align: 'center' });
+  lineaAlPie(doc, 'ESTE DOCUMENTO ES UNA REPRESENTACIÓN IMPRESA DE UN CFDI',
+    { y: legY, x: PAGE_LEFT, ancho: W, color: GRIS, negrita: true });
 
   // Marca de la casa bajo la leyenda (la pieza vive en utils/pie-nexo).
   marcaNexo(doc, { y: legY + 11, alto: 12, leyenda: LEYENDA_COMPROBANTE, color: '#64748b', x: PAGE_LEFT, ancho: W });

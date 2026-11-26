@@ -40,6 +40,17 @@ export function fmtPrecio(n: any): string {
   return v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
 }
 
+/**
+ * Cantidad: hasta 6 decimales, como el Anexo 20, y mínimo 2.
+ *
+ * Misma razón que fmtPrecio: si el XML dice `400.123456` y el papel dice
+ * `400.12`, la multiplicación que haga el cliente no le va a dar el importe.
+ */
+export function fmtCantidad(n: any): string {
+  const v = Number(n) || 0;
+  return v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+}
+
 export function fmtQty(n: any): string {
   const v = Number(n) || 0;
   return v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

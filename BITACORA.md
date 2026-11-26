@@ -8618,6 +8618,34 @@ haría leer como navegación. Detalle en `ERRORES_Y_SOLUCIONES.md` #16. Ver [[op
 
 ---
 
+## 2026-11-26 (impresión) — La tasa de IVA impresa sale de la factura, no de un literal
+
+Dos formatos —GNcys y FarSystems— traían la tasa **escrita a mano** en el código: el bloque TRASLADOS de
+GNcys con `Impuesto: IVA`, `Tipo factor: Tasa`, `Tasa o cuota: 16.0000`, y el renglón de totales de los dos
+con `IVA 16%`. El **importe** sí salía de la factura; lo inventado era la **tasa**.
+
+Resultado: una factura de **zona fronteriza al 8 %** imprimía `16.0000` junto a un importe calculado al
+8 % —el papel no cuadraba consigo mismo—; una **exenta** imprimía una tasa donde el Anexo 20 no lleva
+ninguna; una con **IEPS** o con **retenciones** no las mostraba. El XML decía lo correcto, así que el error
+vivía **sólo en el papel que recibe el cliente**, que es el único sitio donde nadie lo valida.
+
+Ahora las tasas salen de `pdf-impuestos` —el módulo que ya alimentaba a Lineal y Bandas—, agrupadas igual
+que en el XML: el bloque TRASLADOS pasa a **un renglón por grupo**, aparece **RETENCIONES**, la exenta
+imprime `Exento` y `—` en vez de una tasa, y los totales muestran `IVA 16%`, `IVA 8%`, `Ret. IVA 10.6667%`
+y `Ret. ISR 10%`.
+
+**La muestra ahora sirve de prueba.** Tenía tres líneas, todas al 16 %: contra eso, un formato que escribe
+`16.0000` a mano **parece correcto**. Ahora trae cuatro —precio de 6 decimales, 8 % de frontera, 16 % con
+retención de IVA e ISR, y una exenta— y con ella salieron **tres defectos más** que con una sola tasa no
+se veían: el nombre del emisor encimándose con su domicilio en GNcys, la cantidad partiéndose en dos
+renglones, y la leyenda del pie creando una **página fantasma** —el mismo defecto de la entrada #36, en
+otro archivo—.
+
+Los seis formatos salen en **una sola hoja** con esa factura. 315 pruebas verdes (18 nuevas), `tsc` limpio.
+Detalle en `docs/ERRORES_Y_SOLUCIONES.md` #37.
+
+---
+
 ## 2026-11-25 (impresión) — Dos formatos de factura más, la letra a su tamaño, segundo recibo de nómina y el sello de la casa en los reportes
 
 Cuatro cosas del mismo tema: cómo se ve lo que NEXO imprime.

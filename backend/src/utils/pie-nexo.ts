@@ -73,6 +73,32 @@ export function marcaNexo(doc: any, o: {
   }
 }
 
+/**
+ * Escribe una linea centrada en una Y dada SIN que PDFKit invente una pagina.
+ *
+ * Es el mismo cuidado que marcaNexo: si la Y cae por debajo del margen
+ * inferior, un text() normal dispara addPage() antes de escribir y el documento
+ * termina con una hoja de mas, en blanco. Pasaba con la leyenda «Este documento
+ * es una representacion impresa de un CFDI» en cuanto la factura traia
+ * suficientes conceptos para empujarla hasta abajo.
+ */
+export function lineaAlPie(doc: any, texto: string, o: {
+  y: number; x: number; ancho: number; color?: string; tam?: number; negrita?: boolean;
+}): void {
+  const margenes = { ...doc.page.margins };
+  doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
+  try {
+    doc.font(o.negrita ? 'Helvetica-Bold' : 'Helvetica').fontSize(o.tam ?? 7)
+      .fillColor(o.color ?? '#6b7280')
+      .text(texto, o.x, o.y, { width: o.ancho, align: 'center', lineBreak: false });
+    doc.fillColor('#000000');
+  } catch {
+    /* Una leyenda que no se pudo dibujar no debe tumbar el comprobante. */
+  } finally {
+    doc.page.margins = margenes;
+  }
+}
+
 /** Leyenda de los COMPROBANTES (factura, nota de crédito, complemento de pago). */
 export const LEYENDA_COMPROBANTE = 'Sistema de GDM NEXO';
 

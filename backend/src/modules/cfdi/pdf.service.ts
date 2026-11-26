@@ -16,7 +16,7 @@
  *  │   Clave SAT │ Cant │ Unidad │ Descripción │ P.U. │ Importe │
  *  │ ────────────────────────────────────────────────────────── │
  *  │                                  Subtotal:   $    ...      │
- *  │                                  IVA 16%:    $    ...      │
+ *  │                             IVA trasladado:   $    ...      │
  *  │                                  TOTAL:      $    ...      │
  *  │ ────────────────────────────────────────────────────────── │
  *  │ (Si TIMBRADA): UUID · Cert SAT · Fecha · Sellos · Cadena   │

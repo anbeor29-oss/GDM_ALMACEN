@@ -56,7 +56,14 @@ const cliente = {
   state: 'Jalisco',
 };
 
-/** Tres líneas: una con precio de 6 decimales, una exenta y una con retención. */
+/**
+ * Cuatro líneas, escogidas para que la muestra SIRVA DE PRUEBA:
+ *   · precio de 6 decimales (el caso que rechazaba el PAC),
+ *   · IVA al 8 % de zona fronteriza — la tasa que los formatos imprimían como 16,
+ *   · IVA 16 % con retención de IVA e ISR (honorarios),
+ *   · una línea EXENTA, que no lleva tasa ni importe.
+ * Con una sola tasa, un formato que escriba «16.0000» a mano parece correcto.
+ */
 const factura: any = {
   id: 'demo',
   serie: 'A',
@@ -68,11 +75,11 @@ const factura: any = {
   payment_method: 'PUE',
   cfdi_use: 'G03',
   status: 'STAMPED',
-  subtotal: 101_110.82,
-  tax_transferred: 16_177.73,
-  tax_retained: 0,
+  subtotal: 102_610.82,
+  tax_transferred: 10_239.90,
+  tax_retained: 2_893.34,
   discount: 0,
-  total: 117_288.55,
+  total: 109_957.38,
   notes: 'Pedido 4821 — entrega en almacén central.',
   cfdi_uuid: 'ab968c53-fc60-4e6b-a03f-cc6ec010023d',
   items: [
@@ -83,16 +90,28 @@ const factura: any = {
       clave_sat: '24111503', unit_code: 'KGM',
     },
     {
+      // Zona fronteriza: 8 %. Es la línea que delata un formato con la tasa escrita a mano.
       line_number: 2, quantity: 1, unit_price: 74_222.89, subtotal: 74_222.89,
-      tax_amount: 11_875.66, total: 86_098.55, tax_rate: 0.16,
+      tax_amount: 5_937.83, total: 80_160.72, tax_rate: 0.08,
       description: 'Suministro y colocación de estructura metálica, anclas y cubierta de lona',
       clave_sat: '72152900', unit_code: 'E48',
     },
     {
+      // Honorarios: 16 % trasladado, con retención de IVA (2/3) e ISR (10 %).
       line_number: 3, quantity: 2, unit_price: 7_000, subtotal: 14_000,
       tax_amount: 2_240, total: 16_240, tax_rate: 0.16,
+      ret_iva_rate: 0.106667, ret_isr_rate: 0.10,
+      ret_iva_amount: 1_493.34, ret_isr_amount: 1_400,
       description: 'Servicios de consultoría administrativa y asesoría en procesos de gestión empresarial',
       clave_sat: '80101500', unit_code: 'E48',
+    },
+    {
+      // Exenta: el Anexo 20 NO lleva tasa ni importe. Imprimir «16.0000» aquí es
+      // inventar, y «0.00» tampoco vale: exento no es tasa cero.
+      line_number: 4, quantity: 3, unit_price: 500, subtotal: 1_500,
+      tax_amount: 0, total: 1_500, tax_rate: 0, is_exempt: true,
+      description: 'Libros impresos — enajenación exenta (Art. 9 LIVA)',
+      clave_sat: '55101500', unit_code: 'H87',
     },
   ],
 };

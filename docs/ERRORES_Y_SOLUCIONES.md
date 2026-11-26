@@ -1424,6 +1424,65 @@ e-commerce y checador: diez módulos. Todos salían así.
 que corte en dos páginas— sin tocar la base. Sin eso, comprobar esto exigía armar una balanza real.
 
 ---
+## 37. Dos formatos de PDF imprimían la tasa de IVA escrita a mano
+
+**Síntoma.** Ninguno: por eso duró tanto. El PDF salía bien **siempre que la factura fuera al 16 %**.
+
+**Causa raíz.** La tasa estaba escrita como literal en el código, no leída de la factura:
+
+```ts
+// pdf-gncys: el bloque TRASLADOS entero
+['Base', …], ['Impuesto', 'IVA'], ['Tipo factor', 'Tasa'], ['Tasa o cuota', '16.0000'], …
+// pdf-gncys y pdf-farsystems: el renglón de totales
+['IVA 16%', Number(invoice.tax_transferred || 0), false]
+```
+
+El **importe** sí salía de la factura; lo inventado era la **tasa** y el **tipo de factor**. Así que una
+factura de **zona fronteriza al 8 %** imprimía `Tasa o cuota: 16.0000` junto a un importe calculado al 8 %:
+el papel no cuadraba consigo mismo. Una **exenta** imprimía `Tasa` y `16.0000` donde el Anexo 20 no lleva
+tasa ni importe. Una con **IEPS** no lo mostraba. Una con **retenciones** tampoco.
+
+Y el XML decía lo correcto, así que el error vivía **sólo en el papel que recibe el cliente** —el único
+sitio donde nadie lo valida—.
+
+**Por qué es la clase de defecto que no se encuentra mirando.** Un literal `'16.0000'` se lee como un dato
+de formato, no como un cálculo. Sólo salta cuando alguien pone enfrente una factura que no es al 16 %, y
+en el día a día no hay ninguna.
+
+**✅ Solución (commit `__HASH__`).** Las tasas salen de `modules/cfdi/pdf-impuestos` —el módulo que ya
+alimentaba a los formatos Lineal y Bandas—, que las deriva de cada línea y las agrupa **igual que el
+XML** (impuesto + tipo factor + tasa):
+
+- El bloque **TRASLADOS** de GNcys pasa de un renglón fijo a **uno por grupo**, con la tasa real, y
+  aparece un bloque **RETENCIONES** que antes no existía. La exenta imprime `Exento` y `—` donde iban la
+  tasa y el importe: **exento no es tasa cero**, y poner `0.00` también sería inventar.
+- Los **totales** de los dos formatos pasan de `IVA 16%` fijo a un renglón por tasa real: `IVA 16%`,
+  `IVA 8%`, `Ret. IVA 10.6667%`, `Ret. ISR 10%`.
+- `etiquetaImpuesto` y `porcentaje` viven en el módulo compartido, para que ningún formato vuelva a
+  escribir una tasa a mano.
+
+**La muestra ahora sirve de prueba.** `scripts/muestra-formatos.ts` traía tres líneas, todas al 16 %:
+contra eso, un formato que escribe `16.0000` a mano **parece correcto**. Ahora trae cuatro: precio de 6
+decimales, **8 % de frontera**, 16 % con retención de IVA e ISR, y una **exenta**. 18 pruebas nuevas en
+`pdf-impuestos.test.ts`, incluida la que falla si el 8 % vuelve a imprimirse como 16.
+
+**Tres defectos más, que esa muestra destapó.** Con una sola tasa y tres conceptos no se veían:
+
+1. **GNcys: el nombre del emisor se encimaba con su domicilio.** El «CFDI 4.0» de la esquina se dibuja
+   después del nombre y deja `doc.y` en SU renglón; el domicilio arrancaba de ahí. Con una razón social
+   que ocupe dos líneas, se montaban. Se guarda la Y antes.
+2. **GNcys: la cantidad se partía en dos renglones** («400.00000» y debajo un «0» suelto). Iba con seis
+   decimales forzados en una columna de 42 pt. Ahora usa `fmtCantidad` (2 a 6 decimales, los que haga
+   falta), la columna es más ancha y las celdas de códigos y cifras van a un solo renglón.
+3. **La leyenda del pie creaba una página fantasma.** «Este documento es una representación impresa de un
+   CFDI» se escribía sin anular los márgenes: en cuanto la factura tenía conceptos suficientes para
+   empujarla por debajo del margen inferior, PDFKit creaba una hoja más. Es el **mismo defecto de la
+   entrada #36**, en otro archivo. Ahora pasa por `lineaAlPie`, que hace el mismo cuidado que `marcaNexo`.
+
+**Comprobado.** Los seis formatos, con la misma factura de cuatro líneas y cuatro tasas distintas, salen
+**en una sola hoja** y con sus tasas correctas. 315 pruebas verdes.
+
+---
 
 <!-- Plantilla para una entrada nueva:
 ## N. <síntoma corto>

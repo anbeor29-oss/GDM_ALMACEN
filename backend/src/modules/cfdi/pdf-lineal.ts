@@ -253,14 +253,18 @@ export function renderFacturaLineal(doc: PDFDoc, ctx: CtxLineal): void {
   for (const p of pagos) { doc.text(p, pagoX, yq, { width: pagoW, align: 'right' }); yq = doc.y + 1; }
 
   /* ── Cadena original y sellos ── */
-  y = Math.max(yq, yBloque + 84) + 6;
+  /* Los sellos van a TODO EL ANCHO de la hoja, no sangrados bajo el QR.
+   * Sangrados, una factura con varios conceptos —cada uno con su desglose de
+   * impuestos— empujaba el ultimo sello a una segunda pagina que salia casi
+   * vacia. A ancho completo caben los tres. */
+  y = Math.max(yq, yBloque + 80) + 4;
   const bloque = (titulo: string, contenido: string) => {
     if (!contenido) return;
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(TXT).text(titulo, pagoX, y, { width: W - (pagoX - PAGE_LEFT) });
+    doc.font('Helvetica-Bold').fontSize(7).fillColor(TXT).text(titulo, PAGE_LEFT, y, { width: W });
     y = doc.y + 1;
     doc.font('Helvetica').fontSize(5).fillColor(TXT)
-      .text(contenido, pagoX, y, { width: W - (pagoX - PAGE_LEFT), align: 'justify' });
-    y = doc.y + 5;
+      .text(contenido, PAGE_LEFT, y, { width: W, align: 'justify' });
+    y = doc.y + 4;
   };
   if (timbrada) {
     bloque('CADENA ORIGINAL DEL COMPLEMENTO DE CERTIFICACION DIGITAL DEL SAT', cadenaOriginal(t));

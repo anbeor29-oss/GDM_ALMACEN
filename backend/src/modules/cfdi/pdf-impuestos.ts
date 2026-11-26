@@ -122,6 +122,29 @@ export function resumenRetenciones(items: any[]): Retencion[] {
   return Array.from(mapa.values());
 }
 
+/**
+ * La tasa como porcentaje LEGIBLE, sin ceros de relleno: 0.16 → «16»,
+ * 0.08 → «8», 0.106667 → «10.6667». Para el renglón que lee una persona; en el
+ * XML la tasa va siempre con sus seis decimales.
+ */
+export function porcentaje(tasa: number): string {
+  const p = (Number(tasa) || 0) * 100;
+  return String(Number(p.toFixed(4)));
+}
+
+/**
+ * Etiqueta de un renglón de totales: «IVA 16%», «IVA Exento», «IEPS 8%».
+ *
+ * Existe para que ningún formato vuelva a escribir «IVA 16%» a mano. Así estaba
+ * en dos de ellos, y una factura de zona fronteriza al 8 %, una exenta o una con
+ * IEPS salía con la tasa EQUIVOCADA en el papel que recibe el cliente.
+ */
+export function etiquetaImpuesto(t: Traslado | Retencion, retenido = false): string {
+  const prefijo = retenido ? 'Ret. ' : '';
+  if ((t as Traslado).tipoFactor === 'Exento') return `${prefijo}${t.nombre} Exento`;
+  return `${prefijo}${t.nombre} ${porcentaje(t.tasa)}%`;
+}
+
 /** «002   0.160000 %» / «002   Exento» — el renglón de tasa del bloque de totales. */
 export function etiquetaTasa(t: Traslado | Retencion): string {
   const tipoFactor = (t as Traslado).tipoFactor;
