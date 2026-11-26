@@ -1,6 +1,60 @@
 # Pendientes — GDM NEXO
 
-> Lista viva de lo que falta. Actualizada 2026-11-23. Lo hecho se documenta en `BITACORA.md`.
+> Lista viva de lo que falta. Actualizada 2026-11-26. Lo hecho se documenta en `BITACORA.md`.
+
+## 🔜 Abierto (2026-11-26)
+
+### Acción del usuario — nada de esto es código
+
+- **EMPUJAR `0a876f2`** (LISR 2027: tope del RESICO por año + recargos 2027). Es sólo backend: Render
+  despliega y corre la migración. Lo anterior ya está empujado.
+- **Facturas capturadas ANTES del 25/11 con precio de más de 2 decimales: hay que RETECLEAR el precio.**
+  La columna `invoice_items.unit_price` era `DECIMAL(15,2)` y Postgres redondeaba al guardar; esos
+  decimales **no se recuperan**. Volver a guardar la factura sin tocar el precio **no sirve** (recargaría
+  el valor truncado y cambiaría el total): hay que abrirla y teclear el precio completo. El constructor
+  del CFDI lo detecta y lo dice con esas palabras en vez de dejar que el PAC conteste un código.
+  Ver `ERRORES_Y_SOLUCIONES.md` #34.
+- **Empresas con lista de módulos RESTRINGIDA: palomear «Checador».** Las que están en «Todos los
+  módulos» ya lo tienen. Súper Admin → Empresas → Editar empresa.
+- **Elegir los formatos nuevos**, si se quieren: Datos de mi empresa → «Formato de impresión (PDF)»
+  (Lineal / Bandas) y «Formato del recibo de nómina» (Clásico / Detallado). Es **por empresa** y hay que
+  pulsar **Guardar**.
+
+### Por probar en vivo (lo hecho el 25 y 26 no se probó contra el SAT)
+
+- **Timbrar una factura con los formatos nuevos (Lineal / Bandas).** Se revisaron contra muestras
+  generadas, no contra un CFDI timbrado real: lo que falta ver es el QR, los sellos reales y la cadena
+  original con su longitud de verdad.
+- **Un recibo de nómina en formato «Detallado»**, con un recibo timbrado real.
+- **La nota de crédito y el complemento de pago** llevan ya la marca nueva (comparten `drawFooter`), pero
+  **no se renderizaron**: necesitan base. Basta abrir uno de cada y mirar el pie.
+- **Una factura con precio de 6 decimales, timbrada de verdad**, para cerrar el caso del rechazo del PAC.
+
+### Decisiones pendientes del usuario
+
+- **¿El RFC va público en el pie de la tienda?** Hoy el storefront muestra razón social y RFC del
+  vendedor. Se ofreció quitarlo y no hubo respuesta.
+- **¿`PUT /companies/:id` debe exigir ADMIN?** Hoy cualquier usuario de la empresa puede editar datos
+  fiscales y subir un CSD. El inquilino de sólo-ecommerce (rol `USER`) **depende** de que siga abierto,
+  así que cerrarlo tiene consecuencia.
+- **Cuenta `7-1-01-000 «Comisiones Bancarias»` en depreciación** — pregunta vieja, nunca contestada.
+- **Logo de la tienda** (`ec_store.logo_url`): la URL capturada apunta a un **artículo de revista**, no a
+  una imagen. Hasta que apunte a un `.png`/`.jpg` real, el ícono de la pestaña queda genérico.
+
+### Código pendiente (chips abiertos)
+
+- **`task_b357cbc5` — el PDF «GNcys» imprime la tasa de IVA FIJA en `16.0000`.** Una factura de zona
+  fronteriza al 8 %, una exenta o una con IEPS sale con la tasa equivocada **en el papel que recibe el
+  cliente**. Ya existe `modules/cfdi/pdf-impuestos` (que es de donde sacan la tasa los formatos nuevos):
+  arreglarlo es cambiar el literal por una llamada. Revisar de paso `pdf-farsystems` y `pdf.service`.
+- **`task_83b08b69` — fuga de secretos en `GET /companies/:id`**: devuelve la fila completa de
+  `companies`, incluidas `mail_pass_enc` y la llave del CSD. Está cifrado, pero no tiene por qué salir
+  del servidor. Filtrar con lista blanca.
+- **`task_bef07d06` — catálogo de conceptos de nómina vs. claves del motor**: cotejar uno contra otro.
+- **LISR 2027 — lo que NO se tocó:** el **Capítulo X** y el **Art. 28-XXXII** de la reforma del DOF
+  13-11-2026 no están implementados. El tope del RESICO y los recargos sí (`0a876f2`).
+
+---
 
 ## 🔜 Abierto (2026-11-24)
 
