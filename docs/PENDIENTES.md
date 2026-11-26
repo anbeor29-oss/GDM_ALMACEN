@@ -43,10 +43,10 @@
 
 ### Código pendiente (chips abiertos)
 
-- **`task_b357cbc5` — el PDF «GNcys» imprime la tasa de IVA FIJA en `16.0000`.** Una factura de zona
-  fronteriza al 8 %, una exenta o una con IEPS sale con la tasa equivocada **en el papel que recibe el
-  cliente**. Ya existe `modules/cfdi/pdf-impuestos` (que es de donde sacan la tasa los formatos nuevos):
-  arreglarlo es cambiar el literal por una llamada. Revisar de paso `pdf-farsystems` y `pdf.service`.
+- **(HECHO 2026-11-26, commit `f95cc60`)** ~~El PDF «GNcys» imprime la tasa de IVA fija en `16.0000`.~~
+  Las tasas salen de `pdf-impuestos` en GNcys y FarSystems; aparecieron además el bloque RETENCIONES y el
+  tipo factor Exento. La muestra de `scripts/muestra-formatos` trae ahora cuatro tasas distintas, y con
+  ella salieron tres defectos más del mismo formato. 18 pruebas. Ver `ERRORES_Y_SOLUCIONES.md` #37.
 - **`task_83b08b69` — fuga de secretos en `GET /companies/:id`**: devuelve la fila completa de
   `companies`, incluidas `mail_pass_enc` y la llave del CSD. Está cifrado, pero no tiene por qué salir
   del servidor. Filtrar con lista blanca.
