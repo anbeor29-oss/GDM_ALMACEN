@@ -127,10 +127,48 @@ El municipio IMSS (`CVE_MUN`, del catálogo `Canamu`: `A01`, `Y45`…) sale en b
 omisión, que es como están 607 de los 1,222 registros de esa base. Si algún día hace
 falta, se captura por empresa; deducirlo del texto libre de `municipio` sería adivinar.
 
+## La bitácora: qué se mandó y cómo le fue
+
+Cada generación queda apuntada en `nomina_sua_lotes` con la **foto** de sus renglones
+(`nomina_sua_lote_renglones`): el NSS, la fecha y el importe **como se mandaron**, no una
+referencia al expediente. Si el expediente cambia después, la bitácora sigue diciendo lo
+que se envió ese día, que es lo único que sirve para cotejar contra el SUA.
+
+No se parece a la del IDSE en una cosa: el IDSE devuelve un acuse en PDF y **el SUA no
+devuelve nada** — deja sus rechazos en los `ErrImp*.txt` de su propia carpeta. Así que el
+lote se cierra con un **resultado** que captura quien importó:
+
+| Resultado | Qué significa |
+|---|---|
+| `PENDIENTE` | se generó el archivo, nadie ha dicho si entró |
+| `IMPORTADO` | el SUA lo aceptó |
+| `CON_ERRORES` | el SUA rechazó; se pega el `ErrImp*.txt` tal cual en `errores_txt` |
+
+**Un lote `CON_ERRORES` deja de contar como enviado** y sus movimientos vuelven a
+aparecer como pendientes. Es lo que se quiere: no entraron.
+
+Con eso, `GET /nomina/sua/candidatos` marca cada renglón con `enviado`, `enviado_en` y
+`enviado_detalle`, y el generador avisa antes de repetir:
+
+- un **alta** ya mandada → «el SUA la rechazará con *Ya existe*». El alta se compara **sin
+  ver la fecha**: se manda una vez y la fecha pudo corregirse al generarla.
+- una **baja, modificación o crédito** con la misma fecha → ya se mandó. Esos sí se
+  comparan con fecha, porque se repiten a lo largo de los años.
+- un **movimiento de crédito anterior** al último enviado → el SUA no lo acepta («Ya
+  existe un Movimiento de Crédito en esta fecha o posterior»).
+- un **movimiento de alguien sin alta anotada**, pero sólo si la bitácora ya trae altas:
+  el padrón del SUA casi siempre viene de antes, y entonces la ausencia no prueba nada.
+
+Si el apunte falla, el archivo **se entrega igual** y el aviso lo dice. Perder el registro
+es malo; no entregar el archivo ya generado es peor.
+
+Rutas: `GET /nomina/sua/lotes`, `POST /nomina/sua/lotes/:id/resultado`,
+`GET /nomina/sua/lotes/:id/errores` y `DELETE /nomina/sua/lotes/:id` (borrar hace falta:
+un archivo que se generó y nunca se importó deja un apunte que miente).
+
 ## Lo que NEXO no manda
 
 - **Incapacidades** (`Incap.txt`) y ausentismos: el layout de 57 posiciones no quedó
   verificado campo por campo y no estaban en el alcance.
-- **Nada se marca como enviado.** Todavía no hay bitácora de lotes del SUA como la que
-  tiene el IDSE, así que el sistema no sabe qué ya se importó. Es lo primero que hay que
-  agregar cuando esto se cuelgue del menú de Nómina.
+- **La pantalla.** El motor, el servicio, la bitácora y las rutas están; falta decidir de
+  dónde cuelga dentro de Nómina.

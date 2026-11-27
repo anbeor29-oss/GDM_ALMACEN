@@ -19,7 +19,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { authenticateToken, authorize, requireCapability } from '../../middleware/authentication';
 import { requireModule } from '../../middleware/permissions';
-import { asyncHandler, ValidationError } from '../../middleware/errorHandler';
+import { asyncHandler, ValidationError, NotFoundError } from '../../middleware/errorHandler';
 import * as empleados from './empleados.service';
 import * as vacaciones from './vacaciones.service';
 import * as imssIdse from './imss-idse.service';
@@ -1547,10 +1547,10 @@ router.post(
   soloAdmin,
   asyncHandler(async (req: Request, res: Response) => {
     const conAfiliatorios = req.body?.afiliatorios !== false;
-    const { archivos, avisos } = await suaExport.altas(
-      companyId(req), req.body?.altas || [], cfgSua(req.body), conAfiliatorios,
+    const { archivos, avisos, loteId } = await suaExport.altas(
+      companyId(req), req.body?.altas || [], cfgSua(req.body), conAfiliatorios, req.user?.userId,
     );
-    res.json({ success: true, data: { archivos, avisos } });
+    res.json({ success: true, data: { archivos, avisos, loteId } });
   })
 );
 
@@ -1559,10 +1559,10 @@ router.post(
   '/sua/movimientos',
   soloAdmin,
   asyncHandler(async (req: Request, res: Response) => {
-    const { archivo, avisos } = await suaExport.movimientos(
-      companyId(req), req.body?.movimientos || [], cfgSua(req.body),
+    const { archivo, avisos, loteId } = await suaExport.movimientos(
+      companyId(req), req.body?.movimientos || [], cfgSua(req.body), req.user?.userId,
     );
-    res.json({ success: true, data: { archivos: [archivo], avisos } });
+    res.json({ success: true, data: { archivos: [archivo], avisos, loteId } });
   })
 );
 
@@ -1571,10 +1571,61 @@ router.post(
   '/sua/creditos',
   soloAdmin,
   asyncHandler(async (req: Request, res: Response) => {
-    const { archivo, avisos } = await suaExport.creditos(
-      companyId(req), req.body?.creditos || [], cfgSua(req.body),
+    const { archivo, avisos, loteId } = await suaExport.creditos(
+      companyId(req), req.body?.creditos || [], cfgSua(req.body), req.user?.userId,
     );
-    res.json({ success: true, data: { archivos: [archivo], avisos } });
+    res.json({ success: true, data: { archivos: [archivo], avisos, loteId } });
+  })
+);
+
+/* ── Bitácora del SUA: qué se mandó y cómo le fue ──
+ *
+ * El SUA no devuelve acuse como el IDSE: deja sus rechazos en los ErrImp*.txt de
+ * su carpeta. Así que el cierre del lote lo captura quien importó, y si hubo
+ * errores se pega ese texto. Un lote CON_ERRORES deja de contar como enviado y
+ * sus movimientos vuelven a aparecer como pendientes.
+ */
+router.get(
+  '/sua/lotes',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: { lotes: await suaExport.listarLotes(companyId(req)) } });
+  })
+);
+
+router.post(
+  '/sua/lotes/:id/resultado',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ok = await suaExport.registrarResultado(
+      companyId(req), req.params.id,
+      String(req.body?.resultado || '').toUpperCase() as any,
+      req.body?.erroresTxt, req.body?.notas,
+    );
+    if (!ok) throw new NotFoundError('Ese lote no existe en esta empresa.');
+    res.json({ success: true });
+  })
+);
+
+/** El ErrImp del SUA guardado con el lote, como texto. */
+router.get(
+  '/sua/lotes/:id/errores',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const txt = await suaExport.erroresDeLote(companyId(req), req.params.id);
+    if (txt == null) throw new NotFoundError('Ese lote no tiene errores guardados.');
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(txt);
+  })
+);
+
+router.delete(
+  '/sua/lotes/:id',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ok = await suaExport.borrarLote(companyId(req), req.params.id);
+    if (!ok) throw new NotFoundError('Ese lote no existe en esta empresa.');
+    res.json({ success: true });
   })
 );
 

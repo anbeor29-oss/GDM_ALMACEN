@@ -457,10 +457,18 @@ y la entidad de nacimiento se deducen del CURP contra el catálogo `Estados` del
 `GET /nomina/sua/candidatos` y `POST /nomina/sua/{altas,movimientos,creditos,validar}`; 24 pruebas verdes. Mapeo en
 `docs/NEXO_A_SUA.md`.
 
-**Falta:** (a) **la pantalla** — se decidirá dónde cuelga dentro de Nómina; (b) **bitácora de lotes del SUA**, como la
-que tiene el IDSE, para que el sistema sepa qué ya se importó y no se manden altas dos veces; (c) confirmar la escala
+**2026-11-26b — Bitácora de lotes del SUA.** Cada generación queda apuntada en `nomina_sua_lotes` +
+`nomina_sua_lote_renglones` con la **foto** de lo enviado (NSS, fecha, importe como se mandaron). El SUA no devuelve
+acuse —deja sus rechazos en los `ErrImp*.txt`—, así que el lote se cierra con un **resultado** que captura quien
+importó: PENDIENTE / IMPORTADO / **CON_ERRORES** (con el `ErrImp` pegado). Un lote CON_ERRORES **deja de contar como
+enviado** y sus movimientos reaparecen como pendientes. `candidatos` ya marca `enviado`/`enviado_en`, y el generador
+avisa antes de repetir un alta, un movimiento con la misma fecha o un crédito anterior al último enviado. Rutas
+`GET /nomina/sua/lotes`, `POST /nomina/sua/lotes/:id/resultado`, `GET .../errores`, `DELETE .../:id`. La migración se
+probó contra Postgres local (creada y revertida).
+
+**Falta:** (a) **la pantalla** — se decidirá dónde cuelga dentro de Nómina; (b) confirmar la escala
 del descuento **por porcentaje** (no hay ni un caso en la base real: hoy se escribe con 4 decimales y el generador
-avisa); (d) incapacidades y ausentismos (`Incap.txt`), fuera de alcance. Ver [[sua-mdb-mapeo]].
+avisa); (c) incapacidades y ausentismos (`Incap.txt`), fuera de alcance. Ver [[sua-mdb-mapeo]].
 
 Batch de 7 (2026-10-05): notificaciones 6 meses · foto checador→expediente · hub Cumplimiento unificado (IMSS/INFONAVIT
 + punto verde) · rediseño de Pólizas · motor de descarga conmutable a SatGo + Comprobantes unidos · login · logo NEXO.
