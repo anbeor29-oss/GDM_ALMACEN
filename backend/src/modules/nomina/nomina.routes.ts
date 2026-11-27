@@ -24,6 +24,8 @@ import * as empleados from './empleados.service';
 import * as vacaciones from './vacaciones.service';
 import * as imssIdse from './imss-idse.service';
 import { TipoIdse, validarArchivoIdse } from './imss-idse';
+import * as suaExport from './sua-export.service';
+import { validarArchivoSua } from './sua-export';
 import * as parametros from './parametros.service';
 import * as ejercicios from './ejercicios.service';
 import { tablasIsr, aniosConTablasIsr } from './tablas-isr.data';
@@ -1503,6 +1505,94 @@ router.post(
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
     await imssIdse.regresarPendientes(companyId(req), ids);
     res.json({ success: true });
+  })
+);
+
+/* ═════════════════════ SUA · NEXO alimenta al SUA ═════════════════════
+ *
+ * Genera los .txt que el SUA IMPORTA, para no recapturar el padrón ni los
+ * movimientos. Dos pasos, y en ese orden: primero las altas (Aseg/Afil), luego
+ * los movimientos (Movt) y los créditos (Cred) — un movimiento de alguien que el
+ * SUA todavía no conoce se rechaza.
+ *
+ * Devuelve JSON, no el archivo pelado como el IDSE: las altas son DOS archivos y
+ * además hay avisos (datos que fueron en ceros, créditos por porcentaje) que
+ * quien captura necesita leer antes de importar. Ref: docs/NEXO_A_SUA.md
+ */
+const cfgSua = (b: any) => ({
+  tipoTrabajador: b?.tipoTrabajador, semanaJornada: b?.semanaJornada,
+  tipoSalario: b?.tipoSalario, umf: b?.umf, ocupacion: b?.ocupacion,
+  claveUbicacion: b?.claveUbicacion, claveMunicipio: b?.claveMunicipio,
+  pensionado: b?.pensionado, tablaDisminucion: b?.tablaDisminucion,
+});
+
+/** GET /nomina/sua/candidatos?desde=&hasta= — qué hay para mandar al SUA */
+router.get(
+  '/sua/candidatos',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const desde = String(req.query.desde || '');
+    const hasta = String(req.query.hasta || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
+      throw new ValidationError('Indica el rango con desde y hasta en formato AAAA-MM-DD.');
+    }
+    const candidatos = await suaExport.candidatos(companyId(req), desde, hasta);
+    res.json({ success: true, data: { candidatos } });
+  })
+);
+
+/** POST /nomina/sua/altas — Aseg.txt (+ Afil.txt). Es el primer paso. */
+router.post(
+  '/sua/altas',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const conAfiliatorios = req.body?.afiliatorios !== false;
+    const { archivos, avisos } = await suaExport.altas(
+      companyId(req), req.body?.altas || [], cfgSua(req.body), conAfiliatorios,
+    );
+    res.json({ success: true, data: { archivos, avisos } });
+  })
+);
+
+/** POST /nomina/sua/movimientos — Movt.txt: bajas, salarios, reingresos. */
+router.post(
+  '/sua/movimientos',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { archivo, avisos } = await suaExport.movimientos(
+      companyId(req), req.body?.movimientos || [], cfgSua(req.body),
+    );
+    res.json({ success: true, data: { archivos: [archivo], avisos } });
+  })
+);
+
+/** POST /nomina/sua/creditos — Cred.txt: inicio, suspensión, reinicio, valor. */
+router.post(
+  '/sua/creditos',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { archivo, avisos } = await suaExport.creditos(
+      companyId(req), req.body?.creditos || [], cfgSua(req.body),
+    );
+    res.json({ success: true, data: { archivos: [archivo], avisos } });
+  })
+);
+
+/** POST /nomina/sua/validar — revisa un .txt del SUA antes de importarlo. */
+router.post(
+  '/sua/validar',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const archivo = String(req.body?.archivo || '');
+    if (!['Aseg', 'Afil', 'Movt', 'Cred'].includes(archivo)) {
+      throw new ValidationError('Di qué archivo es: Aseg, Afil, Movt o Cred.');
+    }
+    const contenido = String(req.body?.contenido ?? '');
+    if (!contenido.trim()) throw new ValidationError('Pega el contenido del archivo a revisar.');
+    res.json({
+      success: true,
+      data: validarArchivoSua(archivo as 'Aseg' | 'Afil' | 'Movt' | 'Cred', contenido),
+    });
   })
 );
 

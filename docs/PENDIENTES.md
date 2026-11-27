@@ -448,6 +448,20 @@ agregó una tarjeta con las **12 tablas acumuladas por mes** (pagos provisionale
 diciembre=anual) y se sirven de sólo lectura en `GET /nomina/tablas-isr/:anio`. Agregar un año = agregar un objeto.
 Las 19 tablas 2026 pasaron validación de escalera + continuidad de cuota + igualdades. Ver [[indicadores-fiscales]].
 
+**2026-11-26 — NEXO alimenta al SUA (altas, movimientos y créditos).** Motor y servicio para generar los `.txt`
+que el SUA **importa**: `Aseg.txt` (168) y `Afil.txt` (80) para las **altas**, `Movt.txt` (49) para **bajas (02),
+modificación de salario (07) y reingresos (08)**, y `Cred.txt` (52) para los **créditos INFONAVIT** (15 inicio,
+16 suspensión, 17 reinicio, 19 modificación de valor). Los cuatro layouts se verificaron **contra la base real del
+SUA 3.7.1** (`C:\Cobranza\SUA\SUA.MDB`) cotejando sus propios exportados; los créditos cuadraron 21 de 21. El sexo
+y la entidad de nacimiento se deducen del CURP contra el catálogo `Estados` del propio SUA. Rutas
+`GET /nomina/sua/candidatos` y `POST /nomina/sua/{altas,movimientos,creditos,validar}`; 24 pruebas verdes. Mapeo en
+`docs/NEXO_A_SUA.md`.
+
+**Falta:** (a) **la pantalla** — se decidirá dónde cuelga dentro de Nómina; (b) **bitácora de lotes del SUA**, como la
+que tiene el IDSE, para que el sistema sepa qué ya se importó y no se manden altas dos veces; (c) confirmar la escala
+del descuento **por porcentaje** (no hay ni un caso en la base real: hoy se escribe con 4 decimales y el generador
+avisa); (d) incapacidades y ausentismos (`Incap.txt`), fuera de alcance. Ver [[sua-mdb-mapeo]].
+
 Batch de 7 (2026-10-05): notificaciones 6 meses · foto checador→expediente · hub Cumplimiento unificado (IMSS/INFONAVIT
 + punto verde) · rediseño de Pólizas · motor de descarga conmutable a SatGo + Comprobantes unidos · login · logo NEXO.
 Antes: PLD v1, IVA→SatGo (motor), vigencias, onboarding/facturación, etc.

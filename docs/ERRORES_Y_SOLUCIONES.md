@@ -1482,6 +1482,39 @@ decimales, **8 % de frontera**, 16 % con retención de IVA e ISR, y una **exenta
 **Comprobado.** Los seis formatos, con la misma factura de cuatro líneas y cuatro tasas distintas, salen
 **en una sola hoja** y con sus tasas correctas. 315 pruebas verdes.
 
+
+## 39. No se puede leer la base del SUA (.MDB con contraseña) desde este equipo
+**Síntoma.** Hay que mapear `C:\Cobranza\SUA\SUA.MDB` y no abre: no existe `mdb-tools`, y el driver ODBC
+«Microsoft Access Driver (*.mdb)» que nombran los `.dsn` del SUA **sólo está instalado en 32 bits**, así que
+un proceso de 64 bits no lo ve.
+
+**Cómo diagnosticar.** `Get-OdbcDriver | Select Name,Platform` muestra el de `.mdb` como 32-bit;
+`(New-Object System.Data.OleDb.OleDbEnumerator).GetElements()` sí lista `Microsoft.ACE.OLEDB.16.0`.
+
+**❌ Lo que NO hay que hacer.** Abrir el archivo vivo: `SUA.exe` lo toma en exclusiva y el proveedor crea un
+`.ldb` junto a él. Tampoco hace falta `accesspv.exe` ni `BorraPswSUA.exe` para quitarle la contraseña.
+
+**✅ Solución.** Copiar el `.MDB` y abrir la copia con ACE OLEDB pasando la clave en la cadena de conexión:
+`Provider=Microsoft.ACE.OLEDB.16.0;Data Source=<copia>;Jet OLEDB:Database Password=<clave>;`.
+
+**Límite conocido.** Jet casi no declara llaves foráneas (tres en 78 tablas): las relaciones del SUA son por
+convención sobre registro patronal + NSS, no están en el esquema.
+
+## 40. El valor del descuento del crédito INFONAVIT salía con la escala equivocada
+**Síntoma.** Al armar `Cred.txt` para el SUA, una cuota fija de 1,424.91 y un factor VSM de 8.51 no se pueden
+escribir con la misma regla: con 2 decimales el SUA lee 14,249.10 y 0.0851.
+
+**Causa raíz.** El campo mide 8 posiciones pero **los decimales implícitos dependen del tipo de descuento**:
+3 decimales para la cuota fija (`01424910` = 1,424.91) y 4 para el factor (`00085100` = 8.5100).
+
+**❌ Lo que NO hay que hacer.** Suponer «2 decimales como todo lo demás» porque el salario sí los lleva.
+
+**✅ Solución.** `valorDescuentoSua()` escala según el tipo. Verificado contra los 21 movimientos de crédito de
+la base real del SUA: cuadraron los 21.
+
+**Límite conocido.** El descuento **por porcentaje** no aparece ni una vez en esa base. Se escribe con 4
+decimales por analogía con el factor y el generador avisa; hay que cotejarlo la primera vez que se use.
+
 ---
 
 <!-- Plantilla para una entrada nueva:

@@ -1,0 +1,136 @@
+# De NEXO al SUA — mapeo y layouts
+
+NEXO **alimenta** al SUA: genera los archivos de texto que el SUA importa, para no
+recapturar a mano el padrón ni los movimientos. El flujo es en dos tiempos, y ese orden
+no es negociable:
+
+1. **Altas** → `Aseg.txt` (y opcionalmente `Afil.txt`). Hasta que el trabajador existe
+   en el SUA, cualquier movimiento suyo se rechaza.
+2. **Movimientos** → `Movt.txt` (bajas, modificaciones de salario, reingresos) y
+   `Cred.txt` (créditos INFONAVIT).
+
+## De dónde salen estos layouts
+
+No de un manual: de la base del SUA en producción (`C:\Cobranza\SUA\SUA.MDB`, SUA 3.7.1)
+cotejada contra los archivos que ese mismo SUA exporta. Cada posición de abajo se
+verificó leyendo el `.txt` real y comparándolo con el renglón correspondiente de la
+tabla. Los créditos cuadraron **21 de 21**. El mapeo completo de la base está en
+`D:\Obsidian\GDM_FAC\SUA\SUA_MAPEO_BD.md`.
+
+Dos convenciones generales:
+
+- Alfanuméricos a la izquierda con espacios a la derecha; numéricos a la derecha con
+  ceros a la izquierda. Nada lleva punto decimal: los decimales son implícitos.
+- Fechas en **DDMMAAAA**. Renglones terminados en **CRLF**.
+
+### `Aseg.txt` — 168 posiciones (alta del trabajador)
+
+| Pos | Largo | Campo | Tabla SUA |
+|---|---|---|---|
+| 1–11 | 11 | Registro patronal | `Asegura.REG_PATR` |
+| 12–22 | 11 | NSS | `NUM_AFIL` |
+| 23–35 | 13 | RFC | `RFC_CURP` |
+| 36–53 | 18 | CURP | `CURP` |
+| 54–103 | 50 | `PATERNO$MATERNO$NOMBRES` | `NOM_ASEG` |
+| 104 | 1 | Tipo de trabajador (1 permanente, 2 eventual, 3 construcción, 4 eventual del campo) | `TIP_TRA` |
+| 105 | 1 | Semana / jornada reducida (0–6) | `SEM_JORD` |
+| 106–113 | 8 | Fecha de alta | `FEC_ALT` |
+| 114–120 | 7 | Salario base de cotización, 2 decimales | `SAL_IMSS` |
+| 121–137 | 17 | Clave de ubicación | `CVE_UBC` |
+| 138–147 | 10 | Número de crédito INFONAVIT | `PAG_INFO` |
+| 148–155 | 8 | Fecha de inicio del descuento | `FEC_DSC` |
+| 156 | 1 | Tipo de descuento (1 porcentaje, 2 cuota fija, 3 factor/VSM) | `TIP_DSC` |
+| 157–164 | 8 | Valor del descuento | `VAL_DSC` |
+| 165 | 1 | Trabajador pensionado (0/1) | `TRA_PENIV` |
+| 166–168 | 3 | Clave de municipio IMSS | `CVE_MUN` |
+
+Las posiciones 165 a 168 explican por qué los manuales viejos dicen 164: el SUA 3.7.1
+agregó pensionado y municipio al final del registro.
+
+### `Afil.txt` — 80 posiciones (datos afiliatorios, complementa el alta)
+
+| Pos | Largo | Campo | Tabla SUA |
+|---|---|---|---|
+| 1–11 | 11 | Registro patronal | `Afiliacion.REG_PATR` |
+| 12–22 | 11 | NSS | `NUM_AFIL` |
+| 23–27 | 5 | Código postal | `CPP_TRAB` |
+| 28–35 | 8 | Fecha de nacimiento | `FEC_NAC` |
+| 36–60 | 25 | Lugar de nacimiento (entidad, texto) | `LUG_NAC` |
+| 61–62 | 2 | Clave IMSS de la entidad | `ENT_TRAB` |
+| 63–65 | 3 | UMF / clínica | `UMF_TRAB` |
+| 66–77 | 12 | Ocupación | `OCUPA` |
+| 78 | 1 | Sexo (M/F) | `SEXO` |
+| 79 | 1 | Tipo de salario (0 fijo, 1 variable, 2 mixto) | `TIP_SAL` |
+| 80 | 1 | Jornada / horas | `JOR_HOR` |
+
+### `Movt.txt` — 49 posiciones (movimientos afiliatorios)
+
+| Pos | Largo | Campo | Tabla SUA |
+|---|---|---|---|
+| 1–11 | 11 | Registro patronal | `Movtos.REG_PATR` |
+| 12–22 | 11 | NSS | `NUM_AFIL` |
+| 23–24 | 2 | Tipo de movimiento | `TIP_MOVS` |
+| 25–32 | 8 | Fecha del movimiento | `FEC_INIC` |
+| 33–40 | 8 | Folio de incapacidad (blancos si no aplica) | `FOL_INC` |
+| 41–49 | 9 | Salario, 2 decimales (`000018591` = 185.91) | `SAL_MOVT` |
+
+Tipos que NEXO genera: **02** baja, **07** modificación de salario, **08** reingreso.
+El alta (01) **no va aquí**: viene en `Aseg.txt`. Los tipos 11 ausentismo y 12
+incapacidad usan el mismo archivo pero se capturan en el SUA; quedan fuera por ahora.
+
+A diferencia del IDSE, la baja del SUA **no lleva causa**: no existe el campo.
+
+### `Cred.txt` — 52 posiciones (créditos INFONAVIT)
+
+| Pos | Largo | Campo | Tabla SUA |
+|---|---|---|---|
+| 1–11 | 11 | Registro patronal | `Movtos.REG_PATR` |
+| 12–22 | 11 | NSS | `NUM_AFIL` |
+| 23–32 | 10 | Número de crédito | `Num_Cre` |
+| 33–34 | 2 | Tipo de movimiento (15 inicio, 16 suspensión, 17 reinicio, 19 modificación de valor) | `TIP_MOVS` |
+| 35–42 | 8 | Fecha del movimiento | `FEC_INIC` |
+| 43 | 1 | Tipo de descuento (1 porcentaje, 2 cuota fija, 3 factor/VSM) | `Tip_Des` |
+| 44–51 | 8 | Valor del descuento | `Val_Des` |
+| 52 | 1 | Tabla de disminución (N/S) | `Tab_Dism` |
+
+**La escala del valor depende del tipo de descuento**, y eso es lo único raro del
+formato. Verificado en los 21 renglones de `SuaMovCr.txt`:
+
+| Tipo | Decimales implícitos | Ejemplo |
+|---|---|---|
+| 2 cuota fija (pesos) | 3 | `01424910` = 1,424.91 |
+| 3 factor / VSM | 4 | `00085100` = 8.5100 |
+| 1 porcentaje | 4 **por confirmar** | `00200000` = 20.0000 |
+
+No hay un solo crédito por porcentaje en esta base, así que esa escala es inferencia por
+analogía con el factor. El generador avisa cuando emite uno.
+
+## Mapeo campo por campo
+
+De `nomina_empleados` y `companies` a los cuatro archivos:
+
+| Campo SUA | De dónde sale en NEXO |
+|---|---|
+| Registro patronal | `companies.registro_patronal` |
+| NSS | `nomina_empleados.nss` — obligatorio, 11 dígitos |
+| RFC / CURP | `rfc`, `curp` |
+| Nombre | `apellido_pat$apellido_mat$nombre` (el SUA separa con `$`) |
+| Fecha de alta | `fecha_reingreso` si existe, si no `fecha_ingreso` |
+| SBC | `sbc`, y si está vacío `salario_diario_integrado` |
+| Código postal, fecha de nacimiento | `codigo_postal`, `fecha_nacimiento` |
+| Sexo | se deduce de la **posición 11 del CURP**: `H` → `M`, `M` → `F` |
+| Entidad y lugar de nacimiento | se deducen de las **posiciones 12–13 del CURP** contra el catálogo `Estados` del propio SUA (`CveCurp` → `IdClave` + `Descripcion`) |
+| Número de crédito, tipo y valor del descuento, fecha | `infonavit_num_credito`, `infonavit_tipo_descuento` (`porcentaje`/`cuota_fija`/`vsm` → 1/2/3), `infonavit_descuento`, `infonavit_desde` |
+| Tipo de trabajador, semana/jornada, tipo de salario, UMF, ocupación, clave de ubicación, municipio, pensionado | **no están en el expediente**: son parámetros del generador, con los valores que predominan en la base real (1, 0, 0, `000`, blancos, blancos, blancos, 0) |
+
+El municipio IMSS (`CVE_MUN`, del catálogo `Canamu`: `A01`, `Y45`…) sale en blanco por
+omisión, que es como están 607 de los 1,222 registros de esa base. Si algún día hace
+falta, se captura por empresa; deducirlo del texto libre de `municipio` sería adivinar.
+
+## Lo que NEXO no manda
+
+- **Incapacidades** (`Incap.txt`) y ausentismos: el layout de 57 posiciones no quedó
+  verificado campo por campo y no estaban en el alcance.
+- **Nada se marca como enviado.** Todavía no hay bitácora de lotes del SUA como la que
+  tiene el IDSE, así que el sistema no sabe qué ya se importó. Es lo primero que hay que
+  agregar cuando esto se cuelgue del menú de Nómina.
