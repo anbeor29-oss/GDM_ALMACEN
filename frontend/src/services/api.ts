@@ -2932,6 +2932,64 @@ class APIClient {
     return r.data;
   }
 
+  /* ───────────── SUA: NEXO le genera los .txt que el SUA importa ─────────────
+   *
+   * Estas tres devuelven JSON —no el archivo pelado como el IDSE—: las altas son
+   * DOS archivos y además traen avisos que hay que leer antes de importar. La
+   * pantalla arma el .txt con el texto que viene aquí.
+   */
+  async getSuaCandidatos(desde: string, hasta: string) {
+    const r = await this.client.get<APIResponse<any>>('/nomina/sua/candidatos', { params: { desde, hasta } });
+    return r.data;
+  }
+  async generarSuaAltas(body: { altas: Array<{ empleadoId: string; fecha?: string; sbc?: number }>;
+    afiliatorios?: boolean } & Record<string, any>) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/sua/altas', body);
+    return r.data;
+  }
+  async generarSuaMovimientos(
+    body: { movimientos: Array<{ empleadoId: string; tipo: string; fecha: string; sbc?: number }> }
+      & Record<string, any>,
+  ) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/sua/movimientos', body);
+    return r.data;
+  }
+  async generarSuaCreditos(
+    body: { creditos: Array<{ empleadoId: string; tipo: string; fecha: string;
+      numCredito?: string; tipoDescuento?: string; valorDescuento?: number }> } & Record<string, any>,
+  ) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/sua/creditos', body);
+    return r.data;
+  }
+
+  /** La bitácora: qué se le mandó al SUA y cómo le fue. */
+  async getSuaLotes() {
+    const r = await this.client.get<APIResponse<any>>('/nomina/sua/lotes');
+    return r.data;
+  }
+  /** Cierra el lote con lo que dijo el SUA (y el ErrImp*.txt si rechazó). */
+  async registrarSuaResultado(
+    loteId: string, resultado: 'PENDIENTE' | 'IMPORTADO' | 'CON_ERRORES',
+    erroresTxt?: string, notas?: string,
+  ) {
+    const r = await this.client.post<APIResponse<any>>(
+      `/nomina/sua/lotes/${loteId}/resultado`, { resultado, erroresTxt, notas });
+    return r.data;
+  }
+  async borrarSuaLote(loteId: string) {
+    const r = await this.client.delete<APIResponse<any>>(`/nomina/sua/lotes/${loteId}`);
+    return r.data;
+  }
+  /** El ErrImp*.txt que se guardó con el lote, como texto. */
+  async getSuaLoteErrores(loteId: string): Promise<string> {
+    const r = await this.client.get(`/nomina/sua/lotes/${loteId}/errores`, { responseType: 'text' });
+    return String(r.data ?? '');
+  }
+  /** Guarda en «Descargas» un .txt que ya vino como texto desde el backend. */
+  async guardarTxtSua(nombre: string, contenido: string) {
+    return this.downloadFile(new Blob([contenido], { type: 'text/plain;charset=utf-8' }), nombre);
+  }
+
   /** Cierra el periodo: congela los recibos y genera los XML. ESCRIBE. */
   async cerrarPeriodoNomina(periodoId: string, captura: any[]) {
     const r = await this.client.post<APIResponse<any>>(

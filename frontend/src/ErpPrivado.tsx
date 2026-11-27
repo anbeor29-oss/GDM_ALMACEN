@@ -81,6 +81,7 @@ import { NominaImportarPage } from '@/pages/nomina/NominaImportar';
 import { ImportarRespaldoNominaPage } from '@/pages/nomina/ImportarRespaldoNomina';
 import { ChecadorPage } from '@/pages/nomina/Checador';
 import { MotorImssIdsePage } from '@/pages/nomina/MotorImssIdse';
+import { SuaImportacionPage } from '@/pages/nomina/SuaImportacion';
 import { CatalogoCuentasPage } from '@/pages/contabilidad/CatalogoCuentas';
 import { AsignacionCuentasPage } from '@/pages/contabilidad/AsignacionCuentas';
 import { ConciliacionContablePage } from '@/pages/contabilidad/ConciliacionContable';
@@ -189,6 +190,7 @@ export default function ErpPrivado() {
         <Route path="nomina/cfdi"                     element={<ModuleRoute module="nomina"><NominaGuard><NominaCFDIPage /></NominaGuard></ModuleRoute>} />
         <Route path="nomina/revision"                 element={<ModuleRoute module="nomina"><NominaGuard><RevisionNominaPage /></NominaGuard></ModuleRoute>} />
         <Route path="nomina/imss"                     element={<ModuleRoute module="nomina"><NominaGuard><MotorImssIdsePage /></NominaGuard></ModuleRoute>} />
+        <Route path="nomina/sua"                      element={<ModuleRoute module="nomina"><NominaGuard><SuaImportacionPage /></NominaGuard></ModuleRoute>} />
         <Route path="nomina/parametros"               element={<ModuleRoute module="nomina"><NominaParametrosPage /></ModuleRoute>} />
         <Route path="nomina/reportes"                 element={<ModuleRoute module="nomina"><NominaGuard><NominaReportesPage /></NominaGuard></ModuleRoute>} />
         <Route path="nomina/importar"                 element={<ModuleRoute module="nomina"><NominaGuard><NominaImportarPage /></NominaGuard></ModuleRoute>} />

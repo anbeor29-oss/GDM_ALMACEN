@@ -466,9 +466,18 @@ avisa antes de repetir un alta, un movimiento con la misma fecha o un crédito a
 `GET /nomina/sua/lotes`, `POST /nomina/sua/lotes/:id/resultado`, `GET .../errores`, `DELETE .../:id`. La migración se
 probó contra Postgres local (creada y revertida).
 
-**Falta:** (a) **la pantalla** — se decidirá dónde cuelga dentro de Nómina; (b) confirmar la escala
+**2026-11-26c — Pantalla del SUA.** **Nómina → SUA · Importación** (`/nomina/sua`), junto a IMSS · IDSE, con cuatro
+pestañas en el orden del proceso: **Altas · Movimientos · Créditos · Bitácora**. Arranca en el mes en curso y propone
+lo que hay en el rango, cada renglón con su estado (listo / lo que le falta / ya se mandó el DD/MM/AAAA). La
+modificación de salario se agrega buscando al trabajador. Los `.txt` se guardan con su nombre del SUA y los avisos
+salen arriba; la bitácora se cierra con «Entró al SUA» o «Lo rechazó» pegando el `ErrImp*.txt`. Parámetros del SUA en
+panel plegado. Verificado: tsc limpio en back y front, 24 pruebas verdes, las migraciones se aplicaron con el runner
+real contra Postgres local y los endpoints responden 401 (registrados y con llave). **No se vio la pantalla con
+sesión** — hace falta un usuario de dev.
+
+**Falta:** (a) confirmar la escala
 del descuento **por porcentaje** (no hay ni un caso en la base real: hoy se escribe con 4 decimales y el generador
-avisa); (c) incapacidades y ausentismos (`Incap.txt`), fuera de alcance. Ver [[sua-mdb-mapeo]].
+avisa); (b) incapacidades y ausentismos (`Incap.txt`), fuera de alcance. Ver [[sua-mdb-mapeo]].
 
 Batch de 7 (2026-10-05): notificaciones 6 meses · foto checador→expediente · hub Cumplimiento unificado (IMSS/INFONAVIT
 + punto verde) · rediseño de Pólizas · motor de descarga conmutable a SatGo + Comprobantes unidos · login · logo NEXO.

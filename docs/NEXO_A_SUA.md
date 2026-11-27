@@ -170,5 +170,24 @@ un archivo que se generó y nunca se importó deja un apunte que miente).
 
 - **Incapacidades** (`Incap.txt`) y ausentismos: el layout de 57 posiciones no quedó
   verificado campo por campo y no estaban en el alcance.
-- **La pantalla.** El motor, el servicio, la bitácora y las rutas están; falta decidir de
-  dónde cuelga dentro de Nómina.
+## La pantalla
+
+**Nómina → SUA · Importación** (`/nomina/sua`), junto a IMSS · IDSE. Cuatro pestañas en el
+orden del proceso: **1 · Altas**, **2 · Movimientos**, **3 · Créditos** y **Bitácora**.
+
+Arranca en el **mes en curso** y propone lo que hay en ese rango: quién ingresó (altas),
+quién se dio de baja o reingresó, y quién trae crédito INFONAVIT. Cada renglón se marca
+con su casilla y dice su estado — *listo*, lo que le **falta** (sin NSS, sin salario), o
+*ya se mandó* con la fecha. Lo que le falta un dato no se puede marcar.
+
+La **modificación de salario** no sale de un rango: se agrega buscando al trabajador, con
+su fecha y el nuevo SBC.
+
+Los archivos se guardan en «Descargas» con su nombre del SUA (`Aseg.txt`, `Afil.txt`,
+`Movt.txt`, `Cred.txt`) y arriba aparecen los **avisos** que hay que leer antes de
+importar. En la bitácora se cierra cada lote con **«Entró al SUA»** o **«Lo rechazó»**,
+y en el segundo caso se pega el `ErrImp*.txt` que el SUA dejó en su carpeta.
+
+Los **parámetros del SUA** (tipo de trabajador, jornada, UMF, ocupación, clave de
+ubicación, municipio, pensionado, tabla de disminución) están en un panel plegado, con
+los valores que predominan en la base real ya puestos.

@@ -629,6 +629,7 @@ export function Layout() {
                       { to: '/nomina/cfdi',       icon: emoji3D('🧾'), label: 'CFDI' },
                       { to: '/nomina/revision',   icon: emoji3D('🔎'), label: 'Revisión' },
                       { to: '/nomina/imss',       icon: emoji3D('🏥'), label: 'IMSS · IDSE' },
+                      { to: '/nomina/sua',        icon: emoji3D('📤'), label: 'SUA · Importación' },
                       { to: '/nomina/parametros', icon: emoji3D('⚙️'), label: 'Parámetros' },
                       { to: '/nomina/reportes',   icon: emoji3D('📊'), label: 'Reportes' },
                       { to: '/nomina/importar',   icon: emoji3D('📦'), label: 'Importar respaldo' },

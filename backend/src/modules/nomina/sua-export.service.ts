@@ -538,6 +538,10 @@ export interface Candidato {
   motivo: 'ALTA' | 'BAJA' | 'REINGRESO' | 'CREDITO';
   listo: boolean;
   falta: string | null;
+  /* Del crédito, para que la pantalla muestre lo que se va a mandar. */
+  num_credito: string | null;
+  tipo_descuento: string | null;
+  descuento: number | null;
   /** Ya se mandó al SUA esto mismo (según la bitácora). */
   enviado: boolean;
   /** Cuándo se mandó, y qué, para que se vea de dónde sale el enviado. */
@@ -590,6 +594,9 @@ export async function candidatos(
     const sbc = num(e.sbc ?? e.salario_diario_integrado);
     const base = {
       empleado_id: e.id, num_empleado: e.num_empleado, quien: e.quien, nss: e.nss, sbc,
+      num_credito: e.infonavit_num_credito,
+      tipo_descuento: e.infonavit_tipo_descuento,
+      descuento: e.infonavit_descuento != null ? num(e.infonavit_descuento) : null,
     };
     const falta = !e.nss ? 'sin NSS' : !/^\d{11}$/.test(e.nss) ? 'NSS inválido' : null;
 
