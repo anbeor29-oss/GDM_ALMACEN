@@ -8964,3 +8964,76 @@ SAT pide el complemento cuando entra el dinero. Marcar «pagado» era un dato in
 
 Migración: `2026-11-24_correo_y_cobranza.sql`. 191 pruebas verdes, `tsc` de backend y frontend, build de
 producción. Sin probar contra el PAC real ni contra un buzón real: eso se valida en vivo.
+
+---
+
+## 2026-11-26 (nómina · SUA) — NEXO alimenta al SUA: altas, movimientos, créditos, bitácora y un botón que lo hace todo
+
+**Contexto.** El SUA es el programa de escritorio del IMSS donde se autodetermina la cuota. Su padrón se
+capturaba a mano, trabajador por trabajador, aunque NEXO ya tenía esos mismos datos. El SUA sí sabe
+importar: lee archivos de texto de longitud fija. Lo que faltaba era que alguien se los armara.
+
+**La dirección importa:** NEXO **alimenta** al SUA, no al revés. No se lee nada del SUA hacia NEXO.
+
+**De dónde salieron los layouts.** No de un manual —los publicados están incompletos y desactualizados:
+dicen 164 posiciones donde el SUA 3.7.1 escribe 168—. Se sacaron de la **base del SUA en producción**
+(`C:\Cobranza\SUA\SUA.MDB`, Access/Jet con contraseña, abierta por ACE OLEDB de 64 bits sobre una copia,
+porque el driver ODBC de `.mdb` sólo existe en 32 bits y `SUA.exe` toma el archivo en exclusiva). Con la
+utilería del propio SUA se exportaron sus `.txt` y se cotejó cada renglón contra su renglón de las tablas
+`Asegura`, `Afiliacion` y `Movtos`. Los créditos cuadraron **21 de 21**.
+
+Eso descubrió lo que ningún manual dice: **el valor del descuento del crédito cambia de escala según el
+tipo**. El campo mide 8 posiciones, pero la cuota fija lleva **3 decimales implícitos** (`01424910` =
+1,424.91) y el factor VSM lleva **4** (`00085100` = 8.5100). Con una sola regla, el SUA habría leído
+14,249.10 en un caso y 0.0851 en el otro. También explicó el 164 contra 168: el SUA 3.7.1 agregó
+*pensionado* y *clave de municipio* al final del registro.
+
+**Lo que se construyó.** Cuatro archivos: `Aseg.txt` (168) y `Afil.txt` (80) para las **altas**,
+`Movt.txt` (49) para **baja 02, modificación de salario 07 y reingreso 08**, y `Cred.txt` (52) para los
+**créditos INFONAVIT** (15 inicio, 16 suspensión, 17 reinicio, 19 cambio de valor). El motor
+(`sua-export.ts`) no toca la base y reutiliza los ayudantes de relleno del IDSE; el puente
+(`sua-export.service.ts`) lee el expediente, porque lo que entra al SUA no debe depender de lo que
+alcanzó a copiar la pantalla.
+
+**Decisiones de fondo:**
+
+1. **Dos pasos separados, no un botón que mande todo junto.** Primero las altas, luego los movimientos.
+   Un movimiento de alguien que el SUA no conoce se rechaza. Las pestañas están numeradas por eso.
+2. **El sexo y la entidad de nacimiento se deducen del CURP** contra el catálogo `Estados` del propio SUA
+   (copiado a `ENTIDADES_SUA`), que es lo que el SUA valida contra sí mismo. El `c_Estado` del SAT daría
+   nombres que no son los suyos. Cuidado con la trampa: la `M` del CURP es *Mujer* y en el SUA se escribe
+   `F`.
+3. **Lo que el expediente no guarda son parámetros, no constantes escondidas**: tipo de trabajador,
+   jornada, UMF, ocupación, clave de ubicación, municipio, pensionado. Los valores por omisión son los que
+   predominan en la base real (permanente 1,161 de 1,222 registros), no inventos.
+4. **La bitácora no reusa `nomina_idse_lotes`.** El IDSE devuelve un acuse en PDF; el SUA no devuelve nada
+   —deja sus rechazos en los `ErrImp*.txt` de su carpeta—. Por eso el lote se cierra con un **resultado**
+   que captura quien importó (`PENDIENTE` / `IMPORTADO` / `CON_ERRORES` con el `ErrImp` pegado tal cual), y
+   un lote **con errores deja de contar como enviado**: sus movimientos reaparecen como pendientes, porque
+   no entraron. Mezclar los dos modelos habría dejado columnas muertas en cada renglón.
+5. **La bitácora guarda la foto, no la referencia**: NSS, fecha e importe *como se mandaron*. Si el
+   expediente cambia después, sigue diciendo lo que se envió ese día, que es lo único que sirve para
+   cotejar contra el SUA.
+6. **El aviso de «sin alta anotada» sólo sale si la bitácora ya trae altas.** El padrón del SUA casi
+   siempre viene de antes que esta bitácora; sin esa condición el aviso sería ruido en cada generación.
+7. **El botón automático omite, no frena.** En el modo a mano, que falte un dato detiene todo: alguien
+   marcó ese renglón a propósito. En automático nadie eligió al que viene sin NSS, y parar por él dejaría
+   sin mandar a los otros treinta que sí están bien; se omite y se nombra. Si las **altas** truenan sí se
+   detiene todo.
+8. **Si el apunte a la bitácora falla, el archivo se entrega igual** y el aviso lo dice. Perder el registro
+   es malo; no entregar el archivo ya generado es peor.
+
+**Pantalla.** Nómina → **SUA · Importación** (`/nomina/sua`), junto a IMSS · IDSE. Pestañas `1 · Altas`,
+`2 · Movimientos`, `3 · Créditos` y `Bitácora`. Arranca en el mes en curso; cada renglón dice *listo*, lo
+que le **falta**, o *ya se mandó* con su fecha. La modificación de salario se agrega buscando al
+trabajador: no es un evento con fecha en el expediente.
+
+**Consecuencia.** El alta de un trabajador deja de teclearse dos veces. Y lo que ya se mandó queda escrito,
+así que el sistema avisa antes de repetir en vez de que el SUA lo rechace después con un «Ya existe» que
+hay que ir a leer en un archivo de su carpeta.
+
+Migración: `2026-11-26b_sua_lotes.sql` (probada con el runner real contra Postgres local). 24 pruebas
+nuevas del motor, `tsc` limpio en backend y frontend. **Sin probar importando de verdad en el SUA**: eso se
+valida con el primer lote real. El descuento **por porcentaje** no existe en la base de referencia, así que
+su escala es inferencia por analogía con el factor y el generador avisa cada vez.
+Commits: `678f488`, `38b204f`, `3b70c13`, `9e69817`. Detalle en `docs/NEXO_A_SUA.md`.

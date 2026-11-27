@@ -20,6 +20,11 @@ SW Sapien.
   patronal, uniformes con costo, y el **periodo especial de Asimilados**.
 - 🟢 **IMSS · IDSE**: un solo constructor para altas (08), bajas (02) y
   modificaciones (07) mezcladas en un archivo, más validador de TXT.
+- 🟢 **SUA · Importación**: NEXO le arma al SUA los `.txt` que el SUA importa
+  —`Aseg`/`Afil` para las altas, `Movt` para bajas, salarios y reingresos, y
+  `Cred` para los créditos INFONAVIT—, con **bitácora** de lo enviado y botón
+  para generar todo lo pendiente de un golpe. Los cuatro layouts están
+  verificados contra la base real del SUA 3.7.1 (`docs/NEXO_A_SUA.md`).
 - 🟢 **Motor de identidad fiscal (RFC)**: control de consistencia del RFC de
   personas físicas en captura (empleados y clientes).
 - 🟢 **Contabilidad**: catálogo de cuentas (con **máscara de código configurable por

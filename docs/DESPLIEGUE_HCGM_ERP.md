@@ -15,9 +15,15 @@ hcgm.com.mx/erp/          → GDM NEXO (SPA estática subida al hosting)
 
 ## Antes de empezar
 
-1. **Backend de producción = `https://gdm-almacen-backend.onrender.com`** (el despliegue actual
-   ES producción). El default de `build:hosting` ya apunta ahí, así que el Paso 1 corre **sin**
+1. **El backend al que apunta el ZIP es `https://gdm-almacen-backend.onrender.com`**, que es el
+   servicio que despliega la rama **`main`** del remoto `gdmalmacen` — el de **desarrollo**, según
+   `DESPLIEGUE.md`. El default de `build:hosting` ya apunta ahí, así que el Paso 1 corre **sin**
    tocar `HOSTING_API_BASE`.
+   > **Ojo con esto.** Esta guía decía antes que ese servicio «ES producción»; lo era cuando había
+   > un solo despliegue. Desde que se partió en dos ramas (`main` = dev, `produccion` = comercial),
+   > `hcgm.com.mx/erp/` queda pegado al backend de **dev** mientras no se cambie. Si se crea el
+   > servicio de la rama `produccion`, hay que regenerar el ZIP con su URL:
+   > `$env:HOSTING_API_BASE = "https://<servicio-de-produccion>.onrender.com"`.
    > El ambiente **PRUEBAS vs PRODUCCIÓN del timbrado NO depende del despliegue**: se controla
    > **por empresa** desde **Súper Admin** (`companies.timbrado_ambiente`). Una sola app en
    > producción atiende empresas en prueba y en real.

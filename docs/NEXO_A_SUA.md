@@ -166,10 +166,6 @@ Rutas: `GET /nomina/sua/lotes`, `POST /nomina/sua/lotes/:id/resultado`,
 `GET /nomina/sua/lotes/:id/errores` y `DELETE /nomina/sua/lotes/:id` (borrar hace falta:
 un archivo que se generó y nunca se importó deja un apunte que miente).
 
-## Lo que NEXO no manda
-
-- **Incapacidades** (`Incap.txt`) y ausentismos: el layout de 57 posiciones no quedó
-  verificado campo por campo y no estaban en el alcance.
 ## La pantalla
 
 **Nómina → SUA · Importación** (`/nomina/sua`), junto a IMSS · IDSE. Cuatro pestañas en el
@@ -206,3 +202,62 @@ y en el segundo caso se pega el `ErrImp*.txt` que el SUA dejó en su carpeta.
 Los **parámetros del SUA** (tipo de trabajador, jornada, UMF, ocupación, clave de
 ubicación, municipio, pensionado, tabla de disminución) están en un panel plegado, con
 los valores que predominan en la base real ya puestos.
+
+## Dónde vive cada cosa
+
+| Pieza | Archivo |
+|---|---|
+| Motor de formato (no toca la base) | `backend/src/modules/nomina/sua-export.ts` |
+| Puente con la base y reglas de selección | `backend/src/modules/nomina/sua-export.service.ts` |
+| Pruebas del formato (24) | `backend/src/modules/nomina/sua-export.test.ts` |
+| Rutas | `backend/src/modules/nomina/nomina.routes.ts` (bloque «SUA») |
+| Bitácora | `backend/src/database/migrations/2026-11-26b_sua_lotes.sql` |
+| Pantalla | `frontend/src/pages/nomina/SuaImportacion.tsx` (ruta `/nomina/sua`) |
+| Mapeo de la base del SUA | `D:\Obsidian\GDM_FAC\SUA\SUA_MAPEO_BD.md` (fuera de este repo) |
+
+El motor reutiliza los ayudantes de relleno del IDSE (`txtIzq`, `ceros`, `fechaDDMMAAAA`
+de `imss-idse.ts`): los dos formatos son de longitud fija y las reglas de relleno son las
+mismas, así que tener dos copias sólo garantizaría que se despeguen.
+
+### Endpoints
+
+Todos bajo `/api/v1/nomina`, con la misma llave que el resto de lo sensible de nómina
+(`soloAdmin`).
+
+| Método | Ruta | Para qué |
+|---|---|---|
+| GET | `/sua/candidatos?desde=&hasta=` | qué hay para mandar, con lo ya enviado marcado |
+| POST | `/sua/altas` | `Aseg.txt` (+ `Afil.txt`) |
+| POST | `/sua/movimientos` | `Movt.txt` |
+| POST | `/sua/creditos` | `Cred.txt` |
+| POST | `/sua/automatico` | los tres pasos de un golpe con lo pendiente del rango |
+| POST | `/sua/validar` | revisa un `.txt` del SUA antes de importarlo |
+| GET | `/sua/lotes` | la bitácora |
+| POST | `/sua/lotes/:id/resultado` | cerrar el lote (y pegar el `ErrImp`) |
+| GET | `/sua/lotes/:id/errores` | el `ErrImp` guardado |
+| DELETE | `/sua/lotes/:id` | borrar un lote que nunca se importó |
+
+Las tres de generación devuelven `{ archivos: [{ nombre, contenido, renglones }], avisos,
+loteId }`: JSON y no el archivo pelado como el IDSE, porque las altas son **dos** archivos
+y los avisos hay que leerlos antes de importar.
+
+## Cómo volver a verificar los layouts
+
+Si el SUA se actualiza y algo deja de entrar, el método que sirvió —y que no depende de
+ningún manual— es cotejar contra la base del propio SUA:
+
+1. Copiar `C:\Cobranza\SUA\SUA.MDB` (nunca abrir el vivo: `SUA.exe` lo toma en exclusiva).
+2. Abrir la copia con ACE OLEDB de 64 bits —el driver ODBC de `.mdb` sólo existe en 32—
+   pasando la clave en la cadena: `Jet OLEDB:Database Password=…`.
+3. En el SUA, **Utilerías → Exportar Datos a Txt's**: genera `Aseg`, `Afil`, `Movt`,
+   `Incap` y `Cred` con los datos que ya tiene dentro.
+4. Comparar cada renglón del `.txt` con su renglón de las tablas `Asegura`, `Afiliacion` y
+   `Movtos`. Ahí salen las posiciones, y salen de verdad: así se descubrió que el valor del
+   descuento cambia de escala según el tipo.
+
+## Lo que NEXO no manda
+
+- **Incapacidades** (`Incap.txt`) y ausentismos: el layout de 57 posiciones no quedó
+  verificado campo por campo y no estaban en el alcance.
+- **El descuento por porcentaje** sigue sin confirmarse contra el SUA: no hay un solo caso
+  en la base real. Se escribe con 4 decimales y el generador avisa cada vez.
