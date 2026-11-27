@@ -2962,6 +2962,13 @@ class APIClient {
     return r.data;
   }
 
+  /** Todo lo pendiente del rango de un golpe, en el orden que el SUA necesita. */
+  async generarSuaAutomatico(body: { desde: string; hasta: string; afiliatorios?: boolean }
+    & Record<string, any>) {
+    const r = await this.client.post<APIResponse<any>>('/nomina/sua/automatico', body);
+    return r.data;
+  }
+
   /** La bitácora: qué se le mandó al SUA y cómo le fue. */
   async getSuaLotes() {
     const r = await this.client.get<APIResponse<any>>('/nomina/sua/lotes');

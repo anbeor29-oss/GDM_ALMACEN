@@ -20,7 +20,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FileDown, Search, X, AlertTriangle, CheckCircle2, Info,
-  SlidersHorizontal, ClipboardList, Trash2, ChevronDown, ChevronRight, FileWarning,
+  SlidersHorizontal, ClipboardList, Trash2, ChevronDown, ChevronRight, FileWarning, Zap,
 } from 'lucide-react';
 import api from '@/services/api';
 import { confirmar } from '@/utils/avisos';
@@ -99,6 +99,8 @@ export function SuaImportacionPage() {
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [avisos, setAvisos] = useState<string[]>([]);
+  /** Lo que el modo automático dejó fuera por datos faltantes. */
+  const [omitidos, setOmitidos] = useState<string[]>([]);
   const [generando, setGenerando] = useState(false);
   const [abierto, setAbierto] = useState<Record<string, boolean>>({});
   const [erroresDe, setErroresDe] = useState<{ id: string; texto: string } | null>(null);
@@ -138,7 +140,7 @@ export function SuaImportacionPage() {
   const deMotivo = (...motivos: string[]) => candidatos.filter((c) => motivos.includes(c.motivo));
   const marcados = (lista: any[]) => lista.filter((c) => marca(c).incluir);
 
-  const limpiarMensajes = () => { setError(''); setOk(''); setAvisos([]); };
+  const limpiarMensajes = () => { setError(''); setOk(''); setAvisos([]); setOmitidos([]); };
 
   /** Guarda los .txt que devolvió el backend y cuenta lo que pasó. */
   async function entregar(data: any, queFue: string) {
@@ -152,6 +154,40 @@ export function SuaImportacionPage() {
     qc.invalidateQueries({ queryKey: ['sua-lotes'] });
     qc.invalidateQueries({ queryKey: ['sua-candidatos'] });
     setMarcas({});
+  }
+
+  /**
+   * Todo lo pendiente del rango sin marcar nada: lo arma el backend con lo que
+   * NEXO ya sabe, en el orden que el SUA necesita. Lo que le falta un dato se
+   * omite y se nombra; no detiene a los demás.
+   */
+  async function generarAutomatico() {
+    const pendientes = candidatos.filter((c) => c.listo && !c.enviado);
+    if (!await confirmar(
+      `Se van a generar los archivos de ${pendientes.length} renglón(es) pendiente(s) del ` +
+      `${aTextoMx(rango.desde)} al ${aTextoMx(rango.hasta)}: altas primero, luego movimientos ` +
+      'y créditos.\n\nLo que le falte un dato se omite y te digo quién. ¿Va?',
+    )) return;
+
+    limpiarMensajes(); setGenerando(true);
+    try {
+      const r = await api.generarSuaAutomatico({
+        desde: rango.desde, hasta: rango.hasta, afiliatorios: conAfiliatorios, ...cfg,
+      });
+      const d = r.data;
+      for (const a of d.archivos || []) await api.guardarTxtSua(a.nombre, a.contenido);
+      setAvisos(d.avisos || []);
+      setOmitidos(d.omitidos || []);
+      setOk(
+        `Generado: ${d.resumen.altas} alta(s), ${d.resumen.movimientos} movimiento(s) y ` +
+        `${d.resumen.creditos} crédito(s) → ${(d.archivos || []).map((a: any) => a.nombre).join(', ')}. ` +
+        `${(d.lotes || []).length} lote(s) en la bitácora.`,
+      );
+      qc.invalidateQueries({ queryKey: ['sua-lotes'] });
+      qc.invalidateQueries({ queryKey: ['sua-candidatos'] });
+      setMarcas({});
+    } catch (e: any) { setError(e?.response?.data?.message || e?.message || 'No se pudo generar.'); }
+    finally { setGenerando(false); }
   }
 
   async function generarAltas() {
@@ -246,6 +282,13 @@ export function SuaImportacionPage() {
       setOk('Lote borrado de la bitácora.');
     } catch (e: any) { setError(e?.response?.data?.message || e?.message || 'No se pudo borrar.'); }
   }
+
+  /* Lo que el botón automático mandaría: completo y sin haberse mandado. */
+  const pendientesDelRango = useMemo(
+    () => candidatos.filter((c) => c.listo && !c.enviado
+      && (c.motivo !== 'CREDITO' || Boolean(c.fecha))).length,
+    [candidatos],
+  );
 
   const cuantos = useMemo(() => ({
     altas: deMotivo('ALTA').length,
@@ -388,6 +431,25 @@ export function SuaImportacionPage() {
             <SlidersHorizontal className="w-4 h-4" /> Parámetros del SUA
           </button>
           {candQ.isFetching && <span className="text-xs text-gray-500">buscando…</span>}
+
+          {/* Lo que NEXO ya sabe, de un golpe: no hay que marcar renglón por
+              renglón ni pasar por las tres pestañas. */}
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-gray-500 hidden md:inline">
+              {pendientesDelRango} pendiente(s)
+            </span>
+            <button
+              onClick={generarAutomatico}
+              disabled={generando || pendientesDelRango === 0}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 text-white
+                         text-sm font-medium hover:bg-violet-700 disabled:opacity-40
+                         disabled:cursor-not-allowed"
+              title="Arma los tres archivos con todo lo pendiente del rango, en el orden del SUA"
+            >
+              <Zap className="w-4 h-4" />
+              {generando ? 'Generando…' : 'Generar todo lo pendiente'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -439,6 +501,17 @@ export function SuaImportacionPage() {
           <div className="font-medium mb-1">Léelo antes de importar en el SUA:</div>
           <ul className="list-disc pl-5 space-y-0.5">
             {avisos.map((a, i) => <li key={i}>{a}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {omitidos.length > 0 && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-900">
+          <div className="font-medium mb-1">
+            Quedaron fuera por datos faltantes ({omitidos.length}). Captúralos y vuelve a correrlo:
+          </div>
+          <ul className="list-disc pl-5 space-y-0.5">
+            {omitidos.map((o, i) => <li key={i}>{o}</li>)}
           </ul>
         </div>
       )}

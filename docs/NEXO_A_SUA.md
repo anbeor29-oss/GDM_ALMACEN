@@ -183,6 +183,21 @@ con su casilla y dice su estado — *listo*, lo que le **falta** (sin NSS, sin s
 La **modificación de salario** no sale de un rango: se agrega buscando al trabajador, con
 su fecha y el nuevo SBC.
 
+### El botón automático
+
+**«Generar todo lo pendiente»** (morado, junto al rango) arma los tres pasos de un golpe
+con lo que NEXO ya sabe, en el orden que el SUA necesita, sin marcar renglón por renglón.
+Entra lo que está **completo y no se ha mandado**; los créditos van como **inicio de
+descuento** con la fecha del expediente, porque es el único movimiento que el SUA acepta
+primero — suspensiones, reinicios y cambios de valor siguen eligiéndose a mano, que es
+donde hace falta la carta del INFONAVIT.
+
+Lo que le falta un dato **se omite y se nombra**, no detiene la corrida. En el modo a mano
+frenar tiene sentido —alguien marcó ese renglón a propósito—; aquí nadie eligió al que
+viene sin NSS, y parar por él dejaría sin mandar a los otros treinta que sí están bien. Si
+las **altas** truenan sí se detiene todo: mandar movimientos de gente que el SUA no conoce
+es garantizar su rechazo.
+
 Los archivos se guardan en «Descargas» con su nombre del SUA (`Aseg.txt`, `Afil.txt`,
 `Movt.txt`, `Cred.txt`) y arriba aparecen los **avisos** que hay que leer antes de
 importar. En la bitácora se cierra cada lote con **«Entró al SUA»** o **«Lo rechazó»**,

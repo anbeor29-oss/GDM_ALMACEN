@@ -475,6 +475,12 @@ panel plegado. Verificado: tsc limpio en back y front, 24 pruebas verdes, las mi
 real contra Postgres local y los endpoints responden 401 (registrados y con llave). **No se vio la pantalla con
 sesión** — hace falta un usuario de dev.
 
+**2026-11-26d — Botón automático del SUA.** Junto al rango, **«Generar todo lo pendiente»**: arma los tres pasos de
+un golpe (`POST /nomina/sua/automatico`) con lo completo y no enviado, en el orden altas → movimientos → créditos.
+Los créditos van como **inicio de descuento**; los demás tipos siguen a mano. Lo que le falta un dato se **omite y se
+nombra** en vez de tumbar la corrida (en el modo a mano sí frena: ahí alguien marcó ese renglón). Si las altas
+truenan se detiene todo.
+
 **Falta:** (a) confirmar la escala
 del descuento **por porcentaje** (no hay ni un caso en la base real: hoy se escribe con 4 decimales y el generador
 avisa); (b) incapacidades y ausentismos (`Incap.txt`), fuera de alcance. Ver [[sua-mdb-mapeo]].

@@ -1578,6 +1578,31 @@ router.post(
   })
 );
 
+/**
+ * POST /nomina/sua/automatico — todo lo pendiente del rango de un golpe.
+ *
+ * Arma los tres pasos en el orden que el SUA necesita, con lo que NEXO ya sabe.
+ * Lo que le falta un dato se omite y se nombra, en vez de tumbar la corrida: en
+ * el modo a mano frenar tiene sentido porque alguien marcó ese renglón; aquí
+ * nadie eligió al que viene sin NSS.
+ */
+router.post(
+  '/sua/automatico',
+  soloAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const desde = String(req.body?.desde || '');
+    const hasta = String(req.body?.hasta || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
+      throw new ValidationError('Indica el rango con desde y hasta en formato AAAA-MM-DD.');
+    }
+    const r = await suaExport.automatico(
+      companyId(req), desde, hasta, cfgSua(req.body), req.user?.userId,
+      req.body?.afiliatorios !== false,
+    );
+    res.json({ success: true, data: r });
+  })
+);
+
 /* ── Bitácora del SUA: qué se mandó y cómo le fue ──
  *
  * El SUA no devuelve acuse como el IDSE: deja sus rechazos en los ErrImp*.txt de

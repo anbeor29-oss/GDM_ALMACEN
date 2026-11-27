@@ -626,6 +626,127 @@ export async function candidatos(
   return salida;
 }
 
+/* ─────────────────────────  De un golpe  ─────────────────────────────────── */
+
+export interface ResultadoAutomatico {
+  archivos: ArchivoSua[];
+  avisos: string[];
+  lotes: string[];
+  resumen: { altas: number; movimientos: number; creditos: number };
+  omitidos: string[];
+}
+
+/**
+ * Todo lo pendiente del rango, sin ir marcando renglón por renglón: toma lo que
+ * NEXO ya sabe y arma los archivos en el orden que el SUA necesita —primero las
+ * altas, luego los movimientos y los créditos—.
+ *
+ * QUÉ ENTRA
+ * Sólo lo que está completo y no se ha mandado. Lo que le falta un dato se
+ * OMITE y se dice quién y qué le falta, en vez de tumbar la corrida entera: en
+ * el modo a mano tiene sentido frenar —alguien marcó eso a propósito—, pero
+ * aquí nadie eligió al que viene sin NSS y detener por él dejaría sin mandar a
+ * los otros treinta que sí están bien.
+ *
+ * Si las altas truenan sí se detiene todo: mandar los movimientos de gente que
+ * el SUA no conoce es garantizar su rechazo.
+ */
+export async function automatico(
+  companyId: string, desde: string, hasta: string,
+  cfg: ConfigSua = {}, userId?: string, conAfiliatorios = true,
+): Promise<ResultadoAutomatico> {
+  const lista = await candidatos(companyId, desde, hasta);
+
+  const omitidos: string[] = [];
+  for (const c of lista) {
+    if (!c.listo) omitidos.push(`${c.quien} — ${c.motivo.toLowerCase()}: ${c.falta}.`);
+    else if (c.motivo === 'CREDITO' && !c.fecha) {
+      omitidos.push(
+        `${c.quien} — crédito: sin fecha de inicio del descuento en el expediente ` +
+        '(captúrala o mándalo a mano).',
+      );
+    }
+  }
+  const pendiente = (motivos: string[]) =>
+    lista.filter((c) => motivos.includes(c.motivo) && c.listo && !c.enviado
+      && (c.motivo !== 'CREDITO' || Boolean(c.fecha)));
+
+  const porMandar = {
+    altas: pendiente(['ALTA']),
+    movimientos: pendiente(['BAJA', 'REINGRESO']),
+    creditos: pendiente(['CREDITO']),
+  };
+  const total = porMandar.altas.length + porMandar.movimientos.length + porMandar.creditos.length;
+  if (total === 0) {
+    throw new ValidationError(
+      omitidos.length
+        ? 'No hay nada completo que mandar en ese rango. Esto es lo que quedó fuera:\n• ' +
+          omitidos.join('\n• ')
+        : 'No hay nada pendiente que mandar en ese rango: o ya se mandó todo, o no hubo movimientos.',
+    );
+  }
+
+  const archivos: ArchivoSua[] = [];
+  const avisos: string[] = [];
+  const lotes: string[] = [];
+
+  if (porMandar.altas.length) {
+    const r = await altas(
+      companyId,
+      porMandar.altas.map((c) => ({ empleadoId: c.empleado_id, fecha: c.fecha || undefined })),
+      cfg, conAfiliatorios, userId,
+    );
+    archivos.push(...r.archivos);
+    avisos.push(...r.avisos);
+    if (r.loteId) lotes.push(r.loteId);
+  }
+
+  if (porMandar.movimientos.length) {
+    const r = await movimientos(
+      companyId,
+      porMandar.movimientos.map((c) => ({
+        empleadoId: c.empleado_id, tipo: c.motivo as TipoMovtoSua, fecha: c.fecha || '',
+      })),
+      cfg, userId,
+    );
+    archivos.push(r.archivo);
+    avisos.push(...r.avisos);
+    if (r.loteId) lotes.push(r.loteId);
+  }
+
+  if (porMandar.creditos.length) {
+    /* El crédito que nunca se ha mandado empieza por su inicio de descuento: es
+     * el único movimiento que el SUA acepta primero. Suspensiones, reinicios y
+     * cambios de valor se eligen a mano, porque sólo quien tiene la carta del
+     * INFONAVIT sabe cuál es. */
+    const r = await creditos(
+      companyId,
+      porMandar.creditos.map((c) => ({
+        empleadoId: c.empleado_id, tipo: 'INICIO' as TipoCreditoSua, fecha: c.fecha || '',
+      })),
+      cfg, userId,
+    );
+    archivos.push(r.archivo);
+    avisos.push(...r.avisos);
+    if (r.loteId) lotes.push(r.loteId);
+  }
+
+  if (omitidos.length) {
+    avisos.push(
+      `Se omitieron ${omitidos.length} renglón(es) por datos faltantes; abajo dice cuáles.`,
+    );
+  }
+
+  return {
+    archivos, avisos, lotes, omitidos,
+    resumen: {
+      altas: porMandar.altas.length,
+      movimientos: porMandar.movimientos.length,
+      creditos: porMandar.creditos.length,
+    },
+  };
+}
+
 /* ─────────────────────────  La bitácora  ──────────────────────────────────── */
 
 /** Los lotes generados, del más reciente al más viejo, con sus renglones. */
